@@ -1,0 +1,176 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ── Auth & Billing ──
+
+model User {
+  id                    String   @id @default(cuid())
+  clerkId               String   @unique
+  email                 String   @unique
+  name                  String?
+  imageUrl              String?
+  stripeCustomerId      String?  @unique
+  tier                  UserTier @default(FREE)
+  briefingLengthMinutes Int      @default(15)
+  briefingTime          String   @default("07:00") // HH:MM in user's timezone
+  timezone              String   @default("America/New_York")
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  subscriptions Subscription[]
+  briefings     Briefing[]
+}
+
+enum UserTier {
+  FREE
+  PRO
+  PRO_PLUS
+}
+
+// ── Podcast & Episodes ──
+
+model Podcast {
+  id             String    @id @default(cuid())
+  title          String
+  description    String?
+  feedUrl        String    @unique
+  imageUrl       String?
+  podcastIndexId String?   @unique
+  author         String?
+  categories     String[] // PostgreSQL array
+  lastFetchedAt  DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  episodes      Episode[]
+  subscriptions Subscription[]
+}
+
+model Episode {
+  id              String   @id @default(cuid())
+  podcastId       String
+  title           String
+  description     String?
+  audioUrl        String
+  publishedAt     DateTime
+  durationSeconds Int?
+  guid            String
+  transcriptUrl   String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  podcast      Podcast       @relation(fields: [podcastId], references: [id], onDelete: Cascade)
+  distillation Distillation?
+  clips        Clip[]
+
+  @@unique([podcastId, guid])
+}
+
+// ── Distillation & Clips ──
+
+model Distillation {
+  id           String             @id @default(cuid())
+  episodeId    String             @unique
+  status       DistillationStatus @default(PENDING)
+  transcript   String?
+  claimsJson   Json? // Pass 1 output: scored claims
+  errorMessage String?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  episode Episode @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  clips   Clip[]
+}
+
+enum DistillationStatus {
+  PENDING
+  FETCHING_TRANSCRIPT
+  EXTRACTING_CLAIMS
+  COMPLETED
+  FAILED
+}
+
+model Clip {
+  id             String     @id @default(cuid())
+  episodeId      String
+  distillationId String
+  durationTier   Int // 1, 2, 3, 5, 7, 10, or 15 (minutes)
+  status         ClipStatus @default(PENDING)
+  narrativeText  String? // Pass 2 output: narrative for TTS
+  wordCount      Int?
+  audioKey       String? // R2 key: clips/{episodeId}/{durationTier}.mp3
+  audioUrl       String? // Public R2 URL
+  actualSeconds  Int? // Actual TTS audio duration
+  errorMessage   String?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  episode      Episode      @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  distillation Distillation @relation(fields: [distillationId], references: [id], onDelete: Cascade)
+
+  @@unique([episodeId, durationTier])
+}
+
+enum ClipStatus {
+  PENDING
+  GENERATING_NARRATIVE
+  GENERATING_AUDIO
+  COMPLETED
+  FAILED
+}
+
+// ── User Subscriptions ──
+
+model Subscription {
+  id        String   @id @default(cuid())
+  userId    String
+  podcastId String
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  podcast Podcast @relation(fields: [podcastId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, podcastId])
+}
+
+// ── Briefings ──
+
+model Briefing {
+  id            String         @id @default(cuid())
+  userId        String
+  status        BriefingStatus @default(PENDING)
+  targetMinutes Int
+  actualSeconds Int?
+  audioUrl      String?
+  audioKey      String? // R2 key: briefings/{userId}/{date}.mp3
+  errorMessage  String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  user     User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  segments BriefingSegment[]
+}
+
+enum BriefingStatus {
+  PENDING
+  ASSEMBLING
+  GENERATING_AUDIO
+  COMPLETED
+  FAILED
+}
+
+model BriefingSegment {
+  id             String @id @default(cuid())
+  briefingId     String
+  clipId         String
+  orderIndex     Int
+  transitionText String // "Next, from podcast X..."
+
+  briefing Briefing @relation(fields: [briefingId], references: [id], onDelete: Cascade)
+}
