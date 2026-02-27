@@ -152,6 +152,17 @@ podcasts.delete("/subscribe/:podcastId", async (c) => {
 });
 
 /**
+ * POST /refresh — Trigger a feed refresh for the user's subscribed podcasts.
+ * Enqueues a feed-refresh job so new episodes are ingested in the background.
+ *
+ * @returns Success confirmation
+ */
+podcasts.post("/refresh", async (c) => {
+  await c.env.FEED_REFRESH_QUEUE.send({ type: "manual" });
+  return c.json({ success: true, message: "Feed refresh queued" });
+});
+
+/**
  * GET /subscriptions — List the authenticated user's podcast subscriptions.
  *
  * @returns Array of subscriptions with nested podcast data

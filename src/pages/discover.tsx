@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { apiFetch } from "../lib/api";
+import { useApiFetch } from "../lib/api";
 import { PodcastCard } from "../components/podcast-card";
 
 /** Shape of a podcast returned by the API. */
@@ -13,19 +13,21 @@ interface Podcast {
 
 /** Discover page with podcast search and subscription management. */
 export function Discover() {
+  const apiFetch = useApiFetch();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Podcast[]>([]);
   const [subscriptions, setSubscriptions] = useState<Podcast[]>([]);
   const [searching, setSearching] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const fetchSubscriptions = useCallback(async () => {
     try {
-      const data = await apiFetch<Podcast[]>("/podcasts/subscriptions");
-      setSubscriptions(data);
+      const data = await apiFetch<{ subscriptions: { podcast: Podcast }[] }>("/podcasts/subscriptions");
+      setSubscriptions(data.subscriptions.map((s) => s.podcast));
     } catch {
       // Silently handle — subscriptions section will be empty
     }
-  }, []);
+  }, [apiFetch]);
 
   useEffect(() => {
     fetchSubscriptions();
@@ -36,14 +38,26 @@ export function Discover() {
     if (!query.trim()) return;
     setSearching(true);
     try {
-      const data = await apiFetch<Podcast[]>(
+      const data = await apiFetch<{ feeds: Podcast[] }>(
         `/podcasts/search?q=${encodeURIComponent(query)}`
       );
-      setResults(data);
+      setResults(data.feeds);
     } catch {
       setResults([]);
     } finally {
       setSearching(false);
+    }
+  }
+
+  /** Triggers a feed refresh to pull latest episodes. */
+  async function handleRefresh() {
+    setRefreshing(true);
+    try {
+      await apiFetch("/podcasts/refresh", { method: "POST" });
+    } catch {
+      // best-effort
+    } finally {
+      setRefreshing(false);
     }
   }
 
@@ -57,7 +71,16 @@ export function Discover() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-bold mb-4">Discover Podcasts</h1>
+        <div className="flex items-center justify-between mb-4">
+          <h1 className="text-2xl font-bold">Discover Podcasts</h1>
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="px-4 py-2 text-sm bg-zinc-800 text-zinc-200 rounded-lg hover:bg-zinc-700 transition-colors disabled:opacity-50"
+          >
+            {refreshing ? "Refreshing..." : "Refresh Feeds"}
+          </button>
+        </div>
         <div className="flex gap-2">
           <input
             type="text"
