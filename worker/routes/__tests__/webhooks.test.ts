@@ -28,7 +28,7 @@ const { clerkWebhooks } = await import("../webhooks/clerk");
 const { stripeWebhooks } = await import("../webhooks/stripe");
 
 /** Mock ExecutionContext for Hono test requests */
-const mockExCtx = { waitUntil: vi.fn(), passThroughOnException: vi.fn() };
+const mockExCtx = { waitUntil: vi.fn(), passThroughOnException: vi.fn(), props: {} };
 
 describe("Clerk Webhooks", () => {
   let app: Hono<{ Bindings: Env }>;
@@ -175,7 +175,7 @@ describe("Clerk Webhooks", () => {
     );
 
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body: any = await res.json();
     expect(body.received).toBe(true);
   });
 });
@@ -216,7 +216,7 @@ describe("Stripe Webhooks", () => {
     );
 
     expect(res.status).toBe(400);
-    const body = await res.json();
+    const body: any = await res.json();
     expect(body.error).toContain("Missing stripe-signature");
   });
 
@@ -240,7 +240,7 @@ describe("Stripe Webhooks", () => {
     );
 
     expect(res.status).toBe(400);
-    const body = await res.json();
+    const body: any = await res.json();
     expect(body.error).toContain("Invalid signature");
   });
 

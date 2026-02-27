@@ -42,7 +42,7 @@ vi.mock("hono/factory", () => ({
 const { podcasts } = await import("../podcasts");
 
 /** Mock ExecutionContext for Hono test requests */
-const mockExCtx = { waitUntil: vi.fn(), passThroughOnException: vi.fn() };
+const mockExCtx = { waitUntil: vi.fn(), passThroughOnException: vi.fn(), props: {} };
 
 describe("Podcast Routes", () => {
   let app: Hono<{ Bindings: Env }>;
@@ -80,7 +80,7 @@ describe("Podcast Routes", () => {
     it("should return 400 when q parameter is missing", async () => {
       const res = await app.request("/podcasts/search", {}, env, mockExCtx);
       expect(res.status).toBe(400);
-      const body = await res.json();
+      const body: any = await res.json();
       expect(body.error).toContain("Missing search query");
     });
 
@@ -90,7 +90,7 @@ describe("Podcast Routes", () => {
 
       const res = await app.request("/podcasts/search?q=test", {}, env, mockExCtx);
       expect(res.status).toBe(200);
-      const body = await res.json();
+      const body: any = await res.json();
       expect(body.feeds).toEqual(feeds);
     });
   });
@@ -109,7 +109,7 @@ describe("Podcast Routes", () => {
 
       const res = await app.request("/podcasts/trending", {}, env, mockExCtx);
       expect(res.status).toBe(200);
-      const body = await res.json();
+      const body: any = await res.json();
       expect(body.feeds).toEqual(feeds);
     });
   });
@@ -155,7 +155,7 @@ describe("Podcast Routes", () => {
       );
 
       expect(res.status).toBe(201);
-      const body = await res.json();
+      const body: any = await res.json();
       expect(body.subscription).toBeDefined();
       expect(body.subscription.podcast).toBeDefined();
     });
@@ -202,7 +202,7 @@ describe("Podcast Routes", () => {
       );
 
       expect(res.status).toBe(200);
-      const body = await res.json();
+      const body: any = await res.json();
       expect(body.success).toBe(true);
     });
   });
@@ -231,7 +231,7 @@ describe("Podcast Routes", () => {
 
       const res = await app.request("/podcasts/subscriptions", {}, env, mockExCtx);
       expect(res.status).toBe(200);
-      const body = await res.json();
+      const body: any = await res.json();
       expect(body.subscriptions).toHaveLength(1);
       expect(body.subscriptions[0].podcast.title).toBe("My Podcast");
     });

@@ -30,7 +30,7 @@ vi.mock("hono/factory", () => ({
 const { briefings } = await import("../briefings");
 
 /** Mock ExecutionContext for Hono test requests */
-const mockExCtx = { waitUntil: vi.fn(), passThroughOnException: vi.fn() };
+const mockExCtx = { waitUntil: vi.fn(), passThroughOnException: vi.fn(), props: {} };
 
 describe("Briefing Routes", () => {
   let app: Hono<{ Bindings: Env }>;
@@ -77,7 +77,7 @@ describe("Briefing Routes", () => {
 
       const res = await app.request("/briefings", {}, env, mockExCtx);
       expect(res.status).toBe(200);
-      const body = await res.json();
+      const body: any = await res.json();
       expect(body.briefings).toHaveLength(2);
     });
 
@@ -88,7 +88,7 @@ describe("Briefing Routes", () => {
 
       const res = await app.request("/briefings", {}, env, mockExCtx);
       expect(res.status).toBe(200);
-      const body = await res.json();
+      const body: any = await res.json();
       expect(body.briefings).toHaveLength(0);
     });
   });
@@ -110,7 +110,7 @@ describe("Briefing Routes", () => {
 
       const res = await app.request("/briefings/today", {}, env, mockExCtx);
       expect(res.status).toBe(200);
-      const body = await res.json();
+      const body: any = await res.json();
       expect(body.briefing).toBeDefined();
       expect(body.briefing.id).toBe("b_1");
     });
@@ -122,7 +122,7 @@ describe("Briefing Routes", () => {
 
       const res = await app.request("/briefings/today", {}, env, mockExCtx);
       expect(res.status).toBe(200);
-      const body = await res.json();
+      const body: any = await res.json();
       expect(body.briefing).toBeNull();
     });
   });
@@ -164,7 +164,7 @@ describe("Briefing Routes", () => {
         mockExCtx
       );
       expect(res.status).toBe(201);
-      const body = await res.json();
+      const body: any = await res.json();
       expect(body.briefing.id).toBe("b_new");
     });
 
@@ -186,7 +186,7 @@ describe("Briefing Routes", () => {
         mockExCtx
       );
       expect(res.status).toBe(429);
-      const body = await res.json();
+      const body: any = await res.json();
       expect(body.error).toContain("Free tier limit");
     });
 
@@ -287,7 +287,7 @@ describe("Briefing Routes", () => {
       );
 
       expect(res.status).toBe(200);
-      const body = await res.json();
+      const body: any = await res.json();
       expect(body.preferences.briefingLengthMinutes).toBe(10);
       expect(body.preferences.briefingTime).toBe("08:00");
       expect(body.preferences.timezone).toBe("America/Chicago");

@@ -13,5 +13,28 @@
       "binding": "HYPERDRIVE",
       "id": "<hyperdrive-config-id>"
     }
-  ]
+  ],
+  "r2_buckets": [
+    {
+      "binding": "R2",
+      "bucket_name": "blipp-audio"
+    }
+  ],
+  "queues": {
+    "producers": [
+      { "binding": "FEED_REFRESH_QUEUE", "queue": "feed-refresh" },
+      { "binding": "DISTILLATION_QUEUE", "queue": "distillation" },
+      { "binding": "CLIP_GENERATION_QUEUE", "queue": "clip-generation" },
+      { "binding": "BRIEFING_ASSEMBLY_QUEUE", "queue": "briefing-assembly" }
+    ],
+    "consumers": [
+      { "queue": "feed-refresh", "max_batch_size": 10, "max_retries": 3 },
+      { "queue": "distillation", "max_batch_size": 5, "max_retries": 3 },
+      { "queue": "clip-generation", "max_batch_size": 3, "max_retries": 3 },
+      { "queue": "briefing-assembly", "max_batch_size": 5, "max_retries": 3 }
+    ]
+  },
+  "triggers": {
+    "crons": ["*/30 * * * *"]
+  }
 }

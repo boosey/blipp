@@ -36,7 +36,7 @@ export interface WordAllocation {
  * @returns The nearest DurationTier value
  */
 export function nearestTier(minutes: number): DurationTier {
-  let best = DURATION_TIERS[0];
+  let best: DurationTier = DURATION_TIERS[0];
   let bestDist = Math.abs(minutes - best);
 
   for (const tier of DURATION_TIERS) {

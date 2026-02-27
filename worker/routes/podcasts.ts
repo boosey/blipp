@@ -58,7 +58,7 @@ podcasts.get("/trending", async (c) => {
  * @returns The created subscription with podcast data
  */
 podcasts.post("/subscribe", async (c) => {
-  const auth = getAuth(c)!;
+  const userId = getAuth(c)!.userId!;
   const body = await c.req.json<{
     feedUrl: string;
     title: string;
@@ -76,7 +76,7 @@ podcasts.post("/subscribe", async (c) => {
 
   try {
     const user = await prisma.user.findUniqueOrThrow({
-      where: { clerkId: auth.userId },
+      where: { clerkId: userId },
     });
 
     // Upsert podcast — create if new, update metadata if exists
@@ -126,14 +126,14 @@ podcasts.post("/subscribe", async (c) => {
  * @returns Success confirmation
  */
 podcasts.delete("/subscribe/:podcastId", async (c) => {
-  const auth = getAuth(c)!;
+  const userId = getAuth(c)!.userId!;
   const podcastId = c.req.param("podcastId");
 
   const prisma = createPrismaClient(c.env.HYPERDRIVE);
 
   try {
     const user = await prisma.user.findUniqueOrThrow({
-      where: { clerkId: auth.userId },
+      where: { clerkId: userId },
     });
 
     await prisma.subscription.delete({
@@ -157,12 +157,12 @@ podcasts.delete("/subscribe/:podcastId", async (c) => {
  * @returns Array of subscriptions with nested podcast data
  */
 podcasts.get("/subscriptions", async (c) => {
-  const auth = getAuth(c)!;
+  const userId = getAuth(c)!.userId!;
   const prisma = createPrismaClient(c.env.HYPERDRIVE);
 
   try {
     const user = await prisma.user.findUniqueOrThrow({
-      where: { clerkId: auth.userId },
+      where: { clerkId: userId },
     });
 
     const subscriptions = await prisma.subscription.findMany({

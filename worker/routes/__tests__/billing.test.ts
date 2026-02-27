@@ -40,7 +40,7 @@ vi.mock("hono/factory", () => ({
 const { billing } = await import("../billing");
 
 /** Mock ExecutionContext for Hono test requests */
-const mockExCtx = { waitUntil: vi.fn(), passThroughOnException: vi.fn() };
+const mockExCtx = { waitUntil: vi.fn(), passThroughOnException: vi.fn(), props: {} };
 
 describe("Billing Routes", () => {
   let app: Hono<{ Bindings: Env }>;
@@ -95,7 +95,7 @@ describe("Billing Routes", () => {
         mockExCtx
       );
       expect(res.status).toBe(400);
-      const body = await res.json();
+      const body: any = await res.json();
       expect(body.error).toContain("Invalid tier");
     });
 
@@ -125,7 +125,7 @@ describe("Billing Routes", () => {
       );
 
       expect(res.status).toBe(200);
-      const body = await res.json();
+      const body: any = await res.json();
       expect(body.url).toBe("https://checkout.stripe.com/session_123");
     });
 
@@ -223,7 +223,7 @@ describe("Billing Routes", () => {
         mockExCtx
       );
       expect(res.status).toBe(400);
-      const body = await res.json();
+      const body: any = await res.json();
       expect(body.error).toContain("No active subscription");
     });
 
@@ -246,7 +246,7 @@ describe("Billing Routes", () => {
         mockExCtx
       );
       expect(res.status).toBe(200);
-      const body = await res.json();
+      const body: any = await res.json();
       expect(body.url).toBe("https://billing.stripe.com/portal_123");
     });
   });

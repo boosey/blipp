@@ -22,12 +22,12 @@ const FREE_MAX_MINUTES = 5;
  * @returns Array of briefing records ordered by creation date descending
  */
 briefings.get("/", async (c) => {
-  const auth = getAuth(c)!;
+  const userId = getAuth(c)!.userId!;
   const prisma = createPrismaClient(c.env.HYPERDRIVE);
 
   try {
     const user = await prisma.user.findUniqueOrThrow({
-      where: { clerkId: auth.userId },
+      where: { clerkId: userId },
     });
 
     const list = await prisma.briefing.findMany({
@@ -49,12 +49,12 @@ briefings.get("/", async (c) => {
  * @returns The briefing object, or null if none exists for today
  */
 briefings.get("/today", async (c) => {
-  const auth = getAuth(c)!;
+  const userId = getAuth(c)!.userId!;
   const prisma = createPrismaClient(c.env.HYPERDRIVE);
 
   try {
     const user = await prisma.user.findUniqueOrThrow({
-      where: { clerkId: auth.userId },
+      where: { clerkId: userId },
     });
 
     const startOfDay = new Date();
@@ -83,12 +83,12 @@ briefings.get("/today", async (c) => {
  * @throws 429 if free-tier user exceeds weekly limit
  */
 briefings.post("/generate", async (c) => {
-  const auth = getAuth(c)!;
+  const userId = getAuth(c)!.userId!;
   const prisma = createPrismaClient(c.env.HYPERDRIVE);
 
   try {
     const user = await prisma.user.findUniqueOrThrow({
-      where: { clerkId: auth.userId },
+      where: { clerkId: userId },
     });
 
     let targetMinutes = user.briefingLengthMinutes;
@@ -147,7 +147,7 @@ briefings.post("/generate", async (c) => {
  * @returns The updated user record
  */
 briefings.patch("/preferences", async (c) => {
-  const auth = getAuth(c)!;
+  const userId = getAuth(c)!.userId!;
   const body = await c.req.json<{
     briefingLengthMinutes?: number;
     briefingTime?: string;
@@ -170,7 +170,7 @@ briefings.patch("/preferences", async (c) => {
     }
 
     const user = await prisma.user.update({
-      where: { clerkId: auth.userId },
+      where: { clerkId: userId },
       data: updateData,
     });
 

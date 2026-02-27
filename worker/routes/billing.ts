@@ -21,7 +21,7 @@ billing.use("*", requireAuth);
  * @throws 401 if not authenticated
  */
 billing.post("/checkout", async (c) => {
-  const auth = getAuth(c)!;
+  const userId = getAuth(c)!.userId!;
   const { tier } = await c.req.json<{ tier: string }>();
 
   if (tier !== "PRO" && tier !== "PRO_PLUS") {
@@ -37,7 +37,7 @@ billing.post("/checkout", async (c) => {
 
   try {
     const user = await prisma.user.findUniqueOrThrow({
-      where: { clerkId: auth.userId },
+      where: { clerkId: userId },
     });
 
     const stripe = createStripeClient(c.env.STRIPE_SECRET_KEY);
@@ -49,7 +49,7 @@ billing.post("/checkout", async (c) => {
       line_items: [{ price: priceId, quantity: 1 }],
       success_url: `${origin}/billing?success=true`,
       cancel_url: `${origin}/billing?canceled=true`,
-      metadata: { clerkId: auth.userId },
+      metadata: { clerkId: userId },
     };
 
     // Reuse existing Stripe customer if available
@@ -66,7 +66,7 @@ billing.post("/checkout", async (c) => {
     // Save stripeCustomerId if this is the user's first checkout
     if (!user.stripeCustomerId && session.customer) {
       await prisma.user.update({
-        where: { clerkId: auth.userId },
+        where: { clerkId: userId },
         data: { stripeCustomerId: session.customer as string },
       });
     }
@@ -85,12 +85,12 @@ billing.post("/checkout", async (c) => {
  * @throws 401 if not authenticated
  */
 billing.post("/portal", async (c) => {
-  const auth = getAuth(c)!;
+  const userId = getAuth(c)!.userId!;
   const prisma = createPrismaClient(c.env.HYPERDRIVE);
 
   try {
     const user = await prisma.user.findUniqueOrThrow({
-      where: { clerkId: auth.userId },
+      where: { clerkId: userId },
     });
 
     if (!user.stripeCustomerId) {

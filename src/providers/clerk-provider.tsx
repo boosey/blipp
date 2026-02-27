@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 import { ClerkProvider } from "@clerk/react";
 
 /** Wraps children with Clerk auth context using the Vite env publishable key. */

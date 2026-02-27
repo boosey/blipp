@@ -105,6 +105,8 @@ export function createMockContext(env?: Env, userId?: string) {
     }),
     executionCtx: {
       waitUntil: vi.fn(),
+      passThroughOnException: vi.fn(),
+      props: {},
     },
   };
 }
