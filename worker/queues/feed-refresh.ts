@@ -1,12 +1,26 @@
 import { createPrismaClient } from "../lib/db";
-import { parseRssFeed } from "../lib/rss-parser";
+import { parseRssFeed, type ParsedEpisode } from "../lib/rss-parser";
 import type { Env } from "../types";
+
+/** Max new episodes to ingest per podcast per refresh. */
+const MAX_NEW_EPISODES = 5;
+
+/**
+ * Returns the most recent episodes from a parsed feed, sorted newest-first.
+ * RSS feeds usually list newest first, but not always — this guarantees it.
+ */
+function latestEpisodes(episodes: ParsedEpisode[], max: number): ParsedEpisode[] {
+  return [...episodes]
+    .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime())
+    .slice(0, max);
+}
 
 /**
  * Queue consumer for feed-refresh jobs.
  *
  * Fetches all podcasts from the database, polls each RSS feed for new episodes,
  * creates episode records, and queues distillation for episodes with transcripts.
+ * Only ingests the most recent episodes that aren't already in the DB.
  *
  * @param batch - Cloudflare Queue message batch
  * @param env - Worker environment bindings
@@ -28,7 +42,11 @@ export async function handleFeedRefresh(
         const xml = await response.text();
         const feed = parseRssFeed(xml);
 
-        for (const ep of feed.episodes) {
+        const recent = latestEpisodes(feed.episodes, MAX_NEW_EPISODES);
+
+        for (const ep of recent) {
+          if (!ep.guid || !ep.audioUrl) continue;
+
           // Upsert episode — skip if already exists (idempotent)
           const episode = await prisma.episode.upsert({
             where: {

@@ -141,6 +141,31 @@ briefings.post("/generate", async (c) => {
 });
 
 /**
+ * GET /preferences — Retrieve briefing preferences and tier.
+ *
+ * @returns The user's briefing preferences and current tier
+ */
+briefings.get("/preferences", async (c) => {
+  const userId = getAuth(c)!.userId!;
+  const prisma = createPrismaClient(c.env.HYPERDRIVE);
+
+  try {
+    const user = await prisma.user.findUniqueOrThrow({
+      where: { clerkId: userId },
+    });
+
+    return c.json({
+      briefingLength: user.briefingLengthMinutes,
+      briefingTime: user.briefingTime,
+      timezone: user.timezone,
+      tier: user.tier,
+    });
+  } finally {
+    c.executionCtx.waitUntil(prisma.$disconnect());
+  }
+});
+
+/**
  * PATCH /preferences — Update briefing preferences.
  * Accepts: briefingLengthMinutes, briefingTime, timezone.
  *
@@ -179,6 +204,7 @@ briefings.patch("/preferences", async (c) => {
         briefingLengthMinutes: user.briefingLengthMinutes,
         briefingTime: user.briefingTime,
         timezone: user.timezone,
+        tier: user.tier,
       },
     });
   } finally {

@@ -2,7 +2,7 @@ node_modules/
 dist/
 .dev.vars
 .wrangler/
-.env
+.env*
 *.log
 .claude/
 

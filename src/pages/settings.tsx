@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { useUser } from "@clerk/clerk-react";
-import { apiFetch } from "../lib/api";
+import { useApiFetch } from "../lib/api";
 
 /** Tier-based maximum briefing lengths in minutes. */
 const TIER_MAX_LENGTH: Record<string, number> = {
@@ -12,8 +11,8 @@ const TIER_MAX_LENGTH: Record<string, number> = {
 
 /** Settings page for briefing preferences and subscription management. */
 export function Settings() {
-  const { user } = useUser();
-  const tier = (user?.publicMetadata?.tier as string) || "FREE";
+  const apiFetch = useApiFetch();
+  const [tier, setTier] = useState("FREE");
   const maxLength = TIER_MAX_LENGTH[tier] ?? 5;
 
   const [briefingLength, setBriefingLength] = useState(5);
@@ -23,17 +22,18 @@ export function Settings() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   useEffect(() => {
-    apiFetch<{ briefingLength: number; briefingTime: string }>(
+    apiFetch<{ briefingLength: number; briefingTime: string; tier: string }>(
       "/briefings/preferences"
     )
       .then((prefs) => {
         setBriefingLength(prefs.briefingLength);
         setBriefingTime(prefs.briefingTime);
+        setTier(prefs.tier);
       })
       .catch(() => {
         // Use defaults if no preferences exist
       });
-  }, []);
+  }, [apiFetch]);
 
   /** Saves briefing preferences via API. */
   async function handleSave() {
