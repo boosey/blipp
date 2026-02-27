@@ -1,0 +1,218 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { createMockPrisma, createMockEnv } from "../../../tests/helpers/mocks";
+import { handleBriefingAssembly } from "../briefing-assembly";
+
+vi.mock("../../lib/db", () => ({
+  createPrismaClient: vi.fn(),
+}));
+
+vi.mock("../../lib/clip-cache", () => ({
+  getClip: vi.fn(),
+  putBriefing: vi.fn().mockResolvedValue("briefings/user-1/2026-02-26.mp3"),
+}));
+
+vi.mock("../../lib/mp3-concat", () => ({
+  concatMp3Buffers: vi.fn().mockReturnValue(new ArrayBuffer(4096)),
+}));
+
+vi.mock("../../lib/time-fitting", () => ({
+  allocateWordBudget: vi.fn().mockReturnValue([
+    { index: 0, allocatedWords: 450, durationTier: 3 },
+  ]),
+}));
+
+import { createPrismaClient } from "../../lib/db";
+import { getClip, putBriefing } from "../../lib/clip-cache";
+import { concatMp3Buffers } from "../../lib/mp3-concat";
+
+let mockPrisma: ReturnType<typeof createMockPrisma>;
+let mockEnv: ReturnType<typeof createMockEnv>;
+let mockCtx: ExecutionContext;
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  mockPrisma = createMockPrisma();
+  mockEnv = createMockEnv();
+  mockCtx = { waitUntil: vi.fn() } as unknown as ExecutionContext;
+  (createPrismaClient as any).mockReturnValue(mockPrisma);
+});
+
+describe("handleBriefingAssembly", () => {
+  const msgBody = { briefingId: "brief-1", userId: "user-1" };
+
+  it("should concatenate cached clips and store completed briefing", async () => {
+    mockPrisma.briefing.findUniqueOrThrow.mockResolvedValue({
+      id: "brief-1",
+      userId: "user-1",
+      targetMinutes: 10,
+    });
+    mockPrisma.briefing.update.mockResolvedValue({});
+    mockPrisma.subscription.findMany.mockResolvedValue([
+      { id: "sub-1", userId: "user-1", podcastId: "pod-1" },
+    ]);
+    mockPrisma.episode.findFirst.mockResolvedValue({
+      id: "ep-1",
+      podcastId: "pod-1",
+      title: "Episode 1",
+    });
+    mockPrisma.distillation.findUnique.mockResolvedValue({
+      id: "dist-1",
+      episodeId: "ep-1",
+      status: "COMPLETED",
+      transcript: "A long transcript with many words for testing",
+      claimsJson: [{ claim: "test" }],
+    });
+
+    // Clip is cached
+    (getClip as any).mockResolvedValue(new ArrayBuffer(1024));
+
+    mockPrisma.clip.findUnique.mockResolvedValue({
+      id: "clip-1",
+      episodeId: "ep-1",
+      durationTier: 3,
+    });
+    mockPrisma.briefingSegment.create.mockResolvedValue({});
+
+    const mockMsg = { body: msgBody, ack: vi.fn(), retry: vi.fn() };
+    const mockBatch = {
+      messages: [mockMsg],
+      queue: "briefing-assembly",
+    } as unknown as MessageBatch<any>;
+
+    await handleBriefingAssembly(mockBatch, mockEnv, mockCtx);
+
+    // Verify clips were concatenated
+    expect(concatMp3Buffers).toHaveBeenCalled();
+
+    // Verify briefing was stored in R2
+    expect(putBriefing).toHaveBeenCalled();
+
+    // Verify briefing was marked COMPLETED
+    expect(mockPrisma.briefing.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: "COMPLETED" }),
+      })
+    );
+
+    expect(mockMsg.ack).toHaveBeenCalled();
+  });
+
+  it("should queue missing clips and re-queue briefing with delay", async () => {
+    mockPrisma.briefing.findUniqueOrThrow.mockResolvedValue({
+      id: "brief-1",
+      userId: "user-1",
+      targetMinutes: 10,
+    });
+    mockPrisma.briefing.update.mockResolvedValue({});
+    mockPrisma.subscription.findMany.mockResolvedValue([
+      { id: "sub-1", userId: "user-1", podcastId: "pod-1" },
+    ]);
+    mockPrisma.episode.findFirst.mockResolvedValue({
+      id: "ep-1",
+      podcastId: "pod-1",
+      title: "Episode 1",
+    });
+    mockPrisma.distillation.findUnique.mockResolvedValue({
+      id: "dist-1",
+      episodeId: "ep-1",
+      status: "COMPLETED",
+      transcript: "transcript words here",
+      claimsJson: [{ claim: "test" }],
+    });
+
+    // Clip is NOT cached
+    (getClip as any).mockResolvedValue(null);
+
+    const mockMsg = { body: msgBody, ack: vi.fn(), retry: vi.fn() };
+    const mockBatch = {
+      messages: [mockMsg],
+      queue: "briefing-assembly",
+    } as unknown as MessageBatch<any>;
+
+    await handleBriefingAssembly(mockBatch, mockEnv, mockCtx);
+
+    // Verify clip generation was queued
+    expect(mockEnv.CLIP_GENERATION_QUEUE.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        episodeId: "ep-1",
+        distillationId: "dist-1",
+      })
+    );
+
+    // Verify briefing was re-queued with delay
+    expect(mockEnv.BRIEFING_ASSEMBLY_QUEUE.send).toHaveBeenCalledWith(
+      { briefingId: "brief-1", userId: "user-1" },
+      { delaySeconds: 60 }
+    );
+
+    // Should ack the current message (not retry)
+    expect(mockMsg.ack).toHaveBeenCalled();
+
+    // Should NOT have concatenated or stored
+    expect(concatMp3Buffers).not.toHaveBeenCalled();
+  });
+
+  it("should mark briefing FAILED when no ready episodes", async () => {
+    mockPrisma.briefing.findUniqueOrThrow.mockResolvedValue({
+      id: "brief-1",
+      userId: "user-1",
+      targetMinutes: 10,
+    });
+    mockPrisma.briefing.update.mockResolvedValue({});
+    mockPrisma.subscription.findMany.mockResolvedValue([
+      { id: "sub-1", userId: "user-1", podcastId: "pod-1" },
+    ]);
+
+    // No episodes with completed distillations
+    mockPrisma.episode.findFirst.mockResolvedValue(null);
+
+    const mockMsg = { body: msgBody, ack: vi.fn(), retry: vi.fn() };
+    const mockBatch = {
+      messages: [mockMsg],
+      queue: "briefing-assembly",
+    } as unknown as MessageBatch<any>;
+
+    await handleBriefingAssembly(mockBatch, mockEnv, mockCtx);
+
+    // Verify briefing was marked FAILED
+    expect(mockPrisma.briefing.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: "FAILED",
+          errorMessage: "No episodes with completed distillations",
+        }),
+      })
+    );
+
+    expect(mockMsg.ack).toHaveBeenCalled();
+  });
+
+  it("should mark briefing FAILED when user has no subscriptions", async () => {
+    mockPrisma.briefing.findUniqueOrThrow.mockResolvedValue({
+      id: "brief-1",
+      userId: "user-1",
+      targetMinutes: 10,
+    });
+    mockPrisma.briefing.update.mockResolvedValue({});
+    mockPrisma.subscription.findMany.mockResolvedValue([]);
+
+    const mockMsg = { body: msgBody, ack: vi.fn(), retry: vi.fn() };
+    const mockBatch = {
+      messages: [mockMsg],
+      queue: "briefing-assembly",
+    } as unknown as MessageBatch<any>;
+
+    await handleBriefingAssembly(mockBatch, mockEnv, mockCtx);
+
+    expect(mockPrisma.briefing.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: "FAILED",
+          errorMessage: "No subscriptions found",
+        }),
+      })
+    );
+
+    expect(mockMsg.ack).toHaveBeenCalled();
+  });
+});

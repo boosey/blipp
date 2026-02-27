@@ -1,7 +1,32 @@
+import { Routes, Route } from "react-router-dom";
+import { SignedIn, SignedOut, RedirectToSignIn } from "@clerk/react";
+import { AppLayout } from "./layouts/app-layout";
+import { Landing } from "./pages/landing";
+import { Dashboard } from "./pages/dashboard";
+import { Discover } from "./pages/discover";
+import { Settings } from "./pages/settings";
+
+/** Root application component with route definitions. */
 export default function App() {
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-50 flex items-center justify-center">
-      <h1 className="text-4xl font-bold">Blipp</h1>
-    </div>
+    <Routes>
+      <Route path="/" element={<Landing />} />
+      <Route
+        element={
+          <>
+            <SignedIn>
+              <AppLayout />
+            </SignedIn>
+            <SignedOut>
+              <RedirectToSignIn />
+            </SignedOut>
+          </>
+        }
+      >
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/discover" element={<Discover />} />
+        <Route path="/settings" element={<Settings />} />
+      </Route>
+    </Routes>
   );
 }

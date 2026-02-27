@@ -1,0 +1,98 @@
+import { describe, it, expect, vi } from "vitest";
+import {
+  extractClaims,
+  generateNarrative,
+  WORDS_PER_MINUTE,
+  type Claim,
+} from "../distillation";
+
+function createMockAnthropicClient(responseText: string) {
+  return {
+    messages: {
+      create: vi.fn().mockResolvedValue({
+        content: [{ type: "text", text: responseText }],
+      }),
+    },
+  } as any;
+}
+
+describe("extractClaims", () => {
+  const sampleClaims: Claim[] = [
+    { claim: "AI will transform healthcare", speaker: "Dr. Smith", importance: 9, novelty: 7 },
+    { claim: "Costs will drop by 40%", speaker: "Dr. Smith", importance: 8, novelty: 6 },
+  ];
+
+  it("should parse claims JSON from Claude response", async () => {
+    const client = createMockAnthropicClient(JSON.stringify(sampleClaims));
+    const result = await extractClaims(client, "Some transcript text");
+
+    expect(result).toEqual(sampleClaims);
+    expect(result).toHaveLength(2);
+  });
+
+  it("should pass the transcript in the prompt", async () => {
+    const client = createMockAnthropicClient(JSON.stringify(sampleClaims));
+    await extractClaims(client, "My specific transcript");
+
+    const call = client.messages.create.mock.calls[0][0];
+    expect(call.messages[0].content).toContain("My specific transcript");
+  });
+
+  it("should use claude-sonnet-4-20250514 model", async () => {
+    const client = createMockAnthropicClient(JSON.stringify(sampleClaims));
+    await extractClaims(client, "transcript");
+
+    const call = client.messages.create.mock.calls[0][0];
+    expect(call.model).toBe("claude-sonnet-4-20250514");
+  });
+
+  it("should throw on invalid JSON response", async () => {
+    const client = createMockAnthropicClient("not valid json");
+    await expect(extractClaims(client, "transcript")).rejects.toThrow();
+  });
+});
+
+describe("generateNarrative", () => {
+  const claims: Claim[] = [
+    { claim: "AI will transform healthcare", speaker: "Dr. Smith", importance: 9, novelty: 7 },
+  ];
+
+  it("should return narrative text from Claude", async () => {
+    const narrative = "Today we explore how AI is set to transform healthcare...";
+    const client = createMockAnthropicClient(narrative);
+
+    const result = await generateNarrative(client, claims, 3);
+    expect(result).toBe(narrative);
+  });
+
+  it("should include target word count in the prompt", async () => {
+    const client = createMockAnthropicClient("narrative text");
+    await generateNarrative(client, claims, 5);
+
+    const call = client.messages.create.mock.calls[0][0];
+    const expectedWords = 5 * WORDS_PER_MINUTE;
+    expect(call.messages[0].content).toContain(`${expectedWords} words`);
+  });
+
+  it("should use claude-sonnet-4-20250514 model", async () => {
+    const client = createMockAnthropicClient("narrative text");
+    await generateNarrative(client, claims, 3);
+
+    const call = client.messages.create.mock.calls[0][0];
+    expect(call.model).toBe("claude-sonnet-4-20250514");
+  });
+
+  it("should include the claims in the prompt", async () => {
+    const client = createMockAnthropicClient("narrative text");
+    await generateNarrative(client, claims, 3);
+
+    const call = client.messages.create.mock.calls[0][0];
+    expect(call.messages[0].content).toContain("AI will transform healthcare");
+  });
+});
+
+describe("WORDS_PER_MINUTE", () => {
+  it("should be 150", () => {
+    expect(WORDS_PER_MINUTE).toBe(150);
+  });
+});

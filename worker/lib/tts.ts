@@ -1,0 +1,37 @@
+import type OpenAI from "openai";
+
+/** Default TTS voice for briefing narration. */
+export const DEFAULT_VOICE = "coral";
+
+/** OpenAI TTS model optimized for speed. */
+export const TTS_MODEL = "gpt-4o-mini-tts";
+
+/**
+ * Generates spoken audio from text using OpenAI's TTS API.
+ *
+ * Uses the gpt-4o-mini-tts model with a warm, professional tone suitable
+ * for daily podcast briefings. Returns raw MP3 audio as an ArrayBuffer.
+ *
+ * @param client - OpenAI SDK client instance
+ * @param text - Narrative text to convert to speech
+ * @param voice - OpenAI voice ID (defaults to "coral")
+ * @returns MP3 audio data as ArrayBuffer
+ * @throws If the OpenAI API call fails
+ */
+export async function generateSpeech(
+  client: OpenAI,
+  text: string,
+  voice: string = DEFAULT_VOICE
+): Promise<ArrayBuffer> {
+  const response = await client.audio.speech.create({
+    model: TTS_MODEL,
+    voice: voice as any,
+    input: text,
+    response_format: "mp3",
+    instructions:
+      "Speak in a warm, professional tone suitable for a daily podcast briefing. " +
+      "Maintain a steady, engaging pace. Pause naturally between topics.",
+  });
+
+  return response.arrayBuffer();
+}
