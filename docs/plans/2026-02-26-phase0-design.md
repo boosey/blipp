@@ -21,7 +21,7 @@ Build a launch-ready MVP where users subscribe to podcasts, set a briefing lengt
 | Payments | **Stripe** | Checkout + Customer Portal + webhooks |
 | Database | **Neon PostgreSQL** + Cloudflare **Hyperdrive** | Full PostgreSQL features, connection pooling at edge |
 | ORM | **Prisma** | Type-safe queries, keeps existing schema |
-| Storage | **Cloudflare R2** | Cached clips, ad clips, zero egress fees |
+| Storage | **Cloudflare R2** | Cached clips, zero egress fees |
 | Background Jobs | **Cloudflare Queues** → Worker consumers | Native to platform, no external job service |
 | TTS | **OpenAI gpt-4o-mini-tts** | Best price-to-quality, steerable voice |
 | Distillation | **Anthropic Claude** (Sonnet) | Two-pass: claims extraction + narrative generation |
@@ -58,7 +58,7 @@ Build a launch-ready MVP where users subscribe to podcasts, set a briefing lengt
 ┌──────────────┐    ┌─────────────────┐    ┌──────────────┐
 │  Cloudflare  │    │ Neon PostgreSQL  │    │ Cloudflare   │
 │  Queues      │    │ (via Hyperdrive) │    │ R2           │
-│              │    │                  │    │ (clips, ads) │
+│              │    │                  │    │ (clips)      │
 └──────┬───────┘    └─────────────────┘    └──────────────┘
        │
        ▼
@@ -75,10 +75,8 @@ Build a launch-ready MVP where users subscribe to podcasts, set a briefing lengt
 │  │ 4. Claude P2   │  │    clips       │                │
 │  │ 5. OpenAI TTS  │  │ 3. Generate    │                │
 │  │ 6. Store in R2 │  │    missing     │                │
-│  └────────────────┘  │ 4. Insert ads  │                │
-│                      │    (free tier) │                │
-│                      │ 5. Concat MP3s │                │
-│                      │ 6. Store in R2 │                │
+│  └────────────────┘  │ 4. Concat MP3s │                │
+│                      │ 5. Store in R2 │                │
 │                      └────────────────┘                │
 └─────────────────────────────────────────────────────────┘
 
@@ -103,7 +101,6 @@ When proportional allocation gives a user 2:47 for an episode, it rounds to the 
 
 ```
 clips/{episodeId}/{durationTier}.mp3       # cached content clips
-ads/{adId}.mp3                              # pre-recorded ad clips
 briefings/{userId}/{date}.mp3               # assembled briefings
 ```
 
@@ -132,12 +129,9 @@ Scheduled briefing trigger (per user)
   4. Round each allocation to nearest duration tier
   5. Look up cached clips in R2
   6. Queue generation for any missing clips
-  7. Once all clips ready:
-     - Free tier: interleave ad clips (10/15/20s based on content clip duration)
-     - Pro tier: content clips only
-  8. Concatenate all MP3s (frame-level join)
-  9. Upload final briefing to R2
-  10. Notify user
+  7. Once all clips ready, concatenate all MP3s (frame-level join)
+  8. Upload final briefing to R2
+  9. Notify user
 ```
 
 ---
@@ -319,25 +313,9 @@ model BriefingSegment {
   briefingId     String
   clipId         String
   orderIndex     Int
-  adClipKey      String? // R2 key for pre-roll ad (null for Pro users)
   transitionText String  // "Next, from podcast X..."
 
   briefing Briefing @relation(fields: [briefingId], references: [id], onDelete: Cascade)
-}
-
-// ── Ads ──
-
-model AdCampaign {
-  id          String   @id @default(cuid())
-  name        String
-  advertiser  String?
-  audioKey10s String?  // R2 key for 10-sec version
-  audioKey15s String?  // R2 key for 15-sec version
-  audioKey20s String?  // R2 key for 20-sec version
-  active      Boolean  @default(true)
-  impressions Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
 }
 ```
 
@@ -346,7 +324,6 @@ model AdCampaign {
 - **Removed:** `Account`, `Session`, `VerificationToken` (Clerk handles auth)
 - **Added:** `clerkId`, `stripeCustomerId` on `User`
 - **Added:** `Clip` model (the cached unit)
-- **Added:** `AdCampaign` model
 - **Changed:** `Distillation` no longer stores `segmentsJson` — clips handle per-duration output
 - **Changed:** `BriefingSegment` references a `clipId` instead of `distillationId`
 
@@ -499,18 +476,6 @@ React Router (or TanStack Router) for client-side routing:
 
 ---
 
-## MVP Ad System
-
-Phase 0 uses a simple rotation model:
-
-1. Store 5–10 pre-recorded ad clips in R2 (initially house ads promoting Pro tier)
-2. During briefing assembly, select ads via round-robin
-3. Pick correct ad duration version (10s/15s/20s) based on content clip tier
-4. Track impressions by incrementing `AdCampaign.impressions`
-5. Swap in programmatic ads later via an `AdProvider` interface
-
----
-
 ## Phase 0 Scope Boundaries
 
 ### In Scope
@@ -519,10 +484,10 @@ Phase 0 uses a simple rotation model:
 - Audio player with briefing playback
 - Clerk auth (email + Google OAuth)
 - Stripe billing (Free → Pro upgrade)
-- Pre-roll ads on free tier
 - Briefing length customization (slider)
 
 ### Out of Scope (Phase 1+)
+- Pre-roll ads on free tier (ad system, AdCampaign model, ad clip storage)
 - Research mode
 - Discover/swipe mode
 - Cross-podcast synthesis

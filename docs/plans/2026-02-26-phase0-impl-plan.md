@@ -203,7 +203,7 @@ npx prisma init --datasource-provider postgresql
 
 **Step 2: Write the Prisma schema**
 
-Replace `prisma/schema.prisma` with the full schema from the design doc (`docs/plans/2026-02-26-phase0-design.md`, "Prisma Schema" section). This includes: `User`, `Podcast`, `Episode`, `Distillation`, `Clip`, `Subscription`, `Briefing`, `BriefingSegment`, `AdCampaign` models and all enums.
+Replace `prisma/schema.prisma` with the full schema from the design doc (`docs/plans/2026-02-26-phase0-design.md`, "Prisma Schema" section). This includes: `User`, `Podcast`, `Episode`, `Distillation`, `Clip`, `Subscription`, `Briefing`, `BriefingSegment` models and all enums.
 
 **Step 3: Create Prisma client factory for Workers**
 
@@ -1579,10 +1579,6 @@ export function briefingKey(userId: string, date: string): string {
   return `briefings/${userId}/${date}.mp3`;
 }
 
-export function adKey(adId: string): string {
-  return `ads/${adId}.mp3`;
-}
-
 export async function getClip(
   r2: R2Bucket,
   episodeId: string,
@@ -1846,7 +1842,6 @@ briefings.post("/generate", async (c) => {
       briefingId: briefing.id,
       userId: user.id,
       targetMinutes,
-      tier: user.tier,
     });
 
     return c.json({ briefingId: briefing.id, status: "PENDING" });
@@ -2147,7 +2142,6 @@ interface BriefingMessage {
   briefingId: string;
   userId: string;
   targetMinutes: number;
-  tier: string;
 }
 
 export async function handleBriefingAssembly(
@@ -2159,7 +2153,7 @@ export async function handleBriefingAssembly(
 
   try {
     for (const msg of batch.messages) {
-      const { briefingId, userId, targetMinutes, tier } = msg.body;
+      const { briefingId, userId, targetMinutes } = msg.body;
 
       try {
         await prisma.briefing.update({
@@ -2216,11 +2210,6 @@ export async function handleBriefingAssembly(
           const cachedClip = await getClip(env.R2, ep.id, alloc.durationTier);
 
           if (cachedClip) {
-            // Insert ad for free tier
-            if (tier === "FREE") {
-              const adAudio = await getAdClip(env.R2, alloc.durationTier);
-              if (adAudio) audioBuffers.push(adAudio);
-            }
             audioBuffers.push(cachedClip);
           } else {
             // Queue clip generation
@@ -2285,21 +2274,6 @@ export async function handleBriefingAssembly(
   } finally {
     ctx.waitUntil(prisma.$disconnect());
   }
-}
-
-async function getAdClip(
-  r2: R2Bucket,
-  durationTier: number
-): Promise<ArrayBuffer | null> {
-  // Select ad duration based on content clip tier
-  const adDuration = durationTier < 5 ? "10s" : durationTier <= 10 ? "15s" : "20s";
-  // Simple round-robin: pick a random ad
-  const adList = await r2.list({ prefix: "ads/" });
-  const matching = adList.objects.filter((o) => o.key.includes(adDuration));
-  if (matching.length === 0) return null;
-  const pick = matching[Math.floor(Math.random() * matching.length)];
-  const obj = await r2.get(pick.key);
-  return obj?.arrayBuffer() ?? null;
 }
 ```
 
