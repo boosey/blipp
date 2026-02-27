@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.dev.vars
+.wrangler/
+.env
+*.log
+.claude/
