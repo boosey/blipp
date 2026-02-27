@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { Env } from "../types";
+import { plans } from "./plans";
 import { podcasts } from "./podcasts";
 import { briefings } from "./briefings";
 import { billing } from "./billing";
@@ -12,6 +13,7 @@ import { stripeWebhooks } from "./webhooks/stripe";
  */
 const routes = new Hono<{ Bindings: Env }>();
 
+routes.route("/plans", plans);
 routes.route("/podcasts", podcasts);
 routes.route("/briefings", briefings);
 routes.route("/billing", billing);

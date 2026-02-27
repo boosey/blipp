@@ -261,6 +261,7 @@ describe("Stripe Webhooks", () => {
       },
     });
 
+    mockPrisma.plan.findUnique.mockResolvedValueOnce({ tier: "PRO" });
     mockPrisma.user.update.mockResolvedValueOnce({ id: "usr_1", tier: "PRO" });
 
     const res = await app.request(

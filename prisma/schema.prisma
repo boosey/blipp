@@ -7,6 +7,23 @@ datasource db {
   provider = "postgresql"
 }
 
+// ── Plans ──
+
+model Plan {
+  id             String   @id @default(cuid())
+  tier           UserTier @unique
+  name           String
+  priceCents     Int      // monthly price in cents (0 for free)
+  stripePriceId  String?  @unique // Stripe Price ID (null for free tier)
+  stripeProductId String? @unique // Stripe Product ID (null for free tier)
+  features       String[] // PostgreSQL array
+  highlighted    Boolean  @default(false)
+  active         Boolean  @default(true)
+  sortOrder      Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
 // ── Auth & Billing ──
 
 model User {

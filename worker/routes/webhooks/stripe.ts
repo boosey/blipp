@@ -16,16 +16,17 @@ import { createStripeClient } from "../../lib/stripe";
 export const stripeWebhooks = new Hono<{ Bindings: Env }>();
 
 /**
- * Maps a Stripe Price ID to the corresponding UserTier.
- *
- * @param priceId - The Stripe price ID from the subscription
- * @param env - Worker environment bindings containing price ID mappings
- * @returns The matching UserTier, or "FREE" if no match
+ * Looks up the UserTier for a Stripe Price ID from the Plan table.
+ * Falls back to FREE if no matching plan is found.
  */
-function tierFromPriceId(priceId: string, env: Env): string {
-  if (priceId === env.STRIPE_PRO_PRICE_ID) return "PRO";
-  if (priceId === env.STRIPE_PRO_PLUS_PRICE_ID) return "PRO_PLUS";
-  return "FREE";
+async function tierFromPriceId(
+  priceId: string,
+  prisma: ReturnType<typeof createPrismaClient>
+): Promise<string> {
+  const plan = await prisma.plan.findUnique({
+    where: { stripePriceId: priceId },
+  });
+  return plan?.tier ?? "FREE";
 }
 
 /**
@@ -71,7 +72,7 @@ stripeWebhooks.post("/", async (c) => {
 
         if (!priceId) break;
 
-        const tier = tierFromPriceId(priceId, c.env);
+        const tier = await tierFromPriceId(priceId, prisma);
 
         await prisma.user.update({
           where: { stripeCustomerId },

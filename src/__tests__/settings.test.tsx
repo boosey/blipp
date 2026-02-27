@@ -1,9 +1,9 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { Settings } from "../pages/settings";
-import { useUser } from "@clerk/react";
+import { useUser } from "@clerk/clerk-react";
 
-vi.mock("@clerk/react", () => ({
+vi.mock("@clerk/clerk-react", () => ({
   useUser: vi.fn(() => ({ user: { publicMetadata: { tier: "FREE" } } })),
   useAuth: vi.fn(() => ({ getToken: vi.fn() })),
   SignedIn: ({ children }: any) => children,
@@ -49,8 +49,8 @@ describe("Settings", () => {
   it("shows upgrade buttons for FREE tier", async () => {
     renderSettings();
     await waitFor(() => {
-      expect(screen.getByText("Upgrade to PRO")).toBeInTheDocument();
-      expect(screen.getByText("Upgrade to PRO+")).toBeInTheDocument();
+      expect(screen.getByText("Upgrade to Pro")).toBeInTheDocument();
+      expect(screen.getByText("Upgrade to Pro+")).toBeInTheDocument();
     });
   });
 

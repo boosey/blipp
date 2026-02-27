@@ -11,7 +11,8 @@
   "hyperdrive": [
     {
       "binding": "HYPERDRIVE",
-      "id": "<hyperdrive-config-id>"
+      "id": "<hyperdrive-config-id>",
+      "localConnectionString": "postgresql://neondb_owner:npg_PY4eWZT5wuVI@ep-floral-waterfall-aioe4h3v-pooler.c-4.us-east-1.aws.neon.tech/neondb?sslmode=require"
     }
   ],
   "r2_buckets": [

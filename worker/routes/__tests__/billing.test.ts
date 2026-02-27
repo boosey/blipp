@@ -84,6 +84,8 @@ describe("Billing Routes", () => {
     });
 
     it("should return 400 for invalid tier", async () => {
+      mockPrisma.plan.findFirst.mockResolvedValueOnce(null);
+
       const res = await app.request(
         "/billing/checkout",
         {
@@ -96,7 +98,7 @@ describe("Billing Routes", () => {
       );
       expect(res.status).toBe(400);
       const body: any = await res.json();
-      expect(body.error).toContain("Invalid tier");
+      expect(body.error).toContain("Invalid");
     });
 
     it("should create checkout session and return URL", async () => {
@@ -107,6 +109,11 @@ describe("Billing Routes", () => {
         stripeCustomerId: null,
       };
 
+      mockPrisma.plan.findFirst.mockResolvedValueOnce({
+        tier: "PRO",
+        stripePriceId: "price_pro_mock",
+        active: true,
+      });
       mockPrisma.user.findUniqueOrThrow.mockResolvedValueOnce(user);
       mockCheckoutCreate.mockResolvedValueOnce({
         url: "https://checkout.stripe.com/session_123",
@@ -137,6 +144,11 @@ describe("Billing Routes", () => {
         stripeCustomerId: "cus_existing",
       };
 
+      mockPrisma.plan.findFirst.mockResolvedValueOnce({
+        tier: "PRO_PLUS",
+        stripePriceId: "price_proplus_mock",
+        active: true,
+      });
       mockPrisma.user.findUniqueOrThrow.mockResolvedValueOnce(user);
       mockCheckoutCreate.mockResolvedValueOnce({
         url: "https://checkout.stripe.com/session_456",
@@ -169,6 +181,11 @@ describe("Billing Routes", () => {
         stripeCustomerId: null,
       };
 
+      mockPrisma.plan.findFirst.mockResolvedValueOnce({
+        tier: "PRO",
+        stripePriceId: "price_pro_mock",
+        active: true,
+      });
       mockPrisma.user.findUniqueOrThrow.mockResolvedValueOnce(user);
       mockCheckoutCreate.mockResolvedValueOnce({
         url: "https://checkout.stripe.com/session_789",

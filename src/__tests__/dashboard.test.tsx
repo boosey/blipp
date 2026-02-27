@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { Dashboard } from "../pages/dashboard";
 
-vi.mock("@clerk/react", () => ({
+vi.mock("@clerk/clerk-react", () => ({
   useUser: vi.fn(() => ({ user: { publicMetadata: { tier: "FREE" } } })),
   useAuth: vi.fn(() => ({ getToken: vi.fn() })),
   SignedIn: ({ children }: any) => children,

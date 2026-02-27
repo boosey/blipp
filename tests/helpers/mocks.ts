@@ -22,6 +22,7 @@ export function createMockPrisma() {
   });
 
   return {
+    plan: modelMethods(),
     user: modelMethods(),
     podcast: modelMethods(),
     episode: modelMethods(),
@@ -55,8 +56,6 @@ export function createMockEnv(): Env {
     CLERK_WEBHOOK_SECRET: "whsec_mock",
     STRIPE_SECRET_KEY: "sk_test_mock",
     STRIPE_WEBHOOK_SECRET: "whsec_mock",
-    STRIPE_PRO_PRICE_ID: "price_pro_mock",
-    STRIPE_PRO_PLUS_PRICE_ID: "price_proplus_mock",
     ANTHROPIC_API_KEY: "sk-ant-mock",
     OPENAI_API_KEY: "sk-mock",
     PODCAST_INDEX_KEY: "mock-key",

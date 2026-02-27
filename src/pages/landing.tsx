@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { SignedIn, SignedOut, SignInButton } from "@clerk/react";
+import { SignedIn, SignedOut, SignInButton } from "@clerk/clerk-react";
 
 /** Public landing page with hero section and auth-aware CTA. */
 export function Landing() {
@@ -9,21 +9,29 @@ export function Landing() {
       <p className="text-xl text-zinc-400 mb-8">
         Your podcasts, distilled to fit your time.
       </p>
-      <SignedOut>
-        <SignInButton>
-          <button className="px-6 py-3 bg-zinc-50 text-zinc-950 font-semibold rounded-lg hover:bg-zinc-200 transition-colors">
-            Get Started
-          </button>
-        </SignInButton>
-      </SignedOut>
-      <SignedIn>
+      <div className="flex gap-4">
+        <SignedOut>
+          <SignInButton>
+            <button className="px-6 py-3 bg-zinc-50 text-zinc-950 font-semibold rounded-lg hover:bg-zinc-200 transition-colors">
+              Get Started
+            </button>
+          </SignInButton>
+        </SignedOut>
+        <SignedIn>
+          <Link
+            to="/dashboard"
+            className="px-6 py-3 bg-zinc-50 text-zinc-950 font-semibold rounded-lg hover:bg-zinc-200 transition-colors"
+          >
+            Go to Dashboard
+          </Link>
+        </SignedIn>
         <Link
-          to="/dashboard"
-          className="px-6 py-3 bg-zinc-50 text-zinc-950 font-semibold rounded-lg hover:bg-zinc-200 transition-colors"
+          to="/pricing"
+          className="px-6 py-3 border border-zinc-700 text-zinc-300 font-semibold rounded-lg hover:bg-zinc-900 transition-colors"
         >
-          Go to Dashboard
+          See Pricing
         </Link>
-      </SignedIn>
+      </div>
     </div>
   );
 }

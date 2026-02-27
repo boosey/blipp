@@ -1,5 +1,5 @@
 import { Link, Outlet, useLocation } from "react-router-dom";
-import { UserButton } from "@clerk/react";
+import { UserButton } from "@clerk/clerk-react";
 
 /** Navigation link item definition. */
 interface NavItem {

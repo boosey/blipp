@@ -17,25 +17,25 @@ billing.use("*", requireAuth);
  * Body: `{ tier: "PRO" | "PRO_PLUS" }`
  *
  * @returns `{ url: string }` — The Stripe Checkout URL to redirect the user
- * @throws 400 if tier is invalid or missing
+ * @throws 400 if tier is invalid, missing, or has no Stripe price
  * @throws 401 if not authenticated
  */
 billing.post("/checkout", async (c) => {
   const userId = getAuth(c)!.userId!;
   const { tier } = await c.req.json<{ tier: string }>();
 
-  if (tier !== "PRO" && tier !== "PRO_PLUS") {
-    return c.json({ error: "Invalid tier. Must be PRO or PRO_PLUS" }, 400);
-  }
-
-  const priceId =
-    tier === "PRO"
-      ? c.env.STRIPE_PRO_PRICE_ID
-      : c.env.STRIPE_PRO_PLUS_PRICE_ID;
-
   const prisma = createPrismaClient(c.env.HYPERDRIVE);
 
   try {
+    // Look up plan and its Stripe price from the database
+    const plan = await prisma.plan.findFirst({
+      where: { tier: tier as any, active: true },
+    });
+
+    if (!plan || !plan.stripePriceId) {
+      return c.json({ error: "Invalid or unavailable plan" }, 400);
+    }
+
     const user = await prisma.user.findUniqueOrThrow({
       where: { clerkId: userId },
     });
@@ -46,7 +46,7 @@ billing.post("/checkout", async (c) => {
 
     const sessionParams: Record<string, unknown> = {
       mode: "subscription" as const,
-      line_items: [{ price: priceId, quantity: 1 }],
+      line_items: [{ price: plan.stripePriceId, quantity: 1 }],
       success_url: `${origin}/billing?success=true`,
       cancel_url: `${origin}/billing?canceled=true`,
       metadata: { clerkId: userId },

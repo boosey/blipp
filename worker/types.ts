@@ -21,10 +21,6 @@ export type Env = {
   STRIPE_SECRET_KEY: string;
   /** Stripe webhook signing secret */
   STRIPE_WEBHOOK_SECRET: string;
-  /** Stripe Price ID for Pro tier ($9.99/mo) */
-  STRIPE_PRO_PRICE_ID: string;
-  /** Stripe Price ID for Pro+ tier ($19.99/mo) */
-  STRIPE_PRO_PLUS_PRICE_ID: string;
   /** Anthropic API key for Claude distillation */
   ANTHROPIC_API_KEY: string;
   /** OpenAI API key for TTS generation */
