@@ -1,4 +1,5 @@
 import { createPrismaClient } from "../lib/db";
+import { getConfig } from "../lib/config";
 import { getClip, putBriefing } from "../lib/clip-cache";
 import { concatMp3Buffers } from "../lib/mp3-concat";
 import { allocateWordBudget } from "../lib/time-fitting";
@@ -8,6 +9,7 @@ import type { Env } from "../types";
 interface BriefingAssemblyMessage {
   briefingId: string;
   userId: string;
+  type?: "manual";
 }
 
 /**
@@ -16,6 +18,8 @@ interface BriefingAssemblyMessage {
  * Collects the user's subscribed podcasts, finds latest episodes with completed
  * distillations, allocates a time budget, gathers cached clips, and concatenates
  * them into a final briefing MP3. Re-queues with delay if clips are still generating.
+ *
+ * Messages with `type: "manual"` bypass the stage-enabled check.
  *
  * @param batch - Cloudflare Queue message batch with briefing assembly requests
  * @param env - Worker environment bindings
@@ -29,6 +33,20 @@ export async function handleBriefingAssembly(
   const prisma = createPrismaClient(env.HYPERDRIVE);
 
   try {
+    // Check if stage 4 (briefing assembly) is enabled — manual messages bypass this
+    const hasManual = batch.messages.some((m) => m.body.type === "manual");
+    if (!hasManual) {
+      const stageEnabled = await getConfig(
+        prisma,
+        "pipeline.stage.4.enabled",
+        true
+      );
+      if (!stageEnabled) {
+        for (const msg of batch.messages) msg.ack();
+        return;
+      }
+    }
+
     for (const msg of batch.messages) {
       const { briefingId, userId } = msg.body;
 

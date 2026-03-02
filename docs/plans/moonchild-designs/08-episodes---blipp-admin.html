@@ -1,0 +1,1745 @@
+<!DOCTYPE html><html lang="en" data-mode=""><head><base href="https://forge.moonchild.ai/site/b449889222222d37aadb82be18daf51d819de90c3ae0bb2e4f6f3899694f0911/">
+    <meta charset="UTF-8" data-mc-element-id="44">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" data-mc-element-id="71">
+    <title data-mc-element-id="146">Episodes - Blipp Admin</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Roboto+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #0A1628;
+            color: #E5E7EB;
+            font-size: 14px;
+            line-height: 1.5;
+            overflow: hidden;
+        }
+
+        .mono {
+            font-family: 'Roboto Mono', monospace;
+        }
+
+        /* Layout */
+        .app-container {
+            display: flex;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 240px;
+            background: #0A1628;
+            border-right: 1px solid #1A2942;
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+        }
+
+        .logo {
+            padding: 24px 20px;
+            border-bottom: 1px solid #1A2942;
+        }
+
+        .logo h1 {
+            font-size: 24px;
+            font-weight: 700;
+            color: #3B82F6;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .nav {
+            flex: 1;
+            padding: 16px 0;
+            overflow-y: auto;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 20px;
+            color: #9CA3AF;
+            text-decoration: none;
+            transition: all 0.2s;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+        }
+
+        .nav-item:hover {
+            background: rgba(59, 130, 246, 0.1);
+            color: #E5E7EB;
+        }
+
+        .nav-item.active {
+            background: rgba(59, 130, 246, 0.15);
+            color: #3B82F6;
+            border-left: 3px solid #3B82F6;
+            padding-left: 17px;
+        }
+
+        .nav-item i {
+            width: 20px;
+            text-align: center;
+            font-size: 16px;
+        }
+
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: #0F1D30;
+            overflow: hidden;
+        }
+
+        /* Top Toolbar */
+        .toolbar {
+            height: 56px;
+            background: #1A2942;
+            border-bottom: 1px solid #2D3F5F;
+            display: flex;
+            align-items: center;
+            padding: 0 24px;
+            gap: 16px;
+            flex-shrink: 0;
+        }
+
+        .search-box {
+            flex: 1;
+            max-width: 400px;
+            position: relative;
+        }
+
+        .search-box input {
+            width: 100%;
+            height: 36px;
+            background: #0F1D30;
+            border: 1px solid #2D3F5F;
+            border-radius: 6px;
+            padding: 0 36px 0 12px;
+            color: #E5E7EB;
+            font-size: 14px;
+            font-family: 'Inter', sans-serif;
+            transition: all 0.2s;
+        }
+
+        .search-box input:focus {
+            outline: 2px solid #3B82F6;
+            outline-offset: 0;
+            border-color: #3B82F6;
+        }
+
+        .search-box i {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #6B7280;
+        }
+
+        .filter-group {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        select {
+            height: 36px;
+            background: #0F1D30;
+            border: 1px solid #2D3F5F;
+            border-radius: 6px;
+            padding: 0 32px 0 12px;
+            color: #E5E7EB;
+            font-size: 14px;
+            font-family: 'Inter', sans-serif;
+            cursor: pointer;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%239CA3AF' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            transition: all 0.2s;
+        }
+
+        select:focus {
+            outline: 2px solid #3B82F6;
+            outline-offset: 0;
+            border-color: #3B82F6;
+        }
+
+        .toggle-btn {
+            height: 36px;
+            background: #0F1D30;
+            border: 1px solid #2D3F5F;
+            border-radius: 6px;
+            padding: 0 12px;
+            color: #9CA3AF;
+            font-size: 14px;
+            font-family: 'Inter', sans-serif;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .toggle-btn:hover {
+            background: rgba(59, 130, 246, 0.1);
+            color: #3B82F6;
+        }
+
+        .toggle-btn.active {
+            background: rgba(59, 130, 246, 0.2);
+            color: #3B82F6;
+            border-color: #3B82F6;
+        }
+
+        .btn-primary {
+            height: 36px;
+            background: #3B82F6;
+            border: none;
+            border-radius: 6px;
+            padding: 0 16px;
+            color: white;
+            font-size: 14px;
+            font-weight: 600;
+            font-family: 'Inter', sans-serif;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .btn-primary:hover {
+            background: #2563EB;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(59, 130, 246, 0.3);
+        }
+
+        .btn-secondary {
+            height: 36px;
+            background: transparent;
+            border: 1px solid #2D3F5F;
+            border-radius: 6px;
+            padding: 0 16px;
+            color: #E5E7EB;
+            font-size: 14px;
+            font-weight: 500;
+            font-family: 'Inter', sans-serif;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .btn-secondary:hover {
+            background: rgba(59, 130, 246, 0.1);
+            border-color: #3B82F6;
+            color: #3B82F6;
+        }
+
+        /* Master-Detail Layout */
+        .master-detail {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* Master - Episode List */
+        .master-pane {
+            width: 60%;
+            background: #0F1D30;
+            border-right: 1px solid #1A2942;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .table-container {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+
+        .episode-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .episode-table thead {
+            position: sticky;
+            top: 0;
+            background: #1A2942;
+            z-index: 10;
+        }
+
+        .episode-table th {
+            padding: 12px 16px;
+            text-align: left;
+            font-size: 12px;
+            font-weight: 600;
+            color: #9CA3AF;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            border-bottom: 1px solid #2D3F5F;
+        }
+
+        .episode-table tbody tr {
+            height: 48px;
+            border-bottom: 1px solid #1A2942;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .episode-table tbody tr:hover {
+            background: rgba(59, 130, 246, 0.05);
+        }
+
+        .episode-table tbody tr.selected {
+            background: rgba(59, 130, 246, 0.1);
+        }
+
+        .episode-table tbody tr.status-completed {
+            background: rgba(16, 185, 129, 0.03);
+        }
+
+        .episode-table tbody tr.status-processing {
+            background: rgba(245, 158, 11, 0.03);
+        }
+
+        .episode-table tbody tr.status-failed {
+            background: rgba(239, 68, 68, 0.03);
+        }
+
+        .episode-table td {
+            padding: 8px 16px;
+            font-size: 14px;
+            color: #E5E7EB;
+        }
+
+        .episode-title {
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-weight: 500;
+        }
+
+        .podcast-cell {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .podcast-thumbnail {
+            width: 32px;
+            height: 32px;
+            border-radius: 4px;
+            object-fit: cover;
+        }
+
+        .podcast-name {
+            max-width: 150px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: #9CA3AF;
+            font-size: 13px;
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+            white-space: nowrap;
+        }
+
+        .status-badge.completed {
+            background: rgba(16, 185, 129, 0.15);
+            color: #10B981;
+        }
+
+        .status-badge.processing {
+            background: rgba(245, 158, 11, 0.15);
+            color: #F59E0B;
+        }
+
+        .status-badge.failed {
+            background: rgba(239, 68, 68, 0.15);
+            color: #EF4444;
+        }
+
+        .status-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+
+        .cost-cell {
+            font-family: 'Roboto Mono', monospace;
+            color: #F59E0B;
+            font-size: 13px;
+        }
+
+        .duration-cell {
+            font-family: 'Roboto Mono', monospace;
+            color: #9CA3AF;
+            font-size: 13px;
+        }
+
+        .icon-btn {
+            background: transparent;
+            border: none;
+            color: #6B7280;
+            cursor: pointer;
+            padding: 4px 8px;
+            transition: all 0.2s;
+            font-size: 14px;
+        }
+
+        .icon-btn:hover {
+            color: #3B82F6;
+            transform: scale(1.1);
+        }
+
+        /* Detail Pane */
+        .detail-pane {
+            width: 40%;
+            background: #0A1628;
+            overflow-y: auto;
+            padding: 24px;
+        }
+
+        .detail-header {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 32px;
+            padding-bottom: 24px;
+            border-bottom: 1px solid #1A2942;
+        }
+
+        .detail-artwork {
+            width: 160px;
+            height: 160px;
+            border-radius: 8px;
+            object-fit: cover;
+            flex-shrink: 0;
+        }
+
+        .detail-info {
+            flex: 1;
+        }
+
+        .detail-info h2 {
+            font-size: 20px;
+            font-weight: 600;
+            color: #E5E7EB;
+            margin-bottom: 8px;
+            line-height: 1.4;
+        }
+
+        .detail-podcast {
+            font-size: 14px;
+            color: #3B82F6;
+            margin-bottom: 12px;
+            cursor: pointer;
+            text-decoration: none;
+        }
+
+        .detail-podcast:hover {
+            text-decoration: underline;
+        }
+
+        .detail-meta {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 16px;
+            font-size: 13px;
+            color: #9CA3AF;
+        }
+
+        .detail-meta span {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .detail-links {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+
+        .link-btn {
+            padding: 6px 12px;
+            background: #1A2942;
+            border: 1px solid #2D3F5F;
+            border-radius: 6px;
+            color: #9CA3AF;
+            font-size: 12px;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s;
+        }
+
+        .link-btn:hover {
+            background: rgba(59, 130, 246, 0.1);
+            border-color: #3B82F6;
+            color: #3B82F6;
+        }
+
+        .detail-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 16px;
+        }
+
+        .section-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #E5E7EB;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Pipeline Timeline */
+        .pipeline-timeline {
+            position: relative;
+            padding-left: 40px;
+        }
+
+        .timeline-line {
+            position: absolute;
+            left: 20px;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: linear-gradient(to bottom, #10B981, #10B981 80%, #2D3F5F 80%);
+        }
+
+        .pipeline-stage {
+            position: relative;
+            margin-bottom: 24px;
+            padding: 16px;
+            background: #1A2942;
+            border: 1px solid #2D3F5F;
+            border-radius: 8px;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+
+        .pipeline-stage:hover {
+            border-color: #3B82F6;
+            background: rgba(59, 130, 246, 0.05);
+        }
+
+        .pipeline-stage.active {
+            border-color: #3B82F6;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+        }
+
+        .pipeline-stage.processing {
+            border-color: #F59E0B;
+            box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2);
+        }
+
+        .stage-dot {
+            position: absolute;
+            left: -28px;
+            top: 20px;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #0A1628;
+            border: 3px solid #10B981;
+            z-index: 2;
+        }
+
+        .stage-dot.pending {
+            border-color: #2D3F5F;
+            background: #1A2942;
+        }
+
+        .stage-dot.processing {
+            border-color: #F59E0B;
+            animation: pulse 2s infinite;
+        }
+
+        .stage-dot.failed {
+            border-color: #EF4444;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .stage-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
+        .stage-name {
+            font-size: 15px;
+            font-weight: 600;
+            color: #E5E7EB;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .stage-icon {
+            color: #3B82F6;
+            font-size: 16px;
+        }
+
+        .stage-time {
+            font-family: 'Roboto Mono', monospace;
+            font-size: 12px;
+            color: #6B7280;
+        }
+
+        .stage-details {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            font-size: 13px;
+            color: #9CA3AF;
+        }
+
+        .stage-detail-item {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .stage-detail-label {
+            font-size: 11px;
+            color: #6B7280;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .stage-detail-value {
+            font-family: 'Roboto Mono', monospace;
+            color: #E5E7EB;
+        }
+
+        .stage-output {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid #2D3F5F;
+            font-size: 13px;
+            color: #3B82F6;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .stage-expanded {
+            margin-top: 16px;
+            padding: 16px;
+            background: #0F1D30;
+            border-radius: 6px;
+        }
+
+        /* Clips Grid */
+        .clips-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 16px;
+            margin-top: 16px;
+        }
+
+        .clip-card {
+            background: #1A2942;
+            border: 1px solid #2D3F5F;
+            border-radius: 8px;
+            padding: 16px;
+            transition: all 0.2s;
+        }
+
+        .clip-card:hover {
+            border-color: #3B82F6;
+            transform: translateY(-2px);
+        }
+
+        .clip-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .clip-duration {
+            font-size: 18px;
+            font-weight: 600;
+            color: #3B82F6;
+            font-family: 'Roboto Mono', monospace;
+        }
+
+        .cache-badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .cache-badge.hit {
+            background: rgba(16, 185, 129, 0.15);
+            color: #10B981;
+        }
+
+        .cache-badge.miss {
+            background: rgba(59, 130, 246, 0.15);
+            color: #3B82F6;
+        }
+
+        .audio-player {
+            margin-bottom: 12px;
+            padding: 12px;
+            background: #0F1D30;
+            border-radius: 6px;
+        }
+
+        .waveform {
+            height: 40px;
+            background: linear-gradient(90deg, #3B82F6 0%, #8B5CF6 50%, #3B82F6 100%);
+            border-radius: 4px;
+            margin-bottom: 8px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .waveform::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 35%;
+            height: 100%;
+            background: linear-gradient(90deg, rgba(255,255,255,0.2) 0%, transparent 100%);
+        }
+
+        .playback-controls {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .play-btn {
+            width: 32px;
+            height: 32px;
+            background: #3B82F6;
+            border: none;
+            border-radius: 50%;
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+        .play-btn:hover {
+            background: #2563EB;
+            transform: scale(1.1);
+        }
+
+        .playback-time {
+            font-family: 'Roboto Mono', monospace;
+            font-size: 12px;
+            color: #9CA3AF;
+        }
+
+        .clip-meta {
+            font-size: 12px;
+            color: #6B7280;
+            margin-bottom: 12px;
+        }
+
+        .clip-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .clip-btn {
+            flex: 1;
+            padding: 6px 12px;
+            background: transparent;
+            border: 1px solid #2D3F5F;
+            border-radius: 4px;
+            color: #9CA3AF;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .clip-btn:hover {
+            background: rgba(59, 130, 246, 0.1);
+            border-color: #3B82F6;
+            color: #3B82F6;
+        }
+
+        /* Cost Breakdown */
+        .cost-breakdown {
+            background: #1A2942;
+            border: 1px solid #2D3F5F;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 24px;
+        }
+
+        .cost-chart {
+            height: 80px;
+            display: flex;
+            align-items: flex-end;
+            gap: 4px;
+            margin-bottom: 16px;
+        }
+
+        .cost-bar {
+            flex: 1;
+            background: linear-gradient(to top, #3B82F6, #60A5FA);
+            border-radius: 4px 4px 0 0;
+            position: relative;
+            transition: all 0.3s;
+        }
+
+        .cost-bar:hover {
+            transform: translateY(-4px);
+        }
+
+        .cost-bar.stt { background: linear-gradient(to top, #8B5CF6, #A78BFA); }
+        .cost-bar.distill { background: linear-gradient(to top, #3B82F6, #60A5FA); }
+        .cost-bar.tts { background: linear-gradient(to top, #10B981, #34D399); }
+
+        .cost-items {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+        }
+
+        .cost-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .cost-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 2px;
+        }
+
+        .cost-label {
+            font-size: 12px;
+            color: #9CA3AF;
+            flex: 1;
+        }
+
+        .cost-value {
+            font-family: 'Roboto Mono', monospace;
+            font-size: 14px;
+            font-weight: 600;
+            color: #F59E0B;
+        }
+
+        .cost-total {
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid #2D3F5F;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .cost-total-label {
+            font-size: 14px;
+            font-weight: 600;
+            color: #E5E7EB;
+        }
+
+        .cost-total-value {
+            font-family: 'Roboto Mono', monospace;
+            font-size: 20px;
+            font-weight: 700;
+            color: #F59E0B;
+        }
+
+        .cost-comparison {
+            margin-top: 8px;
+            font-size: 12px;
+            color: #6B7280;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .cost-comparison.up {
+            color: #EF4444;
+        }
+
+        /* Checkbox */
+        input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+            accent-color: #3B82F6;
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #0A1628;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #2D3F5F;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #3B82F6;
+        }
+
+        /* Responsive */
+        @media (max-width: 1400px) {
+            .master-pane {
+                width: 55%;
+            }
+            .detail-pane {
+                width: 45%;
+            }
+        }
+
+        @media (max-width: 1200px) {
+            .master-pane {
+                width: 50%;
+            }
+            .detail-pane {
+                width: 50%;
+            }
+            .clips-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 1024px) {
+            .master-detail {
+                flex-direction: column;
+            }
+            .master-pane, .detail-pane {
+                width: 100%;
+            }
+            .master-pane {
+                max-height: 400px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 200px;
+            }
+            .toolbar {
+                flex-wrap: wrap;
+                height: auto;
+                padding: 12px;
+            }
+            .search-box {
+                max-width: 100%;
+                order: -1;
+                flex-basis: 100%;
+            }
+            .filter-group {
+                flex-wrap: wrap;
+            }
+            .stage-details {
+                grid-template-columns: 1fr;
+            }
+            .cost-items {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container" data-mc-element-id="24656">
+        <!-- Sidebar -->
+        <aside class="sidebar" data-mc-element-id="24717">
+            <div class="logo" data-mc-element-id="24753">
+                <h1 data-mc-element-id="24788"><i class="fas fa-podcast" data-mc-element-id="24792"></i> Blipp</h1>
+            </div>
+            <nav class="nav" data-mc-element-id="24865">
+                <a href="#" class="nav-item" data-mc-element-id="24899">
+                    <i class="fas fa-chart-line" data-mc-element-id="24949"></i>
+                    <span data-mc-element-id="25003">Command Center</span>
+                </a>
+                <a href="#" class="nav-item" data-mc-element-id="25068">
+                    <i class="fas fa-diagram-project" data-mc-element-id="25118"></i>
+                    <span data-mc-element-id="25177">Pipeline</span>
+                </a>
+                <a href="#" class="nav-item" data-mc-element-id="25236">
+                    <i class="fas fa-book" data-mc-element-id="25286"></i>
+                    <span data-mc-element-id="25334">Catalog</span>
+                </a>
+                <a href="#" class="nav-item active" data-mc-element-id="25392">
+                    <i class="fas fa-microphone" data-mc-element-id="25449"></i>
+                    <span data-mc-element-id="25503">Episodes</span>
+                </a>
+                <a href="#" class="nav-item" data-mc-element-id="25562">
+                    <i class="fas fa-headphones" data-mc-element-id="25612"></i>
+                    <span data-mc-element-id="25666">Briefings</span>
+                </a>
+                <a href="#" class="nav-item" data-mc-element-id="25726">
+                    <i class="fas fa-sliders" data-mc-element-id="25776"></i>
+                    <span data-mc-element-id="25827">Configuration</span>
+                </a>
+                <a href="#" class="nav-item" data-mc-element-id="25891">
+                    <i class="fas fa-users" data-mc-element-id="25941"></i>
+                    <span data-mc-element-id="25990">Users</span>
+                </a>
+                <a href="#" class="nav-item" data-mc-element-id="26046">
+                    <i class="fas fa-chart-bar" data-mc-element-id="26096"></i>
+                    <span data-mc-element-id="26149">Analytics</span>
+                </a>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content" data-mc-element-id="26268">
+            <!-- Toolbar -->
+            <div class="toolbar" data-mc-element-id="26337">
+                <div class="search-box" data-mc-element-id="26375">
+                    <input type="text" placeholder="Search 18,492 episodes by title, podcast, or ID..." data-mc-element-id="26420">
+                    <i class="fas fa-search" data-mc-element-id="26525"></i>
+                </div>
+
+                <div class="filter-group" data-mc-element-id="26595">
+                    <select data-mc-element-id="26642">
+                        <option data-mc-element-id="26675">All Podcasts</option>
+                        <option data-mc-element-id="26729">The Daily</option>
+                        <option data-mc-element-id="26780">Lex Fridman Podcast</option>
+                        <option data-mc-element-id="26841">Huberman Lab</option>
+                    </select>
+
+                    <select data-mc-element-id="26922">
+                        <option data-mc-element-id="26955">All Stages</option>
+                        <option data-mc-element-id="27007">Stage 1: Feed Refresh</option>
+                        <option data-mc-element-id="27070">Stage 2: Transcription</option>
+                        <option data-mc-element-id="27134">Stage 3: Distillation</option>
+                        <option data-mc-element-id="27197">Stage 4: Clip Generation</option>
+                        <option data-mc-element-id="27263">Stage 5: Assembly</option>
+                    </select>
+
+                    <select data-mc-element-id="27349">
+                        <option data-mc-element-id="27382">All Status</option>
+                        <option data-mc-element-id="27434">Completed</option>
+                        <option data-mc-element-id="27485">Processing</option>
+                        <option data-mc-element-id="27537">Failed</option>
+                    </select>
+
+                    <button class="toggle-btn" data-mc-element-id="27612">
+                        <i class="fas fa-exclamation-triangle" data-mc-element-id="27664"></i>
+                        Show only issues
+                    </button>
+                </div>
+
+                <button class="btn-secondary" data-mc-element-id="27819">
+                    <i class="fas fa-download" data-mc-element-id="27870"></i>
+                    Export
+                </button>
+
+                <button class="btn-primary" data-mc-element-id="27972">
+                    <i class="fas fa-rotate" data-mc-element-id="28021"></i>
+                    Re-process Selected
+                </button>
+            </div>
+
+            <!-- Master-Detail Layout -->
+            <div class="master-detail" data-mc-element-id="28191">
+                <!-- Master Pane - Episode List -->
+                <div class="master-pane" data-mc-element-id="28287">
+                    <div class="table-container" data-mc-element-id="28333">
+                        <table class="episode-table" data-mc-element-id="28387">
+                            <thead data-mc-element-id="28445">
+                                <tr data-mc-element-id="28485">
+                                    <th style="width: 40px;" data-mc-element-id="28526"><input type="checkbox" data-mc-element-id="28551"></th>
+                                    <th data-mc-element-id="28616">Episode</th>
+                                    <th data-mc-element-id="28669">Podcast</th>
+                                    <th style="width: 100px;" data-mc-element-id="28722">Published</th>
+                                    <th style="width: 80px;" data-mc-element-id="28799">Duration</th>
+                                    <th style="width: 160px;" data-mc-element-id="28874">Status</th>
+                                    <th style="width: 80px;" data-mc-element-id="28948">Clips</th>
+                                    <th style="width: 80px;" data-mc-element-id="29020">Cost</th>
+                                    <th style="width: 100px;" data-mc-element-id="29091"></th>
+                                </tr>
+                            </thead>
+                            <tbody data-mc-element-id="29226">
+                                <tr class="status-completed selected" data-mc-element-id="29266">
+                                    <td data-mc-element-id="29341"><input type="checkbox" checked="" data-mc-element-id="29345"></td>
+                                    <td class="episode-title" data-mc-element-id="29418">The Future of AI Reasoning: Chain of Thought and Beyond</td>
+                                    <td data-mc-element-id="29541">
+                                        <div class="podcast-cell" data-mc-element-id="29586">
+                                            <img src="https://storage.googleapis.com/forge-sites/73ec3090017aa2ffb58227ac31fa9110a65f8d9e3b985f3baf3b4619f7c6a75b.png?X-Goog-Algorithm=GOOG4-RSA-SHA256&amp;X-Goog-Credential=164061697651-compute%40developer.gserviceaccount.com%2F20260301%2Fauto%2Fstorage%2Fgoog4_request&amp;X-Goog-Date=20260301T074714Z&amp;X-Goog-Expires=86400&amp;X-Goog-SignedHeaders=host&amp;response-access-control-allow-origin=https%3A%2F%2Fforge.moonchild.ai&amp;X-Goog-Signature=3e095eac845590c1ed6657c27cb022ef89035984a476f26bc80f57fba7576680f479522fa403ad0e311f5c339268800c4d69b3913080e7d6b5bbb6111c2c774b00854df51cc3bd8ccb2211ff1c41275a11dee3b2332798f5a890a19f799061f61b1742248bf3d3c8bb41e9b6232f61c1f0d9fd28b1c9f840ffb0647e323f6a75e49c1c5b9e116a7f0265034ac0f5108358f4bda170c3dbc273dd47cae8928d9de260aa577b1e46fc0fa2a50df8f5a9004de3df12f1dcc48b26344a9cf530502987845cf3fc2d98a79ae9758b2ed6a691b12d0c948af3e49c63edaaa6aba853501a00a8cae23c62f6b64b28d9d74a464d2646eafba5e3b6452fda71e8be8da150" alt="Lex Fridman Podcast" class="podcast-thumbnail" width="32" height="32" data-mc-element-id="29657">
+                                            <span class="podcast-name" data-mc-element-id="29822">Lex Fridman Podcast</span>
+                                        </div>
+                                    </td>
+                                    <td class="duration-cell" data-mc-element-id="30001">2h ago</td>
+                                    <td class="duration-cell mono" data-mc-element-id="30075">2:34:15</td>
+                                    <td data-mc-element-id="30155">
+                                        <span class="status-badge completed" data-mc-element-id="30200">
+                                            <span class="status-dot" data-mc-element-id="30282"></span>
+                                            Completed
+                                        </span>
+                                    </td>
+                                    <td class="mono" style="color: #3B82F6;" data-mc-element-id="30495">7</td>
+                                    <td class="cost-cell" data-mc-element-id="30579">$0.61</td>
+                                    <td data-mc-element-id="30648">
+                                        <button class="icon-btn" data-mc-element-id="30693"><i class="fas fa-play" data-mc-element-id="30718"></i></button>
+                                        <button class="icon-btn" data-mc-element-id="30795"><i class="fas fa-rotate" data-mc-element-id="30820"></i></button>
+                                        <button class="icon-btn" data-mc-element-id="30899"><i class="fas fa-trash" data-mc-element-id="30924"></i></button>
+                                    </td>
+                                </tr>
+                                <tr class="status-processing" data-mc-element-id="31074">
+                                    <td data-mc-element-id="31141"><input type="checkbox" data-mc-element-id="31145"></td>
+                                    <td class="episode-title" data-mc-element-id="31210">Understanding Sleep: The Science of Rest and Recovery</td>
+                                    <td data-mc-element-id="31331">
+                                        <div class="podcast-cell" data-mc-element-id="31376">
+                                            <img src="https://storage.googleapis.com/forge-sites/73bf27731ca95b49eca43c00240734853e4505982072affbedf0d7d269ba5bf4.png?X-Goog-Algorithm=GOOG4-RSA-SHA256&amp;X-Goog-Credential=164061697651-compute%40developer.gserviceaccount.com%2F20260301%2Fauto%2Fstorage%2Fgoog4_request&amp;X-Goog-Date=20260301T074714Z&amp;X-Goog-Expires=86400&amp;X-Goog-SignedHeaders=host&amp;response-access-control-allow-origin=https%3A%2F%2Fforge.moonchild.ai&amp;X-Goog-Signature=15c2f7494ad77eb05317671233e6fd4237d976af8251e7bb73a28576968408fd0d24eeb94c6cc9f649e1334c85be1d31af7a82a48a39f44b956b62d048bfed530d5a78c7f637831334df35286fdd29867b094c445b80f16464eb89059e5affd38cae7b070280ee5d78805a3b3c834d9348cca2561b1f4087a5740ad9e61b3e55f4b10b70f6b2641b2ee6e09247d863b416f7c1f1575fc305867b38ce4ea2b2415e7fc80e050917b5f392529bfbac494521af8407e0b91edff244f021846795bae187ca1e2f7c916c6cc395c5190f88f3fbad115a50cda72f9b8f054647b533805fa007391683b04b74b64c30d3803cd9300eec62352b0503ccceb44d50ca8ab5" alt="Huberman Lab" class="podcast-thumbnail" width="32" height="32" data-mc-element-id="31447">
+                                            <span class="podcast-name" data-mc-element-id="31604">Huberman Lab</span>
+                                        </div>
+                                    </td>
+                                    <td class="duration-cell" data-mc-element-id="31776">5h ago</td>
+                                    <td class="duration-cell mono" data-mc-element-id="31850">1:47:23</td>
+                                    <td data-mc-element-id="31930">
+                                        <span class="status-badge processing" data-mc-element-id="31975">
+                                            <span class="status-dot" data-mc-element-id="32058"></span>
+                                            Stage 3 Pending
+                                        </span>
+                                    </td>
+                                    <td class="mono" style="color: #6B7280;" data-mc-element-id="32277">0</td>
+                                    <td class="cost-cell" data-mc-element-id="32361">$0.16</td>
+                                    <td data-mc-element-id="32430">
+                                        <button class="icon-btn" data-mc-element-id="32475"><i class="fas fa-play" data-mc-element-id="32500"></i></button>
+                                        <button class="icon-btn" data-mc-element-id="32577"><i class="fas fa-rotate" data-mc-element-id="32602"></i></button>
+                                        <button class="icon-btn" data-mc-element-id="32681"><i class="fas fa-trash" data-mc-element-id="32706"></i></button>
+                                    </td>
+                                </tr>
+                                <tr class="status-completed" data-mc-element-id="32856">
+                                    <td data-mc-element-id="32922"><input type="checkbox" data-mc-element-id="32926"></td>
+                                    <td class="episode-title" data-mc-element-id="32991">The Economic Impact of Tariffs</td>
+                                    <td data-mc-element-id="33089">
+                                        <div class="podcast-cell" data-mc-element-id="33134">
+                                            <img src="https://storage.googleapis.com/forge-sites/06595eb87c41593c28e08e2dd1c69a8486fda1030d44e0f814d3607f34da8d49.png?X-Goog-Algorithm=GOOG4-RSA-SHA256&amp;X-Goog-Credential=164061697651-compute%40developer.gserviceaccount.com%2F20260301%2Fauto%2Fstorage%2Fgoog4_request&amp;X-Goog-Date=20260301T074714Z&amp;X-Goog-Expires=86400&amp;X-Goog-SignedHeaders=host&amp;response-access-control-allow-origin=https%3A%2F%2Fforge.moonchild.ai&amp;X-Goog-Signature=623175282835e5b9a735f8a5fab43566bd63c76aaec3d71a6ca57aa1ef47f7272595359ea26d9968e1a4d1200d1d27d8db6de10afc1023c1cf52992fd8fb2b7da41d7492d2d6155131d4734a6333c7d684141346b49dd6f245bcf1729f0bcdc382b0d71590106e2dba0cd49eedf4f72a9291e529b6514339a40ec951ad35a4ee32033898d045b07f58cd1172ffcd9e4831ea14a6643a4a72dc2b27dd52185fa7dd67e42522e13522e23b9316b8e1e61c36f4dc12be841e34ba5f35b7b54e72bc83b68e1645a54e25c5c11cdb543c9735f79d454923857f2a9582b15dc536d8a9e3fd8458d58f977c30178fc9321df35d4530a44532d550c96a6d5409f69b418e" alt="The Daily" class="podcast-thumbnail" width="32" height="32" data-mc-element-id="33205">
+                                            <span class="podcast-name" data-mc-element-id="33363">The Daily</span>
+                                        </div>
+                                    </td>
+                                    <td class="duration-cell" data-mc-element-id="33532">1d ago</td>
+                                    <td class="duration-cell mono" data-mc-element-id="33606">32:18</td>
+                                    <td data-mc-element-id="33684">
+                                        <span class="status-badge completed" data-mc-element-id="33729">
+                                            <span class="status-dot" data-mc-element-id="33811"></span>
+                                            Completed
+                                        </span>
+                                    </td>
+                                    <td class="mono" style="color: #3B82F6;" data-mc-element-id="34024">5</td>
+                                    <td class="cost-cell" data-mc-element-id="34108">$0.28</td>
+                                    <td data-mc-element-id="34177">
+                                        <button class="icon-btn" data-mc-element-id="34222"><i class="fas fa-play" data-mc-element-id="34247"></i></button>
+                                        <button class="icon-btn" data-mc-element-id="34324"><i class="fas fa-rotate" data-mc-element-id="34349"></i></button>
+                                        <button class="icon-btn" data-mc-element-id="34428"><i class="fas fa-trash" data-mc-element-id="34453"></i></button>
+                                    </td>
+                                </tr>
+                                <tr class="status-failed" data-mc-element-id="34603">
+                                    <td data-mc-element-id="34666"><input type="checkbox" data-mc-element-id="34670"></td>
+                                    <td class="episode-title" data-mc-element-id="34735">Quantum Computing Breakthroughs</td>
+                                    <td data-mc-element-id="34834">
+                                        <div class="podcast-cell" data-mc-element-id="34879">
+                                            <img src="https://storage.googleapis.com/forge-sites/50b1f4508c6a4534d7f6a3ea9338a3aa42a5b5c26d1eb65b8fb8e612ab0778dc.png?X-Goog-Algorithm=GOOG4-RSA-SHA256&amp;X-Goog-Credential=164061697651-compute%40developer.gserviceaccount.com%2F20260301%2Fauto%2Fstorage%2Fgoog4_request&amp;X-Goog-Date=20260301T074714Z&amp;X-Goog-Expires=86400&amp;X-Goog-SignedHeaders=host&amp;response-access-control-allow-origin=https%3A%2F%2Fforge.moonchild.ai&amp;X-Goog-Signature=72de626847b0e6f08e880fb6ea7b16d5d7e971e4e2fadae0f210398d9256c02d22ff617136cdaa1d28008d459e8607454122735d58caacbc4874badeca0677c0d3e32871e7c7fc60bac5c4086710d035e8f4b048cf09d56949b28d150b9685528160fb8d6c73779bc165c58c850d8fb0f97fb2b0198f34c5a1f12e99b11e1066352ddacb4cc00daf23f31cce93b2bf54ec81cd9d89e968d2f1704b79e960c25acf907b7cd5d3dfa0fe17e8c77d92680b97bb13582a76617be33ba3255bbe22c70fd0b7c9d0af502f6def5dfa5209adf2d83128de328056def168b90691d16d43bfd644c045697a031903cd9dc845c06583a91c2649e714bb5fd889fc852b92b8" alt="Tech Weekly" class="podcast-thumbnail" width="32" height="32" data-mc-element-id="34950">
+                                            <span class="podcast-name" data-mc-element-id="35105">Tech Weekly</span>
+                                        </div>
+                                    </td>
+                                    <td class="duration-cell" data-mc-element-id="35276">1d ago</td>
+                                    <td class="duration-cell mono" data-mc-element-id="35350">45:12</td>
+                                    <td data-mc-element-id="35428">
+                                        <span class="status-badge failed" data-mc-element-id="35473">
+                                            <span class="status-dot" data-mc-element-id="35552"></span>
+                                            Failed at STT
+                                        </span>
+                                    </td>
+                                    <td class="mono" style="color: #6B7280;" data-mc-element-id="35769">0</td>
+                                    <td class="cost-cell" data-mc-element-id="35853">$0.00</td>
+                                    <td data-mc-element-id="35922">
+                                        <button class="icon-btn" data-mc-element-id="35967"><i class="fas fa-play" data-mc-element-id="35992"></i></button>
+                                        <button class="icon-btn" data-mc-element-id="36069"><i class="fas fa-rotate" data-mc-element-id="36094"></i></button>
+                                        <button class="icon-btn" data-mc-element-id="36173"><i class="fas fa-trash" data-mc-element-id="36198"></i></button>
+                                    </td>
+                                </tr>
+                                <tr class="status-completed" data-mc-element-id="36348">
+                                    <td data-mc-element-id="36414"><input type="checkbox" data-mc-element-id="36418"></td>
+                                    <td class="episode-title" data-mc-element-id="36483">The Psychology of Decision Making</td>
+                                    <td data-mc-element-id="36584">
+                                        <div class="podcast-cell" data-mc-element-id="36629">
+                                            <img src="https://storage.googleapis.com/forge-sites/23a9b14971f69022f93de870bcf8d6c19384feded5df80874448b969ecf43ef1.png?X-Goog-Algorithm=GOOG4-RSA-SHA256&amp;X-Goog-Credential=164061697651-compute%40developer.gserviceaccount.com%2F20260301%2Fauto%2Fstorage%2Fgoog4_request&amp;X-Goog-Date=20260301T074714Z&amp;X-Goog-Expires=86400&amp;X-Goog-SignedHeaders=host&amp;response-access-control-allow-origin=https%3A%2F%2Fforge.moonchild.ai&amp;X-Goog-Signature=4f2d44154af01b0a5b651215d97a3c403f8c4aa4cc3ffce0d2952d19a7d6654e3a118c04c7b57e2600b0ba9366f98093e3c618cac0a0b0ef0e8dd27bd2a65d87c7d2f5385716df4e1337185202139b8d27a0531ee08da0a057b89be7bd3defc0e062bac17e37c08cef0e16a20e68a6fca51bf42ab74d680822be90ea696d4e567117ca8e41f86d79d14b9b191b46db327533cf80cc6e6c5ec92d43ecb347a0daaaaa15a47f38c9651a5d00c4342dedc72315a70c41a2ec6535cd5bf9275a6dea9fc39131887249a0e0dff7a0865d656b8be94a6b1c3376d522d45c8b9d8d8bd985e6a767548d8c76f1a6fb40d880c6b800e4239502168013e05ab6e2c4527a99" alt="Mind Matters" class="podcast-thumbnail" width="32" height="32" data-mc-element-id="36700">
+                                            <span class="podcast-name" data-mc-element-id="36853">Mind Matters</span>
+                                        </div>
+                                    </td>
+                                    <td class="duration-cell" data-mc-element-id="37025">2d ago</td>
+                                    <td class="duration-cell mono" data-mc-element-id="37099">1:12:45</td>
+                                    <td data-mc-element-id="37179">
+                                        <span class="status-badge completed" data-mc-element-id="37224">
+                                            <span class="status-dot" data-mc-element-id="37306"></span>
+                                            Completed
+                                        </span>
+                                    </td>
+                                    <td class="mono" style="color: #3B82F6;" data-mc-element-id="37519">6</td>
+                                    <td class="cost-cell" data-mc-element-id="37603">$0.42</td>
+                                    <td data-mc-element-id="37672">
+                                        <button class="icon-btn" data-mc-element-id="37717"><i class="fas fa-play" data-mc-element-id="37742"></i></button>
+                                        <button class="icon-btn" data-mc-element-id="37819"><i class="fas fa-rotate" data-mc-element-id="37844"></i></button>
+                                        <button class="icon-btn" data-mc-element-id="37923"><i class="fas fa-trash" data-mc-element-id="37948"></i></button>
+                                    </td>
+                                </tr>
+                                <tr class="status-completed" data-mc-element-id="38098">
+                                    <td data-mc-element-id="38164"><input type="checkbox" data-mc-element-id="38168"></td>
+                                    <td class="episode-title" data-mc-element-id="38233">Climate Change: The Latest Research</td>
+                                    <td data-mc-element-id="38336">
+                                        <div class="podcast-cell" data-mc-element-id="38381">
+                                            <img src="https://storage.googleapis.com/forge-sites/d2b0b1b2fe7006bd32e9c12edb06e4e394cd3aaad5d62ff39e664284bb0fb5d0.png?X-Goog-Algorithm=GOOG4-RSA-SHA256&amp;X-Goog-Credential=164061697651-compute%40developer.gserviceaccount.com%2F20260301%2Fauto%2Fstorage%2Fgoog4_request&amp;X-Goog-Date=20260301T074714Z&amp;X-Goog-Expires=86400&amp;X-Goog-SignedHeaders=host&amp;response-access-control-allow-origin=https%3A%2F%2Fforge.moonchild.ai&amp;X-Goog-Signature=5c22fc04af62a157305e14d0ffd49cf13280433fc562f6c6f671b45bcb24d9af3da32c517f2ac2f34787a7d06ae2c7448b2decdfd486d2ee80539d31d001b79cafeee500e259b34d423dcb8111f320e8b189d86d8a0d98a0157173a08360ccd76529d0f72426be23df790592e60dc084989688b07e379d50d2756b9ea62547dfeac7541c2f07df77311352573679198763e53f079b5fbcea9b86a9fbf65e5c934bcb1bca19cbf1d6d1ce5c6b9c67cfcd13ac28f22e6e2b197938b8d123a96e5622a5cbf364b332690748351fceb50e690fe56a5ed7d7afb5b44995bf8cafdd2c5c8393b984a60801738860c881a86ad751d30172c7e87c7a69d8d933b3534082" alt="Science Today" class="podcast-thumbnail" width="32" height="32" data-mc-element-id="38452">
+                                            <span class="podcast-name" data-mc-element-id="38605">Science Today</span>
+                                        </div>
+                                    </td>
+                                    <td class="duration-cell" data-mc-element-id="38778">2d ago</td>
+                                    <td class="duration-cell mono" data-mc-element-id="38852">38:20</td>
+                                    <td data-mc-element-id="38930">
+                                        <span class="status-badge completed" data-mc-element-id="38975">
+                                            <span class="status-dot" data-mc-element-id="39057"></span>
+                                            Completed
+                                        </span>
+                                    </td>
+                                    <td class="mono" style="color: #3B82F6;" data-mc-element-id="39270">5</td>
+                                    <td class="cost-cell" data-mc-element-id="39354">$0.31</td>
+                                    <td data-mc-element-id="39423">
+                                        <button class="icon-btn" data-mc-element-id="39468"><i class="fas fa-play" data-mc-element-id="39493"></i></button>
+                                        <button class="icon-btn" data-mc-element-id="39570"><i class="fas fa-rotate" data-mc-element-id="39595"></i></button>
+                                        <button class="icon-btn" data-mc-element-id="39674"><i class="fas fa-trash" data-mc-element-id="39699"></i></button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Detail Pane -->
+                <div class="detail-pane" data-mc-element-id="39991">
+                    <!-- Episode Header -->
+                    <div class="detail-header" data-mc-element-id="40081">
+                        <img src="https://storage.googleapis.com/forge-sites/73ec3090017aa2ffb58227ac31fa9110a65f8d9e3b985f3baf3b4619f7c6a75b.png?X-Goog-Algorithm=GOOG4-RSA-SHA256&amp;X-Goog-Credential=164061697651-compute%40developer.gserviceaccount.com%2F20260301%2Fauto%2Fstorage%2Fgoog4_request&amp;X-Goog-Date=20260301T074714Z&amp;X-Goog-Expires=86400&amp;X-Goog-SignedHeaders=host&amp;response-access-control-allow-origin=https%3A%2F%2Fforge.moonchild.ai&amp;X-Goog-Signature=3e095eac845590c1ed6657c27cb022ef89035984a476f26bc80f57fba7576680f479522fa403ad0e311f5c339268800c4d69b3913080e7d6b5bbb6111c2c774b00854df51cc3bd8ccb2211ff1c41275a11dee3b2332798f5a890a19f799061f61b1742248bf3d3c8bb41e9b6232f61c1f0d9fd28b1c9f840ffb0647e323f6a75e49c1c5b9e116a7f0265034ac0f5108358f4bda170c3dbc273dd47cae8928d9de260aa577b1e46fc0fa2a50df8f5a9004de3df12f1dcc48b26344a9cf530502987845cf3fc2d98a79ae9758b2ed6a691b12d0c948af3e49c63edaaa6aba853501a00a8cae23c62f6b64b28d9d74a464d2646eafba5e3b6452fda71e8be8da150" alt="Lex Fridman Podcast" class="detail-artwork" width="160" height="160" data-mc-element-id="40133">
+                        <div class="detail-info" data-mc-element-id="40277">
+                            <h2 data-mc-element-id="40331">The Future of AI Reasoning: Chain of Thought and Beyond</h2>
+                            <a href="#" class="detail-podcast" data-mc-element-id="40424">Lex Fridman Podcast</a>
+                            
+                            <div class="detail-meta" data-mc-element-id="40540">
+                                <span data-mc-element-id="40598"><i class="fas fa-calendar" data-mc-element-id="40604"></i> 2 hours ago</span>
+                                <span data-mc-element-id="40687"><i class="fas fa-clock" data-mc-element-id="40693"></i> <span class="mono" data-mc-element-id="40722">2:34:15</span></span>
+                            </div>
+
+                            <div class="detail-links" data-mc-element-id="40827">
+                                <a href="#" class="link-btn" data-mc-element-id="40886">
+                                    <i class="fas fa-link" data-mc-element-id="40952"></i>
+                                    RSS Link
+                                    <i class="fas fa-copy" style="margin-left: auto;" data-mc-element-id="41061"></i>
+                                </a>
+                                <a href="#" class="link-btn" data-mc-element-id="41185">
+                                    <i class="fas fa-file-audio" data-mc-element-id="41251"></i>
+                                    Audio File
+                                    <i class="fas fa-copy" style="margin-left: auto;" data-mc-element-id="41368"></i>
+                                </a>
+                            </div>
+
+                            <span class="status-badge completed" style="font-size: 14px; padding: 6px 14px;" data-mc-element-id="41524">
+                                <span class="status-dot" data-mc-element-id="41638"></span>
+                                Processing Complete
+                            </span>
+
+                            <div class="detail-actions" data-mc-element-id="41788">
+                                <button class="btn-primary" data-mc-element-id="41849">
+                                    <i class="fas fa-rotate" data-mc-element-id="41914"></i>
+                                    Re-process All Stages
+                                </button>
+                                <button class="btn-secondary" data-mc-element-id="42076">
+                                    <i class="fas fa-play" data-mc-element-id="42143"></i>
+                                    Play Audio
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Pipeline Timeline -->
+                    <h3 class="section-title" data-mc-element-id="42421">
+                        <i class="fas fa-diagram-project" data-mc-element-id="42472"></i>
+                        Pipeline Trace
+                    </h3>
+
+                    <div class="pipeline-timeline" data-mc-element-id="42597">
+                        <div class="timeline-line" data-mc-element-id="42653"></div>
+
+                        <!-- Stage 1 -->
+                        <div class="pipeline-stage" data-mc-element-id="42753">
+                            <span class="stage-dot" data-mc-element-id="42810"></span>
+                            <div class="stage-header" data-mc-element-id="42870">
+                                <div class="stage-name" data-mc-element-id="42929">
+                                    <i class="fas fa-rss stage-icon" data-mc-element-id="42990"></i>
+                                    Stage 1: Feed Refresh
+                                </div>
+                                <div class="stage-time mono" data-mc-element-id="43157">14:23:45</div>
+                            </div>
+                            <div class="stage-details" data-mc-element-id="43264">
+                                <div class="stage-detail-item" data-mc-element-id="43324">
+                                    <span class="stage-detail-label" data-mc-element-id="43392">Duration</span>
+                                    <span class="stage-detail-value mono" data-mc-element-id="43477">1.2s</span>
+                                </div>
+                                <div class="stage-detail-item" data-mc-element-id="43598">
+                                    <span class="stage-detail-label" data-mc-element-id="43666">Status</span>
+                                    <span class="stage-detail-value" style="color: #10B981;" data-mc-element-id="43749">Completed</span>
+                                </div>
+                                <div class="stage-detail-item" data-mc-element-id="43894">
+                                    <span class="stage-detail-label" data-mc-element-id="43962">Cost</span>
+                                    <span class="stage-detail-value mono" style="color: #F59E0B;" data-mc-element-id="44043">$0.00</span>
+                                </div>
+                            </div>
+                            <div class="stage-output" data-mc-element-id="44220">
+                                <i class="fas fa-check-circle" data-mc-element-id="44279"></i>
+                                Episode metadata extracted, transcript URL found in RSS
+                            </div>
+                        </div>
+
+                        <!-- Stage 2 -->
+                        <div class="pipeline-stage" data-mc-element-id="44535">
+                            <span class="stage-dot" data-mc-element-id="44592"></span>
+                            <div class="stage-header" data-mc-element-id="44652">
+                                <div class="stage-name" data-mc-element-id="44711">
+                                    <i class="fas fa-microphone stage-icon" data-mc-element-id="44772"></i>
+                                    Stage 2: Transcription (Skipped)
+                                </div>
+                                <div class="stage-time mono" data-mc-element-id="44957">—</div>
+                            </div>
+                            <div class="stage-details" data-mc-element-id="45057">
+                                <div class="stage-detail-item" data-mc-element-id="45117">
+                                    <span class="stage-detail-label" data-mc-element-id="45185">Duration</span>
+                                    <span class="stage-detail-value mono" data-mc-element-id="45270">—</span>
+                                </div>
+                                <div class="stage-detail-item" data-mc-element-id="45388">
+                                    <span class="stage-detail-label" data-mc-element-id="45456">Status</span>
+                                    <span class="stage-detail-value" style="color: #6B7280;" data-mc-element-id="45539">Skipped</span>
+                                </div>
+                                <div class="stage-detail-item" data-mc-element-id="45682">
+                                    <span class="stage-detail-label" data-mc-element-id="45750">Cost</span>
+                                    <span class="stage-detail-value mono" style="color: #F59E0B;" data-mc-element-id="45831">$0.00</span>
+                                </div>
+                            </div>
+                            <div class="stage-output" style="color: #9CA3AF;" data-mc-element-id="46008">
+                                <i class="fas fa-forward" data-mc-element-id="46091"></i>
+                                Transcript provided in RSS feed, STT not required
+                            </div>
+                        </div>
+
+                        <!-- Stage 3 -->
+                        <div class="pipeline-stage active" data-mc-element-id="46336">
+                            <span class="stage-dot" data-mc-element-id="46400"></span>
+                            <div class="stage-header" data-mc-element-id="46460">
+                                <div class="stage-name" data-mc-element-id="46519">
+                                    <i class="fas fa-brain stage-icon" data-mc-element-id="46580"></i>
+                                    Stage 3: Distillation
+                                </div>
+                                <div class="stage-time mono" data-mc-element-id="46749">14:23:52</div>
+                            </div>
+                            <div class="stage-details" data-mc-element-id="46856">
+                                <div class="stage-detail-item" data-mc-element-id="46916">
+                                    <span class="stage-detail-label" data-mc-element-id="46984">Duration</span>
+                                    <span class="stage-detail-value mono" data-mc-element-id="47069">8.3s</span>
+                                </div>
+                                <div class="stage-detail-item" data-mc-element-id="47190">
+                                    <span class="stage-detail-label" data-mc-element-id="47258">Status</span>
+                                    <span class="stage-detail-value" style="color: #10B981;" data-mc-element-id="47341">Completed</span>
+                                </div>
+                                <div class="stage-detail-item" data-mc-element-id="47486">
+                                    <span class="stage-detail-label" data-mc-element-id="47554">Cost</span>
+                                    <span class="stage-detail-value mono" style="color: #F59E0B;" data-mc-element-id="47635">$0.08</span>
+                                </div>
+                            </div>
+                            <div class="stage-output" data-mc-element-id="47812">
+                                <i class="fas fa-check-circle" data-mc-element-id="47871"></i>
+                                23 claims extracted • Claude Sonnet 3.5 • 47,234 tokens
+                            </div>
+
+                            <!-- Expanded Content -->
+                            <div class="stage-expanded" data-mc-element-id="48113">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;" data-mc-element-id="48174">
+                                    <h4 style="font-size: 14px; font-weight: 600; color: #E5E7EB;" data-mc-element-id="48313">Claims Preview (Top 5 by Importance)</h4>
+                                    <button class="btn-secondary" style="height: 28px; padding: 0 12px; font-size: 12px;" data-mc-element-id="48454">
+                                        <i class="fas fa-expand" data-mc-element-id="48581"></i>
+                                        View All 23 Claims
+                                    </button>
+                                </div>
+
+                                <div style="display: flex; flex-direction: column; gap: 12px;" data-mc-element-id="48788">
+                                    <!-- Claim 1 -->
+                                    <div style="background: #1A2942; border: 1px solid #2D3F5F; border-radius: 6px; padding: 12px;" data-mc-element-id="48941">
+                                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;" data-mc-element-id="49078">
+                                            <div style="flex: 1;" data-mc-element-id="49223">
+                                                <p style="font-size: 13px; color: #E5E7EB; line-height: 1.5; margin-bottom: 6px;" data-mc-element-id="49294">
+                                                    Chain-of-thought reasoning significantly improves LLM performance on complex tasks by making the model's reasoning process explicit and verifiable.
+                                                </p>
+                                                <div style="font-size: 11px; color: #6B7280;" data-mc-element-id="49678">
+                                                    <span style="color: #3B82F6;" data-mc-element-id="49777">Dr. Jane Smith</span> • 01:23:45 - 01:24:32
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div style="display: flex; gap: 16px; margin-top: 8px;" data-mc-element-id="50044">
+                                            <div style="flex: 1;" data-mc-element-id="50145">
+                                                <div style="font-size: 10px; color: #6B7280; margin-bottom: 4px;" data-mc-element-id="50216">IMPORTANCE</div>
+                                                <div style="display: flex; align-items: center; gap: 8px;" data-mc-element-id="50347">
+                                                    <div style="flex: 1; height: 6px; background: #1A2942; border-radius: 3px; overflow: hidden;" data-mc-element-id="50459">
+                                                        <div style="width: 95%; height: 100%; background: linear-gradient(90deg, #10B981, #34D399); border-radius: 3px;" data-mc-element-id="50610"></div>
+                                                    </div>
+                                                    <span class="mono" style="font-size: 12px; color: #10B981; font-weight: 600;" data-mc-element-id="50841">9.5</span>
+                                                </div>
+                                            </div>
+                                            <div style="flex: 1;" data-mc-element-id="51080">
+                                                <div style="font-size: 10px; color: #6B7280; margin-bottom: 4px;" data-mc-element-id="51151">NOVELTY</div>
+                                                <div style="display: flex; align-items: center; gap: 8px;" data-mc-element-id="51279">
+                                                    <div style="flex: 1; height: 6px; background: #1A2942; border-radius: 3px; overflow: hidden;" data-mc-element-id="51391">
+                                                        <div style="width: 80%; height: 100%; background: linear-gradient(90deg, #3B82F6, #60A5FA); border-radius: 3px;" data-mc-element-id="51542"></div>
+                                                    </div>
+                                                    <span class="mono" style="font-size: 12px; color: #3B82F6; font-weight: 600;" data-mc-element-id="51773">8.0</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Claim 2 -->
+                                    <div style="background: #1A2942; border: 1px solid #2D3F5F; border-radius: 6px; padding: 12px;" data-mc-element-id="52148">
+                                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;" data-mc-element-id="52285">
+                                            <div style="flex: 1;" data-mc-element-id="52430">
+                                                <p style="font-size: 13px; color: #E5E7EB; line-height: 1.5; margin-bottom: 6px;" data-mc-element-id="52501">
+                                                    The computational cost of implementing chain-of-thought increases linearly with reasoning depth but yields exponential improvements in accuracy for multi-step problems.
+                                                </p>
+                                                <div style="font-size: 11px; color: #6B7280;" data-mc-element-id="52906">
+                                                    <span style="color: #3B82F6;" data-mc-element-id="53005">Dr. Jane Smith</span> • 01:28:12 - 01:29:05
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div style="display: flex; gap: 16px; margin-top: 8px;" data-mc-element-id="53272">
+                                            <div style="flex: 1;" data-mc-element-id="53373">
+                                                <div style="font-size: 10px; color: #6B7280; margin-bottom: 4px;" data-mc-element-id="53444">IMPORTANCE</div>
+                                                <div style="display: flex; align-items: center; gap: 8px;" data-mc-element-id="53575">
+                                                    <div style="flex: 1; height: 6px; background: #1A2942; border-radius: 3px; overflow: hidden;" data-mc-element-id="53687">
+                                                        <div style="width: 90%; height: 100%; background: linear-gradient(90deg, #10B981, #34D399); border-radius: 3px;" data-mc-element-id="53838"></div>
+                                                    </div>
+                                                    <span class="mono" style="font-size: 12px; color: #10B981; font-weight: 600;" data-mc-element-id="54069">9.0</span>
+                                                </div>
+                                            </div>
+                                            <div style="flex: 1;" data-mc-element-id="54308">
+                                                <div style="font-size: 10px; color: #6B7280; margin-bottom: 4px;" data-mc-element-id="54379">NOVELTY</div>
+                                                <div style="display: flex; align-items: center; gap: 8px;" data-mc-element-id="54507">
+                                                    <div style="flex: 1; height: 6px; background: #1A2942; border-radius: 3px; overflow: hidden;" data-mc-element-id="54619">
+                                                        <div style="width: 85%; height: 100%; background: linear-gradient(90deg, #3B82F6, #60A5FA); border-radius: 3px;" data-mc-element-id="54770"></div>
+                                                    </div>
+                                                    <span class="mono" style="font-size: 12px; color: #3B82F6; font-weight: 600;" data-mc-element-id="55001">8.5</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Claim 3 -->
+                                    <div style="background: #1A2942; border: 1px solid #2D3F5F; border-radius: 6px; padding: 12px;" data-mc-element-id="55376">
+                                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;" data-mc-element-id="55513">
+                                            <div style="flex: 1;" data-mc-element-id="55658">
+                                                <p style="font-size: 13px; color: #E5E7EB; line-height: 1.5; margin-bottom: 6px;" data-mc-element-id="55729">
+                                                    Tree-of-thought approaches extend chain-of-thought by enabling parallel exploration of reasoning paths, leading to more robust solutions.
+                                                </p>
+                                                <div style="font-size: 11px; color: #6B7280;" data-mc-element-id="56103">
+                                                    <span style="color: #3B82F6;" data-mc-element-id="56202">Dr. Jane Smith</span> • 01:45:22 - 01:46:08
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div style="display: flex; gap: 16px; margin-top: 8px;" data-mc-element-id="56469">
+                                            <div style="flex: 1;" data-mc-element-id="56570">
+                                                <div style="font-size: 10px; color: #6B7280; margin-bottom: 4px;" data-mc-element-id="56641">IMPORTANCE</div>
+                                                <div style="display: flex; align-items: center; gap: 8px;" data-mc-element-id="56772">
+                                                    <div style="flex: 1; height: 6px; background: #1A2942; border-radius: 3px; overflow: hidden;" data-mc-element-id="56884">
+                                                        <div style="width: 87%; height: 100%; background: linear-gradient(90deg, #10B981, #34D399); border-radius: 3px;" data-mc-element-id="57035"></div>
+                                                    </div>
+                                                    <span class="mono" style="font-size: 12px; color: #10B981; font-weight: 600;" data-mc-element-id="57266">8.7</span>
+                                                </div>
+                                            </div>
+                                            <div style="flex: 1;" data-mc-element-id="57505">
+                                                <div style="font-size: 10px; color: #6B7280; margin-bottom: 4px;" data-mc-element-id="57576">NOVELTY</div>
+                                                <div style="display: flex; align-items: center; gap: 8px;" data-mc-element-id="57704">
+                                                    <div style="flex: 1; height: 6px; background: #1A2942; border-radius: 3px; overflow: hidden;" data-mc-element-id="57816">
+                                                        <div style="width: 92%; height: 100%; background: linear-gradient(90deg, #3B82F6, #60A5FA); border-radius: 3px;" data-mc-element-id="57967"></div>
+                                                    </div>
+                                                    <span class="mono" style="font-size: 12px; color: #3B82F6; font-weight: 600;" data-mc-element-id="58198">9.2</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div style="display: flex; gap: 8px; margin-top: 12px;" data-mc-element-id="58555">
+                                    <button class="btn-secondary" style="flex: 1; height: 32px; padding: 0 12px; font-size: 12px;" data-mc-element-id="58648">
+                                        <i class="fas fa-edit" data-mc-element-id="58784"></i>
+                                        Edit Claims
+                                    </button>
+                                    <button class="btn-secondary" style="flex: 1; height: 32px; padding: 0 12px; font-size: 12px;" data-mc-element-id="58946">
+                                        <i class="fas fa-rotate" data-mc-element-id="59082"></i>
+                                        Re-run Distillation
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Stage 4 -->
+                        <div class="pipeline-stage" data-mc-element-id="59389">
+                            <span class="stage-dot" data-mc-element-id="59446"></span>
+                            <div class="stage-header" data-mc-element-id="59506">
+                                <div class="stage-name" data-mc-element-id="59565">
+                                    <i class="fas fa-waveform-lines stage-icon" data-mc-element-id="59626"></i>
+                                    Stage 4: Clip Generation
+                                </div>
+                                <div class="stage-time mono" data-mc-element-id="59807">14:24:05</div>
+                            </div>
+                            <div class="stage-details" data-mc-element-id="59914">
+                                <div class="stage-detail-item" data-mc-element-id="59974">
+                                    <span class="stage-detail-label" data-mc-element-id="60042">Duration</span>
+                                    <span class="stage-detail-value mono" data-mc-element-id="60127">23.4s</span>
+                                </div>
+                                <div class="stage-detail-item" data-mc-element-id="60249">
+                                    <span class="stage-detail-label" data-mc-element-id="60317">Status</span>
+                                    <span class="stage-detail-value" style="color: #10B981;" data-mc-element-id="60400">Completed</span>
+                                </div>
+                                <div class="stage-detail-item" data-mc-element-id="60545">
+                                    <span class="stage-detail-label" data-mc-element-id="60613">Cost</span>
+                                    <span class="stage-detail-value mono" style="color: #F59E0B;" data-mc-element-id="60694">$0.53</span>
+                                </div>
+                            </div>
+                            <div class="stage-output" data-mc-element-id="60871">
+                                <i class="fas fa-check-circle" data-mc-element-id="60930"></i>
+                                7 clips generated across duration tiers • OpenAI TTS (Coral)
+                            </div>
+
+                            <!-- Clips Grid -->
+                            <div class="clips-grid" data-mc-element-id="61171">
+                                <!-- 1 min clip -->
+                                <div class="clip-card" data-mc-element-id="61280">
+                                    <div class="clip-header" data-mc-element-id="61340">
+                                        <div class="clip-duration" data-mc-element-id="61406">1 min</div>
+                                        <div class="cache-badge miss" data-mc-element-id="61485">First Gen</div>
+                                    </div>
+                                    <div class="audio-player" data-mc-element-id="61610">
+                                        <div class="waveform" data-mc-element-id="61677"></div>
+                                        <div class="playback-controls" data-mc-element-id="61746">
+                                            <button class="play-btn" data-mc-element-id="61822"><i class="fas fa-play" data-mc-element-id="61847"></i></button>
+                                            <span class="playback-time mono" data-mc-element-id="61928">0:00 / 1:00</span>
+                                        </div>
+                                    </div>
+                                    <div class="clip-meta" data-mc-element-id="62106">
+                                        Generated 2h ago • Used in 3 briefings<br data-mc-element-id="62208">
+                                        <span class="mono" style="color: #F59E0B;" data-mc-element-id="62253">$0.04</span> (narrative) + <span class="mono" style="color: #F59E0B;" data-mc-element-id="62323">$0.015</span> (TTS)
+                                    </div>
+                                    <div class="clip-actions" data-mc-element-id="62465">
+                                        <button class="clip-btn" data-mc-element-id="62532"><i class="fas fa-download" data-mc-element-id="62557"></i> Download</button>
+                                        <button class="clip-btn" data-mc-element-id="62647"><i class="fas fa-rotate" data-mc-element-id="62672"></i> Regenerate</button>
+                                    </div>
+                                </div>
+
+                                <!-- 2 min clip -->
+                                <div class="clip-card" data-mc-element-id="62889">
+                                    <div class="clip-header" data-mc-element-id="62949">
+                                        <div class="clip-duration" data-mc-element-id="63015">2 min</div>
+                                        <div class="cache-badge miss" data-mc-element-id="63094">First Gen</div>
+                                    </div>
+                                    <div class="audio-player" data-mc-element-id="63219">
+                                        <div class="waveform" data-mc-element-id="63286"></div>
+                                        <div class="playback-controls" data-mc-element-id="63355">
+                                            <button class="play-btn" data-mc-element-id="63431"><i class="fas fa-play" data-mc-element-id="63456"></i></button>
+                                            <span class="playback-time mono" data-mc-element-id="63537">0:00 / 2:00</span>
+                                        </div>
+                                    </div>
+                                    <div class="clip-meta" data-mc-element-id="63715">
+                                        Generated 2h ago • Used in 8 briefings<br data-mc-element-id="63817">
+                                        <span class="mono" style="color: #F59E0B;" data-mc-element-id="63862">$0.04</span> (narrative) + <span class="mono" style="color: #F59E0B;" data-mc-element-id="63932">$0.03</span> (TTS)
+                                    </div>
+                                    <div class="clip-actions" data-mc-element-id="64073">
+                                        <button class="clip-btn" data-mc-element-id="64140"><i class="fas fa-download" data-mc-element-id="64165"></i> Download</button>
+                                        <button class="clip-btn" data-mc-element-id="64255"><i class="fas fa-rotate" data-mc-element-id="64280"></i> Regenerate</button>
+                                    </div>
+                                </div>
+
+                                <!-- 3 min clip -->
+                                <div class="clip-card" data-mc-element-id="64497">
+                                    <div class="clip-header" data-mc-element-id="64557">
+                                        <div class="clip-duration" data-mc-element-id="64623">3 min</div>
+                                        <div class="cache-badge hit" data-mc-element-id="64702">Cache Hit</div>
+                                    </div>
+                                    <div class="audio-player" data-mc-element-id="64826">
+                                        <div class="waveform" data-mc-element-id="64893"></div>
+                                        <div class="playback-controls" data-mc-element-id="64962">
+                                            <button class="play-btn" data-mc-element-id="65038"><i class="fas fa-play" data-mc-element-id="65063"></i></button>
+                                            <span class="playback-time mono" data-mc-element-id="65144">0:00 / 3:00</span>
+                                        </div>
+                                    </div>
+                                    <div class="clip-meta" data-mc-element-id="65322">
+                                        Generated 2h ago • Used in 15 briefings<br data-mc-element-id="65425">
+                                        <span class="mono" style="color: #F59E0B;" data-mc-element-id="65470">$0.04</span> (narrative) + <span class="mono" style="color: #F59E0B;" data-mc-element-id="65540">$0.045</span> (TTS)
+                                    </div>
+                                    <div class="clip-actions" data-mc-element-id="65682">
+                                        <button class="clip-btn" data-mc-element-id="65749"><i class="fas fa-download" data-mc-element-id="65774"></i> Download</button>
+                                        <button class="clip-btn" data-mc-element-id="65864"><i class="fas fa-rotate" data-mc-element-id="65889"></i> Regenerate</button>
+                                    </div>
+                                </div>
+
+                                <!-- 5 min clip -->
+                                <div class="clip-card" data-mc-element-id="66106">
+                                    <div class="clip-header" data-mc-element-id="66166">
+                                        <div class="clip-duration" data-mc-element-id="66232">5 min</div>
+                                        <div class="cache-badge hit" data-mc-element-id="66311">Cache Hit</div>
+                                    </div>
+                                    <div class="audio-player" data-mc-element-id="66435">
+                                        <div class="waveform" data-mc-element-id="66502"></div>
+                                        <div class="playback-controls" data-mc-element-id="66571">
+                                            <button class="play-btn" data-mc-element-id="66647"><i class="fas fa-play" data-mc-element-id="66672"></i></button>
+                                            <span class="playback-time mono" data-mc-element-id="66753">0:00 / 5:00</span>
+                                        </div>
+                                    </div>
+                                    <div class="clip-meta" data-mc-element-id="66931">
+                                        Generated 2h ago • Used in 23 briefings<br data-mc-element-id="67034">
+                                        <span class="mono" style="color: #F59E0B;" data-mc-element-id="67079">$0.04</span> (narrative) + <span class="mono" style="color: #F59E0B;" data-mc-element-id="67149">$0.075</span> (TTS)
+                                    </div>
+                                    <div class="clip-actions" data-mc-element-id="67291">
+                                        <button class="clip-btn" data-mc-element-id="67358"><i class="fas fa-download" data-mc-element-id="67383"></i> Download</button>
+                                        <button class="clip-btn" data-mc-element-id="67473"><i class="fas fa-rotate" data-mc-element-id="67498"></i> Regenerate</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Stage 5 -->
+                        <div class="pipeline-stage" data-mc-element-id="67762">
+                            <span class="stage-dot pending" data-mc-element-id="67819"></span>
+                            <div class="stage-header" data-mc-element-id="67887">
+                                <div class="stage-name" data-mc-element-id="67946">
+                                    <i class="fas fa-layer-group stage-icon" data-mc-element-id="68007"></i>
+                                    Stage 5: Briefing Assembly
+                                </div>
+                                <div class="stage-time mono" data-mc-element-id="68187">On-Demand</div>
+                            </div>
+                            <div class="stage-details" data-mc-element-id="68295">
+                                <div class="stage-detail-item" data-mc-element-id="68355">
+                                    <span class="stage-detail-label" data-mc-element-id="68423">Duration</span>
+                                    <span class="stage-detail-value mono" data-mc-element-id="68508">—</span>
+                                </div>
+                                <div class="stage-detail-item" data-mc-element-id="68626">
+                                    <span class="stage-detail-label" data-mc-element-id="68694">Status</span>
+                                    <span class="stage-detail-value" style="color: #9CA3AF;" data-mc-element-id="68777">Ready</span>
+                                </div>
+                                <div class="stage-detail-item" data-mc-element-id="68918">
+                                    <span class="stage-detail-label" data-mc-element-id="68986">Cost</span>
+                                    <span class="stage-detail-value mono" style="color: #F59E0B;" data-mc-element-id="69067">$0.00</span>
+                                </div>
+                            </div>
+                            <div class="stage-output" style="color: #9CA3AF;" data-mc-element-id="69244">
+                                <i class="fas fa-info-circle" data-mc-element-id="69327"></i>
+                                Episode appears in 49 briefings • Clips selected by time-fitting algorithm
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Cost Breakdown -->
+                    <div class="cost-breakdown" data-mc-element-id="69627">
+                        <h3 class="section-title" style="margin-bottom: 16px;" data-mc-element-id="69680">
+                            <i class="fas fa-dollar-sign" data-mc-element-id="69764"></i>
+                            Cost Breakdown
+                        </h3>
+
+                        <div class="cost-chart" data-mc-element-id="69897">
+                            <div class="cost-bar stt" style="height: 0%;" data-mc-element-id="69950"></div>
+                            <div class="cost-bar distill" style="height: 35%;" data-mc-element-id="70031"></div>
+                            <div class="cost-bar tts" style="height: 100%;" data-mc-element-id="70117"></div>
+                        </div>
+
+                        <div class="cost-items" data-mc-element-id="70228">
+                            <div class="cost-item" data-mc-element-id="70281">
+                                <div class="cost-color" style="background: linear-gradient(135deg, #8B5CF6, #A78BFA);" data-mc-element-id="70337"></div>
+                                <span class="cost-label" data-mc-element-id="70463">Stage 2 (STT)</span>
+                                <span class="cost-value" data-mc-element-id="70541">$0.00</span>
+                            </div>
+                            <div class="cost-item" data-mc-element-id="70642">
+                                <div class="cost-color" style="background: linear-gradient(135deg, #3B82F6, #60A5FA);" data-mc-element-id="70698"></div>
+                                <span class="cost-label" data-mc-element-id="70824">Stage 3 (Distillation)</span>
+                                <span class="cost-value" data-mc-element-id="70911">$0.08</span>
+                            </div>
+                            <div class="cost-item" data-mc-element-id="71012">
+                                <div class="cost-color" style="background: linear-gradient(135deg, #10B981, #34D399);" data-mc-element-id="71068"></div>
+                                <span class="cost-label" data-mc-element-id="71194">Stage 4 (TTS)</span>
+                                <span class="cost-value" data-mc-element-id="71272">$0.53</span>
+                            </div>
+                        </div>
+
+                        <div class="cost-total" data-mc-element-id="71401">
+                            <span class="cost-total-label" data-mc-element-id="71454">Total Processing Cost</span>
+                            <span class="cost-total-value" data-mc-element-id="71542">$0.61</span>
+                        </div>
+
+                        <div class="cost-comparison up" data-mc-element-id="71642">
+                            <i class="fas fa-arrow-up" data-mc-element-id="71703"></i>
+                            8% higher than average episode ($0.56)
+                        </div>
+
+                        <div style="margin-top: 12px; font-size: 12px; color: #9CA3AF;" data-mc-element-id="71858">
+                            Cost per minute of original audio: <span class="mono" style="color: #F59E0B; font-weight: 600;" data-mc-element-id="71986">$0.004/min</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+<script>__MC_SITE_ID__ = "b449889222222d37aadb82be18daf51d819de90c3ae0bb2e4f6f3899694f0911"</script><script>__MC_OPTIONS__ = {
+  "svg": false,
+  "overlay": false
+}</script><script src="https://forge.moonchild.ai/public/devigner.global.js" type="module"></script></body></html>

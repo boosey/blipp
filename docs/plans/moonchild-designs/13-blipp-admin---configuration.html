@@ -1,0 +1,1382 @@
+<!DOCTYPE html><html lang="en" data-mode=""><head><base href="https://forge.moonchild.ai/site/f5e379e77a4627fcb373a8dece956334657b9aace011701bce5fdc901ff1b8f1/">
+    <meta charset="UTF-8" data-mc-element-id="44">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" data-mc-element-id="71">
+    <title data-mc-element-id="146">Blipp Admin - Configuration</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Roboto+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #0A1628;
+            color: #F9FAFB;
+            font-size: 16px;
+            line-height: 24px;
+            font-weight: 500;
+            overflow-x: hidden;
+        }
+
+        .mono {
+            font-family: 'Roboto Mono', monospace;
+        }
+
+        /* Top Bar */
+        .top-bar {
+            height: 64px;
+            background: #1A2942;
+            border-bottom: 1px solid rgba(59, 130, 246, 0.1);
+            display: flex;
+            align-items: center;
+            padding: 0 24px;
+            gap: 24px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .logo {
+            font-size: 20px;
+            font-weight: 700;
+            color: #3B82F6;
+            letter-spacing: -0.5px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .logo i {
+            font-size: 24px;
+        }
+
+        .search-container {
+            flex: 1;
+            max-width: 500px;
+            position: relative;
+        }
+
+        .search-input {
+            width: 100%;
+            height: 40px;
+            background: #0A1628;
+            border: 1px solid rgba(156, 163, 175, 0.2);
+            border-radius: 6px;
+            padding: 0 16px 0 40px;
+            color: #F9FAFB;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s ease-in-out;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: #3B82F6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #9CA3AF;
+            font-size: 16px;
+        }
+
+        .search-hint {
+            position: absolute;
+            right: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #9CA3AF;
+            font-size: 12px;
+            font-weight: 600;
+            background: rgba(156, 163, 175, 0.1);
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+
+        .top-bar-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-left: auto;
+        }
+
+        .cost-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: rgba(16, 185, 129, 0.1);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+        }
+
+        .cost-indicator:hover {
+            background: rgba(16, 185, 129, 0.15);
+            transform: translateY(-1px);
+        }
+
+        .cost-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #10B981;
+        }
+
+        .cost-amount {
+            font-family: 'Roboto Mono', monospace;
+            font-size: 14px;
+            font-weight: 600;
+            color: #10B981;
+        }
+
+        .cost-label {
+            font-size: 12px;
+            color: #9CA3AF;
+        }
+
+        .alerts-button {
+            position: relative;
+            width: 40px;
+            height: 40px;
+            background: rgba(239, 68, 68, 0.1);
+            border: none;
+            border-radius: 6px;
+            color: #EF4444;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+        }
+
+        .alerts-button:hover {
+            background: rgba(239, 68, 68, 0.15);
+            transform: translateY(-1px);
+        }
+
+        .alerts-badge {
+            position: absolute;
+            top: -4px;
+            right: -4px;
+            background: #EF4444;
+            color: white;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 2px 6px;
+            border-radius: 10px;
+            min-width: 20px;
+            text-align: center;
+        }
+
+        .user-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #3B82F6, #06B6D4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+        }
+
+        .user-avatar:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+        }
+
+        /* Sticky Action Bar */
+        .action-bar {
+            height: 56px;
+            background: rgba(249, 115, 22, 0.1);
+            border-bottom: 2px solid #F97316;
+            display: none;
+            align-items: center;
+            padding: 0 24px;
+            gap: 16px;
+            position: sticky;
+            top: 64px;
+            z-index: 99;
+        }
+
+        .action-bar.visible {
+            display: flex;
+        }
+
+        .changes-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #F97316;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .changes-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #F97316;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .changes-summary {
+            flex: 1;
+            color: #9CA3AF;
+            font-size: 14px;
+        }
+
+        .deployment-status {
+            font-size: 12px;
+            color: #9CA3AF;
+            padding-right: 16px;
+            border-right: 1px solid rgba(156, 163, 175, 0.2);
+        }
+
+        .btn {
+            padding: 8px 16px;
+            font-size: 14px;
+            font-weight: 600;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+        }
+
+        .btn-ghost {
+            background: transparent;
+            color: #9CA3AF;
+            border: 1px solid rgba(156, 163, 175, 0.2);
+        }
+
+        .btn-ghost:hover {
+            color: #F9FAFB;
+            border-color: #9CA3AF;
+            transform: translateY(-1px);
+        }
+
+        .btn-primary {
+            background: #F97316;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #EA580C;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(249, 115, 22, 0.3);
+        }
+
+        .btn-deploy {
+            background: #3B82F6;
+            color: white;
+        }
+
+        .btn-deploy:hover {
+            background: #2563EB;
+            transform: translateY(-1px);
+        }
+
+        /* Layout */
+        .main-container {
+            display: flex;
+            min-height: calc(100vh - 64px);
+        }
+
+        .sidebar {
+            width: 240px;
+            background: #1A2942;
+            border-right: 1px solid rgba(59, 130, 246, 0.1);
+            position: sticky;
+            top: 64px;
+            height: calc(100vh - 64px);
+            overflow-y: auto;
+        }
+
+        .sidebar-section {
+            padding: 16px 0;
+            border-bottom: 1px solid rgba(156, 163, 175, 0.1);
+        }
+
+        .sidebar-section:last-child {
+            border-bottom: none;
+        }
+
+        .sidebar-section-title {
+            padding: 8px 16px;
+            font-size: 12px;
+            font-weight: 700;
+            color: #9CA3AF;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .sidebar-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 16px;
+            color: #9CA3AF;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .sidebar-item:hover {
+            background: rgba(59, 130, 246, 0.05);
+            color: #F9FAFB;
+        }
+
+        .sidebar-item.active {
+            background: rgba(59, 130, 246, 0.1);
+            color: #3B82F6;
+            border-left: 3px solid #3B82F6;
+            padding-left: 13px;
+        }
+
+        .sidebar-item i {
+            font-size: 16px;
+            min-width: 20px;
+            text-align: center;
+        }
+
+        .sidebar-footer {
+            padding: 16px;
+            border-top: 1px solid rgba(156, 163, 175, 0.1);
+            font-size: 12px;
+            color: #9CA3AF;
+        }
+
+        .sidebar-footer-link {
+            color: #3B82F6;
+            cursor: pointer;
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .sidebar-footer-link:hover {
+            color: #60A5FA;
+        }
+
+        /* Main Content */
+        .content {
+            flex: 1;
+            padding: 24px;
+            overflow-y: auto;
+        }
+
+        .content-header {
+            margin-bottom: 24px;
+        }
+
+        .content-title {
+            font-size: 24px;
+            font-weight: 700;
+            color: #F9FAFB;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .content-title i {
+            color: #3B82F6;
+        }
+
+        .content-description {
+            color: #9CA3AF;
+            font-size: 14px;
+            line-height: 20px;
+        }
+
+        .info-tooltip {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: rgba(59, 130, 246, 0.1);
+            color: #3B82F6;
+            font-size: 12px;
+            cursor: help;
+            margin-left: 8px;
+        }
+
+        /* Card */
+        .card {
+            background: #1A2942;
+            border-radius: 8px;
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid rgba(156, 163, 175, 0.1);
+        }
+
+        .card-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #F9FAFB;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .badge {
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .badge-active {
+            background: rgba(16, 185, 129, 0.2);
+            color: #10B981;
+        }
+
+        .badge-inactive {
+            background: rgba(156, 163, 175, 0.2);
+            color: #9CA3AF;
+        }
+
+        .badge-warning {
+            background: rgba(245, 158, 11, 0.2);
+            color: #F59E0B;
+        }
+
+        /* Provider Section */
+        .provider-display {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 20px;
+            background: rgba(16, 185, 129, 0.05);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            border-radius: 8px;
+            margin-bottom: 24px;
+        }
+
+        .provider-logo {
+            width: 56px;
+            height: 56px;
+            border-radius: 8px;
+            background: linear-gradient(135deg, #3B82F6, #06B6D4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            color: white;
+        }
+
+        .provider-info {
+            flex: 1;
+        }
+
+        .provider-name {
+            font-size: 20px;
+            font-weight: 700;
+            color: #F9FAFB;
+            margin-bottom: 4px;
+        }
+
+        .provider-meta {
+            font-size: 13px;
+            color: #9CA3AF;
+        }
+
+        /* Form Elements */
+        .form-group {
+            margin-bottom: 24px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 14px;
+            font-weight: 600;
+            color: #F9FAFB;
+            margin-bottom: 8px;
+        }
+
+        .form-select, .form-input {
+            width: 100%;
+            height: 40px;
+            background: #0A1628;
+            border: 1px solid rgba(156, 163, 175, 0.2);
+            border-radius: 6px;
+            padding: 0 12px;
+            color: #F9FAFB;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s ease-in-out;
+        }
+
+        .form-select:focus, .form-input:focus {
+            outline: none;
+            border-color: #3B82F6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .form-select.changed {
+            border-color: #F97316;
+            box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.1);
+        }
+
+        .checkbox-group {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px;
+            border-radius: 6px;
+            transition: background 0.2s;
+        }
+
+        .checkbox-item:hover {
+            background: rgba(156, 163, 175, 0.05);
+        }
+
+        .checkbox {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+        }
+
+        .checkbox-label {
+            font-size: 14px;
+            color: #F9FAFB;
+            cursor: pointer;
+        }
+
+        .checkbox-sublabel {
+            font-size: 12px;
+            color: #9CA3AF;
+            margin-left: 30px;
+        }
+
+        /* Metrics Grid */
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .metric-card {
+            background: rgba(156, 163, 175, 0.05);
+            border-radius: 6px;
+            padding: 16px;
+        }
+
+        .metric-label {
+            font-size: 12px;
+            color: #9CA3AF;
+            margin-bottom: 4px;
+        }
+
+        .metric-value {
+            font-size: 20px;
+            font-weight: 700;
+            color: #F9FAFB;
+        }
+
+        .metric-value.success {
+            color: #10B981;
+        }
+
+        /* Warning Box */
+        .warning-box {
+            background: rgba(245, 158, 11, 0.1);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 24px;
+        }
+
+        .warning-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 600;
+            color: #F59E0B;
+            margin-bottom: 8px;
+        }
+
+        .warning-content {
+            font-size: 14px;
+            color: #9CA3AF;
+            line-height: 20px;
+        }
+
+        .warning-content ul {
+            margin: 8px 0 0 20px;
+        }
+
+        .warning-content li {
+            margin-bottom: 4px;
+        }
+
+        /* Test Panel */
+        .test-panel {
+            background: rgba(59, 130, 246, 0.05);
+            border: 1px solid rgba(59, 130, 246, 0.2);
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 24px;
+        }
+
+        .test-header {
+            font-size: 16px;
+            font-weight: 700;
+            color: #F9FAFB;
+            margin-bottom: 16px;
+        }
+
+        .test-controls {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .test-results {
+            display: none;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid rgba(156, 163, 175, 0.1);
+        }
+
+        .test-results.visible {
+            display: block;
+        }
+
+        .result-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid rgba(156, 163, 175, 0.1);
+            font-size: 14px;
+        }
+
+        .result-item:last-child {
+            border-bottom: none;
+        }
+
+        .result-label {
+            color: #9CA3AF;
+        }
+
+        .result-value {
+            font-weight: 600;
+            color: #F9FAFB;
+        }
+
+        /* Duration Tiers */
+        .tier-timeline {
+            height: 60px;
+            background: rgba(156, 163, 175, 0.05);
+            border-radius: 8px;
+            margin-bottom: 24px;
+            position: relative;
+            padding: 0 20px;
+            display: flex;
+            align-items: center;
+        }
+
+        .timeline-track {
+            width: 100%;
+            height: 4px;
+            background: rgba(156, 163, 175, 0.2);
+            border-radius: 2px;
+            position: relative;
+        }
+
+        .tier-marker {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #10B981;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .tier-marker:hover {
+            width: 16px;
+            height: 16px;
+            box-shadow: 0 0 12px rgba(16, 185, 129, 0.5);
+        }
+
+        .tier-marker.medium {
+            background: #F59E0B;
+        }
+
+        .tier-marker.low {
+            background: #EF4444;
+        }
+
+        .tier-card {
+            background: rgba(156, 163, 175, 0.05);
+            border: 1px solid rgba(156, 163, 175, 0.2);
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            transition: all 0.2s;
+        }
+
+        .tier-card:hover {
+            background: rgba(156, 163, 175, 0.08);
+            transform: translateX(2px);
+        }
+
+        .tier-duration {
+            font-family: 'Roboto Mono', monospace;
+            font-size: 24px;
+            font-weight: 700;
+            color: #F9FAFB;
+            min-width: 80px;
+        }
+
+        .tier-stats {
+            flex: 1;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+        }
+
+        .tier-stat {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .tier-stat-label {
+            font-size: 12px;
+            color: #9CA3AF;
+            margin-bottom: 4px;
+        }
+
+        .tier-stat-value {
+            font-size: 14px;
+            font-weight: 600;
+            color: #F9FAFB;
+        }
+
+        .tier-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 6px;
+            border: none;
+            background: rgba(156, 163, 175, 0.1);
+            color: #9CA3AF;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .btn-icon:hover {
+            background: rgba(59, 130, 246, 0.2);
+            color: #3B82F6;
+            transform: translateY(-1px);
+        }
+
+        .btn-icon.danger:hover {
+            background: rgba(239, 68, 68, 0.2);
+            color: #EF4444;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 6px;
+            background: rgba(156, 163, 175, 0.2);
+            border-radius: 3px;
+            overflow: hidden;
+            margin-top: 8px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: #10B981;
+            border-radius: 3px;
+            transition: width 0.3s;
+        }
+
+        .progress-fill.medium {
+            background: #F59E0B;
+        }
+
+        .progress-fill.low {
+            background: #EF4444;
+        }
+
+        /* Recommendations */
+        .recommendation-card {
+            background: rgba(59, 130, 246, 0.05);
+            border: 1px solid rgba(59, 130, 246, 0.2);
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .recommendation-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            background: rgba(59, 130, 246, 0.2);
+            color: #3B82F6;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+        }
+
+        .recommendation-content {
+            flex: 1;
+        }
+
+        .recommendation-text {
+            font-size: 14px;
+            color: #F9FAFB;
+            margin-bottom: 4px;
+        }
+
+        .recommendation-detail {
+            font-size: 12px;
+            color: #9CA3AF;
+        }
+
+        .btn-small {
+            padding: 6px 12px;
+            font-size: 12px;
+            font-weight: 600;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-small-primary {
+            background: #3B82F6;
+            color: white;
+        }
+
+        .btn-small-primary:hover {
+            background: #2563EB;
+            transform: translateY(-1px);
+        }
+
+        /* Shortcuts Bar */
+        .shortcuts-bar {
+            height: 40px;
+            background: #1A2942;
+            border-top: 1px solid rgba(59, 130, 246, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 24px;
+            font-size: 12px;
+            color: #9CA3AF;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 100;
+        }
+
+        .shortcut {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .shortcut-key {
+            background: rgba(156, 163, 175, 0.1);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Roboto Mono', monospace;
+            font-weight: 600;
+        }
+
+        @media (max-width: 1200px) {
+            .sidebar {
+                width: 60px;
+            }
+
+            .sidebar-item span {
+                display: none;
+            }
+
+            .metrics-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Top Bar -->
+    <div class="top-bar" data-mc-element-id="23366">
+        <div class="logo" data-mc-element-id="23396">
+            <i class="fas fa-podcast" data-mc-element-id="23427"></i>
+            Blipp Admin
+        </div>
+
+        <div class="search-container" data-mc-element-id="23506">
+            <i class="fas fa-search search-icon" data-mc-element-id="23549"></i>
+            <input type="text" class="search-input" placeholder="Search podcasts, episodes, users, or type command..." data-mc-element-id="23603">
+            <span class="search-hint" data-mc-element-id="23723">⌘K</span>
+        </div>
+
+        <div class="top-bar-right" data-mc-element-id="23783">
+            <div class="cost-indicator" data-mc-element-id="23823">
+                <span class="cost-dot" data-mc-element-id="23868"></span>
+                <div data-mc-element-id="23915">
+                    <div class="cost-amount" data-mc-element-id="23941">$847</div>
+                    <div class="cost-label" data-mc-element-id="23997">today</div>
+                </div>
+            </div>
+
+            <button class="alerts-button" data-mc-element-id="24088">
+                <i class="fas fa-bell" data-mc-element-id="24135"></i>
+                <span class="alerts-badge" data-mc-element-id="24179">3</span>
+            </button>
+
+            <div class="user-avatar" data-mc-element-id="24250">AJ</div>
+        </div>
+    </div>
+
+    <!-- Sticky Action Bar (hidden by default) -->
+    <div class="action-bar" id="actionBar" data-mc-element-id="24366">
+        <div class="changes-badge" data-mc-element-id="24414">
+            <span class="changes-dot" data-mc-element-id="24454"></span>
+            Unsaved changes
+        </div>
+        <div class="changes-summary" data-mc-element-id="24539">3 settings modified</div>
+        <div class="deployment-status" data-mc-element-id="24602">Last deployed 2 hours ago by admin@blipp.com</div>
+        <button class="btn btn-ghost" data-mc-element-id="24692">Discard Changes</button>
+        <button class="btn btn-primary" data-mc-element-id="24755">Save Changes</button>
+        <button class="btn btn-deploy" style="display: none;" data-mc-element-id="24817">Deploy to Production</button>
+    </div>
+
+    <!-- Main Container -->
+    <div class="main-container" data-mc-element-id="24945">
+        <!-- Sidebar -->
+        <div class="sidebar" data-mc-element-id="25007">
+            <div class="sidebar-section" data-mc-element-id="25041">
+                <div class="sidebar-section-title" data-mc-element-id="25087">AI Models</div>
+                <div class="sidebar-item active" data-mc-element-id="25154">
+                    <i class="fas fa-microphone" data-mc-element-id="25208"></i>
+                    <span data-mc-element-id="25262">STT Configuration</span>
+                </div>
+                <div class="sidebar-item" data-mc-element-id="25332">
+                    <i class="fas fa-brain" data-mc-element-id="25379"></i>
+                    <span data-mc-element-id="25428">Distillation</span>
+                </div>
+                <div class="sidebar-item" data-mc-element-id="25493">
+                    <i class="fas fa-pen-fancy" data-mc-element-id="25540"></i>
+                    <span data-mc-element-id="25593">Narrative Generation</span>
+                </div>
+                <div class="sidebar-item" data-mc-element-id="25666">
+                    <i class="fas fa-volume-high" data-mc-element-id="25713"></i>
+                    <span data-mc-element-id="25768">TTS Configuration</span>
+                </div>
+            </div>
+
+            <div class="sidebar-section" data-mc-element-id="25854">
+                <div class="sidebar-section-title" data-mc-element-id="25900">Platform</div>
+                <div class="sidebar-item" data-mc-element-id="25966">
+                    <i class="fas fa-clock" data-mc-element-id="26013"></i>
+                    <span data-mc-element-id="26062">Duration Tiers</span>
+                </div>
+                <div class="sidebar-item" data-mc-element-id="26129">
+                    <i class="fas fa-star" data-mc-element-id="26176"></i>
+                    <span data-mc-element-id="26224">Subscription Tiers</span>
+                </div>
+                <div class="sidebar-item" data-mc-element-id="26295">
+                    <i class="fas fa-sliders" data-mc-element-id="26342"></i>
+                    <span data-mc-element-id="26393">Pipeline Settings</span>
+                </div>
+                <div class="sidebar-item" data-mc-element-id="26463">
+                    <i class="fas fa-comments" data-mc-element-id="26510"></i>
+                    <span data-mc-element-id="26562">Prompts</span>
+                </div>
+            </div>
+
+            <div class="sidebar-section" data-mc-element-id="26638">
+                <div class="sidebar-section-title" data-mc-element-id="26684">Controls</div>
+                <div class="sidebar-item" data-mc-element-id="26750">
+                    <i class="fas fa-check-circle" data-mc-element-id="26797"></i>
+                    <span data-mc-element-id="26853">Quality Thresholds</span>
+                </div>
+                <div class="sidebar-item" data-mc-element-id="26924">
+                    <i class="fas fa-dollar-sign" data-mc-element-id="26971"></i>
+                    <span data-mc-element-id="27026">Cost Controls</span>
+                </div>
+                <div class="sidebar-item" data-mc-element-id="27092">
+                    <i class="fas fa-flag" data-mc-element-id="27139"></i>
+                    <span data-mc-element-id="27187">Feature Flags</span>
+                </div>
+            </div>
+
+            <div class="sidebar-footer" data-mc-element-id="27269">
+                <a href="#" class="sidebar-footer-link" data-mc-element-id="27314">View Changelog</a>
+                <div style="margin-top: 8px; font-size: 11px;" data-mc-element-id="27389">Last modified: 2 hours ago</div>
+            </div>
+        </div>
+
+        <!-- Content -->
+        <div class="content" data-mc-element-id="27537">
+            <div class="content-header" data-mc-element-id="27571">
+                <div class="content-title" data-mc-element-id="27616">
+                    <i class="fas fa-microphone" data-mc-element-id="27664"></i>
+                    Speech-to-Text Provider Configuration
+                    <span class="info-tooltip" title="Changes apply to new episodes only. Existing transcripts are not regenerated." data-mc-element-id="27776">
+                        <i class="fas fa-info" data-mc-element-id="27914"></i>
+                    </span>
+                </div>
+                <div class="content-description" data-mc-element-id="28009">
+                    Configure the STT provider and model used for transcribing podcast episodes. Changes affect new episodes only.
+                </div>
+            </div>
+
+            <!-- Current Provider Display -->
+            <div class="provider-display" data-mc-element-id="28275">
+                <div class="provider-logo" data-mc-element-id="28322">
+                    <i class="fas fa-waveform" data-mc-element-id="28370"></i>
+                </div>
+                <div class="provider-info" data-mc-element-id="28441">
+                    <div class="provider-name" data-mc-element-id="28489">Deepgram Nova-2</div>
+                    <div class="provider-meta" data-mc-element-id="28558">Active since March 15, 2024 • Current provider</div>
+                </div>
+                <span class="badge badge-active" data-mc-element-id="28677">Active</span>
+            </div>
+
+            <!-- Configuration Form -->
+            <div class="card" data-mc-element-id="28796">
+                <div class="form-group" data-mc-element-id="28831">
+                    <label class="form-label" data-mc-element-id="28876">Provider</label>
+                    <select class="form-select" id="providerSelect" data-mc-element-id="28939">
+                        <option value="deepgram" selected="" data-mc-element-id="29012">Deepgram</option>
+                        <option value="openai" data-mc-element-id="29088">OpenAI Whisper</option>
+                        <option value="assemblyai" data-mc-element-id="29159">AssemblyAI</option>
+                        <option value="google" data-mc-element-id="29230">Google Speech-to-Text</option>
+                    </select>
+                </div>
+
+                <div class="form-group" data-mc-element-id="29354">
+                    <label class="form-label" data-mc-element-id="29399">Model</label>
+                    <select class="form-select" data-mc-element-id="29459">
+                        <option value="nova-2" selected="" data-mc-element-id="29512">Nova-2 (Latest, recommended)</option>
+                        <option value="nova" data-mc-element-id="29606">Nova</option>
+                        <option value="enhanced" data-mc-element-id="29665">Enhanced</option>
+                        <option value="base" data-mc-element-id="29732">Base</option>
+                    </select>
+                </div>
+
+                <div class="form-group" data-mc-element-id="29837">
+                    <label class="form-label" data-mc-element-id="29882">Language Detection</label>
+                    <select class="form-select" data-mc-element-id="29955">
+                        <option value="auto" selected="" data-mc-element-id="30008">Auto-detect (recommended)</option>
+                        <option value="en" data-mc-element-id="30097">English only</option>
+                        <option value="es" data-mc-element-id="30162">Spanish only</option>
+                        <option value="multi" data-mc-element-id="30227">Multiple languages</option>
+                    </select>
+                </div>
+
+                <div class="form-group" data-mc-element-id="30347">
+                    <label class="form-label" data-mc-element-id="30392">Transcription Options</label>
+                    <div class="checkbox-group" data-mc-element-id="30468">
+                        <label class="checkbox-item" data-mc-element-id="30521">
+                            <input type="checkbox" class="checkbox" checked="" data-mc-element-id="30579">
+                            <span class="checkbox-label" data-mc-element-id="30656">Punctuation</span>
+                        </label>
+                        <div class="checkbox-sublabel" data-mc-element-id="30761">Automatically add punctuation to transcript</div>
+
+                        <label class="checkbox-item" data-mc-element-id="30867">
+                            <input type="checkbox" class="checkbox" checked="" data-mc-element-id="30925">
+                            <span class="checkbox-label" data-mc-element-id="31002">Diarization (Speaker Detection)</span>
+                        </label>
+                        <div class="checkbox-sublabel" data-mc-element-id="31127">Identify different speakers • Adds $0.02 per hour</div>
+
+                        <label class="checkbox-item" data-mc-element-id="31239">
+                            <input type="checkbox" class="checkbox" data-mc-element-id="31297">
+                            <span class="checkbox-label" data-mc-element-id="31366">Profanity Filter</span>
+                        </label>
+                        <div class="checkbox-sublabel" data-mc-element-id="31476">Replace profanity with [***]</div>
+
+                        <label class="checkbox-item" data-mc-element-id="31567">
+                            <input type="checkbox" class="checkbox" checked="" data-mc-element-id="31625">
+                            <span class="checkbox-label" data-mc-element-id="31702">Word-level Timestamps</span>
+                        </label>
+                        <div class="checkbox-sublabel" data-mc-element-id="31817">Required for some features • No additional cost</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Performance Metrics -->
+            <div class="card" data-mc-element-id="32025">
+                <div class="card-header" data-mc-element-id="32060">
+                    <div class="card-title" data-mc-element-id="32106">Production Performance</div>
+                    <span class="badge badge-active" data-mc-element-id="32179">Live Data</span>
+                </div>
+
+                <div class="metrics-grid" data-mc-element-id="32269">
+                    <div class="metric-card" data-mc-element-id="32316">
+                        <div class="metric-label" data-mc-element-id="32366">Accuracy</div>
+                        <div class="metric-value success" data-mc-element-id="32431">95.2%</div>
+                    </div>
+                    <div class="metric-card" data-mc-element-id="32524">
+                        <div class="metric-label" data-mc-element-id="32574">Avg Processing Speed</div>
+                        <div class="metric-value" data-mc-element-id="32651">8 minutes</div>
+                    </div>
+                    <div class="metric-card" data-mc-element-id="32740">
+                        <div class="metric-label" data-mc-element-id="32790">Success Rate</div>
+                        <div class="metric-value success" data-mc-element-id="32859">96.1%</div>
+                    </div>
+                    <div class="metric-card" data-mc-element-id="32952">
+                        <div class="metric-label" data-mc-element-id="33002">Cost per Episode</div>
+                        <div class="metric-value mono" data-mc-element-id="33075">$0.08</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Cost Comparison -->
+            <div class="card" data-mc-element-id="33237">
+                <div class="card-header" data-mc-element-id="33272">
+                    <div class="card-title" data-mc-element-id="33318">Provider Cost Comparison</div>
+                </div>
+
+                <table style="width: 100%; border-collapse: collapse;" data-mc-element-id="33413">
+                    <thead data-mc-element-id="33489">
+                        <tr style="border-bottom: 1px solid rgba(156, 163, 175, 0.1);" data-mc-element-id="33521">
+                            <th style="padding: 12px; text-align: left; font-size: 12px; color: #9CA3AF; font-weight: 600;" data-mc-element-id="33613">Provider</th>
+                            <th style="padding: 12px; text-align: left; font-size: 12px; color: #9CA3AF; font-weight: 600;" data-mc-element-id="33751">Model</th>
+                            <th style="padding: 12px; text-align: right; font-size: 12px; color: #9CA3AF; font-weight: 600;" data-mc-element-id="33886">Cost/Hour</th>
+                            <th style="padding: 12px; text-align: center; font-size: 12px; color: #9CA3AF; font-weight: 600;" data-mc-element-id="34026">Accuracy</th>
+                            <th style="padding: 12px; text-align: center; font-size: 12px; color: #9CA3AF; font-weight: 600;" data-mc-element-id="34166">Speed</th>
+                        </tr>
+                    </thead>
+                    <tbody data-mc-element-id="34354">
+                        <tr style="background: rgba(16, 185, 129, 0.05); border-left: 3px solid #10B981;" data-mc-element-id="34386">
+                            <td style="padding: 12px; font-size: 14px; font-weight: 600;" data-mc-element-id="34497">Deepgram</td>
+                            <td style="padding: 12px; font-size: 14px; color: #9CA3AF;" data-mc-element-id="34601">Nova-2</td>
+                            <td style="padding: 12px; text-align: right; font-family: 'Roboto Mono', monospace; font-weight: 600;" data-mc-element-id="34701">$0.08</td>
+                            <td style="padding: 12px; text-align: center;" data-mc-element-id="34843">
+                                <span class="badge badge-active" data-mc-element-id="34923">95.2%</span>
+                            </td>
+                            <td style="padding: 12px; text-align: center;" data-mc-element-id="35031">
+                                <span class="badge badge-active" data-mc-element-id="35111">Fast</span>
+                            </td>
+                        </tr>
+                        <tr style="border-bottom: 1px solid rgba(156, 163, 175, 0.05);" data-mc-element-id="35244">
+                            <td style="padding: 12px; font-size: 14px; font-weight: 600;" data-mc-element-id="35337">OpenAI</td>
+                            <td style="padding: 12px; font-size: 14px; color: #9CA3AF;" data-mc-element-id="35439">Whisper Large</td>
+                            <td style="padding: 12px; text-align: right; font-family: 'Roboto Mono', monospace; font-weight: 600;" data-mc-element-id="35546">$0.06</td>
+                            <td style="padding: 12px; text-align: center;" data-mc-element-id="35688">
+                                <span class="badge badge-inactive" data-mc-element-id="35768">93.8%</span>
+                            </td>
+                            <td style="padding: 12px; text-align: center;" data-mc-element-id="35878">
+                                <span class="badge badge-warning" data-mc-element-id="35958">Medium</span>
+                            </td>
+                        </tr>
+                        <tr style="border-bottom: 1px solid rgba(156, 163, 175, 0.05);" data-mc-element-id="36094">
+                            <td style="padding: 12px; font-size: 14px; font-weight: 600;" data-mc-element-id="36187">AssemblyAI</td>
+                            <td style="padding: 12px; font-size: 14px; color: #9CA3AF;" data-mc-element-id="36293">Universal-1</td>
+                            <td style="padding: 12px; text-align: right; font-family: 'Roboto Mono', monospace; font-weight: 600;" data-mc-element-id="36398">$0.09</td>
+                            <td style="padding: 12px; text-align: center;" data-mc-element-id="36540">
+                                <span class="badge badge-active" data-mc-element-id="36620">96.1%</span>
+                            </td>
+                            <td style="padding: 12px; text-align: center;" data-mc-element-id="36728">
+                                <span class="badge badge-active" data-mc-element-id="36808">Fast</span>
+                            </td>
+                        </tr>
+                        <tr data-mc-element-id="36941">
+                            <td style="padding: 12px; font-size: 14px; font-weight: 600;" data-mc-element-id="36974">Google</td>
+                            <td style="padding: 12px; font-size: 14px; color: #9CA3AF;" data-mc-element-id="37076">Chirp</td>
+                            <td style="padding: 12px; text-align: right; font-family: 'Roboto Mono', monospace; font-weight: 600;" data-mc-element-id="37175">$0.012</td>
+                            <td style="padding: 12px; text-align: center;" data-mc-element-id="37318">
+                                <span class="badge badge-inactive" data-mc-element-id="37398">91.5%</span>
+                            </td>
+                            <td style="padding: 12px; text-align: center;" data-mc-element-id="37508">
+                                <span class="badge badge-active" data-mc-element-id="37588">Very Fast</span>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Impact Warning -->
+            <div class="warning-box" data-mc-element-id="37824">
+                <div class="warning-header" data-mc-element-id="37866">
+                    <i class="fas fa-triangle-exclamation" data-mc-element-id="37915"></i>
+                    Impact of Changes
+                </div>
+                <div class="warning-content" data-mc-element-id="38036">
+                    <ul data-mc-element-id="38086">
+                        <li data-mc-element-id="38115">This will affect <strong data-mc-element-id="38136">new episodes only</strong></li>
+                        <li data-mc-element-id="38200">Existing transcripts: <strong data-mc-element-id="38226">18,492 episodes</strong> will keep current transcripts</li>
+                        <li data-mc-element-id="38318">To re-transcribe existing episodes, use bulk re-process in Episodes view</li>
+                        <li data-mc-element-id="38424">Estimated monthly cost change: <strong class="mono" style="color: #10B981;" data-mc-element-id="38459">-$89/month</strong> (switching to OpenAI)</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Test Configuration -->
+            <div class="test-panel" data-mc-element-id="38672">
+                <div class="test-header" data-mc-element-id="38713">Test Configuration</div>
+                <div class="test-controls" data-mc-element-id="38779">
+                    <select class="form-select" style="flex: 1;" data-mc-element-id="38827">
+                        <option data-mc-element-id="38897">Select sample episode...</option>
+                        <option data-mc-element-id="38963">EP 142: The Future of AI in Healthcare</option>
+                        <option data-mc-element-id="39043">Breaking Down the Latest Tech News</option>
+                        <option data-mc-element-id="39119">Deep Dive into Quantum Computing</option>
+                    </select>
+                    <button class="btn btn-primary" data-mc-element-id="39219">
+                        <i class="fas fa-play" data-mc-element-id="39276"></i> Run Test
+                    </button>
+                </div>
+
+                <div class="test-results" id="testResults" data-mc-element-id="39383">
+                    <div class="result-item" data-mc-element-id="39447">
+                        <span class="result-label" data-mc-element-id="39497">Processing Time</span>
+                        <span class="result-value mono" data-mc-element-id="39571">8m 23s</span>
+                    </div>
+                    <div class="result-item" data-mc-element-id="39664">
+                        <span class="result-label" data-mc-element-id="39714">Cost</span>
+                        <span class="result-value mono" data-mc-element-id="39777">$0.08</span>
+                    </div>
+                    <div class="result-item" data-mc-element-id="39869">
+                        <span class="result-label" data-mc-element-id="39919">Confidence Score</span>
+                        <span class="result-value" data-mc-element-id="39994">94.2%</span>
+                    </div>
+                    <div class="result-item" data-mc-element-id="40081">
+                        <span class="result-label" data-mc-element-id="40131">Word Count</span>
+                        <span class="result-value mono" data-mc-element-id="40200">18,492 words</span>
+                    </div>
+                    <button class="btn btn-primary" style="width: 100%; margin-top: 16px;" data-mc-element-id="40299">
+                        Use This Configuration
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Keyboard Shortcuts Bar -->
+    <div class="shortcuts-bar" data-mc-element-id="40557">
+        <div class="shortcut" data-mc-element-id="40593">
+            <span class="shortcut-key" data-mc-element-id="40628">⌘K</span>
+            <span data-mc-element-id="40677">Search</span>
+        </div>
+        <div class="shortcut" data-mc-element-id="40720">
+            <span class="shortcut-key" data-mc-element-id="40755">⌘S</span>
+            <span data-mc-element-id="40804">Save</span>
+        </div>
+        <div class="shortcut" data-mc-element-id="40845">
+            <span class="shortcut-key" data-mc-element-id="40880">⌘Z</span>
+            <span data-mc-element-id="40929">Undo</span>
+        </div>
+        <div class="shortcut" data-mc-element-id="40970">
+            <span class="shortcut-key" data-mc-element-id="41005">⌘,</span>
+            <span data-mc-element-id="41054">Settings</span>
+        </div>
+        <div class="shortcut" data-mc-element-id="41099">
+            <span class="shortcut-key" data-mc-element-id="41134">?</span>
+            <span data-mc-element-id="41182">Help</span>
+        </div>
+    </div>
+
+    <script>
+        // Show action bar when form changes
+        const selects = document.querySelectorAll('.form-select, .form-input, .checkbox');
+        const actionBar = document.getElementById('actionBar');
+        
+        selects.forEach(element => {
+            element.addEventListener('change', function() {
+                actionBar.classList.add('visible');
+                if (this.tagName === 'SELECT') {
+                    this.classList.add('changed');
+                }
+            });
+        });
+
+        // Provider select change handler
+        document.getElementById('providerSelect').addEventListener('change', function() {
+            console.log('Provider changed to:', this.value);
+        });
+
+        // Test button handler
+        document.querySelector('.test-panel .btn-primary').addEventListener('click', function() {
+            const testResults = document.getElementById('testResults');
+            this.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running test...';
+            this.disabled = true;
+            
+            setTimeout(() => {
+                this.innerHTML = '<i class="fas fa-play"></i> Run Test';
+                this.disabled = false;
+                testResults.classList.add('visible');
+            }, 2000);
+        });
+
+        // Sidebar navigation
+        document.querySelectorAll('.sidebar-item').forEach(item => {
+            item.addEventListener('click', function() {
+                document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
+                this.classList.add('active');
+            });
+        });
+
+        // Save button handler
+        document.querySelector('.btn-primary').addEventListener('click', function() {
+            if (this.textContent.includes('Save Changes')) {
+                this.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+                setTimeout(() => {
+                    this.innerHTML = 'Save Changes';
+                    actionBar.classList.remove('visible');
+                    document.querySelectorAll('.changed').forEach(el => el.classList.remove('changed'));
+                }, 1500);
+            }
+        });
+    </script>
+
+<script>__MC_SITE_ID__ = "f5e379e77a4627fcb373a8dece956334657b9aace011701bce5fdc901ff1b8f1"</script><script>__MC_OPTIONS__ = {
+  "svg": false,
+  "overlay": false
+}</script><script src="https://forge.moonchild.ai/public/devigner.global.js" type="module"></script></body></html>

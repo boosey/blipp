@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import { createPrismaClient } from "../lib/db";
+import { getConfig } from "../lib/config";
 import { generateNarrative } from "../lib/distillation";
 import { generateSpeech } from "../lib/tts";
 import { putClip } from "../lib/clip-cache";
@@ -12,6 +13,7 @@ interface ClipGenerationMessage {
   distillationId: string;
   durationTier: number;
   claims: any[];
+  type?: "manual";
 }
 
 /**
@@ -20,6 +22,8 @@ interface ClipGenerationMessage {
  * For each message: generates a spoken narrative from claims (Pass 2),
  * converts it to audio via TTS, stores the MP3 in R2, and updates the
  * clip record. Handles idempotency and error recording.
+ *
+ * Messages with `type: "manual"` bypass the stage-enabled check.
  *
  * @param batch - Cloudflare Queue message batch with clip generation requests
  * @param env - Worker environment bindings
@@ -35,6 +39,20 @@ export async function handleClipGeneration(
   const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
 
   try {
+    // Check if stage 3 (clip generation) is enabled — manual messages bypass this
+    const hasManual = batch.messages.some((m) => m.body.type === "manual");
+    if (!hasManual) {
+      const stageEnabled = await getConfig(
+        prisma,
+        "pipeline.stage.3.enabled",
+        true
+      );
+      if (!stageEnabled) {
+        for (const msg of batch.messages) msg.ack();
+        return;
+      }
+    }
+
     for (const msg of batch.messages) {
       const { episodeId, distillationId, durationTier, claims } = msg.body;
 

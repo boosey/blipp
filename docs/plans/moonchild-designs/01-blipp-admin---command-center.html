@@ -1,0 +1,1378 @@
+<!DOCTYPE html><html lang="en" data-mode=""><head><base href="https://forge.moonchild.ai/site/de4885ac650ed7ff008c9a0050173c3399079c7a3b77506af05365a16db7dbb5/">
+    <meta charset="UTF-8" data-mc-element-id="44">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" data-mc-element-id="71">
+    <title data-mc-element-id="146">Blipp Admin - Command Center</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Roboto+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #0A1628;
+            color: #F9FAFB;
+            font-size: 16px;
+            line-height: 24px;
+            font-weight: 500;
+            overflow-x: hidden;
+        }
+
+        .mono {
+            font-family: 'Roboto Mono', monospace;
+        }
+
+        /* Top Bar */
+        .top-bar {
+            height: 64px;
+            background: #1A2942;
+            border-bottom: 1px solid rgba(59, 130, 246, 0.1);
+            display: flex;
+            align-items: center;
+            padding: 0 24px;
+            gap: 24px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .logo {
+            font-size: 20px;
+            font-weight: 700;
+            color: #3B82F6;
+            letter-spacing: -0.5px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .logo i {
+            font-size: 24px;
+        }
+
+        .search-container {
+            flex: 1;
+            max-width: 500px;
+            position: relative;
+        }
+
+        .search-input {
+            width: 100%;
+            height: 40px;
+            background: #0A1628;
+            border: 1px solid rgba(156, 163, 175, 0.2);
+            border-radius: 6px;
+            padding: 0 16px 0 40px;
+            color: #F9FAFB;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s ease-in-out;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: #3B82F6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #9CA3AF;
+            font-size: 16px;
+        }
+
+        .search-hint {
+            position: absolute;
+            right: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #9CA3AF;
+            font-size: 12px;
+            font-weight: 600;
+            background: rgba(156, 163, 175, 0.1);
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+
+        .top-bar-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-left: auto;
+        }
+
+        .cost-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: rgba(16, 185, 129, 0.1);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+        }
+
+        .cost-indicator:hover {
+            background: rgba(16, 185, 129, 0.15);
+            transform: translateY(-1px);
+        }
+
+        .cost-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #10B981;
+        }
+
+        .cost-amount {
+            font-family: 'Roboto Mono', monospace;
+            font-size: 14px;
+            font-weight: 600;
+            color: #10B981;
+        }
+
+        .cost-label {
+            font-size: 12px;
+            color: #9CA3AF;
+        }
+
+        .alerts-button {
+            position: relative;
+            width: 40px;
+            height: 40px;
+            background: rgba(239, 68, 68, 0.1);
+            border: none;
+            border-radius: 6px;
+            color: #EF4444;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+        }
+
+        .alerts-button:hover {
+            background: rgba(239, 68, 68, 0.15);
+            transform: translateY(-1px);
+        }
+
+        .alerts-badge {
+            position: absolute;
+            top: -4px;
+            right: -4px;
+            background: #EF4444;
+            color: white;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 2px 6px;
+            border-radius: 10px;
+            min-width: 20px;
+            text-align: center;
+        }
+
+        .user-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #3B82F6, #06B6D4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+        }
+
+        .user-avatar:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+        }
+
+        /* Main Content Grid */
+        .main-content {
+            display: grid;
+            grid-template-columns: 5fr 3fr 2fr;
+            gap: 24px;
+            padding: 24px;
+            min-height: calc(100vh - 64px - 40px);
+        }
+
+        /* Card Styling */
+        .card {
+            background: #1A2942;
+            border-radius: 8px;
+            padding: 16px;
+            transition: all 0.2s ease-in-out;
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid rgba(156, 163, 175, 0.1);
+        }
+
+        .card-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: #F9FAFB;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .card-title i {
+            color: #3B82F6;
+            font-size: 18px;
+        }
+
+        .card-action {
+            font-size: 12px;
+            color: #9CA3AF;
+            cursor: pointer;
+            transition: color 0.2s ease-in-out;
+        }
+
+        .card-action:hover {
+            color: #3B82F6;
+        }
+
+        /* System Health */
+        .status-banner {
+            padding: 16px;
+            border-radius: 6px;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-weight: 600;
+        }
+
+        .status-banner.healthy {
+            background: rgba(16, 185, 129, 0.1);
+            color: #10B981;
+        }
+
+        .status-banner.warning {
+            background: rgba(245, 158, 11, 0.1);
+            color: #F59E0B;
+        }
+
+        .status-banner.error {
+            background: rgba(239, 68, 68, 0.1);
+            color: #EF4444;
+        }
+
+        .status-icon {
+            font-size: 24px;
+        }
+
+        .pipeline-stage {
+            margin-bottom: 12px;
+        }
+
+        .stage-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .stage-name {
+            color: #F9FAFB;
+        }
+
+        .stage-stats {
+            font-family: 'Roboto Mono', monospace;
+            font-size: 12px;
+            color: #9CA3AF;
+        }
+
+        .stage-progress {
+            height: 8px;
+            background: rgba(156, 163, 175, 0.1);
+            border-radius: 4px;
+            overflow: hidden;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+        }
+
+        .stage-progress:hover {
+            transform: scaleY(1.2);
+        }
+
+        .stage-progress-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.3s ease-in-out;
+        }
+
+        .stage-progress-fill.healthy {
+            background: linear-gradient(90deg, #10B981, #059669);
+        }
+
+        .stage-progress-fill.warning {
+            background: linear-gradient(90deg, #F59E0B, #D97706);
+        }
+
+        .stage-progress-fill.error {
+            background: linear-gradient(90deg, #EF4444, #DC2626);
+        }
+
+        /* Pipeline Pulse */
+        .pipeline-event {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 6px;
+            font-size: 13px;
+            transition: all 0.2s ease-in-out;
+            cursor: pointer;
+        }
+
+        .pipeline-event:hover {
+            background: rgba(156, 163, 175, 0.05);
+            transform: translateX(2px);
+        }
+
+        .event-time {
+            font-family: 'Roboto Mono', monospace;
+            font-size: 11px;
+            color: #9CA3AF;
+            min-width: 50px;
+        }
+
+        .event-stage-icon {
+            width: 24px;
+            height: 24px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+        }
+
+        .event-stage-icon.stage-1 { background: rgba(139, 92, 246, 0.2); color: #A78BFA; }
+        .event-stage-icon.stage-2 { background: rgba(59, 130, 246, 0.2); color: #60A5FA; }
+        .event-stage-icon.stage-3 { background: rgba(6, 182, 212, 0.2); color: #22D3EE; }
+        .event-stage-icon.stage-4 { background: rgba(16, 185, 129, 0.2); color: #34D399; }
+        .event-stage-icon.stage-5 { background: rgba(245, 158, 11, 0.2); color: #FBBF24; }
+
+        .event-details {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .event-episode {
+            color: #F9FAFB;
+            font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .event-podcast {
+            font-size: 12px;
+            color: #9CA3AF;
+        }
+
+        .event-status {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+        }
+
+        .event-status.success {
+            background: rgba(16, 185, 129, 0.2);
+            color: #10B981;
+        }
+
+        .event-status.retry {
+            background: rgba(245, 158, 11, 0.2);
+            color: #F59E0B;
+        }
+
+        .event-status.failure {
+            background: rgba(239, 68, 68, 0.2);
+            color: #EF4444;
+        }
+
+        .event-duration {
+            font-family: 'Roboto Mono', monospace;
+            font-size: 11px;
+            color: #9CA3AF;
+        }
+
+        /* Active Issues */
+        .issue-card {
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 8px;
+            border-left: 3px solid;
+            display: flex;
+            gap: 12px;
+            align-items: flex-start;
+            transition: all 0.2s ease-in-out;
+            cursor: pointer;
+        }
+
+        .issue-card:hover {
+            transform: translateX(2px);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .issue-card.critical {
+            background: rgba(239, 68, 68, 0.05);
+            border-left-color: #EF4444;
+        }
+
+        .issue-card.warning {
+            background: rgba(245, 158, 11, 0.05);
+            border-left-color: #F59E0B;
+        }
+
+        .issue-card.info {
+            background: rgba(59, 130, 246, 0.05);
+            border-left-color: #3B82F6;
+        }
+
+        .issue-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+        }
+
+        .issue-card.critical .issue-icon {
+            background: rgba(239, 68, 68, 0.2);
+            color: #EF4444;
+        }
+
+        .issue-card.warning .issue-icon {
+            background: rgba(245, 158, 11, 0.2);
+            color: #F59E0B;
+        }
+
+        .issue-card.info .issue-icon {
+            background: rgba(59, 130, 246, 0.2);
+            color: #3B82F6;
+        }
+
+        .issue-content {
+            flex: 1;
+        }
+
+        .issue-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #F9FAFB;
+            margin-bottom: 4px;
+        }
+
+        .issue-description {
+            font-size: 13px;
+            color: #9CA3AF;
+            margin-bottom: 8px;
+        }
+
+        .issue-meta {
+            display: flex;
+            gap: 16px;
+            font-size: 12px;
+            color: #9CA3AF;
+        }
+
+        .issue-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn-small {
+            padding: 4px 10px;
+            font-size: 12px;
+            font-weight: 600;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+        }
+
+        .btn-primary {
+            background: #3B82F6;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #2563EB;
+            transform: translateY(-1px);
+        }
+
+        .btn-ghost {
+            background: transparent;
+            color: #9CA3AF;
+            border: 1px solid rgba(156, 163, 175, 0.2);
+        }
+
+        .btn-ghost:hover {
+            color: #F9FAFB;
+            border-color: #9CA3AF;
+        }
+
+        /* Recent Activity */
+        .activity-item {
+            display: flex;
+            gap: 12px;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 6px;
+            font-size: 13px;
+            transition: all 0.2s ease-in-out;
+            cursor: pointer;
+        }
+
+        .activity-item:hover {
+            background: rgba(156, 163, 175, 0.05);
+        }
+
+        .activity-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            background: rgba(59, 130, 246, 0.1);
+            color: #3B82F6;
+        }
+
+        .activity-content {
+            flex: 1;
+        }
+
+        .activity-description {
+            color: #F9FAFB;
+            font-weight: 600;
+            margin-bottom: 2px;
+        }
+
+        .activity-meta {
+            font-size: 12px;
+            color: #9CA3AF;
+        }
+
+        /* Cost Monitor */
+        .cost-display {
+            text-align: center;
+            padding: 24px 16px;
+            margin-bottom: 16px;
+        }
+
+        .cost-main {
+            font-family: 'Roboto Mono', monospace;
+            font-size: 36px;
+            font-weight: 700;
+            color: #10B981;
+            margin-bottom: 4px;
+        }
+
+        .cost-label-main {
+            font-size: 14px;
+            color: #9CA3AF;
+            margin-bottom: 16px;
+        }
+
+        .cost-sparkline {
+            height: 40px;
+            margin-bottom: 16px;
+        }
+
+        .cost-comparison {
+            font-size: 13px;
+            color: #10B981;
+            font-weight: 600;
+        }
+
+        .cost-comparison i {
+            margin-right: 4px;
+        }
+
+        .cost-breakdown {
+            margin-bottom: 16px;
+        }
+
+        .cost-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(156, 163, 175, 0.1);
+            font-size: 13px;
+        }
+
+        .cost-item:last-child {
+            border-bottom: none;
+        }
+
+        .cost-item-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #9CA3AF;
+        }
+
+        .cost-item-bar {
+            height: 4px;
+            border-radius: 2px;
+            flex: 1;
+            margin: 0 12px;
+        }
+
+        .cost-item-amount {
+            font-family: 'Roboto Mono', monospace;
+            font-weight: 600;
+            color: #F9FAFB;
+        }
+
+        .cost-projection {
+            text-align: center;
+            padding: 12px;
+            background: rgba(156, 163, 175, 0.05);
+            border-radius: 6px;
+            font-size: 13px;
+            color: #9CA3AF;
+        }
+
+        .cost-projection strong {
+            font-family: 'Roboto Mono', monospace;
+            color: #F9FAFB;
+        }
+
+        /* Quick Stats */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .stat-card {
+            padding: 12px;
+            background: rgba(156, 163, 175, 0.05);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+        }
+
+        .stat-card:hover {
+            background: rgba(59, 130, 246, 0.1);
+            transform: translateY(-2px);
+        }
+
+        .stat-value {
+            font-family: 'Roboto Mono', monospace;
+            font-size: 20px;
+            font-weight: 700;
+            color: #F9FAFB;
+            margin-bottom: 2px;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #9CA3AF;
+            margin-bottom: 6px;
+        }
+
+        .stat-trend {
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .stat-trend.positive {
+            color: #10B981;
+        }
+
+        .stat-trend.negative {
+            color: #EF4444;
+        }
+
+        .stat-trend.neutral {
+            color: #9CA3AF;
+        }
+
+        /* Keyboard Shortcuts Bar */
+        .shortcuts-bar {
+            height: 40px;
+            background: #1A2942;
+            border-top: 1px solid rgba(59, 130, 246, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 24px;
+            font-size: 12px;
+            color: #9CA3AF;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 100;
+        }
+
+        .shortcut {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .shortcut-key {
+            background: rgba(156, 163, 175, 0.1);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Roboto Mono', monospace;
+            font-weight: 600;
+        }
+
+        .btn-link {
+            background: transparent;
+            border: none;
+            color: #3B82F6;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            padding: 8px 16px;
+            border-radius: 4px;
+            transition: all 0.2s ease-in-out;
+            width: 100%;
+            text-align: center;
+        }
+
+        .btn-link:hover {
+            background: rgba(59, 130, 246, 0.1);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 32px 16px;
+            color: #9CA3AF;
+        }
+
+        .empty-state i {
+            font-size: 48px;
+            margin-bottom: 16px;
+            opacity: 0.3;
+        }
+
+        .empty-state-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #F9FAFB;
+            margin-bottom: 8px;
+        }
+
+        .sparkline-svg {
+            width: 100%;
+            height: 40px;
+        }
+
+        @media (max-width: 1400px) {
+            .main-content {
+                grid-template-columns: 1fr 1fr;
+            }
+            
+            .main-content > div:last-child {
+                grid-column: 1 / -1;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                grid-template-columns: 1fr;
+                padding: 16px;
+            }
+
+            .search-container {
+                max-width: 300px;
+            }
+
+            .top-bar {
+                padding: 0 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Top Bar -->
+    <div class="top-bar" data-mc-element-id="20302">
+        <div class="logo" data-mc-element-id="20332">
+            <i class="fas fa-podcast" data-mc-element-id="20363"></i>
+            Blipp Admin
+        </div>
+
+        <div class="search-container" data-mc-element-id="20442">
+            <i class="fas fa-search search-icon" data-mc-element-id="20485"></i>
+            <input type="text" class="search-input" placeholder="Search podcasts, episodes, users, or type command..." data-mc-element-id="20539">
+            <span class="search-hint" data-mc-element-id="20659">⌘K</span>
+        </div>
+
+        <div class="top-bar-right" data-mc-element-id="20719">
+            <div class="cost-indicator" data-mc-element-id="20759">
+                <span class="cost-dot" data-mc-element-id="20804"></span>
+                <div data-mc-element-id="20851">
+                    <div class="cost-amount" data-mc-element-id="20877">$847</div>
+                    <div class="cost-label" data-mc-element-id="20933">today</div>
+                </div>
+            </div>
+
+            <button class="alerts-button" data-mc-element-id="21024">
+                <i class="fas fa-bell" data-mc-element-id="21071"></i>
+                <span class="alerts-badge" data-mc-element-id="21115">3</span>
+            </button>
+
+            <div class="user-avatar" data-mc-element-id="21186">AJ</div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content" data-mc-element-id="21277">
+        <!-- Left Column -->
+        <div data-mc-element-id="21341">
+            <!-- System Health -->
+            <div class="card" data-mc-element-id="21394">
+                <div class="card-header" data-mc-element-id="21429">
+                    <div class="card-title" data-mc-element-id="21475">
+                        <i class="fas fa-heart-pulse" data-mc-element-id="21524"></i>
+                        System Health
+                    </div>
+                </div>
+
+                <div class="status-banner warning" data-mc-element-id="21664">
+                    <i class="fas fa-exclamation-triangle status-icon" data-mc-element-id="21720"></i>
+                    <div data-mc-element-id="21796">
+                        <strong data-mc-element-id="21826">3 Issues Require Attention</strong>
+                        <div style="font-size: 13px; font-weight: 500; margin-top: 2px; opacity: 0.9;" data-mc-element-id="21894">Pipeline running with degraded performance</div>
+                    </div>
+                </div>
+
+                <div class="pipeline-stage" data-mc-element-id="22089">
+                    <div class="stage-header" data-mc-element-id="22138">
+                        <span class="stage-name" data-mc-element-id="22189">Stage 1: Feed Refresh</span>
+                        <span class="stage-stats" data-mc-element-id="22267">2,147/2,147 • 98.3%</span>
+                    </div>
+                    <div class="stage-progress" data-mc-element-id="22367">
+                        <div class="stage-progress-fill healthy" style="width: 98.3%;" data-mc-element-id="22420"></div>
+                    </div>
+                </div>
+
+                <div class="pipeline-stage" data-mc-element-id="22557">
+                    <div class="stage-header" data-mc-element-id="22606">
+                        <span class="stage-name" data-mc-element-id="22657">Stage 2: Transcription (STT)</span>
+                        <span class="stage-stats" data-mc-element-id="22742">1,203/1,341 • 89.7%</span>
+                    </div>
+                    <div class="stage-progress" data-mc-element-id="22842">
+                        <div class="stage-progress-fill warning" style="width: 89.7%;" data-mc-element-id="22895"></div>
+                    </div>
+                </div>
+
+                <div class="pipeline-stage" data-mc-element-id="23032">
+                    <div class="stage-header" data-mc-element-id="23081">
+                        <span class="stage-name" data-mc-element-id="23132">Stage 3: Distillation</span>
+                        <span class="stage-stats" data-mc-element-id="23210">847/920 • 92.1%</span>
+                    </div>
+                    <div class="stage-progress" data-mc-element-id="23306">
+                        <div class="stage-progress-fill warning" style="width: 92.1%;" data-mc-element-id="23359"></div>
+                    </div>
+                </div>
+
+                <div class="pipeline-stage" data-mc-element-id="23496">
+                    <div class="stage-header" data-mc-element-id="23545">
+                        <span class="stage-name" data-mc-element-id="23596">Stage 4: Clip Generation</span>
+                        <span class="stage-stats" data-mc-element-id="23677">3,892/4,012 • 97.0%</span>
+                    </div>
+                    <div class="stage-progress" data-mc-element-id="23777">
+                        <div class="stage-progress-fill healthy" style="width: 97.0%;" data-mc-element-id="23830"></div>
+                    </div>
+                </div>
+
+                <div class="pipeline-stage" data-mc-element-id="23967">
+                    <div class="stage-header" data-mc-element-id="24016">
+                        <span class="stage-name" data-mc-element-id="24067">Stage 5: Briefing Assembly</span>
+                        <span class="stage-stats" data-mc-element-id="24150">4,203/4,203 • 100%</span>
+                    </div>
+                    <div class="stage-progress" data-mc-element-id="24249">
+                        <div class="stage-progress-fill healthy" style="width: 100%;" data-mc-element-id="24302"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Pipeline Pulse -->
+            <div class="card" style="margin-top: 24px;" data-mc-element-id="24489">
+                <div class="card-header" data-mc-element-id="24550">
+                    <div class="card-title" data-mc-element-id="24596">
+                        <i class="fas fa-stream" data-mc-element-id="24645"></i>
+                        Pipeline Pulse
+                    </div>
+                    <div class="card-action" data-mc-element-id="24761">Live • Updates every 2s</div>
+                </div>
+
+                <div class="pipeline-event" data-mc-element-id="24856">
+                    <div class="event-time mono" data-mc-element-id="24905">14:23:49</div>
+                    <div class="event-stage-icon stage-5" data-mc-element-id="24969">5</div>
+                    <div class="event-details" data-mc-element-id="25035">
+                        <div class="event-episode" data-mc-element-id="25087">Morning briefing for user #3829</div>
+                        <div class="event-podcast" data-mc-element-id="25176">7 podcasts • 15 min</div>
+                    </div>
+                    <div class="event-status success" data-mc-element-id="25276"><i class="fas fa-check" data-mc-element-id="25310"></i></div>
+                    <div class="event-duration mono" data-mc-element-id="25365">2.3s</div>
+                </div>
+
+                <div class="pipeline-event" data-mc-element-id="25449">
+                    <div class="event-time mono" data-mc-element-id="25498">14:23:47</div>
+                    <div class="event-stage-icon stage-4" data-mc-element-id="25562">4</div>
+                    <div class="event-details" data-mc-element-id="25628">
+                        <div class="event-episode" data-mc-element-id="25680">EP 142: The Future of AI in Healthcare</div>
+                        <div class="event-podcast" data-mc-element-id="25776">The AI Podcast • 7 min clip</div>
+                    </div>
+                    <div class="event-status success" data-mc-element-id="25884"><i class="fas fa-check" data-mc-element-id="25918"></i></div>
+                    <div class="event-duration mono" data-mc-element-id="25973">18.7s</div>
+                </div>
+
+                <div class="pipeline-event" data-mc-element-id="26058">
+                    <div class="event-time mono" data-mc-element-id="26107">14:23:43</div>
+                    <div class="event-stage-icon stage-3" data-mc-element-id="26171">3</div>
+                    <div class="event-details" data-mc-element-id="26237">
+                        <div class="event-episode" data-mc-element-id="26289">Breaking Down the Latest Tech News</div>
+                        <div class="event-podcast" data-mc-element-id="26381">The Vergecast • 847 claims extracted</div>
+                    </div>
+                    <div class="event-status success" data-mc-element-id="26498"><i class="fas fa-check" data-mc-element-id="26532"></i></div>
+                    <div class="event-duration mono" data-mc-element-id="26587">24.1s</div>
+                </div>
+
+                <div class="pipeline-event" data-mc-element-id="26672">
+                    <div class="event-time mono" data-mc-element-id="26721">14:23:40</div>
+                    <div class="event-stage-icon stage-2" data-mc-element-id="26785">2</div>
+                    <div class="event-details" data-mc-element-id="26851">
+                        <div class="event-episode" data-mc-element-id="26903">Deep Dive into Quantum Computing</div>
+                        <div class="event-podcast" data-mc-element-id="26993">Lex Fridman Podcast • 89 min transcribed</div>
+                    </div>
+                    <div class="event-status retry" data-mc-element-id="27114"><i class="fas fa-rotate" data-mc-element-id="27146"></i></div>
+                    <div class="event-duration mono" data-mc-element-id="27202">94.2s</div>
+                </div>
+
+                <div class="pipeline-event" data-mc-element-id="27287">
+                    <div class="event-time mono" data-mc-element-id="27336">14:23:37</div>
+                    <div class="event-stage-icon stage-1" data-mc-element-id="27400">1</div>
+                    <div class="event-details" data-mc-element-id="27466">
+                        <div class="event-episode" data-mc-element-id="27518">Feed refresh completed</div>
+                        <div class="event-podcast" data-mc-element-id="27598">All Things JavaScript • 3 new episodes</div>
+                    </div>
+                    <div class="event-status success" data-mc-element-id="27717"><i class="fas fa-check" data-mc-element-id="27751"></i></div>
+                    <div class="event-duration mono" data-mc-element-id="27806">1.2s</div>
+                </div>
+
+                <div class="pipeline-event" data-mc-element-id="27890">
+                    <div class="event-time mono" data-mc-element-id="27939">14:23:33</div>
+                    <div class="event-stage-icon stage-4" data-mc-element-id="28003">4</div>
+                    <div class="event-details" data-mc-element-id="28069">
+                        <div class="event-episode" data-mc-element-id="28121">Startup Funding Strategies for 2024</div>
+                        <div class="event-podcast" data-mc-element-id="28214">Y Combinator • 5 min clip</div>
+                    </div>
+                    <div class="event-status success" data-mc-element-id="28320"><i class="fas fa-check" data-mc-element-id="28354"></i></div>
+                    <div class="event-duration mono" data-mc-element-id="28409">15.8s</div>
+                </div>
+
+                <div class="pipeline-event" data-mc-element-id="28494">
+                    <div class="event-time mono" data-mc-element-id="28543">14:23:30</div>
+                    <div class="event-stage-icon stage-3" data-mc-element-id="28607">3</div>
+                    <div class="event-details" data-mc-element-id="28673">
+                        <div class="event-episode" data-mc-element-id="28725">The State of Crypto Markets</div>
+                        <div class="event-podcast" data-mc-element-id="28810">Bankless • 1,203 claims extracted</div>
+                    </div>
+                    <div class="event-status failure" data-mc-element-id="28924"><i class="fas fa-xmark" data-mc-element-id="28958"></i></div>
+                    <div class="event-duration mono" data-mc-element-id="29013">31.4s</div>
+                </div>
+
+                <button class="btn-link" data-mc-element-id="29098">View Full Pipeline →</button>
+            </div>
+        </div>
+
+        <!-- Center Column -->
+        <div data-mc-element-id="29227">
+            <!-- Active Issues -->
+            <div class="card" data-mc-element-id="29280">
+                <div class="card-header" data-mc-element-id="29315">
+                    <div class="card-title" data-mc-element-id="29361">
+                        <i class="fas fa-triangle-exclamation" data-mc-element-id="29410"></i>
+                        Active Issues
+                    </div>
+                    <div class="card-action" data-mc-element-id="29539">3 require attention</div>
+                </div>
+
+                <div class="issue-card critical" data-mc-element-id="29630">
+                    <div class="issue-icon" data-mc-element-id="29684">
+                        <i class="fas fa-bolt" data-mc-element-id="29733"></i>
+                    </div>
+                    <div class="issue-content" data-mc-element-id="29808">
+                        <div class="issue-title" data-mc-element-id="29860">STT Rate Limit Exceeded</div>
+                        <div class="issue-description" data-mc-element-id="29939">12 episodes failed at transcription stage due to API rate limiting</div>
+                        <div class="issue-meta" data-mc-element-id="30067">
+                            <span data-mc-element-id="30120"><i class="fas fa-clock" data-mc-element-id="30126"></i> 8 minutes ago</span>
+                            <span data-mc-element-id="30204"><i class="fas fa-layer-group" data-mc-element-id="30210"></i> Stage 2</span>
+                            <span class="mono" data-mc-element-id="30288">12 episodes</span>
+                        </div>
+                    </div>
+                    <div class="issue-actions" data-mc-element-id="30404">
+                        <button class="btn-small btn-primary" data-mc-element-id="30456">Retry All</button>
+                        <button class="btn-small btn-ghost" data-mc-element-id="30537">Details</button>
+                    </div>
+                </div>
+
+                <div class="issue-card warning" data-mc-element-id="30657">
+                    <div class="issue-icon" data-mc-element-id="30710">
+                        <i class="fas fa-rss" data-mc-element-id="30759"></i>
+                    </div>
+                    <div class="issue-content" data-mc-element-id="30833">
+                        <div class="issue-title" data-mc-element-id="30885">Broken Feed Detected</div>
+                        <div class="issue-description" data-mc-element-id="30961">RSS feed for "Tech News Daily" returning 404 errors for 3 consecutive refreshes</div>
+                        <div class="issue-meta" data-mc-element-id="31102">
+                            <span data-mc-element-id="31155"><i class="fas fa-clock" data-mc-element-id="31161"></i> 42 minutes ago</span>
+                            <span data-mc-element-id="31240"><i class="fas fa-layer-group" data-mc-element-id="31246"></i> Stage 1</span>
+                            <span class="mono" data-mc-element-id="31324">1 podcast</span>
+                        </div>
+                    </div>
+                    <div class="issue-actions" data-mc-element-id="31438">
+                        <button class="btn-small btn-primary" data-mc-element-id="31490">Investigate</button>
+                        <button class="btn-small btn-ghost" data-mc-element-id="31573">Ignore</button>
+                    </div>
+                </div>
+
+                <div class="issue-card warning" data-mc-element-id="31692">
+                    <div class="issue-icon" data-mc-element-id="31745">
+                        <i class="fas fa-dollar-sign" data-mc-element-id="31794"></i>
+                    </div>
+                    <div class="issue-content" data-mc-element-id="31876">
+                        <div class="issue-title" data-mc-element-id="31928">Cost Spike Detected</div>
+                        <div class="issue-description" data-mc-element-id="32003">TTS costs up 34% vs. yesterday - unusually high clip generation volume</div>
+                        <div class="issue-meta" data-mc-element-id="32135">
+                            <span data-mc-element-id="32188"><i class="fas fa-clock" data-mc-element-id="32194"></i> 2 hours ago</span>
+                            <span data-mc-element-id="32270"><i class="fas fa-layer-group" data-mc-element-id="32276"></i> Stage 4</span>
+                            <span class="mono" data-mc-element-id="32354">+$127</span>
+                        </div>
+                    </div>
+                    <div class="issue-actions" data-mc-element-id="32464">
+                        <button class="btn-small btn-primary" data-mc-element-id="32516">Analyze</button>
+                        <button class="btn-small btn-ghost" data-mc-element-id="32595">Dismiss</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Activity -->
+            <div class="card" style="margin-top: 24px;" data-mc-element-id="32767">
+                <div class="card-header" data-mc-element-id="32828">
+                    <div class="card-title" data-mc-element-id="32874">
+                        <i class="fas fa-clock-rotate-left" data-mc-element-id="32923"></i>
+                        Recent Activity
+                    </div>
+                    <div class="card-action" data-mc-element-id="33051">Last 24 hours</div>
+                </div>
+
+                <div class="activity-item" data-mc-element-id="33136">
+                    <div class="activity-icon" data-mc-element-id="33184">
+                        <i class="fas fa-podcast" data-mc-element-id="33236"></i>
+                    </div>
+                    <div class="activity-content" data-mc-element-id="33314">
+                        <div class="activity-description" data-mc-element-id="33369">Added 23 new podcasts to catalog</div>
+                        <div class="activity-meta" data-mc-element-id="33466">Admin • 3 hours ago</div>
+                    </div>
+                </div>
+
+                <div class="activity-item" data-mc-element-id="33586">
+                    <div class="activity-icon" data-mc-element-id="33634">
+                        <i class="fas fa-rotate" data-mc-element-id="33686"></i>
+                    </div>
+                    <div class="activity-content" data-mc-element-id="33763">
+                        <div class="activity-description" data-mc-element-id="33818">Bulk retry of 47 failed distillation jobs</div>
+                        <div class="activity-meta" data-mc-element-id="33924">Admin • 8 hours ago • 45 succeeded</div>
+                    </div>
+                </div>
+
+                <div class="activity-item" data-mc-element-id="34059">
+                    <div class="activity-icon" data-mc-element-id="34107">
+                        <i class="fas fa-sliders" data-mc-element-id="34159"></i>
+                    </div>
+                    <div class="activity-content" data-mc-element-id="34237">
+                        <div class="activity-description" data-mc-element-id="34292">Updated distillation prompt for quality improvements</div>
+                        <div class="activity-meta" data-mc-element-id="34409">Admin • 14 hours ago</div>
+                    </div>
+                </div>
+
+                <div class="activity-item" data-mc-element-id="34530">
+                    <div class="activity-icon" data-mc-element-id="34578">
+                        <i class="fas fa-layer-group" data-mc-element-id="34630"></i>
+                    </div>
+                    <div class="activity-content" data-mc-element-id="34712">
+                        <div class="activity-description" data-mc-element-id="34767">Created new subscription tier: Teams ($29/mo)</div>
+                        <div class="activity-meta" data-mc-element-id="34877">Admin • 18 hours ago</div>
+                    </div>
+                </div>
+
+                <div class="activity-item" data-mc-element-id="34998">
+                    <div class="activity-icon" data-mc-element-id="35046">
+                        <i class="fas fa-chart-line" data-mc-element-id="35098"></i>
+                    </div>
+                    <div class="activity-content" data-mc-element-id="35179">
+                        <div class="activity-description" data-mc-element-id="35234">Added 7-minute duration tier for better caching</div>
+                        <div class="activity-meta" data-mc-element-id="35346">Admin • 22 hours ago</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Column -->
+        <div data-mc-element-id="35523">
+            <!-- Cost Monitor -->
+            <div class="card" data-mc-element-id="35575">
+                <div class="card-header" data-mc-element-id="35610">
+                    <div class="card-title" data-mc-element-id="35656">
+                        <i class="fas fa-dollar-sign" data-mc-element-id="35705"></i>
+                        Cost Monitor
+                    </div>
+                </div>
+
+                <div class="cost-display" data-mc-element-id="35844">
+                    <div class="cost-main mono" data-mc-element-id="35891">$847.48</div>
+                    <div class="cost-label-main" data-mc-element-id="35953">Today's Spend</div>
+                    
+                    <svg class="sparkline-svg cost-sparkline" viewBox="0 0 200 40" data-mc-element-id="36043">
+                        <defs data-mc-element-id="36131">
+                            <linearGradient id="sparkGradient" x1="0%" y1="0%" x2="0%" y2="100%" data-mc-element-id="36166">
+                                <stop offset="0%" style="stop-color:#10B981;stop-opacity:0.3" data-mc-element-id="36268"></stop>
+                                <stop offset="100%" style="stop-color:#10B981;stop-opacity:0.05" data-mc-element-id="36364"></stop>
+                            </linearGradient>
+                        </defs>
+                        <path d="M0 35 L20 32 L40 28 L60 30 L80 25 L100 22 L120 18 L140 15 L160 12 L180 8 L200 5" stroke="#10B981" stroke-width="2" fill="none" stroke-linecap="round" data-mc-element-id="36533"></path>
+                        <path d="M0 35 L20 32 L40 28 L60 30 L80 25 L100 22 L120 18 L140 15 L160 12 L180 8 L200 5 L200 40 L0 40 Z" fill="url(#sparkGradient)" data-mc-element-id="36749"></path>
+                    </svg>
+
+                    <div class="cost-comparison" data-mc-element-id="36963">
+                        <i class="fas fa-arrow-up" data-mc-element-id="37017"></i> 12% vs. yesterday
+                    </div>
+                </div>
+
+                <div class="cost-breakdown" data-mc-element-id="37134">
+                    <div class="cost-item" data-mc-element-id="37183">
+                        <div class="cost-item-label" data-mc-element-id="37231">
+                            <span data-mc-element-id="37289">STT</span>
+                        </div>
+                        <div class="cost-item-bar" style="background: linear-gradient(90deg, #3B82F6 0%, #3B82F6 35%, transparent 35%);" data-mc-element-id="37361"></div>
+                        <div class="cost-item-amount mono" data-mc-element-id="37505">$296.56</div>
+                    </div>
+                    <div class="cost-item" data-mc-element-id="37601">
+                        <div class="cost-item-label" data-mc-element-id="37649">
+                            <span data-mc-element-id="37707">Distillation</span>
+                        </div>
+                        <div class="cost-item-bar" style="background: linear-gradient(90deg, #06B6D4 0%, #06B6D4 40%, transparent 40%);" data-mc-element-id="37788"></div>
+                        <div class="cost-item-amount mono" data-mc-element-id="37932">$338.93</div>
+                    </div>
+                    <div class="cost-item" data-mc-element-id="38028">
+                        <div class="cost-item-label" data-mc-element-id="38076">
+                            <span data-mc-element-id="38134">TTS</span>
+                        </div>
+                        <div class="cost-item-bar" style="background: linear-gradient(90deg, #10B981 0%, #10B981 20%, transparent 20%);" data-mc-element-id="38206"></div>
+                        <div class="cost-item-amount mono" data-mc-element-id="38350">$169.46</div>
+                    </div>
+                    <div class="cost-item" data-mc-element-id="38446">
+                        <div class="cost-item-label" data-mc-element-id="38494">
+                            <span data-mc-element-id="38552">Other</span>
+                        </div>
+                        <div class="cost-item-bar" style="background: linear-gradient(90deg, #9CA3AF 0%, #9CA3AF 5%, transparent 5%);" data-mc-element-id="38626"></div>
+                        <div class="cost-item-amount mono" data-mc-element-id="38768">$42.37</div>
+                    </div>
+                </div>
+
+                <div class="cost-projection" data-mc-element-id="38883">
+                    Projected monthly: <strong class="mono" data-mc-element-id="38952">$25,419</strong>
+                    <div style="font-size: 11px; margin-top: 4px;" data-mc-element-id="39010">Based on 7-day average</div>
+                </div>
+
+                <button class="btn-link" style="margin-top: 12px;" data-mc-element-id="39126">View Cost Analytics →</button>
+            </div>
+
+            <!-- Quick Stats -->
+            <div class="card" style="margin-top: 24px;" data-mc-element-id="39273">
+                <div class="card-header" data-mc-element-id="39334">
+                    <div class="card-title" data-mc-element-id="39380">
+                        <i class="fas fa-chart-simple" data-mc-element-id="39429"></i>
+                        Quick Stats
+                    </div>
+                </div>
+
+                <div class="stats-grid" data-mc-element-id="39568">
+                    <div class="stat-card" data-mc-element-id="39613">
+                        <div class="stat-value mono" data-mc-element-id="39661">2,147</div>
+                        <div class="stat-label" data-mc-element-id="39726">Total Podcasts</div>
+                        <div class="stat-trend positive" data-mc-element-id="39795">
+                            <i class="fas fa-arrow-up" data-mc-element-id="39857"></i> 23 today
+                        </div>
+                    </div>
+
+                    <div class="stat-card" data-mc-element-id="39977">
+                        <div class="stat-value mono" data-mc-element-id="40025">3,829</div>
+                        <div class="stat-label" data-mc-element-id="40090">Active Users</div>
+                        <div class="stat-trend positive" data-mc-element-id="40157">
+                            <i class="fas fa-arrow-up" data-mc-element-id="40219"></i> 5% this week
+                        </div>
+                    </div>
+
+                    <div class="stat-card" data-mc-element-id="40343">
+                        <div class="stat-value mono" data-mc-element-id="40391">18.5K</div>
+                        <div class="stat-label" data-mc-element-id="40456">Episodes Processed</div>
+                        <div class="stat-trend positive" data-mc-element-id="40529">
+                            <i class="fas fa-arrow-up" data-mc-element-id="40591"></i> 847 today
+                        </div>
+                    </div>
+
+                    <div class="stat-card" data-mc-element-id="40712">
+                        <div class="stat-value mono" data-mc-element-id="40760">4,203</div>
+                        <div class="stat-label" data-mc-element-id="40825">Briefings This Week</div>
+                        <div class="stat-trend neutral" data-mc-element-id="40899">
+                            <i class="fas fa-minus" data-mc-element-id="40960"></i> ±0% vs. last week
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Keyboard Shortcuts Bar -->
+    <div class="shortcuts-bar" data-mc-element-id="41174">
+        <div class="shortcut" data-mc-element-id="41210">
+            <span class="shortcut-key" data-mc-element-id="41245">⌘K</span>
+            <span data-mc-element-id="41294">Search</span>
+        </div>
+        <div class="shortcut" data-mc-element-id="41337">
+            <span class="shortcut-key" data-mc-element-id="41372">⌘P</span>
+            <span data-mc-element-id="41421">Pipeline</span>
+        </div>
+        <div class="shortcut" data-mc-element-id="41466">
+            <span class="shortcut-key" data-mc-element-id="41501">⌘C</span>
+            <span data-mc-element-id="41550">Catalog</span>
+        </div>
+        <div class="shortcut" data-mc-element-id="41594">
+            <span class="shortcut-key" data-mc-element-id="41629">⌘E</span>
+            <span data-mc-element-id="41678">Episodes</span>
+        </div>
+        <div class="shortcut" data-mc-element-id="41723">
+            <span class="shortcut-key" data-mc-element-id="41758">⌘B</span>
+            <span data-mc-element-id="41807">Briefings</span>
+        </div>
+        <div class="shortcut" data-mc-element-id="41853">
+            <span class="shortcut-key" data-mc-element-id="41888">⌘,</span>
+            <span data-mc-element-id="41937">Settings</span>
+        </div>
+        <div class="shortcut" data-mc-element-id="41982">
+            <span class="shortcut-key" data-mc-element-id="42017">?</span>
+            <span data-mc-element-id="42065">Help</span>
+        </div>
+    </div>
+
+    <script>
+        // Simulate live updates for pipeline pulse
+        function simulateLiveUpdates() {
+            const events = document.querySelectorAll('.pipeline-event');
+            const times = document.querySelectorAll('.event-time');
+            
+            setInterval(() => {
+                // Update timestamps
+                times.forEach(time => {
+                    const [hours, minutes, seconds] = time.textContent.split(':').map(Number);
+                    const newSeconds = (seconds + 1) % 60;
+                    const newMinutes = newSeconds === 0 ? (minutes + 1) % 60 : minutes;
+                    const newHours = newMinutes === 0 && newSeconds === 0 ? (hours + 1) % 24 : hours;
+                    
+                    time.textContent = `${String(newHours).padStart(2, '0')}:${String(newMinutes).padStart(2, '0')}:${String(newSeconds).padStart(2, '0')}`;
+                });
+
+                // Occasionally add visual pulse to first event
+                if (Math.random() > 0.7) {
+                    const firstEvent = events[0];
+                    firstEvent.style.background = 'rgba(59, 130, 246, 0.1)';
+                    setTimeout(() => {
+                        firstEvent.style.background = '';
+                    }, 300);
+                }
+            }, 2000);
+        }
+
+        // Add hover interactions for stage progress bars
+        document.querySelectorAll('.stage-progress').forEach(bar => {
+            bar.addEventListener('mouseenter', function() {
+                const fill = this.querySelector('.stage-progress-fill');
+                const stageName = this.closest('.pipeline-stage').querySelector('.stage-name').textContent;
+                this.style.cursor = 'pointer';
+                this.title = `Click to view ${stageName} details`;
+            });
+        });
+
+        // Add click handlers for issue cards
+        document.querySelectorAll('.issue-card').forEach(card => {
+            card.addEventListener('click', function(e) {
+                if (!e.target.closest('button')) {
+                    console.log('Opening issue details:', this.querySelector('.issue-title').textContent);
+                }
+            });
+        });
+
+        // Add click handlers for stat cards
+        document.querySelectorAll('.stat-card').forEach(card => {
+            card.addEventListener('click', function() {
+                const label = this.querySelector('.stat-label').textContent;
+                console.log('Navigating to:', label);
+            });
+        });
+
+        // Simulate cost counter updates
+        function updateCostCounter() {
+            const costDisplay = document.querySelector('.cost-main');
+            let currentCost = 847.32;
+            
+            setInterval(() => {
+                currentCost += Math.random() * 0.5;
+                costDisplay.textContent = `$${currentCost.toFixed(2)}`;
+            }, 5000);
+        }
+
+        // Initialize
+        simulateLiveUpdates();
+        updateCostCounter();
+
+        // Add keyboard shortcut handlers
+        document.addEventListener('keydown', function(e) {
+            if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+                e.preventDefault();
+                document.querySelector('.search-input').focus();
+            }
+        });
+    </script>
+
+<script>__MC_SITE_ID__ = "de4885ac650ed7ff008c9a0050173c3399079c7a3b77506af05365a16db7dbb5"</script><script>__MC_OPTIONS__ = {
+  "svg": false,
+  "overlay": false
+}</script><script src="https://forge.moonchild.ai/public/devigner.global.js" type="module"></script></body></html>

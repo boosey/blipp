@@ -6,6 +6,10 @@ vi.mock("../../lib/db", () => ({
   createPrismaClient: vi.fn(),
 }));
 
+vi.mock("../../lib/config", () => ({
+  getConfig: vi.fn().mockResolvedValue(true),
+}));
+
 vi.mock("../../lib/clip-cache", () => ({
   getClip: vi.fn(),
   putBriefing: vi.fn().mockResolvedValue("briefings/user-1/2026-02-26.mp3"),
@@ -22,6 +26,7 @@ vi.mock("../../lib/time-fitting", () => ({
 }));
 
 import { createPrismaClient } from "../../lib/db";
+import { getConfig } from "../../lib/config";
 import { getClip, putBriefing } from "../../lib/clip-cache";
 import { concatMp3Buffers } from "../../lib/mp3-concat";
 
@@ -214,5 +219,46 @@ describe("handleBriefingAssembly", () => {
     );
 
     expect(mockMsg.ack).toHaveBeenCalled();
+  });
+
+  describe("stage-enabled check", () => {
+    it("ACKs without processing when stage 4 is disabled", async () => {
+      (getConfig as any).mockResolvedValueOnce(false); // pipeline.stage.4.enabled
+
+      const mockMsg = { body: msgBody, ack: vi.fn(), retry: vi.fn() };
+      const mockBatch = {
+        messages: [mockMsg],
+        queue: "briefing-assembly",
+      } as unknown as MessageBatch<any>;
+
+      await handleBriefingAssembly(mockBatch, mockEnv, mockCtx);
+
+      expect(mockMsg.ack).toHaveBeenCalled();
+      expect(mockPrisma.briefing.findUniqueOrThrow).not.toHaveBeenCalled();
+      expect(mockPrisma.subscription.findMany).not.toHaveBeenCalled();
+    });
+
+    it("bypasses stage-enabled check for manual messages", async () => {
+      mockPrisma.briefing.findUniqueOrThrow.mockResolvedValue({
+        id: "brief-1",
+        userId: "user-1",
+        targetMinutes: 10,
+      });
+      mockPrisma.briefing.update.mockResolvedValue({});
+      mockPrisma.subscription.findMany.mockResolvedValue([]);
+
+      const manualBody = { ...msgBody, type: "manual" as const };
+      const mockMsg = { body: manualBody, ack: vi.fn(), retry: vi.fn() };
+      const mockBatch = {
+        messages: [mockMsg],
+        queue: "briefing-assembly",
+      } as unknown as MessageBatch<any>;
+
+      await handleBriefingAssembly(mockBatch, mockEnv, mockCtx);
+
+      // Should process — stage check is bypassed for manual
+      expect(mockPrisma.briefing.findUniqueOrThrow).toHaveBeenCalled();
+      expect(mockMsg.ack).toHaveBeenCalled();
+    });
   });
 });

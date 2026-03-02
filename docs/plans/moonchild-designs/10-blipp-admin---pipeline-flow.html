@@ -1,0 +1,2043 @@
+<!DOCTYPE html><html lang="en" data-mode=""><head><base href="https://forge.moonchild.ai/site/968df55172105a36e6d5f88a500b6afab425d78feb0d93fd0d22ee72d118cc70/">
+    <meta charset="UTF-8" data-mc-element-id="44">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" data-mc-element-id="71">
+    <title data-mc-element-id="146">Blipp Admin - Pipeline Flow</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Roboto+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #0A1628;
+            color: #F9FAFB;
+            font-size: 16px;
+            line-height: 24px;
+            font-weight: 500;
+            overflow-x: hidden;
+        }
+
+        .mono {
+            font-family: 'Roboto Mono', monospace;
+        }
+
+        /* Top Bar - Reuse from Command Center */
+        .top-bar {
+            height: 64px;
+            background: #1A2942;
+            border-bottom: 1px solid rgba(59, 130, 246, 0.1);
+            display: flex;
+            align-items: center;
+            padding: 0 24px;
+            gap: 24px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .logo {
+            font-size: 20px;
+            font-weight: 700;
+            color: #3B82F6;
+            letter-spacing: -0.5px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            position: relative;
+        }
+
+        .logo i {
+            font-size: 24px;
+        }
+
+        .logo-badge {
+            position: absolute;
+            top: -4px;
+            right: -8px;
+            width: 8px;
+            height: 8px;
+            background: #3B82F6;
+            border-radius: 50%;
+            box-shadow: 0 0 8px rgba(59, 130, 246, 0.6);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.2); }
+        }
+
+        .breadcrumb {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            color: #9CA3AF;
+            margin-left: -8px;
+        }
+
+        .breadcrumb i {
+            font-size: 10px;
+        }
+
+        .breadcrumb-item {
+            cursor: pointer;
+            transition: color 0.2s ease-in-out;
+        }
+
+        .breadcrumb-item:hover {
+            color: #3B82F6;
+        }
+
+        .breadcrumb-current {
+            color: #F9FAFB;
+            font-weight: 600;
+        }
+
+        .search-container {
+            flex: 1;
+            max-width: 500px;
+            position: relative;
+        }
+
+        .search-input {
+            width: 100%;
+            height: 40px;
+            background: #0A1628;
+            border: 1px solid rgba(156, 163, 175, 0.2);
+            border-radius: 6px;
+            padding: 0 16px 0 40px;
+            color: #F9FAFB;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s ease-in-out;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: #3B82F6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #9CA3AF;
+            font-size: 16px;
+        }
+
+        .search-hint {
+            position: absolute;
+            right: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #9CA3AF;
+            font-size: 12px;
+            font-weight: 600;
+            background: rgba(156, 163, 175, 0.1);
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+
+        .top-bar-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-left: auto;
+        }
+
+        .connection-indicator {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            color: #10B981;
+            padding: 6px 10px;
+            background: rgba(16, 185, 129, 0.1);
+            border-radius: 4px;
+        }
+
+        .connection-dot {
+            width: 6px;
+            height: 6px;
+            background: #10B981;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        .cost-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: rgba(16, 185, 129, 0.1);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+        }
+
+        .cost-indicator:hover {
+            background: rgba(16, 185, 129, 0.15);
+            transform: translateY(-1px);
+        }
+
+        .cost-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #10B981;
+        }
+
+        .cost-amount {
+            font-family: 'Roboto Mono', monospace;
+            font-size: 14px;
+            font-weight: 600;
+            color: #10B981;
+        }
+
+        .cost-label {
+            font-size: 12px;
+            color: #9CA3AF;
+        }
+
+        .alerts-button {
+            position: relative;
+            width: 40px;
+            height: 40px;
+            background: rgba(239, 68, 68, 0.1);
+            border: none;
+            border-radius: 6px;
+            color: #EF4444;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+        }
+
+        .alerts-button:hover {
+            background: rgba(239, 68, 68, 0.15);
+            transform: translateY(-1px);
+        }
+
+        .alerts-badge {
+            position: absolute;
+            top: -4px;
+            right: -4px;
+            background: #EF4444;
+            color: white;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 2px 6px;
+            border-radius: 10px;
+            min-width: 20px;
+            text-align: center;
+        }
+
+        .user-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #3B82F6, #06B6D4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+        }
+
+        .user-avatar:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+        }
+
+        /* Secondary Toolbar */
+        .secondary-toolbar {
+            height: 56px;
+            background: #1A2942;
+            border-bottom: 1px solid rgba(156, 163, 175, 0.1);
+            display: flex;
+            align-items: center;
+            padding: 0 24px;
+            gap: 16px;
+            position: sticky;
+            top: 64px;
+            z-index: 90;
+        }
+
+        .toolbar-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #F9FAFB;
+            margin-right: 8px;
+        }
+
+        .filter-dropdown {
+            position: relative;
+        }
+
+        .filter-button {
+            padding: 6px 12px;
+            background: rgba(156, 163, 175, 0.05);
+            border: 1px solid rgba(156, 163, 175, 0.2);
+            border-radius: 6px;
+            color: #F9FAFB;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .filter-button:hover {
+            background: rgba(156, 163, 175, 0.1);
+            border-color: #3B82F6;
+        }
+
+        .filter-count {
+            font-family: 'Roboto Mono', monospace;
+            font-size: 12px;
+            color: #9CA3AF;
+        }
+
+        .status-filter {
+            display: flex;
+            gap: 8px;
+        }
+
+        .status-badge {
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .status-badge.all {
+            background: rgba(156, 163, 175, 0.1);
+            color: #9CA3AF;
+        }
+
+        .status-badge.success {
+            background: rgba(16, 185, 129, 0.1);
+            color: #10B981;
+        }
+
+        .status-badge.failed {
+            background: rgba(239, 68, 68, 0.1);
+            color: #EF4444;
+        }
+
+        .status-badge.progress {
+            background: rgba(59, 130, 246, 0.1);
+            color: #3B82F6;
+        }
+
+        .status-badge.active {
+            background: rgba(59, 130, 246, 0.2);
+            border: 1px solid #3B82F6;
+        }
+
+        .toolbar-search {
+            flex: 1;
+            max-width: 400px;
+            position: relative;
+        }
+
+        .toolbar-search .search-input {
+            height: 36px;
+        }
+
+        .toolbar-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-left: auto;
+        }
+
+        .btn-toolbar {
+            padding: 8px 16px;
+            font-size: 14px;
+            font-weight: 600;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-secondary {
+            background: rgba(156, 163, 175, 0.1);
+            color: #F9FAFB;
+        }
+
+        .btn-secondary:hover {
+            background: rgba(156, 163, 175, 0.15);
+            transform: translateY(-1px);
+        }
+
+        .btn-primary {
+            background: #3B82F6;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #2563EB;
+            transform: translateY(-1px);
+        }
+
+        .icon-button {
+            width: 36px;
+            height: 36px;
+            background: rgba(156, 163, 175, 0.1);
+            border: none;
+            border-radius: 6px;
+            color: #9CA3AF;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .icon-button:hover {
+            background: rgba(156, 163, 175, 0.15);
+            color: #F9FAFB;
+        }
+
+        .last-updated {
+            font-size: 11px;
+            color: #9CA3AF;
+            margin-left: 4px;
+        }
+
+        /* Pipeline Canvas */
+        .pipeline-canvas {
+            display: flex;
+            gap: 24px;
+            padding: 24px;
+            overflow-x: auto;
+            overflow-y: hidden;
+            min-height: calc(100vh - 64px - 56px);
+            position: relative;
+        }
+
+        .pipeline-canvas::-webkit-scrollbar {
+            height: 8px;
+        }
+
+        .pipeline-canvas::-webkit-scrollbar-track {
+            background: rgba(156, 163, 175, 0.05);
+        }
+
+        .pipeline-canvas::-webkit-scrollbar-thumb {
+            background: rgba(156, 163, 175, 0.2);
+            border-radius: 4px;
+        }
+
+        .pipeline-canvas::-webkit-scrollbar-thumb:hover {
+            background: rgba(156, 163, 175, 0.3);
+        }
+
+        /* Stage Column */
+        .stage-column {
+            width: 340px;
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        .stage-header {
+            background: #1A2942;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+            position: sticky;
+            top: 144px;
+            z-index: 50;
+        }
+
+        .stage-badge-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .stage-number {
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            font-weight: 700;
+            color: white;
+        }
+
+        .stage-1 .stage-number { background: linear-gradient(135deg, #8B5CF6, #A78BFA); }
+        .stage-2 .stage-number { background: linear-gradient(135deg, #3B82F6, #60A5FA); }
+        .stage-3 .stage-number { background: linear-gradient(135deg, #06B6D4, #22D3EE); }
+        .stage-4 .stage-number { background: linear-gradient(135deg, #10B981, #34D399); }
+        .stage-5 .stage-number { background: linear-gradient(135deg, #F59E0B, #FBBF24); }
+
+        .stage-title-group {
+            flex: 1;
+        }
+
+        .stage-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: #F9FAFB;
+            margin-bottom: 4px;
+        }
+
+        .stage-stats {
+            font-size: 12px;
+            color: #9CA3AF;
+        }
+
+        .stage-metrics {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .metric-badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .metric-badge.success-rate {
+            background: rgba(16, 185, 129, 0.1);
+            color: #10B981;
+        }
+
+        .metric-badge.success-rate.warning {
+            background: rgba(245, 158, 11, 0.1);
+            color: #F59E0B;
+        }
+
+        .metric-badge.success-rate.error {
+            background: rgba(239, 68, 68, 0.1);
+            color: #EF4444;
+        }
+
+        .metric-badge.cost {
+            background: rgba(156, 163, 175, 0.05);
+            color: #9CA3AF;
+        }
+
+        .stage-action {
+            margin-top: 8px;
+        }
+
+        .btn-ghost {
+            padding: 6px 12px;
+            background: transparent;
+            border: 1px solid rgba(156, 163, 175, 0.2);
+            border-radius: 6px;
+            color: #9CA3AF;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            width: 100%;
+        }
+
+        .btn-ghost:hover {
+            background: rgba(156, 163, 175, 0.05);
+            color: #F9FAFB;
+            border-color: #9CA3AF;
+        }
+
+        /* Job List */
+        .job-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            overflow-y: auto;
+            padding-right: 4px;
+        }
+
+        .job-card {
+            background: #1A2942;
+            border-radius: 8px;
+            padding: 12px;
+            display: flex;
+            gap: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            position: relative;
+            min-height: 80px;
+        }
+
+        .job-card:hover {
+            background: rgba(59, 130, 246, 0.05);
+            transform: translateX(2px);
+        }
+
+        .job-card.selected {
+            background: rgba(59, 130, 246, 0.1);
+            border-left: 3px solid #3B82F6;
+            padding-left: 9px;
+        }
+
+        .job-card.failed {
+            border-left: 3px solid #EF4444;
+            padding-left: 9px;
+            background: rgba(239, 68, 68, 0.05);
+        }
+
+        .job-card.in-progress {
+            border-left: 3px solid #3B82F6;
+            padding-left: 9px;
+        }
+
+        .job-checkbox {
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(156, 163, 175, 0.3);
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+
+        .job-checkbox:hover {
+            border-color: #3B82F6;
+        }
+
+        .job-checkbox.checked {
+            background: #3B82F6;
+            border-color: #3B82F6;
+            position: relative;
+        }
+
+        .job-checkbox.checked::after {
+            content: '✓';
+            position: absolute;
+            color: white;
+            font-size: 12px;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        .job-artwork {
+            width: 48px;
+            height: 48px;
+            border-radius: 6px;
+            background: linear-gradient(135deg, #3B82F6, #06B6D4);
+            flex-shrink: 0;
+            overflow: hidden;
+        }
+
+        .job-artwork img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .job-content {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .job-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #F9FAFB;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-bottom: 4px;
+        }
+
+        .job-subtitle {
+            font-size: 12px;
+            color: #9CA3AF;
+            margin-bottom: 6px;
+        }
+
+        .job-meta {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .job-badge {
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .job-badge.success {
+            background: rgba(16, 185, 129, 0.2);
+            color: #10B981;
+        }
+
+        .job-badge.failed {
+            background: rgba(239, 68, 68, 0.2);
+            color: #EF4444;
+        }
+
+        .job-badge.progress {
+            background: rgba(59, 130, 246, 0.2);
+            color: #3B82F6;
+        }
+
+        .job-badge.duration {
+            background: rgba(156, 163, 175, 0.1);
+            color: #9CA3AF;
+        }
+
+        .job-badge.cost {
+            font-family: 'Roboto Mono', monospace;
+            background: rgba(156, 163, 175, 0.1);
+            color: #F9FAFB;
+        }
+
+        .job-badge.cache-hit {
+            background: rgba(16, 185, 129, 0.2);
+            color: #10B981;
+        }
+
+        .job-progress {
+            margin-top: 8px;
+        }
+
+        .progress-bar {
+            height: 4px;
+            background: rgba(156, 163, 175, 0.1);
+            border-radius: 2px;
+            overflow: hidden;
+            margin-bottom: 4px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #3B82F6, #2563EB);
+            border-radius: 2px;
+            transition: width 0.3s ease-in-out;
+        }
+
+        .progress-text {
+            font-size: 11px;
+            color: #9CA3AF;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .job-actions {
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            display: none;
+            gap: 4px;
+            background: #1A2942;
+            padding: 4px;
+            border-radius: 4px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        .job-card:hover .job-actions {
+            display: flex;
+        }
+
+        .job-action-btn {
+            padding: 4px 8px;
+            font-size: 11px;
+            font-weight: 600;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            background: rgba(59, 130, 246, 0.1);
+            color: #3B82F6;
+        }
+
+        .job-action-btn:hover {
+            background: rgba(59, 130, 246, 0.2);
+        }
+
+        .job-action-btn.danger {
+            background: rgba(239, 68, 68, 0.1);
+            color: #EF4444;
+        }
+
+        .job-action-btn.danger:hover {
+            background: rgba(239, 68, 68, 0.2);
+        }
+
+        .load-more {
+            padding: 12px;
+            background: rgba(156, 163, 175, 0.05);
+            border: 1px dashed rgba(156, 163, 175, 0.2);
+            border-radius: 6px;
+            color: #9CA3AF;
+            font-size: 13px;
+            font-weight: 600;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+        }
+
+        .load-more:hover {
+            background: rgba(156, 163, 175, 0.1);
+            color: #F9FAFB;
+        }
+
+        /* Flow Arrows */
+        .flow-arrow {
+            position: absolute;
+            top: 200px;
+            width: 24px;
+            height: 120px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+        }
+
+        .flow-arrow:hover {
+            transform: scale(1.1);
+        }
+
+        .arrow-line {
+            width: 3px;
+            height: 100%;
+            background: linear-gradient(180deg, #10B981, #059669);
+            position: relative;
+            border-radius: 2px;
+        }
+
+        .arrow-line.bottleneck {
+            background: linear-gradient(180deg, #F59E0B, #D97706);
+        }
+
+        .arrow-line.error {
+            background: linear-gradient(180deg, #EF4444, #DC2626);
+        }
+
+        .arrow-head {
+            position: absolute;
+            bottom: -6px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 0;
+            border-left: 6px solid transparent;
+            border-right: 6px solid transparent;
+            border-top: 8px solid #059669;
+        }
+
+        .arrow-head.bottleneck {
+            border-top-color: #D97706;
+        }
+
+        .arrow-head.error {
+            border-top-color: #DC2626;
+        }
+
+        .flow-dot {
+            position: absolute;
+            width: 6px;
+            height: 6px;
+            background: white;
+            border-radius: 50%;
+            animation: flow 2s infinite linear;
+        }
+
+        @keyframes flow {
+            0% { top: 0; opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { top: 100%; opacity: 0; }
+        }
+
+        .arrow-tooltip {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: #0A1628;
+            border: 1px solid rgba(156, 163, 175, 0.2);
+            border-radius: 6px;
+            padding: 12px;
+            font-size: 12px;
+            color: #F9FAFB;
+            white-space: nowrap;
+            display: none;
+            z-index: 100;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+        }
+
+        .flow-arrow:hover .arrow-tooltip {
+            display: block;
+        }
+
+        /* Right Sidebar */
+        .right-sidebar {
+            position: fixed;
+            top: 64px;
+            right: 0;
+            width: 400px;
+            height: calc(100vh - 64px);
+            background: #1A2942;
+            border-left: 1px solid rgba(156, 163, 175, 0.2);
+            transform: translateX(100%);
+            transition: transform 0.3s ease-in-out;
+            z-index: 80;
+            overflow-y: auto;
+            box-shadow: -4px 0 24px rgba(0, 0, 0, 0.4);
+        }
+
+        .right-sidebar.active {
+            transform: translateX(0);
+        }
+
+        .sidebar-header {
+            padding: 20px;
+            border-bottom: 1px solid rgba(156, 163, 175, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            background: #1A2942;
+            z-index: 10;
+        }
+
+        .sidebar-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #F9FAFB;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .close-button {
+            width: 32px;
+            height: 32px;
+            background: rgba(156, 163, 175, 0.1);
+            border: none;
+            border-radius: 6px;
+            color: #9CA3AF;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .close-button:hover {
+            background: rgba(239, 68, 68, 0.1);
+            color: #EF4444;
+        }
+
+        .sidebar-tabs {
+            display: flex;
+            padding: 0 20px;
+            border-bottom: 1px solid rgba(156, 163, 175, 0.1);
+            background: #1A2942;
+            position: sticky;
+            top: 73px;
+            z-index: 10;
+        }
+
+        .sidebar-tab {
+            padding: 12px 16px;
+            font-size: 14px;
+            font-weight: 600;
+            color: #9CA3AF;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            border-bottom: 2px solid transparent;
+        }
+
+        .sidebar-tab:hover {
+            color: #F9FAFB;
+        }
+
+        .sidebar-tab.active {
+            color: #3B82F6;
+            border-bottom-color: #3B82F6;
+        }
+
+        .sidebar-content {
+            padding: 20px;
+        }
+
+        .detail-section {
+            margin-bottom: 24px;
+        }
+
+        .section-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: #F9FAFB;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(156, 163, 175, 0.05);
+            font-size: 14px;
+        }
+
+        .detail-row:last-child {
+            border-bottom: none;
+        }
+
+        .detail-label {
+            color: #9CA3AF;
+        }
+
+        .detail-value {
+            color: #F9FAFB;
+            font-weight: 600;
+        }
+
+        .detail-value.mono {
+            font-family: 'Roboto Mono', monospace;
+        }
+
+        .detail-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 16px;
+        }
+
+        .btn-detail {
+            flex: 1;
+            padding: 10px 16px;
+            font-size: 14px;
+            font-weight: 600;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+        }
+
+        /* Bulk Selection Bar */
+        .bulk-selection-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 64px;
+            background: #1A2942;
+            border-top: 1px solid rgba(59, 130, 246, 0.2);
+            display: none;
+            align-items: center;
+            padding: 0 24px;
+            gap: 16px;
+            z-index: 100;
+            box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.3);
+        }
+
+        .bulk-selection-bar.active {
+            display: flex;
+        }
+
+        .bulk-count {
+            font-size: 16px;
+            font-weight: 700;
+            color: #F9FAFB;
+        }
+
+        .bulk-actions {
+            display: flex;
+            gap: 12px;
+            margin-left: auto;
+        }
+
+        @media (max-width: 1400px) {
+            .stage-column {
+                width: 300px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .secondary-toolbar {
+                flex-wrap: wrap;
+                height: auto;
+                padding: 12px 16px;
+            }
+
+            .toolbar-search {
+                order: 3;
+                width: 100%;
+                max-width: 100%;
+                margin-top: 12px;
+            }
+
+            .stage-column {
+                width: 280px;
+            }
+
+            .right-sidebar {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Top Bar -->
+    <div class="top-bar" data-mc-element-id="28287">
+        <div class="logo" data-mc-element-id="28317">
+            <i class="fas fa-podcast" data-mc-element-id="28348"></i>
+            Blipp Admin
+            <span class="logo-badge" data-mc-element-id="28415"></span>
+        </div>
+
+        <div class="breadcrumb" data-mc-element-id="28472">
+            <span class="breadcrumb-item" data-mc-element-id="28509">Command Center</span>
+            <i class="fas fa-chevron-right" data-mc-element-id="28573"></i>
+            <span class="breadcrumb-current" data-mc-element-id="28622">Pipeline Flow</span>
+        </div>
+
+        <div class="search-container" data-mc-element-id="28700">
+            <i class="fas fa-search search-icon" data-mc-element-id="28743"></i>
+            <input type="text" class="search-input" placeholder="Search podcasts, episodes, users, or type command..." data-mc-element-id="28797">
+            <span class="search-hint" data-mc-element-id="28917">⌘K</span>
+        </div>
+
+        <div class="top-bar-right" data-mc-element-id="28977">
+            <div class="connection-indicator" data-mc-element-id="29017">
+                <span class="connection-dot" data-mc-element-id="29068"></span>
+                Connected
+            </div>
+
+            <div class="cost-indicator" data-mc-element-id="29163">
+                <span class="cost-dot" data-mc-element-id="29208"></span>
+                <div data-mc-element-id="29255">
+                    <div class="cost-amount" data-mc-element-id="29281">$847</div>
+                    <div class="cost-label" data-mc-element-id="29337">today</div>
+                </div>
+            </div>
+
+            <button class="alerts-button" data-mc-element-id="29428">
+                <i class="fas fa-bell" data-mc-element-id="29475"></i>
+                <span class="alerts-badge" data-mc-element-id="29519">3</span>
+            </button>
+
+            <div class="user-avatar" data-mc-element-id="29590">AJ</div>
+        </div>
+    </div>
+
+    <!-- Secondary Toolbar -->
+    <div class="secondary-toolbar" data-mc-element-id="29686">
+        <div class="toolbar-title" data-mc-element-id="29726">Pipeline Flow</div>
+
+        <div class="filter-dropdown" data-mc-element-id="29782">
+            <button class="filter-button" data-mc-element-id="29824">
+                <i class="fas fa-layer-group" data-mc-element-id="29871"></i>
+                All Stages
+                <span class="filter-count" data-mc-element-id="29949">(1,847 jobs)</span>
+                <i class="fas fa-chevron-down" data-mc-element-id="30012"></i>
+            </button>
+        </div>
+
+        <div class="status-filter" data-mc-element-id="30094">
+            <div class="status-badge all active" data-mc-element-id="30134">All</div>
+            <div class="status-badge success" data-mc-element-id="30193">Success <span class="filter-count" data-mc-element-id="30235">1,621</span></div>
+            <div class="status-badge progress" data-mc-element-id="30293">In Progress <span class="filter-count" data-mc-element-id="30340">138</span></div>
+            <div class="status-badge failed" data-mc-element-id="30396">Failed <span class="filter-count" data-mc-element-id="30436">88</span></div>
+        </div>
+
+        <div class="toolbar-search" data-mc-element-id="30503">
+            <i class="fas fa-search search-icon" data-mc-element-id="30544"></i>
+            <input type="text" class="search-input" placeholder="Search by episode, podcast, or job ID..." data-mc-element-id="30598">
+        </div>
+
+        <div class="toolbar-right" data-mc-element-id="30718">
+            <button class="btn-toolbar btn-secondary" data-mc-element-id="30758">
+                <i class="fas fa-download" data-mc-element-id="30817"></i>
+                Export
+            </button>
+            <button class="icon-button" title="Refresh" data-mc-element-id="30906">
+                <i class="fas fa-rotate-right" data-mc-element-id="30967"></i>
+            </button>
+            <span class="last-updated" data-mc-element-id="31037">Updated 3s ago</span>
+        </div>
+    </div>
+
+    <!-- Pipeline Canvas -->
+    <div class="pipeline-canvas" data-mc-element-id="31146">
+        <!-- Stage 1: Feed Refresh -->
+        <div class="stage-column stage-1" data-mc-element-id="31223">
+            <div class="stage-header" data-mc-element-id="31270">
+                <div class="stage-badge-row" data-mc-element-id="31313">
+                    <div class="stage-number" data-mc-element-id="31363">
+                        <i class="fas fa-rss" data-mc-element-id="31414"></i>
+                    </div>
+                    <div class="stage-title-group" data-mc-element-id="31488">
+                        <div class="stage-title" data-mc-element-id="31544">Feed Refresh</div>
+                        <div class="stage-stats" data-mc-element-id="31612">2,147 feeds • 30min interval</div>
+                    </div>
+                </div>
+                <div class="stage-metrics" data-mc-element-id="31738">
+                    <div class="metric-badge success-rate" data-mc-element-id="31786">
+                        <i class="fas fa-check-circle" data-mc-element-id="31850"></i>
+                        98.3%
+                    </div>
+                    <div class="metric-badge cost mono" data-mc-element-id="31963">
+                        $0.00
+                    </div>
+                </div>
+                <div class="stage-action" data-mc-element-id="32096">
+                    <button class="btn-ghost" data-mc-element-id="32143">
+                        <i class="fas fa-rotate" data-mc-element-id="32194"></i> Manual Refresh
+                    </button>
+                </div>
+            </div>
+
+            <div class="job-list" data-mc-element-id="32324">
+                <div class="job-card" data-mc-element-id="32363">
+                    <div class="job-checkbox" data-mc-element-id="32406"></div>
+                    <div class="job-artwork" data-mc-element-id="32459">
+                        <img src="https://storage.googleapis.com/forge-sites/7b335b75d887e199ac975e8f6bcdf36d4c2f7cc7e7784897e672430ace13f7a3.png?X-Goog-Algorithm=GOOG4-RSA-SHA256&amp;X-Goog-Credential=164061697651-compute%40developer.gserviceaccount.com%2F20260301%2Fauto%2Fstorage%2Fgoog4_request&amp;X-Goog-Date=20260301T081347Z&amp;X-Goog-Expires=86400&amp;X-Goog-SignedHeaders=host&amp;response-access-control-allow-origin=https%3A%2F%2Fforge.moonchild.ai&amp;X-Goog-Signature=c154742b79464d20012d40c9ab1ce4eea33a9158c6a3f903028b202edc33854ce45e9b9b15ced6cd4baa5164ca72708e76392c9b9d2d92ac1d9aa380a24b42243e361a17fb5c345dc8a5815a9980f0fdafbaedcdbaf2f4013e91d7a6c782c3196cba574a8461a53f7adf23c2cd1f8c5a8fc42fa19396168177a2efc90ab3e3608f9d1c13179b819ed0352a6c8126b0437134fad643c4e06b0a1c700b6a2f9a947e78c1ff84ba21b13180e16c6972f27c7214c82407750c19293bcc9a64d61e101ddca4d8ecd6c6f05bf335561a9e67a3c76eb68121a9d4bf58dad78d8ac73a9ebb36873394643062157f88a05133f6649b9371a0026f2a27a6252abba14f63d8" alt="The Vergecast podcast artwork" width="48" height="48" data-mc-element-id="32509">
+                    </div>
+                    <div class="job-content" data-mc-element-id="32652">
+                        <div class="job-title" data-mc-element-id="32702">The Vergecast</div>
+                        <div class="job-subtitle" data-mc-element-id="32769">2 minutes ago</div>
+                        <div class="job-meta" data-mc-element-id="32839">
+                            <div class="job-badge success" data-mc-element-id="32890">Success</div>
+                            <div class="job-badge duration" data-mc-element-id="32963">3 new episodes</div>
+                        </div>
+                    </div>
+                    <div class="job-actions" data-mc-element-id="33094">
+                        <button class="job-action-btn" data-mc-element-id="33144">View</button>
+                        <button class="job-action-btn" data-mc-element-id="33213">Retry</button>
+                    </div>
+                </div>
+
+                <div class="job-card" data-mc-element-id="33326">
+                    <div class="job-checkbox" data-mc-element-id="33369"></div>
+                    <div class="job-artwork" data-mc-element-id="33422">
+                        <img src="https://storage.googleapis.com/forge-sites/7554a54a0448d68978783cfe1833ba46e58b1eea50d251d27fa498b8301e6a63.png?X-Goog-Algorithm=GOOG4-RSA-SHA256&amp;X-Goog-Credential=164061697651-compute%40developer.gserviceaccount.com%2F20260301%2Fauto%2Fstorage%2Fgoog4_request&amp;X-Goog-Date=20260301T081347Z&amp;X-Goog-Expires=86400&amp;X-Goog-SignedHeaders=host&amp;response-access-control-allow-origin=https%3A%2F%2Fforge.moonchild.ai&amp;X-Goog-Signature=61e4dd7eb528baed12e37d71aabda4d268a484e008972aa9d106ec8bce8babc5e6d1094989a613ecd0c8539051d984590a0ab3c03331ef96b3c6962b25c56718b196e48042dc050e3b889cbb2469e4bd4a4e5cd41d1eaffdf6d46ed3173997130f0df9d553590d24e9193254f07b3ca4110f708a6bda3517d8357bfe7237f5bc23e5a41a4de6246801c3e9e7ee7f03647c3d8fd5edef2eefb4b0ce787245289179f0bc75aea6fcffbb24c0f24d5d127c3c379bb30a874bc00df37b0ddf0a83e5715abe42e136ffa056e3ac062f029e027e0d86276a753e3c03f00433410f2d169ebc6ba5f093abbbf6c700c6a18fa95692b0155997500f0529031fdfab246354" alt="Lex Fridman Podcast artwork" width="48" height="48" data-mc-element-id="33472">
+                    </div>
+                    <div class="job-content" data-mc-element-id="33611">
+                        <div class="job-title" data-mc-element-id="33661">Lex Fridman Podcast</div>
+                        <div class="job-subtitle" data-mc-element-id="33734">8 minutes ago</div>
+                        <div class="job-meta" data-mc-element-id="33804">
+                            <div class="job-badge success" data-mc-element-id="33855">Success</div>
+                            <div class="job-badge duration" data-mc-element-id="33928">1 new episode</div>
+                        </div>
+                    </div>
+                    <div class="job-actions" data-mc-element-id="34058">
+                        <button class="job-action-btn" data-mc-element-id="34108">View</button>
+                        <button class="job-action-btn" data-mc-element-id="34177">Retry</button>
+                    </div>
+                </div>
+
+                <div class="job-card failed" data-mc-element-id="34290">
+                    <div class="job-checkbox" data-mc-element-id="34340"></div>
+                    <div class="job-artwork" data-mc-element-id="34393">
+                        <img src="https://storage.googleapis.com/forge-sites/5d56c8f59a06ca52880a91ebfb47f10d77a052ebebceaef3d5e1a03174f52502.png?X-Goog-Algorithm=GOOG4-RSA-SHA256&amp;X-Goog-Credential=164061697651-compute%40developer.gserviceaccount.com%2F20260301%2Fauto%2Fstorage%2Fgoog4_request&amp;X-Goog-Date=20260301T081347Z&amp;X-Goog-Expires=86400&amp;X-Goog-SignedHeaders=host&amp;response-access-control-allow-origin=https%3A%2F%2Fforge.moonchild.ai&amp;X-Goog-Signature=1923348bb20a38e0ba3885ef699f4b8aece8a456f1a47629e951dabef948f600dba7f50ce3050da8dbba98d47997dd887127a9a5fd119b9b6bcc6f43b96a5284a8c949d7b9fd08c86362bb20845591d5d91132a57cbae0be92795b112f6b3711fed55b2e2a379f9d1643c1b85bfcae4be408b85465e2bbd87d8d22ccecd3274864f921d906d86572b82cf99034b3d737efa994b6055222997d4e94d5478a2cf2cd09d33cfb2ec248a2a81db78a533792b6d342aa4db89ab5f9b35ea55c3866faa89a37826effdb56d7897247e36d0df42a8c06930876248a782e7c23020734973a25aaa73e2591d38e88b205945b755d2c3880bcfcca28b51770fefcbc18996b" alt="Tech News Daily podcast artwork" width="48" height="48" data-mc-element-id="34443">
+                    </div>
+                    <div class="job-content" data-mc-element-id="34588">
+                        <div class="job-title" data-mc-element-id="34638">Tech News Daily</div>
+                        <div class="job-subtitle" data-mc-element-id="34707">42 minutes ago</div>
+                        <div class="job-meta" data-mc-element-id="34778">
+                            <div class="job-badge failed" data-mc-element-id="34829">404 Not Found</div>
+                        </div>
+                    </div>
+                    <div class="job-actions" data-mc-element-id="34957">
+                        <button class="job-action-btn" data-mc-element-id="35007">Details</button>
+                        <button class="job-action-btn danger" data-mc-element-id="35079">Ignore</button>
+                    </div>
+                </div>
+
+                <div class="job-card" data-mc-element-id="35200">
+                    <div class="job-checkbox" data-mc-element-id="35243"></div>
+                    <div class="job-artwork" data-mc-element-id="35296">
+                        <img src="https://storage.googleapis.com/forge-sites/a5e618f0c07b1b7f06d53a0329e3d6a0e1cafaebc216631c93b8cc29ed9a793d.png?X-Goog-Algorithm=GOOG4-RSA-SHA256&amp;X-Goog-Credential=164061697651-compute%40developer.gserviceaccount.com%2F20260301%2Fauto%2Fstorage%2Fgoog4_request&amp;X-Goog-Date=20260301T081347Z&amp;X-Goog-Expires=86400&amp;X-Goog-SignedHeaders=host&amp;response-access-control-allow-origin=https%3A%2F%2Fforge.moonchild.ai&amp;X-Goog-Signature=af03f19ba6b044adc2b428833e8a3ee1d99b64db30857ef6ed61fde289e32bf44f909f51bb9caa7cee41d7186c9bd3a9b07aaf2980bef768e632490bfeb103ad4d274a0fdbaf649ab61645be774459f706a478ec50d20c0a66ccd5f05fd94544e3f940eb7589fc4c87675cb354eca5c8808a1bfb922dbdcbec21c387642f56fabeea53f15c29270712a469957e57b5ab6b21119373859adf0ab24ea1239a738b31ce00997181f7d5436c64ab142588405b3e705386871c231693b25308121e5869f78e10c182f26558134c14b838f44b728b1bb23541e1756f501a17a07e57782da62e3b1d0dc0dc3c0b1bd4e8a1e7bbc8f8074c42978a3be8212080d8475de6" alt="Y Combinator podcast artwork" width="48" height="48" data-mc-element-id="35346">
+                    </div>
+                    <div class="job-content" data-mc-element-id="35491">
+                        <div class="job-title" data-mc-element-id="35541">Y Combinator</div>
+                        <div class="job-subtitle" data-mc-element-id="35607">1 hour ago</div>
+                        <div class="job-meta" data-mc-element-id="35674">
+                            <div class="job-badge success" data-mc-element-id="35725">Success</div>
+                            <div class="job-badge duration" data-mc-element-id="35798">2 new episodes</div>
+                        </div>
+                    </div>
+                    <div class="job-actions" data-mc-element-id="35929">
+                        <button class="job-action-btn" data-mc-element-id="35979">View</button>
+                        <button class="job-action-btn" data-mc-element-id="36048">Retry</button>
+                    </div>
+                </div>
+
+                <div class="job-card" data-mc-element-id="36161">
+                    <div class="job-checkbox" data-mc-element-id="36204"></div>
+                    <div class="job-artwork" data-mc-element-id="36257">
+                        <img src="https://storage.googleapis.com/forge-sites/e2ad7561a68523bdf12a0aeadfc62b5266349354c580ea3cf0cff97ba4af7549.png?X-Goog-Algorithm=GOOG4-RSA-SHA256&amp;X-Goog-Credential=164061697651-compute%40developer.gserviceaccount.com%2F20260301%2Fauto%2Fstorage%2Fgoog4_request&amp;X-Goog-Date=20260301T081347Z&amp;X-Goog-Expires=86400&amp;X-Goog-SignedHeaders=host&amp;response-access-control-allow-origin=https%3A%2F%2Fforge.moonchild.ai&amp;X-Goog-Signature=8bfbaaeb49a32821869948bb917203f1c462a3f25601989b06b4e27a68cf7bcdb61cf9391640fe28239cc4c3069949834c7536733951df1bd584a03aa00596732d0f5e060f2e333beff390a6fb349e8fa8e78177e4eb8acd48c8cdc945a874686345c4f4363242b78572c5ec3168baba2a41c604eac68b63fa887bbb1915586f6ceab42cc6c18c2bd5e7903e1f6f219f489763e7023cfa57b0b68cdaba45b7f9e2632a1a94ccfa65c0a15b953e6dbc1f920b44a35d2acabfd73d57eac0efddccfa12ed87510275cc9eca414589334c39102d69a7d20d9591355b95b59da0b5d4898d1e273c094b9d4fa35e022d70738a6115a1e5440d9e22f6a289c72848a1cc" alt="All Things JavaScript podcast artwork" width="48" height="48" data-mc-element-id="36307">
+                    </div>
+                    <div class="job-content" data-mc-element-id="36464">
+                        <div class="job-title" data-mc-element-id="36514">All Things JavaScript</div>
+                        <div class="job-subtitle" data-mc-element-id="36589">2 hours ago</div>
+                        <div class="job-meta" data-mc-element-id="36657">
+                            <div class="job-badge success" data-mc-element-id="36708">Success</div>
+                            <div class="job-badge duration" data-mc-element-id="36781">1 new episode</div>
+                        </div>
+                    </div>
+                    <div class="job-actions" data-mc-element-id="36911">
+                        <button class="job-action-btn" data-mc-element-id="36961">View</button>
+                        <button class="job-action-btn" data-mc-element-id="37030">Retry</button>
+                    </div>
+                </div>
+
+                <div class="load-more" data-mc-element-id="37143">
+                    <i class="fas fa-chevron-down" data-mc-element-id="37187"></i> Load 50 more feeds...
+                </div>
+            </div>
+        </div>
+
+        <!-- Flow Arrow 1->2 -->
+        <div class="flow-arrow" style="left: 364px;" data-mc-element-id="37344">
+            <div class="arrow-line" data-mc-element-id="37402">
+                <div class="flow-dot" data-mc-element-id="37443"></div>
+                <div class="arrow-head" data-mc-element-id="37488"></div>
+            </div>
+            <div class="arrow-tooltip" data-mc-element-id="37550">
+                847 episodes → Stage 2<br data-mc-element-id="37616">
+                Avg transition: 2 min<br data-mc-element-id="37658">
+                Failure rate: 1.2%
+            </div>
+        </div>
+
+        <!-- Stage 2: Transcription -->
+        <div class="stage-column stage-2" data-mc-element-id="37781">
+            <div class="stage-header" data-mc-element-id="37828">
+                <div class="stage-badge-row" data-mc-element-id="37871">
+                    <div class="stage-number" data-mc-element-id="37921">
+                        <i class="fas fa-microphone" data-mc-element-id="37972"></i>
+                    </div>
+                    <div class="stage-title-group" data-mc-element-id="38053">
+                        <div class="stage-title" data-mc-element-id="38109">Transcription (STT)</div>
+                        <div class="stage-stats" data-mc-element-id="38184">127 in queue • 8min avg</div>
+                    </div>
+                </div>
+                <div class="stage-metrics" data-mc-element-id="38305">
+                    <div class="metric-badge success-rate warning" data-mc-element-id="38353">
+                        <i class="fas fa-exclamation-triangle" data-mc-element-id="38425"></i>
+                        89.7%
+                    </div>
+                    <div class="metric-badge cost mono" data-mc-element-id="38546">
+                        $143 today
+                    </div>
+                </div>
+                <div class="stage-action" data-mc-element-id="38684">
+                    <button class="btn-ghost" data-mc-element-id="38731">
+                        <i class="fas fa-sliders" data-mc-element-id="38782"></i> Deepgram Nova-2
+                    </button>
+                </div>
+            </div>
+
+            <div class="job-list" data-mc-element-id="38914">
+                <div class="job-card in-progress" data-mc-element-id="38953">
+                    <div class="job-checkbox" data-mc-element-id="39008"></div>
+                    <div class="job-artwork" data-mc-element-id="39061">
+                        <img src="https://storage.googleapis.com/forge-sites/7554a54a0448d68978783cfe1833ba46e58b1eea50d251d27fa498b8301e6a63.png?X-Goog-Algorithm=GOOG4-RSA-SHA256&amp;X-Goog-Credential=164061697651-compute%40developer.gserviceaccount.com%2F20260301%2Fauto%2Fstorage%2Fgoog4_request&amp;X-Goog-Date=20260301T081347Z&amp;X-Goog-Expires=86400&amp;X-Goog-SignedHeaders=host&amp;response-access-control-allow-origin=https%3A%2F%2Fforge.moonchild.ai&amp;X-Goog-Signature=61e4dd7eb528baed12e37d71aabda4d268a484e008972aa9d106ec8bce8babc5e6d1094989a613ecd0c8539051d984590a0ab3c03331ef96b3c6962b25c56718b196e48042dc050e3b889cbb2469e4bd4a4e5cd41d1eaffdf6d46ed3173997130f0df9d553590d24e9193254f07b3ca4110f708a6bda3517d8357bfe7237f5bc23e5a41a4de6246801c3e9e7ee7f03647c3d8fd5edef2eefb4b0ce787245289179f0bc75aea6fcffbb24c0f24d5d127c3c379bb30a874bc00df37b0ddf0a83e5715abe42e136ffa056e3ac062f029e027e0d86276a753e3c03f00433410f2d169ebc6ba5f093abbbf6c700c6a18fa95692b0155997500f0529031fdfab246354" alt="Lex Fridman Podcast artwork" width="48" height="48" data-mc-element-id="39111">
+                    </div>
+                    <div class="job-content" data-mc-element-id="39250">
+                        <div class="job-title" data-mc-element-id="39300">Deep Dive into Quantum Computing</div>
+                        <div class="job-subtitle" data-mc-element-id="39386">Lex Fridman Podcast</div>
+                        <div class="job-meta" data-mc-element-id="39462">
+                            <div class="job-badge progress" data-mc-element-id="39513">Processing</div>
+                            <div class="job-badge duration" data-mc-element-id="39590">89 min audio</div>
+                            <div class="job-badge cost mono" data-mc-element-id="39669">$0.08</div>
+                        </div>
+                        <div class="job-progress" data-mc-element-id="39769">
+                            <div class="progress-bar" data-mc-element-id="39824">
+                                <div class="progress-fill" style="width: 71%;" data-mc-element-id="39883"></div>
+                            </div>
+                            <div class="progress-text" data-mc-element-id="40000">
+                                <span data-mc-element-id="40060">67% complete</span>
+                                <span data-mc-element-id="40118">~3 min remaining</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="job-actions" data-mc-element-id="40261">
+                        <button class="job-action-btn" data-mc-element-id="40311">Details</button>
+                        <button class="job-action-btn danger" data-mc-element-id="40383">Cancel</button>
+                    </div>
+                </div>
+
+                <div class="job-card" data-mc-element-id="40504">
+                    <div class="job-checkbox" data-mc-element-id="40547"></div>
+                    <div class="job-artwork" data-mc-element-id="40600">
+                        <img src="https://storage.googleapis.com/forge-sites/7b335b75d887e199ac975e8f6bcdf36d4c2f7cc7e7784897e672430ace13f7a3.png?X-Goog-Algorithm=GOOG4-RSA-SHA256&amp;X-Goog-Credential=164061697651-compute%40developer.gserviceaccount.com%2F20260301%2Fauto%2Fstorage%2Fgoog4_request&amp;X-Goog-Date=20260301T081347Z&amp;X-Goog-Expires=86400&amp;X-Goog-SignedHeaders=host&amp;response-access-control-allow-origin=https%3A%2F%2Fforge.moonchild.ai&amp;X-Goog-Signature=c154742b79464d20012d40c9ab1ce4eea33a9158c6a3f903028b202edc33854ce45e9b9b15ced6cd4baa5164ca72708e76392c9b9d2d92ac1d9aa380a24b42243e361a17fb5c345dc8a5815a9980f0fdafbaedcdbaf2f4013e91d7a6c782c3196cba574a8461a53f7adf23c2cd1f8c5a8fc42fa19396168177a2efc90ab3e3608f9d1c13179b819ed0352a6c8126b0437134fad643c4e06b0a1c700b6a2f9a947e78c1ff84ba21b13180e16c6972f27c7214c82407750c19293bcc9a64d61e101ddca4d8ecd6c6f05bf335561a9e67a3c76eb68121a9d4bf58dad78d8ac73a9ebb36873394643062157f88a05133f6649b9371a0026f2a27a6252abba14f63d8" alt="The Vergecast podcast artwork" width="48" height="48" data-mc-element-id="40650">
+                    </div>
+                    <div class="job-content" data-mc-element-id="40793">
+                        <div class="job-title" data-mc-element-id="40843">Breaking Down the Latest Tech News</div>
+                        <div class="job-subtitle" data-mc-element-id="40931">The Vergecast</div>
+                        <div class="job-meta" data-mc-element-id="41001">
+                            <div class="job-badge success" data-mc-element-id="41052">Completed in 7m 23s</div>
+                            <div class="job-badge duration" data-mc-element-id="41137">45 min audio</div>
+                            <div class="job-badge cost mono" data-mc-element-id="41216">$0.08</div>
+                        </div>
+                    </div>
+                    <div class="job-actions" data-mc-element-id="41339">
+                        <button class="job-action-btn" data-mc-element-id="41389">View Transcript</button>
+                        <button class="job-action-btn" data-mc-element-id="41469">Retry</button>
+                    </div>
+                </div>
+
+                <div class="job-card failed" data-mc-element-id="41582">
+                    <div class="job-checkbox" data-mc-element-id="41632"></div>
+                    <div class="job-artwork" data-mc-element-id="41685">
+                        <img src="https://storage.googleapis.com/forge-sites/430a4a84fe5f1a03e8260dcaf399f21ac5cd53c875292898d057c7c680e89722.png?X-Goog-Algorithm=GOOG4-RSA-SHA256&amp;X-Goog-Credential=164061697651-compute%40developer.gserviceaccount.com%2F20260301%2Fauto%2Fstorage%2Fgoog4_request&amp;X-Goog-Date=20260301T081347Z&amp;X-Goog-Expires=86400&amp;X-Goog-SignedHeaders=host&amp;response-access-control-allow-origin=https%3A%2F%2Fforge.moonchild.ai&amp;X-Goog-Signature=0d290b8c6f8aa8a4d35fc2acea9fc2b05f81180f2a2961911ae3b42cc45bdd488d433e092ff8b464a95e0ab3e7d277b3aca8376d7ff946683d0940a20d1b1ea260fa2b1df28f4c771503fffa4b7686c2295d41d5ebdd94cce45da0147ad801af91667452d183e73e49f2d6bb5dd07d0588d2a5c5f3cd12584da94f0c55741f01c47956ee9d1c00973a7b6a667a33a444e4739c8daca4871cbb0b6f5bfe2d6795dbb918348ac41ab75fbc8464fdb374d5bc9443d608fe6e44b78ab6993546d8eed60545d5e88c7764be5b30aedbae24f40b9470aa41278451ccb0932e2f1156540169064bc3e04546acbf239f346602525d2c138b0321dc93578320c6a30601d3" alt="Bankless podcast artwork" width="48" height="48" data-mc-element-id="41735">
+                    </div>
+                    <div class="job-content" data-mc-element-id="41875">
+                        <div class="job-title" data-mc-element-id="41925">The State of Crypto Markets</div>
+                        <div class="job-subtitle" data-mc-element-id="42006">Bankless</div>
+                        <div class="job-meta" data-mc-element-id="42071">
+                            <div class="job-badge failed" data-mc-element-id="42122">API Timeout</div>
+                            <div class="job-badge duration" data-mc-element-id="42198">62 min audio</div>
+                        </div>
+                    </div>
+                    <div class="job-actions" data-mc-element-id="42327">
+                        <button class="job-action-btn" data-mc-element-id="42377">Retry</button>
+                        <button class="job-action-btn" data-mc-element-id="42447">Details</button>
+                    </div>
+                </div>
+
+                <div class="job-card in-progress" data-mc-element-id="42562">
+                    <div class="job-checkbox" data-mc-element-id="42617"></div>
+                    <div class="job-artwork" data-mc-element-id="42670">
+                        <img src="https://storage.googleapis.com/forge-sites/a61d9d68e02af7c2c0d7bdc6775570d3d530fcaa0d67ec67e86c5c9565a19aad.png?X-Goog-Algorithm=GOOG4-RSA-SHA256&amp;X-Goog-Credential=164061697651-compute%40developer.gserviceaccount.com%2F20260301%2Fauto%2Fstorage%2Fgoog4_request&amp;X-Goog-Date=20260301T081347Z&amp;X-Goog-Expires=86400&amp;X-Goog-SignedHeaders=host&amp;response-access-control-allow-origin=https%3A%2F%2Fforge.moonchild.ai&amp;X-Goog-Signature=bc7de792a597f4d663e63a24c5c6fe64e8697bca0a70cb625464da5eb623ffa8dc708bd0fe31723fe283b69f683c34233db7cf70ed05ebf970fc3ce8d826a174a6ee8d5daa4a6191a95d209c218e82ed6dd9b49b13eec33de03a85ad3e1d452d4d2a43ccfe9e4883fab7cefe84f73b85f28014f1040d2b22240807a5fe5c11a123989384440835e9b2c7203e54458cc2e6e489c38242871b34e05393391fa084889b0b38057f82daa2b88ac4146d83ef008591fff9b3289365388d9e073e3e5b4522c869eab393621a7070ff5dc1dfc01af4595be12a53f63272f95f2663126e05f3da79bf3c04221335a69d1fc73147d4ab00c9ad57a9976a568782a69ff5ed" alt="The AI Podcast artwork" width="48" height="48" data-mc-element-id="42720">
+                    </div>
+                    <div class="job-content" data-mc-element-id="42858">
+                        <div class="job-title" data-mc-element-id="42908">EP 142: AI in Healthcare</div>
+                        <div class="job-subtitle" data-mc-element-id="42986">The AI Podcast</div>
+                        <div class="job-meta" data-mc-element-id="43057">
+                            <div class="job-badge progress" data-mc-element-id="43108">Processing</div>
+                            <div class="job-badge duration" data-mc-element-id="43185">38 min audio</div>
+                            <div class="job-badge cost mono" data-mc-element-id="43264">$0.08</div>
+                        </div>
+                        <div class="job-progress" data-mc-element-id="43364">
+                            <div class="progress-bar" data-mc-element-id="43419">
+                                <div class="progress-fill" style="width: 27%;" data-mc-element-id="43478"></div>
+                            </div>
+                            <div class="progress-text" data-mc-element-id="43595">
+                                <span data-mc-element-id="43655">23% complete</span>
+                                <span data-mc-element-id="43713">~9 min remaining</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="job-actions" data-mc-element-id="43856">
+                        <button class="job-action-btn" data-mc-element-id="43906">Details</button>
+                        <button class="job-action-btn danger" data-mc-element-id="43978">Cancel</button>
+                    </div>
+                </div>
+
+                <div class="load-more" data-mc-element-id="44099">
+                    <i class="fas fa-chevron-down" data-mc-element-id="44143"></i> Load 50 more episodes...
+                </div>
+            </div>
+        </div>
+
+        <!-- Flow Arrow 2->3 -->
+        <div class="flow-arrow bottleneck" style="left: 728px;" data-mc-element-id="44303">
+            <div class="arrow-line bottleneck" data-mc-element-id="44372">
+                <div class="flow-dot" data-mc-element-id="44424"></div>
+                <div class="arrow-head bottleneck" data-mc-element-id="44469"></div>
+            </div>
+            <div class="arrow-tooltip" data-mc-element-id="44542">
+                1,203 episodes → Stage 3<br data-mc-element-id="44610">
+                Avg transition: 8 min<br data-mc-element-id="44652">
+                <span style="color: #F59E0B;" data-mc-element-id="44673">Bottleneck detected</span>
+            </div>
+        </div>
+
+        <!-- Stage 3: Distillation -->
+        <div class="stage-column stage-3" data-mc-element-id="44812">
+            <div class="stage-header" data-mc-element-id="44859">
+                <div class="stage-badge-row" data-mc-element-id="44902">
+                    <div class="stage-number" data-mc-element-id="44952">
+                        <i class="fas fa-brain" data-mc-element-id="45003"></i>
+                    </div>
+                    <div class="stage-title-group" data-mc-element-id="45079">
+                        <div class="stage-title" data-mc-element-id="45135">Distillation</div>
+                        <div class="stage-stats" data-mc-element-id="45203">847 processed • 12min avg</div>
+                    </div>
+                </div>
+                <div class="stage-metrics" data-mc-element-id="45326">
+                    <div class="metric-badge success-rate warning" data-mc-element-id="45374">
+                        <i class="fas fa-check-circle" data-mc-element-id="45446"></i>
+                        92.1%
+                    </div>
+                    <div class="metric-badge cost mono" data-mc-element-id="45559">
+                        $521 today
+                    </div>
+                </div>
+                <div class="stage-action" data-mc-element-id="45697">
+                    <button class="btn-ghost" data-mc-element-id="45744">
+                        <i class="fas fa-robot" data-mc-element-id="45795"></i> Claude 3.5 Sonnet
+                    </button>
+                </div>
+            </div>
+
+            <div class="job-list" data-mc-element-id="45927">
+                <div class="job-card" data-mc-element-id="45966">
+                    <div class="job-checkbox" data-mc-element-id="46009"></div>
+                    <div class="job-artwork" data-mc-element-id="46062">
+                        <img src="https://storage.googleapis.com/forge-sites/7b335b75d887e199ac975e8f6bcdf36d4c2f7cc7e7784897e672430ace13f7a3.png?X-Goog-Algorithm=GOOG4-RSA-SHA256&amp;X-Goog-Credential=164061697651-compute%40developer.gserviceaccount.com%2F20260301%2Fauto%2Fstorage%2Fgoog4_request&amp;X-Goog-Date=20260301T081347Z&amp;X-Goog-Expires=86400&amp;X-Goog-SignedHeaders=host&amp;response-access-control-allow-origin=https%3A%2F%2Fforge.moonchild.ai&amp;X-Goog-Signature=c154742b79464d20012d40c9ab1ce4eea33a9158c6a3f903028b202edc33854ce45e9b9b15ced6cd4baa5164ca72708e76392c9b9d2d92ac1d9aa380a24b42243e361a17fb5c345dc8a5815a9980f0fdafbaedcdbaf2f4013e91d7a6c782c3196cba574a8461a53f7adf23c2cd1f8c5a8fc42fa19396168177a2efc90ab3e3608f9d1c13179b819ed0352a6c8126b0437134fad643c4e06b0a1c700b6a2f9a947e78c1ff84ba21b13180e16c6972f27c7214c82407750c19293bcc9a64d61e101ddca4d8ecd6c6f05bf335561a9e67a3c76eb68121a9d4bf58dad78d8ac73a9ebb36873394643062157f88a05133f6649b9371a0026f2a27a6252abba14f63d8" alt="The Vergecast podcast artwork" width="48" height="48" data-mc-element-id="46112">
+                    </div>
+                    <div class="job-content" data-mc-element-id="46255">
+                        <div class="job-title" data-mc-element-id="46305">Breaking Down the Latest Tech News</div>
+                        <div class="job-subtitle" data-mc-element-id="46393">The Vergecast • 18,492 words</div>
+                        <div class="job-meta" data-mc-element-id="46478">
+                            <div class="job-badge success" data-mc-element-id="46529">23 claims extracted</div>
+                            <div class="job-badge duration" data-mc-element-id="46614">12,847 tokens</div>
+                            <div class="job-badge cost mono" data-mc-element-id="46694">$0.08</div>
+                        </div>
+                    </div>
+                    <div class="job-actions" data-mc-element-id="46817">
+                        <button class="job-action-btn" data-mc-element-id="46867">View Claims</button>
+                        <button class="job-action-btn" data-mc-element-id="46943">Re-run</button>
+                    </div>
+                </div>
+
+                <div class="job-card in-progress" data-mc-element-id="47057">
+                    <div class="job-checkbox" data-mc-element-id="47112"></div>
+                    <div class="job-artwork" data-mc-element-id="47165">
+                        <img src="https://storage.googleapis.com/forge-sites/7554a54a0448d68978783cfe1833ba46e58b1eea50d251d27fa498b8301e6a63.png?X-Goog-Algorithm=GOOG4-RSA-SHA256&amp;X-Goog-Credential=164061697651-compute%40developer.gserviceaccount.com%2F20260301%2Fauto%2Fstorage%2Fgoog4_request&amp;X-Goog-Date=20260301T081347Z&amp;X-Goog-Expires=86400&amp;X-Goog-SignedHeaders=host&amp;response-access-control-allow-origin=https%3A%2F%2Fforge.moonchild.ai&amp;X-Goog-Signature=61e4dd7eb528baed12e37d71aabda4d268a484e008972aa9d106ec8bce8babc5e6d1094989a613ecd0c8539051d984590a0ab3c03331ef96b3c6962b25c56718b196e48042dc050e3b889cbb2469e4bd4a4e5cd41d1eaffdf6d46ed3173997130f0df9d553590d24e9193254f07b3ca4110f708a6bda3517d8357bfe7237f5bc23e5a41a4de6246801c3e9e7ee7f03647c3d8fd5edef2eefb4b0ce787245289179f0bc75aea6fcffbb24c0f24d5d127c3c379bb30a874bc00df37b0ddf0a83e5715abe42e136ffa056e3ac062f029e027e0d86276a753e3c03f00433410f2d169ebc6ba5f093abbbf6c700c6a18fa95692b0155997500f0529031fdfab246354" alt="Lex Fridman Podcast artwork" width="48" height="48" data-mc-element-id="47215">
+                    </div>
+                    <div class="job-content" data-mc-element-id="47354">
+                        <div class="job-title" data-mc-element-id="47404">Deep Dive into Quantum Computing</div>
+                        <div class="job-subtitle" data-mc-element-id="47490">Lex Fridman Podcast • 42,183 words</div>
+                        <div class="job-meta" data-mc-element-id="47581">
+                            <div class="job-badge progress" data-mc-element-id="47632">Extracting claims</div>
+                            <div class="job-badge cost mono" data-mc-element-id="47716">$0.08</div>
+                        </div>
+                        <div class="job-progress" data-mc-element-id="47816">
+                            <div class="progress-bar" data-mc-element-id="47871">
+                                <div class="progress-fill" style="width: 49%;" data-mc-element-id="47930"></div>
+                            </div>
+                            <div class="progress-text" data-mc-element-id="48047">
+                                <span data-mc-element-id="48107">Processing transcript</span>
+                                <span data-mc-element-id="48174">~7 min remaining</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="job-actions" data-mc-element-id="48317">
+                        <button class="job-action-btn" data-mc-element-id="48367">Details</button>
+                        <button class="job-action-btn danger" data-mc-element-id="48439">Cancel</button>
+                    </div>
+                </div>
+
+                <div class="job-card" data-mc-element-id="48560">
+                    <div class="job-checkbox" data-mc-element-id="48603"></div>
+                    <div class="job-artwork" data-mc-element-id="48656">
+                        <img src="https://storage.googleapis.com/forge-sites/a5e618f0c07b1b7f06d53a0329e3d6a0e1cafaebc216631c93b8cc29ed9a793d.png?X-Goog-Algorithm=GOOG4-RSA-SHA256&amp;X-Goog-Credential=164061697651-compute%40developer.gserviceaccount.com%2F20260301%2Fauto%2Fstorage%2Fgoog4_request&amp;X-Goog-Date=20260301T081347Z&amp;X-Goog-Expires=86400&amp;X-Goog-SignedHeaders=host&amp;response-access-control-allow-origin=https%3A%2F%2Fforge.moonchild.ai&amp;X-Goog-Signature=af03f19ba6b044adc2b428833e8a3ee1d99b64db30857ef6ed61fde289e32bf44f909f51bb9caa7cee41d7186c9bd3a9b07aaf2980bef768e632490bfeb103ad4d274a0fdbaf649ab61645be774459f706a478ec50d20c0a66ccd5f05fd94544e3f940eb7589fc4c87675cb354eca5c8808a1bfb922dbdcbec21c387642f56fabeea53f15c29270712a469957e57b5ab6b21119373859adf0ab24ea1239a738b31ce00997181f7d5436c64ab142588405b3e705386871c231693b25308121e5869f78e10c182f26558134c14b838f44b728b1bb23541e1756f501a17a07e57782da62e3b1d0dc0dc3c0b1bd4e8a1e7bbc8f8074c42978a3be8212080d8475de6" alt="Y Combinator podcast artwork" width="48" height="48" data-mc-element-id="48706">
+                    </div>
+                    <div class="job-content" data-mc-element-id="48851">
+                        <div class="job-title" data-mc-element-id="48901">Startup Funding Strategies for 2024</div>
+                        <div class="job-subtitle" data-mc-element-id="48990">Y Combinator • 8,234 words</div>
+                        <div class="job-meta" data-mc-element-id="49073">
+                            <div class="job-badge success" data-mc-element-id="49124">18 claims extracted</div>
+                            <div class="job-badge duration" data-mc-element-id="49209">6,892 tokens</div>
+                            <div class="job-badge cost mono" data-mc-element-id="49288">$0.07</div>
+                        </div>
+                    </div>
+                    <div class="job-actions" data-mc-element-id="49411">
+                        <button class="job-action-btn" data-mc-element-id="49461">View Claims</button>
+                        <button class="job-action-btn" data-mc-element-id="49537">Re-run</button>
+                    </div>
+                </div>
+
+                <div class="load-more" data-mc-element-id="49651">
+                    <i class="fas fa-chevron-down" data-mc-element-id="49695"></i> Load 50 more episodes...
+                </div>
+            </div>
+        </div>
+
+        <!-- Flow Arrow 3->4 -->
+        <div class="flow-arrow" style="left: 1092px;" data-mc-element-id="49855">
+            <div class="arrow-line" data-mc-element-id="49914">
+                <div class="flow-dot" data-mc-element-id="49955"></div>
+                <div class="arrow-head" data-mc-element-id="50000"></div>
+            </div>
+            <div class="arrow-tooltip" data-mc-element-id="50062">
+                3,892 episodes → Stage 4<br data-mc-element-id="50130">
+                Avg transition: 3 min<br data-mc-element-id="50172">
+                Cache hit rate: 78%
+            </div>
+        </div>
+
+        <!-- Stage 4: Clip Generation -->
+        <div class="stage-column stage-4" data-mc-element-id="50298">
+            <div class="stage-header" data-mc-element-id="50345">
+                <div class="stage-badge-row" data-mc-element-id="50388">
+                    <div class="stage-number" data-mc-element-id="50438">
+                        <i class="fas fa-waveform" data-mc-element-id="50489"></i>
+                    </div>
+                    <div class="stage-title-group" data-mc-element-id="50568">
+                        <div class="stage-title" data-mc-element-id="50624">Clip Generation</div>
+                        <div class="stage-stats" data-mc-element-id="50695">312 clips today • 5min avg</div>
+                    </div>
+                </div>
+                <div class="stage-metrics" data-mc-element-id="50819">
+                    <div class="metric-badge success-rate" data-mc-element-id="50867">
+                        <i class="fas fa-check-circle" data-mc-element-id="50931"></i>
+                        97.8%
+                    </div>
+                    <div class="metric-badge cost mono" data-mc-element-id="51044">
+                        $182 today
+                    </div>
+                </div>
+                <div class="stage-action" data-mc-element-id="51182">
+                    <button class="btn-ghost" data-mc-element-id="51229">
+                        <i class="fas fa-volume-high" data-mc-element-id="51280"></i> OpenAI Coral
+                    </button>
+                </div>
+            </div>
+
+            <div class="job-list" data-mc-element-id="51413">
+                <div class="job-card" data-mc-element-id="51452">
+                    <div class="job-checkbox" data-mc-element-id="51495"></div>
+                    <div class="job-artwork" data-mc-element-id="51548">
+                        <img src="https://storage.googleapis.com/forge-sites/a61d9d68e02af7c2c0d7bdc6775570d3d530fcaa0d67ec67e86c5c9565a19aad.png?X-Goog-Algorithm=GOOG4-RSA-SHA256&amp;X-Goog-Credential=164061697651-compute%40developer.gserviceaccount.com%2F20260301%2Fauto%2Fstorage%2Fgoog4_request&amp;X-Goog-Date=20260301T081347Z&amp;X-Goog-Expires=86400&amp;X-Goog-SignedHeaders=host&amp;response-access-control-allow-origin=https%3A%2F%2Fforge.moonchild.ai&amp;X-Goog-Signature=bc7de792a597f4d663e63a24c5c6fe64e8697bca0a70cb625464da5eb623ffa8dc708bd0fe31723fe283b69f683c34233db7cf70ed05ebf970fc3ce8d826a174a6ee8d5daa4a6191a95d209c218e82ed6dd9b49b13eec33de03a85ad3e1d452d4d2a43ccfe9e4883fab7cefe84f73b85f28014f1040d2b22240807a5fe5c11a123989384440835e9b2c7203e54458cc2e6e489c38242871b34e05393391fa084889b0b38057f82daa2b88ac4146d83ef008591fff9b3289365388d9e073e3e5b4522c869eab393621a7070ff5dc1dfc01af4595be12a53f63272f95f2663126e05f3da79bf3c04221335a69d1fc73147d4ab00c9ad57a9976a568782a69ff5ed" alt="The AI Podcast artwork" width="48" height="48" data-mc-element-id="51598">
+                    </div>
+                    <div class="job-content" data-mc-element-id="51736">
+                        <div class="job-title" data-mc-element-id="51786">EP 142: AI in Healthcare</div>
+                        <div class="job-subtitle" data-mc-element-id="51864">The AI Podcast</div>
+                        <div class="job-meta" data-mc-element-id="51935">
+                            <div class="job-badge duration" style="background: rgba(16, 185, 129, 0.2); color: #10B981; font-weight: 700;" data-mc-element-id="51986">7 min</div>
+                            <div class="job-badge cache-hit" data-mc-element-id="52137">Cache Hit</div>
+                            <div class="job-badge cost mono" data-mc-element-id="52214">$0.00</div>
+                        </div>
+                    </div>
+                    <div class="job-actions" data-mc-element-id="52337">
+                        <button class="job-action-btn" data-mc-element-id="52387">Play</button>
+                        <button class="job-action-btn" data-mc-element-id="52456">View</button>
+                    </div>
+                </div>
+
+                <div class="job-card in-progress" data-mc-element-id="52568">
+                    <div class="job-checkbox" data-mc-element-id="52623"></div>
+                    <div class="job-artwork" data-mc-element-id="52676">
+                        <img src="https://storage.googleapis.com/forge-sites/7b335b75d887e199ac975e8f6bcdf36d4c2f7cc7e7784897e672430ace13f7a3.png?X-Goog-Algorithm=GOOG4-RSA-SHA256&amp;X-Goog-Credential=164061697651-compute%40developer.gserviceaccount.com%2F20260301%2Fauto%2Fstorage%2Fgoog4_request&amp;X-Goog-Date=20260301T081347Z&amp;X-Goog-Expires=86400&amp;X-Goog-SignedHeaders=host&amp;response-access-control-allow-origin=https%3A%2F%2Fforge.moonchild.ai&amp;X-Goog-Signature=c154742b79464d20012d40c9ab1ce4eea33a9158c6a3f903028b202edc33854ce45e9b9b15ced6cd4baa5164ca72708e76392c9b9d2d92ac1d9aa380a24b42243e361a17fb5c345dc8a5815a9980f0fdafbaedcdbaf2f4013e91d7a6c782c3196cba574a8461a53f7adf23c2cd1f8c5a8fc42fa19396168177a2efc90ab3e3608f9d1c13179b819ed0352a6c8126b0437134fad643c4e06b0a1c700b6a2f9a947e78c1ff84ba21b13180e16c6972f27c7214c82407750c19293bcc9a64d61e101ddca4d8ecd6c6f05bf335561a9e67a3c76eb68121a9d4bf58dad78d8ac73a9ebb36873394643062157f88a05133f6649b9371a0026f2a27a6252abba14f63d8" alt="The Vergecast podcast artwork" width="48" height="48" data-mc-element-id="52726">
+                    </div>
+                    <div class="job-content" data-mc-element-id="52869">
+                        <div class="job-title" data-mc-element-id="52919">Breaking Down the Latest Tech News</div>
+                        <div class="job-subtitle" data-mc-element-id="53007">The Vergecast</div>
+                        <div class="job-meta" data-mc-element-id="53077">
+                            <div class="job-badge duration" style="background: rgba(59, 130, 246, 0.2); color: #3B82F6; font-weight: 700;" data-mc-element-id="53128">5 min</div>
+                            <div class="job-badge progress" data-mc-element-id="53279">Generating</div>
+                            <div class="job-badge cost mono" data-mc-element-id="53356">$0.15</div>
+                        </div>
+                        <div class="job-progress" data-mc-element-id="53456">
+                            <div class="progress-bar" data-mc-element-id="53511">
+                                <div class="progress-fill" style="width: 82%;" data-mc-element-id="53570"></div>
+                            </div>
+                            <div class="progress-text" data-mc-element-id="53687">
+                                <span data-mc-element-id="53747">TTS processing</span>
+                                <span data-mc-element-id="53807">~1 min remaining</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="job-actions" data-mc-element-id="53950">
+                        <button class="job-action-btn" data-mc-element-id="54000">Details</button>
+                        <button class="job-action-btn danger" data-mc-element-id="54072">Cancel</button>
+                    </div>
+                </div>
+
+                <div class="job-card" data-mc-element-id="54193">
+                    <div class="job-checkbox" data-mc-element-id="54236"></div>
+                    <div class="job-artwork" data-mc-element-id="54289">
+                        <img src="https://storage.googleapis.com/forge-sites/a5e618f0c07b1b7f06d53a0329e3d6a0e1cafaebc216631c93b8cc29ed9a793d.png?X-Goog-Algorithm=GOOG4-RSA-SHA256&amp;X-Goog-Credential=164061697651-compute%40developer.gserviceaccount.com%2F20260301%2Fauto%2Fstorage%2Fgoog4_request&amp;X-Goog-Date=20260301T081347Z&amp;X-Goog-Expires=86400&amp;X-Goog-SignedHeaders=host&amp;response-access-control-allow-origin=https%3A%2F%2Fforge.moonchild.ai&amp;X-Goog-Signature=af03f19ba6b044adc2b428833e8a3ee1d99b64db30857ef6ed61fde289e32bf44f909f51bb9caa7cee41d7186c9bd3a9b07aaf2980bef768e632490bfeb103ad4d274a0fdbaf649ab61645be774459f706a478ec50d20c0a66ccd5f05fd94544e3f940eb7589fc4c87675cb354eca5c8808a1bfb922dbdcbec21c387642f56fabeea53f15c29270712a469957e57b5ab6b21119373859adf0ab24ea1239a738b31ce00997181f7d5436c64ab142588405b3e705386871c231693b25308121e5869f78e10c182f26558134c14b838f44b728b1bb23541e1756f501a17a07e57782da62e3b1d0dc0dc3c0b1bd4e8a1e7bbc8f8074c42978a3be8212080d8475de6" alt="Y Combinator podcast artwork" width="48" height="48" data-mc-element-id="54339">
+                    </div>
+                    <div class="job-content" data-mc-element-id="54484">
+                        <div class="job-title" data-mc-element-id="54534">Startup Funding Strategies for 2024</div>
+                        <div class="job-subtitle" data-mc-element-id="54623">Y Combinator</div>
+                        <div class="job-meta" data-mc-element-id="54692">
+                            <div class="job-badge duration" style="background: rgba(59, 130, 246, 0.2); color: #3B82F6; font-weight: 700;" data-mc-element-id="54743">5 min</div>
+                            <div class="job-badge success" data-mc-element-id="54894">Generated • 5:02</div>
+                            <div class="job-badge cost mono" data-mc-element-id="54976">$0.15</div>
+                        </div>
+                    </div>
+                    <div class="job-actions" data-mc-element-id="55099">
+                        <button class="job-action-btn" data-mc-element-id="55149">Play</button>
+                        <button class="job-action-btn" data-mc-element-id="55218">Regenerate</button>
+                    </div>
+                </div>
+
+                <div class="load-more" data-mc-element-id="55336">
+                    <i class="fas fa-chevron-down" data-mc-element-id="55380"></i> Load 50 more clips...
+                </div>
+            </div>
+        </div>
+
+        <!-- Flow Arrow 4->5 -->
+        <div class="flow-arrow" style="left: 1456px;" data-mc-element-id="55537">
+            <div class="arrow-line" data-mc-element-id="55596">
+                <div class="flow-dot" data-mc-element-id="55637"></div>
+                <div class="arrow-head" data-mc-element-id="55682"></div>
+            </div>
+            <div class="arrow-tooltip" data-mc-element-id="55744">
+                4,203 clips → Stage 5<br data-mc-element-id="55809">
+                Avg transition: 1 min<br data-mc-element-id="55851">
+                Assembly success: 99.5%
+            </div>
+        </div>
+
+        <!-- Stage 5: Briefing Assembly -->
+        <div class="stage-column stage-5" data-mc-element-id="55983">
+            <div class="stage-header" data-mc-element-id="56030">
+                <div class="stage-badge-row" data-mc-element-id="56073">
+                    <div class="stage-number" data-mc-element-id="56123">
+                        <i class="fas fa-puzzle-piece" data-mc-element-id="56174"></i>
+                    </div>
+                    <div class="stage-title-group" data-mc-element-id="56257">
+                        <div class="stage-title" data-mc-element-id="56313">Briefing Assembly</div>
+                        <div class="stage-stats" data-mc-element-id="56386">89 briefings today • 3min avg</div>
+                    </div>
+                </div>
+                <div class="stage-metrics" data-mc-element-id="56513">
+                    <div class="metric-badge success-rate" data-mc-element-id="56561">
+                        <i class="fas fa-check-circle" data-mc-element-id="56625"></i>
+                        99.5%
+                    </div>
+                    <div class="metric-badge cost mono" data-mc-element-id="56738">
+                        $8 today
+                    </div>
+                </div>
+            </div>
+
+            <div class="job-list" data-mc-element-id="56890">
+                <div class="job-card" data-mc-element-id="56929">
+                    <div class="job-checkbox" data-mc-element-id="56972"></div>
+                    <div class="job-artwork" style="background: linear-gradient(135deg, #F59E0B, #FBBF24); display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 700; color: white;" data-mc-element-id="57025">
+                        7
+                    </div>
+                    <div class="job-content" data-mc-element-id="57297">
+                        <div class="job-title" data-mc-element-id="57347">user#3829@example.com</div>
+                        <div class="job-subtitle" data-mc-element-id="57422">7 podcasts • Pro tier</div>
+                        <div class="job-meta" data-mc-element-id="57500">
+                            <div class="job-badge duration" style="background: rgba(16, 185, 129, 0.2); color: #10B981; font-weight: 700;" data-mc-element-id="57551">15:00 target</div>
+                            <div class="job-badge success" data-mc-element-id="57709">14:47 actual</div>
+                            <div class="job-badge" style="background: rgba(16, 185, 129, 0.1); color: #10B981;" data-mc-element-id="57787">98.5% fit</div>
+                        </div>
+                    </div>
+                    <div class="job-actions" data-mc-element-id="57965">
+                        <button class="job-action-btn" data-mc-element-id="58015">Preview</button>
+                        <button class="job-action-btn" data-mc-element-id="58087">Details</button>
+                    </div>
+                </div>
+
+                <div class="job-card in-progress" data-mc-element-id="58202">
+                    <div class="job-checkbox" data-mc-element-id="58257"></div>
+                    <div class="job-artwork" style="background: linear-gradient(135deg, #3B82F6, #06B6D4); display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 700; color: white;" data-mc-element-id="58310">
+                        5
+                    </div>
+                    <div class="job-content" data-mc-element-id="58582">
+                        <div class="job-title" data-mc-element-id="58632">user#2841@example.com</div>
+                        <div class="job-subtitle" data-mc-element-id="58707">5 podcasts • Pro+ tier</div>
+                        <div class="job-meta" data-mc-element-id="58786">
+                            <div class="job-badge duration" style="background: rgba(59, 130, 246, 0.2); color: #3B82F6; font-weight: 700;" data-mc-element-id="58837">10:00 target</div>
+                            <div class="job-badge progress" data-mc-element-id="58995">Assembling</div>
+                        </div>
+                        <div class="job-progress" data-mc-element-id="59099">
+                            <div class="progress-bar" data-mc-element-id="59154">
+                                <div class="progress-fill" style="width: 64%;" data-mc-element-id="59213"></div>
+                            </div>
+                            <div class="progress-text" data-mc-element-id="59330">
+                                <span data-mc-element-id="59390">3 of 5 segments ready</span>
+                                <span data-mc-element-id="59457">~1 min remaining</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="job-actions" data-mc-element-id="59600">
+                        <button class="job-action-btn" data-mc-element-id="59650">Details</button>
+                        <button class="job-action-btn danger" data-mc-element-id="59722">Cancel</button>
+                    </div>
+                </div>
+
+                <div class="job-card" data-mc-element-id="59843">
+                    <div class="job-checkbox" data-mc-element-id="59886"></div>
+                    <div class="job-artwork" style="background: linear-gradient(135deg, #10B981, #34D399); display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 700; color: white;" data-mc-element-id="59939">
+                        3
+                    </div>
+                    <div class="job-content" data-mc-element-id="60211">
+                        <div class="job-title" data-mc-element-id="60261">user#1847@example.com</div>
+                        <div class="job-subtitle" data-mc-element-id="60336">3 podcasts • Free tier</div>
+                        <div class="job-meta" data-mc-element-id="60415">
+                            <div class="job-badge duration" style="background: rgba(16, 185, 129, 0.2); color: #10B981; font-weight: 700;" data-mc-element-id="60466">5:00 target</div>
+                            <div class="job-badge success" data-mc-element-id="60623">4:52 actual</div>
+                            <div class="job-badge" style="background: rgba(16, 185, 129, 0.1); color: #10B981;" data-mc-element-id="60700">97.3% fit</div>
+                        </div>
+                    </div>
+                    <div class="job-actions" data-mc-element-id="60878">
+                        <button class="job-action-btn" data-mc-element-id="60928">Preview</button>
+                        <button class="job-action-btn" data-mc-element-id="61000">Details</button>
+                    </div>
+                </div>
+
+                <div class="load-more" data-mc-element-id="61115">
+                    <i class="fas fa-chevron-down" data-mc-element-id="61159"></i> Load 50 more briefings...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Sidebar (Job Details) -->
+    <div class="right-sidebar" id="rightSidebar" data-mc-element-id="61335">
+        <div class="sidebar-header" data-mc-element-id="61389">
+            <div class="sidebar-title" data-mc-element-id="61430">
+                <i class="fas fa-file-alt" data-mc-element-id="61474"></i>
+                Episode Details
+            </div>
+            <button class="close-button" id="closeSidebar" data-mc-element-id="61569">
+                <i class="fas fa-xmark" data-mc-element-id="61633"></i>
+            </button>
+        </div>
+
+        <div class="sidebar-tabs" data-mc-element-id="61708">
+            <div class="sidebar-tab active" data-mc-element-id="61747">Overview</div>
+            <div class="sidebar-tab" data-mc-element-id="61806">Pipeline Trace</div>
+            <div class="sidebar-tab" data-mc-element-id="61864">Logs</div>
+            <div class="sidebar-tab" data-mc-element-id="61912">Actions</div>
+        </div>
+
+        <div class="sidebar-content" data-mc-element-id="61975">
+            <div class="detail-section" data-mc-element-id="62017">
+                <div style="text-align: center; margin-bottom: 24px;" data-mc-element-id="62062">
+                    <img src="https://storage.googleapis.com/forge-sites/7b335b75d887e199ac975e8f6bcdf36d4c2f7cc7e7784897e672430ace13f7a3.png?X-Goog-Algorithm=GOOG4-RSA-SHA256&amp;X-Goog-Credential=164061697651-compute%40developer.gserviceaccount.com%2F20260301%2Fauto%2Fstorage%2Fgoog4_request&amp;X-Goog-Date=20260301T081347Z&amp;X-Goog-Expires=86400&amp;X-Goog-SignedHeaders=host&amp;response-access-control-allow-origin=https%3A%2F%2Fforge.moonchild.ai&amp;X-Goog-Signature=c154742b79464d20012d40c9ab1ce4eea33a9158c6a3f903028b202edc33854ce45e9b9b15ced6cd4baa5164ca72708e76392c9b9d2d92ac1d9aa380a24b42243e361a17fb5c345dc8a5815a9980f0fdafbaedcdbaf2f4013e91d7a6c782c3196cba574a8461a53f7adf23c2cd1f8c5a8fc42fa19396168177a2efc90ab3e3608f9d1c13179b819ed0352a6c8126b0437134fad643c4e06b0a1c700b6a2f9a947e78c1ff84ba21b13180e16c6972f27c7214c82407750c19293bcc9a64d61e101ddca4d8ecd6c6f05bf335561a9e67a3c76eb68121a9d4bf58dad78d8ac73a9ebb36873394643062157f88a05133f6649b9371a0026f2a27a6252abba14f63d8" alt="The Vergecast podcast artwork" width="160" height="160" style="border-radius: 12px;" data-mc-element-id="62137">
+                </div>
+
+                <div class="section-title" data-mc-element-id="62304">Episode Information</div>
+                <div class="detail-row" data-mc-element-id="62373">
+                    <span class="detail-label" data-mc-element-id="62418">Episode</span>
+                    <span class="detail-value" data-mc-element-id="62480">Breaking Down the Latest Tech News</span>
+                </div>
+                <div class="detail-row" data-mc-element-id="62588">
+                    <span class="detail-label" data-mc-element-id="62633">Podcast</span>
+                    <span class="detail-value" style="color: #3B82F6; cursor: pointer;" data-mc-element-id="62695">The Vergecast</span>
+                </div>
+                <div class="detail-row" data-mc-element-id="62823">
+                    <span class="detail-label" data-mc-element-id="62868">Published</span>
+                    <span class="detail-value" data-mc-element-id="62932">Today at 8:00 AM</span>
+                </div>
+                <div class="detail-row" data-mc-element-id="63022">
+                    <span class="detail-label" data-mc-element-id="63067">Duration</span>
+                    <span class="detail-value mono" data-mc-element-id="63130">45:23</span>
+                </div>
+                <div class="detail-row" data-mc-element-id="63214">
+                    <span class="detail-label" data-mc-element-id="63259">Status</span>
+                    <span class="detail-value" data-mc-element-id="63320">
+                        <span class="job-badge success" data-mc-element-id="63372">Stage 3 Complete</span>
+                    </span>
+                </div>
+            </div>
+
+            <div class="detail-section" data-mc-element-id="63511">
+                <div class="section-title" data-mc-element-id="63556">Processing Stats</div>
+                <div class="detail-row" data-mc-element-id="63622">
+                    <span class="detail-label" data-mc-element-id="63667">Transcript Length</span>
+                    <span class="detail-value mono" data-mc-element-id="63739">18,492 words</span>
+                </div>
+                <div class="detail-row" data-mc-element-id="63830">
+                    <span class="detail-label" data-mc-element-id="63875">Claims Extracted</span>
+                    <span class="detail-value" data-mc-element-id="63946">23 claims</span>
+                </div>
+                <div class="detail-row" data-mc-element-id="64029">
+                    <span class="detail-label" data-mc-element-id="64074">Processing Time</span>
+                    <span class="detail-value mono" data-mc-element-id="64144">19m 47s total</span>
+                </div>
+                <div class="detail-row" data-mc-element-id="64236">
+                    <span class="detail-label" data-mc-element-id="64281">Total Cost</span>
+                    <span class="detail-value mono" style="color: #10B981;" data-mc-element-id="64346">$0.16</span>
+                </div>
+            </div>
+
+            <div class="detail-section" data-mc-element-id="64470">
+                <div class="section-title" data-mc-element-id="64515">External Links</div>
+                <div class="detail-actions" data-mc-element-id="64579">
+                    <button class="btn-detail btn-secondary" data-mc-element-id="64628">
+                        <i class="fas fa-link" data-mc-element-id="64694"></i> RSS Item
+                    </button>
+                    <button class="btn-detail btn-secondary" data-mc-element-id="64781">
+                        <i class="fas fa-file-audio" data-mc-element-id="64847"></i> Audio File
+                    </button>
+                </div>
+            </div>
+
+            <div class="detail-section" data-mc-element-id="64977">
+                <div class="section-title" data-mc-element-id="65022">Quick Actions</div>
+                <div class="detail-actions" data-mc-element-id="65085">
+                    <button class="btn-detail btn-primary" data-mc-element-id="65134">
+                        <i class="fas fa-rotate" data-mc-element-id="65198"></i> Re-process
+                    </button>
+                    <button class="btn-detail btn-secondary" data-mc-element-id="65289">
+                        <i class="fas fa-file-alt" data-mc-element-id="65355"></i> View Transcript
+                    </button>
+                </div>
+                <div class="detail-actions" style="margin-top: 8px;" data-mc-element-id="65472">
+                    <button class="btn-detail btn-secondary" data-mc-element-id="65546">
+                        <i class="fas fa-play" data-mc-element-id="65612"></i> Play Audio
+                    </button>
+                    <button class="btn-detail" style="background: rgba(239, 68, 68, 0.1); color: #EF4444;" data-mc-element-id="65701">
+                        <i class="fas fa-trash" data-mc-element-id="65813"></i> Delete
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bulk Selection Bar -->
+    <div class="bulk-selection-bar" id="bulkBar" data-mc-element-id="65984">
+        <div class="bulk-count" data-mc-element-id="66038">
+            <span id="selectedCount" data-mc-element-id="66075">0</span> jobs selected
+        </div>
+        <div class="bulk-actions" data-mc-element-id="66146">
+            <button class="btn-toolbar btn-secondary" data-mc-element-id="66185">
+                <i class="fas fa-times" data-mc-element-id="66244"></i>
+                Clear Selection
+            </button>
+            <button class="btn-toolbar btn-primary" data-mc-element-id="66339">
+                <i class="fas fa-rotate" data-mc-element-id="66396"></i>
+                Retry All
+            </button>
+            <button class="btn-toolbar btn-secondary" data-mc-element-id="66486">
+                <i class="fas fa-download" data-mc-element-id="66545"></i>
+                Export Selected
+            </button>
+            <button class="btn-toolbar" style="background: rgba(239, 68, 68, 0.1); color: #EF4444;" data-mc-element-id="66643">
+                <i class="fas fa-trash" data-mc-element-id="66748"></i>
+                Delete All
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // Job card selection
+        let selectedJobs = new Set();
+
+        document.querySelectorAll('.job-card').forEach(card => {
+            const checkbox = card.querySelector('.job-checkbox');
+            
+            card.addEventListener('click', (e) => {
+                if (e.target.closest('.job-actions') || e.target.closest('.job-checkbox')) {
+                    return;
+                }
+                
+                // Show sidebar
+                document.getElementById('rightSidebar').classList.add('active');
+                
+                // Highlight selected card
+                document.querySelectorAll('.job-card').forEach(c => c.classList.remove('selected'));
+                card.classList.add('selected');
+            });
+            
+            checkbox.addEventListener('click', (e) => {
+                e.stopPropagation();
+                checkbox.classList.toggle('checked');
+                
+                const jobId = card.dataset.jobId || Math.random().toString();
+                if (checkbox.classList.contains('checked')) {
+                    selectedJobs.add(jobId);
+                } else {
+                    selectedJobs.delete(jobId);
+                }
+                
+                updateBulkBar();
+            });
+        });
+
+        function updateBulkBar() {
+            const bulkBar = document.getElementById('bulkBar');
+            const countDisplay = document.getElementById('selectedCount');
+            
+            if (selectedJobs.size > 0) {
+                bulkBar.classList.add('active');
+                countDisplay.textContent = selectedJobs.size;
+            } else {
+                bulkBar.classList.remove('active');
+            }
+        }
+
+        // Close sidebar
+        document.getElementById('closeSidebar').addEventListener('click', () => {
+            document.getElementById('rightSidebar').classList.remove('active');
+            document.querySelectorAll('.job-card').forEach(c => c.classList.remove('selected'));
+        });
+
+        // Tab switching
+        document.querySelectorAll('.sidebar-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+            });
+        });
+
+        // Clear selection
+        document.querySelector('.bulk-actions .btn-secondary').addEventListener('click', () => {
+            selectedJobs.clear();
+            document.querySelectorAll('.job-checkbox.checked').forEach(cb => cb.classList.remove('checked'));
+            updateBulkBar();
+        });
+
+        // Simulate live updates for in-progress jobs
+        setInterval(() => {
+            document.querySelectorAll('.job-card.in-progress').forEach(card => {
+                const progressFill = card.querySelector('.progress-fill');
+                if (progressFill) {
+                    const currentWidth = parseFloat(progressFill.style.width);
+                    if (currentWidth < 100) {
+                        progressFill.style.width = `${Math.min(currentWidth + 2, 100)}%`;
+                    }
+                }
+            });
+        }, 2000);
+
+        // Status filter toggle
+        document.querySelectorAll('.status-badge').forEach(badge => {
+            badge.addEventListener('click', () => {
+                document.querySelectorAll('.status-badge').forEach(b => b.classList.remove('active'));
+                badge.classList.add('active');
+            });
+        });
+    </script>
+
+<script>__MC_SITE_ID__ = "968df55172105a36e6d5f88a500b6afab425d78feb0d93fd0d22ee72d118cc70"</script><script>__MC_OPTIONS__ = {
+  "svg": false,
+  "overlay": false
+}</script><script src="https://forge.moonchild.ai/public/devigner.global.js" type="module"></script></body></html>

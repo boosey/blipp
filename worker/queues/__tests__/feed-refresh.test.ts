@@ -6,6 +6,10 @@ vi.mock("../../lib/db", () => ({
   createPrismaClient: vi.fn(),
 }));
 
+vi.mock("../../lib/config", () => ({
+  getConfig: vi.fn().mockResolvedValue(true),
+}));
+
 vi.mock("../../lib/rss-parser", () => ({
   parseRssFeed: vi.fn().mockReturnValue({
     title: "Test Podcast",
@@ -31,6 +35,7 @@ const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
 
 import { createPrismaClient } from "../../lib/db";
+import { getConfig } from "../../lib/config";
 
 let mockPrisma: ReturnType<typeof createMockPrisma>;
 let mockEnv: ReturnType<typeof createMockEnv>;
@@ -179,5 +184,132 @@ describe("handleFeedRefresh", () => {
     await handleFeedRefresh(mockBatch, mockEnv, mockCtx);
 
     expect(mockEnv.DISTILLATION_QUEUE.send).not.toHaveBeenCalled();
+  });
+
+  describe("stage-enabled check", () => {
+    it("ACKs without processing when stage 1 is disabled", async () => {
+      (getConfig as any).mockResolvedValueOnce(false); // pipeline.stage.1.enabled
+
+      const mockMsg = {
+        body: { type: "cron" },
+        ack: vi.fn(),
+        retry: vi.fn(),
+      };
+      const mockBatch = {
+        messages: [mockMsg],
+        queue: "feed-refresh",
+      } as unknown as MessageBatch;
+
+      await handleFeedRefresh(mockBatch, mockEnv, mockCtx);
+
+      expect(mockMsg.ack).toHaveBeenCalled();
+      expect(mockPrisma.podcast.findMany).not.toHaveBeenCalled();
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it("bypasses stage-enabled check for manual messages", async () => {
+      // getConfig would return false for stage enabled, but manual bypasses it
+      (getConfig as any).mockResolvedValue(true);
+
+      mockPrisma.podcast.findMany.mockResolvedValue([
+        { id: "pod-1", feedUrl: "https://example.com/feed.xml" },
+      ]);
+      mockPrisma.episode.upsert.mockResolvedValue({ id: "ep-1" });
+      mockPrisma.podcast.update.mockResolvedValue({});
+
+      const mockMsg = {
+        body: { type: "manual", podcastId: "pod-1" },
+        ack: vi.fn(),
+        retry: vi.fn(),
+      };
+      const mockBatch = {
+        messages: [mockMsg],
+        queue: "feed-refresh",
+      } as unknown as MessageBatch;
+
+      await handleFeedRefresh(mockBatch, mockEnv, mockCtx);
+
+      // Should process even though it's a manual message — stage check is skipped
+      expect(mockPrisma.podcast.findMany).toHaveBeenCalled();
+      expect(mockMsg.ack).toHaveBeenCalled();
+    });
+  });
+
+  describe("per-podcast filtering", () => {
+    it("fetches only the specified podcast when podcastId is in message", async () => {
+      (getConfig as any).mockResolvedValue(true);
+
+      const podcast = { id: "pod-1", feedUrl: "https://example.com/feed.xml" };
+      mockPrisma.podcast.findMany.mockResolvedValue([podcast]);
+      mockPrisma.episode.upsert.mockResolvedValue({ id: "ep-1" });
+      mockPrisma.podcast.update.mockResolvedValue(podcast);
+
+      const mockMsg = {
+        body: { type: "manual", podcastId: "pod-1" },
+        ack: vi.fn(),
+        retry: vi.fn(),
+      };
+      const mockBatch = {
+        messages: [mockMsg],
+        queue: "feed-refresh",
+      } as unknown as MessageBatch;
+
+      await handleFeedRefresh(mockBatch, mockEnv, mockCtx);
+
+      // Should filter by podcast ID
+      expect(mockPrisma.podcast.findMany).toHaveBeenCalledWith({
+        where: { id: { in: ["pod-1"] } },
+      });
+    });
+
+    it("fetches all podcasts when message has no podcastId (cron)", async () => {
+      (getConfig as any).mockResolvedValue(true);
+
+      const podcast = { id: "pod-1", feedUrl: "https://example.com/feed.xml" };
+      mockPrisma.podcast.findMany.mockResolvedValue([podcast]);
+      mockPrisma.episode.upsert.mockResolvedValue({ id: "ep-1" });
+      mockPrisma.podcast.update.mockResolvedValue(podcast);
+
+      const mockMsg = {
+        body: { type: "cron" },
+        ack: vi.fn(),
+        retry: vi.fn(),
+      };
+      const mockBatch = {
+        messages: [mockMsg],
+        queue: "feed-refresh",
+      } as unknown as MessageBatch;
+
+      await handleFeedRefresh(mockBatch, mockEnv, mockCtx);
+
+      // Should fetch all podcasts (no where clause)
+      expect(mockPrisma.podcast.findMany).toHaveBeenCalledWith();
+    });
+
+    it("fetches all when batch contains a mix of cron and podcast-specific messages", async () => {
+      (getConfig as any).mockResolvedValue(true);
+
+      mockPrisma.podcast.findMany.mockResolvedValue([]);
+
+      const cronMsg = {
+        body: { type: "cron" },
+        ack: vi.fn(),
+        retry: vi.fn(),
+      };
+      const podcastMsg = {
+        body: { type: "manual", podcastId: "pod-1" },
+        ack: vi.fn(),
+        retry: vi.fn(),
+      };
+      const mockBatch = {
+        messages: [cronMsg, podcastMsg],
+        queue: "feed-refresh",
+      } as unknown as MessageBatch;
+
+      await handleFeedRefresh(mockBatch, mockEnv, mockCtx);
+
+      // Should fetch all because at least one message lacks podcastId
+      expect(mockPrisma.podcast.findMany).toHaveBeenCalledWith();
+    });
   });
 });

@@ -16,9 +16,11 @@ export function createMockPrisma() {
     findMany: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+    updateMany: vi.fn(),
     upsert: vi.fn(),
     delete: vi.fn(),
     count: vi.fn(),
+    groupBy: vi.fn(),
   });
 
   return {
@@ -31,6 +33,8 @@ export function createMockPrisma() {
     subscription: modelMethods(),
     briefing: modelMethods(),
     briefingSegment: modelMethods(),
+    pipelineJob: modelMethods(),
+    platformConfig: modelMethods(),
     $disconnect: vi.fn().mockResolvedValue(undefined),
   };
 }

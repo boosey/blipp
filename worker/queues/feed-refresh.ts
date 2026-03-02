@@ -1,4 +1,5 @@
 import { createPrismaClient } from "../lib/db";
+import { getConfig } from "../lib/config";
 import { parseRssFeed, type ParsedEpisode } from "../lib/rss-parser";
 import type { Env } from "../types";
 
@@ -22,6 +23,10 @@ function latestEpisodes(episodes: ParsedEpisode[], max: number): ParsedEpisode[]
  * creates episode records, and queues distillation for episodes with transcripts.
  * Only ingests the most recent episodes that aren't already in the DB.
  *
+ * Supports per-podcast filtering: if a message body contains a `podcastId`,
+ * only that podcast is refreshed. Messages with `type: "manual"` bypass the
+ * stage-enabled check.
+ *
  * @param batch - Cloudflare Queue message batch
  * @param env - Worker environment bindings
  * @param ctx - Execution context for background work
@@ -34,7 +39,40 @@ export async function handleFeedRefresh(
   const prisma = createPrismaClient(env.HYPERDRIVE);
 
   try {
-    const podcasts = await prisma.podcast.findMany();
+    // Check if stage 1 (feed refresh) is enabled — manual messages bypass this
+    const hasManual = batch.messages.some(
+      (m) => (m.body as any)?.type === "manual"
+    );
+    if (!hasManual) {
+      const stageEnabled = await getConfig(
+        prisma,
+        "pipeline.stage.1.enabled",
+        true
+      );
+      if (!stageEnabled) {
+        for (const msg of batch.messages) msg.ack();
+        return;
+      }
+    }
+
+    // Collect specific podcast IDs from messages, if any
+    const podcastIds = new Set<string>();
+    let fetchAll = false;
+    for (const msg of batch.messages) {
+      const body = msg.body as any;
+      if (body?.podcastId) {
+        podcastIds.add(body.podcastId);
+      } else {
+        fetchAll = true;
+      }
+    }
+
+    // Fetch podcasts — either all or just the requested subset
+    const podcasts = fetchAll
+      ? await prisma.podcast.findMany()
+      : await prisma.podcast.findMany({
+          where: { id: { in: [...podcastIds] } },
+        });
 
     for (const podcast of podcasts) {
       try {

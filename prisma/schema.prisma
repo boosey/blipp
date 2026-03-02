@@ -35,6 +35,7 @@ model User {
   imageUrl              String?
   stripeCustomerId      String?  @unique
   tier                  UserTier @default(FREE)
+  isAdmin               Boolean  @default(false)
   briefingLengthMinutes Int      @default(15)
   briefingTime          String   @default("07:00") // HH:MM in user's timezone
   timezone              String   @default("America/New_York")
@@ -63,6 +64,10 @@ model Podcast {
   author         String?
   categories     String[] // PostgreSQL array
   lastFetchedAt  DateTime?
+  feedHealth     String?   // "excellent" | "good" | "fair" | "poor" | "broken"
+  feedError      String?
+  episodeCount   Int       @default(0)
+  status         String    @default("active") // "active" | "paused" | "archived"
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
@@ -191,4 +196,53 @@ model BriefingSegment {
   transitionText String // "Next, from podcast X..."
 
   briefing Briefing @relation(fields: [briefingId], references: [id], onDelete: Cascade)
+}
+
+// ── Admin: Pipeline Observability ──
+
+model PipelineJob {
+  id           String            @id @default(cuid())
+  type         PipelineJobType
+  status       PipelineJobStatus @default(PENDING)
+  entityId     String            // podcastId, episodeId, or briefingId
+  entityType   String            // "podcast" | "episode" | "briefing"
+  stage        Int               @default(1) // 1-5 pipeline stage
+  input        Json?
+  output       Json?
+  errorMessage String?
+  cost         Float?            // estimated cost in dollars
+  startedAt    DateTime?
+  completedAt  DateTime?
+  durationMs   Int?
+  retryCount   Int               @default(0)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+}
+
+enum PipelineJobType {
+  FEED_REFRESH
+  TRANSCRIPTION
+  DISTILLATION
+  CLIP_GENERATION
+  BRIEFING_ASSEMBLY
+}
+
+enum PipelineJobStatus {
+  PENDING
+  RUNNING // legacy – treat as IN_PROGRESS
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  RETRYING
+}
+
+// ── Admin: Runtime Configuration ──
+
+model PlatformConfig {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       Json
+  description String?
+  updatedAt   DateTime @updatedAt
+  updatedBy   String?  // admin clerkId who last updated
 }

@@ -1,0 +1,1486 @@
+<!DOCTYPE html><html lang="en" data-mode=""><head><base href="https://forge.moonchild.ai/site/5ece147c5b1fca618f9d88f5806505da7798ec045bd971d823bd722b6400ce7b/">
+    <meta charset="UTF-8" data-mc-element-id="44">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" data-mc-element-id="71">
+    <title data-mc-element-id="146">Blipp Admin - Users</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Roboto+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #0A1628;
+            color: #F9FAFB;
+            font-size: 16px;
+            line-height: 24px;
+            font-weight: 500;
+            overflow-x: hidden;
+        }
+
+        .mono {
+            font-family: 'Roboto Mono', monospace;
+        }
+
+        /* Top Bar */
+        .top-bar {
+            height: 64px;
+            background: #1A2942;
+            border-bottom: 1px solid rgba(59, 130, 246, 0.1);
+            display: flex;
+            align-items: center;
+            padding: 0 24px;
+            gap: 24px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .logo {
+            font-size: 20px;
+            font-weight: 700;
+            color: #3B82F6;
+            letter-spacing: -0.5px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .search-container {
+            flex: 1;
+            max-width: 500px;
+            position: relative;
+        }
+
+        .search-input {
+            width: 100%;
+            height: 40px;
+            background: #0A1628;
+            border: 1px solid rgba(156, 163, 175, 0.2);
+            border-radius: 6px;
+            padding: 0 16px 0 40px;
+            color: #F9FAFB;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s ease-in-out;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: #3B82F6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #9CA3AF;
+            font-size: 16px;
+        }
+
+        .top-bar-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-left: auto;
+        }
+
+        .cost-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: rgba(16, 185, 129, 0.1);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+        }
+
+        .cost-indicator:hover {
+            background: rgba(16, 185, 129, 0.15);
+            transform: translateY(-1px);
+        }
+
+        .cost-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #10B981;
+        }
+
+        .cost-amount {
+            font-family: 'Roboto Mono', monospace;
+            font-size: 14px;
+            font-weight: 600;
+            color: #10B981;
+        }
+
+        .alerts-button {
+            position: relative;
+            width: 40px;
+            height: 40px;
+            background: rgba(239, 68, 68, 0.1);
+            border: none;
+            border-radius: 6px;
+            color: #EF4444;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+        }
+
+        .alerts-button:hover {
+            background: rgba(239, 68, 68, 0.15);
+            transform: translateY(-1px);
+        }
+
+        .alerts-badge {
+            position: absolute;
+            top: -4px;
+            right: -4px;
+            background: #EF4444;
+            color: white;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 2px 6px;
+            border-radius: 10px;
+        }
+
+        .user-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #3B82F6, #06B6D4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+        }
+
+        .user-avatar:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+        }
+
+        /* Secondary Toolbar */
+        .secondary-toolbar {
+            height: 56px;
+            background: #1A2942;
+            border-bottom: 1px solid rgba(156, 163, 175, 0.1);
+            padding: 0 24px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            position: sticky;
+            top: 64px;
+            z-index: 90;
+        }
+
+        .breadcrumb {
+            font-size: 14px;
+            color: #9CA3AF;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .breadcrumb a {
+            color: #9CA3AF;
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .breadcrumb a:hover {
+            color: #3B82F6;
+        }
+
+        .breadcrumb .current {
+            color: #F9FAFB;
+            font-weight: 600;
+        }
+
+        .toolbar-search {
+            flex: 1;
+            max-width: 400px;
+            position: relative;
+        }
+
+        .filter-group {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .filter-badge {
+            padding: 6px 12px;
+            background: rgba(59, 130, 246, 0.1);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            border-radius: 16px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #3B82F6;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .filter-badge:hover {
+            background: rgba(59, 130, 246, 0.2);
+            transform: translateY(-1px);
+        }
+
+        .filter-badge.active {
+            background: #3B82F6;
+            color: white;
+            border-color: #3B82F6;
+        }
+
+        .filter-badge i {
+            font-size: 11px;
+        }
+
+        .toolbar-actions {
+            display: flex;
+            gap: 8px;
+            margin-left: auto;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            font-size: 14px;
+            font-weight: 600;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: #3B82F6;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #2563EB;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+        }
+
+        .btn-secondary {
+            background: rgba(156, 163, 175, 0.1);
+            color: #F9FAFB;
+            border: 1px solid rgba(156, 163, 175, 0.2);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(156, 163, 175, 0.15);
+            border-color: #9CA3AF;
+        }
+
+        /* Segment Pills */
+        .segment-pills {
+            padding: 16px 24px;
+            background: #1A2942;
+            border-bottom: 1px solid rgba(156, 163, 175, 0.1);
+            display: flex;
+            gap: 12px;
+            overflow-x: auto;
+        }
+
+        .segment-pill {
+            padding: 8px 16px;
+            background: rgba(156, 163, 175, 0.05);
+            border: 1px solid rgba(156, 163, 175, 0.1);
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+            color: #9CA3AF;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .segment-pill:hover {
+            background: rgba(156, 163, 175, 0.1);
+            color: #F9FAFB;
+        }
+
+        .segment-pill.active {
+            background: #3B82F6;
+            color: white;
+            border-color: #3B82F6;
+        }
+
+        .segment-pill .count {
+            font-family: 'Roboto Mono', monospace;
+            opacity: 0.8;
+        }
+
+        /* Main Content Split */
+        .main-split {
+            display: grid;
+            grid-template-columns: 40% 60%;
+            height: calc(100vh - 64px - 56px - 57px - 40px);
+        }
+
+        /* User Table Pane */
+        .table-pane {
+            background: #0A1628;
+            border-right: 1px solid rgba(156, 163, 175, 0.1);
+            overflow-y: auto;
+        }
+
+        .users-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .users-table thead {
+            position: sticky;
+            top: 0;
+            background: #1A2942;
+            z-index: 10;
+        }
+
+        .users-table th {
+            padding: 12px 16px;
+            text-align: left;
+            font-size: 12px;
+            font-weight: 700;
+            color: #9CA3AF;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid rgba(156, 163, 175, 0.1);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .users-table th:hover {
+            color: #F9FAFB;
+            background: rgba(156, 163, 175, 0.05);
+        }
+
+        .users-table th i {
+            margin-left: 4px;
+            font-size: 10px;
+            opacity: 0.5;
+        }
+
+        .users-table tbody tr {
+            border-bottom: 1px solid rgba(156, 163, 175, 0.05);
+            border-left: 3px solid transparent;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+        }
+
+        .users-table tbody tr:nth-child(even) {
+            background: rgba(156, 163, 175, 0.02);
+        }
+
+        .users-table tbody tr:hover {
+            background: rgba(59, 130, 246, 0.05);
+        }
+
+        .users-table tbody tr.selected {
+            background: rgba(59, 130, 246, 0.1);
+            border-left-color: #3B82F6;
+        }
+
+        .users-table tbody tr.tier-free {
+            border-left-color: #6B7280;
+        }
+
+        .users-table tbody tr.tier-pro {
+            border-left-color: #3B82F6;
+        }
+
+        .users-table tbody tr.tier-proplus {
+            border-left-color: #8B5CF6;
+        }
+
+        .users-table td {
+            padding: 12px 16px;
+            font-size: 14px;
+            height: 48px;
+        }
+
+        .user-email {
+            font-weight: 600;
+            color: #F9FAFB;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .user-badges {
+            display: flex;
+            gap: 4px;
+        }
+
+        .user-badge {
+            font-size: 16px;
+        }
+
+        .user-badge.at-risk {
+            color: #EF4444;
+        }
+
+        .user-badge.power-user {
+            color: #F59E0B;
+        }
+
+        .user-badge.trial {
+            color: #3B82F6;
+        }
+
+        .tier-badge {
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            display: inline-block;
+        }
+
+        .tier-badge.free {
+            background: rgba(107, 114, 128, 0.2);
+            color: #9CA3AF;
+        }
+
+        .tier-badge.pro {
+            background: rgba(59, 130, 246, 0.2);
+            color: #60A5FA;
+        }
+
+        .tier-badge.proplus {
+            background: rgba(139, 92, 246, 0.2);
+            color: #A78BFA;
+        }
+
+        .status-badge {
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 700;
+            display: inline-block;
+        }
+
+        .status-badge.active {
+            background: rgba(16, 185, 129, 0.2);
+            color: #10B981;
+        }
+
+        .status-badge.inactive {
+            background: rgba(156, 163, 175, 0.2);
+            color: #9CA3AF;
+        }
+
+        .status-badge.cancelled {
+            background: rgba(239, 68, 68, 0.2);
+            color: #EF4444;
+        }
+
+        .relative-time {
+            color: #9CA3AF;
+            font-size: 13px;
+        }
+
+        .row-actions {
+            display: flex;
+            gap: 4px;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .users-table tbody tr:hover .row-actions {
+            opacity: 1;
+        }
+
+        .action-icon {
+            width: 28px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+            background: rgba(156, 163, 175, 0.1);
+            color: #9CA3AF;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .action-icon:hover {
+            background: rgba(59, 130, 246, 0.2);
+            color: #3B82F6;
+        }
+
+        /* Detail Pane */
+        .detail-pane {
+            background: #1A2942;
+            overflow-y: auto;
+            padding: 24px;
+        }
+
+        .detail-header {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 24px;
+            padding-bottom: 24px;
+            border-bottom: 1px solid rgba(156, 163, 175, 0.1);
+        }
+
+        .detail-avatar {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #14B8A6, #06B6D4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            font-weight: 700;
+        }
+
+        .detail-user-info {
+            flex: 1;
+        }
+
+        .detail-email {
+            font-size: 20px;
+            font-weight: 700;
+            color: #F9FAFB;
+            margin-bottom: 4px;
+        }
+
+        .detail-meta {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            font-size: 13px;
+            color: #9CA3AF;
+        }
+
+        .detail-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn-icon {
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: rgba(156, 163, 175, 0.1);
+            color: #9CA3AF;
+        }
+
+        .btn-icon:hover {
+            background: rgba(59, 130, 246, 0.2);
+            color: #3B82F6;
+            transform: translateY(-1px);
+        }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 2px;
+            margin-bottom: 24px;
+            border-bottom: 2px solid rgba(156, 163, 175, 0.1);
+        }
+
+        .tab {
+            padding: 12px 20px;
+            font-size: 14px;
+            font-weight: 600;
+            color: #9CA3AF;
+            cursor: pointer;
+            transition: all 0.2s;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+        }
+
+        .tab:hover {
+            color: #F9FAFB;
+        }
+
+        .tab.active {
+            color: #3B82F6;
+            border-bottom-color: #3B82F6;
+        }
+
+        /* Detail Cards */
+        .detail-card {
+            background: #0A1628;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 24px;
+        }
+
+        .detail-card-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: #F9FAFB;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid rgba(156, 163, 175, 0.05);
+        }
+
+        .detail-row:last-child {
+            border-bottom: none;
+        }
+
+        .detail-label {
+            color: #9CA3AF;
+            font-size: 14px;
+        }
+
+        .detail-value {
+            color: #F9FAFB;
+            font-size: 14px;
+            font-weight: 600;
+            text-align: right;
+        }
+
+        .stat-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-top: 16px;
+        }
+
+        .stat-box {
+            background: rgba(156, 163, 175, 0.05);
+            padding: 16px;
+            border-radius: 6px;
+        }
+
+        .stat-value-large {
+            font-family: 'Roboto Mono', monospace;
+            font-size: 28px;
+            font-weight: 700;
+            color: #14B8A6;
+            margin-bottom: 4px;
+        }
+
+        .stat-label {
+            font-size: 13px;
+            color: #9CA3AF;
+            margin-bottom: 8px;
+        }
+
+        .stat-trend {
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .stat-trend.positive {
+            color: #10B981;
+        }
+
+        .stat-trend.negative {
+            color: #EF4444;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: rgba(156, 163, 175, 0.1);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 8px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #14B8A6, #06B6D4);
+            border-radius: 4px;
+            transition: width 0.3s ease-in-out;
+        }
+
+        .podcast-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-top: 16px;
+        }
+
+        .podcast-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px;
+            background: rgba(156, 163, 175, 0.05);
+            border-radius: 6px;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+
+        .podcast-item:hover {
+            background: rgba(59, 130, 246, 0.1);
+        }
+
+        .podcast-artwork {
+            width: 40px;
+            height: 40px;
+            border-radius: 6px;
+            background: linear-gradient(135deg, #8B5CF6, #3B82F6);
+        }
+
+        .podcast-info {
+            flex: 1;
+        }
+
+        .podcast-name {
+            font-size: 14px;
+            font-weight: 600;
+            color: #F9FAFB;
+            margin-bottom: 2px;
+        }
+
+        .podcast-meta {
+            font-size: 12px;
+            color: #9CA3AF;
+        }
+
+        .activity-feed {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .activity-entry {
+            display: flex;
+            gap: 12px;
+            padding: 12px;
+            background: rgba(156, 163, 175, 0.05);
+            border-radius: 6px;
+            border-left: 3px solid #14B8A6;
+        }
+
+        .activity-icon-circle {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: rgba(20, 184, 166, 0.2);
+            color: #14B8A6;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+        }
+
+        .activity-content {
+            flex: 1;
+        }
+
+        .activity-description {
+            font-size: 14px;
+            font-weight: 600;
+            color: #F9FAFB;
+            margin-bottom: 4px;
+        }
+
+        .activity-time {
+            font-size: 12px;
+            color: #9CA3AF;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #9CA3AF;
+        }
+
+        .empty-state i {
+            font-size: 64px;
+            margin-bottom: 16px;
+            opacity: 0.2;
+        }
+
+        .empty-state-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #F9FAFB;
+            margin-bottom: 8px;
+        }
+
+        .empty-state-text {
+            font-size: 14px;
+        }
+
+        .shortcuts-bar {
+            height: 40px;
+            background: #1A2942;
+            border-top: 1px solid rgba(59, 130, 246, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 24px;
+            font-size: 12px;
+            color: #9CA3AF;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 100;
+        }
+
+        .shortcut {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .shortcut-key {
+            background: rgba(156, 163, 175, 0.1);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Roboto Mono', monospace;
+            font-weight: 600;
+        }
+
+        .bulk-toolbar {
+            position: fixed;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #1A2942;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            border-radius: 8px;
+            padding: 12px 24px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+            z-index: 95;
+        }
+
+        .bulk-count {
+            font-weight: 600;
+            color: #3B82F6;
+        }
+
+        @media (max-width: 1400px) {
+            .main-split {
+                grid-template-columns: 1fr;
+            }
+            
+            .detail-pane {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Top Bar -->
+    <div class="top-bar" data-mc-element-id="22254">
+        <div class="logo" data-mc-element-id="22284">
+            <i class="fas fa-podcast" data-mc-element-id="22315"></i>
+            Blipp Admin
+        </div>
+
+        <div class="search-container" data-mc-element-id="22394">
+            <i class="fas fa-search search-icon" data-mc-element-id="22437"></i>
+            <input type="text" class="search-input" placeholder="Search podcasts, episodes, users, or type command..." data-mc-element-id="22491">
+        </div>
+
+        <div class="top-bar-right" data-mc-element-id="22623">
+            <div class="cost-indicator" data-mc-element-id="22663">
+                <span class="cost-dot" data-mc-element-id="22708"></span>
+                <div class="cost-amount" data-mc-element-id="22755">$847</div>
+            </div>
+
+            <button class="alerts-button" data-mc-element-id="22823">
+                <i class="fas fa-bell" data-mc-element-id="22870"></i>
+                <span class="alerts-badge" data-mc-element-id="22914">3</span>
+            </button>
+
+            <div class="user-avatar" data-mc-element-id="22985">AJ</div>
+        </div>
+    </div>
+
+    <!-- Secondary Toolbar -->
+    <div class="secondary-toolbar" data-mc-element-id="23081">
+        <div class="breadcrumb" data-mc-element-id="23121">
+            <a href="#" data-mc-element-id="23158">Command Center</a>
+            <i class="fas fa-chevron-right" data-mc-element-id="23201"></i>
+            <span class="current" data-mc-element-id="23250">Users</span>
+        </div>
+
+        <div class="toolbar-search" data-mc-element-id="23309">
+            <i class="fas fa-search search-icon" data-mc-element-id="23350"></i>
+            <input type="text" class="search-input" placeholder="Search users by email, name, or subscription ID..." data-mc-element-id="23404">
+        </div>
+
+        <div class="filter-group" data-mc-element-id="23534">
+            <div class="filter-badge active" data-mc-element-id="23573">
+                All Tiers
+                <i class="fas fa-chevron-down" data-mc-element-id="23649"></i>
+            </div>
+            <div class="filter-badge" data-mc-element-id="23716">
+                Active
+                <i class="fas fa-chevron-down" data-mc-element-id="23782"></i>
+            </div>
+        </div>
+
+        <div class="toolbar-actions" data-mc-element-id="23861">
+            <button class="btn btn-secondary" data-mc-element-id="23903">
+                <i class="fas fa-download" data-mc-element-id="23954"></i>
+                Export
+            </button>
+            <button class="btn btn-primary" data-mc-element-id="24043">
+                <i class="fas fa-plus" data-mc-element-id="24092"></i>
+                Add User
+            </button>
+        </div>
+    </div>
+
+    <!-- Segment Pills -->
+    <div class="segment-pills" data-mc-element-id="24225">
+        <div class="segment-pill active" data-mc-element-id="24261">
+            All Users <span class="count" data-mc-element-id="24317">(3,829)</span>
+        </div>
+        <div class="segment-pill" data-mc-element-id="24375">
+            🔥 Power Users <span class="count" data-mc-element-id="24429">(147)</span>
+        </div>
+        <div class="segment-pill" data-mc-element-id="24485">
+            🚩 At Risk <span class="count" data-mc-element-id="24535">(89)</span>
+        </div>
+        <div class="segment-pill" data-mc-element-id="24590">
+            ⏰ Trial Ending Soon <span class="count" data-mc-element-id="24649">(34)</span>
+        </div>
+        <div class="segment-pill" data-mc-element-id="24704">
+            ❌ Recently Cancelled <span class="count" data-mc-element-id="24764">(52)</span>
+        </div>
+        <div class="segment-pill" data-mc-element-id="24819">
+            💤 Never Active <span class="count" data-mc-element-id="24874">(12)</span>
+        </div>
+    </div>
+
+    <!-- Main Split View -->
+    <div class="main-split" data-mc-element-id="24966">
+        <!-- Table Pane -->
+        <div class="table-pane" data-mc-element-id="25027">
+            <table class="users-table" data-mc-element-id="25064">
+                <thead data-mc-element-id="25108">
+                    <tr data-mc-element-id="25136">
+                        <th style="width: 40px;" data-mc-element-id="25165"><input type="checkbox" data-mc-element-id="25190"></th>
+                        <th data-mc-element-id="25243">Email <i class="fas fa-sort" data-mc-element-id="25253"></i></th>
+                        <th style="width: 120px;" data-mc-element-id="25310">Tier</th>
+                        <th style="width: 100px;" data-mc-element-id="25370">Status</th>
+                        <th style="width: 120px;" data-mc-element-id="25432">Signup Date <i class="fas fa-sort" data-mc-element-id="25470"></i></th>
+                        <th style="width: 120px;" data-mc-element-id="25527">Last Active <i class="fas fa-sort-down" data-mc-element-id="25565"></i></th>
+                        <th style="width: 80px;" data-mc-element-id="25627">Briefings</th>
+                        <th style="width: 100px;" data-mc-element-id="25691">Actions</th>
+                    </tr>
+                </thead>
+                <tbody data-mc-element-id="25797">
+                    <tr class="tier-proplus selected" data-mc-element-id="25825">
+                        <td data-mc-element-id="25884"><input type="checkbox" checked="" data-mc-element-id="25888"></td>
+                        <td data-mc-element-id="25949">
+                            <div class="user-email" data-mc-element-id="25982">
+                                sarah.chen@techcorp.com
+                                <div class="user-badges" data-mc-element-id="26095">
+                                    <span class="user-badge power-user" title="Power User" data-mc-element-id="26157">🔥</span>
+                                </div>
+                            </div>
+                        </td>
+                        <td data-mc-element-id="26350"><span class="tier-badge proplus" data-mc-element-id="26354">PRO+</span></td>
+                        <td data-mc-element-id="26428"><span class="status-badge active" data-mc-element-id="26432">Active</span></td>
+                        <td data-mc-element-id="26509"><span class="relative-time" data-mc-element-id="26513">4 months ago</span></td>
+                        <td data-mc-element-id="26590"><span class="relative-time" data-mc-element-id="26594">2 hours ago</span></td>
+                        <td data-mc-element-id="26670"><span class="mono" data-mc-element-id="26674">342</span></td>
+                        <td data-mc-element-id="26733">
+                            <div class="row-actions" data-mc-element-id="26766">
+                                <div class="action-icon" title="View Details" data-mc-element-id="26824"><i class="fas fa-eye" data-mc-element-id="26870"></i></div>
+                                <div class="action-icon" title="Edit" data-mc-element-id="26935"><i class="fas fa-pen" data-mc-element-id="26973"></i></div>
+                                <div class="action-icon" title="More" data-mc-element-id="27038"><i class="fas fa-ellipsis" data-mc-element-id="27076"></i></div>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr class="tier-pro" data-mc-element-id="27225">
+                        <td data-mc-element-id="27271"><input type="checkbox" data-mc-element-id="27275"></td>
+                        <td data-mc-element-id="27328">
+                            <div class="user-email" data-mc-element-id="27361">
+                                michael.rodriguez@startup.io
+                                <div class="user-badges" data-mc-element-id="27479">
+                                    <span class="user-badge trial" title="Trial" data-mc-element-id="27541">🎓</span>
+                                </div>
+                            </div>
+                        </td>
+                        <td data-mc-element-id="27724"><span class="tier-badge pro" data-mc-element-id="27728">PRO</span></td>
+                        <td data-mc-element-id="27797"><span class="status-badge active" data-mc-element-id="27801">Active</span></td>
+                        <td data-mc-element-id="27878"><span class="relative-time" data-mc-element-id="27882">2 months ago</span></td>
+                        <td data-mc-element-id="27959"><span class="relative-time" data-mc-element-id="27963">1 day ago</span></td>
+                        <td data-mc-element-id="28037"><span class="mono" data-mc-element-id="28041">127</span></td>
+                        <td data-mc-element-id="28100">
+                            <div class="row-actions" data-mc-element-id="28133">
+                                <div class="action-icon" data-mc-element-id="28191"><i class="fas fa-eye" data-mc-element-id="28216"></i></div>
+                                <div class="action-icon" data-mc-element-id="28281"><i class="fas fa-pen" data-mc-element-id="28306"></i></div>
+                                <div class="action-icon" data-mc-element-id="28371"><i class="fas fa-ellipsis" data-mc-element-id="28396"></i></div>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr class="tier-free" data-mc-element-id="28545">
+                        <td data-mc-element-id="28592"><input type="checkbox" data-mc-element-id="28596"></td>
+                        <td data-mc-element-id="28649">
+                            <div class="user-email" data-mc-element-id="28682">
+                                emma.wilson@email.com
+                            </div>
+                        </td>
+                        <td data-mc-element-id="28850"><span class="tier-badge free" data-mc-element-id="28854">FREE</span></td>
+                        <td data-mc-element-id="28925"><span class="status-badge active" data-mc-element-id="28929">Active</span></td>
+                        <td data-mc-element-id="29006"><span class="relative-time" data-mc-element-id="29010">1 month ago</span></td>
+                        <td data-mc-element-id="29086"><span class="relative-time" data-mc-element-id="29090">3 days ago</span></td>
+                        <td data-mc-element-id="29165"><span class="mono" data-mc-element-id="29169">23</span></td>
+                        <td data-mc-element-id="29227">
+                            <div class="row-actions" data-mc-element-id="29260">
+                                <div class="action-icon" data-mc-element-id="29318"><i class="fas fa-eye" data-mc-element-id="29343"></i></div>
+                                <div class="action-icon" data-mc-element-id="29408"><i class="fas fa-pen" data-mc-element-id="29433"></i></div>
+                                <div class="action-icon" data-mc-element-id="29498"><i class="fas fa-ellipsis" data-mc-element-id="29523"></i></div>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr class="tier-pro" data-mc-element-id="29672">
+                        <td data-mc-element-id="29718"><input type="checkbox" data-mc-element-id="29722"></td>
+                        <td data-mc-element-id="29775">
+                            <div class="user-email" data-mc-element-id="29808">
+                                james.thompson@company.com
+                                <div class="user-badges" data-mc-element-id="29924">
+                                    <span class="user-badge at-risk" title="At Risk" data-mc-element-id="29986">🚩</span>
+                                </div>
+                            </div>
+                        </td>
+                        <td data-mc-element-id="30173"><span class="tier-badge pro" data-mc-element-id="30177">PRO</span></td>
+                        <td data-mc-element-id="30246"><span class="status-badge active" data-mc-element-id="30250">Active</span></td>
+                        <td data-mc-element-id="30327"><span class="relative-time" data-mc-element-id="30331">6 months ago</span></td>
+                        <td data-mc-element-id="30408"><span class="relative-time" data-mc-element-id="30412">2 weeks ago</span></td>
+                        <td data-mc-element-id="30488"><span class="mono" data-mc-element-id="30492">89</span></td>
+                        <td data-mc-element-id="30550">
+                            <div class="row-actions" data-mc-element-id="30583">
+                                <div class="action-icon" data-mc-element-id="30641"><i class="fas fa-eye" data-mc-element-id="30666"></i></div>
+                                <div class="action-icon" data-mc-element-id="30731"><i class="fas fa-pen" data-mc-element-id="30756"></i></div>
+                                <div class="action-icon" data-mc-element-id="30821"><i class="fas fa-ellipsis" data-mc-element-id="30846"></i></div>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr class="tier-free" data-mc-element-id="30995">
+                        <td data-mc-element-id="31042"><input type="checkbox" data-mc-element-id="31046"></td>
+                        <td data-mc-element-id="31099">
+                            <div class="user-email" data-mc-element-id="31132">
+                                olivia.martinez@gmail.com
+                            </div>
+                        </td>
+                        <td data-mc-element-id="31304"><span class="tier-badge free" data-mc-element-id="31308">FREE</span></td>
+                        <td data-mc-element-id="31379"><span class="status-badge inactive" data-mc-element-id="31383">Inactive</span></td>
+                        <td data-mc-element-id="31464"><span class="relative-time" data-mc-element-id="31468">3 weeks ago</span></td>
+                        <td data-mc-element-id="31544"><span class="relative-time" data-mc-element-id="31548">1 week ago</span></td>
+                        <td data-mc-element-id="31623"><span class="mono" data-mc-element-id="31627">8</span></td>
+                        <td data-mc-element-id="31684">
+                            <div class="row-actions" data-mc-element-id="31717">
+                                <div class="action-icon" data-mc-element-id="31775"><i class="fas fa-eye" data-mc-element-id="31800"></i></div>
+                                <div class="action-icon" data-mc-element-id="31865"><i class="fas fa-pen" data-mc-element-id="31890"></i></div>
+                                <div class="action-icon" data-mc-element-id="31955"><i class="fas fa-ellipsis" data-mc-element-id="31980"></i></div>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr class="tier-proplus" data-mc-element-id="32129">
+                        <td data-mc-element-id="32179"><input type="checkbox" data-mc-element-id="32183"></td>
+                        <td data-mc-element-id="32236">
+                            <div class="user-email" data-mc-element-id="32269">
+                                david.kim@venture.capital
+                                <div class="user-badges" data-mc-element-id="32384">
+                                    <span class="user-badge power-user" data-mc-element-id="32446">🔥</span>
+                                </div>
+                            </div>
+                        </td>
+                        <td data-mc-element-id="32620"><span class="tier-badge proplus" data-mc-element-id="32624">PRO+</span></td>
+                        <td data-mc-element-id="32698"><span class="status-badge active" data-mc-element-id="32702">Active</span></td>
+                        <td data-mc-element-id="32779"><span class="relative-time" data-mc-element-id="32783">8 months ago</span></td>
+                        <td data-mc-element-id="32860"><span class="relative-time" data-mc-element-id="32864">5 hours ago</span></td>
+                        <td data-mc-element-id="32940"><span class="mono" data-mc-element-id="32944">521</span></td>
+                        <td data-mc-element-id="33003">
+                            <div class="row-actions" data-mc-element-id="33036">
+                                <div class="action-icon" data-mc-element-id="33094"><i class="fas fa-eye" data-mc-element-id="33119"></i></div>
+                                <div class="action-icon" data-mc-element-id="33184"><i class="fas fa-pen" data-mc-element-id="33209"></i></div>
+                                <div class="action-icon" data-mc-element-id="33274"><i class="fas fa-ellipsis" data-mc-element-id="33299"></i></div>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr class="tier-pro" data-mc-element-id="33448">
+                        <td data-mc-element-id="33494"><input type="checkbox" data-mc-element-id="33498"></td>
+                        <td data-mc-element-id="33551">
+                            <div class="user-email" data-mc-element-id="33584">
+                                sophia.anderson@media.co
+                            </div>
+                        </td>
+                        <td data-mc-element-id="33755"><span class="tier-badge pro" data-mc-element-id="33759">PRO</span></td>
+                        <td data-mc-element-id="33828"><span class="status-badge active" data-mc-element-id="33832">Active</span></td>
+                        <td data-mc-element-id="33909"><span class="relative-time" data-mc-element-id="33913">5 months ago</span></td>
+                        <td data-mc-element-id="33990"><span class="relative-time" data-mc-element-id="33994">Yesterday</span></td>
+                        <td data-mc-element-id="34068"><span class="mono" data-mc-element-id="34072">156</span></td>
+                        <td data-mc-element-id="34131">
+                            <div class="row-actions" data-mc-element-id="34164">
+                                <div class="action-icon" data-mc-element-id="34222"><i class="fas fa-eye" data-mc-element-id="34247"></i></div>
+                                <div class="action-icon" data-mc-element-id="34312"><i class="fas fa-pen" data-mc-element-id="34337"></i></div>
+                                <div class="action-icon" data-mc-element-id="34402"><i class="fas fa-ellipsis" data-mc-element-id="34427"></i></div>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr class="tier-free" data-mc-element-id="34576">
+                        <td data-mc-element-id="34623"><input type="checkbox" data-mc-element-id="34627"></td>
+                        <td data-mc-element-id="34680">
+                            <div class="user-email" data-mc-element-id="34713">
+                                alex.johnson@freelance.work
+                            </div>
+                        </td>
+                        <td data-mc-element-id="34887"><span class="tier-badge free" data-mc-element-id="34891">FREE</span></td>
+                        <td data-mc-element-id="34962"><span class="status-badge cancelled" data-mc-element-id="34966">Cancelled</span></td>
+                        <td data-mc-element-id="35049"><span class="relative-time" data-mc-element-id="35053">7 months ago</span></td>
+                        <td data-mc-element-id="35130"><span class="relative-time" data-mc-element-id="35134">3 months ago</span></td>
+                        <td data-mc-element-id="35211"><span class="mono" data-mc-element-id="35215">45</span></td>
+                        <td data-mc-element-id="35273">
+                            <div class="row-actions" data-mc-element-id="35306">
+                                <div class="action-icon" data-mc-element-id="35364"><i class="fas fa-eye" data-mc-element-id="35389"></i></div>
+                                <div class="action-icon" data-mc-element-id="35454"><i class="fas fa-pen" data-mc-element-id="35479"></i></div>
+                                <div class="action-icon" data-mc-element-id="35544"><i class="fas fa-ellipsis" data-mc-element-id="35569"></i></div>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Detail Pane -->
+        <div class="detail-pane" data-mc-element-id="35797">
+            <div class="detail-header" data-mc-element-id="35835">
+                <div class="detail-avatar" data-mc-element-id="35879">SC</div>
+                <div class="detail-user-info" data-mc-element-id="35931">
+                    <div class="detail-email" data-mc-element-id="35982">sarah.chen@techcorp.com</div>
+                    <div class="detail-meta" data-mc-element-id="36058">
+                        <span class="tier-badge proplus" data-mc-element-id="36108">PRO+</span>
+                        <span data-mc-element-id="36177">•</span>
+                        <span class="mono" data-mc-element-id="36216">ID: usr_7x9k2m4p</span>
+                        <span data-mc-element-id="36283">•</span>
+                        <span data-mc-element-id="36322">🔥 Power User</span>
+                    </div>
+                </div>
+                <div class="detail-actions" data-mc-element-id="36415">
+                    <button class="btn-icon" title="View as User" data-mc-element-id="36464">
+                        <i class="fas fa-eye" data-mc-element-id="36535"></i>
+                    </button>
+                    <button class="btn-icon" title="Email User" data-mc-element-id="36612">
+                        <i class="fas fa-envelope" data-mc-element-id="36681"></i>
+                    </button>
+                    <button class="btn-icon" title="More Actions" data-mc-element-id="36763">
+                        <i class="fas fa-ellipsis" data-mc-element-id="36834"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="tabs" data-mc-element-id="36951">
+                <div class="tab active" data-mc-element-id="36986">Overview</div>
+                <div class="tab" data-mc-element-id="37041">Briefings</div>
+                <div class="tab" data-mc-element-id="37090">Digests</div>
+                <div class="tab" data-mc-element-id="37137">Billing</div>
+                <div class="tab" data-mc-element-id="37184">Activity</div>
+            </div>
+
+            <!-- Overview Tab Content -->
+            <div class="detail-card" data-mc-element-id="37290">
+                <div class="detail-card-title" data-mc-element-id="37332">
+                    Account Information
+                    <button class="btn btn-secondary" style="padding: 6px 12px; font-size: 13px;" data-mc-element-id="37424">
+                        <i class="fas fa-pen" data-mc-element-id="37527"></i>
+                        Edit
+                    </button>
+                </div>
+                <div class="detail-row" data-mc-element-id="37652">
+                    <span class="detail-label" data-mc-element-id="37697">Full Name</span>
+                    <span class="detail-value" data-mc-element-id="37761">Sarah Chen</span>
+                </div>
+                <div class="detail-row" data-mc-element-id="37845">
+                    <span class="detail-label" data-mc-element-id="37890">Email</span>
+                    <span class="detail-value" data-mc-element-id="37950">
+                        sarah.chen@techcorp.com
+                        <i class="fas fa-check-circle" style="color: #10B981; margin-left: 4px;" data-mc-element-id="38050"></i>
+                    </span>
+                </div>
+                <div class="detail-row" data-mc-element-id="38195">
+                    <span class="detail-label" data-mc-element-id="38240">User ID</span>
+                    <span class="detail-value mono" data-mc-element-id="38302">usr_7x9k2m4p</span>
+                </div>
+                <div class="detail-row" data-mc-element-id="38393">
+                    <span class="detail-label" data-mc-element-id="38438">Account Status</span>
+                    <span class="detail-value" data-mc-element-id="38507">
+                        <span class="status-badge active" data-mc-element-id="38559">Active</span>
+                    </span>
+                </div>
+            </div>
+
+            <div class="detail-card" data-mc-element-id="38690">
+                <div class="detail-card-title" data-mc-element-id="38732">
+                    Subscription Details
+                    <button class="btn btn-primary" style="padding: 6px 12px; font-size: 13px;" data-mc-element-id="38825">
+                        <i class="fas fa-arrow-up" data-mc-element-id="38926"></i>
+                        Change Tier
+                    </button>
+                </div>
+                <div class="detail-row" data-mc-element-id="39063">
+                    <span class="detail-label" data-mc-element-id="39108">Current Tier</span>
+                    <span class="detail-value" data-mc-element-id="39175"><span class="tier-badge proplus" data-mc-element-id="39202">PRO+</span></span>
+                </div>
+                <div class="detail-row" data-mc-element-id="39293">
+                    <span class="detail-label" data-mc-element-id="39338">Pricing</span>
+                    <span class="detail-value mono" data-mc-element-id="39400">$19.99/month</span>
+                </div>
+                <div class="detail-row" data-mc-element-id="39491">
+                    <span class="detail-label" data-mc-element-id="39536">Next Billing Date</span>
+                    <span class="detail-value" data-mc-element-id="39608">May 15, 2024 <span style="color: #9CA3AF;" data-mc-element-id="39648">(in 12 days)</span></span>
+                </div>
+                <div class="detail-row" data-mc-element-id="39744">
+                    <span class="detail-label" data-mc-element-id="39789">Member Since</span>
+                    <span class="detail-value" data-mc-element-id="39856">January 3, 2024 <span style="color: #9CA3AF;" data-mc-element-id="39899">(4 months)</span></span>
+                </div>
+                <div class="detail-row" data-mc-element-id="39993">
+                    <span class="detail-label" data-mc-element-id="40038">Lifetime Value</span>
+                    <span class="detail-value mono" style="color: #14B8A6;" data-mc-element-id="40107">$79.96</span>
+                </div>
+            </div>
+
+            <div class="detail-card" data-mc-element-id="40232">
+                <div class="detail-card-title" data-mc-element-id="40274">Usage Statistics</div>
+                
+                <div class="stat-grid" data-mc-element-id="40361">
+                    <div class="stat-box" data-mc-element-id="40405">
+                        <div class="stat-value-large mono" data-mc-element-id="40452">342</div>
+                        <div class="stat-label" data-mc-element-id="40521">Total Briefings</div>
+                        <div class="stat-trend positive" data-mc-element-id="40591">
+                            <i class="fas fa-arrow-up" data-mc-element-id="40653"></i> 67 this month
+                        </div>
+                    </div>
+                    <div class="stat-box" data-mc-element-id="40777">
+                        <div class="stat-value-large mono" data-mc-element-id="40824">13:42</div>
+                        <div class="stat-label" data-mc-element-id="40895">Avg Duration</div>
+                        <div class="stat-trend positive" data-mc-element-id="40962">
+                            <i class="fas fa-arrow-up" data-mc-element-id="41024"></i> +2:15 vs avg
+                        </div>
+                    </div>
+                </div>
+
+                <div style="margin-top: 20px;" data-mc-element-id="41167">
+                    <div class="detail-label" data-mc-element-id="41219">Listen-Through Rate</div>
+                    <div style="display: flex; align-items: center; gap: 12px; margin-top: 8px;" data-mc-element-id="41291">
+                        <div style="flex: 1;" data-mc-element-id="41393">
+                            <div class="progress-bar" data-mc-element-id="41444">
+                                <div class="progress-fill" style="width: 92%;" data-mc-element-id="41503"></div>
+                            </div>
+                        </div>
+                        <span class="mono" style="color: #14B8A6; font-weight: 700;" data-mc-element-id="41647">92%</span>
+                    </div>
+                    <div style="font-size: 12px; color: #9CA3AF; margin-top: 4px;" data-mc-element-id="41766">
+                        vs platform avg 81%
+                    </div>
+                </div>
+            </div>
+
+            <div class="detail-card" data-mc-element-id="41956">
+                <div class="detail-card-title" data-mc-element-id="41998">Top Subscribed Podcasts</div>
+                <div class="podcast-list" data-mc-element-id="42075">
+                    <div class="podcast-item" data-mc-element-id="42122">
+                        <div class="podcast-artwork" data-mc-element-id="42173"></div>
+                        <div class="podcast-info" data-mc-element-id="42233">
+                            <div class="podcast-name" data-mc-element-id="42288">The Vergecast</div>
+                            <div class="podcast-meta" data-mc-element-id="42362">Tech News digest • 4 months ago</div>
+                        </div>
+                    </div>
+                    <div class="podcast-item" data-mc-element-id="42504">
+                        <div class="podcast-artwork" data-mc-element-id="42555"></div>
+                        <div class="podcast-info" data-mc-element-id="42615">
+                            <div class="podcast-name" data-mc-element-id="42670">Lex Fridman Podcast</div>
+                            <div class="podcast-meta" data-mc-element-id="42750">Deep Dive digest • 3 months ago</div>
+                        </div>
+                    </div>
+                    <div class="podcast-item" data-mc-element-id="42892">
+                        <div class="podcast-artwork" data-mc-element-id="42943"></div>
+                        <div class="podcast-info" data-mc-element-id="43003">
+                            <div class="podcast-name" data-mc-element-id="43058">All-In Podcast</div>
+                            <div class="podcast-meta" data-mc-element-id="43133">Business digest • 2 months ago</div>
+                        </div>
+                    </div>
+                </div>
+                <button class="btn btn-secondary" style="width: 100%; margin-top: 12px;" data-mc-element-id="43293">
+                    View All Subscriptions (23)
+                </button>
+            </div>
+
+            <div class="detail-card" data-mc-element-id="43473">
+                <div class="detail-card-title" data-mc-element-id="43515">Recent Activity</div>
+                <div class="activity-feed" data-mc-element-id="43584">
+                    <div class="activity-entry" data-mc-element-id="43632">
+                        <div class="activity-icon-circle" data-mc-element-id="43685">
+                            <i class="fas fa-play" data-mc-element-id="43748"></i>
+                        </div>
+                        <div class="activity-content" data-mc-element-id="43831">
+                            <div class="activity-description" data-mc-element-id="43890">Generated 15min briefing</div>
+                            <div class="activity-time" data-mc-element-id="43983">2 hours ago • Tech News digest</div>
+                        </div>
+                    </div>
+                    <div class="activity-entry" data-mc-element-id="44125">
+                        <div class="activity-icon-circle" data-mc-element-id="44178">
+                            <i class="fas fa-podcast" data-mc-element-id="44241"></i>
+                        </div>
+                        <div class="activity-content" data-mc-element-id="44327">
+                            <div class="activity-description" data-mc-element-id="44386">Added The AI Podcast to Deep Dive</div>
+                            <div class="activity-time" data-mc-element-id="44488">3 days ago</div>
+                        </div>
+                    </div>
+                    <div class="activity-entry" data-mc-element-id="44610">
+                        <div class="activity-icon-circle" data-mc-element-id="44663">
+                            <i class="fas fa-star" data-mc-element-id="44726"></i>
+                        </div>
+                        <div class="activity-content" data-mc-element-id="44809">
+                            <div class="activity-description" data-mc-element-id="44868">Upgraded to PRO+</div>
+                            <div class="activity-time" data-mc-element-id="44953">1 month ago</div>
+                        </div>
+                    </div>
+                </div>
+                <button class="btn btn-secondary" style="width: 100%; margin-top: 12px;" data-mc-element-id="45095">
+                    View Full Activity Log
+                </button>
+            </div>
+
+            <div class="detail-card" data-mc-element-id="45270">
+                <div class="detail-card-title" data-mc-element-id="45312">Admin Notes</div>
+                <textarea style="width: 100%; min-height: 100px; background: rgba(156, 163, 175, 0.05); border: 1px solid rgba(156, 163, 175, 0.1); border-radius: 6px; padding: 12px; color: #F9FAFB; font-family: 'Inter', sans-serif; font-size: 14px; resize: vertical;" placeholder="Add notes about this user..." data-mc-element-id="45377"></textarea>
+                <button class="btn btn-primary" style="width: 100%; margin-top: 12px;" data-mc-element-id="45701">
+                    <i class="fas fa-save" data-mc-element-id="45793"></i>
+                    Save Notes
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bulk Toolbar (hidden by default, shown when users selected) -->
+    <!-- <div class="bulk-toolbar">
+        <span class="bulk-count">1 user selected</span>
+        <button class="btn btn-secondary" style="padding: 6px 12px; font-size: 13px;">
+            <i class="fas fa-download"></i>
+            Export
+        </button>
+        <button class="btn btn-secondary" style="padding: 6px 12px; font-size: 13px;">
+            <i class="fas fa-arrow-up"></i>
+            Change Tier
+        </button>
+        <button class="btn btn-secondary" style="padding: 6px 12px; font-size: 13px;">
+            <i class="fas fa-envelope"></i>
+            Send Message
+        </button>
+    </div> -->
+
+    <!-- Keyboard Shortcuts Bar -->
+    <div class="shortcuts-bar" data-mc-element-id="46660">
+        <div class="shortcut" data-mc-element-id="46696">
+            <span class="shortcut-key" data-mc-element-id="46731">⌘K</span>
+            <span data-mc-element-id="46780">Search</span>
+        </div>
+        <div class="shortcut" data-mc-element-id="46823">
+            <span class="shortcut-key" data-mc-element-id="46858">⌘U</span>
+            <span data-mc-element-id="46907">Users</span>
+        </div>
+        <div class="shortcut" data-mc-element-id="46949">
+            <span class="shortcut-key" data-mc-element-id="46984">↑↓</span>
+            <span data-mc-element-id="47033">Navigate</span>
+        </div>
+        <div class="shortcut" data-mc-element-id="47078">
+            <span class="shortcut-key" data-mc-element-id="47113">Enter</span>
+            <span data-mc-element-id="47165">Open</span>
+        </div>
+        <div class="shortcut" data-mc-element-id="47206">
+            <span class="shortcut-key" data-mc-element-id="47241">Space</span>
+            <span data-mc-element-id="47293">Select</span>
+        </div>
+    </div>
+
+    <script>
+        // Table row selection
+        document.querySelectorAll('.users-table tbody tr').forEach(row => {
+            row.addEventListener('click', function(e) {
+                if (e.target.type !== 'checkbox' && !e.target.closest('.row-actions')) {
+                    document.querySelectorAll('.users-table tbody tr').forEach(r => r.classList.remove('selected'));
+                    this.classList.add('selected');
+                }
+            });
+        });
+
+        // Segment pill active state
+        document.querySelectorAll('.segment-pill').forEach(pill => {
+            pill.addEventListener('click', function() {
+                document.querySelectorAll('.segment-pill').forEach(p => p.classList.remove('active'));
+                this.classList.add('active');
+            });
+        });
+
+        // Tab switching
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', function() {
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                this.classList.add('active');
+            });
+        });
+
+        // Checkbox selection
+        document.querySelectorAll('.users-table tbody input[type="checkbox"]').forEach(checkbox => {
+            checkbox.addEventListener('change', function() {
+                const selectedCount = document.querySelectorAll('.users-table tbody input[type="checkbox"]:checked').length;
+                if (selectedCount > 0) {
+                    // Show bulk toolbar
+                    console.log(`${selectedCount} users selected`);
+                }
+            });
+        });
+
+        // Action icons
+        document.querySelectorAll('.action-icon').forEach(icon => {
+            icon.addEventListener('click', function(e) {
+                e.stopPropagation();
+                console.log('Action clicked:', this.title);
+            });
+        });
+    </script>
+
+<script>__MC_SITE_ID__ = "5ece147c5b1fca618f9d88f5806505da7798ec045bd971d823bd722b6400ce7b"</script><script>__MC_OPTIONS__ = {
+  "svg": false,
+  "overlay": false
+}</script><script src="https://forge.moonchild.ai/public/devigner.global.js" type="module"></script></body></html>

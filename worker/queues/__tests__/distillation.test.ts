@@ -6,6 +6,10 @@ vi.mock("../../lib/db", () => ({
   createPrismaClient: vi.fn(),
 }));
 
+vi.mock("../../lib/config", () => ({
+  getConfig: vi.fn().mockResolvedValue(true),
+}));
+
 vi.mock("../../lib/distillation", () => ({
   extractClaims: vi.fn().mockResolvedValue([
     { claim: "Test claim", speaker: "Host", importance: 9, novelty: 7 },
@@ -21,6 +25,7 @@ const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
 
 import { createPrismaClient } from "../../lib/db";
+import { getConfig } from "../../lib/config";
 import { extractClaims } from "../../lib/distillation";
 
 let mockPrisma: ReturnType<typeof createMockPrisma>;
@@ -128,5 +133,56 @@ describe("handleDistillation", () => {
     expect(mockMsg.ack).toHaveBeenCalled();
     expect(mockFetch).not.toHaveBeenCalled();
     expect(extractClaims).not.toHaveBeenCalled();
+  });
+
+  describe("stage-enabled check", () => {
+    it("ACKs without processing when stage 2 is disabled", async () => {
+      (getConfig as any).mockResolvedValueOnce(false); // pipeline.stage.2.enabled
+
+      const mockMsg = {
+        body: { episodeId: "ep-1", transcriptUrl: "https://example.com/ep1.vtt" },
+        ack: vi.fn(),
+        retry: vi.fn(),
+      };
+      const mockBatch = {
+        messages: [mockMsg],
+        queue: "distillation",
+      } as unknown as MessageBatch<any>;
+
+      await handleDistillation(mockBatch, mockEnv, mockCtx);
+
+      expect(mockMsg.ack).toHaveBeenCalled();
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(extractClaims).not.toHaveBeenCalled();
+      expect(mockPrisma.distillation.findUnique).not.toHaveBeenCalled();
+    });
+
+    it("bypasses stage-enabled check for manual messages", async () => {
+      // Even if getConfig would return false, manual messages bypass the check
+      // Since hasManual is true, getConfig for stage is never called
+      mockPrisma.distillation.findUnique.mockResolvedValue(null);
+      mockPrisma.distillation.upsert.mockResolvedValue({
+        id: "dist-1",
+        episodeId: "ep-1",
+        status: "FETCHING_TRANSCRIPT",
+      });
+      mockPrisma.distillation.update.mockResolvedValue({});
+
+      const mockMsg = {
+        body: { episodeId: "ep-1", transcriptUrl: "https://example.com/ep1.vtt", type: "manual" },
+        ack: vi.fn(),
+        retry: vi.fn(),
+      };
+      const mockBatch = {
+        messages: [mockMsg],
+        queue: "distillation",
+      } as unknown as MessageBatch<any>;
+
+      await handleDistillation(mockBatch, mockEnv, mockCtx);
+
+      expect(mockMsg.ack).toHaveBeenCalled();
+      expect(mockFetch).toHaveBeenCalled();
+      expect(extractClaims).toHaveBeenCalled();
+    });
   });
 });

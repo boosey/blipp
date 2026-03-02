@@ -1,0 +1,1053 @@
+<!DOCTYPE html><html lang="en" data-mode=""><head><base href="https://forge.moonchild.ai/site/2bcfc3b8e7307dee6b63b01a9e8adf6abbf95069628337ac049533daa9785dec/">
+    <meta charset="UTF-8" data-mc-element-id="44">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" data-mc-element-id="71">
+    <title data-mc-element-id="146">Configuration - Blipp Admin</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Roboto+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #0A1628;
+            color: #E5E7EB;
+            font-size: 14px;
+            line-height: 1.5;
+            overflow-x: hidden;
+        }
+
+        /* Layout Structure */
+        .admin-layout {
+            display: flex;
+            height: 100vh;
+        }
+
+        /* Left Navigation */
+        .left-nav {
+            width: 240px;
+            background: #1A2942;
+            border-right: 1px solid rgba(255, 255, 255, 0.06);
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+        }
+
+        .logo-area {
+            padding: 16px 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .logo-text {
+            font-size: 20px;
+            font-weight: 700;
+            color: #3B82F6;
+            letter-spacing: -0.5px;
+        }
+
+        .nav-section {
+            padding: 16px 12px;
+            border-bottom: 1px solid rgba(255, 255, 0.03);
+        }
+
+        .nav-section-title {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #6B7280;
+            margin-bottom: 8px;
+            padding: 0 8px;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            font-size: 14px;
+            font-weight: 500;
+            color: #9CA3AF;
+            margin-bottom: 2px;
+        }
+
+        .nav-item:hover {
+            background: rgba(59, 130, 246, 0.1);
+            color: #E5E7EB;
+        }
+
+        .nav-item.active {
+            background: rgba(59, 130, 246, 0.15);
+            color: #3B82F6;
+        }
+
+        .nav-item i {
+            width: 20px;
+            font-size: 14px;
+            margin-right: 10px;
+        }
+
+        /* Main Content Area */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Top Toolbar */
+        .top-toolbar {
+            height: 56px;
+            background: #1A2942;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 24px;
+            flex-shrink: 0;
+        }
+
+        .toolbar-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .toolbar-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #E5E7EB;
+        }
+
+        .deployment-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            background: rgba(16, 185, 129, 0.1);
+            border-radius: 6px;
+            font-size: 12px;
+            color: #10B981;
+        }
+
+        .deployment-status i {
+            font-size: 10px;
+        }
+
+        .toolbar-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .btn {
+            padding: 0 16px;
+            height: 36px;
+            border-radius: 6px;
+            border: none;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: #3B82F6;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #2563EB;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.05);
+            color: #E5E7EB;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        /* Content Layout */
+        .content-layout {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* Config Sidebar */
+        .config-sidebar {
+            width: 240px;
+            background: rgba(26, 41, 66, 0.4);
+            border-right: 1px solid rgba(255, 255, 255, 0.06);
+            overflow-y: auto;
+            flex-shrink: 0;
+        }
+
+        .config-category {
+            border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+        }
+
+        .category-header {
+            padding: 16px 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            cursor: pointer;
+            transition: background 0.2s ease-in-out;
+            font-weight: 600;
+            color: #E5E7EB;
+        }
+
+        .category-header:hover {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .category-header.active {
+            background: rgba(59, 130, 246, 0.1);
+            color: #3B82F6;
+            border-left: 3px solid #3B82F6;
+        }
+
+        .category-icon {
+            width: 20px;
+            text-align: center;
+            font-size: 14px;
+        }
+
+        .category-items {
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        .category-item {
+            padding: 10px 20px 10px 52px;
+            font-size: 13px;
+            color: #9CA3AF;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+        }
+
+        .category-item:hover {
+            background: rgba(255, 255, 255, 0.02);
+            color: #E5E7EB;
+        }
+
+        .category-item.active {
+            color: #3B82F6;
+            background: rgba(59, 130, 246, 0.05);
+        }
+
+        /* Config Content */
+        .config-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 32px 40px;
+        }
+
+        .section-header {
+            margin-bottom: 24px;
+        }
+
+        .section-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: #E5E7EB;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .info-tooltip {
+            width: 16px;
+            height: 16px;
+            background: rgba(59, 130, 246, 0.2);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            color: #3B82F6;
+            cursor: help;
+        }
+
+        .section-description {
+            font-size: 13px;
+            color: #6B7280;
+            line-height: 1.6;
+        }
+
+        /* Provider Badge */
+        .provider-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            background: rgba(16, 185, 129, 0.15);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #10B981;
+            margin-bottom: 24px;
+        }
+
+        .provider-badge i {
+            font-size: 10px;
+        }
+
+        /* Form Groups */
+        .form-group {
+            margin-bottom: 24px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: #D1D5DB;
+            margin-bottom: 8px;
+        }
+
+        .form-select,
+        .form-input {
+            width: 100%;
+            max-width: 500px;
+            padding: 10px 12px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            color: #E5E7EB;
+            font-size: 14px;
+            font-family: 'Inter', sans-serif;
+            transition: all 0.2s ease-in-out;
+        }
+
+        .form-select:hover,
+        .form-input:hover {
+            border-color: rgba(59, 130, 246, 0.3);
+        }
+
+        .form-select:focus,
+        .form-input:focus {
+            outline: none;
+            border-color: #3B82F6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .form-select option {
+            background: #1A2942;
+            color: #E5E7EB;
+        }
+
+        /* Settings Panel */
+        .settings-panel {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 24px;
+        }
+
+        .settings-panel-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #E5E7EB;
+            margin-bottom: 16px;
+        }
+
+        .setting-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+        }
+
+        .setting-row:last-child {
+            border-bottom: none;
+        }
+
+        .setting-label {
+            font-size: 13px;
+            color: #D1D5DB;
+        }
+
+        /* Toggle Switch */
+        .toggle-switch {
+            position: relative;
+            width: 44px;
+            height: 24px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            cursor: pointer;
+            transition: background 0.2s ease-in-out;
+        }
+
+        .toggle-switch.active {
+            background: #3B82F6;
+        }
+
+        .toggle-switch::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 20px;
+            height: 20px;
+            background: white;
+            border-radius: 50%;
+            transition: transform 0.2s ease-in-out;
+        }
+
+        .toggle-switch.active::after {
+            transform: translateX(20px);
+        }
+
+        /* Cost Display */
+        .cost-display {
+            background: rgba(139, 92, 246, 0.1);
+            border: 1px solid rgba(139, 92, 246, 0.2);
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 24px;
+        }
+
+        .cost-label {
+            font-size: 12px;
+            color: #8B5CF6;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 4px;
+        }
+
+        .cost-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: #E5E7EB;
+            font-family: 'Roboto Mono', monospace;
+        }
+
+        /* Performance Metrics */
+        .performance-metrics {
+            display: flex;
+            gap: 24px;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+        }
+
+        .metric {
+            flex: 1;
+            min-width: 200px;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            padding: 16px;
+        }
+
+        .metric-label {
+            font-size: 11px;
+            color: #6B7280;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 8px;
+        }
+
+        .metric-value {
+            font-size: 20px;
+            font-weight: 700;
+            color: #E5E7EB;
+        }
+
+        .metric-trend {
+            font-size: 11px;
+            color: #10B981;
+            margin-top: 4px;
+        }
+
+        .metric-trend.down {
+            color: #EF4444;
+        }
+
+        /* Duration Tiers */
+        .tiers-timeline {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+
+        .timeline-scale {
+            position: relative;
+            height: 60px;
+            margin-bottom: 32px;
+        }
+
+        .timeline-line {
+            position: absolute;
+            top: 30px;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .timeline-marker {
+            position: absolute;
+            top: 0;
+            transform: translateX(-50%);
+        }
+
+        .marker-dot {
+            width: 12px;
+            height: 12px;
+            background: #3B82F6;
+            border: 2px solid #0A1628;
+            border-radius: 50%;
+            margin: 0 auto 8px;
+        }
+
+        .marker-label {
+            font-size: 11px;
+            font-weight: 600;
+            color: #3B82F6;
+            font-family: 'Roboto Mono', monospace;
+            white-space: nowrap;
+        }
+
+        /* Tier Chips */
+        .tier-chips {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 24px;
+        }
+
+        .tier-chip {
+            background: rgba(59, 130, 246, 0.1);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            border-radius: 8px;
+            padding: 16px;
+            min-width: 140px;
+            transition: all 0.2s ease-in-out;
+        }
+
+        .tier-chip:hover {
+            border-color: rgba(59, 130, 246, 0.5);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.1);
+        }
+
+        .tier-chip-duration {
+            font-size: 20px;
+            font-weight: 700;
+            color: #3B82F6;
+            font-family: 'Roboto Mono', monospace;
+            margin-bottom: 8px;
+        }
+
+        .tier-chip-stats {
+            font-size: 11px;
+            color: #6B7280;
+            margin-bottom: 4px;
+        }
+
+        .tier-chip-hitrate {
+            font-size: 13px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .tier-chip-hitrate.high {
+            color: #10B981;
+        }
+
+        .tier-chip-hitrate.medium {
+            color: #F59E0B;
+        }
+
+        .tier-chip-hitrate.low {
+            color: #EF4444;
+        }
+
+        .tier-chip-remove {
+            margin-top: 12px;
+            padding: 6px 12px;
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            border-radius: 4px;
+            color: #EF4444;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+        }
+
+        .tier-chip-remove:hover {
+            background: rgba(239, 68, 68, 0.2);
+        }
+
+        /* Recommendations Panel */
+        .recommendations-panel {
+            background: rgba(251, 146, 60, 0.05);
+            border: 1px solid rgba(251, 146, 60, 0.2);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 24px;
+        }
+
+        .recommendations-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #FB923C;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .recommendation-item {
+            padding: 10px 0;
+            font-size: 13px;
+            color: #D1D5DB;
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+        }
+
+        .recommendation-item i {
+            color: #FB923C;
+            margin-top: 2px;
+            flex-shrink: 0;
+        }
+
+        /* Cache Efficiency Gauge */
+        .efficiency-gauge {
+            display: flex;
+            align-items: center;
+            gap: 24px;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+
+        .gauge-chart {
+            width: 120px;
+            height: 120px;
+            position: relative;
+        }
+
+        .gauge-value {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 32px;
+            font-weight: 700;
+            color: #10B981;
+            font-family: 'Roboto Mono', monospace;
+        }
+
+        .gauge-info {
+            flex: 1;
+        }
+
+        .gauge-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #E5E7EB;
+            margin-bottom: 8px;
+        }
+
+        .gauge-description {
+            font-size: 13px;
+            color: #6B7280;
+            line-height: 1.6;
+        }
+
+        /* Action Buttons */
+        .action-buttons {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .config-sidebar {
+                width: 200px;
+            }
+
+            .config-content {
+                padding: 24px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .left-nav {
+                width: 60px;
+            }
+
+            .nav-item span {
+                display: none;
+            }
+
+            .logo-text {
+                font-size: 16px;
+            }
+
+            .config-sidebar {
+                position: absolute;
+                left: -240px;
+                z-index: 100;
+                height: 100%;
+                transition: left 0.3s ease-in-out;
+            }
+
+            .config-sidebar.open {
+                left: 60px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="admin-layout" data-mc-element-id="18386">
+        <!-- Left Navigation -->
+        <div class="left-nav" data-mc-element-id="18454">
+            <div class="logo-area" data-mc-element-id="18489">
+                <div class="logo-text" data-mc-element-id="18529">BLIPP</div>
+            </div>
+            <div class="nav-section" data-mc-element-id="18595">
+                <div class="nav-section-title" data-mc-element-id="18637">Core</div>
+                <div class="nav-item" data-mc-element-id="18695">
+                    <i class="fas fa-chart-line" data-mc-element-id="18738"></i>
+                    <span data-mc-element-id="18792">Command Center</span>
+                </div>
+                <div class="nav-item" data-mc-element-id="18859">
+                    <i class="fas fa-diagram-project" data-mc-element-id="18902"></i>
+                    <span data-mc-element-id="18961">Pipeline</span>
+                </div>
+                <div class="nav-item" data-mc-element-id="19022">
+                    <i class="fas fa-podcast" data-mc-element-id="19065"></i>
+                    <span data-mc-element-id="19116">Catalog</span>
+                </div>
+                <div class="nav-item" data-mc-element-id="19176">
+                    <i class="fas fa-list" data-mc-element-id="19219"></i>
+                    <span data-mc-element-id="19267">Episodes</span>
+                </div>
+                <div class="nav-item" data-mc-element-id="19328">
+                    <i class="fas fa-headphones" data-mc-element-id="19371"></i>
+                    <span data-mc-element-id="19425">Briefings</span>
+                </div>
+            </div>
+            <div class="nav-section" data-mc-element-id="19502">
+                <div class="nav-section-title" data-mc-element-id="19544">Admin</div>
+                <div class="nav-item active" data-mc-element-id="19603">
+                    <i class="fas fa-sliders" data-mc-element-id="19653"></i>
+                    <span data-mc-element-id="19704">Configuration</span>
+                </div>
+                <div class="nav-item" data-mc-element-id="19770">
+                    <i class="fas fa-users" data-mc-element-id="19813"></i>
+                    <span data-mc-element-id="19862">Users</span>
+                </div>
+                <div class="nav-item" data-mc-element-id="19920">
+                    <i class="fas fa-chart-bar" data-mc-element-id="19963"></i>
+                    <span data-mc-element-id="20016">Analytics</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content" data-mc-element-id="20135">
+            <!-- Top Toolbar -->
+            <div class="top-toolbar" data-mc-element-id="20207">
+                <div class="toolbar-left" data-mc-element-id="20249">
+                    <div class="toolbar-title" data-mc-element-id="20296">Platform Configuration</div>
+                    <div class="deployment-status" data-mc-element-id="20372">
+                        <i class="fas fa-circle" data-mc-element-id="20428"></i>
+                        Last deployed 2 hours ago
+                    </div>
+                </div>
+                <div class="toolbar-right" data-mc-element-id="20574">
+                    <button class="btn btn-secondary" data-mc-element-id="20622">
+                        <i class="fas fa-history" data-mc-element-id="20681"></i>
+                        View Changelog
+                    </button>
+                    <button class="btn btn-secondary" disabled="" data-mc-element-id="20801">
+                        <i class="fas fa-times" data-mc-element-id="20869"></i>
+                        Discard Changes
+                    </button>
+                    <button class="btn btn-primary" disabled="" data-mc-element-id="20988">
+                        <i class="fas fa-save" data-mc-element-id="21054"></i>
+                        Save Changes
+                    </button>
+                </div>
+            </div>
+
+            <!-- Content Layout -->
+            <div class="content-layout" data-mc-element-id="21240">
+                <!-- Config Sidebar -->
+                <div class="config-sidebar" data-mc-element-id="21325">
+                    <div class="config-category" data-mc-element-id="21374">
+                        <div class="category-header active" data-mc-element-id="21428">
+                            <div class="category-icon" data-mc-element-id="21493"><i class="fas fa-sparkles" data-mc-element-id="21520"></i></div>
+                            <div data-mc-element-id="21586">AI Models</div>
+                        </div>
+                        <div class="category-items" data-mc-element-id="21662">
+                            <div class="category-item" data-mc-element-id="21719">STT (Speech-to-Text)</div>
+                            <div class="category-item" data-mc-element-id="21801">Distillation</div>
+                            <div class="category-item" data-mc-element-id="21875">Narrative Generation</div>
+                            <div class="category-item active" data-mc-element-id="21957">TTS (Text-to-Speech)</div>
+                        </div>
+                    </div>
+
+                    <div class="config-category" data-mc-element-id="22097">
+                        <div class="category-header" data-mc-element-id="22151">
+                            <div class="category-icon" data-mc-element-id="22209"><i class="fas fa-clock" data-mc-element-id="22236"></i></div>
+                            <div data-mc-element-id="22299">Duration Tiers</div>
+                        </div>
+                    </div>
+
+                    <div class="config-category" data-mc-element-id="22404">
+                        <div class="category-header" data-mc-element-id="22458">
+                            <div class="category-icon" data-mc-element-id="22516"><i class="fas fa-star" data-mc-element-id="22543"></i></div>
+                            <div data-mc-element-id="22605">Subscription Tiers</div>
+                        </div>
+                    </div>
+
+                    <div class="config-category" data-mc-element-id="22714">
+                        <div class="category-header" data-mc-element-id="22768">
+                            <div class="category-icon" data-mc-element-id="22826"><i class="fas fa-diagram-project" data-mc-element-id="22853"></i></div>
+                            <div data-mc-element-id="22926">Pipeline Settings</div>
+                        </div>
+                    </div>
+
+                    <div class="config-category" data-mc-element-id="23034">
+                        <div class="category-header" data-mc-element-id="23088">
+                            <div class="category-icon" data-mc-element-id="23146"><i class="fas fa-message" data-mc-element-id="23173"></i></div>
+                            <div data-mc-element-id="23238">Prompts</div>
+                        </div>
+                    </div>
+
+                    <div class="config-category" data-mc-element-id="23336">
+                        <div class="category-header" data-mc-element-id="23390">
+                            <div class="category-icon" data-mc-element-id="23448"><i class="fas fa-check-circle" data-mc-element-id="23475"></i></div>
+                            <div data-mc-element-id="23545">Quality Thresholds</div>
+                        </div>
+                    </div>
+
+                    <div class="config-category" data-mc-element-id="23654">
+                        <div class="category-header" data-mc-element-id="23708">
+                            <div class="category-icon" data-mc-element-id="23766"><i class="fas fa-dollar-sign" data-mc-element-id="23793"></i></div>
+                            <div data-mc-element-id="23862">Cost Controls</div>
+                        </div>
+                    </div>
+
+                    <div class="config-category" data-mc-element-id="23966">
+                        <div class="category-header" data-mc-element-id="24020">
+                            <div class="category-icon" data-mc-element-id="24078"><i class="fas fa-flag" data-mc-element-id="24105"></i></div>
+                            <div data-mc-element-id="24167">Feature Flags</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Config Content -->
+                <div class="config-content" data-mc-element-id="24330">
+                    <div class="section-header" data-mc-element-id="24379">
+                        <div class="section-title" data-mc-element-id="24432">
+                            Text-to-Speech Provider Configuration
+                            <div class="info-tooltip" data-mc-element-id="24554">
+                                <i class="fas fa-question" data-mc-element-id="24613"></i>
+                            </div>
+                        </div>
+                        <div class="section-description" data-mc-element-id="24735">
+                            Configure the TTS provider and voice settings for generating audio briefings. Changes apply to all new generations.
+                        </div>
+                    </div>
+
+                    <div class="provider-badge" data-mc-element-id="24992">
+                        <i class="fas fa-check-circle" data-mc-element-id="25045"></i>
+                        OpenAI TTS HD (Active)
+                    </div>
+
+                    <div class="form-group" data-mc-element-id="25176">
+                        <label class="form-label" data-mc-element-id="25225">Provider</label>
+                        <select class="form-select" data-mc-element-id="25292">
+                            <option selected="" data-mc-element-id="25349">OpenAI TTS</option>
+                            <option data-mc-element-id="25414">ElevenLabs</option>
+                            <option data-mc-element-id="25470">Google Cloud TTS</option>
+                            <option data-mc-element-id="25532">Amazon Polly</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group" data-mc-element-id="25644">
+                        <label class="form-label" data-mc-element-id="25693">Voice</label>
+                        <select class="form-select" data-mc-element-id="25757">
+                            <option data-mc-element-id="25814">Alloy</option>
+                            <option data-mc-element-id="25865">Echo</option>
+                            <option data-mc-element-id="25915">Fable</option>
+                            <option data-mc-element-id="25966">Onyx</option>
+                            <option selected="" data-mc-element-id="26016">Nova</option>
+                            <option data-mc-element-id="26075">Shimmer</option>
+                        </select>
+                    </div>
+
+                    <div class="settings-panel" data-mc-element-id="26182">
+                        <div class="settings-panel-title" data-mc-element-id="26235">Audio Settings</div>
+                        <div class="setting-row" data-mc-element-id="26314">
+                            <div class="setting-label" data-mc-element-id="26368">Playback Speed</div>
+                            <div style="display: flex; align-items: center; gap: 12px; width: 300px;" data-mc-element-id="26444">
+                                <input type="range" min="75" max="150" value="100" style="flex: 1;" data-mc-element-id="26551">
+                                <span style="font-family: 'Roboto Mono', monospace; color: #3B82F6; font-weight: 600; min-width: 40px;" data-mc-element-id="26652">1.0x</span>
+                            </div>
+                        </div>
+                        <div class="setting-row" data-mc-element-id="26858">
+                            <div class="setting-label" data-mc-element-id="26912">Audio Quality</div>
+                            <select class="form-select" style="max-width: 200px;" data-mc-element-id="26987">
+                                <option data-mc-element-id="27074">Standard</option>
+                                <option selected="" data-mc-element-id="27132">HD (2x cost)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="cost-display" data-mc-element-id="27288">
+                        <div class="cost-label" data-mc-element-id="27339">Current Cost per Minute</div>
+                        <div class="cost-value" data-mc-element-id="27417">$0.015</div>
+                    </div>
+
+                    <div class="performance-metrics" data-mc-element-id="27502">
+                        <div class="metric" data-mc-element-id="27560">
+                            <div class="metric-label" data-mc-element-id="27609">Avg Generation Time</div>
+                            <div class="metric-value" data-mc-element-id="27689">30s</div>
+                            <div class="metric-trend" data-mc-element-id="27753">per minute of audio</div>
+                        </div>
+                        <div class="metric" data-mc-element-id="27860">
+                            <div class="metric-label" data-mc-element-id="27909">Success Rate</div>
+                            <div class="metric-value" data-mc-element-id="27982">97.8%</div>
+                            <div class="metric-trend" data-mc-element-id="28048">↑ 0.3% vs last week</div>
+                        </div>
+                        <div class="metric" data-mc-element-id="28155">
+                            <div class="metric-label" data-mc-element-id="28204">Total Generated</div>
+                            <div class="metric-value" data-mc-element-id="28280">8,247</div>
+                            <div class="metric-trend" data-mc-element-id="28346">clips this month</div>
+                        </div>
+                    </div>
+
+                    <div class="action-buttons" data-mc-element-id="28474">
+                        <button class="btn btn-secondary" data-mc-element-id="28527">
+                            <i class="fas fa-play" data-mc-element-id="28590"></i>
+                            Test Configuration
+                        </button>
+                        <button class="btn btn-secondary" data-mc-element-id="28723">
+                            <i class="fas fa-undo" data-mc-element-id="28786"></i>
+                            Reset to Default
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Toggle switches
+        document.querySelectorAll('.toggle-switch').forEach(toggle => {
+            toggle.addEventListener('click', () => {
+                toggle.classList.toggle('active');
+            });
+        });
+
+        // Navigation interactions
+        document.querySelectorAll('.nav-item').forEach(item => {
+            item.addEventListener('click', () => {
+                document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+                item.classList.add('active');
+            });
+        });
+
+        // Category navigation
+        document.querySelectorAll('.category-header').forEach(header => {
+            header.addEventListener('click', () => {
+                document.querySelectorAll('.category-header').forEach(h => h.classList.remove('active'));
+                header.classList.add('active');
+            });
+        });
+
+        document.querySelectorAll('.category-item').forEach(item => {
+            item.addEventListener('click', () => {
+                document.querySelectorAll('.category-item').forEach(i => i.classList.remove('active'));
+                item.classList.add('active');
+            });
+        });
+
+        // Speed slider
+        const speedSlider = document.querySelector('input[type="range"]');
+        const speedDisplay = speedSlider.parentElement.querySelector('span');
+        speedSlider.addEventListener('input', (e) => {
+            const value = e.target.value / 100;
+            speedDisplay.textContent = value.toFixed(1) + 'x';
+        });
+
+        // Simulate SVG gauge
+        const gaugeChart = document.querySelector('.gauge-chart');
+        if (gaugeChart) {
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.setAttribute('width', '120');
+            svg.setAttribute('height', '120');
+            svg.setAttribute('viewBox', '0 0 120 120');
+            
+            const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            circle.setAttribute('cx', '60');
+            circle.setAttribute('cy', '60');
+            circle.setAttribute('r', '50');
+            circle.setAttribute('fill', 'none');
+            circle.setAttribute('stroke', 'rgba(255,255,255,0.05)');
+            circle.setAttribute('stroke-width', '10');
+            
+            const progressCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            progressCircle.setAttribute('cx', '60');
+            progressCircle.setAttribute('cy', '60');
+            progressCircle.setAttribute('r', '50');
+            progressCircle.setAttribute('fill', 'none');
+            progressCircle.setAttribute('stroke', '#10B981');
+            progressCircle.setAttribute('stroke-width', '10');
+            progressCircle.setAttribute('stroke-dasharray', '314');
+            progressCircle.setAttribute('stroke-dashoffset', '78.5');
+            progressCircle.setAttribute('stroke-linecap', 'round');
+            progressCircle.setAttribute('transform', 'rotate(-90 60 60)');
+            
+            svg.appendChild(circle);
+            svg.appendChild(progressCircle);
+            gaugeChart.appendChild(svg);
+        }
+    </script>
+
+<script>__MC_SITE_ID__ = "2bcfc3b8e7307dee6b63b01a9e8adf6abbf95069628337ac049533daa9785dec"</script><script>__MC_OPTIONS__ = {
+  "svg": false,
+  "overlay": false
+}</script><script src="https://forge.moonchild.ai/public/devigner.global.js" type="module"></script></body></html>

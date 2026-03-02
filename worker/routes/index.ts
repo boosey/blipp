@@ -6,6 +6,7 @@ import { briefings } from "./briefings";
 import { billing } from "./billing";
 import { clerkWebhooks } from "./webhooks/clerk";
 import { stripeWebhooks } from "./webhooks/stripe";
+import { adminRoutes } from "./admin/index";
 
 /**
  * Combined route tree for the Blipp API.
@@ -19,5 +20,6 @@ routes.route("/briefings", briefings);
 routes.route("/billing", billing);
 routes.route("/webhooks/clerk", clerkWebhooks);
 routes.route("/webhooks/stripe", stripeWebhooks);
+routes.route("/admin", adminRoutes);
 
 export { routes };

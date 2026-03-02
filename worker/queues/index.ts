@@ -2,6 +2,8 @@ import { handleFeedRefresh } from "./feed-refresh";
 import { handleDistillation } from "./distillation";
 import { handleClipGeneration } from "./clip-generation";
 import { handleBriefingAssembly } from "./briefing-assembly";
+import { createPrismaClient } from "../lib/db";
+import { getConfig } from "../lib/config";
 import type { Env } from "../types";
 
 /**
@@ -41,7 +43,8 @@ export async function handleQueue(
 }
 
 /**
- * Cron trigger handler -- enqueues a feed refresh job.
+ * Cron trigger handler -- enqueues a feed refresh job if the pipeline is enabled
+ * and the minimum interval has elapsed since the last auto run.
  *
  * @param event - Cloudflare scheduled event
  * @param env - Worker environment bindings
@@ -52,5 +55,45 @@ export async function scheduled(
   env: Env,
   ctx: ExecutionContext
 ) {
-  await env.FEED_REFRESH_QUEUE.send({ type: "cron" });
+  const prisma = createPrismaClient(env.HYPERDRIVE);
+
+  try {
+    // Check if the pipeline is globally enabled
+    const enabled = await getConfig(prisma, "pipeline.enabled", true);
+    if (!enabled) return;
+
+    // Check minimum interval between auto runs
+    const minIntervalMinutes = await getConfig(
+      prisma,
+      "pipeline.minIntervalMinutes",
+      60
+    );
+    const lastAutoRunAt = await getConfig<string | null>(
+      prisma,
+      "pipeline.lastAutoRunAt",
+      null
+    );
+
+    if (lastAutoRunAt) {
+      const elapsedMs = Date.now() - new Date(lastAutoRunAt).getTime();
+      const elapsedMinutes = elapsedMs / 60_000;
+      if (elapsedMinutes < minIntervalMinutes) return;
+    }
+
+    // Enqueue feed refresh
+    await env.FEED_REFRESH_QUEUE.send({ type: "cron" });
+
+    // Update lastAutoRunAt
+    await prisma.platformConfig.upsert({
+      where: { key: "pipeline.lastAutoRunAt" },
+      update: { value: new Date().toISOString() },
+      create: {
+        key: "pipeline.lastAutoRunAt",
+        value: new Date().toISOString(),
+        description: "Timestamp of last automatic pipeline run",
+      },
+    });
+  } finally {
+    ctx.waitUntil(prisma.$disconnect());
+  }
 }

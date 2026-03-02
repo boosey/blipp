@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { createPrismaClient } from "../lib/db";
+import { getConfig } from "../lib/config";
 import { extractClaims } from "../lib/distillation";
 import type { Env } from "../types";
 
@@ -7,6 +8,7 @@ import type { Env } from "../types";
 interface DistillationMessage {
   episodeId: string;
   transcriptUrl: string;
+  type?: "manual";
 }
 
 /**
@@ -15,6 +17,8 @@ interface DistillationMessage {
  * For each message: fetches the episode transcript, runs Claude claim extraction
  * (Pass 1), and stores the results. Handles idempotency (skips already-completed
  * distillations) and records errors for failed attempts.
+ *
+ * Messages with `type: "manual"` bypass the stage-enabled check.
  *
  * @param batch - Cloudflare Queue message batch with distillation requests
  * @param env - Worker environment bindings
@@ -29,6 +33,20 @@ export async function handleDistillation(
   const anthropic = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
 
   try {
+    // Check if stage 2 (distillation) is enabled — manual messages bypass this
+    const hasManual = batch.messages.some((m) => m.body.type === "manual");
+    if (!hasManual) {
+      const stageEnabled = await getConfig(
+        prisma,
+        "pipeline.stage.2.enabled",
+        true
+      );
+      if (!stageEnabled) {
+        for (const msg of batch.messages) msg.ack();
+        return;
+      }
+    }
+
     for (const msg of batch.messages) {
       const { episodeId, transcriptUrl } = msg.body;
 

@@ -5,5 +5,7 @@ dist/
 .env*
 *.log
 .claude/
+.firecrawl/
+.playwright-mcp/
 
 /src/generated/prisma

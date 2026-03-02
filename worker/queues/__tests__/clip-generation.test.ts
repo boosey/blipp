@@ -6,6 +6,10 @@ vi.mock("../../lib/db", () => ({
   createPrismaClient: vi.fn(),
 }));
 
+vi.mock("../../lib/config", () => ({
+  getConfig: vi.fn().mockResolvedValue(true),
+}));
+
 vi.mock("../../lib/distillation", () => ({
   generateNarrative: vi.fn().mockResolvedValue("A warm narrative about technology trends."),
 }));
@@ -27,6 +31,7 @@ vi.mock("openai", () => {
 });
 
 import { createPrismaClient } from "../../lib/db";
+import { getConfig } from "../../lib/config";
 import { generateNarrative } from "../../lib/distillation";
 import { generateSpeech } from "../../lib/tts";
 import { putClip } from "../../lib/clip-cache";
@@ -133,5 +138,47 @@ describe("handleClipGeneration", () => {
 
     expect(mockMsg.retry).toHaveBeenCalled();
     expect(mockMsg.ack).not.toHaveBeenCalled();
+  });
+
+  describe("stage-enabled check", () => {
+    it("ACKs without processing when stage 3 is disabled", async () => {
+      (getConfig as any).mockResolvedValueOnce(false); // pipeline.stage.3.enabled
+
+      const mockMsg = { body: msgBody, ack: vi.fn(), retry: vi.fn() };
+      const mockBatch = {
+        messages: [mockMsg],
+        queue: "clip-generation",
+      } as unknown as MessageBatch<any>;
+
+      await handleClipGeneration(mockBatch, mockEnv, mockCtx);
+
+      expect(mockMsg.ack).toHaveBeenCalled();
+      expect(generateNarrative).not.toHaveBeenCalled();
+      expect(generateSpeech).not.toHaveBeenCalled();
+      expect(mockPrisma.clip.findUnique).not.toHaveBeenCalled();
+    });
+
+    it("bypasses stage-enabled check for manual messages", async () => {
+      mockPrisma.clip.findUnique.mockResolvedValue(null);
+      mockPrisma.clip.upsert.mockResolvedValue({
+        id: "clip-1",
+        episodeId: "ep-1",
+        durationTier: 5,
+      });
+      mockPrisma.clip.update.mockResolvedValue({});
+
+      const manualBody = { ...msgBody, type: "manual" as const };
+      const mockMsg = { body: manualBody, ack: vi.fn(), retry: vi.fn() };
+      const mockBatch = {
+        messages: [mockMsg],
+        queue: "clip-generation",
+      } as unknown as MessageBatch<any>;
+
+      await handleClipGeneration(mockBatch, mockEnv, mockCtx);
+
+      expect(mockMsg.ack).toHaveBeenCalled();
+      expect(generateNarrative).toHaveBeenCalled();
+      expect(generateSpeech).toHaveBeenCalled();
+    });
   });
 });

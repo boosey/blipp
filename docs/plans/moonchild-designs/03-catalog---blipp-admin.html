@@ -1,0 +1,1491 @@
+<!DOCTYPE html><html lang="en" data-mode=""><head><base href="https://forge.moonchild.ai/site/1bfeeb416873d76d1bce7fca8e92d40a4faa30a32e83af65e9412210f1c93ba5/">
+    <meta charset="UTF-8" data-mc-element-id="44">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" data-mc-element-id="71">
+    <title data-mc-element-id="146">Catalog - Blipp Admin</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Roboto+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0A1628;
+            color: #F9FAFB;
+            font-size: 16px;
+            line-height: 24px;
+            overflow-x: hidden;
+        }
+
+        /* Layout Structure */
+        .admin-layout {
+            display: flex;
+            height: 100vh;
+            position: relative;
+        }
+
+        /* Primary Navigation */
+        .primary-nav {
+            width: 240px;
+            background: #0D1B2F;
+            border-right: 1px solid #1A2942;
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+        }
+
+        .nav-brand {
+            padding: 16px;
+            border-bottom: 1px solid #1A2942;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .nav-brand-logo {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, #3B82F6, #06B6D4);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 16px;
+        }
+
+        .nav-brand-text {
+            font-weight: 700;
+            font-size: 18px;
+            letter-spacing: -0.02em;
+        }
+
+        .nav-items {
+            padding: 16px 8px;
+            flex-grow: 1;
+            overflow-y: auto;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 12px;
+            margin-bottom: 4px;
+            border-radius: 6px;
+            color: #9CA3AF;
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 14px;
+            transition: all 0.2s ease-in-out;
+            cursor: pointer;
+        }
+
+        .nav-item:hover {
+            background: #1A2942;
+            color: #F9FAFB;
+        }
+
+        .nav-item.active {
+            background: #1A2942;
+            color: #3B82F6;
+        }
+
+        .nav-item i {
+            width: 20px;
+            text-align: center;
+            font-size: 16px;
+        }
+
+        .cost-monitor {
+            padding: 16px;
+            border-top: 1px solid #1A2942;
+            background: #0D1B2F;
+        }
+
+        .cost-monitor-label {
+            font-size: 12px;
+            color: #9CA3AF;
+            margin-bottom: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .cost-monitor-value {
+            font-family: 'Roboto Mono', monospace;
+            font-size: 20px;
+            font-weight: 600;
+            color: #10B981;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .cost-trend {
+            font-size: 12px;
+            color: #10B981;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        /* Main Content Area */
+        .main-content {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Top Bar */
+        .top-bar {
+            height: 64px;
+            background: #0D1B2F;
+            border-bottom: 1px solid #1A2942;
+            display: flex;
+            align-items: center;
+            padding: 0 24px;
+            gap: 16px;
+            flex-shrink: 0;
+        }
+
+        .search-box {
+            flex-grow: 1;
+            max-width: 480px;
+            position: relative;
+        }
+
+        .search-box input {
+            width: 100%;
+            height: 36px;
+            background: #1A2942;
+            border: 1px solid #2A3952;
+            border-radius: 6px;
+            padding: 0 12px 0 40px;
+            color: #F9FAFB;
+            font-size: 14px;
+            font-family: 'Inter', sans-serif;
+            transition: all 0.2s ease-in-out;
+        }
+
+        .search-box input:focus {
+            outline: none;
+            border-color: #3B82F6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .search-box i {
+            position: absolute;
+            left: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #9CA3AF;
+            font-size: 14px;
+        }
+
+        .top-bar-actions {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            margin-left: auto;
+        }
+
+        .btn {
+            height: 36px;
+            padding: 0 16px;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 14px;
+            border: none;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s ease-in-out;
+            white-space: nowrap;
+        }
+
+        .btn-primary {
+            background: #3B82F6;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #2563EB;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(59, 130, 246, 0.3);
+        }
+
+        .btn-ghost {
+            background: transparent;
+            color: #9CA3AF;
+            border: 1px solid #2A3952;
+        }
+
+        .btn-ghost:hover {
+            background: #1A2942;
+            color: #F9FAFB;
+            border-color: #3B82F6;
+        }
+
+        .alert-badge {
+            width: 36px;
+            height: 36px;
+            border-radius: 6px;
+            background: #1A2942;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+        }
+
+        .alert-badge:hover {
+            background: #2A3952;
+        }
+
+        .alert-badge i {
+            color: #9CA3AF;
+            font-size: 16px;
+        }
+
+        .alert-count {
+            position: absolute;
+            top: -4px;
+            right: -4px;
+            background: #EF4444;
+            color: white;
+            font-size: 10px;
+            font-weight: 700;
+            width: 18px;
+            height: 18px;
+            border-radius: 9px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Content Layout */
+        .content-layout {
+            display: flex;
+            flex-grow: 1;
+            overflow: hidden;
+        }
+
+        /* Left Sidebar - Filters */
+        .left-sidebar {
+            width: 280px;
+            background: #0D1B2F;
+            border-right: 1px solid #1A2942;
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+        }
+
+        .sidebar-header {
+            padding: 16px;
+            border-bottom: 1px solid #1A2942;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .sidebar-title {
+            font-weight: 600;
+            font-size: 14px;
+            color: #9CA3AF;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .sidebar-content {
+            padding: 16px;
+            overflow-y: auto;
+            flex-grow: 1;
+        }
+
+        .filter-section {
+            margin-bottom: 24px;
+        }
+
+        .filter-section-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+            cursor: pointer;
+            padding: 4px 0;
+        }
+
+        .filter-section-title {
+            font-weight: 600;
+            font-size: 13px;
+            color: #F9FAFB;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .filter-section-toggle {
+            color: #9CA3AF;
+            font-size: 12px;
+            transition: transform 0.2s ease-in-out;
+        }
+
+        .filter-section-header:hover .filter-section-toggle {
+            color: #F9FAFB;
+        }
+
+        .filter-option {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 12px;
+            margin-bottom: 4px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            font-size: 14px;
+        }
+
+        .filter-option:hover {
+            background: #1A2942;
+        }
+
+        .filter-option.active {
+            background: #1A2942;
+            color: #3B82F6;
+        }
+
+        .filter-option-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .health-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .health-dot.excellent { background: #10B981; }
+        .health-dot.good { background: #10B981; opacity: 0.7; }
+        .health-dot.fair { background: #F59E0B; }
+        .health-dot.poor { background: #EF4444; opacity: 0.7; }
+        .health-dot.broken { background: #EF4444; }
+
+        .filter-option-count {
+            font-family: 'Roboto Mono', monospace;
+            font-size: 12px;
+            color: #9CA3AF;
+        }
+
+        .filter-cost-note {
+            font-size: 12px;
+            color: #9CA3AF;
+            padding: 8px 12px;
+            background: #1A2942;
+            border-radius: 4px;
+            margin-top: 8px;
+        }
+
+        .filter-cost-note .cost {
+            color: #F59E0B;
+            font-family: 'Roboto Mono', monospace;
+            font-weight: 600;
+        }
+
+        /* Main Catalog Area */
+        .catalog-area {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .catalog-toolbar {
+            height: 56px;
+            background: #0D1B2F;
+            border-bottom: 1px solid #1A2942;
+            display: flex;
+            align-items: center;
+            padding: 0 24px;
+            gap: 16px;
+            flex-shrink: 0;
+        }
+
+        .view-toggle {
+            display: flex;
+            gap: 4px;
+            background: #1A2942;
+            padding: 4px;
+            border-radius: 6px;
+        }
+
+        .view-toggle-btn {
+            width: 32px;
+            height: 32px;
+            border: none;
+            background: transparent;
+            color: #9CA3AF;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease-in-out;
+        }
+
+        .view-toggle-btn:hover {
+            color: #F9FAFB;
+        }
+
+        .view-toggle-btn.active {
+            background: #3B82F6;
+            color: white;
+        }
+
+        .sort-dropdown {
+            position: relative;
+        }
+
+        .sort-btn {
+            height: 32px;
+            padding: 0 12px;
+            background: #1A2942;
+            border: 1px solid #2A3952;
+            border-radius: 6px;
+            color: #F9FAFB;
+            font-size: 13px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s ease-in-out;
+        }
+
+        .sort-btn:hover {
+            border-color: #3B82F6;
+        }
+
+        .toolbar-separator {
+            width: 1px;
+            height: 24px;
+            background: #1A2942;
+        }
+
+        .selected-count {
+            font-size: 13px;
+            color: #9CA3AF;
+            font-family: 'Roboto Mono', monospace;
+        }
+
+        .selected-count .count {
+            color: #3B82F6;
+            font-weight: 600;
+        }
+
+        /* Catalog Grid */
+        .catalog-grid {
+            padding: 24px;
+            overflow-y: auto;
+            flex-grow: 1;
+        }
+
+        .podcast-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+        }
+
+        .podcast-card {
+            background: #1A2942;
+            border-radius: 8px;
+            padding: 16px;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            position: relative;
+            border: 2px solid transparent;
+        }
+
+        .podcast-card:hover {
+            background: #2A3952;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
+        }
+
+        .podcast-card.selected {
+            border-color: #3B82F6;
+        }
+
+        .podcast-artwork {
+            width: 100%;
+            aspect-ratio: 1;
+            border-radius: 6px;
+            margin-bottom: 12px;
+            object-fit: cover;
+            background: linear-gradient(135deg, #2A3952, #1A2942);
+        }
+
+        .podcast-title {
+            font-weight: 600;
+            font-size: 14px;
+            line-height: 20px;
+            margin-bottom: 8px;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .podcast-meta {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            font-size: 12px;
+            color: #9CA3AF;
+        }
+
+        .podcast-episodes {
+            font-family: 'Roboto Mono', monospace;
+        }
+
+        .podcast-health {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .podcast-health-score {
+            font-family: 'Roboto Mono', monospace;
+            font-weight: 600;
+        }
+
+        .podcast-health.excellent .podcast-health-score { color: #10B981; }
+        .podcast-health.good .podcast-health-score { color: #10B981; }
+        .podcast-health.fair .podcast-health-score { color: #F59E0B; }
+        .podcast-health.poor .podcast-health-score { color: #EF4444; }
+        .podcast-health.broken .podcast-health-score { color: #EF4444; }
+
+        .podcast-timestamp {
+            font-size: 11px;
+            color: #6B7280;
+            margin-top: 4px;
+        }
+
+        .podcast-card-actions {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            opacity: 0;
+            transition: opacity 0.2s ease-in-out;
+        }
+
+        .podcast-card:hover .podcast-card-actions {
+            opacity: 1;
+        }
+
+        .card-action-btn {
+            width: 28px;
+            height: 28px;
+            background: rgba(10, 22, 40, 0.9);
+            border: 1px solid #2A3952;
+            border-radius: 4px;
+            color: #9CA3AF;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease-in-out;
+        }
+
+        .card-action-btn:hover {
+            background: #3B82F6;
+            color: white;
+            border-color: #3B82F6;
+        }
+
+        /* Right Panel - Details */
+        .right-panel {
+            width: 360px;
+            background: #0D1B2F;
+            border-left: 1px solid #1A2942;
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+        }
+
+        .panel-header {
+            padding: 16px;
+            border-bottom: 1px solid #1A2942;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .panel-title {
+            font-weight: 600;
+            font-size: 14px;
+            color: #F9FAFB;
+        }
+
+        .panel-close {
+            width: 28px;
+            height: 28px;
+            border: none;
+            background: transparent;
+            color: #9CA3AF;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: all 0.2s ease-in-out;
+        }
+
+        .panel-close:hover {
+            background: #1A2942;
+            color: #F9FAFB;
+        }
+
+        .panel-content {
+            padding: 16px;
+            overflow-y: auto;
+            flex-grow: 1;
+        }
+
+        .detail-section {
+            margin-bottom: 24px;
+        }
+
+        .detail-section-title {
+            font-weight: 600;
+            font-size: 12px;
+            color: #9CA3AF;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 12px;
+        }
+
+        .detail-artwork {
+            width: 100%;
+            aspect-ratio: 1;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            object-fit: cover;
+            background: linear-gradient(135deg, #2A3952, #1A2942);
+        }
+
+        .detail-podcast-title {
+            font-weight: 700;
+            font-size: 18px;
+            line-height: 26px;
+            margin-bottom: 8px;
+        }
+
+        .detail-rss-url {
+            font-family: 'Roboto Mono', monospace;
+            font-size: 11px;
+            color: #9CA3AF;
+            padding: 8px 12px;
+            background: #1A2942;
+            border-radius: 4px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            word-break: break-all;
+        }
+
+        .copy-btn {
+            color: #9CA3AF;
+            cursor: pointer;
+            padding: 4px;
+            transition: color 0.2s ease-in-out;
+            flex-shrink: 0;
+            margin-left: 8px;
+        }
+
+        .copy-btn:hover {
+            color: #3B82F6;
+        }
+
+        .detail-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-bottom: 16px;
+        }
+
+        .tag {
+            padding: 4px 10px;
+            background: #1A2942;
+            border: 1px solid #2A3952;
+            border-radius: 12px;
+            font-size: 12px;
+            color: #9CA3AF;
+        }
+
+        .detail-status-toggle {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px;
+            background: #1A2942;
+            border-radius: 6px;
+            margin-bottom: 16px;
+        }
+
+        .status-label {
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .toggle-switch {
+            width: 44px;
+            height: 24px;
+            background: #2A3952;
+            border-radius: 12px;
+            position: relative;
+            cursor: pointer;
+            transition: background 0.2s ease-in-out;
+        }
+
+        .toggle-switch.active {
+            background: #10B981;
+        }
+
+        .toggle-switch-handle {
+            width: 20px;
+            height: 20px;
+            background: white;
+            border-radius: 10px;
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            transition: transform 0.2s ease-in-out;
+        }
+
+        .toggle-switch.active .toggle-switch-handle {
+            transform: translateX(20px);
+        }
+
+        .metric-card {
+            background: #1A2942;
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 8px;
+        }
+
+        .metric-label {
+            font-size: 12px;
+            color: #9CA3AF;
+            margin-bottom: 4px;
+        }
+
+        .metric-value {
+            font-size: 20px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .metric-value.success { color: #10B981; }
+        .metric-value.warning { color: #F59E0B; }
+        .metric-value.error { color: #EF4444; }
+
+        .metric-subtext {
+            font-size: 11px;
+            color: #6B7280;
+            margin-top: 4px;
+        }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #2A3952;
+            font-size: 13px;
+        }
+
+        .stat-row:last-child {
+            border-bottom: none;
+        }
+
+        .stat-label {
+            color: #9CA3AF;
+        }
+
+        .stat-value {
+            font-family: 'Roboto Mono', monospace;
+            font-weight: 600;
+        }
+
+        .detail-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .btn-block {
+            width: 100%;
+            justify-content: center;
+        }
+
+        .btn-danger {
+            background: transparent;
+            color: #EF4444;
+            border: 1px solid #EF4444;
+        }
+
+        .btn-danger:hover {
+            background: #EF4444;
+            color: white;
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 1600px) {
+            .podcast-grid {
+                grid-template-columns: repeat(3, 1fr);
+            }
+        }
+
+        @media (max-width: 1200px) {
+            .podcast-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .right-panel {
+                width: 320px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .left-sidebar {
+                position: absolute;
+                left: -280px;
+                z-index: 100;
+                transition: left 0.3s ease-in-out;
+            }
+            .left-sidebar.open {
+                left: 0;
+            }
+            .podcast-grid {
+                grid-template-columns: 1fr;
+            }
+            .right-panel {
+                position: absolute;
+                right: -360px;
+                z-index: 100;
+                transition: right 0.3s ease-in-out;
+            }
+            .right-panel.open {
+                right: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="admin-layout" data-mc-element-id="22427">
+        <!-- Primary Navigation -->
+        <nav class="primary-nav" data-mc-element-id="22498">
+            <div class="nav-brand" data-mc-element-id="22536">
+                <div class="nav-brand-logo" data-mc-element-id="22576">B</div>
+                <div class="nav-brand-text" data-mc-element-id="22628">Blipp Admin</div>
+            </div>
+            <div class="nav-items" data-mc-element-id="22705">
+                <a href="#" class="nav-item" data-mc-element-id="22745">
+                    <i class="fas fa-gauge-high" data-mc-element-id="22795"></i>
+                    <span data-mc-element-id="22849">Command Center</span>
+                </a>
+                <a href="#" class="nav-item" data-mc-element-id="22914">
+                    <i class="fas fa-diagram-project" data-mc-element-id="22964"></i>
+                    <span data-mc-element-id="23023">Pipeline</span>
+                </a>
+                <a href="#" class="nav-item active" data-mc-element-id="23082">
+                    <i class="fas fa-layer-group" data-mc-element-id="23139"></i>
+                    <span data-mc-element-id="23194">Catalog</span>
+                </a>
+                <a href="#" class="nav-item" data-mc-element-id="23252">
+                    <i class="fas fa-podcast" data-mc-element-id="23302"></i>
+                    <span data-mc-element-id="23353">Episodes</span>
+                </a>
+                <a href="#" class="nav-item" data-mc-element-id="23412">
+                    <i class="fas fa-headphones" data-mc-element-id="23462"></i>
+                    <span data-mc-element-id="23516">Briefings</span>
+                </a>
+                <a href="#" class="nav-item" data-mc-element-id="23576">
+                    <i class="fas fa-sliders" data-mc-element-id="23626"></i>
+                    <span data-mc-element-id="23677">Configuration</span>
+                </a>
+                <a href="#" class="nav-item" data-mc-element-id="23741">
+                    <i class="fas fa-users" data-mc-element-id="23791"></i>
+                    <span data-mc-element-id="23840">Users</span>
+                </a>
+                <a href="#" class="nav-item" data-mc-element-id="23896">
+                    <i class="fas fa-chart-line" data-mc-element-id="23946"></i>
+                    <span data-mc-element-id="24000">Analytics</span>
+                </a>
+            </div>
+            <div class="cost-monitor" data-mc-element-id="24075">
+                <div class="cost-monitor-label" data-mc-element-id="24118">Today's Spend</div>
+                <div class="cost-monitor-value" data-mc-element-id="24186">
+                    $127.42
+                    <div class="cost-trend" data-mc-element-id="24267">
+                        <i class="fas fa-arrow-down" style="font-size: 10px;" data-mc-element-id="24316"></i>
+                        8%
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content" data-mc-element-id="24525">
+            <!-- Top Bar -->
+            <div class="top-bar" data-mc-element-id="24594">
+                <div class="search-box" data-mc-element-id="24632">
+                    <i class="fas fa-search" data-mc-element-id="24677"></i>
+                    <input type="text" placeholder="Search 2,147 podcasts by name, URL, or category..." data-mc-element-id="24727">
+                </div>
+                <div class="top-bar-actions" data-mc-element-id="24851">
+                    <button class="btn btn-ghost" data-mc-element-id="24901">
+                        <i class="fas fa-file-export" data-mc-element-id="24956"></i>
+                        Export Selected
+                    </button>
+                    <button class="btn btn-ghost" data-mc-element-id="25081">
+                        <i class="fas fa-file-import" data-mc-element-id="25136"></i>
+                        Import CSV
+                    </button>
+                    <button class="btn btn-primary" data-mc-element-id="25256">
+                        <i class="fas fa-plus" data-mc-element-id="25313"></i>
+                        Add Podcast
+                    </button>
+                    <div class="alert-badge" data-mc-element-id="25427">
+                        <i class="fas fa-bell" data-mc-element-id="25477"></i>
+                        <div class="alert-count" data-mc-element-id="25529">23</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Content Layout -->
+            <div class="content-layout" data-mc-element-id="25681">
+                <!-- Left Sidebar - Filters -->
+                <aside class="left-sidebar" data-mc-element-id="25774">
+                    <div class="sidebar-header" data-mc-element-id="25823">
+                        <div class="sidebar-title" data-mc-element-id="25876">Filters</div>
+                        <button class="btn btn-ghost" style="height: 28px; padding: 0 10px; font-size: 12px;" data-mc-element-id="25941">
+                            Reset All
+                        </button>
+                    </div>
+                    <div class="sidebar-content" data-mc-element-id="26147">
+                        <!-- Feed Health Filter -->
+                        <div class="filter-section" data-mc-element-id="26253">
+                            <div class="filter-section-header" data-mc-element-id="26310">
+                                <div class="filter-section-title" data-mc-element-id="26378">
+                                    <i class="fas fa-heart-pulse" data-mc-element-id="26449"></i>
+                                    Feed Health
+                                </div>
+                                <i class="fas fa-chevron-down filter-section-toggle" data-mc-element-id="26603"></i>
+                            </div>
+                            <div class="filter-option active" data-mc-element-id="26724">
+                                <div class="filter-option-label" data-mc-element-id="26791">
+                                    <span class="health-dot excellent" data-mc-element-id="26861"></span>
+                                    Excellent (95-100)
+                                </div>
+                                <div class="filter-option-count" data-mc-element-id="27030">1,847</div>
+                            </div>
+                            <div class="filter-option" data-mc-element-id="27138">
+                                <div class="filter-option-label" data-mc-element-id="27198">
+                                    <span class="health-dot good" data-mc-element-id="27268"></span>
+                                    Good (85-94)
+                                </div>
+                                <div class="filter-option-count" data-mc-element-id="27426">234</div>
+                            </div>
+                            <div class="filter-option" data-mc-element-id="27532">
+                                <div class="filter-option-label" data-mc-element-id="27592">
+                                    <span class="health-dot fair" data-mc-element-id="27662"></span>
+                                    Fair (70-84)
+                                </div>
+                                <div class="filter-option-count" data-mc-element-id="27820">43</div>
+                            </div>
+                            <div class="filter-option" data-mc-element-id="27925">
+                                <div class="filter-option-label" data-mc-element-id="27985">
+                                    <span class="health-dot poor" data-mc-element-id="28055"></span>
+                                    Poor (&lt;70)
+                                </div>
+                                <div class="filter-option-count" data-mc-element-id="28211">12</div>
+                            </div>
+                            <div class="filter-option" data-mc-element-id="28316">
+                                <div class="filter-option-label" data-mc-element-id="28376">
+                                    <span class="health-dot broken" data-mc-element-id="28446"></span>
+                                    Broken
+                                </div>
+                                <div class="filter-option-count" data-mc-element-id="28600">23</div>
+                            </div>
+                        </div>
+
+                        <!-- Status Filter -->
+                        <div class="filter-section" data-mc-element-id="28780">
+                            <div class="filter-section-header" data-mc-element-id="28837">
+                                <div class="filter-section-title" data-mc-element-id="28905">
+                                    <i class="fas fa-power-off" data-mc-element-id="28976"></i>
+                                    Status
+                                </div>
+                                <i class="fas fa-chevron-down filter-section-toggle" data-mc-element-id="29123"></i>
+                            </div>
+                            <div class="filter-option active" data-mc-element-id="29244">
+                                <div class="filter-option-label" data-mc-element-id="29311">Active</div>
+                                <div class="filter-option-count" data-mc-element-id="29389">2,089</div>
+                            </div>
+                            <div class="filter-option" data-mc-element-id="29497">
+                                <div class="filter-option-label" data-mc-element-id="29557">Paused</div>
+                                <div class="filter-option-count" data-mc-element-id="29635">34</div>
+                            </div>
+                            <div class="filter-option" data-mc-element-id="29740">
+                                <div class="filter-option-label" data-mc-element-id="29800">Archived</div>
+                                <div class="filter-option-count" data-mc-element-id="29880">18</div>
+                            </div>
+                            <div class="filter-option" data-mc-element-id="29985">
+                                <div class="filter-option-label" data-mc-element-id="30045">Pending</div>
+                                <div class="filter-option-count" data-mc-element-id="30124">6</div>
+                            </div>
+                        </div>
+
+                        <!-- Transcript Availability -->
+                        <div class="filter-section" data-mc-element-id="30313">
+                            <div class="filter-section-header" data-mc-element-id="30370">
+                                <div class="filter-section-title" data-mc-element-id="30438">
+                                    <i class="fas fa-closed-captioning" data-mc-element-id="30509"></i>
+                                    Transcripts
+                                </div>
+                                <i class="fas fa-chevron-down filter-section-toggle" data-mc-element-id="30669"></i>
+                            </div>
+                            <div class="filter-option" data-mc-element-id="30790">
+                                <div class="filter-option-label" data-mc-element-id="30850">Has RSS Transcript</div>
+                                <div class="filter-option-count" data-mc-element-id="30940">1,324</div>
+                            </div>
+                            <div class="filter-option" data-mc-element-id="31048">
+                                <div class="filter-option-label" data-mc-element-id="31108">Needs Transcription</div>
+                                <div class="filter-option-count" data-mc-element-id="31199">823</div>
+                            </div>
+                            <div class="filter-cost-note" data-mc-element-id="31305">
+                                <i class="fas fa-info-circle" data-mc-element-id="31368"></i> 823 podcasts need STT - avg <span class="cost" data-mc-element-id="31431">$0.08</span>/episode
+                            </div>
+                        </div>
+
+                        <!-- Activity Filter -->
+                        <div class="filter-section" data-mc-element-id="31611">
+                            <div class="filter-section-header" data-mc-element-id="31668">
+                                <div class="filter-section-title" data-mc-element-id="31736">
+                                    <i class="fas fa-clock" data-mc-element-id="31807"></i>
+                                    Activity
+                                </div>
+                                <i class="fas fa-chevron-down filter-section-toggle" data-mc-element-id="31952"></i>
+                            </div>
+                            <div class="filter-option" data-mc-element-id="32073">
+                                <div class="filter-option-label" data-mc-element-id="32133">Updated Today</div>
+                                <div class="filter-option-count" data-mc-element-id="32218">342</div>
+                            </div>
+                            <div class="filter-option" data-mc-element-id="32324">
+                                <div class="filter-option-label" data-mc-element-id="32384">Updated This Week</div>
+                                <div class="filter-option-count" data-mc-element-id="32473">1,847</div>
+                            </div>
+                            <div class="filter-option" data-mc-element-id="32581">
+                                <div class="filter-option-label" data-mc-element-id="32641">Stale (&gt;7 days)</div>
+                                <div class="filter-option-count" data-mc-element-id="32728">89</div>
+                            </div>
+                            <div class="filter-option" data-mc-element-id="32833">
+                                <div class="filter-option-label" data-mc-element-id="32893">Inactive (&gt;30 days)</div>
+                                <div class="filter-option-count" data-mc-element-id="32984">34</div>
+                            </div>
+                        </div>
+
+                        <!-- Categories -->
+                        <div class="filter-section" data-mc-element-id="33161">
+                            <div class="filter-section-header" data-mc-element-id="33218">
+                                <div class="filter-section-title" data-mc-element-id="33286">
+                                    <i class="fas fa-tags" data-mc-element-id="33357"></i>
+                                    Categories
+                                </div>
+                                <i class="fas fa-chevron-down filter-section-toggle" data-mc-element-id="33503"></i>
+                            </div>
+                            <div class="filter-option" data-mc-element-id="33624">
+                                <div class="filter-option-label" data-mc-element-id="33684">Tech</div>
+                                <div class="filter-option-count" data-mc-element-id="33760">487</div>
+                            </div>
+                            <div class="filter-option" data-mc-element-id="33866">
+                                <div class="filter-option-label" data-mc-element-id="33926">Business</div>
+                                <div class="filter-option-count" data-mc-element-id="34006">623</div>
+                            </div>
+                            <div class="filter-option" data-mc-element-id="34112">
+                                <div class="filter-option-label" data-mc-element-id="34172">News</div>
+                                <div class="filter-option-count" data-mc-element-id="34248">298</div>
+                            </div>
+                            <div class="filter-option" data-mc-element-id="34354">
+                                <div class="filter-option-label" data-mc-element-id="34414">True Crime</div>
+                                <div class="filter-option-count" data-mc-element-id="34496">145</div>
+                            </div>
+                            <div class="filter-option" data-mc-element-id="34602">
+                                <div class="filter-option-label" data-mc-element-id="34662">Health</div>
+                                <div class="filter-option-count" data-mc-element-id="34740">234</div>
+                            </div>
+                        </div>
+                    </div>
+                </aside>
+
+                <!-- Main Catalog Area -->
+                <div class="catalog-area" data-mc-element-id="34961">
+                    <!-- Catalog Toolbar -->
+                    <div class="catalog-toolbar" data-mc-element-id="35053">
+                        <div class="view-toggle" data-mc-element-id="35107">
+                            <button class="view-toggle-btn active" title="Grid View" data-mc-element-id="35161">
+                                <i class="fas fa-grip" data-mc-element-id="35251"></i>
+                            </button>
+                            <button class="view-toggle-btn" title="List View" data-mc-element-id="35345">
+                                <i class="fas fa-list" data-mc-element-id="35428"></i>
+                            </button>
+                            <button class="view-toggle-btn" title="Health View" data-mc-element-id="35522">
+                                <i class="fas fa-heart-pulse" data-mc-element-id="35607"></i>
+                            </button>
+                        </div>
+
+                        <div class="sort-dropdown" data-mc-element-id="35736">
+                            <button class="sort-btn" data-mc-element-id="35792">
+                                <i class="fas fa-arrow-down-short-wide" data-mc-element-id="35850"></i>
+                                Recently Added
+                                <i class="fas fa-chevron-down" data-mc-element-id="35974"></i>
+                            </button>
+                        </div>
+
+                        <div class="toolbar-separator" data-mc-element-id="36104"></div>
+
+                        <div class="selected-count" data-mc-element-id="36167">
+                            <span class="count" data-mc-element-id="36224">3</span> podcasts selected
+                        </div>
+
+                        <div style="margin-left: auto; display: flex; gap: 8px;" data-mc-element-id="36327">
+                            <button class="btn btn-ghost" style="height: 32px; padding: 0 12px;" data-mc-element-id="36413">
+                                <i class="fas fa-edit" data-mc-element-id="36515"></i>
+                                Bulk Edit
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Catalog Grid -->
+                    <div class="catalog-grid" data-mc-element-id="36744">
+                        <div class="podcast-grid" data-mc-element-id="36795">
+                            <!-- Podcast Card 1 -->
+                            <div class="podcast-card selected" data-mc-element-id="36902">
+                                <div class="podcast-card-actions" data-mc-element-id="36970">
+                                    <button class="card-action-btn" data-mc-element-id="37041">
+                                        <i class="fas fa-ellipsis-h" data-mc-element-id="37114"></i>
+                                    </button>
+                                </div>
+                                <img src="https://storage.googleapis.com/forge-sites/9db79e9976e24976227b8fd051d6abcd78be08ca8e217eeeb5d809106afdd00d.png?X-Goog-Algorithm=GOOG4-RSA-SHA256&amp;X-Goog-Credential=164061697651-compute%40developer.gserviceaccount.com%2F20260301%2Fauto%2Fstorage%2Fgoog4_request&amp;X-Goog-Date=20260301T074500Z&amp;X-Goog-Expires=86400&amp;X-Goog-SignedHeaders=host&amp;response-access-control-allow-origin=https%3A%2F%2Fforge.moonchild.ai&amp;X-Goog-Signature=283d5a109c50d7a8815d1f248fb861236041201145c12107072f8d6741bb8925a8177023c47276a0c8e9ff30ecd2f0ad6c0aa71b578e4be6a6fc830c39048f552f9f8b9dab73dc48f47db990eaf1fffc5d4561f8abffffeef73802646bd931cd3685f12c0a5458312b605039f990c585bb1fca3a139e7ac4af4776daf3d05f91022040267105077b1e38f140398116d1819acb556e9d1c71a268105eb39eac30dd3208a76002c1aee84d415e02ca138df27adecf1a536dd07af871eaf601e2a5323505036bf0f931cd334d763d8fa637446c75d2edbe66669aa8669be1e974193e20111fea7e83e21c72cc43f223e0ecebacb8bd2a728468719838555ce43c47" alt="The Vergecast podcast cover art" class="podcast-artwork" width="300" height="300" data-mc-element-id="37265">
+                                <div class="podcast-title" data-mc-element-id="37479">The Vergecast</div>
+                                <div class="podcast-meta" data-mc-element-id="37558">
+                                    <div class="podcast-episodes" data-mc-element-id="37621">247 eps</div>
+                                    <div class="podcast-health excellent" data-mc-element-id="37701">
+                                        <span class="health-dot excellent" data-mc-element-id="37780"></span>
+                                        <span class="podcast-health-score" data-mc-element-id="37863">98</span>
+                                    </div>
+                                </div>
+                                <div class="podcast-timestamp" data-mc-element-id="38022">Updated 2 hours ago</div>
+                            </div>
+
+                            <!-- Podcast Card 2 -->
+                            <div class="podcast-card" data-mc-element-id="38195">
+                                <div class="podcast-card-actions" data-mc-element-id="38254">
+                                    <button class="card-action-btn" data-mc-element-id="38325">
+                                        <i class="fas fa-ellipsis-h" data-mc-element-id="38398"></i>
+                                    </button>
+                                </div>
+                                <img src="https://storage.googleapis.com/forge-sites/9606e77736e9bd4839867304dada4c0f3ffa02d299cab1f35a1eec62a2bac64c.png?X-Goog-Algorithm=GOOG4-RSA-SHA256&amp;X-Goog-Credential=164061697651-compute%40developer.gserviceaccount.com%2F20260301%2Fauto%2Fstorage%2Fgoog4_request&amp;X-Goog-Date=20260301T074500Z&amp;X-Goog-Expires=86400&amp;X-Goog-SignedHeaders=host&amp;response-access-control-allow-origin=https%3A%2F%2Fforge.moonchild.ai&amp;X-Goog-Signature=44e8c4ffe840081c0361f8bb5fa34b86991415fc4d0a30f78a72add68e339a7e92f84b910c1ff07976119ad12d9aa292d8031799035cbf0a7cc21efb65586616a042e546a75678519d6eae76023b8b29f6c5ad4c0cda4c975a02ef42cbc318bca7990f7b150d8ee17a8ea9e72d1ec290c19e619b48b326963ba90b378e2c860df88c0efe0dd92f5b5f173d364fe291b79b1a26fd4ac96039f93468d1fc57d498a7b78679ad261b334ce420ab714a149daa88eb09855d932d4ad2aa4854d17f61c1e22598a4f8769ae765cbd528aeb224bf140d12176b08d2ad1cefc8ad58600ab590d00d26f470abaaa98d638492cec502b86f6147bbd725a425f1cfcc3be3a6" alt="How I Built This podcast cover art" class="podcast-artwork" width="300" height="300" data-mc-element-id="38549">
+                                <div class="podcast-title" data-mc-element-id="38760">How I Built This with Guy Raz</div>
+                                <div class="podcast-meta" data-mc-element-id="38855">
+                                    <div class="podcast-episodes" data-mc-element-id="38918">523 eps</div>
+                                    <div class="podcast-health excellent" data-mc-element-id="38998">
+                                        <span class="health-dot excellent" data-mc-element-id="39077"></span>
+                                        <span class="podcast-health-score" data-mc-element-id="39160">96</span>
+                                    </div>
+                                </div>
+                                <div class="podcast-timestamp" data-mc-element-id="39319">Updated 3 hours ago</div>
+                            </div>
+
+                            <!-- Podcast Card 3 -->
+                            <div class="podcast-card selected" data-mc-element-id="39492">
+                                <div class="podcast-card-actions" data-mc-element-id="39560">
+                                    <button class="card-action-btn" data-mc-element-id="39631">
+                                        <i class="fas fa-ellipsis-h" data-mc-element-id="39704"></i>
+                                    </button>
+                                </div>
+                                <img src="https://storage.googleapis.com/forge-sites/b041227150749f4cd95a0bddccdc3a784cd85bdad51649ca14f2122d0aa2d60f.png?X-Goog-Algorithm=GOOG4-RSA-SHA256&amp;X-Goog-Credential=164061697651-compute%40developer.gserviceaccount.com%2F20260301%2Fauto%2Fstorage%2Fgoog4_request&amp;X-Goog-Date=20260301T074500Z&amp;X-Goog-Expires=86400&amp;X-Goog-SignedHeaders=host&amp;response-access-control-allow-origin=https%3A%2F%2Fforge.moonchild.ai&amp;X-Goog-Signature=88b0842f9df6079afee7d9666d01e60aaeeecbfe78f1075c5a2d2647ea8cb33aaf92eb828dc1601989e53a48c0ce0af0f1e437c8f9e2a002d43f6a28966de233eb6b29e2ef9d78ea581465061eb8d32061efa51c066f946316e15ffee784b72579e8b710fe7cc98f47c559f2f39a3d19d89b16c87da7b86efadf8aa1052aff4671f7084c07d034bf2459ee5b8e2f161b6103b731ef14e2aab7b66665bd340b257c8403e172e4276f890ae3188061616e785ee492a2628924df4bfa783bbb7b492b865607cb7b87581f83cddf1b8d5e241fba378a66b42a43b11f18e04f9b38fe96f3ef90b0ebb6f85ce0f90a5b764527cc362351acda40c5c767b3a849fd4668" alt="Crime Junkie podcast cover art" class="podcast-artwork" width="300" height="300" data-mc-element-id="39855">
+                                <div class="podcast-title" data-mc-element-id="40063">Crime Junkie</div>
+                                <div class="podcast-meta" data-mc-element-id="40141">
+                                    <div class="podcast-episodes" data-mc-element-id="40204">389 eps</div>
+                                    <div class="podcast-health good" data-mc-element-id="40284">
+                                        <span class="health-dot good" data-mc-element-id="40358"></span>
+                                        <span class="podcast-health-score" data-mc-element-id="40436">92</span>
+                                    </div>
+                                </div>
+                                <div class="podcast-timestamp" data-mc-element-id="40595">Updated 1 day ago</div>
+                            </div>
+
+                            <!-- Podcast Card 4 -->
+                            <div class="podcast-card" data-mc-element-id="40766">
+                                <div class="podcast-card-actions" data-mc-element-id="40825">
+                                    <button class="card-action-btn" data-mc-element-id="40896">
+                                        <i class="fas fa-ellipsis-h" data-mc-element-id="40969"></i>
+                                    </button>
+                                </div>
+                                <img src="https://storage.googleapis.com/forge-sites/9db70366d210edcae95c732cd44c40382f230c355ad941e7231b7ab6f63c8940.png?X-Goog-Algorithm=GOOG4-RSA-SHA256&amp;X-Goog-Credential=164061697651-compute%40developer.gserviceaccount.com%2F20260301%2Fauto%2Fstorage%2Fgoog4_request&amp;X-Goog-Date=20260301T074500Z&amp;X-Goog-Expires=86400&amp;X-Goog-SignedHeaders=host&amp;response-access-control-allow-origin=https%3A%2F%2Fforge.moonchild.ai&amp;X-Goog-Signature=9d57f933eecf217827ffb9e9516108cb601bc2f0789781f628d36d666e6b4e28256855f0f89b3e131350072a8063ee03b1a43597d99c83502caba2c2a560fb84cd600de0e33a3dcaeb9ecadfefb15a88e67d1bf9966d2c10189c5bbfc6ed41141c27d64a1cc51ee812cdc05379720cd29962e6a2bae2e69100b8f7c1acd3b9c547069c44aeaa42de40096975184545e0930eeaa46713c5bff8c48774d07faec58eb1415b2c3af1760884c22f8eedd39df04bfd3eac3690de0a51b31333488ac16b69cf8cd802589004a017bb8226c31b6d28457bb036e14b1c07ebce7eff330a6b14a4fba6837e96cbe2e6c46d28d88b3ad5b013a2d3849be9198f2dc9d73f21" alt="The Daily podcast cover art" class="podcast-artwork" width="300" height="300" data-mc-element-id="41120">
+                                <div class="podcast-title" data-mc-element-id="41322">The Daily</div>
+                                <div class="podcast-meta" data-mc-element-id="41397">
+                                    <div class="podcast-episodes" data-mc-element-id="41460">1,247 eps</div>
+                                    <div class="podcast-health excellent" data-mc-element-id="41542">
+                                        <span class="health-dot excellent" data-mc-element-id="41621"></span>
+                                        <span class="podcast-health-score" data-mc-element-id="41704">99</span>
+                                    </div>
+                                </div>
+                                <div class="podcast-timestamp" data-mc-element-id="41863">Updated 45 minutes ago</div>
+                            </div>
+
+                            <!-- Podcast Card 5 -->
+                            <div class="podcast-card selected" data-mc-element-id="42039">
+                                <div class="podcast-card-actions" data-mc-element-id="42107">
+                                    <button class="card-action-btn" data-mc-element-id="42178">
+                                        <i class="fas fa-ellipsis-h" data-mc-element-id="42251"></i>
+                                    </button>
+                                </div>
+                                <img src="https://storage.googleapis.com/forge-sites/7aa64367ce6a08912390fe49ebf6cee0201511b95f55ca9a065cbfbf12bbf7d7.png?X-Goog-Algorithm=GOOG4-RSA-SHA256&amp;X-Goog-Credential=164061697651-compute%40developer.gserviceaccount.com%2F20260301%2Fauto%2Fstorage%2Fgoog4_request&amp;X-Goog-Date=20260301T074500Z&amp;X-Goog-Expires=86400&amp;X-Goog-SignedHeaders=host&amp;response-access-control-allow-origin=https%3A%2F%2Fforge.moonchild.ai&amp;X-Goog-Signature=6ed9fc7ed723a01b6c014a51e113602f3ff272b8eb2c0113b01e169a7b60f377283239536efecd534758462c58216763a487c432a97f938455c08a880d8757038fdc1c1dd338803f6580299200a5227e2b0cf7f5a06e07c2cf235d9f4fd6955c79b23a27b2531ca267aaf775d6370a7307b33d75bc3ab80fde19b9a86b79db0a85a1ea5fd73d68ac269ab4f60dda2c1a0a2502b053b7fdec6226546ce871c597a6985a220b189534a3bc11024e2b041edd7bd318b7da85c53636012ecc1a828512c880aa187f3fe3aa0c426275c2d8af756cb0308ecb7fa5259ec586198a56625bef2d5118c92823ec4446e1c0a0b15f74a353a9648a03da1280b61cf39d6d1a" alt="Radiolab podcast cover art" class="podcast-artwork" width="300" height="300" data-mc-element-id="42402">
+                                <div class="podcast-title" data-mc-element-id="42607">Radiolab</div>
+                                <div class="podcast-meta" data-mc-element-id="42681">
+                                    <div class="podcast-episodes" data-mc-element-id="42744">456 eps</div>
+                                    <div class="podcast-health fair" data-mc-element-id="42824">
+                                        <span class="health-dot fair" data-mc-element-id="42898"></span>
+                                        <span class="podcast-health-score" data-mc-element-id="42976">78</span>
+                                    </div>
+                                </div>
+                                <div class="podcast-timestamp" data-mc-element-id="43135">Updated 4 days ago</div>
+                            </div>
+
+                            <!-- Podcast Card 6 -->
+                            <div class="podcast-card" data-mc-element-id="43307">
+                                <div class="podcast-card-actions" data-mc-element-id="43366">
+                                    <button class="card-action-btn" data-mc-element-id="43437">
+                                        <i class="fas fa-ellipsis-h" data-mc-element-id="43510"></i>
+                                    </button>
+                                </div>
+                                <img src="https://storage.googleapis.com/forge-sites/27b7a5b624dde00338772ca1ba3eadb4ee7ed13315fda2ac40ca45621f3c1ec6.png?X-Goog-Algorithm=GOOG4-RSA-SHA256&amp;X-Goog-Credential=164061697651-compute%40developer.gserviceaccount.com%2F20260301%2Fauto%2Fstorage%2Fgoog4_request&amp;X-Goog-Date=20260301T074500Z&amp;X-Goog-Expires=86400&amp;X-Goog-SignedHeaders=host&amp;response-access-control-allow-origin=https%3A%2F%2Fforge.moonchild.ai&amp;X-Goog-Signature=450af8cf0ced660655e3f496266f745c5ffc57902ad18f33bf485be8c89e2e31109ead40320cf19524d76e2580527586739549c2a75ccb546b139426b22e428a1175e946fa47c49fe0fb4b2134094c007cc91c170f8fccfee0893aff3950e6b473d3e564d2984c4015f7a6565582c9a5051bc5facf1926c1aa999efe6ba4d4f83b61605c8d5537a75a314e214ae2fc735760fc3c3559c72709f306759ff3d731f46d613861fc1ffce32ad74e1c35ff58c1035e3cb449f3b43632b004e3fea2843a9004b4d69991e23c2f32f1776e1616e746081f43a8a39ba07c671577c10c64009077c70e23c9255c20bc66cb161d99ae19494dbd2dd70bdf6575caa587e390" alt="Smartless podcast cover art" class="podcast-artwork" width="300" height="300" data-mc-element-id="43661">
+                                <div class="podcast-title" data-mc-element-id="43865">SmartLess</div>
+                                <div class="podcast-meta" data-mc-element-id="43940">
+                                    <div class="podcast-episodes" data-mc-element-id="44003">178 eps</div>
+                                    <div class="podcast-health excellent" data-mc-element-id="44083">
+                                        <span class="health-dot excellent" data-mc-element-id="44162"></span>
+                                        <span class="podcast-health-score" data-mc-element-id="44245">97</span>
+                                    </div>
+                                </div>
+                                <div class="podcast-timestamp" data-mc-element-id="44404">Updated 1 day ago</div>
+                            </div>
+
+                            <!-- Podcast Card 7 -->
+                            <div class="podcast-card" data-mc-element-id="44575">
+                                <div class="podcast-card-actions" data-mc-element-id="44634">
+                                    <button class="card-action-btn" data-mc-element-id="44705">
+                                        <i class="fas fa-ellipsis-h" data-mc-element-id="44778"></i>
+                                    </button>
+                                </div>
+                                <img src="https://storage.googleapis.com/forge-sites/4c0a5ac40ccce94715b69bc791328b74871d8a320dd2a83b87bf8fe25f3a1905.png?X-Goog-Algorithm=GOOG4-RSA-SHA256&amp;X-Goog-Credential=164061697651-compute%40developer.gserviceaccount.com%2F20260301%2Fauto%2Fstorage%2Fgoog4_request&amp;X-Goog-Date=20260301T074500Z&amp;X-Goog-Expires=86400&amp;X-Goog-SignedHeaders=host&amp;response-access-control-allow-origin=https%3A%2F%2Fforge.moonchild.ai&amp;X-Goog-Signature=7d5a64a93d243a0e2bcff19b468f545e0f6611d6da944cc192bfc6811ab8209ee22a8b684424874324ac14fc63251ad139b74634b87e73df7ccc9e01fa9897b905552cebf0f76895a1fdbe678a690cd003fe1d7fc1de242429bcfb288870af9b5c77ec0e2c2b6bcb972128f0290d50091c98e3997dc1849e9f9187e5f40e04fc5f7de60ffa51efd7ebaa133198737b01fc05188112fc23e0aae73aa33f5be1ca472c8f656cc040defce224fdaca0cb49c300ca519092ec66dd8145311b6188bc2ec6d2355845759372512cf8949954e6915f30b750251db5d7e2443aaf19f0d7e6655115b402e52defc1a038a5abc61916ff400af0cd0f361b034a854648646a" alt="Planet Money podcast cover art" class="podcast-artwork" width="300" height="300" data-mc-element-id="44929">
+                                <div class="podcast-title" data-mc-element-id="45138">Planet Money</div>
+                                <div class="podcast-meta" data-mc-element-id="45216">
+                                    <div class="podcast-episodes" data-mc-element-id="45279">1,089 eps</div>
+                                    <div class="podcast-health excellent" data-mc-element-id="45361">
+                                        <span class="health-dot excellent" data-mc-element-id="45440"></span>
+                                        <span class="podcast-health-score" data-mc-element-id="45523">95</span>
+                                    </div>
+                                </div>
+                                <div class="podcast-timestamp" data-mc-element-id="45682">Updated 1 hour ago</div>
+                            </div>
+
+                            <!-- Podcast Card 8 -->
+                            <div class="podcast-card" data-mc-element-id="45854">
+                                <div class="podcast-card-actions" data-mc-element-id="45913">
+                                    <button class="card-action-btn" data-mc-element-id="45984">
+                                        <i class="fas fa-ellipsis-h" data-mc-element-id="46057"></i>
+                                    </button>
+                                </div>
+                                <img src="https://storage.googleapis.com/forge-sites/e60e41d9c746e054d1d4d0edecb61cf3f9b4883b8f86ff809daeae6732818e32.png?X-Goog-Algorithm=GOOG4-RSA-SHA256&amp;X-Goog-Credential=164061697651-compute%40developer.gserviceaccount.com%2F20260301%2Fauto%2Fstorage%2Fgoog4_request&amp;X-Goog-Date=20260301T074500Z&amp;X-Goog-Expires=86400&amp;X-Goog-SignedHeaders=host&amp;response-access-control-allow-origin=https%3A%2F%2Fforge.moonchild.ai&amp;X-Goog-Signature=5d10e557454d7b7dae5c003466f0c042e72b17bdbf5a7a002aa25c621dc445d9f7bc7ad53beef0c04606a2f6e785310ea244e721b25db1aa1a633d0d49627094375d41e9c9e90be678844135d10a460533561d2a5fc78c073bf2e701236e2f678f88aa0af73ae48b9ceebc2e66f9cca17e6503770cffa8c5aa62f785803853d1bb9bff02e14e850eb4e8200cdf94029d3a7dafe5dfa78962a9d75e366f2ee2fff8700571ff38b0cf885aa8ee0cfbcbbcf5e637db696669f3f3e5860f43ed2a752bd2340c72f3beb061833824f0b67a33524e0b8c01564c9d4c8bdbbdb34bd21fb021a309ab392caee305659c271d193609e011c329a46016bbbc2bf05df330ec" alt="Hardcore History podcast cover art" class="podcast-artwork" width="300" height="300" data-mc-element-id="46208">
+                                <div class="podcast-title" data-mc-element-id="46431">Hardcore History</div>
+                                <div class="podcast-meta" data-mc-element-id="46513">
+                                    <div class="podcast-episodes" data-mc-element-id="46576">67 eps</div>
+                                    <div class="podcast-health poor" data-mc-element-id="46655">
+                                        <span class="health-dot poor" data-mc-element-id="46729"></span>
+                                        <span class="podcast-health-score" data-mc-element-id="46807">64</span>
+                                    </div>
+                                </div>
+                                <div class="podcast-timestamp" data-mc-element-id="46966">Updated 12 days ago</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Panel - Podcast Details -->
+                <aside class="right-panel" data-mc-element-id="47211">
+                    <div class="panel-header" data-mc-element-id="47259">
+                        <div class="panel-title" data-mc-element-id="47310">Podcast Details</div>
+                        <button class="panel-close" data-mc-element-id="47381">
+                            <i class="fas fa-xmark" data-mc-element-id="47438"></i>
+                        </button>
+                    </div>
+                    <div class="panel-content" data-mc-element-id="47548">
+                        <!-- Overview Section -->
+                        <div class="detail-section" data-mc-element-id="47650">
+                            <img src="https://storage.googleapis.com/forge-sites/9db79e9976e24976227b8fd051d6abcd78be08ca8e217eeeb5d809106afdd00d.png?X-Goog-Algorithm=GOOG4-RSA-SHA256&amp;X-Goog-Credential=164061697651-compute%40developer.gserviceaccount.com%2F20260301%2Fauto%2Fstorage%2Fgoog4_request&amp;X-Goog-Date=20260301T074500Z&amp;X-Goog-Expires=86400&amp;X-Goog-SignedHeaders=host&amp;response-access-control-allow-origin=https%3A%2F%2Fforge.moonchild.ai&amp;X-Goog-Signature=283d5a109c50d7a8815d1f248fb861236041201145c12107072f8d6741bb8925a8177023c47276a0c8e9ff30ecd2f0ad6c0aa71b578e4be6a6fc830c39048f552f9f8b9dab73dc48f47db990eaf1fffc5d4561f8abffffeef73802646bd931cd3685f12c0a5458312b605039f990c585bb1fca3a139e7ac4af4776daf3d05f91022040267105077b1e38f140398116d1819acb556e9d1c71a268105eb39eac30dd3208a76002c1aee84d415e02ca138df27adecf1a536dd07af871eaf601e2a5323505036bf0f931cd334d763d8fa637446c75d2edbe66669aa8669be1e974193e20111fea7e83e21c72cc43f223e0ecebacb8bd2a728468719838555ce43c47" alt="The Vergecast podcast cover art" class="detail-artwork" width="328" height="328" data-mc-element-id="47707">
+                            <div class="detail-podcast-title" data-mc-element-id="47916">The Vergecast</div>
+                            <div class="detail-rss-url" data-mc-element-id="47998">
+                                https://feeds.megaphone.fm/vergecast
+                                <i class="fas fa-copy copy-btn" data-mc-element-id="48128"></i>
+                            </div>
+                            <div class="detail-tags" data-mc-element-id="48228">
+                                <span class="tag" data-mc-element-id="48286">Tech</span>
+                                <span class="tag" data-mc-element-id="48348">News</span>
+                                <span class="tag" data-mc-element-id="48410">Gadgets</span>
+                            </div>
+                            <div class="detail-status-toggle" data-mc-element-id="48506">
+                                <span class="status-label" data-mc-element-id="48573">Active</span>
+                                <div class="toggle-switch active" data-mc-element-id="48646">
+                                    <div class="toggle-switch-handle" data-mc-element-id="48717"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Health Metrics -->
+                        <div class="detail-section" data-mc-element-id="48936">
+                            <div class="detail-section-title" data-mc-element-id="48993">Health Metrics</div>
+                            <div class="metric-card" data-mc-element-id="49076">
+                                <div class="metric-label" data-mc-element-id="49134">Feed Health Score</div>
+                                <div class="metric-value success" data-mc-element-id="49216">
+                                    <span class="health-dot excellent" data-mc-element-id="49287"></span>
+                                    98/100
+                                </div>
+                                <div class="metric-subtext" data-mc-element-id="49444">Excellent - No issues detected</div>
+                            </div>
+                            <div class="stat-row" data-mc-element-id="49572">
+                                <div class="stat-label" data-mc-element-id="49627">Last Successful Fetch</div>
+                                <div class="stat-value" data-mc-element-id="49711">2 hours ago</div>
+                            </div>
+                            <div class="stat-row" data-mc-element-id="49816">
+                                <div class="stat-label" data-mc-element-id="49871">Success Rate (30d)</div>
+                                <div class="stat-value" style="color: #10B981;" data-mc-element-id="49952">94.2%</div>
+                            </div>
+                        </div>
+
+                        <!-- Episode Summary -->
+                        <div class="detail-section" data-mc-element-id="50152">
+                            <div class="detail-section-title" data-mc-element-id="50209">Episode Summary</div>
+                            <div class="stat-row" data-mc-element-id="50293">
+                                <div class="stat-label" data-mc-element-id="50348">Total Episodes</div>
+                                <div class="stat-value" data-mc-element-id="50425">247</div>
+                            </div>
+                            <div class="stat-row" data-mc-element-id="50522">
+                                <div class="stat-label" data-mc-element-id="50577">With Transcripts</div>
+                                <div class="stat-value" style="color: #10B981;" data-mc-element-id="50656">189 (76%)</div>
+                            </div>
+                            <div class="stat-row" data-mc-element-id="50783">
+                                <div class="stat-label" data-mc-element-id="50838">Needs STT</div>
+                                <div class="stat-value" style="color: #F59E0B;" data-mc-element-id="50910">58 (24%)</div>
+                            </div>
+                            <div class="stat-row" data-mc-element-id="51036">
+                                <div class="stat-label" data-mc-element-id="51091">Latest Episode</div>
+                                <div class="stat-value" style="font-size: 11px; max-width: 180px; text-align: right;" data-mc-element-id="51168">The future of AI devices</div>
+                            </div>
+                        </div>
+
+                        <!-- Subscription Data -->
+                        <div class="detail-section" data-mc-element-id="51427">
+                            <div class="detail-section-title" data-mc-element-id="51484">Subscription Data</div>
+                            <div class="metric-card" data-mc-element-id="51570">
+                                <div class="metric-label" data-mc-element-id="51628">Subscriber Count</div>
+                                <div class="metric-value" style="color: #3B82F6;" data-mc-element-id="51709">342</div>
+                            </div>
+                            <div class="stat-row" data-mc-element-id="51832">
+                                <div class="stat-label" data-mc-element-id="51887">Free Tier</div>
+                                <div class="stat-value" data-mc-element-id="51959">120</div>
+                            </div>
+                            <div class="stat-row" data-mc-element-id="52056">
+                                <div class="stat-label" data-mc-element-id="52111">Pro Tier</div>
+                                <div class="stat-value" data-mc-element-id="52182">198</div>
+                            </div>
+                            <div class="stat-row" data-mc-element-id="52279">
+                                <div class="stat-label" data-mc-element-id="52334">Pro+ Tier</div>
+                                <div class="stat-value" data-mc-element-id="52406">24</div>
+                            </div>
+                        </div>
+
+                        <!-- Processing Stats -->
+                        <div class="detail-section" data-mc-element-id="52580">
+                            <div class="detail-section-title" data-mc-element-id="52637">Processing Stats</div>
+                            <div class="stat-row" data-mc-element-id="52722">
+                                <div class="stat-label" data-mc-element-id="52777">Clips Generated</div>
+                                <div class="stat-value" data-mc-element-id="52855">1,847</div>
+                            </div>
+                            <div class="stat-row" data-mc-element-id="52954">
+                                <div class="stat-label" data-mc-element-id="53009">Cache Hit Rate</div>
+                                <div class="stat-value" style="color: #10B981;" data-mc-element-id="53086">78%</div>
+                            </div>
+                            <div class="stat-row" data-mc-element-id="53207">
+                                <div class="stat-label" data-mc-element-id="53262">Avg Distillation Cost</div>
+                                <div class="stat-value" style="color: #10B981;" data-mc-element-id="53346">$0.08</div>
+                            </div>
+                            <div class="stat-row" data-mc-element-id="53469">
+                                <div class="stat-label" data-mc-element-id="53524">Avg TTS Cost</div>
+                                <div class="stat-value" style="color: #10B981;" data-mc-element-id="53599">$0.12</div>
+                            </div>
+                            <div class="stat-row" data-mc-element-id="53722">
+                                <div class="stat-label" data-mc-element-id="53777">Total Cost to Date</div>
+                                <div class="stat-value" style="color: #F59E0B;" data-mc-element-id="53858">$1,247.39</div>
+                            </div>
+                        </div>
+
+                        <!-- Quick Actions -->
+                        <div class="detail-section" data-mc-element-id="54060">
+                            <div class="detail-section-title" data-mc-element-id="54117">Quick Actions</div>
+                            <div class="detail-actions" data-mc-element-id="54199">
+                                <button class="btn btn-primary btn-block" data-mc-element-id="54260">
+                                    <i class="fas fa-rotate" data-mc-element-id="54339"></i>
+                                    Refresh Feed Now
+                                </button>
+                                <button class="btn btn-ghost btn-block" data-mc-element-id="54496">
+                                    <i class="fas fa-edit" data-mc-element-id="54573"></i>
+                                    Edit Metadata
+                                </button>
+                                <button class="btn btn-ghost btn-block" data-mc-element-id="54725">
+                                    <i class="fas fa-list" data-mc-element-id="54802"></i>
+                                    View All Episodes
+                                </button>
+                                <button class="btn btn-ghost btn-block" data-mc-element-id="54958">
+                                    <i class="fas fa-file-export" data-mc-element-id="55035"></i>
+                                    Export Episode List
+                                </button>
+                                <button class="btn btn-danger btn-block" data-mc-element-id="55200">
+                                    <i class="fas fa-trash" data-mc-element-id="55278"></i>
+                                    Delete Podcast
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </aside>
+            </div>
+        </main>
+    </div>
+
+<script>__MC_SITE_ID__ = "1bfeeb416873d76d1bce7fca8e92d40a4faa30a32e83af65e9412210f1c93ba5"</script><script>__MC_OPTIONS__ = {
+  "svg": false,
+  "overlay": false
+}</script><script src="https://forge.moonchild.ai/public/devigner.global.js" type="module"></script></body></html>

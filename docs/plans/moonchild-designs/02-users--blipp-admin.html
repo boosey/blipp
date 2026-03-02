@@ -1,0 +1,1477 @@
+<!DOCTYPE html><html lang="en" data-mode=""><head><base href="https://forge.moonchild.ai/site/a08b6f431b8f4678a7475c363085757fa9696f8c0edeba6a2e8b0bbb8ac8ef8b/">
+    <meta charset="UTF-8" data-mc-element-id="44">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" data-mc-element-id="71">
+    <title data-mc-element-id="146">Users — Blipp Admin</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background: #0A1628;
+            color: #E5E7EB;
+            font-size: 14px;
+            line-height: 1.5;
+            overflow-x: hidden;
+        }
+
+        /* Layout Structure */
+        .admin-layout {
+            display: flex;
+            min-height: 100vh;
+        }
+
+        /* Sidebar Navigation */
+        .sidebar {
+            width: 240px;
+            background: #1A2942;
+            border-right: 1px solid rgba(59, 130, 246, 0.1);
+            display: flex;
+            flex-direction: column;
+            position: fixed;
+            height: 100vh;
+            z-index: 100;
+        }
+
+        .sidebar-header {
+            padding: 24px;
+            border-bottom: 1px solid rgba(59, 130, 246, 0.1);
+        }
+
+        .logo {
+            font-size: 20px;
+            font-weight: 700;
+            color: #3B82F6;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .nav-menu {
+            flex: 1;
+            padding: 16px 0;
+            overflow-y: auto;
+        }
+
+        .nav-item {
+            padding: 10px 24px;
+            color: #9CA3AF;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            font-size: 14px;
+            font-weight: 500;
+            text-decoration: none;
+        }
+
+        .nav-item:hover {
+            background: rgba(59, 130, 246, 0.1);
+            color: #3B82F6;
+        }
+
+        .nav-item.active {
+            background: rgba(59, 130, 246, 0.15);
+            color: #3B82F6;
+            border-left: 3px solid #3B82F6;
+            padding-left: 21px;
+        }
+
+        .nav-item i {
+            width: 20px;
+            text-align: center;
+        }
+
+        /* Main Content Area */
+        .main-content {
+            flex: 1;
+            margin-left: 240px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Top Toolbar */
+        .toolbar {
+            height: 56px;
+            background: #1A2942;
+            border-bottom: 1px solid rgba(59, 130, 246, 0.1);
+            padding: 0 24px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            position: sticky;
+            top: 0;
+            z-index: 50;
+        }
+
+        .search-box {
+            flex: 1;
+            max-width: 400px;
+            position: relative;
+        }
+
+        .search-box input {
+            width: 100%;
+            height: 36px;
+            background: #0A1628;
+            border: 1px solid rgba(59, 130, 246, 0.2);
+            border-radius: 6px;
+            padding: 0 12px 0 36px;
+            color: #E5E7EB;
+            font-size: 14px;
+            font-family: 'Inter', sans-serif;
+        }
+
+        .search-box input:focus {
+            outline: 2px solid #3B82F6;
+            outline-offset: 0;
+            border-color: #3B82F6;
+        }
+
+        .search-box i {
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #6B7280;
+        }
+
+        .filter-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .filter-btn {
+            height: 36px;
+            padding: 0 16px;
+            background: #0A1628;
+            border: 1px solid rgba(59, 130, 246, 0.2);
+            border-radius: 6px;
+            color: #9CA3AF;
+            font-size: 14px;
+            font-family: 'Inter', sans-serif;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .filter-btn:hover {
+            border-color: #3B82F6;
+            color: #3B82F6;
+        }
+
+        .filter-btn.active {
+            background: rgba(59, 130, 246, 0.15);
+            border-color: #3B82F6;
+            color: #3B82F6;
+        }
+
+        .bulk-actions {
+            margin-left: auto;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            height: 36px;
+            padding: 0 16px;
+            background: #3B82F6;
+            border: none;
+            border-radius: 6px;
+            color: white;
+            font-size: 14px;
+            font-weight: 600;
+            font-family: 'Inter', sans-serif;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-primary:hover {
+            background: #2563EB;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(59, 130, 246, 0.3);
+        }
+
+        .btn-secondary {
+            height: 36px;
+            padding: 0 16px;
+            background: transparent;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            border-radius: 6px;
+            color: #3B82F6;
+            font-size: 14px;
+            font-weight: 600;
+            font-family: 'Inter', sans-serif;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-secondary:hover {
+            background: rgba(59, 130, 246, 0.1);
+            border-color: #3B82F6;
+        }
+
+        /* Split Layout */
+        .split-layout {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* User List Pane */
+        .user-list-pane {
+            width: 40%;
+            background: #0A1628;
+            border-right: 1px solid rgba(59, 130, 246, 0.1);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .list-header {
+            padding: 16px 24px;
+            background: #1A2942;
+            border-bottom: 1px solid rgba(59, 130, 246, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .list-header h2 {
+            font-size: 16px;
+            font-weight: 600;
+            color: #E5E7EB;
+        }
+
+        .list-count {
+            font-size: 14px;
+            color: #6B7280;
+        }
+
+        .user-table {
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .user-row {
+            display: grid;
+            grid-template-columns: 40px 1fr auto;
+            align-items: center;
+            gap: 16px;
+            padding: 12px 24px;
+            border-bottom: 1px solid rgba(59, 130, 246, 0.05);
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            min-height: 72px;
+        }
+
+        .user-row:hover {
+            background: rgba(59, 130, 246, 0.05);
+        }
+
+        .user-row.selected {
+            background: rgba(59, 130, 246, 0.1);
+            border-left: 3px solid #3B82F6;
+            padding-left: 21px;
+        }
+
+        .user-row.power-user {
+            background: rgba(16, 185, 129, 0.05);
+        }
+
+        .user-row.at-risk {
+            background: rgba(245, 158, 11, 0.05);
+        }
+
+        .user-row input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            accent-color: #3B82F6;
+        }
+
+        .user-info {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            min-width: 0;
+        }
+
+        .user-email {
+            font-size: 14px;
+            font-weight: 600;
+            color: #E5E7EB;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .user-meta {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .tier-badge {
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .tier-badge.free {
+            background: rgba(107, 114, 128, 0.2);
+            color: #9CA3AF;
+        }
+
+        .tier-badge.pro {
+            background: rgba(59, 130, 246, 0.2);
+            color: #3B82F6;
+        }
+
+        .tier-badge.pro-plus {
+            background: rgba(139, 92, 246, 0.2);
+            color: #8B5CF6;
+        }
+
+        .status-badge {
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .status-badge.active {
+            background: rgba(16, 185, 129, 0.2);
+            color: #10B981;
+        }
+
+        .status-badge.trial {
+            background: rgba(245, 158, 11, 0.2);
+            color: #F59E0B;
+        }
+
+        .status-badge.at-risk {
+            background: rgba(239, 68, 68, 0.2);
+            color: #EF4444;
+        }
+
+        .user-stats {
+            font-size: 12px;
+            color: #6B7280;
+        }
+
+        .user-actions {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 4px;
+        }
+
+        .last-active {
+            font-size: 12px;
+            color: #6B7280;
+            white-space: nowrap;
+        }
+
+        .briefing-count {
+            font-size: 12px;
+            font-weight: 600;
+            color: #14B8A6;
+        }
+
+        /* User Detail Pane */
+        .user-detail-pane {
+            width: 60%;
+            background: #0A1628;
+            overflow-y: auto;
+            padding: 24px;
+        }
+
+        .detail-header {
+            margin-bottom: 32px;
+        }
+
+        .detail-title {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+        }
+
+        .detail-title h1 {
+            font-size: 24px;
+            font-weight: 700;
+            color: #E5E7EB;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .user-id {
+            font-size: 12px;
+            color: #6B7280;
+            font-family: 'Monaco', monospace;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .copy-btn {
+            background: transparent;
+            border: none;
+            color: #6B7280;
+            cursor: pointer;
+            padding: 4px;
+            transition: color 0.2s ease-in-out;
+        }
+
+        .copy-btn:hover {
+            color: #3B82F6;
+        }
+
+        .detail-meta {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .tier-badge-large {
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .detail-section {
+            background: #1A2942;
+            border-radius: 8px;
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+
+        .section-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+        }
+
+        .section-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #E5E7EB;
+        }
+
+        .section-action {
+            font-size: 14px;
+            color: #3B82F6;
+            cursor: pointer;
+            text-decoration: none;
+            transition: color 0.2s ease-in-out;
+        }
+
+        .section-action:hover {
+            color: #2563EB;
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 16px;
+        }
+
+        .info-item {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .info-label {
+            font-size: 12px;
+            color: #6B7280;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .info-value {
+            font-size: 14px;
+            color: #E5E7EB;
+            font-weight: 500;
+        }
+
+        .info-value.highlight {
+            font-size: 20px;
+            font-weight: 700;
+            color: #14B8A6;
+        }
+
+        .stat-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+
+        .stat-card {
+            background: #0A1628;
+            padding: 16px;
+            border-radius: 6px;
+            border: 1px solid rgba(59, 130, 246, 0.1);
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: #14B8A6;
+            margin-bottom: 4px;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #6B7280;
+        }
+
+        .podcast-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .podcast-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px;
+            background: #0A1628;
+            border-radius: 6px;
+        }
+
+        .podcast-artwork {
+            width: 40px;
+            height: 40px;
+            border-radius: 4px;
+            background: linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%);
+        }
+
+        .podcast-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .podcast-name {
+            font-size: 14px;
+            font-weight: 500;
+            color: #E5E7EB;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .podcast-date {
+            font-size: 12px;
+            color: #6B7280;
+        }
+
+        .digest-card {
+            background: #0A1628;
+            padding: 16px;
+            border-radius: 6px;
+            border: 1px solid rgba(59, 130, 246, 0.1);
+            margin-bottom: 12px;
+        }
+
+        .digest-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+
+        .digest-name {
+            font-size: 16px;
+            font-weight: 600;
+            color: #E5E7EB;
+        }
+
+        .digest-status {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            background: rgba(16, 185, 129, 0.2);
+            color: #10B981;
+        }
+
+        .digest-meta {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 12px;
+            font-size: 14px;
+            color: #9CA3AF;
+        }
+
+        .digest-meta i {
+            color: #6B7280;
+        }
+
+        .podcast-thumbnails {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 12px;
+        }
+
+        .thumbnail {
+            width: 32px;
+            height: 32px;
+            border-radius: 4px;
+            background: linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%);
+        }
+
+        .thumbnail-more {
+            width: 32px;
+            height: 32px;
+            border-radius: 4px;
+            background: #0A1628;
+            border: 1px solid rgba(59, 130, 246, 0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            color: #6B7280;
+        }
+
+        .briefing-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .briefing-table th {
+            text-align: left;
+            font-size: 12px;
+            color: #6B7280;
+            font-weight: 600;
+            padding: 8px;
+            border-bottom: 1px solid rgba(59, 130, 246, 0.1);
+        }
+
+        .briefing-table td {
+            padding: 12px 8px;
+            font-size: 14px;
+            color: #9CA3AF;
+            border-bottom: 1px solid rgba(59, 130, 246, 0.05);
+        }
+
+        .briefing-table tr:hover {
+            background: rgba(59, 130, 246, 0.05);
+            cursor: pointer;
+        }
+
+        .duration-badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            background: rgba(59, 130, 246, 0.2);
+            color: #3B82F6;
+        }
+
+        .activity-feed {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .activity-item {
+            display: flex;
+            gap: 12px;
+            padding: 12px;
+            background: #0A1628;
+            border-radius: 6px;
+            border-left: 3px solid #3B82F6;
+        }
+
+        .activity-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: rgba(59, 130, 246, 0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #3B82F6;
+            flex-shrink: 0;
+        }
+
+        .activity-content {
+            flex: 1;
+        }
+
+        .activity-text {
+            font-size: 14px;
+            color: #E5E7EB;
+            margin-bottom: 4px;
+        }
+
+        .activity-time {
+            font-size: 12px;
+            color: #6B7280;
+        }
+
+        .admin-notes {
+            width: 100%;
+            min-height: 100px;
+            background: #0A1628;
+            border: 1px solid rgba(59, 130, 246, 0.2);
+            border-radius: 6px;
+            padding: 12px;
+            color: #E5E7EB;
+            font-size: 14px;
+            font-family: 'Inter', sans-serif;
+            resize: vertical;
+        }
+
+        .admin-notes:focus {
+            outline: 2px solid #3B82F6;
+            outline-offset: 0;
+            border-color: #3B82F6;
+        }
+
+        .btn-danger {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: #EF4444;
+        }
+
+        .btn-danger:hover {
+            background: rgba(239, 68, 68, 0.2);
+            border-color: #EF4444;
+        }
+
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 64px 24px;
+            text-align: center;
+        }
+
+        .empty-state i {
+            font-size: 48px;
+            color: #374151;
+            margin-bottom: 16px;
+        }
+
+        .empty-state h3 {
+            font-size: 18px;
+            font-weight: 600;
+            color: #9CA3AF;
+            margin-bottom: 8px;
+        }
+
+        .empty-state p {
+            font-size: 14px;
+            color: #6B7280;
+        }
+
+        /* Scrollbar Styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #0A1628;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #374151;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #4B5563;
+        }
+
+        @media (max-width: 1024px) {
+            .sidebar {
+                width: 200px;
+            }
+
+            .main-content {
+                margin-left: 200px;
+            }
+
+            .split-layout {
+                flex-direction: column;
+            }
+
+            .user-list-pane {
+                width: 100%;
+                max-height: 400px;
+            }
+
+            .user-detail-pane {
+                width: 100%;
+            }
+
+            .info-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .stat-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 64px;
+            }
+
+            .main-content {
+                margin-left: 64px;
+            }
+
+            .logo span {
+                display: none;
+            }
+
+            .nav-item span {
+                display: none;
+            }
+
+            .toolbar {
+                flex-wrap: wrap;
+                height: auto;
+                padding: 12px;
+            }
+
+            .search-box {
+                width: 100%;
+                max-width: none;
+            }
+
+            .filter-group {
+                width: 100%;
+                overflow-x: auto;
+            }
+
+            .bulk-actions {
+                width: 100%;
+                margin-left: 0;
+                justify-content: flex-end;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="admin-layout" data-mc-element-id="21624">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar" data-mc-element-id="21695">
+            <div class="sidebar-header" data-mc-element-id="21731">
+                <div class="logo" data-mc-element-id="21776">
+                    <i class="fas fa-bolt" data-mc-element-id="21815"></i>
+                    <span data-mc-element-id="21863">Blipp Admin</span>
+                </div>
+            </div>
+            <nav class="nav-menu" data-mc-element-id="21942">
+                <a href="#" class="nav-item" data-mc-element-id="21981">
+                    <i class="fas fa-chart-line" data-mc-element-id="22031"></i>
+                    <span data-mc-element-id="22085">Command Center</span>
+                </a>
+                <a href="#" class="nav-item" data-mc-element-id="22150">
+                    <i class="fas fa-stream" data-mc-element-id="22200"></i>
+                    <span data-mc-element-id="22250">Pipeline</span>
+                </a>
+                <a href="#" class="nav-item" data-mc-element-id="22309">
+                    <i class="fas fa-podcast" data-mc-element-id="22359"></i>
+                    <span data-mc-element-id="22410">Catalog</span>
+                </a>
+                <a href="#" class="nav-item" data-mc-element-id="22468">
+                    <i class="fas fa-file-audio" data-mc-element-id="22518"></i>
+                    <span data-mc-element-id="22572">Episodes</span>
+                </a>
+                <a href="#" class="nav-item" data-mc-element-id="22631">
+                    <i class="fas fa-headphones" data-mc-element-id="22681"></i>
+                    <span data-mc-element-id="22735">Briefings</span>
+                </a>
+                <a href="#" class="nav-item" data-mc-element-id="22795">
+                    <i class="fas fa-cog" data-mc-element-id="22845"></i>
+                    <span data-mc-element-id="22892">Configuration</span>
+                </a>
+                <a href="#" class="nav-item active" data-mc-element-id="22956">
+                    <i class="fas fa-users" data-mc-element-id="23013"></i>
+                    <span data-mc-element-id="23062">Users</span>
+                </a>
+                <a href="#" class="nav-item" data-mc-element-id="23118">
+                    <i class="fas fa-chart-bar" data-mc-element-id="23168"></i>
+                    <span data-mc-element-id="23221">Analytics</span>
+                </a>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content" data-mc-element-id="23340">
+            <!-- Top Toolbar -->
+            <div class="toolbar" data-mc-element-id="23413">
+                <div class="search-box" data-mc-element-id="23451">
+                    <i class="fas fa-search" data-mc-element-id="23496"></i>
+                    <input type="text" placeholder="Search users by email, name, or subscription ID..." data-mc-element-id="23546">
+                </div>
+
+                <div class="filter-group" data-mc-element-id="23671">
+                    <button class="filter-btn" data-mc-element-id="23718">
+                        <i class="fas fa-filter" data-mc-element-id="23770"></i>
+                        <span data-mc-element-id="23824">All Tiers</span>
+                    </button>
+                    <button class="filter-btn active" data-mc-element-id="23897">
+                        <i class="fas fa-circle" data-mc-element-id="23956"></i>
+                        <span data-mc-element-id="24010">Active</span>
+                    </button>
+                    <button class="filter-btn" data-mc-element-id="24080">
+                        <i class="fas fa-clock" data-mc-element-id="24132"></i>
+                        <span data-mc-element-id="24185">Activity</span>
+                    </button>
+                    <button class="filter-btn" data-mc-element-id="24257">
+                        <i class="fas fa-sort" data-mc-element-id="24309"></i>
+                        <span data-mc-element-id="24361">Recently Active</span>
+                    </button>
+                </div>
+
+                <div class="bulk-actions" data-mc-element-id="24460">
+                    <button class="btn-secondary" data-mc-element-id="24507">
+                        <i class="fas fa-download" data-mc-element-id="24562"></i>
+                        <span data-mc-element-id="24618">Export</span>
+                    </button>
+                    <button class="btn-primary" data-mc-element-id="24688">
+                        <i class="fas fa-plus" data-mc-element-id="24741"></i>
+                        <span data-mc-element-id="24793">Add User</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Split Layout -->
+            <div class="split-layout" data-mc-element-id="24934">
+                <!-- User List Pane -->
+                <div class="user-list-pane" data-mc-element-id="25017">
+                    <div class="list-header" data-mc-element-id="25066">
+                        <h2 data-mc-element-id="25116">All Users</h2>
+                        <span class="list-count" data-mc-element-id="25159">3,829 users</span>
+                    </div>
+                    <div class="user-table" data-mc-element-id="25250">
+                        <div class="user-row selected" data-mc-element-id="25299">
+                            <input type="checkbox" data-mc-element-id="25359">
+                            <div class="user-info" data-mc-element-id="25411">
+                                <div class="user-email" data-mc-element-id="25467">sarah.chen@techcorp.com</div>
+                                <div class="user-meta" data-mc-element-id="25553">
+                                    <span class="tier-badge pro" data-mc-element-id="25613">Pro</span>
+                                    <span class="status-badge active" data-mc-element-id="25689">Active</span>
+                                    <span class="user-stats" data-mc-element-id="25773">Joined Jan 3, 2024</span>
+                                </div>
+                            </div>
+                            <div class="user-actions" data-mc-element-id="25926">
+                                <div class="last-active" data-mc-element-id="25985">2 hours ago</div>
+                                <div class="briefing-count" data-mc-element-id="26060">127 briefings</div>
+                            </div>
+                        </div>
+
+                        <div class="user-row power-user" data-mc-element-id="26199">
+                            <input type="checkbox" data-mc-element-id="26261">
+                            <div class="user-info" data-mc-element-id="26313">
+                                <div class="user-email" data-mc-element-id="26369">michael.rodriguez@startup.io</div>
+                                <div class="user-meta" data-mc-element-id="26460">
+                                    <span class="tier-badge pro-plus" data-mc-element-id="26520">Pro+</span>
+                                    <span class="status-badge active" data-mc-element-id="26602">Active</span>
+                                    <span class="user-stats" data-mc-element-id="26686">Joined Dec 15, 2023</span>
+                                </div>
+                            </div>
+                            <div class="user-actions" data-mc-element-id="26840">
+                                <div class="last-active" data-mc-element-id="26899">5 min ago</div>
+                                <div class="briefing-count" data-mc-element-id="26972">284 briefings</div>
+                            </div>
+                        </div>
+
+                        <div class="user-row" data-mc-element-id="27111">
+                            <input type="checkbox" data-mc-element-id="27162">
+                            <div class="user-info" data-mc-element-id="27214">
+                                <div class="user-email" data-mc-element-id="27270">emma.thompson@design.co</div>
+                                <div class="user-meta" data-mc-element-id="27356">
+                                    <span class="tier-badge pro" data-mc-element-id="27416">Pro</span>
+                                    <span class="status-badge active" data-mc-element-id="27492">Active</span>
+                                    <span class="user-stats" data-mc-element-id="27576">Joined Feb 20, 2024</span>
+                                </div>
+                            </div>
+                            <div class="user-actions" data-mc-element-id="27730">
+                                <div class="last-active" data-mc-element-id="27789">1 day ago</div>
+                                <div class="briefing-count" data-mc-element-id="27862">89 briefings</div>
+                            </div>
+                        </div>
+
+                        <div class="user-row at-risk" data-mc-element-id="28000">
+                            <input type="checkbox" data-mc-element-id="28059">
+                            <div class="user-info" data-mc-element-id="28111">
+                                <div class="user-email" data-mc-element-id="28167">james.wilson@corp.com</div>
+                                <div class="user-meta" data-mc-element-id="28251">
+                                    <span class="tier-badge pro" data-mc-element-id="28311">Pro</span>
+                                    <span class="status-badge at-risk" data-mc-element-id="28387">At Risk</span>
+                                    <span class="user-stats" data-mc-element-id="28473">Joined Nov 8, 2023</span>
+                                </div>
+                            </div>
+                            <div class="user-actions" data-mc-element-id="28626">
+                                <div class="last-active" data-mc-element-id="28685">14 days ago</div>
+                                <div class="briefing-count" data-mc-element-id="28760">156 briefings</div>
+                            </div>
+                        </div>
+
+                        <div class="user-row" data-mc-element-id="28899">
+                            <input type="checkbox" data-mc-element-id="28950">
+                            <div class="user-info" data-mc-element-id="29002">
+                                <div class="user-email" data-mc-element-id="29058">olivia.martinez@media.com</div>
+                                <div class="user-meta" data-mc-element-id="29146">
+                                    <span class="tier-badge free" data-mc-element-id="29206">Free</span>
+                                    <span class="status-badge trial" data-mc-element-id="29284">Trial</span>
+                                    <span class="user-stats" data-mc-element-id="29366">Joined Apr 28, 2024</span>
+                                </div>
+                            </div>
+                            <div class="user-actions" data-mc-element-id="29520">
+                                <div class="last-active" data-mc-element-id="29579">3 hours ago</div>
+                                <div class="briefing-count" data-mc-element-id="29654">12 briefings</div>
+                            </div>
+                        </div>
+
+                        <div class="user-row" data-mc-element-id="29792">
+                            <input type="checkbox" data-mc-element-id="29843">
+                            <div class="user-info" data-mc-element-id="29895">
+                                <div class="user-email" data-mc-element-id="29951">david.park@enterprise.com</div>
+                                <div class="user-meta" data-mc-element-id="30039">
+                                    <span class="tier-badge pro" data-mc-element-id="30099">Pro</span>
+                                    <span class="status-badge active" data-mc-element-id="30175">Active</span>
+                                    <span class="user-stats" data-mc-element-id="30259">Joined Mar 12, 2024</span>
+                                </div>
+                            </div>
+                            <div class="user-actions" data-mc-element-id="30413">
+                                <div class="last-active" data-mc-element-id="30472">6 hours ago</div>
+                                <div class="briefing-count" data-mc-element-id="30547">73 briefings</div>
+                            </div>
+                        </div>
+
+                        <div class="user-row" data-mc-element-id="30685">
+                            <input type="checkbox" data-mc-element-id="30736">
+                            <div class="user-info" data-mc-element-id="30788">
+                                <div class="user-email" data-mc-element-id="30844">sophia.lee@tech.io</div>
+                                <div class="user-meta" data-mc-element-id="30925">
+                                    <span class="tier-badge pro-plus" data-mc-element-id="30985">Pro+</span>
+                                    <span class="status-badge active" data-mc-element-id="31067">Active</span>
+                                    <span class="user-stats" data-mc-element-id="31151">Joined Oct 5, 2023</span>
+                                </div>
+                            </div>
+                            <div class="user-actions" data-mc-element-id="31304">
+                                <div class="last-active" data-mc-element-id="31363">30 min ago</div>
+                                <div class="briefing-count" data-mc-element-id="31437">198 briefings</div>
+                            </div>
+                        </div>
+
+                        <div class="user-row" data-mc-element-id="31576">
+                            <input type="checkbox" data-mc-element-id="31627">
+                            <div class="user-info" data-mc-element-id="31679">
+                                <div class="user-email" data-mc-element-id="31735">ryan.brown@agency.com</div>
+                                <div class="user-meta" data-mc-element-id="31819">
+                                    <span class="tier-badge pro" data-mc-element-id="31879">Pro</span>
+                                    <span class="status-badge active" data-mc-element-id="31955">Active</span>
+                                    <span class="user-stats" data-mc-element-id="32039">Joined Feb 1, 2024</span>
+                                </div>
+                            </div>
+                            <div class="user-actions" data-mc-element-id="32192">
+                                <div class="last-active" data-mc-element-id="32251">4 hours ago</div>
+                                <div class="briefing-count" data-mc-element-id="32326">95 briefings</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- User Detail Pane -->
+                <div class="user-detail-pane" data-mc-element-id="32548">
+                    <div class="detail-header" data-mc-element-id="32599">
+                        <div class="detail-title" data-mc-element-id="32651">
+                            <h1 data-mc-element-id="32706">sarah.chen@techcorp.com</h1>
+                            <div class="header-actions" data-mc-element-id="32767">
+                                <button class="btn-secondary" data-mc-element-id="32828">
+                                    <i class="fas fa-envelope" data-mc-element-id="32895"></i>
+                                    <span data-mc-element-id="32963">Email User</span>
+                                </button>
+                                <button class="btn-secondary" data-mc-element-id="33061">
+                                    <i class="fas fa-eye" data-mc-element-id="33128"></i>
+                                    <span data-mc-element-id="33191">View as User</span>
+                                </button>
+                                <button class="btn-danger" data-mc-element-id="33291">
+                                    <i class="fas fa-trash" data-mc-element-id="33355"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="user-id" data-mc-element-id="33516">
+                            <span data-mc-element-id="33566">ID: usr_7k4m9n2p1q3r5s8t</span>
+                            <button class="copy-btn" data-mc-element-id="33632">
+                                <i class="far fa-copy" data-mc-element-id="33690"></i>
+                            </button>
+                        </div>
+                        <div class="detail-meta" data-mc-element-id="33811">
+                            <span class="tier-badge-large pro" data-mc-element-id="33865">Pro</span>
+                            <span class="status-badge active" data-mc-element-id="33939">Active</span>
+                            <button class="btn-primary" data-mc-element-id="34015">
+                                <i class="fas fa-arrow-up" data-mc-element-id="34076"></i>
+                                <span data-mc-element-id="34140">Change Tier</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Subscription Info Section -->
+                    <div class="detail-section" data-mc-element-id="34337">
+                        <div class="section-header" data-mc-element-id="34390">
+                            <h3 class="section-title" data-mc-element-id="34447">Subscription Information</h3>
+                            <a href="#" class="section-action" data-mc-element-id="34531">View Billing History</a>
+                        </div>
+                        <div class="info-grid" data-mc-element-id="34646">
+                            <div class="info-item" data-mc-element-id="34698">
+                                <div class="info-label" data-mc-element-id="34754">Current Tier</div>
+                                <div class="info-value" data-mc-element-id="34829">PRO — $9.99/month</div>
+                            </div>
+                            <div class="info-item" data-mc-element-id="34940">
+                                <div class="info-label" data-mc-element-id="34996">Next Billing</div>
+                                <div class="info-value" data-mc-element-id="35071">May 15, 2024</div>
+                            </div>
+                            <div class="info-item" data-mc-element-id="35177">
+                                <div class="info-label" data-mc-element-id="35233">Subscription Start</div>
+                                <div class="info-value" data-mc-element-id="35314">January 3, 2024 (4 months)</div>
+                            </div>
+                            <div class="info-item" data-mc-element-id="35434">
+                                <div class="info-label" data-mc-element-id="35490">Lifetime Value</div>
+                                <div class="info-value highlight" data-mc-element-id="35567">$39.96</div>
+                            </div>
+                            <div class="info-item" data-mc-element-id="35677">
+                                <div class="info-label" data-mc-element-id="35733">Payment Status</div>
+                                <div class="info-value" data-mc-element-id="35810"><span class="status-badge active" data-mc-element-id="35834">Current</span></div>
+                            </div>
+                            <div class="info-item" data-mc-element-id="35952">
+                                <div class="info-label" data-mc-element-id="36008">Billing Cycle</div>
+                                <div class="info-value" data-mc-element-id="36084">Monthly</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Usage Statistics Section -->
+                    <div class="detail-section" data-mc-element-id="36290">
+                        <div class="section-header" data-mc-element-id="36343">
+                            <h3 class="section-title" data-mc-element-id="36400">Usage Statistics</h3>
+                        </div>
+                        <div class="stat-grid" data-mc-element-id="36503">
+                            <div class="stat-card" data-mc-element-id="36555">
+                                <div class="stat-value" data-mc-element-id="36611">127</div>
+                                <div class="stat-label" data-mc-element-id="36677">Total Briefings</div>
+                            </div>
+                            <div class="stat-card" data-mc-element-id="36786">
+                                <div class="stat-value" data-mc-element-id="36842">23</div>
+                                <div class="stat-label" data-mc-element-id="36907">This Month</div>
+                            </div>
+                            <div class="stat-card" data-mc-element-id="37011">
+                                <div class="stat-value" data-mc-element-id="37067">13:42</div>
+                                <div class="stat-label" data-mc-element-id="37135">Avg Duration</div>
+                            </div>
+                            <div class="stat-card" data-mc-element-id="37241">
+                                <div class="stat-value" data-mc-element-id="37297">87%</div>
+                                <div class="stat-label" data-mc-element-id="37363">Listen-Through Rate</div>
+                            </div>
+                            <div class="stat-card" data-mc-element-id="37476">
+                                <div class="stat-value" data-mc-element-id="37532">5.8</div>
+                                <div class="stat-label" data-mc-element-id="37598">Per Week</div>
+                            </div>
+                            <div class="stat-card" data-mc-element-id="37700">
+                                <div class="stat-value" data-mc-element-id="37756">Mon</div>
+                                <div class="stat-label" data-mc-element-id="37822">Most Active Day</div>
+                            </div>
+                        </div>
+                        <div class="info-item" style="margin-top: 16px;" data-mc-element-id="37958">
+                            <div class="info-label" data-mc-element-id="38036">Last Activity</div>
+                            <div class="info-value" data-mc-element-id="38108">2 hours ago — Generated 15min briefing</div>
+                        </div>
+                    </div>
+
+                    <!-- Active Digests Section -->
+                    <div class="detail-section" data-mc-element-id="38308">
+                        <div class="section-header" data-mc-element-id="38361">
+                            <h3 class="section-title" data-mc-element-id="38418">Active Digests (2)</h3>
+                            <button class="btn-secondary" data-mc-element-id="38496">
+                                <i class="fas fa-plus" data-mc-element-id="38559"></i>
+                                <span data-mc-element-id="38619">Create Digest</span>
+                            </button>
+                        </div>
+
+                        <div class="digest-card" data-mc-element-id="38740">
+                            <div class="digest-header" data-mc-element-id="38794">
+                                <div class="digest-name" data-mc-element-id="38854">Tech News Morning Brief</div>
+                                <div class="digest-status" data-mc-element-id="38941">Active</div>
+                            </div>
+                            <div class="digest-meta" data-mc-element-id="39044">
+                                <span data-mc-element-id="39102"><i class="fas fa-clock" data-mc-element-id="39108"></i> 15 minutes</span>
+                                <span data-mc-element-id="39187"><i class="fas fa-calendar" data-mc-element-id="39193"></i> Daily at 7:00 AM</span>
+                                <span data-mc-element-id="39281"><i class="fas fa-podcast" data-mc-element-id="39287"></i> 8 podcasts</span>
+                            </div>
+                            <div class="podcast-thumbnails" data-mc-element-id="39399">
+                                <div class="thumbnail" data-mc-element-id="39464"></div>
+                                <div class="thumbnail" data-mc-element-id="39526"></div>
+                                <div class="thumbnail" data-mc-element-id="39588"></div>
+                                <div class="thumbnail" data-mc-element-id="39650"></div>
+                                <div class="thumbnail" data-mc-element-id="39712"></div>
+                                <div class="thumbnail-more" data-mc-element-id="39774">+3</div>
+                            </div>
+                            <div style="display: flex; gap: 8px; margin-top: 12px;" data-mc-element-id="39874">
+                                <button class="btn-secondary" style="flex: 1;" data-mc-element-id="39963">
+                                    <i class="fas fa-edit" data-mc-element-id="40047"></i>
+                                    <span data-mc-element-id="40111">Edit</span>
+                                </button>
+                                <button class="btn-secondary" style="flex: 1;" data-mc-element-id="40203">
+                                    <i class="fas fa-headphones" data-mc-element-id="40287"></i>
+                                    <span data-mc-element-id="40357">Preview</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="digest-card" data-mc-element-id="40511">
+                            <div class="digest-header" data-mc-element-id="40565">
+                                <div class="digest-name" data-mc-element-id="40625">Weekly Deep Dive</div>
+                                <div class="digest-status" data-mc-element-id="40705">Active</div>
+                            </div>
+                            <div class="digest-meta" data-mc-element-id="40808">
+                                <span data-mc-element-id="40866"><i class="fas fa-clock" data-mc-element-id="40872"></i> 25 minutes</span>
+                                <span data-mc-element-id="40951"><i class="fas fa-calendar" data-mc-element-id="40957"></i> Mondays at 6:00 AM</span>
+                                <span data-mc-element-id="41047"><i class="fas fa-podcast" data-mc-element-id="41053"></i> 3 podcasts</span>
+                            </div>
+                            <div class="podcast-thumbnails" data-mc-element-id="41165">
+                                <div class="thumbnail" data-mc-element-id="41230"></div>
+                                <div class="thumbnail" data-mc-element-id="41292"></div>
+                                <div class="thumbnail" data-mc-element-id="41354"></div>
+                            </div>
+                            <div style="display: flex; gap: 8px; margin-top: 12px;" data-mc-element-id="41447">
+                                <button class="btn-secondary" style="flex: 1;" data-mc-element-id="41536">
+                                    <i class="fas fa-edit" data-mc-element-id="41620"></i>
+                                    <span data-mc-element-id="41684">Edit</span>
+                                </button>
+                                <button class="btn-secondary" style="flex: 1;" data-mc-element-id="41776">
+                                    <i class="fas fa-headphones" data-mc-element-id="41860"></i>
+                                    <span data-mc-element-id="41930">Preview</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Most Subscribed Podcasts -->
+                    <div class="detail-section" data-mc-element-id="42161">
+                        <div class="section-header" data-mc-element-id="42214">
+                            <h3 class="section-title" data-mc-element-id="42271">Most Subscribed Podcasts (11 total)</h3>
+                            <a href="#" class="section-action" data-mc-element-id="42366">View All</a>
+                        </div>
+                        <div class="podcast-list" data-mc-element-id="42469">
+                            <div class="podcast-item" data-mc-element-id="42524">
+                                <div class="podcast-artwork" data-mc-element-id="42583"></div>
+                                <div class="podcast-info" data-mc-element-id="42651">
+                                    <div class="podcast-name" data-mc-element-id="42714">The Vergecast</div>
+                                    <div class="podcast-date" data-mc-element-id="42796">Subscribed Jan 5, 2024</div>
+                                </div>
+                            </div>
+                            <div class="podcast-item" data-mc-element-id="42953">
+                                <div class="podcast-artwork" data-mc-element-id="43012"></div>
+                                <div class="podcast-info" data-mc-element-id="43080">
+                                    <div class="podcast-name" data-mc-element-id="43143">Lex Fridman Podcast</div>
+                                    <div class="podcast-date" data-mc-element-id="43231">Subscribed Jan 8, 2024</div>
+                                </div>
+                            </div>
+                            <div class="podcast-item" data-mc-element-id="43388">
+                                <div class="podcast-artwork" data-mc-element-id="43447"></div>
+                                <div class="podcast-info" data-mc-element-id="43515">
+                                    <div class="podcast-name" data-mc-element-id="43578">Hard Fork</div>
+                                    <div class="podcast-date" data-mc-element-id="43656">Subscribed Jan 12, 2024</div>
+                                </div>
+                            </div>
+                            <div class="podcast-item" data-mc-element-id="43814">
+                                <div class="podcast-artwork" data-mc-element-id="43873"></div>
+                                <div class="podcast-info" data-mc-element-id="43941">
+                                    <div class="podcast-name" data-mc-element-id="44004">All-In Podcast</div>
+                                    <div class="podcast-date" data-mc-element-id="44087">Subscribed Feb 3, 2024</div>
+                                </div>
+                            </div>
+                            <div class="podcast-item" data-mc-element-id="44244">
+                                <div class="podcast-artwork" data-mc-element-id="44303"></div>
+                                <div class="podcast-info" data-mc-element-id="44371">
+                                    <div class="podcast-name" data-mc-element-id="44434">Acquired</div>
+                                    <div class="podcast-date" data-mc-element-id="44511">Subscribed Feb 15, 2024</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Briefing History -->
+                    <div class="detail-section" data-mc-element-id="44766">
+                        <div class="section-header" data-mc-element-id="44819">
+                            <h3 class="section-title" data-mc-element-id="44876">Recent Briefings</h3>
+                            <a href="#" class="section-action" data-mc-element-id="44952">View Full History</a>
+                        </div>
+                        <table class="briefing-table" data-mc-element-id="45064">
+                            <thead data-mc-element-id="45123">
+                                <tr data-mc-element-id="45163">
+                                    <th data-mc-element-id="45204">Date</th>
+                                    <th data-mc-element-id="45254">Digest</th>
+                                    <th data-mc-element-id="45306">Duration</th>
+                                    <th data-mc-element-id="45360">Podcasts</th>
+                                    <th data-mc-element-id="45414">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody data-mc-element-id="45533">
+                                <tr data-mc-element-id="45573">
+                                    <td data-mc-element-id="45614">Today, 7:03 AM</td>
+                                    <td data-mc-element-id="45674">Tech News</td>
+                                    <td data-mc-element-id="45729"><span class="duration-badge" data-mc-element-id="45733">14:47</span></td>
+                                    <td data-mc-element-id="45816">8</td>
+                                    <td data-mc-element-id="45863"><span class="status-badge active" data-mc-element-id="45867">Played</span></td>
+                                </tr>
+                                <tr data-mc-element-id="45990">
+                                    <td data-mc-element-id="46031">Yesterday, 7:02 AM</td>
+                                    <td data-mc-element-id="46095">Tech News</td>
+                                    <td data-mc-element-id="46150"><span class="duration-badge" data-mc-element-id="46154">15:12</span></td>
+                                    <td data-mc-element-id="46237">8</td>
+                                    <td data-mc-element-id="46284"><span class="status-badge active" data-mc-element-id="46288">Played</span></td>
+                                </tr>
+                                <tr data-mc-element-id="46411">
+                                    <td data-mc-element-id="46452">May 6, 7:04 AM</td>
+                                    <td data-mc-element-id="46512">Tech News</td>
+                                    <td data-mc-element-id="46567"><span class="duration-badge" data-mc-element-id="46571">14:38</span></td>
+                                    <td data-mc-element-id="46654">7</td>
+                                    <td data-mc-element-id="46701"><span class="status-badge active" data-mc-element-id="46705">Played</span></td>
+                                </tr>
+                                <tr data-mc-element-id="46828">
+                                    <td data-mc-element-id="46869">May 6, 6:01 AM</td>
+                                    <td data-mc-element-id="46929">Weekly Deep Dive</td>
+                                    <td data-mc-element-id="46991"><span class="duration-badge" data-mc-element-id="46995">24:55</span></td>
+                                    <td data-mc-element-id="47078">3</td>
+                                    <td data-mc-element-id="47125"><span class="status-badge active" data-mc-element-id="47129">Played</span></td>
+                                </tr>
+                                <tr data-mc-element-id="47252">
+                                    <td data-mc-element-id="47293">May 5, 7:03 AM</td>
+                                    <td data-mc-element-id="47353">Tech News</td>
+                                    <td data-mc-element-id="47408"><span class="duration-badge" data-mc-element-id="47412">15:01</span></td>
+                                    <td data-mc-element-id="47495">8</td>
+                                    <td data-mc-element-id="47542"><span style="color: #6B7280;" data-mc-element-id="47546">Unplayed</span></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Activity Feed -->
+                    <div class="detail-section" data-mc-element-id="47796">
+                        <div class="section-header" data-mc-element-id="47849">
+                            <h3 class="section-title" data-mc-element-id="47906">Activity Log</h3>
+                        </div>
+                        <div class="activity-feed" data-mc-element-id="48005">
+                            <div class="activity-item" data-mc-element-id="48061">
+                                <div class="activity-icon" data-mc-element-id="48121">
+                                    <i class="fas fa-headphones" data-mc-element-id="48185"></i>
+                                </div>
+                                <div class="activity-content" data-mc-element-id="48290">
+                                    <div class="activity-text" data-mc-element-id="48357">Generated Tech News briefing (14:47)</div>
+                                    <div class="activity-time" data-mc-element-id="48463">2 hours ago</div>
+                                </div>
+                            </div>
+                            <div class="activity-item" data-mc-element-id="48610">
+                                <div class="activity-icon" data-mc-element-id="48670">
+                                    <i class="fas fa-podcast" data-mc-element-id="48734"></i>
+                                </div>
+                                <div class="activity-content" data-mc-element-id="48836">
+                                    <div class="activity-text" data-mc-element-id="48903">Subscribed to "Syntax" podcast</div>
+                                    <div class="activity-time" data-mc-element-id="49003">3 days ago</div>
+                                </div>
+                            </div>
+                            <div class="activity-item" data-mc-element-id="49149">
+                                <div class="activity-icon" data-mc-element-id="49209">
+                                    <i class="fas fa-edit" data-mc-element-id="49273"></i>
+                                </div>
+                                <div class="activity-content" data-mc-element-id="49372">
+                                    <div class="activity-text" data-mc-element-id="49439">Updated Tech News digest duration to 15 minutes</div>
+                                    <div class="activity-time" data-mc-element-id="49556">1 week ago</div>
+                                </div>
+                            </div>
+                            <div class="activity-item" data-mc-element-id="49702">
+                                <div class="activity-icon" data-mc-element-id="49762">
+                                    <i class="fas fa-arrow-up" data-mc-element-id="49826"></i>
+                                </div>
+                                <div class="activity-content" data-mc-element-id="49929">
+                                    <div class="activity-text" data-mc-element-id="49996">Upgraded to Pro tier</div>
+                                    <div class="activity-time" data-mc-element-id="50086">4 months ago</div>
+                                </div>
+                            </div>
+                            <div class="activity-item" data-mc-element-id="50234">
+                                <div class="activity-icon" data-mc-element-id="50294">
+                                    <i class="fas fa-user-plus" data-mc-element-id="50358"></i>
+                                </div>
+                                <div class="activity-content" data-mc-element-id="50462">
+                                    <div class="activity-text" data-mc-element-id="50529">Signed up via referral link</div>
+                                    <div class="activity-time" data-mc-element-id="50626">4 months ago</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Support Tools -->
+                    <div class="detail-section" data-mc-element-id="50868">
+                        <div class="section-header" data-mc-element-id="50921">
+                            <h3 class="section-title" data-mc-element-id="50978">Admin Notes</h3>
+                        </div>
+                        <textarea class="admin-notes" placeholder="Add internal notes about this user..." data-mc-element-id="51076">Power user, gave excellent feedback on TTS quality. Requested cross-podcast synthesis feature (now in Pro+).</textarea>
+                        <div style="display: flex; gap: 8px; margin-top: 12px;" data-mc-element-id="51302">
+                            <button class="btn-primary" data-mc-element-id="51387">
+                                <i class="fas fa-save" data-mc-element-id="51448"></i>
+                                <span data-mc-element-id="51508">Save Notes</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+<script>__MC_SITE_ID__ = "a08b6f431b8f4678a7475c363085757fa9696f8c0edeba6a2e8b0bbb8ac8ef8b"</script><script>__MC_OPTIONS__ = {
+  "svg": false,
+  "overlay": false
+}</script><script src="https://forge.moonchild.ai/public/devigner.global.js" type="module"></script></body></html>
