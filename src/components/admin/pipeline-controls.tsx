@@ -43,7 +43,7 @@ function MasterPipelineToggle({
   const on = config.enabled;
   return (
     <div
-      className="flex items-center justify-between rounded-lg p-3"
+      className="flex items-center justify-between gap-6 rounded-lg p-3"
       style={{ backgroundColor: on ? "#10B98115" : "#9CA3AF10" }}
     >
       <div className="flex items-center gap-2.5">
