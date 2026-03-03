@@ -357,7 +357,7 @@ function PodcastCard({
                 onCheckedChange={() => onToggleStatus(podcast.id, podcast.status)}
                 onClick={(e) => e.stopPropagation()}
                 aria-label={podcast.status === "active" ? "Pause podcast" : "Activate podcast"}
-                className="scale-75"
+                className="scale-75 data-[state=checked]:bg-[#10B981] data-[state=unchecked]:bg-[#4B5563]"
               />
             </div>
           </div>
@@ -418,7 +418,7 @@ function PodcastRow({
           disabled={podcast.status === "archived" || togglingId === podcast.id}
           onCheckedChange={() => onToggleStatus(podcast.id, podcast.status)}
           aria-label={podcast.status === "active" ? "Pause podcast" : "Activate podcast"}
-          className="scale-75"
+          className="scale-75 data-[state=checked]:bg-[#10B981] data-[state=unchecked]:bg-[#4B5563]"
         />
       </span>
     </button>

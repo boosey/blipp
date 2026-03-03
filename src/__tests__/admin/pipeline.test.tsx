@@ -154,7 +154,7 @@ describe("Pipeline", () => {
     });
   });
 
-  it("renders stage Play buttons for stages 1-3 but not 4-5", async () => {
+  it("renders all 5 stage column headers", async () => {
     mockFetch.mockImplementation((url: string) => {
       if (url.includes("/pipeline/stages")) {
         return Promise.resolve(mockJsonResponse({
@@ -176,13 +176,11 @@ describe("Pipeline", () => {
       expect(screen.getByText("Pipeline Flow")).toBeInTheDocument();
     });
 
-    // Stages 1-3 should have play buttons (title="Run <name>")
-    expect(screen.getByTitle("Run Feed Refresh")).toBeInTheDocument();
-    expect(screen.getByTitle("Run Transcription")).toBeInTheDocument();
-    expect(screen.getByTitle("Run Distillation")).toBeInTheDocument();
-
-    // Stages 4-5 should NOT have play buttons
-    expect(screen.queryByTitle("Run Clip Generation")).not.toBeInTheDocument();
-    expect(screen.queryByTitle("Run Briefing Assembly")).not.toBeInTheDocument();
+    // All 5 stage names should be visible in column headers
+    expect(screen.getByText("Feed Refresh")).toBeInTheDocument();
+    expect(screen.getByText("Transcription")).toBeInTheDocument();
+    expect(screen.getByText("Distillation")).toBeInTheDocument();
+    expect(screen.getByText("Clip Generation")).toBeInTheDocument();
+    expect(screen.getByText("Briefing Assembly")).toBeInTheDocument();
   });
 });

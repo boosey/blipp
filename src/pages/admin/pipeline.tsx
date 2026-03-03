@@ -106,14 +106,10 @@ function StatusBadge({ status }: { status: PipelineJobStatus }) {
 function StageHeader({
   meta,
   stats,
-  onTrigger,
-  triggering,
   stageToggle,
 }: {
   meta: typeof STAGE_META[number];
   stats: PipelineStageStats | undefined;
-  onTrigger?: () => void;
-  triggering?: boolean;
   stageToggle?: React.ReactNode;
 }) {
   const Icon = meta.icon;
@@ -128,21 +124,7 @@ function StageHeader({
         </span>
         <Icon className="h-3.5 w-3.5" style={{ color: meta.color }} />
         <span className="text-xs font-semibold">{meta.name}</span>
-        {stageToggle}
-        {onTrigger && (
-          <button
-            onClick={onTrigger}
-            disabled={triggering}
-            className="ml-auto flex items-center justify-center h-5 w-5 rounded hover:bg-white/10 transition-colors text-[#9CA3AF] hover:text-[#F9FAFB] disabled:opacity-50"
-            title={`Run ${meta.name}`}
-          >
-            {triggering ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
-            ) : (
-              <Play className="h-3 w-3" />
-            )}
-          </button>
-        )}
+        <div className="ml-auto">{stageToggle}</div>
       </div>
       {stats ? (
         <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[10px]">
@@ -533,7 +515,7 @@ export default function Pipeline() {
   const [selectedJob, setSelectedJob] = useState<PipelineJob | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [triggeringFeedRefresh, setTriggeringFeedRefresh] = useState(false);
-  const [triggeringStage, setTriggeringStage] = useState<number | null>(null);
+
 
   const load = useCallback(() => {
     setLoading(true);
@@ -623,25 +605,6 @@ export default function Pipeline() {
                 <StageHeader
                   meta={meta}
                   stats={stats}
-                  onTrigger={
-                    meta.stage <= 3
-                      ? async () => {
-                          setTriggeringStage(meta.stage);
-                          try {
-                            await apiFetch<PipelineTriggerResult>(
-                              `/pipeline/trigger/stage/${meta.stage}`,
-                              { method: "POST" }
-                            );
-                            load();
-                          } catch (e) {
-                            console.error(`Failed to trigger stage ${meta.stage}:`, e);
-                          } finally {
-                            setTriggeringStage(null);
-                          }
-                        }
-                      : undefined
-                  }
-                  triggering={triggeringStage === meta.stage}
                   stageToggle={
                     <PipelineControls
                       variant="stage-only"
