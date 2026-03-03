@@ -35,8 +35,10 @@ export function usePipelineConfig() {
 
   const load = useCallback(async () => {
     try {
-      const res = await apiFetch<{ data: PlatformConfigEntry[] }>("/config");
-      setConfigs(res.data);
+      const res = await apiFetch<{ data: { category: string; entries: PlatformConfigEntry[] }[] }>("/config");
+      // API returns grouped by category — flatten to a single array
+      const flat = res.data.flatMap((group) => group.entries);
+      setConfigs(flat);
     } catch (e) {
       console.error("Failed to load pipeline config:", e);
     } finally {

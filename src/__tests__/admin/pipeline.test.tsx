@@ -23,6 +23,8 @@ function mockJsonResponse(data: any) {
   };
 }
 
+const CONFIG_RESPONSE = mockJsonResponse({ data: [] });
+
 import Pipeline from "../../pages/admin/pipeline";
 
 function renderPage() {
@@ -83,8 +85,9 @@ describe("Pipeline", () => {
   });
 
   it("shows content after data loads", async () => {
-    mockFetch.mockResolvedValue(
-      mockJsonResponse({
+    mockFetch.mockImplementation((url: string) => {
+      if (url.includes("/config")) return Promise.resolve(CONFIG_RESPONSE);
+      return Promise.resolve(mockJsonResponse({
         data: [
           {
             stage: 1,
@@ -95,8 +98,8 @@ describe("Pipeline", () => {
           },
         ],
         total: 0,
-      })
-    );
+      }));
+    });
 
     renderPage();
 
@@ -107,6 +110,7 @@ describe("Pipeline", () => {
 
   it("renders 'Run Feed Refresh' toolbar button", async () => {
     mockFetch.mockImplementation((url: string) => {
+      if (url.includes("/config")) return Promise.resolve(CONFIG_RESPONSE);
       if (url.includes("/pipeline/stages")) {
         return Promise.resolve(mockJsonResponse({
           data: [{ stage: 1, name: "Feed Refresh", activeJobs: 0, successRate: 100, avgProcessingTime: 0, todayCost: 0, perUnitCost: 0 }],
@@ -130,6 +134,7 @@ describe("Pipeline", () => {
       if (options?.method === "POST") {
         return Promise.resolve(mockJsonResponse({ data: { enqueued: 1, skipped: 0, message: "ok" } }));
       }
+      if (url.includes("/config")) return Promise.resolve(CONFIG_RESPONSE);
       if (url.includes("/pipeline/stages")) {
         return Promise.resolve(mockJsonResponse({
           data: [{ stage: 1, name: "Feed Refresh", activeJobs: 0, successRate: 100, avgProcessingTime: 0, todayCost: 0, perUnitCost: 0 }],
@@ -156,6 +161,7 @@ describe("Pipeline", () => {
 
   it("renders all 5 stage column headers", async () => {
     mockFetch.mockImplementation((url: string) => {
+      if (url.includes("/config")) return Promise.resolve(CONFIG_RESPONSE);
       if (url.includes("/pipeline/stages")) {
         return Promise.resolve(mockJsonResponse({
           data: [
