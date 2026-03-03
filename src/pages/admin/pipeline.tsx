@@ -18,6 +18,7 @@ import {
   Timer,
   Pause,
   Play,
+  FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -33,6 +34,19 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useAdminFetch } from "@/lib/admin-api";
 import { usePipelineConfig } from "@/hooks/use-pipeline-config";
 import { PipelineControls } from "@/components/admin/pipeline-controls";
@@ -41,6 +55,7 @@ import type {
   PipelineStageStats,
   PipelineJobStatus,
   PipelineTriggerResult,
+  BriefingRequest,
 } from "@/types/admin";
 
 // ── Constants ──
@@ -481,6 +496,71 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
+// ── Transcript Inspector ──
+
+function TranscriptInspector({
+  open,
+  onClose,
+  episodeId,
+}: {
+  open: boolean;
+  onClose: () => void;
+  episodeId: string | null;
+}) {
+  const apiFetch = useAdminFetch();
+  const [transcript, setTranscript] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [title, setTitle] = useState("");
+
+  useEffect(() => {
+    if (!open || !episodeId) return;
+    setLoading(true);
+    setTranscript(null);
+    apiFetch<{ data: { title?: string; transcript?: string; distillation?: { transcript?: string } } }>(
+      `/episodes/${episodeId}`
+    )
+      .then((r) => {
+        setTitle(r.data.title ?? episodeId);
+        setTranscript(
+          r.data.transcript ?? r.data.distillation?.transcript ?? null
+        );
+      })
+      .catch(() => setTranscript(null))
+      .finally(() => setLoading(false));
+  }, [open, episodeId, apiFetch]);
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="bg-[#1A2942] border-white/10 text-[#F9FAFB] sm:max-w-2xl max-h-[80vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="text-[#F9FAFB] text-sm flex items-center gap-2">
+            <FileText className="h-4 w-4 text-[#8B5CF6]" />
+            Transcript: {title}
+          </DialogTitle>
+        </DialogHeader>
+        <ScrollArea className="flex-1 min-h-0">
+          {loading ? (
+            <div className="space-y-2 p-4">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <Skeleton key={i} className="h-4 bg-white/5 rounded" />
+              ))}
+            </div>
+          ) : transcript ? (
+            <pre className="text-[11px] font-mono text-[#9CA3AF] whitespace-pre-wrap break-words p-4 leading-relaxed">
+              {transcript}
+            </pre>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-12 text-[#9CA3AF]">
+              <FileText className="h-8 w-8 mb-2 opacity-40" />
+              <span className="text-xs">No transcript available</span>
+            </div>
+          )}
+        </ScrollArea>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ── Loading ──
 
 function PipelineSkeleton() {
@@ -516,24 +596,45 @@ export default function Pipeline() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [triggeringFeedRefresh, setTriggeringFeedRefresh] = useState(false);
 
+  // Request filter
+  const [requests, setRequests] = useState<{ id: string; status: string }[]>([]);
+  const [requestFilter, setRequestFilter] = useState<string>("all");
+
+  // Transcript inspector
+  const [transcriptOpen, setTranscriptOpen] = useState(false);
+  const [transcriptEpisodeId, setTranscriptEpisodeId] = useState<string | null>(null);
+
+  // Load request list for filter dropdown
+  useEffect(() => {
+    apiFetch<{ data: BriefingRequest[] }>("/requests?page=1")
+      .then((r) => setRequests(r.data.map((req) => ({ id: req.id, status: req.status }))))
+      .catch(console.error);
+  }, [apiFetch]);
 
   const load = useCallback(() => {
     setLoading(true);
+    const requestParam = requestFilter !== "all" ? `&requestId=${requestFilter}` : "";
     Promise.all([
       apiFetch<{ data: PipelineStageStats[] }>("/pipeline/stages")
         .then((r) => setStageStats(r.data))
         .catch(console.error),
       ...STAGE_META.map((m) =>
-        apiFetch<{ data: PipelineJob[] }>(`/pipeline/jobs?stage=${m.stage}&limit=20`)
+        apiFetch<{ data: PipelineJob[] }>(`/pipeline/jobs?stage=${m.stage}&limit=20${requestParam}`)
           .then((r) => setStageJobs((prev) => ({ ...prev, [m.stage]: r.data })))
           .catch(console.error)
       ),
     ]).finally(() => setLoading(false));
-  }, [apiFetch]);
+  }, [apiFetch, requestFilter]);
 
   useEffect(() => { load(); }, [load]);
 
   const handleJobClick = (job: PipelineJob) => {
+    // Stage 2 (Transcription) jobs open transcript inspector
+    if (job.stage === 2 && job.entityType === "episode") {
+      setTranscriptEpisodeId(job.entityId);
+      setTranscriptOpen(true);
+      return;
+    }
     setSelectedJob(job);
     setSheetOpen(true);
   };
@@ -562,6 +663,22 @@ export default function Pipeline() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {/* Request filter */}
+          {requests.length > 0 && (
+            <Select value={requestFilter} onValueChange={setRequestFilter}>
+              <SelectTrigger className="w-44 h-8 text-xs bg-[#1A2942] border-white/10 text-[#F9FAFB]">
+                <SelectValue placeholder="Filter by request" />
+              </SelectTrigger>
+              <SelectContent className="bg-[#1A2942] border-white/10 text-[#F9FAFB]">
+                <SelectItem value="all" className="text-xs">All Requests</SelectItem>
+                {requests.map((req) => (
+                  <SelectItem key={req.id} value={req.id} className="text-xs">
+                    {req.id.slice(0, 8)}... ({req.status})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <Button
             size="sm"
             onClick={async () => {
@@ -643,6 +760,13 @@ export default function Pipeline() {
         open={sheetOpen}
         onClose={() => { setSheetOpen(false); setSelectedJob(null); }}
         onRefresh={load}
+      />
+
+      {/* Transcript Inspector */}
+      <TranscriptInspector
+        open={transcriptOpen}
+        onClose={() => { setTranscriptOpen(false); setTranscriptEpisodeId(null); }}
+        episodeId={transcriptEpisodeId}
       />
     </div>
   );
