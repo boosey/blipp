@@ -29,6 +29,8 @@ function mockJsonResponse(data: any) {
   };
 }
 
+const CONFIG_RESPONSE = mockJsonResponse({ data: [] });
+
 import CommandCenter from "../../pages/admin/command-center";
 
 function renderPage() {
@@ -53,6 +55,9 @@ describe("CommandCenter", () => {
 
   it("makes correct API calls on mount", async () => {
     mockFetch.mockImplementation((url: string) => {
+      if (url.includes("/config")) {
+        return Promise.resolve(CONFIG_RESPONSE);
+      }
       if (url.includes("/dashboard/activity")) {
         return Promise.resolve(mockJsonResponse({ data: [] }));
       }
@@ -108,6 +113,9 @@ describe("CommandCenter", () => {
 
   it("shows content after data loads", async () => {
     mockFetch.mockImplementation((url: string) => {
+      if (url.includes("/config")) {
+        return Promise.resolve(CONFIG_RESPONSE);
+      }
       if (url.includes("/dashboard/activity")) {
         return Promise.resolve(mockJsonResponse({ data: [] }));
       }
@@ -164,6 +172,9 @@ function setupCCWithIssues(issues: any[]) {
         ok: true,
         json: () => Promise.resolve({ data: { enqueued: 1, skipped: 0, message: "ok" } }),
       });
+    }
+    if (url.includes("/config")) {
+      return Promise.resolve(CONFIG_RESPONSE);
     }
     if (url.includes("/dashboard/activity")) {
       return Promise.resolve({
