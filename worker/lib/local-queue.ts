@@ -83,10 +83,13 @@ export function shimQueuesForLocalDev(env: Env, ctx: ExecutionContext): Env {
           })
         );
 
-        // Dynamic import to avoid circular dependencies at module load time
-        const { handleQueue } = await import("../queues/index");
-        const batch = createFakeBatch(queueName, body);
-        await handleQueue(batch, shimmed, ctx);
+        // Fire-and-forget via waitUntil so .send() returns immediately
+        // (matches production behavior where queue.send() is non-blocking)
+        const work = import("../queues/index").then(({ handleQueue }) => {
+          const batch = createFakeBatch(queueName, body);
+          return handleQueue(batch, shimmed, ctx);
+        });
+        ctx.waitUntil(work);
       },
     };
   }
