@@ -7,7 +7,7 @@ import type { Env } from "../types";
 /** Shape of a distillation queue message body. */
 interface DistillationMessage {
   episodeId: string;
-  transcriptUrl: string;
+  requestId?: string;
   type?: "manual";
 }
 
@@ -33,12 +33,12 @@ export async function handleDistillation(
   const anthropic = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
 
   try {
-    // Check if stage 2 (distillation) is enabled — manual messages bypass this
+    // Check if stage 3 (distillation) is enabled — manual messages bypass this
     const hasManual = batch.messages.some((m) => m.body.type === "manual");
     if (!hasManual) {
       const stageEnabled = await getConfig(
         prisma,
-        "pipeline.stage.2.enabled",
+        "pipeline.stage.3.enabled",
         true
       );
       if (!stageEnabled) {
@@ -48,7 +48,7 @@ export async function handleDistillation(
     }
 
     for (const msg of batch.messages) {
-      const { episodeId, transcriptUrl } = msg.body;
+      const { episodeId, requestId } = msg.body;
 
       try {
         // Check for existing completed distillation (idempotency)
@@ -57,35 +57,40 @@ export async function handleDistillation(
         });
 
         if (existing?.status === "COMPLETED") {
+          if (requestId) {
+            await env.ORCHESTRATOR_QUEUE.send({
+              requestId, action: "stage-complete", stage: 3, episodeId,
+            });
+          }
           msg.ack();
           continue;
         }
 
-        // Create or update distillation record to FETCHING_TRANSCRIPT
-        const distillation = await prisma.distillation.upsert({
-          where: { episodeId },
-          update: { status: "FETCHING_TRANSCRIPT", errorMessage: null },
-          create: { episodeId, status: "FETCHING_TRANSCRIPT" },
-        });
-
-        // Fetch transcript
-        const transcriptResponse = await fetch(transcriptUrl);
-        const transcript = await transcriptResponse.text();
+        // Transcript must already be present (fetched by transcription stage)
+        if (!existing?.transcript) {
+          throw new Error("No transcript available — run transcription first");
+        }
 
         // Update status to EXTRACTING_CLAIMS
         await prisma.distillation.update({
-          where: { id: distillation.id },
-          data: { status: "EXTRACTING_CLAIMS", transcript },
+          where: { id: existing.id },
+          data: { status: "EXTRACTING_CLAIMS", errorMessage: null },
         });
 
         // Extract claims via Claude (Pass 1)
-        const claims = await extractClaims(anthropic, transcript);
+        const claims = await extractClaims(anthropic, existing.transcript);
 
         // Mark as completed with claims
         await prisma.distillation.update({
-          where: { id: distillation.id },
+          where: { id: existing.id },
           data: { status: "COMPLETED", claimsJson: claims as any },
         });
+
+        if (requestId) {
+          await env.ORCHESTRATOR_QUEUE.send({
+            requestId, action: "stage-complete", stage: 3, episodeId,
+          });
+        }
 
         msg.ack();
       } catch (err) {
