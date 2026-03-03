@@ -28,6 +28,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { useAdminFetch } from "@/lib/admin-api";
+import { usePipelineConfig } from "@/hooks/use-pipeline-config";
+import { PipelineControls } from "@/components/admin/pipeline-controls";
 import type {
   SystemHealth,
   DashboardStats,
@@ -373,6 +375,7 @@ function CommandCenterSkeleton() {
         <Skeleton className="h-80 bg-white/5 rounded-lg" />
       </div>
       <div className="space-y-4">
+        <Skeleton className="h-48 bg-white/5 rounded-lg" />
         <Skeleton className="h-52 bg-white/5 rounded-lg" />
         <Skeleton className="h-40 bg-white/5 rounded-lg" />
       </div>
@@ -385,6 +388,7 @@ function CommandCenterSkeleton() {
 export default function CommandCenter() {
   const navigate = useNavigate();
   const apiFetch = useAdminFetch();
+  const pipeline = usePipelineConfig();
 
   const [health, setHealth] = useState<SystemHealth | null>(null);
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -592,6 +596,21 @@ export default function CommandCenter() {
 
       {/* ── RIGHT COLUMN ── */}
       <div className="flex flex-col gap-4 min-h-0">
+        {/* Pipeline Controls */}
+        {pipeline.loading ? (
+          <Skeleton className="h-48 bg-white/5 rounded-lg" />
+        ) : (
+          <PipelineControls
+            variant="full"
+            config={pipeline.config}
+            saving={pipeline.saving}
+            triggering={pipeline.triggering}
+            onTogglePipeline={pipeline.togglePipeline}
+            onToggleStage={pipeline.toggleStage}
+            onTriggerFeedRefresh={pipeline.triggerFeedRefresh}
+          />
+        )}
+
         {/* Cost Monitor */}
         <div className="rounded-lg bg-[#1A2942] border border-white/5 p-4">
           <div className="flex items-center gap-2 mb-3">
