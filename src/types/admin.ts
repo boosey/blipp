@@ -421,3 +421,38 @@ export interface PipelineTriggerResult {
   skipped: number;
   message: string;
 }
+
+// ── Briefing Requests ──
+
+export interface BriefingRequest {
+  id: string;
+  userId: string;
+  status: BriefingRequestStatus;
+  targetMinutes: number;
+  podcastIds: string[];
+  isTest: boolean;
+  briefingId: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+  userName?: string;
+  userEmail?: string;
+  episodeProgress?: EpisodeProgress[];
+}
+
+export type BriefingRequestStatus = "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED";
+
+export interface EpisodeProgress {
+  episodeId: string;
+  episodeTitle: string;
+  podcastTitle: string;
+  transcription: StageProgress;
+  distillation: StageProgress;
+  clipGeneration: StageProgress;
+}
+
+export interface StageProgress {
+  status: "WAITING" | "IN_PROGRESS" | "COMPLETED" | "FAILED";
+  durationMs?: number;
+  errorMessage?: string;
+}

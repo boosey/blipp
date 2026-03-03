@@ -34,6 +34,7 @@ export function createMockPrisma() {
     briefing: modelMethods(),
     briefingSegment: modelMethods(),
     pipelineJob: modelMethods(),
+    briefingRequest: modelMethods(),
     platformConfig: modelMethods(),
     $disconnect: vi.fn().mockResolvedValue(undefined),
   };
@@ -68,6 +69,8 @@ export function createMockEnv(): Env {
     DISTILLATION_QUEUE: { send: vi.fn().mockResolvedValue(undefined) } as unknown as Queue,
     CLIP_GENERATION_QUEUE: { send: vi.fn().mockResolvedValue(undefined) } as unknown as Queue,
     BRIEFING_ASSEMBLY_QUEUE: { send: vi.fn().mockResolvedValue(undefined) } as unknown as Queue,
+    TRANSCRIPTION_QUEUE: { send: vi.fn().mockResolvedValue(undefined) } as unknown as Queue,
+    ORCHESTRATOR_QUEUE: { send: vi.fn().mockResolvedValue(undefined) } as unknown as Queue,
   };
 }
 

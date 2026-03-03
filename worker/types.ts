@@ -37,4 +37,8 @@ export type Env = {
   CLIP_GENERATION_QUEUE: Queue;
   /** Queue: assembles cached clips into a user's final briefing */
   BRIEFING_ASSEMBLY_QUEUE: Queue;
+  /** Queue: fetches episode transcripts from URLs */
+  TRANSCRIPTION_QUEUE: Queue;
+  /** Queue: orchestrates demand-driven pipeline stages for briefing requests */
+  ORCHESTRATOR_QUEUE: Queue;
 };

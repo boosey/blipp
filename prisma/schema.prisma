@@ -42,8 +42,9 @@ model User {
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
-  subscriptions Subscription[]
-  briefings     Briefing[]
+  subscriptions    Subscription[]
+  briefings        Briefing[]
+  briefingRequests BriefingRequest[]
 }
 
 enum UserTier {
@@ -114,6 +115,7 @@ model Distillation {
 enum DistillationStatus {
   PENDING
   FETCHING_TRANSCRIPT
+  TRANSCRIPT_READY
   EXTRACTING_CLAIMS
   COMPLETED
   FAILED
@@ -178,6 +180,7 @@ model Briefing {
 
   user     User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   segments BriefingSegment[]
+  request  BriefingRequest?
 }
 
 enum BriefingStatus {
@@ -214,6 +217,8 @@ model PipelineJob {
   startedAt    DateTime?
   completedAt  DateTime?
   durationMs   Int?
+  requestId    String?
+  parentJobId  String?
   retryCount   Int               @default(0)
   createdAt    DateTime          @default(now())
   updatedAt    DateTime          @updatedAt
@@ -234,6 +239,31 @@ enum PipelineJobStatus {
   COMPLETED
   FAILED
   RETRYING
+}
+
+// ── Briefing Requests (Demand-Driven Pipeline) ──
+
+model BriefingRequest {
+  id            String               @id @default(cuid())
+  userId        String
+  status        BriefingRequestStatus @default(PENDING)
+  targetMinutes Int
+  podcastIds    String[]
+  isTest        Boolean              @default(false)
+  briefingId    String?              @unique
+  errorMessage  String?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  briefing Briefing? @relation(fields: [briefingId], references: [id])
+}
+
+enum BriefingRequestStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
 }
 
 // ── Admin: Runtime Configuration ──
