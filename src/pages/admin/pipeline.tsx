@@ -607,8 +607,11 @@ export default function Pipeline() {
   // Load request list for filter dropdown
   useEffect(() => {
     apiFetch<{ data: BriefingRequest[] }>("/requests?page=1")
-      .then((r) => setRequests(r.data.map((req) => ({ id: req.id, status: req.status }))))
-      .catch(console.error);
+      .then((r) => {
+        const valid = (r.data ?? []).filter((req) => req.id && req.status);
+        setRequests(valid.map((req) => ({ id: req.id, status: req.status })));
+      })
+      .catch(() => setRequests([]));
   }, [apiFetch]);
 
   const load = useCallback(() => {
@@ -673,7 +676,7 @@ export default function Pipeline() {
                 <SelectItem value="all" className="text-xs">All Requests</SelectItem>
                 {requests.map((req) => (
                   <SelectItem key={req.id} value={req.id} className="text-xs">
-                    {req.id.slice(0, 8)}... ({req.status})
+                    {String(req.id).slice(0, 8)}... ({req.status})
                   </SelectItem>
                 ))}
               </SelectContent>
