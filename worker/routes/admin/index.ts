@@ -9,6 +9,7 @@ import { briefingsRoutes } from "./briefings";
 import { usersRoutes } from "./users";
 import { analyticsRoutes } from "./analytics";
 import { configRoutes } from "./config";
+import { requestsRoutes } from "./requests";
 
 /**
  * Admin route tree. All routes require admin authentication.
@@ -27,5 +28,6 @@ adminRoutes.route("/briefings", briefingsRoutes);
 adminRoutes.route("/users", usersRoutes);
 adminRoutes.route("/analytics", analyticsRoutes);
 adminRoutes.route("/config", configRoutes);
+adminRoutes.route("/requests", requestsRoutes);
 
 export { adminRoutes };
