@@ -317,7 +317,19 @@ function FilterSidebar({
 
 // ── Podcast Card (Grid) ──
 
-function PodcastCard({ podcast, selected, onClick }: { podcast: AdminPodcast; selected: boolean; onClick: () => void }) {
+function PodcastCard({
+  podcast,
+  selected,
+  onClick,
+  onToggleStatus,
+  togglingId,
+}: {
+  podcast: AdminPodcast;
+  selected: boolean;
+  onClick: () => void;
+  onToggleStatus: (id: string, currentStatus: PodcastStatus) => void;
+  togglingId: string | null;
+}) {
   return (
     <button
       onClick={onClick}
@@ -337,7 +349,17 @@ function PodcastCard({ podcast, selected, onClick }: { podcast: AdminPodcast; se
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-1">
             <span className="text-xs font-medium truncate">{podcast.title}</span>
-            <HealthBadge health={podcast.feedHealth} />
+            <div className="flex items-center gap-1.5 shrink-0">
+              <HealthBadge health={podcast.feedHealth} />
+              <Switch
+                checked={podcast.status === "active"}
+                disabled={podcast.status === "archived" || togglingId === podcast.id}
+                onCheckedChange={() => onToggleStatus(podcast.id, podcast.status)}
+                onClick={(e) => e.stopPropagation()}
+                aria-label={podcast.status === "active" ? "Pause podcast" : "Activate podcast"}
+                className="scale-75"
+              />
+            </div>
           </div>
           {podcast.author && (
             <span className="text-[10px] text-[#9CA3AF] block truncate mt-0.5">{podcast.author}</span>
@@ -355,7 +377,19 @@ function PodcastCard({ podcast, selected, onClick }: { podcast: AdminPodcast; se
 
 // ── Podcast Row (List) ──
 
-function PodcastRow({ podcast, selected, onClick }: { podcast: AdminPodcast; selected: boolean; onClick: () => void }) {
+function PodcastRow({
+  podcast,
+  selected,
+  onClick,
+  onToggleStatus,
+  togglingId,
+}: {
+  podcast: AdminPodcast;
+  selected: boolean;
+  onClick: () => void;
+  onToggleStatus: (id: string, currentStatus: PodcastStatus) => void;
+  togglingId: string | null;
+}) {
   return (
     <button
       onClick={onClick}
@@ -378,6 +412,15 @@ function PodcastRow({ podcast, selected, onClick }: { podcast: AdminPodcast; sel
       <span className="w-20 text-center"><HealthBadge health={podcast.feedHealth} /></span>
       <span className="w-16 text-center"><StatusBadge status={podcast.status} /></span>
       <span className="w-16 text-right text-[10px] text-[#9CA3AF]">{relativeTime(podcast.lastFetchedAt)}</span>
+      <span className="w-10 flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+        <Switch
+          checked={podcast.status === "active"}
+          disabled={podcast.status === "archived" || togglingId === podcast.id}
+          onCheckedChange={() => onToggleStatus(podcast.id, podcast.status)}
+          aria-label={podcast.status === "active" ? "Pause podcast" : "Activate podcast"}
+          className="scale-75"
+        />
+      </span>
     </button>
   );
 }
@@ -744,6 +787,7 @@ export default function Catalog() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [totalResults, setTotalResults] = useState(0);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
   const totalPages = Math.ceil(totalResults / pageSize);
 
   const load = useCallback(() => {
@@ -764,6 +808,26 @@ export default function Catalog() {
       apiFetch<{ data: CatalogStats }>("/podcasts/stats").then((r) => setStats(r.data)).catch(console.error),
     ]).finally(() => setLoading(false));
   }, [apiFetch, filters, sort, page, pageSize]);
+
+  const handleToggleStatus = useCallback(
+    async (id: string, currentStatus: PodcastStatus) => {
+      if (currentStatus === "archived") return;
+      const newStatus = currentStatus === "active" ? "paused" : "active";
+      setTogglingId(id);
+      try {
+        await apiFetch(`/podcasts/${id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ status: newStatus }),
+        });
+        load();
+      } catch (e) {
+        console.error("Failed to toggle podcast status:", e);
+      } finally {
+        setTogglingId(null);
+      }
+    },
+    [apiFetch, load],
+  );
 
   useEffect(() => { load(); }, [load]);
 
@@ -848,6 +912,8 @@ export default function Catalog() {
                   podcast={p}
                   selected={selectedId === p.id}
                   onClick={() => setSelectedId(selectedId === p.id ? null : p.id)}
+                  onToggleStatus={handleToggleStatus}
+                  togglingId={togglingId}
                 />
               ))}
             </div>
@@ -863,6 +929,7 @@ export default function Catalog() {
                 <span className="w-20 text-center">Health</span>
                 <span className="w-16 text-center">Status</span>
                 <span className="w-16 text-right">Fetched</span>
+                <span className="w-10 text-center">On</span>
               </div>
               {podcasts.map((p) => (
                 <PodcastRow
@@ -870,6 +937,8 @@ export default function Catalog() {
                   podcast={p}
                   selected={selectedId === p.id}
                   onClick={() => setSelectedId(selectedId === p.id ? null : p.id)}
+                  onToggleStatus={handleToggleStatus}
+                  togglingId={togglingId}
                 />
               ))}
             </div>

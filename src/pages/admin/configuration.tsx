@@ -35,6 +35,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { buildPipelineConfig } from "@/hooks/use-pipeline-config";
 import type {
   PlatformConfigEntry,
   DurationTier,
@@ -65,13 +66,6 @@ const CATEGORIES: CategoryDef[] = [
   { id: "subscription-tiers", label: "Subscription Tiers", icon: CreditCard, color: "#10B981" },
   { id: "feature-flags", label: "Feature Flags", icon: Flag, color: "#F97316" },
 ];
-
-const STAGE_NAMES: Record<number, string> = {
-  1: "Feed Refresh",
-  2: "Distillation",
-  3: "Clip Generation",
-  4: "Briefing Assembly",
-};
 
 const INTERVAL_OPTIONS = [
   { value: "15", label: "15 minutes" },
@@ -119,23 +113,6 @@ function ConfigSkeleton() {
       </div>
     </div>
   );
-}
-
-// ── Helpers (pipeline) ──
-
-function buildPipelineConfig(configs: PlatformConfigEntry[]): PipelineConfig {
-  const get = (key: string) => configs.find((c) => c.key === key)?.value;
-  return {
-    enabled: get("pipeline.enabled") === true || get("pipeline.enabled") === "true",
-    minIntervalMinutes: Number(get("pipeline.minIntervalMinutes")) || 60,
-    lastAutoRunAt: (get("pipeline.lastAutoRunAt") as string) ?? null,
-    stages: {
-      1: { enabled: get("pipeline.stage.1.enabled") !== false && get("pipeline.stage.1.enabled") !== "false", name: STAGE_NAMES[1] },
-      2: { enabled: get("pipeline.stage.2.enabled") !== false && get("pipeline.stage.2.enabled") !== "false", name: STAGE_NAMES[2] },
-      3: { enabled: get("pipeline.stage.3.enabled") !== false && get("pipeline.stage.3.enabled") !== "false", name: STAGE_NAMES[3] },
-      4: { enabled: get("pipeline.stage.4.enabled") !== false && get("pipeline.stage.4.enabled") !== "false", name: STAGE_NAMES[4] },
-    },
-  };
 }
 
 function relativeTime(iso: string | null | undefined): string {
@@ -261,7 +238,7 @@ function PipelineControlsPanel({
           <p className="text-[10px] text-[#9CA3AF] mt-0.5">Enable or disable individual pipeline stages</p>
         </div>
 
-        {[1, 2, 3, 4].map((stage) => {
+        {[1, 2, 3, 4, 5].map((stage) => {
           const stageConfig = pipelineConfig.stages[stage];
           const configKey = `pipeline.stage.${stage}.enabled`;
           return (
