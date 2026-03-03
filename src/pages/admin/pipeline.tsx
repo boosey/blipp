@@ -551,7 +551,7 @@ export default function Pipeline() {
           </Badge>
           <div className="ml-4 border-l border-white/10 pl-4">
             <PipelineControls
-              variant="compact"
+              variant="master-only"
               config={pipelineConfig}
               saving={pipelineSaving}
               triggering={pipelineTriggering}

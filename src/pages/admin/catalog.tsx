@@ -357,7 +357,8 @@ function PodcastCard({
                 onCheckedChange={() => onToggleStatus(podcast.id, podcast.status)}
                 onClick={(e) => e.stopPropagation()}
                 aria-label={podcast.status === "active" ? "Pause podcast" : "Activate podcast"}
-                className="scale-75 data-[state=checked]:bg-[#10B981] data-[state=unchecked]:bg-[#4B5563]"
+                className="scale-75"
+                style={{ backgroundColor: podcast.status === "active" ? "#10B981" : "#4B5563" }}
               />
             </div>
           </div>

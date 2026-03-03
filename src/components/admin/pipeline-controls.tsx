@@ -11,18 +11,6 @@ const STAGE_COLORS: Record<number, string> = {
   5: "#14B8A6",
 };
 
-interface PipelineControlsProps {
-  config: PipelineConfig;
-  saving: string | null;
-  triggering: boolean;
-  onTogglePipeline: (v: boolean) => void;
-  onToggleStage: (stage: number, v: boolean) => void;
-  onTriggerFeedRefresh: () => void;
-  variant: "full" | "compact" | "stage-only";
-  /** Required when variant is "stage-only" */
-  stage?: number;
-}
-
 const STAGE_NAMES: Record<number, string> = {
   1: "Feed Refresh",
   2: "Transcription",
@@ -31,38 +19,71 @@ const STAGE_NAMES: Record<number, string> = {
   5: "Briefing Assembly",
 };
 
-/** Full variant -- master toggle + 5 stage toggles + Run Now. Used on Command Center. */
+interface PipelineControlsProps {
+  config: PipelineConfig;
+  saving: string | null;
+  triggering: boolean;
+  onTogglePipeline: (v: boolean) => void;
+  onToggleStage: (stage: number, v: boolean) => void;
+  onTriggerFeedRefresh: () => void;
+  variant: "full" | "master-only" | "stage-only";
+  /** Required when variant is "stage-only" */
+  stage?: number;
+}
+
+/**
+ * Master pipeline toggle — used identically on Command Center and Pipeline toolbar.
+ * Prominent block with icon, label, Active/Paused status, and green/grey switch.
+ */
+function MasterPipelineToggle({
+  config,
+  saving,
+  onTogglePipeline,
+}: Pick<PipelineControlsProps, "config" | "saving" | "onTogglePipeline">) {
+  const on = config.enabled;
+  return (
+    <div
+      className="flex items-center justify-between rounded-lg p-3"
+      style={{ backgroundColor: on ? "#10B98115" : "#9CA3AF10" }}
+    >
+      <div className="flex items-center gap-2.5">
+        <div
+          className="flex items-center justify-center h-8 w-8 rounded-lg"
+          style={{ backgroundColor: on ? "#10B98120" : "#9CA3AF15" }}
+        >
+          <Zap className="h-4 w-4" style={{ color: on ? "#10B981" : "#9CA3AF" }} />
+        </div>
+        <div>
+          <span className="text-sm font-bold text-[#F9FAFB]">Pipeline</span>
+          <div className="text-[10px]" style={{ color: on ? "#10B981" : "#9CA3AF" }}>
+            {on ? "Active" : "Paused"}
+          </div>
+        </div>
+      </div>
+      <Switch
+        checked={on}
+        onCheckedChange={onTogglePipeline}
+        disabled={saving === "pipeline.enabled"}
+        style={{ backgroundColor: on ? "#10B981" : "#4B5563" }}
+      />
+    </div>
+  );
+}
+
+/** Full variant — master toggle + 5 stage toggles + Run Now. Used on Command Center. */
 function FullControls({
   config, saving, triggering, onTogglePipeline, onToggleStage, onTriggerFeedRefresh,
 }: Omit<PipelineControlsProps, "variant" | "stage">) {
   return (
     <div className="rounded-lg bg-[#1A2942] border border-white/5 p-4 space-y-3">
-      {/* Master toggle — prominent */}
-      <div className="flex items-center justify-between rounded-lg p-3" style={{ backgroundColor: config.enabled ? "#10B98115" : "#9CA3AF10" }}>
-        <div className="flex items-center gap-2.5">
-          <div className="flex items-center justify-center h-8 w-8 rounded-lg" style={{ backgroundColor: config.enabled ? "#10B98120" : "#9CA3AF15" }}>
-            <Zap className="h-4 w-4" style={{ color: config.enabled ? "#10B981" : "#9CA3AF" }} />
-          </div>
-          <div>
-            <span className="text-sm font-bold text-[#F9FAFB]">Pipeline</span>
-            <div className="text-[10px]" style={{ color: config.enabled ? "#10B981" : "#9CA3AF" }}>
-              {config.enabled ? "Active" : "Paused"}
-            </div>
-          </div>
-        </div>
-        <Switch
-          checked={config.enabled}
-          onCheckedChange={onTogglePipeline}
-          disabled={saving === "pipeline.enabled"}
-          className="data-[state=checked]:bg-[#10B981] data-[state=unchecked]:bg-[#4B5563]"
-        />
-      </div>
+      <MasterPipelineToggle config={config} saving={saving} onTogglePipeline={onTogglePipeline} />
 
       {/* Stage toggles — vertical with names */}
       <div className="space-y-1.5">
         {[1, 2, 3, 4, 5].map((s) => {
           const stage = config.stages[s];
           const color = STAGE_COLORS[s];
+          const on = stage?.enabled ?? true;
           return (
             <div key={s} className="flex items-center justify-between py-1">
               <div className="flex items-center gap-2">
@@ -76,10 +97,10 @@ function FullControls({
               </div>
               <Switch
                 size="sm"
-                checked={stage?.enabled ?? true}
+                checked={on}
                 onCheckedChange={(v) => onToggleStage(s, v)}
                 disabled={saving === `pipeline.stage.${s}.enabled`}
-                className="data-[state=checked]:bg-[#10B981] data-[state=unchecked]:bg-[#4B5563]"
+                style={{ backgroundColor: on ? "#10B981" : "#4B5563" }}
               />
             </div>
           );
@@ -100,43 +121,20 @@ function FullControls({
   );
 }
 
-/** Compact variant -- master toggle in a horizontal bar. Used in Pipeline toolbar. */
-function CompactControls({
-  config, saving, onTogglePipeline,
-}: Omit<PipelineControlsProps, "variant" | "stage" | "onToggleStage" | "onTriggerFeedRefresh" | "triggering">) {
-  return (
-    <div className="flex items-center gap-3">
-      <div className="flex items-center gap-2.5 rounded-md px-2.5 py-1" style={{ backgroundColor: config.enabled ? "#10B98110" : "#9CA3AF08" }}>
-        <Zap className="h-3.5 w-3.5" style={{ color: config.enabled ? "#10B981" : "#9CA3AF" }} />
-        <span className="text-xs font-semibold text-[#F9FAFB]">Pipeline</span>
-        <span className="text-[10px]" style={{ color: config.enabled ? "#10B981" : "#9CA3AF" }}>
-          {config.enabled ? "On" : "Off"}
-        </span>
-        <Switch
-          size="sm"
-          checked={config.enabled}
-          onCheckedChange={onTogglePipeline}
-          disabled={saving === "pipeline.enabled"}
-          className="ml-1 data-[state=checked]:bg-[#10B981] data-[state=unchecked]:bg-[#4B5563]"
-        />
-      </div>
-    </div>
-  );
-}
-
-/** Stage-only variant -- single stage toggle inline. Used in Pipeline stage column headers. */
+/** Stage-only variant — single stage toggle inline. Used in Pipeline stage column headers. */
 function StageOnlyControls({
   config, saving, onToggleStage, stage,
 }: Pick<PipelineControlsProps, "config" | "saving" | "onToggleStage" | "stage">) {
   const s = stage!;
   const stageConfig = config.stages[s];
+  const on = stageConfig?.enabled ?? true;
   return (
     <Switch
       size="sm"
-      checked={stageConfig?.enabled ?? true}
+      checked={on}
       onCheckedChange={(v) => onToggleStage(s, v)}
       disabled={saving === `pipeline.stage.${s}.enabled`}
-      className="data-[state=checked]:bg-[#10B981] data-[state=unchecked]:bg-[#4B5563]"
+      style={{ backgroundColor: on ? "#10B981" : "#4B5563" }}
     />
   );
 }
@@ -145,8 +143,14 @@ export function PipelineControls(props: PipelineControlsProps) {
   switch (props.variant) {
     case "full":
       return <FullControls {...props} />;
-    case "compact":
-      return <CompactControls {...props} />;
+    case "master-only":
+      return (
+        <MasterPipelineToggle
+          config={props.config}
+          saving={props.saving}
+          onTogglePipeline={props.onTogglePipeline}
+        />
+      );
     case "stage-only":
       return <StageOnlyControls {...props} />;
   }
