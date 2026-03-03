@@ -140,22 +140,26 @@ describe("Briefing Routes", () => {
       expect(res.status).toBe(401);
     });
 
-    it("should create briefing and queue it for assembly", async () => {
+    it("should create briefing request and dispatch to orchestrator", async () => {
       const user = {
         id: "usr_1",
         clerkId: "user_test123",
         tier: "PRO",
         briefingLengthMinutes: 15,
       };
-      const briefing = {
-        id: "b_new",
+      const request = {
+        id: "req_new",
         userId: "usr_1",
         targetMinutes: 15,
         status: "PENDING",
       };
 
       mockPrisma.user.findUniqueOrThrow.mockResolvedValueOnce(user);
-      mockPrisma.briefing.create.mockResolvedValueOnce(briefing);
+      mockPrisma.subscription.findMany.mockResolvedValueOnce([
+        { podcastId: "pod1" },
+        { podcastId: "pod2" },
+      ]);
+      mockPrisma.briefingRequest.create.mockResolvedValueOnce(request);
 
       const res = await app.request(
         "/briefings/generate",
@@ -165,7 +169,30 @@ describe("Briefing Routes", () => {
       );
       expect(res.status).toBe(201);
       const body: any = await res.json();
-      expect(body.briefing.id).toBe("b_new");
+      expect(body.request.id).toBe("req_new");
+      expect(body.request.status).toBe("PENDING");
+    });
+
+    it("should return 400 when user has no subscriptions", async () => {
+      const user = {
+        id: "usr_1",
+        clerkId: "user_test123",
+        tier: "PRO",
+        briefingLengthMinutes: 15,
+      };
+
+      mockPrisma.user.findUniqueOrThrow.mockResolvedValueOnce(user);
+      mockPrisma.subscription.findMany.mockResolvedValueOnce([]);
+
+      const res = await app.request(
+        "/briefings/generate",
+        { method: "POST" },
+        env,
+        mockExCtx
+      );
+      expect(res.status).toBe(400);
+      const body: any = await res.json();
+      expect(body.error).toContain("No podcast subscriptions");
     });
 
     it("should return 429 when free-tier user exceeds weekly limit", async () => {
@@ -197,8 +224,8 @@ describe("Briefing Routes", () => {
         tier: "FREE",
         briefingLengthMinutes: 15,
       };
-      const briefing = {
-        id: "b_free",
+      const request = {
+        id: "req_free",
         userId: "usr_1",
         targetMinutes: 5,
         status: "PENDING",
@@ -206,7 +233,8 @@ describe("Briefing Routes", () => {
 
       mockPrisma.user.findUniqueOrThrow.mockResolvedValueOnce(user);
       mockPrisma.briefing.count.mockResolvedValueOnce(0);
-      mockPrisma.briefing.create.mockResolvedValueOnce(briefing);
+      mockPrisma.subscription.findMany.mockResolvedValueOnce([{ podcastId: "pod1" }]);
+      mockPrisma.briefingRequest.create.mockResolvedValueOnce(request);
 
       const res = await app.request(
         "/briefings/generate",
@@ -217,30 +245,31 @@ describe("Briefing Routes", () => {
       expect(res.status).toBe(201);
 
       // Verify create was called with capped targetMinutes
-      expect(mockPrisma.briefing.create).toHaveBeenCalledWith(
+      expect(mockPrisma.briefingRequest.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ targetMinutes: 5 }),
         })
       );
     });
 
-    it("should send message to BRIEFING_ASSEMBLY_QUEUE", async () => {
+    it("should send message to ORCHESTRATOR_QUEUE", async () => {
       const user = {
         id: "usr_1",
         clerkId: "user_test123",
         tier: "PRO",
         briefingLengthMinutes: 10,
       };
-      const briefing = { id: "b_q", userId: "usr_1" };
+      const request = { id: "req_q", userId: "usr_1" };
 
       mockPrisma.user.findUniqueOrThrow.mockResolvedValueOnce(user);
-      mockPrisma.briefing.create.mockResolvedValueOnce(briefing);
+      mockPrisma.subscription.findMany.mockResolvedValueOnce([{ podcastId: "pod1" }]);
+      mockPrisma.briefingRequest.create.mockResolvedValueOnce(request);
 
       await app.request("/briefings/generate", { method: "POST" }, env, mockExCtx);
 
-      expect(env.BRIEFING_ASSEMBLY_QUEUE.send).toHaveBeenCalledWith({
-        briefingId: "b_q",
-        userId: "usr_1",
+      expect(env.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith({
+        requestId: "req_q",
+        action: "evaluate",
       });
     });
   });

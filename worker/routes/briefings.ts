@@ -120,21 +120,33 @@ briefings.post("/generate", async (c) => {
       }
     }
 
-    const briefing = await prisma.briefing.create({
+    // Get user's podcast subscriptions
+    const subscriptions = await prisma.subscription.findMany({
+      where: { userId: user.id },
+      select: { podcastId: true },
+    });
+    const podcastIds = subscriptions.map((s: { podcastId: string }) => s.podcastId);
+    if (!podcastIds.length) {
+      return c.json({ error: "No podcast subscriptions found" }, 400);
+    }
+
+    // Create a BriefingRequest and dispatch to orchestrator
+    const request = await prisma.briefingRequest.create({
       data: {
         userId: user.id,
         targetMinutes,
+        podcastIds,
+        isTest: false,
         status: "PENDING",
       },
     });
 
-    // Queue the briefing for assembly
-    await c.env.BRIEFING_ASSEMBLY_QUEUE.send({
-      briefingId: briefing.id,
-      userId: user.id,
+    await c.env.ORCHESTRATOR_QUEUE.send({
+      requestId: request.id,
+      action: "evaluate",
     });
 
-    return c.json({ briefing }, 201);
+    return c.json({ request: { id: request.id, status: "PENDING", targetMinutes } }, 201);
   } finally {
     c.executionCtx.waitUntil(prisma.$disconnect());
   }
