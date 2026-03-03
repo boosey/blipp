@@ -20,6 +20,7 @@ const Briefings = lazy(() => import("./pages/admin/briefings"));
 const AdminUsers = lazy(() => import("./pages/admin/users"));
 const Analytics = lazy(() => import("./pages/admin/analytics"));
 const Configuration = lazy(() => import("./pages/admin/configuration"));
+const Requests = lazy(() => import("./pages/admin/requests"));
 
 function AdminLoading() {
   return (
@@ -73,6 +74,7 @@ export default function App() {
         <Route path="users" element={<Suspense fallback={<AdminLoading />}><AdminUsers /></Suspense>} />
         <Route path="analytics" element={<Suspense fallback={<AdminLoading />}><Analytics /></Suspense>} />
         <Route path="configuration" element={<Suspense fallback={<AdminLoading />}><Configuration /></Suspense>} />
+        <Route path="requests" element={<Suspense fallback={<AdminLoading />}><Requests /></Suspense>} />
       </Route>
     </Routes>
   );

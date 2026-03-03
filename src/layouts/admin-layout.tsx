@@ -13,6 +13,7 @@ import {
   Bell,
   ChevronLeft,
   ChevronRight,
+  ClipboardList,
 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
@@ -30,6 +31,7 @@ import {
 const navItems = [
   { path: "command-center", label: "Command Center", icon: LayoutDashboard, shortcut: "H" },
   { path: "pipeline", label: "Pipeline", icon: GitBranch, shortcut: "P" },
+  { path: "requests", label: "Requests", icon: ClipboardList, shortcut: "R" },
   { path: "catalog", label: "Catalog", icon: Library, shortcut: "C" },
   { path: "episodes", label: "Episodes", icon: Disc3, shortcut: "E" },
   { path: "briefings", label: "Briefings", icon: Radio, shortcut: "B" },
