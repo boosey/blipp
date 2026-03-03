@@ -3,9 +3,6 @@ import { getConfig } from "../lib/config";
 import { parseRssFeed, type ParsedEpisode } from "../lib/rss-parser";
 import type { Env } from "../types";
 
-/** Max new episodes to ingest per podcast per refresh. */
-const MAX_NEW_EPISODES = 5;
-
 /**
  * Returns the most recent episodes from a parsed feed, sorted newest-first.
  * RSS feeds usually list newest first, but not always — this guarantees it.
@@ -74,19 +71,21 @@ export async function handleFeedRefresh(
           where: { id: { in: [...podcastIds] } },
         });
 
+    const maxEpisodes = (await getConfig(prisma, "pipeline.feedRefresh.maxEpisodesPerPodcast", 5)) as number;
+
     for (const podcast of podcasts) {
       try {
         const response = await fetch(podcast.feedUrl);
         const xml = await response.text();
         const feed = parseRssFeed(xml);
 
-        const recent = latestEpisodes(feed.episodes, MAX_NEW_EPISODES);
+        const recent = latestEpisodes(feed.episodes, maxEpisodes);
 
         for (const ep of recent) {
           if (!ep.guid || !ep.audioUrl) continue;
 
           // Upsert episode — skip if already exists (idempotent)
-          const episode = await prisma.episode.upsert({
+          await prisma.episode.upsert({
             where: {
               podcastId_guid: {
                 podcastId: podcast.id,
@@ -105,14 +104,6 @@ export async function handleFeedRefresh(
               transcriptUrl: ep.transcriptUrl,
             },
           });
-
-          // Queue distillation for episodes that have transcript URLs
-          if (ep.transcriptUrl) {
-            await env.DISTILLATION_QUEUE.send({
-              episodeId: episode.id,
-              transcriptUrl: ep.transcriptUrl,
-            });
-          }
         }
 
         // Update last fetched timestamp
