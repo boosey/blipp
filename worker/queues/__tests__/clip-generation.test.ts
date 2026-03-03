@@ -141,8 +141,8 @@ describe("handleClipGeneration", () => {
   });
 
   describe("stage-enabled check", () => {
-    it("ACKs without processing when stage 3 is disabled", async () => {
-      (getConfig as any).mockResolvedValueOnce(false); // pipeline.stage.3.enabled
+    it("ACKs without processing when stage 4 is disabled", async () => {
+      (getConfig as any).mockResolvedValueOnce(false); // pipeline.stage.4.enabled
 
       const mockMsg = { body: msgBody, ack: vi.fn(), retry: vi.fn() };
       const mockBatch = {

@@ -40,6 +40,8 @@ beforeEach(() => {
   mockEnv = createMockEnv();
   mockCtx = { waitUntil: vi.fn() } as unknown as ExecutionContext;
   (createPrismaClient as any).mockReturnValue(mockPrisma);
+  // Re-set getConfig default after clearAllMocks (vitest v4 resets mock implementations)
+  (getConfig as any).mockResolvedValue(true);
 });
 
 describe("handleBriefingAssembly", () => {
@@ -222,8 +224,8 @@ describe("handleBriefingAssembly", () => {
   });
 
   describe("stage-enabled check", () => {
-    it("ACKs without processing when stage 4 is disabled", async () => {
-      (getConfig as any).mockResolvedValueOnce(false); // pipeline.stage.4.enabled
+    it("ACKs without processing when stage 5 is disabled", async () => {
+      (getConfig as any).mockResolvedValueOnce(false); // pipeline.stage.5.enabled
 
       const mockMsg = { body: msgBody, ack: vi.fn(), retry: vi.fn() };
       const mockBatch = {

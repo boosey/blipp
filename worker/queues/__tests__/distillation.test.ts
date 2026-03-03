@@ -20,10 +20,6 @@ vi.mock("@anthropic-ai/sdk", () => {
   return { default: class MockAnthropic {} };
 });
 
-// Mock global fetch for transcript fetching
-const mockFetch = vi.fn();
-vi.stubGlobal("fetch", mockFetch);
-
 import { createPrismaClient } from "../../lib/db";
 import { getConfig } from "../../lib/config";
 import { extractClaims } from "../../lib/distillation";
@@ -38,23 +34,22 @@ beforeEach(() => {
   mockEnv = createMockEnv();
   mockCtx = { waitUntil: vi.fn() } as unknown as ExecutionContext;
   (createPrismaClient as any).mockReturnValue(mockPrisma);
-  mockFetch.mockResolvedValue({
-    text: vi.fn().mockResolvedValue("This is a transcript of the episode."),
-  });
+  // Re-set getConfig default after clearAllMocks (vitest v4 resets mock implementations)
+  (getConfig as any).mockResolvedValue(true);
 });
 
 describe("handleDistillation", () => {
-  it("should fetch transcript, extract claims, and ack message", async () => {
-    mockPrisma.distillation.findUnique.mockResolvedValue(null);
-    mockPrisma.distillation.upsert.mockResolvedValue({
+  it("should read existing transcript, extract claims, and ack message", async () => {
+    mockPrisma.distillation.findUnique.mockResolvedValue({
       id: "dist-1",
       episodeId: "ep-1",
-      status: "FETCHING_TRANSCRIPT",
+      status: "TRANSCRIPT_READY",
+      transcript: "This is a transcript of the episode.",
     });
     mockPrisma.distillation.update.mockResolvedValue({});
 
     const mockMsg = {
-      body: { episodeId: "ep-1", transcriptUrl: "https://example.com/ep1.vtt" },
+      body: { episodeId: "ep-1" },
       ack: vi.fn(),
       retry: vi.fn(),
     };
@@ -65,10 +60,7 @@ describe("handleDistillation", () => {
 
     await handleDistillation(mockBatch, mockEnv, mockCtx);
 
-    // Verify transcript was fetched
-    expect(mockFetch).toHaveBeenCalledWith("https://example.com/ep1.vtt");
-
-    // Verify claims were extracted
+    // Verify claims were extracted using existing transcript
     expect(extractClaims).toHaveBeenCalled();
 
     // Verify distillation was marked as COMPLETED
@@ -82,19 +74,47 @@ describe("handleDistillation", () => {
     expect(mockMsg.ack).toHaveBeenCalled();
   });
 
-  it("should record error and retry on failure", async () => {
-    mockPrisma.distillation.findUnique.mockResolvedValue(null);
-    mockPrisma.distillation.upsert.mockResolvedValue({
+  it("should throw error when no transcript is available", async () => {
+    mockPrisma.distillation.findUnique.mockResolvedValue({
       id: "dist-1",
       episodeId: "ep-1",
+      status: "PENDING",
+      transcript: null,
     });
-
-    // Make transcript fetch fail
-    mockFetch.mockRejectedValueOnce(new Error("Network error"));
     mockPrisma.distillation.upsert.mockResolvedValue({});
 
     const mockMsg = {
-      body: { episodeId: "ep-1", transcriptUrl: "https://example.com/ep1.vtt" },
+      body: { episodeId: "ep-1" },
+      ack: vi.fn(),
+      retry: vi.fn(),
+    };
+    const mockBatch = {
+      messages: [mockMsg],
+      queue: "distillation",
+    } as unknown as MessageBatch<any>;
+
+    await handleDistillation(mockBatch, mockEnv, mockCtx);
+
+    // Should retry because no transcript available
+    expect(mockMsg.retry).toHaveBeenCalled();
+    expect(mockMsg.ack).not.toHaveBeenCalled();
+  });
+
+  it("should record error and retry on failure", async () => {
+    mockPrisma.distillation.findUnique.mockResolvedValue({
+      id: "dist-1",
+      episodeId: "ep-1",
+      status: "TRANSCRIPT_READY",
+      transcript: "Some transcript",
+    });
+    mockPrisma.distillation.update.mockResolvedValue({});
+
+    // Make extractClaims fail
+    (extractClaims as any).mockRejectedValueOnce(new Error("API error"));
+    mockPrisma.distillation.upsert.mockResolvedValue({});
+
+    const mockMsg = {
+      body: { episodeId: "ep-1" },
       ack: vi.fn(),
       retry: vi.fn(),
     };
@@ -118,7 +138,7 @@ describe("handleDistillation", () => {
     });
 
     const mockMsg = {
-      body: { episodeId: "ep-1", transcriptUrl: "https://example.com/ep1.vtt" },
+      body: { episodeId: "ep-1" },
       ack: vi.fn(),
       retry: vi.fn(),
     };
@@ -131,16 +151,39 @@ describe("handleDistillation", () => {
 
     // Should ack without processing
     expect(mockMsg.ack).toHaveBeenCalled();
-    expect(mockFetch).not.toHaveBeenCalled();
     expect(extractClaims).not.toHaveBeenCalled();
   });
 
+  it("should report to orchestrator when requestId present and COMPLETED", async () => {
+    mockPrisma.distillation.findUnique.mockResolvedValue({
+      id: "dist-1",
+      episodeId: "ep-1",
+      status: "COMPLETED",
+    });
+
+    const mockMsg = {
+      body: { episodeId: "ep-1", requestId: "req1" },
+      ack: vi.fn(),
+      retry: vi.fn(),
+    };
+    const mockBatch = {
+      messages: [mockMsg],
+      queue: "distillation",
+    } as unknown as MessageBatch<any>;
+
+    await handleDistillation(mockBatch, mockEnv, mockCtx);
+
+    expect(mockEnv.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith({
+      requestId: "req1", action: "stage-complete", stage: 3, episodeId: "ep-1",
+    });
+  });
+
   describe("stage-enabled check", () => {
-    it("ACKs without processing when stage 2 is disabled", async () => {
-      (getConfig as any).mockResolvedValueOnce(false); // pipeline.stage.2.enabled
+    it("ACKs without processing when stage 3 is disabled", async () => {
+      (getConfig as any).mockResolvedValueOnce(false); // pipeline.stage.3.enabled
 
       const mockMsg = {
-        body: { episodeId: "ep-1", transcriptUrl: "https://example.com/ep1.vtt" },
+        body: { episodeId: "ep-1" },
         ack: vi.fn(),
         retry: vi.fn(),
       };
@@ -152,24 +195,21 @@ describe("handleDistillation", () => {
       await handleDistillation(mockBatch, mockEnv, mockCtx);
 
       expect(mockMsg.ack).toHaveBeenCalled();
-      expect(mockFetch).not.toHaveBeenCalled();
       expect(extractClaims).not.toHaveBeenCalled();
       expect(mockPrisma.distillation.findUnique).not.toHaveBeenCalled();
     });
 
     it("bypasses stage-enabled check for manual messages", async () => {
-      // Even if getConfig would return false, manual messages bypass the check
-      // Since hasManual is true, getConfig for stage is never called
-      mockPrisma.distillation.findUnique.mockResolvedValue(null);
-      mockPrisma.distillation.upsert.mockResolvedValue({
+      mockPrisma.distillation.findUnique.mockResolvedValue({
         id: "dist-1",
         episodeId: "ep-1",
-        status: "FETCHING_TRANSCRIPT",
+        status: "TRANSCRIPT_READY",
+        transcript: "This is a transcript.",
       });
       mockPrisma.distillation.update.mockResolvedValue({});
 
       const mockMsg = {
-        body: { episodeId: "ep-1", transcriptUrl: "https://example.com/ep1.vtt", type: "manual" },
+        body: { episodeId: "ep-1", type: "manual" },
         ack: vi.fn(),
         retry: vi.fn(),
       };
@@ -181,7 +221,6 @@ describe("handleDistillation", () => {
       await handleDistillation(mockBatch, mockEnv, mockCtx);
 
       expect(mockMsg.ack).toHaveBeenCalled();
-      expect(mockFetch).toHaveBeenCalled();
       expect(extractClaims).toHaveBeenCalled();
     });
   });

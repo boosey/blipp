@@ -47,6 +47,8 @@ beforeEach(() => {
   mockEnv = createMockEnv();
   mockCtx = { waitUntil: vi.fn() } as unknown as ExecutionContext;
   (createPrismaClient as any).mockReturnValue(mockPrisma);
+  // Re-set getConfig default after clearAllMocks (vitest v4 resets mock implementations)
+  (getConfig as any).mockResolvedValue(true);
   mockFetch.mockResolvedValue({
     text: vi.fn().mockResolvedValue("<rss></rss>"),
   });
@@ -85,11 +87,8 @@ describe("handleFeedRefresh", () => {
     // Verify episode was created
     expect(mockPrisma.episode.upsert).toHaveBeenCalled();
 
-    // Verify distillation was queued (because transcriptUrl is present)
-    expect(mockEnv.DISTILLATION_QUEUE.send).toHaveBeenCalledWith({
-      episodeId: "ep-1",
-      transcriptUrl: "https://example.com/ep1.vtt",
-    });
+    // Feed refresh no longer auto-chains to distillation (demand-driven)
+    expect(mockEnv.DISTILLATION_QUEUE.send).not.toHaveBeenCalled();
 
     // Verify message was acked
     expect(mockMsg.ack).toHaveBeenCalled();

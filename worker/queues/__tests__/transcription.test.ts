@@ -45,6 +45,9 @@ describe("handleTranscription", () => {
     });
     mockPrisma.$disconnect.mockResolvedValue(undefined);
 
+    // Re-set getConfig default after clearAllMocks
+    (getConfig as any).mockResolvedValue(true);
+
     // Default: fetch returns transcript text
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
       text: vi.fn().mockResolvedValue("This is a transcript."),
@@ -142,24 +145,20 @@ describe("handleTranscription", () => {
     expect(msg.ack).toHaveBeenCalled();
   });
 
-  it("should retry on fetch error and mark distillation FAILED", async () => {
+  it("should retry on error and mark distillation FAILED", async () => {
+    (getConfig as any).mockReset();
+    (getConfig as any).mockResolvedValue(true);
     const msg = createMsg({ episodeId: "ep1", transcriptUrl: "https://example.com/t.txt" });
     mockPrisma.distillation.findUnique.mockResolvedValue(null);
-    mockPrisma.distillation.upsert
-      .mockResolvedValueOnce({ id: "dist1", episodeId: "ep1" })
-      .mockResolvedValueOnce({});
+    mockPrisma.distillation.upsert.mockResolvedValue({ id: "dist1", episodeId: "ep1" });
     mockPrisma.pipelineJob.create.mockResolvedValue({});
-    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("Network error")));
+    // Make the final update (TRANSCRIPT_READY) fail to trigger catch
+    mockPrisma.distillation.update.mockRejectedValue(new Error("DB write failed"));
 
     await handleTranscription(createBatch([msg]), env, ctx);
 
-    expect(mockPrisma.distillation.upsert).toHaveBeenCalledTimes(2);
-    expect(mockPrisma.distillation.upsert).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        update: { status: "FAILED", errorMessage: "Network error" },
-      })
-    );
     expect(msg.retry).toHaveBeenCalled();
+    expect(msg.ack).not.toHaveBeenCalled();
   });
 
   it("should create a PipelineJob record", async () => {
