@@ -33,12 +33,12 @@ export async function handleBriefingAssembly(
   const prisma = createPrismaClient(env.HYPERDRIVE);
 
   try {
-    // Check if stage 4 (briefing assembly) is enabled — manual messages bypass this
+    // Check if stage 5 (briefing assembly) is enabled — manual messages bypass this
     const hasManual = batch.messages.some((m) => m.body.type === "manual");
     if (!hasManual) {
       const stageEnabled = await getConfig(
         prisma,
-        "pipeline.stage.4.enabled",
+        "pipeline.stage.5.enabled",
         true
       );
       if (!stageEnabled) {
