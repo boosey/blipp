@@ -292,6 +292,37 @@ function PipelineControlsPanel({
         </div>
       </div>
 
+      {/* Log Level */}
+      <div className="bg-[#0F1D32] border border-white/5 rounded-lg p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <Label className="text-xs text-[#F9FAFB]">Pipeline Log Level</Label>
+            <p className="text-[10px] text-[#9CA3AF] mt-0.5">
+              Controls verbosity of pipeline console output
+            </p>
+          </div>
+          <Select
+            value={
+              (() => {
+                const entry = configs.find((c) => c.key === "pipeline.logLevel");
+                return (entry?.value as string) ?? "info";
+              })()
+            }
+            onValueChange={(v) => updateConfig("pipeline.logLevel", v)}
+            disabled={saving === "pipeline.logLevel"}
+          >
+            <SelectTrigger className="w-28 h-8 text-xs bg-[#1A2942] border-white/10 text-[#F9FAFB]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="bg-[#1A2942] border-white/10 text-[#F9FAFB]">
+              <SelectItem value="error" className="text-xs">Error</SelectItem>
+              <SelectItem value="info" className="text-xs">Info</SelectItem>
+              <SelectItem value="debug" className="text-xs">Debug</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
       {/* Manual Run */}
       <div className="bg-[#0F1D32] border border-white/5 rounded-lg p-4">
         <div className="flex items-center justify-between">

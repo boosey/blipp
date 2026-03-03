@@ -9,6 +9,16 @@ vi.mock("../../lib/config", () => ({
   getConfig: vi.fn(),
 }));
 
+const mockLogger = vi.hoisted(() => ({
+  info: vi.fn(),
+  debug: vi.fn(),
+  error: vi.fn(),
+  timer: vi.fn(() => vi.fn()),
+}));
+vi.mock("../../lib/logger", () => ({
+  createPipelineLogger: vi.fn().mockResolvedValue(mockLogger),
+}));
+
 import { createPrismaClient } from "../../lib/db";
 import { getConfig } from "../../lib/config";
 import { scheduled } from "../index";
@@ -25,6 +35,10 @@ beforeEach(() => {
   mockCtx = { waitUntil: vi.fn() } as unknown as ExecutionContext;
   mockEvent = { scheduledTime: Date.now(), cron: "*/30 * * * *" } as ScheduledEvent;
   (createPrismaClient as any).mockReturnValue(mockPrisma);
+  mockLogger.info.mockReset();
+  mockLogger.debug.mockReset();
+  mockLogger.error.mockReset();
+  mockLogger.timer.mockReset().mockReturnValue(vi.fn());
 });
 
 describe("scheduled", () => {
@@ -114,6 +128,27 @@ describe("scheduled", () => {
     await scheduled(mockEvent, mockEnv, mockCtx);
 
     expect(mockEnv.FEED_REFRESH_QUEUE.send).toHaveBeenCalledWith({ type: "cron" });
+  });
+
+  it("should log pipeline_disabled when pipeline is off", async () => {
+    (getConfig as any).mockResolvedValueOnce(false); // pipeline.enabled
+
+    await scheduled(mockEvent, mockEnv, mockCtx);
+
+    expect(mockLogger.info).toHaveBeenCalledWith("pipeline_disabled", {});
+  });
+
+  it("should log feed_refresh_enqueued on successful trigger", async () => {
+    (getConfig as any)
+      .mockResolvedValueOnce(true)   // pipeline.enabled
+      .mockResolvedValueOnce(60)     // pipeline.minIntervalMinutes
+      .mockResolvedValueOnce(null);  // pipeline.lastAutoRunAt
+
+    mockPrisma.platformConfig.upsert.mockResolvedValue({});
+
+    await scheduled(mockEvent, mockEnv, mockCtx);
+
+    expect(mockLogger.info).toHaveBeenCalledWith("feed_refresh_enqueued", { trigger: "cron" });
   });
 
   it("disconnects prisma in finally block", async () => {

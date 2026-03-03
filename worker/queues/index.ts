@@ -6,6 +6,7 @@ import { handleBriefingAssembly } from "./briefing-assembly";
 import { handleOrchestrator } from "./orchestrator";
 import { createPrismaClient } from "../lib/db";
 import { getConfig } from "../lib/config";
+import { createPipelineLogger } from "../lib/logger";
 import type { Env } from "../types";
 
 /**
@@ -70,11 +71,15 @@ export async function scheduled(
   ctx: ExecutionContext
 ) {
   const prisma = createPrismaClient(env.HYPERDRIVE);
+  const log = await createPipelineLogger({ stage: "scheduled", prisma });
 
   try {
     // Check if the pipeline is globally enabled
     const enabled = await getConfig(prisma, "pipeline.enabled", true);
-    if (!enabled) return;
+    if (!enabled) {
+      log.info("pipeline_disabled", {});
+      return;
+    }
 
     // Check minimum interval between auto runs
     const minIntervalMinutes = await getConfig(
@@ -91,11 +96,15 @@ export async function scheduled(
     if (lastAutoRunAt) {
       const elapsedMs = Date.now() - new Date(lastAutoRunAt).getTime();
       const elapsedMinutes = elapsedMs / 60_000;
-      if (elapsedMinutes < minIntervalMinutes) return;
+      if (elapsedMinutes < minIntervalMinutes) {
+        log.debug("interval_skip", { elapsedMinutes: Math.round(elapsedMinutes), minIntervalMinutes });
+        return;
+      }
     }
 
     // Enqueue feed refresh
     await env.FEED_REFRESH_QUEUE.send({ type: "cron" });
+    log.info("feed_refresh_enqueued", { trigger: "cron" });
 
     // Update lastAutoRunAt
     await prisma.platformConfig.upsert({
