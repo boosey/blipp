@@ -10,6 +10,16 @@ vi.mock("../../lib/config", () => ({
   getConfig: vi.fn().mockResolvedValue(true),
 }));
 
+const mockLogger = vi.hoisted(() => ({
+  info: vi.fn(),
+  debug: vi.fn(),
+  error: vi.fn(),
+  timer: vi.fn(() => vi.fn()),
+}));
+vi.mock("../../lib/logger", () => ({
+  createPipelineLogger: vi.fn().mockResolvedValue(mockLogger),
+}));
+
 vi.mock("../../lib/rss-parser", () => ({
   parseRssFeed: vi.fn().mockReturnValue({
     title: "Test Podcast",
@@ -52,6 +62,10 @@ beforeEach(() => {
   mockFetch.mockResolvedValue({
     text: vi.fn().mockResolvedValue("<rss></rss>"),
   });
+  mockLogger.info.mockReset();
+  mockLogger.debug.mockReset();
+  mockLogger.error.mockReset();
+  mockLogger.timer.mockReset().mockReturnValue(vi.fn());
 });
 
 describe("handleFeedRefresh", () => {
@@ -309,6 +323,99 @@ describe("handleFeedRefresh", () => {
 
       // Should fetch all because at least one message lacks podcastId
       expect(mockPrisma.podcast.findMany).toHaveBeenCalledWith();
+    });
+  });
+
+  describe("structured logging", () => {
+    it("should log batch_start", async () => {
+      mockPrisma.podcast.findMany.mockResolvedValue([]);
+
+      const mockMsg = {
+        body: { type: "cron" },
+        ack: vi.fn(),
+        retry: vi.fn(),
+      };
+      const mockBatch = {
+        messages: [mockMsg],
+        queue: "feed-refresh",
+      } as unknown as MessageBatch;
+
+      await handleFeedRefresh(mockBatch, mockEnv, mockCtx);
+
+      expect(mockLogger.info).toHaveBeenCalledWith("batch_start", { messageCount: 1 });
+    });
+
+    it("should log stage_disabled when stage is off", async () => {
+      (getConfig as any).mockResolvedValueOnce(false);
+
+      const mockMsg = {
+        body: { type: "cron" },
+        ack: vi.fn(),
+        retry: vi.fn(),
+      };
+      const mockBatch = {
+        messages: [mockMsg],
+        queue: "feed-refresh",
+      } as unknown as MessageBatch;
+
+      await handleFeedRefresh(mockBatch, mockEnv, mockCtx);
+
+      expect(mockLogger.info).toHaveBeenCalledWith("stage_disabled", { stage: 1 });
+    });
+
+    it("should log podcast_refreshed on success", async () => {
+      const podcast = {
+        id: "pod-1",
+        feedUrl: "https://example.com/feed.xml",
+        title: "Test",
+      };
+      mockPrisma.podcast.findMany.mockResolvedValue([podcast]);
+      mockPrisma.episode.upsert.mockResolvedValue({ id: "ep-1" });
+      mockPrisma.podcast.update.mockResolvedValue(podcast);
+
+      const mockMsg = {
+        body: { type: "cron" },
+        ack: vi.fn(),
+        retry: vi.fn(),
+      };
+      const mockBatch = {
+        messages: [mockMsg],
+        queue: "feed-refresh",
+      } as unknown as MessageBatch;
+
+      await handleFeedRefresh(mockBatch, mockEnv, mockCtx);
+
+      expect(mockLogger.info).toHaveBeenCalledWith("podcast_refreshed", {
+        podcastId: "pod-1",
+        episodesProcessed: 1,
+      });
+    });
+
+    it("should log podcast_error on failure", async () => {
+      const podcast = {
+        id: "pod-1",
+        feedUrl: "https://fail.example.com/feed.xml",
+      };
+      mockPrisma.podcast.findMany.mockResolvedValue([podcast]);
+      mockFetch.mockRejectedValueOnce(new Error("Network error"));
+
+      const mockMsg = {
+        body: { type: "cron" },
+        ack: vi.fn(),
+        retry: vi.fn(),
+      };
+      const mockBatch = {
+        messages: [mockMsg],
+        queue: "feed-refresh",
+      } as unknown as MessageBatch;
+
+      await handleFeedRefresh(mockBatch, mockEnv, mockCtx);
+
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        "podcast_error",
+        { podcastId: "pod-1" },
+        expect.any(Error)
+      );
     });
   });
 });

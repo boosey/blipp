@@ -1,5 +1,6 @@
 import { createPrismaClient } from "../lib/db";
 import { getConfig } from "../lib/config";
+import { createPipelineLogger } from "../lib/logger";
 import { parseRssFeed, type ParsedEpisode } from "../lib/rss-parser";
 import type { Env } from "../types";
 
@@ -36,6 +37,9 @@ export async function handleFeedRefresh(
   const prisma = createPrismaClient(env.HYPERDRIVE);
 
   try {
+    const log = await createPipelineLogger({ stage: "feed-refresh", prisma });
+    log.info("batch_start", { messageCount: batch.messages.length });
+
     // Check if stage 1 (feed refresh) is enabled — manual messages bypass this
     const hasManual = batch.messages.some(
       (m) => (m.body as any)?.type === "manual"
@@ -47,6 +51,7 @@ export async function handleFeedRefresh(
         true
       );
       if (!stageEnabled) {
+        log.info("stage_disabled", { stage: 1 });
         for (const msg of batch.messages) msg.ack();
         return;
       }
@@ -64,12 +69,16 @@ export async function handleFeedRefresh(
       }
     }
 
+    log.debug("podcast_filter", { fetchAll, podcastIds: [...podcastIds] });
+
     // Fetch podcasts — either all or just the requested subset
     const podcasts = fetchAll
       ? await prisma.podcast.findMany()
       : await prisma.podcast.findMany({
           where: { id: { in: [...podcastIds] } },
         });
+
+    log.debug("podcasts_loaded", { count: podcasts.length });
 
     const maxEpisodes = (await getConfig(prisma, "pipeline.feedRefresh.maxEpisodesPerPodcast", 5)) as number;
 
@@ -106,6 +115,8 @@ export async function handleFeedRefresh(
           });
         }
 
+        log.info("podcast_refreshed", { podcastId: podcast.id, episodesProcessed: recent.length });
+
         // Update last fetched timestamp
         await prisma.podcast.update({
           where: { id: podcast.id },
@@ -113,12 +124,11 @@ export async function handleFeedRefresh(
         });
       } catch (err) {
         // Log and continue — don't let one failed feed block others
-        console.error(
-          `Feed refresh failed for podcast ${podcast.id}:`,
-          err
-        );
+        log.error("podcast_error", { podcastId: podcast.id }, err);
       }
     }
+
+    log.info("batch_complete", { podcastCount: podcasts.length });
 
     // Ack all messages in the batch
     for (const msg of batch.messages) {

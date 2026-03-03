@@ -13,6 +13,16 @@ vi.mock("../../lib/config", () => ({
   getConfig: vi.fn().mockResolvedValue(true),
 }));
 
+const mockLogger = vi.hoisted(() => ({
+  info: vi.fn(),
+  debug: vi.fn(),
+  error: vi.fn(),
+  timer: vi.fn(() => vi.fn()),
+}));
+vi.mock("../../lib/logger", () => ({
+  createPipelineLogger: vi.fn().mockResolvedValue(mockLogger),
+}));
+
 const { getConfig } = await import("../../lib/config");
 const { handleTranscription } = await import("../transcription");
 
@@ -52,6 +62,11 @@ describe("handleTranscription", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
       text: vi.fn().mockResolvedValue("This is a transcript."),
     }));
+
+    mockLogger.info.mockReset();
+    mockLogger.debug.mockReset();
+    mockLogger.error.mockReset();
+    mockLogger.timer.mockReset().mockReturnValue(vi.fn());
   });
 
   it("should fetch transcript and store it with TRANSCRIPT_READY status", async () => {
@@ -179,6 +194,62 @@ describe("handleTranscription", () => {
         stage: 2,
         requestId: "req1",
       }),
+    });
+  });
+
+  describe("structured logging", () => {
+    it("should log batch_start", async () => {
+      const msg = createMsg({ episodeId: "ep1", transcriptUrl: "https://example.com/t.txt" });
+      mockPrisma.distillation.findUnique.mockResolvedValue(null);
+      mockPrisma.distillation.upsert.mockResolvedValue({ id: "dist1", episodeId: "ep1" });
+      mockPrisma.pipelineJob.create.mockResolvedValue({});
+      mockPrisma.distillation.update.mockResolvedValue({});
+
+      await handleTranscription(createBatch([msg]), env, ctx);
+
+      expect(mockLogger.info).toHaveBeenCalledWith("batch_start", { messageCount: 1 });
+    });
+
+    it("should log stage_disabled when stage is off", async () => {
+      (getConfig as any).mockResolvedValueOnce(false);
+      const msg = createMsg({ episodeId: "ep1", transcriptUrl: "https://example.com/t.txt" });
+
+      await handleTranscription(createBatch([msg]), env, ctx);
+
+      expect(mockLogger.info).toHaveBeenCalledWith("stage_disabled", { stage: 2 });
+    });
+
+    it("should log transcript_fetched on success", async () => {
+      const msg = createMsg({ episodeId: "ep1", transcriptUrl: "https://example.com/t.txt" });
+      mockPrisma.distillation.findUnique.mockResolvedValue(null);
+      mockPrisma.distillation.upsert.mockResolvedValue({ id: "dist1", episodeId: "ep1" });
+      mockPrisma.pipelineJob.create.mockResolvedValue({});
+      mockPrisma.distillation.update.mockResolvedValue({});
+
+      await handleTranscription(createBatch([msg]), env, ctx);
+
+      expect(mockLogger.info).toHaveBeenCalledWith("transcript_fetched", {
+        episodeId: "ep1",
+        bytes: "This is a transcript.".length,
+      });
+    });
+
+    it("should log episode_error on failure", async () => {
+      (getConfig as any).mockReset();
+      (getConfig as any).mockResolvedValue(true);
+      const msg = createMsg({ episodeId: "ep1", transcriptUrl: "https://example.com/t.txt" });
+      mockPrisma.distillation.findUnique.mockResolvedValue(null);
+      mockPrisma.distillation.upsert.mockResolvedValue({ id: "dist1", episodeId: "ep1" });
+      mockPrisma.pipelineJob.create.mockResolvedValue({});
+      mockPrisma.distillation.update.mockRejectedValue(new Error("DB write failed"));
+
+      await handleTranscription(createBatch([msg]), env, ctx);
+
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        "episode_error",
+        { episodeId: "ep1" },
+        expect.any(Error)
+      );
     });
   });
 });

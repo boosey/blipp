@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { createPrismaClient } from "../lib/db";
 import { getConfig } from "../lib/config";
+import { createPipelineLogger } from "../lib/logger";
 import { extractClaims } from "../lib/distillation";
 import type { Env } from "../types";
 
@@ -33,6 +34,9 @@ export async function handleDistillation(
   const anthropic = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
 
   try {
+    const log = await createPipelineLogger({ stage: "distillation", prisma });
+    log.info("batch_start", { messageCount: batch.messages.length });
+
     // Check if stage 3 (distillation) is enabled — manual messages bypass this
     const hasManual = batch.messages.some((m) => m.body.type === "manual");
     if (!hasManual) {
@@ -42,6 +46,7 @@ export async function handleDistillation(
         true
       );
       if (!stageEnabled) {
+        log.info("stage_disabled", { stage: 3 });
         for (const msg of batch.messages) msg.ack();
         return;
       }
@@ -57,6 +62,7 @@ export async function handleDistillation(
         });
 
         if (existing?.status === "COMPLETED") {
+          log.debug("idempotency_skip", { episodeId, existingStatus: existing.status });
           if (requestId) {
             await env.ORCHESTRATOR_QUEUE.send({
               requestId, action: "stage-complete", stage: 3, episodeId,
@@ -78,7 +84,10 @@ export async function handleDistillation(
         });
 
         // Extract claims via Claude (Pass 1)
+        const elapsed = log.timer("claude_extraction");
         const claims = await extractClaims(anthropic, existing.transcript);
+        elapsed();
+        log.info("claims_extracted", { episodeId, claimCount: claims.length });
 
         // Mark as completed with claims
         await prisma.distillation.update({
@@ -90,6 +99,7 @@ export async function handleDistillation(
           await env.ORCHESTRATOR_QUEUE.send({
             requestId, action: "stage-complete", stage: 3, episodeId,
           });
+          log.debug("orchestrator_notified", { episodeId, requestId, stage: 3 });
         }
 
         msg.ack();
@@ -106,6 +116,7 @@ export async function handleDistillation(
           })
           .catch(() => {});
 
+        log.error("episode_error", { episodeId }, err);
         msg.retry();
       }
     }

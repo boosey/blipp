@@ -10,6 +10,16 @@ vi.mock("../../lib/config", () => ({
   getConfig: vi.fn().mockResolvedValue(true),
 }));
 
+const mockLogger = vi.hoisted(() => ({
+  info: vi.fn(),
+  debug: vi.fn(),
+  error: vi.fn(),
+  timer: vi.fn(() => vi.fn()),
+}));
+vi.mock("../../lib/logger", () => ({
+  createPipelineLogger: vi.fn().mockResolvedValue(mockLogger),
+}));
+
 vi.mock("../../lib/distillation", () => ({
   extractClaims: vi.fn().mockResolvedValue([
     { claim: "Test claim", speaker: "Host", importance: 9, novelty: 7 },
@@ -36,6 +46,10 @@ beforeEach(() => {
   (createPrismaClient as any).mockReturnValue(mockPrisma);
   // Re-set getConfig default after clearAllMocks (vitest v4 resets mock implementations)
   (getConfig as any).mockResolvedValue(true);
+  mockLogger.info.mockReset();
+  mockLogger.debug.mockReset();
+  mockLogger.error.mockReset();
+  mockLogger.timer.mockReset().mockReturnValue(vi.fn());
 });
 
 describe("handleDistillation", () => {
@@ -222,6 +236,108 @@ describe("handleDistillation", () => {
 
       expect(mockMsg.ack).toHaveBeenCalled();
       expect(extractClaims).toHaveBeenCalled();
+    });
+  });
+
+  describe("structured logging", () => {
+    it("should log batch_start", async () => {
+      mockPrisma.distillation.findUnique.mockResolvedValue({
+        id: "dist-1",
+        episodeId: "ep-1",
+        status: "TRANSCRIPT_READY",
+        transcript: "Some transcript",
+      });
+      mockPrisma.distillation.update.mockResolvedValue({});
+
+      const mockMsg = {
+        body: { episodeId: "ep-1" },
+        ack: vi.fn(),
+        retry: vi.fn(),
+      };
+      const mockBatch = {
+        messages: [mockMsg],
+        queue: "distillation",
+      } as unknown as MessageBatch<any>;
+
+      await handleDistillation(mockBatch, mockEnv, mockCtx);
+
+      expect(mockLogger.info).toHaveBeenCalledWith("batch_start", { messageCount: 1 });
+    });
+
+    it("should log stage_disabled when stage is off", async () => {
+      (getConfig as any).mockResolvedValueOnce(false);
+
+      const mockMsg = {
+        body: { episodeId: "ep-1" },
+        ack: vi.fn(),
+        retry: vi.fn(),
+      };
+      const mockBatch = {
+        messages: [mockMsg],
+        queue: "distillation",
+      } as unknown as MessageBatch<any>;
+
+      await handleDistillation(mockBatch, mockEnv, mockCtx);
+
+      expect(mockLogger.info).toHaveBeenCalledWith("stage_disabled", { stage: 3 });
+    });
+
+    it("should log claims_extracted on success", async () => {
+      mockPrisma.distillation.findUnique.mockResolvedValue({
+        id: "dist-1",
+        episodeId: "ep-1",
+        status: "TRANSCRIPT_READY",
+        transcript: "This is a transcript.",
+      });
+      mockPrisma.distillation.update.mockResolvedValue({});
+
+      const mockMsg = {
+        body: { episodeId: "ep-1" },
+        ack: vi.fn(),
+        retry: vi.fn(),
+      };
+      const mockBatch = {
+        messages: [mockMsg],
+        queue: "distillation",
+      } as unknown as MessageBatch<any>;
+
+      await handleDistillation(mockBatch, mockEnv, mockCtx);
+
+      expect(mockLogger.info).toHaveBeenCalledWith("claims_extracted", {
+        episodeId: "ep-1",
+        claimCount: 1,
+      });
+    });
+
+    it("should log episode_error on failure", async () => {
+      mockPrisma.distillation.findUnique.mockResolvedValue({
+        id: "dist-1",
+        episodeId: "ep-1",
+        status: "TRANSCRIPT_READY",
+        transcript: "Some transcript",
+      });
+      mockPrisma.distillation.update.mockResolvedValue({});
+
+      (extractClaims as any).mockRejectedValueOnce(new Error("API error"));
+      mockPrisma.distillation.upsert.mockResolvedValue({});
+
+      const mockMsg = {
+        body: { episodeId: "ep-1" },
+        ack: vi.fn(),
+        retry: vi.fn(),
+      };
+      const mockBatch = {
+        messages: [mockMsg],
+        queue: "distillation",
+      } as unknown as MessageBatch<any>;
+
+      await handleDistillation(mockBatch, mockEnv, mockCtx);
+
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        "episode_error",
+        { episodeId: "ep-1" },
+        expect.any(Error)
+      );
     });
   });
 });

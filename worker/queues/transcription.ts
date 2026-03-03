@@ -1,5 +1,6 @@
 import { createPrismaClient } from "../lib/db";
 import { getConfig } from "../lib/config";
+import { createPipelineLogger } from "../lib/logger";
 import type { Env } from "../types";
 
 interface TranscriptionMessage {
@@ -19,10 +20,14 @@ export async function handleTranscription(
   const prisma = createPrismaClient(env.HYPERDRIVE);
 
   try {
+    const log = await createPipelineLogger({ stage: "transcription", prisma });
+    log.info("batch_start", { messageCount: batch.messages.length });
+
     const hasManual = batch.messages.some((m) => m.body.type === "manual");
     if (!hasManual) {
       const stageEnabled = await getConfig(prisma, "pipeline.stage.2.enabled", true);
       if (!stageEnabled) {
+        log.info("stage_disabled", { stage: 2 });
         for (const msg of batch.messages) msg.ack();
         return;
       }
@@ -34,6 +39,7 @@ export async function handleTranscription(
       try {
         const existing = await prisma.distillation.findUnique({ where: { episodeId } });
         if (existing && SKIP_STATUSES.has(existing.status)) {
+          log.debug("idempotency_skip", { episodeId, existingStatus: existing.status });
           if (requestId) {
             await env.ORCHESTRATOR_QUEUE.send({
               requestId, action: "stage-complete", stage: 2, episodeId,
@@ -63,6 +69,7 @@ export async function handleTranscription(
 
         const response = await fetch(transcriptUrl);
         const transcript = await response.text();
+        log.info("transcript_fetched", { episodeId, bytes: transcript.length });
 
         await prisma.distillation.update({
           where: { id: distillation.id },
@@ -73,6 +80,7 @@ export async function handleTranscription(
           await env.ORCHESTRATOR_QUEUE.send({
             requestId, action: "stage-complete", stage: 2, episodeId,
           });
+          log.debug("orchestrator_notified", { episodeId, requestId, stage: 2 });
         }
 
         msg.ack();
@@ -85,6 +93,7 @@ export async function handleTranscription(
             create: { episodeId, status: "FAILED", errorMessage },
           })
           .catch(() => {});
+        log.error("episode_error", { episodeId }, err);
         msg.retry();
       }
     }
