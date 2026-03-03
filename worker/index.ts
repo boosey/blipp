@@ -11,6 +11,7 @@ import { cors } from "hono/cors";
 import { clerkMiddleware } from "./middleware/auth";
 import { routes } from "./routes/index";
 import { handleQueue, scheduled } from "./queues/index";
+import { shimQueuesForLocalDev } from "./lib/local-queue";
 import type { Env } from "./types";
 
 const app = new Hono<{ Bindings: Env }>();
@@ -30,7 +31,13 @@ app.get("/api/health", (c) => {
 app.route("/api", routes);
 
 export default {
-  fetch: app.fetch,
-  queue: handleQueue,
-  scheduled,
+  fetch(request: Request, env: Env, ctx: ExecutionContext) {
+    return app.fetch(request, shimQueuesForLocalDev(env, ctx), ctx);
+  },
+  queue(batch: MessageBatch, env: Env, ctx: ExecutionContext) {
+    return handleQueue(batch, shimQueuesForLocalDev(env, ctx), ctx);
+  },
+  scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
+    return scheduled(event, shimQueuesForLocalDev(env, ctx), ctx);
+  },
 };

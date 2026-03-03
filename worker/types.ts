@@ -5,6 +5,8 @@
  * Queues (background jobs), and secret strings (API keys).
  */
 export type Env = {
+  /** Set to "development" in .dev.vars to enable local queue shim */
+  ENVIRONMENT?: string;
   /** Vite-managed static asset fetcher (Cloudflare Pages integration) */
   ASSETS: Fetcher;
   /** Cloudflare Hyperdrive connection to Neon PostgreSQL */

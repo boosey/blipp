@@ -1,0 +1,95 @@
+import type { Env } from "../types";
+
+/**
+ * Binding name → queue name mapping.
+ * Must match the producers in wrangler.jsonc.
+ */
+const QUEUE_BINDINGS: Record<string, string> = {
+  FEED_REFRESH_QUEUE: "feed-refresh",
+  TRANSCRIPTION_QUEUE: "transcription",
+  DISTILLATION_QUEUE: "distillation",
+  CLIP_GENERATION_QUEUE: "clip-generation",
+  BRIEFING_ASSEMBLY_QUEUE: "briefing-assembly",
+  ORCHESTRATOR_QUEUE: "orchestrator",
+};
+
+/**
+ * Detects local development by checking ENVIRONMENT env var.
+ * Set `ENVIRONMENT=development` in `.dev.vars` to enable.
+ */
+function isLocalDev(env: Env): boolean {
+  return env.ENVIRONMENT === "development";
+}
+
+/**
+ * Creates a fake MessageBatch that the existing queue handlers accept.
+ */
+function createFakeBatch<T>(queue: string, body: T): MessageBatch<T> {
+  return {
+    queue,
+    messages: [
+      {
+        id: crypto.randomUUID(),
+        timestamp: new Date(),
+        body,
+        ack() {},
+        retry() {},
+      },
+    ],
+  } as unknown as MessageBatch<T>;
+}
+
+/**
+ * Replaces queue bindings with shims that directly invoke handlers in local dev.
+ *
+ * In production (or when ENVIRONMENT !== "development"), returns env unchanged.
+ * In local dev, each queue's `.send()` method is replaced with a function that:
+ *   1. Creates a fake MessageBatch with the message body
+ *   2. Dynamically imports the queue dispatcher
+ *   3. Calls handleQueue() directly (synchronous pipeline execution)
+ *
+ * Delayed sends (e.g. briefing-assembly re-queue) are skipped with a warning
+ * to avoid infinite loops in local dev.
+ */
+export function shimQueuesForLocalDev(env: Env, ctx: ExecutionContext): Env {
+  if (!isLocalDev(env)) return env;
+
+  const shimmed = { ...env };
+
+  for (const [binding, queueName] of Object.entries(QUEUE_BINDINGS)) {
+    (shimmed as any)[binding] = {
+      send: async (body: unknown, options?: { delaySeconds?: number }) => {
+        if (options?.delaySeconds) {
+          console.log(
+            JSON.stringify({
+              level: "info",
+              stage: "local-queue-shim",
+              action: "delayed_send_skipped",
+              queue: queueName,
+              delaySeconds: options.delaySeconds,
+              ts: new Date().toISOString(),
+            })
+          );
+          return;
+        }
+
+        console.log(
+          JSON.stringify({
+            level: "debug",
+            stage: "local-queue-shim",
+            action: "direct_dispatch",
+            queue: queueName,
+            ts: new Date().toISOString(),
+          })
+        );
+
+        // Dynamic import to avoid circular dependencies at module load time
+        const { handleQueue } = await import("../queues/index");
+        const batch = createFakeBatch(queueName, body);
+        await handleQueue(batch, shimmed, ctx);
+      },
+    };
+  }
+
+  return shimmed;
+}
