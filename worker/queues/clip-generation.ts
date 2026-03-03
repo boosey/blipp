@@ -13,6 +13,7 @@ interface ClipGenerationMessage {
   distillationId: string;
   durationTier: number;
   claims: any[];
+  requestId?: string;
   type?: "manual";
 }
 
@@ -39,12 +40,12 @@ export async function handleClipGeneration(
   const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
 
   try {
-    // Check if stage 3 (clip generation) is enabled — manual messages bypass this
+    // Check if stage 4 (clip generation) is enabled — manual messages bypass this
     const hasManual = batch.messages.some((m) => m.body.type === "manual");
     if (!hasManual) {
       const stageEnabled = await getConfig(
         prisma,
-        "pipeline.stage.3.enabled",
+        "pipeline.stage.4.enabled",
         true
       );
       if (!stageEnabled) {
@@ -108,6 +109,12 @@ export async function handleClipGeneration(
           where: { id: clip.id },
           data: { status: "COMPLETED", audioKey },
         });
+
+        if (msg.body.requestId) {
+          await env.ORCHESTRATOR_QUEUE.send({
+            requestId: msg.body.requestId, action: "stage-complete", stage: 4, episodeId,
+          });
+        }
 
         msg.ack();
       } catch (err) {
