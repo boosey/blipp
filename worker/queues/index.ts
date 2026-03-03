@@ -1,7 +1,9 @@
 import { handleFeedRefresh } from "./feed-refresh";
+import { handleTranscription } from "./transcription";
 import { handleDistillation } from "./distillation";
 import { handleClipGeneration } from "./clip-generation";
 import { handleBriefingAssembly } from "./briefing-assembly";
+import { handleOrchestrator } from "./orchestrator";
 import { createPrismaClient } from "../lib/db";
 import { getConfig } from "../lib/config";
 import type { Env } from "../types";
@@ -21,6 +23,12 @@ export async function handleQueue(
   switch (batch.queue) {
     case "feed-refresh":
       return handleFeedRefresh(batch, env, ctx);
+    case "transcription":
+      return handleTranscription(
+        batch as MessageBatch<any>,
+        env,
+        ctx
+      );
     case "distillation":
       return handleDistillation(
         batch as MessageBatch<any>,
@@ -35,6 +43,12 @@ export async function handleQueue(
       );
     case "briefing-assembly":
       return handleBriefingAssembly(
+        batch as MessageBatch<any>,
+        env,
+        ctx
+      );
+    case "orchestrator":
+      return handleOrchestrator(
         batch as MessageBatch<any>,
         env,
         ctx
