@@ -34,6 +34,8 @@ import {
   SheetDescription,
 } from "@/components/ui/sheet";
 import { useAdminFetch } from "@/lib/admin-api";
+import { usePipelineConfig } from "@/hooks/use-pipeline-config";
+import { PipelineControls } from "@/components/admin/pipeline-controls";
 import type {
   PipelineJob,
   PipelineStageStats,
@@ -106,11 +108,13 @@ function StageHeader({
   stats,
   onTrigger,
   triggering,
+  stageToggle,
 }: {
   meta: typeof STAGE_META[number];
   stats: PipelineStageStats | undefined;
   onTrigger?: () => void;
   triggering?: boolean;
+  stageToggle?: React.ReactNode;
 }) {
   const Icon = meta.icon;
   return (
@@ -124,6 +128,7 @@ function StageHeader({
         </span>
         <Icon className="h-3.5 w-3.5" style={{ color: meta.color }} />
         <span className="text-xs font-semibold">{meta.name}</span>
+        {stageToggle}
         {onTrigger && (
           <button
             onClick={onTrigger}
@@ -513,6 +518,14 @@ function PipelineSkeleton() {
 
 export default function Pipeline() {
   const apiFetch = useAdminFetch();
+  const {
+    config: pipelineConfig,
+    saving: pipelineSaving,
+    triggering: pipelineTriggering,
+    togglePipeline,
+    toggleStage,
+    triggerFeedRefresh,
+  } = usePipelineConfig();
 
   const [stageStats, setStageStats] = useState<PipelineStageStats[]>([]);
   const [stageJobs, setStageJobs] = useState<Record<number, PipelineJob[]>>({});
@@ -554,6 +567,17 @@ export default function Pipeline() {
           <Badge className="bg-white/5 text-[#9CA3AF] text-[10px]">
             {Object.values(stageJobs).flat().filter((j) => j.status === "IN_PROGRESS").length} active
           </Badge>
+          <div className="ml-4 border-l border-white/10 pl-4">
+            <PipelineControls
+              variant="compact"
+              config={pipelineConfig}
+              saving={pipelineSaving}
+              triggering={pipelineTriggering}
+              onTogglePipeline={togglePipeline}
+              onToggleStage={toggleStage}
+              onTriggerFeedRefresh={triggerFeedRefresh}
+            />
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <Button
@@ -618,6 +642,18 @@ export default function Pipeline() {
                       : undefined
                   }
                   triggering={triggeringStage === meta.stage}
+                  stageToggle={
+                    <PipelineControls
+                      variant="stage-only"
+                      stage={meta.stage}
+                      config={pipelineConfig}
+                      saving={pipelineSaving}
+                      triggering={pipelineTriggering}
+                      onTogglePipeline={togglePipeline}
+                      onToggleStage={toggleStage}
+                      onTriggerFeedRefresh={triggerFeedRefresh}
+                    />
+                  }
                 />
                 <ScrollArea className="flex-1 p-2">
                   <div className="space-y-1.5">
