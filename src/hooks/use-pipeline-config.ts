@@ -86,6 +86,25 @@ export function usePipelineConfig() {
     }
   }, [apiFetch]);
 
+  const triggerTestBriefing = useCallback(
+    async (podcastIds: string[], targetMinutes: number) => {
+      setTriggering(true);
+      try {
+        const res = await apiFetch<{ data: unknown }>("/requests/test-briefing", {
+          method: "POST",
+          body: JSON.stringify({ podcastIds, targetMinutes }),
+        });
+        return res.data;
+      } catch (e) {
+        console.error("Failed to create test briefing:", e);
+        return null;
+      } finally {
+        setTriggering(false);
+      }
+    },
+    [apiFetch]
+  );
+
   return {
     config,
     configs,      // raw entries (for Configuration page to keep using)
@@ -96,6 +115,7 @@ export function usePipelineConfig() {
     togglePipeline,
     toggleStage,
     triggerFeedRefresh,
+    triggerTestBriefing,
     reload: load,
   };
 }

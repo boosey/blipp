@@ -263,6 +263,35 @@ function PipelineControlsPanel({
         })}
       </div>
 
+      {/* Max Episodes per Podcast */}
+      <div className="bg-[#0F1D32] border border-white/5 rounded-lg p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <Label className="text-xs text-[#F9FAFB]">Max Episodes per Podcast</Label>
+            <p className="text-[10px] text-[#9CA3AF] mt-0.5">
+              Limit how many episodes are ingested per podcast during feed refresh
+            </p>
+          </div>
+          <Input
+            type="number"
+            min={1}
+            max={50}
+            value={
+              (() => {
+                const entry = configs.find((c) => c.key === "pipeline.feedRefresh.maxEpisodesPerPodcast");
+                return entry?.value != null ? Number(entry.value) : 5;
+              })()
+            }
+            onChange={(e) => {
+              const val = Math.min(50, Math.max(1, Number(e.target.value)));
+              updateConfig("pipeline.feedRefresh.maxEpisodesPerPodcast", val);
+            }}
+            disabled={saving === "pipeline.feedRefresh.maxEpisodesPerPodcast"}
+            className="w-20 h-8 text-xs bg-[#1A2942] border-white/10 text-[#F9FAFB] font-mono tabular-nums text-center"
+          />
+        </div>
+      </div>
+
       {/* Manual Run */}
       <div className="bg-[#0F1D32] border border-white/5 rounded-lg p-4">
         <div className="flex items-center justify-between">
