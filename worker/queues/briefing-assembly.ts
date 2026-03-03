@@ -1,5 +1,6 @@
 import { createPrismaClient } from "../lib/db";
 import { getConfig } from "../lib/config";
+import { createPipelineLogger } from "../lib/logger";
 import { getClip, putBriefing } from "../lib/clip-cache";
 import { concatMp3Buffers } from "../lib/mp3-concat";
 import { allocateWordBudget } from "../lib/time-fitting";
@@ -31,8 +32,11 @@ export async function handleBriefingAssembly(
   ctx: ExecutionContext
 ): Promise<void> {
   const prisma = createPrismaClient(env.HYPERDRIVE);
+  const log = await createPipelineLogger({ stage: "briefing-assembly", prisma });
 
   try {
+    log.info("batch_start", { messageCount: batch.messages.length });
+
     // Check if stage 5 (briefing assembly) is enabled — manual messages bypass this
     const hasManual = batch.messages.some((m) => m.body.type === "manual");
     if (!hasManual) {
@@ -42,6 +46,7 @@ export async function handleBriefingAssembly(
         true
       );
       if (!stageEnabled) {
+        log.info("stage_disabled", { stage: 5 });
         for (const msg of batch.messages) msg.ack();
         return;
       }
@@ -51,6 +56,8 @@ export async function handleBriefingAssembly(
       const { briefingId, userId } = msg.body;
 
       try {
+        log.info("assembly_start", { briefingId });
+
         // Get briefing record
         const briefing = await prisma.briefing.findUniqueOrThrow({
           where: { id: briefingId },
@@ -66,6 +73,8 @@ export async function handleBriefingAssembly(
         const subscriptions = await prisma.subscription.findMany({
           where: { userId },
         });
+
+        log.debug("subscriptions_loaded", { briefingId, count: subscriptions.length });
 
         if (subscriptions.length === 0) {
           await prisma.briefing.update({
@@ -100,6 +109,8 @@ export async function handleBriefingAssembly(
             }
           }
         }
+
+        log.info("episodes_ready", { briefingId, readyCount: readyEpisodes.length, totalSubscriptions: subscriptions.length });
 
         if (readyEpisodes.length === 0) {
           await prisma.briefing.update({
@@ -153,7 +164,10 @@ export async function handleBriefingAssembly(
           }
         }
 
+        log.info("clips_status", { briefingId, ready: clipBuffers.filter(b => b !== null).length, missing: clipBuffers.filter(b => b === null).length });
+
         if (!allReady) {
+          log.info("requeue_waiting", { briefingId, delaySeconds: 60 });
           // Re-queue the briefing assembly with a 60s delay
           await env.BRIEFING_ASSEMBLY_QUEUE.send(
             { briefingId, userId },
@@ -167,7 +181,9 @@ export async function handleBriefingAssembly(
         const validBuffers = clipBuffers.filter(
           (b): b is ArrayBuffer => b !== null
         );
+        const concatTimer = log.timer("mp3_concat");
         const finalAudio = concatMp3Buffers(validBuffers);
+        concatTimer();
 
         // Store assembled briefing in R2
         const today = new Date().toISOString().split("T")[0];
@@ -203,10 +219,14 @@ export async function handleBriefingAssembly(
           data: { status: "COMPLETED", audioKey },
         });
 
+        log.info("assembly_complete", { briefingId, audioKey });
+
         msg.ack();
       } catch (err) {
         const errorMessage =
           err instanceof Error ? err.message : String(err);
+
+        log.error("assembly_error", { briefingId }, err);
 
         await prisma.briefing
           .update({

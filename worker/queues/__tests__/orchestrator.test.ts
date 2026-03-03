@@ -4,6 +4,16 @@ import { createMockPrisma, createMockEnv } from "../../../tests/helpers/mocks";
 vi.mock("@prisma/adapter-pg", () => ({ PrismaPg: vi.fn() }));
 vi.mock("../../../src/generated/prisma", () => ({ PrismaClient: vi.fn() }));
 
+const mockLogger = vi.hoisted(() => ({
+  info: vi.fn(),
+  debug: vi.fn(),
+  error: vi.fn(),
+  timer: vi.fn(() => vi.fn()),
+}));
+vi.mock("../../lib/logger", () => ({
+  createPipelineLogger: vi.fn().mockResolvedValue(mockLogger),
+}));
+
 const mockPrisma = createMockPrisma();
 vi.mock("../../lib/db", () => ({
   createPrismaClient: vi.fn(() => mockPrisma),
@@ -54,6 +64,10 @@ describe("handleOrchestrator", () => {
       }
     });
     mockPrisma.$disconnect.mockResolvedValue(undefined);
+    mockLogger.info.mockReset();
+    mockLogger.debug.mockReset();
+    mockLogger.error.mockReset();
+    mockLogger.timer.mockReset().mockReturnValue(vi.fn());
   });
 
   it("should skip COMPLETED requests", async () => {
@@ -216,6 +230,48 @@ describe("handleOrchestrator", () => {
     expect(env.DISTILLATION_QUEUE.send).not.toHaveBeenCalled();
     expect(env.CLIP_GENERATION_QUEUE.send).not.toHaveBeenCalled();
     expect(msg.ack).toHaveBeenCalled();
+  });
+
+  describe("logging", () => {
+    it("should log request_evaluated", async () => {
+      const msg = createMsg({ requestId: "req1", action: "evaluate" });
+      mockPrisma.briefingRequest.findUnique.mockResolvedValue({
+        id: "req1", status: "COMPLETED", podcastIds: [],
+      });
+
+      await handleOrchestrator(createBatch([msg]), env, ctx);
+
+      expect(mockLogger.info).toHaveBeenCalledWith("request_evaluated", { action: "evaluate" });
+    });
+
+    it("should log request_completed on success", async () => {
+      const msg = createMsg({ requestId: "req1", action: "stage-complete" });
+      mockPrisma.briefingRequest.findUnique.mockResolvedValue({
+        id: "req1", status: "PROCESSING", podcastIds: ["pod1"], userId: "u1", targetMinutes: 5,
+      });
+      mockPrisma.episode.findFirst.mockResolvedValue({
+        id: "ep1", podcastId: "pod1", title: "Episode 1",
+        distillation: { id: "d1", status: "COMPLETED", transcript: "words here", claimsJson: [] },
+        clips: [{ id: "c1", status: "COMPLETED", durationTier: 1 }],
+      });
+      mockPrisma.briefing.create.mockResolvedValue({ id: "brief1" });
+      mockPrisma.briefingSegment.create.mockResolvedValue({});
+      mockPrisma.briefingRequest.update.mockResolvedValue({});
+
+      await handleOrchestrator(createBatch([msg]), env, ctx);
+
+      expect(mockLogger.info).toHaveBeenCalledWith("request_completed", { requestId: "req1", briefingId: "brief1" });
+    });
+
+    it("should log request_error on failure", async () => {
+      const msg = createMsg({ requestId: "req1", action: "evaluate" });
+      mockPrisma.briefingRequest.findUnique.mockRejectedValue(new Error("DB down"));
+      mockPrisma.briefingRequest.update.mockResolvedValue({});
+
+      await handleOrchestrator(createBatch([msg]), env, ctx);
+
+      expect(mockLogger.error).toHaveBeenCalledWith("request_error", { requestId: "req1" }, expect.any(Error));
+    });
   });
 
   it("should mark request FAILED on error and retry", async () => {

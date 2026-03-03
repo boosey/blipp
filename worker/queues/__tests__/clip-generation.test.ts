@@ -22,6 +22,16 @@ vi.mock("../../lib/clip-cache", () => ({
   putClip: vi.fn().mockResolvedValue(undefined),
 }));
 
+const mockLogger = vi.hoisted(() => ({
+  info: vi.fn(),
+  debug: vi.fn(),
+  error: vi.fn(),
+  timer: vi.fn(() => vi.fn()),
+}));
+vi.mock("../../lib/logger", () => ({
+  createPipelineLogger: vi.fn().mockResolvedValue(mockLogger),
+}));
+
 vi.mock("@anthropic-ai/sdk", () => {
   return { default: class MockAnthropic {} };
 });
@@ -46,6 +56,10 @@ beforeEach(() => {
   mockEnv = createMockEnv();
   mockCtx = { waitUntil: vi.fn() } as unknown as ExecutionContext;
   (createPrismaClient as any).mockReturnValue(mockPrisma);
+  mockLogger.info.mockReset();
+  mockLogger.debug.mockReset();
+  mockLogger.error.mockReset();
+  mockLogger.timer.mockReset().mockReturnValue(vi.fn());
 });
 
 describe("handleClipGeneration", () => {
@@ -140,6 +154,62 @@ describe("handleClipGeneration", () => {
     expect(mockMsg.ack).not.toHaveBeenCalled();
   });
 
+  describe("logging", () => {
+    it("should log batch_start", async () => {
+      mockPrisma.clip.findUnique.mockResolvedValue({ id: "clip-1", status: "COMPLETED" });
+
+      const mockMsg = { body: msgBody, ack: vi.fn(), retry: vi.fn() };
+      const mockBatch = {
+        messages: [mockMsg],
+        queue: "clip-generation",
+      } as unknown as MessageBatch<any>;
+
+      await handleClipGeneration(mockBatch, mockEnv, mockCtx);
+
+      expect(mockLogger.info).toHaveBeenCalledWith("batch_start", { messageCount: 1 });
+    });
+
+    it("should log clip_completed on success", async () => {
+      mockPrisma.clip.findUnique.mockResolvedValue(null);
+      mockPrisma.clip.upsert.mockResolvedValue({ id: "clip-1", episodeId: "ep-1", durationTier: 5 });
+      mockPrisma.clip.update.mockResolvedValue({});
+
+      const mockMsg = { body: msgBody, ack: vi.fn(), retry: vi.fn() };
+      const mockBatch = {
+        messages: [mockMsg],
+        queue: "clip-generation",
+      } as unknown as MessageBatch<any>;
+
+      await handleClipGeneration(mockBatch, mockEnv, mockCtx);
+
+      expect(mockLogger.info).toHaveBeenCalledWith("clip_completed", {
+        episodeId: "ep-1",
+        durationTier: 5,
+        audioKey: "clips/ep-1/5.mp3",
+      });
+    });
+
+    it("should log episode_error on failure", async () => {
+      mockPrisma.clip.findUnique.mockResolvedValue(null);
+      mockPrisma.clip.upsert.mockResolvedValue({ id: "clip-1", episodeId: "ep-1" });
+      (generateNarrative as any).mockRejectedValueOnce(new Error("API fail"));
+
+      const mockMsg = { body: msgBody, ack: vi.fn(), retry: vi.fn() };
+      const mockBatch = {
+        messages: [mockMsg],
+        queue: "clip-generation",
+      } as unknown as MessageBatch<any>;
+
+      await handleClipGeneration(mockBatch, mockEnv, mockCtx);
+
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        "episode_error",
+        { episodeId: "ep-1", durationTier: 5 },
+        expect.any(Error)
+      );
+    });
+  });
+
   describe("stage-enabled check", () => {
     it("ACKs without processing when stage 4 is disabled", async () => {
       (getConfig as any).mockResolvedValueOnce(false); // pipeline.stage.4.enabled
@@ -156,6 +226,20 @@ describe("handleClipGeneration", () => {
       expect(generateNarrative).not.toHaveBeenCalled();
       expect(generateSpeech).not.toHaveBeenCalled();
       expect(mockPrisma.clip.findUnique).not.toHaveBeenCalled();
+    });
+
+    it("should log stage_disabled when stage is off", async () => {
+      (getConfig as any).mockResolvedValueOnce(false);
+
+      const mockMsg = { body: msgBody, ack: vi.fn(), retry: vi.fn() };
+      const mockBatch = {
+        messages: [mockMsg],
+        queue: "clip-generation",
+      } as unknown as MessageBatch<any>;
+
+      await handleClipGeneration(mockBatch, mockEnv, mockCtx);
+
+      expect(mockLogger.info).toHaveBeenCalledWith("stage_disabled", { stage: 4 });
     });
 
     it("bypasses stage-enabled check for manual messages", async () => {

@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import { createPrismaClient } from "../lib/db";
 import { getConfig } from "../lib/config";
+import { createPipelineLogger } from "../lib/logger";
 import { generateNarrative } from "../lib/distillation";
 import { generateSpeech } from "../lib/tts";
 import { putClip } from "../lib/clip-cache";
@@ -38,8 +39,11 @@ export async function handleClipGeneration(
   const prisma = createPrismaClient(env.HYPERDRIVE);
   const anthropic = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
   const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const log = await createPipelineLogger({ stage: "clip-generation", prisma });
 
   try {
+    log.info("batch_start", { messageCount: batch.messages.length });
+
     // Check if stage 4 (clip generation) is enabled — manual messages bypass this
     const hasManual = batch.messages.some((m) => m.body.type === "manual");
     if (!hasManual) {
@@ -49,6 +53,7 @@ export async function handleClipGeneration(
         true
       );
       if (!stageEnabled) {
+        log.info("stage_disabled", { stage: 4 });
         for (const msg of batch.messages) msg.ack();
         return;
       }
@@ -64,6 +69,7 @@ export async function handleClipGeneration(
         });
 
         if (existing?.status === "COMPLETED") {
+          log.debug("idempotency_skip", { episodeId, durationTier });
           msg.ack();
           continue;
         }
@@ -81,12 +87,15 @@ export async function handleClipGeneration(
         });
 
         // Pass 2: generate narrative from claims
+        const narrativeTimer = log.timer("narrative_generation");
         const narrative = await generateNarrative(
           anthropic,
           claims,
           durationTier
         );
         const wordCount = narrative.split(/\s+/).length;
+        narrativeTimer();
+        log.info("narrative_generated", { episodeId, wordCount });
 
         await prisma.clip.update({
           where: { id: clip.id },
@@ -98,7 +107,9 @@ export async function handleClipGeneration(
         });
 
         // Generate TTS audio
+        const ttsTimer = log.timer("tts_generation");
         const audio = await generateSpeech(openai, narrative);
+        ttsTimer();
 
         // Store in R2
         await putClip(env.R2, episodeId, durationTier, audio);
@@ -110,16 +121,21 @@ export async function handleClipGeneration(
           data: { status: "COMPLETED", audioKey },
         });
 
+        log.info("clip_completed", { episodeId, durationTier, audioKey });
+
         if (msg.body.requestId) {
           await env.ORCHESTRATOR_QUEUE.send({
             requestId: msg.body.requestId, action: "stage-complete", stage: 4, episodeId,
           });
+          log.debug("orchestrator_notified", { episodeId, requestId: msg.body.requestId, stage: 4 });
         }
 
         msg.ack();
       } catch (err) {
         const errorMessage =
           err instanceof Error ? err.message : String(err);
+
+        log.error("episode_error", { episodeId, durationTier }, err);
 
         // Try to record the error on the clip
         await prisma.clip
