@@ -45,15 +45,17 @@ export function clearConfigCache(): void {
 /** Pipeline stage number → queue message type mapping */
 export const STAGE_QUEUE_MAP: Record<number, string> = {
   1: "FEED_REFRESH",
-  2: "DISTILLATION",
-  3: "CLIP_GENERATION",
-  4: "BRIEFING_ASSEMBLY",
+  2: "TRANSCRIPTION",
+  3: "DISTILLATION",
+  4: "CLIP_GENERATION",
+  5: "BRIEFING_ASSEMBLY",
 };
 
 /** Pipeline stage number → display name */
 export const STAGE_NAMES: Record<number, string> = {
   1: "Feed Refresh",
-  2: "Distillation",
-  3: "Clip Generation",
-  4: "Briefing Assembly",
+  2: "Transcription",
+  3: "Distillation",
+  4: "Clip Generation",
+  5: "Briefing Assembly",
 };
