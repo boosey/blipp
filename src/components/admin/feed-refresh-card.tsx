@@ -1,0 +1,161 @@
+import { useState, useEffect, useCallback } from "react";
+import { Rss, RefreshCw, Loader2, AlertTriangle, Clock, Podcast } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useAdminFetch } from "@/lib/admin-api";
+import type { FeedRefreshSummary, PipelineTriggerResult } from "@/types/admin";
+
+function relativeTime(iso: string | null): string {
+  if (!iso) return "Never";
+  const diff = Date.now() - new Date(iso).getTime();
+  const s = Math.floor(diff / 1000);
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
+export function FeedRefreshCard({ compact = false }: { compact?: boolean }) {
+  const apiFetch = useAdminFetch();
+  const [summary, setSummary] = useState<FeedRefreshSummary | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const load = useCallback(() => {
+    setLoading(true);
+    apiFetch<{ data: FeedRefreshSummary }>("/dashboard/feed-refresh-summary")
+      .then((r) => setSummary(r.data))
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [apiFetch]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await apiFetch<PipelineTriggerResult>("/pipeline/trigger/feed-refresh", { method: "POST" });
+      // Reload summary after a short delay
+      setTimeout(load, 1500);
+    } catch (e) {
+      console.error("Feed refresh failed:", e);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="rounded-lg bg-[#1A2942] border border-white/5 p-4" data-testid="feed-refresh-card">
+        <div className="space-y-2">
+          <Skeleton className="h-4 w-32 bg-white/5" />
+          <Skeleton className="h-3 w-full bg-white/5" />
+          <Skeleton className="h-3 w-3/4 bg-white/5" />
+        </div>
+      </div>
+    );
+  }
+
+  if (compact) {
+    return (
+      <div
+        className="rounded-lg bg-[#1A2942] border border-white/5 px-4 py-3 flex items-center gap-4"
+        data-testid="feed-refresh-card"
+      >
+        <div className="flex items-center gap-2">
+          <Rss className="h-4 w-4 text-[#3B82F6]" />
+          <span className="text-xs font-semibold text-[#F9FAFB]">Feed Refresh</span>
+        </div>
+        {summary && (
+          <>
+            <div className="flex items-center gap-1 text-[10px] text-[#9CA3AF]">
+              <Clock className="h-3 w-3" />
+              {relativeTime(summary.lastRunAt)}
+            </div>
+            <div className="text-[10px] text-[#9CA3AF]">
+              <span className="font-mono tabular-nums text-[#F9FAFB]">{summary.podcastsRefreshed}</span>/{summary.totalPodcasts} refreshed
+            </div>
+            <div className="text-[10px] text-[#9CA3AF]">
+              <span className="font-mono tabular-nums text-[#10B981]">{summary.recentEpisodes}</span> new (24h)
+            </div>
+            {summary.feedErrors > 0 && (
+              <div className="flex items-center gap-1 text-[10px] text-[#EF4444]">
+                <AlertTriangle className="h-3 w-3" />
+                {summary.feedErrors} errors
+              </div>
+            )}
+          </>
+        )}
+        <div className="ml-auto">
+          <Button
+            size="xs"
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="bg-[#3B82F6] hover:bg-[#3B82F6]/80 text-white text-[10px] gap-1"
+            data-testid="feed-refresh-button"
+          >
+            {refreshing ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+            {refreshing ? "Refreshing..." : "Refresh Now"}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="rounded-lg bg-[#1A2942] border border-white/5 p-4"
+      data-testid="feed-refresh-card"
+    >
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <Rss className="h-4 w-4 text-[#3B82F6]" />
+          <span className="text-sm font-semibold text-[#F9FAFB]">Feed Refresh</span>
+        </div>
+        <Button
+          size="xs"
+          onClick={handleRefresh}
+          disabled={refreshing}
+          className="bg-[#3B82F6] hover:bg-[#3B82F6]/80 text-white text-[10px] gap-1"
+          data-testid="feed-refresh-button"
+        >
+          {refreshing ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+          {refreshing ? "Refreshing..." : "Refresh Now"}
+        </Button>
+      </div>
+
+      {summary && (
+        <div className="grid grid-cols-2 gap-2">
+          <div className="rounded-md bg-white/[0.03] p-2">
+            <div className="text-[10px] text-[#9CA3AF] mb-0.5">Last Run</div>
+            <div className="flex items-center gap-1 text-[11px] text-[#F9FAFB]">
+              <Clock className="h-3 w-3 text-[#9CA3AF]" />
+              {relativeTime(summary.lastRunAt)}
+            </div>
+          </div>
+          <div className="rounded-md bg-white/[0.03] p-2">
+            <div className="text-[10px] text-[#9CA3AF] mb-0.5">Podcasts</div>
+            <div className="text-[11px] text-[#F9FAFB] flex items-center gap-1">
+              <Podcast className="h-3 w-3 text-[#3B82F6]" />
+              <span className="font-mono tabular-nums">{summary.podcastsRefreshed}</span>
+              <span className="text-[#9CA3AF]">/ {summary.totalPodcasts}</span>
+            </div>
+          </div>
+          <div className="rounded-md bg-white/[0.03] p-2">
+            <div className="text-[10px] text-[#9CA3AF] mb-0.5">New Episodes (24h)</div>
+            <div className="text-[11px] font-mono tabular-nums text-[#10B981]">{summary.recentEpisodes}</div>
+          </div>
+          <div className="rounded-md bg-white/[0.03] p-2">
+            <div className="text-[10px] text-[#9CA3AF] mb-0.5">Feed Errors</div>
+            <div className={`text-[11px] font-mono tabular-nums flex items-center gap-1 ${summary.feedErrors > 0 ? "text-[#EF4444]" : "text-[#10B981]"}`}>
+              {summary.feedErrors > 0 && <AlertTriangle className="h-3 w-3" />}
+              {summary.feedErrors}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

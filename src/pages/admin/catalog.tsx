@@ -51,6 +51,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useAdminFetch } from "@/lib/admin-api";
+import { FeedRefreshCard } from "@/components/admin/feed-refresh-card";
 import type {
   AdminPodcast,
   AdminPodcastDetail,
@@ -847,6 +848,11 @@ export default function Catalog() {
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-h-0 min-w-0">
+        {/* Feed Refresh Status Bar */}
+        <div className="mb-3">
+          <FeedRefreshCard compact />
+        </div>
+
         {/* Toolbar */}
         <div className="flex items-center justify-between mb-3 gap-3">
           <div className="flex items-center gap-2">

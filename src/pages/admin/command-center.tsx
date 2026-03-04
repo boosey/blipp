@@ -30,6 +30,7 @@ import { Separator } from "@/components/ui/separator";
 import { useAdminFetch } from "@/lib/admin-api";
 import { usePipelineConfig } from "@/hooks/use-pipeline-config";
 import { PipelineControls } from "@/components/admin/pipeline-controls";
+import { FeedRefreshCard } from "@/components/admin/feed-refresh-card";
 import type {
   SystemHealth,
   DashboardStats,
@@ -40,8 +41,8 @@ import type {
 
 // ── Helpers ──
 
-const STAGE_NAMES = ["Feed Refresh", "Transcription", "Distillation", "Clip Gen", "Assembly"];
-const STAGE_COLORS = ["#3B82F6", "#8B5CF6", "#F59E0B", "#10B981", "#14B8A6"];
+const STAGE_NAMES = ["Transcription", "Distillation", "Clip Gen", "Assembly"];
+const STAGE_COLORS = ["#8B5CF6", "#F59E0B", "#10B981", "#14B8A6"];
 
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -169,8 +170,16 @@ function HealthBar({ rate, color, label, onClick }: { rate: number; color: strin
   );
 }
 
+const STAGE_COLOR_MAP: Record<number, string> = {
+  1: "#3B82F6", // Feed refresh (legacy events)
+  2: "#8B5CF6",
+  3: "#F59E0B",
+  4: "#10B981",
+  5: "#14B8A6",
+};
+
 function StageBadge({ stage }: { stage: number }) {
-  const color = STAGE_COLORS[(stage - 1) % STAGE_COLORS.length];
+  const color = STAGE_COLOR_MAP[stage] ?? "#9CA3AF";
   return (
     <span
       className="inline-flex items-center justify-center h-5 w-5 rounded-full text-[10px] font-bold shrink-0"
@@ -463,7 +472,7 @@ export default function CommandCenter() {
               <HealthBar
                 key={s.stage}
                 rate={s.completionRate}
-                color={STAGE_COLORS[(s.stage - 1) % STAGE_COLORS.length]}
+                color={STAGE_COLOR_MAP[s.stage] ?? "#9CA3AF"}
                 label={s.name}
                 onClick={() => navigate(`/admin/pipeline?stage=${s.stage}`)}
               />
@@ -596,6 +605,9 @@ export default function CommandCenter() {
 
       {/* ── RIGHT COLUMN ── */}
       <div className="flex flex-col gap-4 min-h-0">
+        {/* Feed Refresh Summary */}
+        <FeedRefreshCard />
+
         {/* Pipeline Controls */}
         {pipeline.loading ? (
           <Skeleton className="h-48 bg-white/5 rounded-lg" />
