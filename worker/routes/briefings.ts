@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { Env } from "../types";
 import { requireAuth, getAuth } from "../middleware/auth";
 import { createPrismaClient } from "../lib/db";
+import { nearestTier } from "../lib/time-fitting";
 
 /**
  * Briefing routes for generating and managing daily podcast briefings.
@@ -125,17 +126,25 @@ briefings.post("/generate", async (c) => {
       where: { userId: user.id },
       select: { podcastId: true },
     });
-    const podcastIds = subscriptions.map((s: { podcastId: string }) => s.podcastId);
-    if (!podcastIds.length) {
+    if (!subscriptions.length) {
       return c.json({ error: "No podcast subscriptions found" }, 400);
     }
+
+    // Build items from subscriptions (useLatest for all, equal time split)
+    const perEpisodeTier = nearestTier(targetMinutes / subscriptions.length);
+    const items = subscriptions.map((s: { podcastId: string }) => ({
+      podcastId: s.podcastId,
+      episodeId: null,
+      durationTier: perEpisodeTier,
+      useLatest: true,
+    }));
 
     // Create a BriefingRequest and dispatch to orchestrator
     const request = await prisma.briefingRequest.create({
       data: {
         userId: user.id,
         targetMinutes,
-        podcastIds,
+        items: items as any,
         isTest: false,
         status: "PENDING",
       },

@@ -3,12 +3,10 @@ import { createPrismaClient } from "../../lib/db";
 import { getAuth } from "../../middleware/auth";
 import type { Env } from "../../types";
 
-const STAGE_NAMES: Record<number, string> = {
-  1: "Feed Refresh",
-  2: "Transcription",
-  3: "Distillation",
-  4: "Clip Generation",
-  5: "Briefing Assembly",
+const STAGE_NAMES: Record<string, string> = {
+  TRANSCRIPTION: "Transcription",
+  DISTILLATION: "Distillation",
+  CLIP_GENERATION: "Clip Generation",
 };
 
 const dashboardRoutes = new Hono<{ Bindings: Env }>();
@@ -22,14 +20,14 @@ dashboardRoutes.get("/", async (c) => {
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
     let failedJobs = 0;
-    let stageStats: { stage: number; status: string; _count: number }[] = [];
+    let stageStats: { currentStage: string; status: string; _count: number }[] = [];
     try {
       [failedJobs, stageStats] = await Promise.all([
         prisma.pipelineJob.count({
           where: { status: "FAILED", createdAt: { gte: twentyFourHoursAgo } },
         }),
         prisma.pipelineJob.groupBy({
-          by: ["stage", "status"],
+          by: ["currentStage", "status"],
           where: { createdAt: { gte: twentyFourHoursAgo } },
           _count: true,
         }),
@@ -39,19 +37,20 @@ dashboardRoutes.get("/", async (c) => {
     }
 
     // Build per-stage health
-    const stageMap = new Map<number, { total: number; completed: number; failed: number; active: number }>();
+    const stageMap = new Map<string, { total: number; completed: number; failed: number; active: number }>();
     for (const row of stageStats) {
-      if (!stageMap.has(row.stage)) {
-        stageMap.set(row.stage, { total: 0, completed: 0, failed: 0, active: 0 });
+      if (!stageMap.has(row.currentStage)) {
+        stageMap.set(row.currentStage, { total: 0, completed: 0, failed: 0, active: 0 });
       }
-      const s = stageMap.get(row.stage)!;
+      const s = stageMap.get(row.currentStage)!;
       s.total += row._count;
       if (row.status === "COMPLETED") s.completed += row._count;
       else if (row.status === "FAILED") s.failed += row._count;
       else if (row.status === "IN_PROGRESS") s.active += row._count;
     }
 
-    const stages = [1, 2, 3, 4, 5].map((stage) => {
+    const stageKeys = ["TRANSCRIPTION", "DISTILLATION", "CLIP_GENERATION"] as const;
+    const stages = stageKeys.map((stage) => {
       const s = stageMap.get(stage) ?? { total: 0, completed: 0, failed: 0, active: 0 };
       const completionRate = s.total > 0 ? Math.round((s.completed / s.total) * 100) : 100;
       let status: "healthy" | "warning" | "critical" = "healthy";
@@ -62,7 +61,7 @@ dashboardRoutes.get("/", async (c) => {
       }
       return {
         stage,
-        name: STAGE_NAMES[stage] ?? `Stage ${stage}`,
+        name: STAGE_NAMES[stage] ?? stage,
         completionRate,
         activeJobs: s.active,
         status,
@@ -117,62 +116,31 @@ dashboardRoutes.get("/stats", async (c) => {
 dashboardRoutes.get("/activity", async (c) => {
   const prisma = createPrismaClient(c.env.HYPERDRIVE);
   try {
-    let jobs: Awaited<ReturnType<typeof prisma.pipelineJob.findMany>> = [];
+    let jobs: Awaited<ReturnType<typeof prisma.pipelineJob.findMany<{ include: { episode: { select: { title: true; podcast: { select: { title: true } } } } } }>>> = [];
     try {
       jobs = await prisma.pipelineJob.findMany({
         take: 20,
         orderBy: { createdAt: "desc" },
+        include: {
+          episode: {
+            select: { title: true, podcast: { select: { title: true } } },
+          },
+        },
       });
     } catch {
       return c.json({ data: [] });
     }
 
-    // Resolve entity names for episode/podcast jobs
-    const episodeIds = jobs.filter((j) => j.entityType === "episode").map((j) => j.entityId);
-    const podcastIds = jobs.filter((j) => j.entityType === "podcast").map((j) => j.entityId);
-
-    const [episodes, podcasts] = await Promise.all([
-      episodeIds.length > 0
-        ? prisma.episode.findMany({
-            where: { id: { in: episodeIds } },
-            select: { id: true, title: true, podcast: { select: { title: true } } },
-          })
-        : [],
-      podcastIds.length > 0
-        ? prisma.podcast.findMany({
-            where: { id: { in: podcastIds } },
-            select: { id: true, title: true },
-          })
-        : [],
-    ]);
-
-    const episodeMap = new Map(episodes.map((e) => [e.id, e]));
-    const podcastMap = new Map(podcasts.map((p) => [p.id, p]));
-
-    const data = jobs.map((job) => {
-      let episodeTitle: string | undefined;
-      let podcastName: string | undefined;
-
-      if (job.entityType === "episode") {
-        const ep = episodeMap.get(job.entityId);
-        episodeTitle = ep?.title;
-        podcastName = ep?.podcast?.title;
-      } else if (job.entityType === "podcast") {
-        podcastName = podcastMap.get(job.entityId)?.title;
-      }
-
-      return {
-        id: job.id,
-        timestamp: job.createdAt.toISOString(),
-        stage: job.stage,
-        stageName: STAGE_NAMES[job.stage] ?? `Stage ${job.stage}`,
-        episodeTitle,
-        podcastName,
-        status: job.status.toLowerCase().replace("_", "-") as string,
-        processingTime: job.durationMs ?? undefined,
-        type: job.type,
-      };
-    });
+    const data = jobs.map((job) => ({
+      id: job.id,
+      timestamp: job.createdAt.toISOString(),
+      stage: job.currentStage,
+      stageName: STAGE_NAMES[job.currentStage] ?? job.currentStage,
+      episodeTitle: job.episode?.title,
+      podcastName: job.episode?.podcast?.title,
+      status: job.status.toLowerCase().replace("_", "-") as string,
+      type: job.currentStage,
+    }));
 
     return c.json({ data });
   } finally {
@@ -180,7 +148,7 @@ dashboardRoutes.get("/activity", async (c) => {
   }
 });
 
-// GET /costs - Cost summary for today/yesterday
+// GET /costs - Cost summary for today/yesterday (queries PipelineStep)
 dashboardRoutes.get("/costs", async (c) => {
   const prisma = createPrismaClient(c.env.HYPERDRIVE);
   try {
@@ -188,33 +156,33 @@ dashboardRoutes.get("/costs", async (c) => {
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const yesterdayStart = new Date(todayStart.getTime() - 24 * 60 * 60 * 1000);
 
-    let todayJobs: { type: string; cost: number | null }[] = [];
-    let yesterdayJobs: { type: string; cost: number | null }[] = [];
+    let todaySteps: { stage: string; cost: number | null }[] = [];
+    let yesterdaySteps: { stage: string; cost: number | null }[] = [];
     try {
-      [todayJobs, yesterdayJobs] = await Promise.all([
-        prisma.pipelineJob.findMany({
+      [todaySteps, yesterdaySteps] = await Promise.all([
+        prisma.pipelineStep.findMany({
           where: { createdAt: { gte: todayStart }, cost: { not: null } },
-          select: { type: true, cost: true },
+          select: { stage: true, cost: true },
         }),
-        prisma.pipelineJob.findMany({
+        prisma.pipelineStep.findMany({
           where: { createdAt: { gte: yesterdayStart, lt: todayStart }, cost: { not: null } },
-          select: { type: true, cost: true },
+          select: { stage: true, cost: true },
         }),
       ]);
     } catch {
-      // PipelineJob table may not exist yet
+      // PipelineStep table may not exist yet
     }
 
-    const todaySpend = todayJobs.reduce((sum, j) => sum + (j.cost ?? 0), 0);
-    const yesterdaySpend = yesterdayJobs.reduce((sum, j) => sum + (j.cost ?? 0), 0);
+    const todaySpend = todaySteps.reduce((sum, s) => sum + (s.cost ?? 0), 0);
+    const yesterdaySpend = yesterdaySteps.reduce((sum, s) => sum + (s.cost ?? 0), 0);
     const trend = yesterdaySpend > 0 ? Math.round(((todaySpend - yesterdaySpend) / yesterdaySpend) * 100) : 0;
 
-    // Breakdown by type
-    const byType = new Map<string, number>();
-    for (const j of todayJobs) {
-      byType.set(j.type, (byType.get(j.type) ?? 0) + (j.cost ?? 0));
+    // Breakdown by stage
+    const byStage = new Map<string, number>();
+    for (const s of todaySteps) {
+      byStage.set(s.stage, (byStage.get(s.stage) ?? 0) + (s.cost ?? 0));
     }
-    const breakdown = Array.from(byType.entries()).map(([category, amount]) => ({
+    const breakdown = Array.from(byStage.entries()).map(([category, amount]) => ({
       category,
       amount: Math.round(amount * 100) / 100,
       percentage: todaySpend > 0 ? Math.round((amount / todaySpend) * 100) : 0,
@@ -269,12 +237,10 @@ function humanizeError(raw: string | null | undefined): { description: string; r
   return { description: str };
 }
 
-const JOB_TYPE_LABELS: Record<string, string> = {
-  FEED_REFRESH: "Feed refresh",
+const STAGE_LABELS: Record<string, string> = {
   TRANSCRIPTION: "Transcription",
   DISTILLATION: "Distillation",
   CLIP_GENERATION: "Clip generation",
-  BRIEFING_ASSEMBLY: "Briefing assembly",
 };
 
 // GET /issues - Active issues
@@ -303,7 +269,7 @@ dashboardRoutes.get("/issues", async (c) => {
 
     const issues = [
       ...failedJobs.map((job) => {
-        const label = JOB_TYPE_LABELS[job.type] ?? job.type;
+        const label = STAGE_LABELS[job.currentStage] ?? job.currentStage;
         const { description, rawError } = humanizeError(job.errorMessage);
         return {
           id: job.id,
@@ -311,8 +277,8 @@ dashboardRoutes.get("/issues", async (c) => {
           title: `${label} job failed`,
           description,
           rawError,
-          entityId: job.entityId,
-          entityType: job.entityType,
+          entityId: job.episodeId,
+          entityType: "episode",
           createdAt: job.createdAt.toISOString(),
           actionable: true,
         };

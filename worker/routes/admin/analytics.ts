@@ -2,12 +2,10 @@ import { Hono } from "hono";
 import { createPrismaClient } from "../../lib/db";
 import type { Env } from "../../types";
 
-const STAGE_NAMES: Record<number, string> = {
-  1: "Feed Refresh",
-  2: "Transcription",
-  3: "Distillation",
-  4: "Clip Generation",
-  5: "Briefing Assembly",
+const STAGE_NAMES: Record<string, string> = {
+  TRANSCRIPTION: "Transcription",
+  DISTILLATION: "Distillation",
+  CLIP_GENERATION: "Clip Generation",
 };
 
 const analyticsRoutes = new Hono<{ Bindings: Env }>();
@@ -39,27 +37,27 @@ function dateKey(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-// GET /costs - Cost data grouped by day
+// GET /costs - Cost data grouped by day (queries PipelineStep for cost)
 analyticsRoutes.get("/costs", async (c) => {
   const prisma = createPrismaClient(c.env.HYPERDRIVE);
   try {
-    let jobs: { type: string; cost: number | null; createdAt: Date }[] = [];
-    let prevJobs: { cost: number | null }[] = [];
+    let steps: { stage: string; cost: number | null; createdAt: Date }[] = [];
+    let prevSteps: { cost: number | null }[] = [];
     const { from, to } = parseDateRange(c);
     const days = daysBetween(from, to);
 
     try {
-      jobs = await prisma.pipelineJob.findMany({
+      steps = await prisma.pipelineStep.findMany({
         where: {
           createdAt: { gte: from, lte: to },
           cost: { not: null },
         },
-        select: { type: true, cost: true, createdAt: true },
+        select: { stage: true, cost: true, createdAt: true },
       });
 
       // Previous period comparison
       const prevFrom = new Date(from.getTime() - (to.getTime() - from.getTime()));
-      prevJobs = await prisma.pipelineJob.findMany({
+      prevSteps = await prisma.pipelineStep.findMany({
         where: {
           createdAt: { gte: prevFrom, lt: from },
           cost: { not: null },
@@ -67,7 +65,7 @@ analyticsRoutes.get("/costs", async (c) => {
         select: { cost: true },
       });
     } catch {
-      // PipelineJob table may not exist
+      // PipelineStep table may not exist
       return c.json({
         data: {
           totalCost: 0,
@@ -81,29 +79,26 @@ analyticsRoutes.get("/costs", async (c) => {
 
     const dailyCosts = days.map((day) => {
       const key = dateKey(day);
-      const dayJobs = jobs.filter((j) => dateKey(j.createdAt) === key);
+      const daySteps = steps.filter((s) => dateKey(s.createdAt) === key);
 
-      const stt = dayJobs.filter((j) => j.type === "TRANSCRIPTION").reduce((s, j) => s + (j.cost ?? 0), 0);
-      const distillation = dayJobs.filter((j) => j.type === "DISTILLATION").reduce((s, j) => s + (j.cost ?? 0), 0);
-      const tts = dayJobs.filter((j) => j.type === "CLIP_GENERATION").reduce((s, j) => s + (j.cost ?? 0), 0);
-      const infrastructure = dayJobs
-        .filter((j) => j.type === "FEED_REFRESH" || j.type === "BRIEFING_ASSEMBLY")
-        .reduce((s, j) => s + (j.cost ?? 0), 0);
+      const stt = daySteps.filter((s) => s.stage === "TRANSCRIPTION").reduce((sum, s) => sum + (s.cost ?? 0), 0);
+      const distillation = daySteps.filter((s) => s.stage === "DISTILLATION").reduce((sum, s) => sum + (s.cost ?? 0), 0);
+      const tts = daySteps.filter((s) => s.stage === "CLIP_GENERATION").reduce((sum, s) => sum + (s.cost ?? 0), 0);
 
-      return { date: key, stt: round(stt), distillation: round(distillation), tts: round(tts), infrastructure: round(infrastructure) };
+      return { date: key, stt: round(stt), distillation: round(distillation), tts: round(tts), infrastructure: 0 };
     });
 
-    const totalCost = jobs.reduce((s, j) => s + (j.cost ?? 0), 0);
+    const totalCost = steps.reduce((s, step) => s + (step.cost ?? 0), 0);
     const dayCount = days.length || 1;
     const dailyAvg = totalCost / dayCount;
 
-    const prevTotal = prevJobs.reduce((s, j) => s + (j.cost ?? 0), 0);
+    const prevTotal = prevSteps.reduce((s, step) => s + (step.cost ?? 0), 0);
     const comparisonAmount = totalCost - prevTotal;
     const comparisonPct = prevTotal > 0 ? Math.round((comparisonAmount / prevTotal) * 100) : 0;
 
-    const episodeJobs = jobs.filter((j) => j.type === "TRANSCRIPTION" || j.type === "DISTILLATION" || j.type === "CLIP_GENERATION");
-    const uniqueEpisodes = new Set(episodeJobs.map((j) => j.createdAt.toISOString().slice(0, 10)));
-    const perEpisode = uniqueEpisodes.size > 0 ? round(totalCost / uniqueEpisodes.size) : 0;
+    const episodeSteps = steps.filter((s) => s.stage === "TRANSCRIPTION" || s.stage === "DISTILLATION" || s.stage === "CLIP_GENERATION");
+    const uniqueDays = new Set(episodeSteps.map((s) => s.createdAt.toISOString().slice(0, 10)));
+    const perEpisode = uniqueDays.size > 0 ? round(totalCost / uniqueDays.size) : 0;
 
     return c.json({
       data: {
@@ -284,38 +279,37 @@ analyticsRoutes.get("/quality", async (c) => {
   }
 });
 
-// GET /pipeline - Pipeline performance
+// GET /pipeline - Pipeline performance (queries PipelineStep for stage timing)
 analyticsRoutes.get("/pipeline", async (c) => {
   const prisma = createPrismaClient(c.env.HYPERDRIVE);
   try {
     const { from, to } = parseDateRange(c);
 
-    let jobs: { stage: number; status: string; durationMs: number | null; createdAt: Date }[] = [];
-    let prevJobCount = 0;
+    let steps: { stage: string; status: string; durationMs: number | null; createdAt: Date }[] = [];
+    let prevStepCount = 0;
 
     try {
-      jobs = await prisma.pipelineJob.findMany({
+      steps = await prisma.pipelineStep.findMany({
         where: { createdAt: { gte: from, lte: to } },
         select: { stage: true, status: true, durationMs: true, createdAt: true },
       });
 
       // Previous period for trend
       const prevFrom = new Date(from.getTime() - (to.getTime() - from.getTime()));
-      prevJobCount = await prisma.pipelineJob.count({
+      prevStepCount = await prisma.pipelineStep.count({
         where: {
           createdAt: { gte: prevFrom, lt: from },
           status: "COMPLETED",
-          stage: { in: [2, 3] },
         },
       });
     } catch {
-      // PipelineJob table may not exist
+      // PipelineStep table may not exist
       return c.json({
         data: {
           throughput: { episodesPerHour: 0, trend: 0 },
-          successRates: [1, 2, 3, 4, 5].map((stage) => ({
+          successRates: (["TRANSCRIPTION", "DISTILLATION", "CLIP_GENERATION"] as const).map((stage) => ({
             stage,
-            name: STAGE_NAMES[stage] ?? `Stage ${stage}`,
+            name: STAGE_NAMES[stage] ?? stage,
             rate: 100,
           })),
           processingSpeed: [],
@@ -328,33 +322,32 @@ analyticsRoutes.get("/pipeline", async (c) => {
     const hours = Math.max(1, (to.getTime() - from.getTime()) / (60 * 60 * 1000));
 
     // Per-stage success rates
-    const successRates = [1, 2, 3, 4, 5].map((stage) => {
-      const stageJobs = jobs.filter((j) => j.stage === stage);
-      const completed = stageJobs.filter((j) => j.status === "COMPLETED").length;
+    const stageKeys = ["TRANSCRIPTION", "DISTILLATION", "CLIP_GENERATION"] as const;
+    const successRates = stageKeys.map((stage) => {
+      const stageSteps = steps.filter((s) => s.stage === stage);
+      const completed = stageSteps.filter((s) => s.status === "COMPLETED").length;
       return {
         stage,
-        name: STAGE_NAMES[stage] ?? `Stage ${stage}`,
-        rate: stageJobs.length > 0 ? Math.round((completed / stageJobs.length) * 100) : 100,
+        name: STAGE_NAMES[stage] ?? stage,
+        rate: stageSteps.length > 0 ? Math.round((completed / stageSteps.length) * 100) : 100,
       };
     });
 
     // Throughput
-    const completedEpisodeJobs = jobs.filter(
-      (j) => j.status === "COMPLETED" && (j.stage === 2 || j.stage === 3)
-    ).length;
-    const episodesPerHour = round(completedEpisodeJobs / hours);
+    const completedSteps = steps.filter((s) => s.status === "COMPLETED").length;
+    const episodesPerHour = round(completedSteps / hours);
 
     const prevFrom = new Date(from.getTime() - (to.getTime() - from.getTime()));
     const prevHours = Math.max(1, (from.getTime() - prevFrom.getTime()) / (60 * 60 * 1000));
-    const prevRate = prevJobCount / prevHours;
+    const prevRate = prevStepCount / prevHours;
     const throughputTrend = prevRate > 0 ? Math.round(((episodesPerHour - prevRate) / prevRate) * 100) : 0;
 
     // Processing speed over time
     const processingSpeed = days.map((day) => {
       const key = dateKey(day);
-      const dayJobs = jobs.filter((j) => dateKey(j.createdAt) === key && j.durationMs);
-      const avg = dayJobs.length > 0
-        ? Math.round(dayJobs.reduce((s, j) => s + (j.durationMs ?? 0), 0) / dayJobs.length)
+      const daySteps = steps.filter((s) => dateKey(s.createdAt) === key && s.durationMs);
+      const avg = daySteps.length > 0
+        ? Math.round(daySteps.reduce((sum, s) => sum + (s.durationMs ?? 0), 0) / daySteps.length)
         : 0;
       return { date: key, avgMs: avg };
     });
@@ -366,7 +359,7 @@ analyticsRoutes.get("/pipeline", async (c) => {
         bottlenecks.push({
           stage: sr.name,
           issue: `Success rate is ${sr.rate}%`,
-          recommendation: `Review failed ${sr.name.toLowerCase()} jobs for common error patterns`,
+          recommendation: `Review failed ${sr.name.toLowerCase()} steps for common error patterns`,
         });
       }
     }

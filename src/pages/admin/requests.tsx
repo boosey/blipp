@@ -9,6 +9,12 @@ import {
   FlaskConical,
   RefreshCw,
   Inbox,
+  Search,
+  ToggleLeft,
+  ToggleRight,
+  SkipForward,
+  Minus,
+  Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -23,15 +29,17 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { useAdminFetch } from "@/lib/admin-api";
 import type {
   BriefingRequest,
+  BriefingRequestItem,
   BriefingRequestStatus,
-  EpisodeProgress,
-  StageProgress,
+  JobProgress,
+  StepProgress,
+  PipelineStepStatus,
   AdminPodcast,
+  AdminEpisode,
 } from "@/types/admin";
 
 // ── Constants ──
@@ -54,15 +62,18 @@ const STATUS_STYLES: Record<
   FAILED: { bg: "#EF444420", text: "#EF4444" },
 };
 
-const STAGE_STATUS_ICON: Record<
-  StageProgress["status"],
-  { icon: React.ElementType; color: string; label: string }
+const STEP_STATUS_ICON: Record<
+  PipelineStepStatus,
+  { icon: React.ElementType; color: string; label: string; spin?: boolean }
 > = {
   COMPLETED: { icon: CheckCircle2, color: "#10B981", label: "Done" },
-  IN_PROGRESS: { icon: Loader2, color: "#3B82F6", label: "Running" },
-  WAITING: { icon: Clock, color: "#9CA3AF", label: "Waiting" },
+  IN_PROGRESS: { icon: Loader2, color: "#3B82F6", label: "Running", spin: true },
+  PENDING: { icon: Minus, color: "#9CA3AF", label: "Pending" },
   FAILED: { icon: XCircle, color: "#EF4444", label: "Failed" },
+  SKIPPED: { icon: SkipForward, color: "#6B7280", label: "Skipped" },
 };
+
+const DURATION_TIERS = [1, 3, 5, 10, 15];
 
 const PAGE_SIZE = 20;
 
@@ -96,13 +107,13 @@ function StatusBadge({ status }: { status: BriefingRequestStatus }) {
   );
 }
 
-function StageIcon({ stage }: { stage: StageProgress }) {
-  const cfg = STAGE_STATUS_ICON[stage.status];
+function StepStatusIcon({ step }: { step: StepProgress }) {
+  const cfg = STEP_STATUS_ICON[step.status];
   const Icon = cfg.icon;
   return (
     <span className="inline-flex items-center gap-1" title={cfg.label}>
       <Icon
-        className={cn("h-3.5 w-3.5", stage.status === "IN_PROGRESS" && "animate-spin")}
+        className={cn("h-3.5 w-3.5", cfg.spin && "animate-spin")}
         style={{ color: cfg.color }}
       />
       <span className="text-[10px]" style={{ color: cfg.color }}>
@@ -112,50 +123,101 @@ function StageIcon({ stage }: { stage: StageProgress }) {
   );
 }
 
-function EpisodeProgressTree({ episodes }: { episodes: EpisodeProgress[] }) {
-  if (!episodes || episodes.length === 0) {
+function DurationTierBadge({ minutes }: { minutes: number }) {
+  return (
+    <Badge className="bg-[#8B5CF6]/15 text-[#8B5CF6] text-[9px] font-mono tabular-nums shrink-0">
+      {minutes}m
+    </Badge>
+  );
+}
+
+function JobProgressTree({ jobs }: { jobs: JobProgress[] }) {
+  if (!jobs || jobs.length === 0) {
     return (
-      <div className="text-[10px] text-[#9CA3AF] py-2">No episode progress data</div>
+      <div className="text-[10px] text-[#9CA3AF] py-2">No job progress data</div>
     );
   }
 
   return (
     <div className="space-y-2 py-2">
-      {episodes.map((ep, idx) => {
-        const isLast = idx === episodes.length - 1;
+      {jobs.map((job, idx) => {
+        const isLast = idx === jobs.length - 1;
+        const jobStatusCfg = STEP_STATUS_ICON[job.status] ?? STEP_STATUS_ICON.PENDING;
+        const JobIcon = jobStatusCfg.icon;
+
         return (
-          <div key={ep.episodeId} className="pl-2">
+          <div key={job.jobId} className="pl-2">
+            {/* Job header row */}
             <div className="flex items-center gap-1.5 text-[11px]">
               <span className="text-[#9CA3AF] font-mono">{isLast ? "\u2514\u2500" : "\u251C\u2500"}</span>
+              <JobIcon
+                className={cn("h-3 w-3 shrink-0", jobStatusCfg.spin && "animate-spin")}
+                style={{ color: jobStatusCfg.color }}
+              />
               <span className="text-[#F9FAFB] font-medium truncate">
-                {ep.episodeTitle}
+                {job.episodeTitle}
               </span>
               <span className="text-[10px] text-[#9CA3AF] truncate">
-                ({ep.podcastTitle})
+                ({job.podcastTitle})
+              </span>
+              <DurationTierBadge minutes={job.durationTier} />
+              <StatusBadge status={job.status as BriefingRequestStatus} />
+              <span className="text-[9px] text-[#9CA3AF] ml-auto shrink-0">
+                Stage: {job.currentStage}
               </span>
             </div>
+
+            {/* Steps sub-rows */}
             <div className="pl-6 space-y-0.5 mt-1">
-              <div className="flex items-center gap-2 text-[10px]">
-                <span className="text-[#9CA3AF] font-mono">{isLast ? " " : "\u2502"} \u251C\u2500</span>
-                <span className="text-[#9CA3AF] w-24">Transcription:</span>
-                <StageIcon stage={ep.transcription} />
-              </div>
-              <div className="flex items-center gap-2 text-[10px]">
-                <span className="text-[#9CA3AF] font-mono">{isLast ? " " : "\u2502"} \u251C\u2500</span>
-                <span className="text-[#9CA3AF] w-24">Distillation:</span>
-                <StageIcon stage={ep.distillation} />
-              </div>
-              <div className="flex items-center gap-2 text-[10px]">
-                <span className="text-[#9CA3AF] font-mono">{isLast ? " " : "\u2502"} \u2514\u2500</span>
-                <span className="text-[#9CA3AF] w-24">Clip Gen:</span>
-                <StageIcon stage={ep.clipGeneration} />
-              </div>
+              {job.steps.map((step, si) => {
+                const isLastStep = si === job.steps.length - 1;
+                const connector = isLast ? " " : "\u2502";
+                return (
+                  <div key={step.stage} className="flex items-center gap-2 text-[10px]">
+                    <span className="text-[#9CA3AF] font-mono">
+                      {connector} {isLastStep ? "\u2514\u2500" : "\u251C\u2500"}
+                    </span>
+                    <span className="text-[#9CA3AF] w-28">{formatStageName(step.stage)}:</span>
+                    <StepStatusIcon step={step} />
+                    {step.cached && (
+                      <Badge className="bg-[#F59E0B]/15 text-[#F59E0B] text-[8px] px-1 py-0">
+                        <Zap className="h-2 w-2 mr-0.5 inline" />
+                        cached
+                      </Badge>
+                    )}
+                    {step.durationMs != null && (
+                      <span className="text-[9px] text-[#9CA3AF] font-mono tabular-nums">
+                        {step.durationMs}ms
+                      </span>
+                    )}
+                    {step.cost != null && (
+                      <span className="text-[9px] text-[#10B981] font-mono tabular-nums">
+                        ${step.cost.toFixed(4)}
+                      </span>
+                    )}
+                    {step.status === "FAILED" && step.errorMessage && (
+                      <span className="text-[9px] text-[#EF4444] truncate max-w-[200px]" title={step.errorMessage}>
+                        {step.errorMessage}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         );
       })}
     </div>
   );
+}
+
+function formatStageName(stage: string): string {
+  switch (stage) {
+    case "TRANSCRIPTION": return "Transcription";
+    case "DISTILLATION": return "Distillation";
+    case "CLIP_GENERATION": return "Clip Gen";
+    default: return stage;
+  }
 }
 
 function RequestRow({
@@ -171,6 +233,8 @@ function RequestRow({
   detail: BriefingRequest | null;
   detailLoading: boolean;
 }) {
+  const itemCount = request.items?.length ?? 0;
+
   return (
     <div className="border-b border-white/5 last:border-b-0">
       <button
@@ -201,7 +265,7 @@ function RequestRow({
           {request.targetMinutes}m
         </div>
         <div className="text-xs text-[#9CA3AF] font-mono tabular-nums">
-          {request.podcastIds.length}
+          {itemCount}
         </div>
         <div className="text-xs text-[#9CA3AF]">
           {request.isTest ? "Test" : "User"}
@@ -213,17 +277,32 @@ function RequestRow({
 
       {expanded && (
         <div className="px-3 pb-3 pl-10 bg-white/[0.01]">
+          {/* Items summary */}
+          {request.items && request.items.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {request.items.map((item, i) => (
+                <span
+                  key={i}
+                  className="inline-flex items-center gap-1 rounded bg-white/5 px-1.5 py-0.5 text-[9px] text-[#9CA3AF]"
+                >
+                  {item.useLatest ? "Latest" : item.episodeId?.slice(0, 8)}
+                  <DurationTierBadge minutes={item.durationTier} />
+                </span>
+              ))}
+            </div>
+          )}
+
           {detailLoading ? (
             <div className="space-y-1 py-2">
               <Skeleton className="h-4 w-full bg-white/5" />
               <Skeleton className="h-4 w-3/4 bg-white/5" />
               <Skeleton className="h-4 w-1/2 bg-white/5" />
             </div>
-          ) : detail?.episodeProgress ? (
-            <EpisodeProgressTree episodes={detail.episodeProgress} />
+          ) : detail?.jobProgress ? (
+            <JobProgressTree jobs={detail.jobProgress} />
           ) : (
             <div className="text-[10px] text-[#9CA3AF] py-2">
-              No episode progress data available
+              No job progress data available
             </div>
           )}
           {detail?.errorMessage && (
@@ -241,6 +320,104 @@ function RequestRow({
 
 // ── Test Briefing Dialog ──
 
+// ── Episode Picker (per-podcast single-select) ──
+
+function EpisodePicker({
+  podcastId,
+  selectedEpisodeId,
+  onSelect,
+}: {
+  podcastId: string;
+  selectedEpisodeId: string | null;
+  onSelect: (episodeId: string | null) => void;
+}) {
+  const apiFetch = useAdminFetch();
+  const [episodes, setEpisodes] = useState<AdminEpisode[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState("");
+
+  useEffect(() => {
+    setLoading(true);
+    apiFetch<{ data: AdminEpisode[] }>(`/episodes?podcastId=${podcastId}&pageSize=50`)
+      .then((r) => setEpisodes(r.data))
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [apiFetch, podcastId]);
+
+  const filtered = filter
+    ? episodes.filter((e) => e.title.toLowerCase().includes(filter.toLowerCase()))
+    : episodes;
+
+  if (loading) {
+    return (
+      <div className="space-y-1 py-1">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <Skeleton key={i} className="h-7 bg-white/5 rounded" />
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <div className="relative">
+        <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-[#9CA3AF]" />
+        <Input
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          placeholder="Filter episodes..."
+          className="h-7 pl-7 text-[10px] bg-[#0A1628] border-white/5 text-[#F9FAFB]"
+        />
+      </div>
+      <ScrollArea className="max-h-32">
+        <div className="space-y-0.5">
+          {filtered.length === 0 ? (
+            <div className="text-[10px] text-[#9CA3AF] py-2 text-center">No episodes found</div>
+          ) : (
+            filtered.map((ep) => (
+              <button
+                key={ep.id}
+                onClick={() => onSelect(selectedEpisodeId === ep.id ? null : ep.id)}
+                className={cn(
+                  "w-full flex items-center gap-2 rounded px-2 py-1.5 text-left transition-colors",
+                  selectedEpisodeId === ep.id
+                    ? "bg-[#3B82F6]/15 border border-[#3B82F6]/30"
+                    : "hover:bg-white/[0.03] border border-transparent"
+                )}
+              >
+                <div
+                  className={cn(
+                    "h-2.5 w-2.5 rounded-full border shrink-0",
+                    selectedEpisodeId === ep.id
+                      ? "bg-[#3B82F6] border-[#3B82F6]"
+                      : "border-[#9CA3AF]/40"
+                  )}
+                />
+                <span className="text-[10px] text-[#9CA3AF] font-mono tabular-nums shrink-0">
+                  {new Date(ep.publishedAt).toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                  })}
+                </span>
+                <span className="text-[10px] text-[#F9FAFB] truncate">{ep.title}</span>
+              </button>
+            ))
+          )}
+        </div>
+      </ScrollArea>
+    </div>
+  );
+}
+
+// ── Test Briefing Dialog ──
+
+interface PodcastSelection {
+  podcastId: string;
+  useLatest: boolean;
+  episodeId: string | null;
+  durationTier: number;
+}
+
 function TestBriefingDialog({
   open,
   onOpenChange,
@@ -253,9 +430,10 @@ function TestBriefingDialog({
   const apiFetch = useAdminFetch();
   const [podcasts, setPodcasts] = useState<AdminPodcast[]>([]);
   const [loadingPodcasts, setLoadingPodcasts] = useState(false);
-  const [selectedPodcasts, setSelectedPodcasts] = useState<Set<string>>(new Set());
+  const [selections, setSelections] = useState<PodcastSelection[]>([]);
   const [targetMinutes, setTargetMinutes] = useState(5);
   const [submitting, setSubmitting] = useState(false);
+  const [podcastSearch, setPodcastSearch] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -266,29 +444,67 @@ function TestBriefingDialog({
       .finally(() => setLoadingPodcasts(false));
   }, [open, apiFetch]);
 
+  const selectedIds = new Set(selections.map((s) => s.podcastId));
+
   const togglePodcast = (id: string) => {
-    setSelectedPodcasts((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+    if (selectedIds.has(id)) {
+      setSelections((prev) => prev.filter((s) => s.podcastId !== id));
+    } else {
+      setSelections((prev) => [...prev, { podcastId: id, useLatest: true, episodeId: null, durationTier: 5 }]);
+    }
+  };
+
+  const toggleLatest = (podcastId: string) => {
+    setSelections((prev) =>
+      prev.map((s) =>
+        s.podcastId === podcastId
+          ? { ...s, useLatest: !s.useLatest, episodeId: null }
+          : s
+      )
+    );
+  };
+
+  const setEpisode = (podcastId: string, episodeId: string | null) => {
+    setSelections((prev) =>
+      prev.map((s) =>
+        s.podcastId === podcastId ? { ...s, episodeId } : s
+      )
+    );
+  };
+
+  const setDurationTier = (podcastId: string, tier: number) => {
+    setSelections((prev) =>
+      prev.map((s) =>
+        s.podcastId === podcastId ? { ...s, durationTier: tier } : s
+      )
+    );
   };
 
   const handleSubmit = async () => {
-    if (selectedPodcasts.size === 0) return;
+    if (selections.length === 0) return;
+    const invalid = selections.some((s) => !s.useLatest && !s.episodeId);
+    if (invalid) return;
+
     setSubmitting(true);
     try {
+      const items: BriefingRequestItem[] = selections.map((s) => ({
+        podcastId: s.podcastId,
+        episodeId: s.useLatest ? null : s.episodeId,
+        durationTier: s.durationTier,
+        useLatest: s.useLatest,
+      }));
+
       await apiFetch("/requests/test-briefing", {
         method: "POST",
         body: JSON.stringify({
-          podcastIds: Array.from(selectedPodcasts),
+          items,
           targetMinutes,
         }),
       });
       onOpenChange(false);
-      setSelectedPodcasts(new Set());
+      setSelections([]);
       setTargetMinutes(5);
+      setPodcastSearch("");
       onSuccess();
     } catch (e) {
       console.error("Failed to create test briefing:", e);
@@ -297,9 +513,15 @@ function TestBriefingDialog({
     }
   };
 
+  const filteredPodcasts = podcastSearch
+    ? podcasts.filter((p) => p.title.toLowerCase().includes(podcastSearch.toLowerCase()))
+    : podcasts;
+
+  const invalidCount = selections.filter((s) => !s.useLatest && !s.episodeId).length;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-[#1A2942] border-white/10 text-[#F9FAFB] sm:max-w-md">
+      <DialogContent className="bg-[#1A2942] border-white/10 text-[#F9FAFB] sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="text-[#F9FAFB] text-sm flex items-center gap-2">
             <FlaskConical className="h-4 w-4 text-[#F97316]" />
@@ -311,8 +533,8 @@ function TestBriefingDialog({
           {/* Duration input */}
           <div className="flex items-center justify-between">
             <div>
-              <label className="text-xs text-[#F9FAFB] font-medium">Duration (minutes)</label>
-              <p className="text-[10px] text-[#9CA3AF] mt-0.5">1-30 minutes</p>
+              <label className="text-xs text-[#F9FAFB] font-medium">Target Duration (minutes)</label>
+              <p className="text-[10px] text-[#9CA3AF] mt-0.5">Total briefing length, 1-30 minutes</p>
             </div>
             <Input
               type="number"
@@ -326,64 +548,143 @@ function TestBriefingDialog({
 
           <Separator className="bg-white/5" />
 
-          {/* Podcast picker */}
+          {/* Podcast picker + episode selection */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className="text-xs text-[#F9FAFB] font-medium">Select Podcasts</label>
+              <label className="text-xs text-[#F9FAFB] font-medium">Podcasts & Episodes</label>
               <Badge className="bg-white/5 text-[#9CA3AF] text-[9px]">
-                {selectedPodcasts.size} selected
+                {selections.length} selected
               </Badge>
             </div>
 
-            <ScrollArea className="h-60 rounded-md border border-white/5 bg-[#0F1D32]">
+            {/* Podcast search */}
+            <div className="relative mb-2">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#9CA3AF]" />
+              <Input
+                value={podcastSearch}
+                onChange={(e) => setPodcastSearch(e.target.value)}
+                placeholder="Search podcasts..."
+                className="h-8 pl-8 text-xs bg-[#0F1D32] border-white/5 text-[#F9FAFB]"
+              />
+            </div>
+
+            <ScrollArea className="h-72 rounded-md border border-white/5 bg-[#0F1D32]">
               <div className="p-2 space-y-0.5">
                 {loadingPodcasts ? (
                   Array.from({ length: 5 }).map((_, i) => (
                     <Skeleton key={i} className="h-10 bg-white/5 rounded" />
                   ))
-                ) : podcasts.length === 0 ? (
+                ) : filteredPodcasts.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-8 text-[#9CA3AF]">
                     <Inbox className="h-5 w-5 mb-1.5 opacity-40" />
                     <span className="text-[10px]">No podcasts found</span>
                   </div>
                 ) : (
-                  podcasts.map((p) => (
-                    <button
-                      key={p.id}
-                      onClick={() => togglePodcast(p.id)}
-                      className={cn(
-                        "w-full flex items-center gap-2.5 rounded-md px-2.5 py-2 transition-colors text-left",
-                        selectedPodcasts.has(p.id)
-                          ? "bg-[#3B82F6]/10 border border-[#3B82F6]/20"
-                          : "hover:bg-white/[0.03] border border-transparent"
-                      )}
-                    >
-                      <Checkbox
-                        checked={selectedPodcasts.has(p.id)}
-                        className="data-[state=checked]:bg-[#3B82F6] data-[state=checked]:border-[#3B82F6]"
-                        tabIndex={-1}
-                      />
-                      {p.imageUrl ? (
-                        <img
-                          src={p.imageUrl}
-                          alt=""
-                          className="h-7 w-7 rounded object-cover shrink-0"
-                        />
-                      ) : (
-                        <div className="h-7 w-7 rounded bg-white/5 shrink-0" />
-                      )}
-                      <span className="text-xs text-[#F9FAFB] truncate">{p.title}</span>
-                    </button>
-                  ))
+                  filteredPodcasts.map((p) => {
+                    const sel = selections.find((s) => s.podcastId === p.id);
+                    const isSelected = !!sel;
+
+                    return (
+                      <div key={p.id} className="space-y-0">
+                        {/* Podcast row */}
+                        <button
+                          onClick={() => togglePodcast(p.id)}
+                          className={cn(
+                            "w-full flex items-center gap-2.5 rounded-md px-2.5 py-2 transition-colors text-left",
+                            isSelected
+                              ? "bg-[#3B82F6]/10 border border-[#3B82F6]/20"
+                              : "hover:bg-white/[0.03] border border-transparent"
+                          )}
+                        >
+                          <Checkbox
+                            checked={isSelected}
+                            className="data-[state=checked]:bg-[#3B82F6] data-[state=checked]:border-[#3B82F6]"
+                            tabIndex={-1}
+                          />
+                          {p.imageUrl ? (
+                            <img
+                              src={p.imageUrl}
+                              alt=""
+                              className="h-7 w-7 rounded object-cover shrink-0"
+                            />
+                          ) : (
+                            <div className="h-7 w-7 rounded bg-white/5 shrink-0" />
+                          )}
+                          <span className="text-xs text-[#F9FAFB] truncate flex-1">{p.title}</span>
+                          {isSelected && (
+                            <span className="text-[9px] text-[#9CA3AF] shrink-0">
+                              {sel.useLatest ? "Latest" : sel.episodeId ? "Picked" : "Pick..."}
+                            </span>
+                          )}
+                        </button>
+
+                        {/* Episode selection panel (shown when podcast is selected) */}
+                        {isSelected && sel && (
+                          <div className="ml-10 mr-2 mb-1 rounded-md bg-[#0A1628] border border-white/5 p-2 space-y-2">
+                            {/* Duration tier selector */}
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] text-[#9CA3AF] w-20">Duration tier:</span>
+                              <div className="flex items-center gap-1">
+                                {DURATION_TIERS.map((t) => (
+                                  <button
+                                    key={t}
+                                    onClick={(e) => { e.stopPropagation(); setDurationTier(p.id, t); }}
+                                    className={cn(
+                                      "rounded px-2 py-0.5 text-[10px] font-mono tabular-nums transition-colors",
+                                      sel.durationTier === t
+                                        ? "bg-[#8B5CF6]/20 text-[#8B5CF6] border border-[#8B5CF6]/30"
+                                        : "text-[#9CA3AF] hover:text-[#F9FAFB] hover:bg-white/5 border border-transparent"
+                                    )}
+                                  >
+                                    {t}m
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* Latest toggle */}
+                            <button
+                              onClick={(e) => { e.stopPropagation(); toggleLatest(p.id); }}
+                              className="flex items-center gap-2 w-full text-left"
+                            >
+                              {sel.useLatest ? (
+                                <ToggleRight className="h-4 w-4 text-[#3B82F6]" />
+                              ) : (
+                                <ToggleLeft className="h-4 w-4 text-[#9CA3AF]" />
+                              )}
+                              <span className="text-[10px] text-[#F9FAFB]">Use latest episode</span>
+                            </button>
+
+                            {/* Episode picker (when not using latest) */}
+                            {!sel.useLatest && (
+                              <EpisodePicker
+                                podcastId={p.id}
+                                selectedEpisodeId={sel.episodeId}
+                                onSelect={(eid) => setEpisode(p.id, eid)}
+                              />
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
                 )}
               </div>
             </ScrollArea>
           </div>
 
+          {/* Validation warning */}
+          {invalidCount > 0 && (
+            <div className="text-[10px] text-[#F97316] flex items-center gap-1">
+              <XCircle className="h-3 w-3" />
+              {invalidCount} podcast{invalidCount > 1 ? "s" : ""} need{invalidCount === 1 ? "s" : ""} an episode selected
+            </div>
+          )}
+
           {/* Submit */}
           <Button
             onClick={handleSubmit}
-            disabled={submitting || selectedPodcasts.size === 0}
+            disabled={submitting || selections.length === 0 || invalidCount > 0}
             className="w-full bg-[#3B82F6] hover:bg-[#3B82F6]/80 text-white text-xs gap-1.5"
           >
             {submitting ? (
@@ -537,7 +838,7 @@ export default function Requests() {
           <span>Status</span>
           <span>User</span>
           <span>Duration</span>
-          <span>Pods</span>
+          <span>Items</span>
           <span>Type</span>
           <span>Created</span>
         </div>

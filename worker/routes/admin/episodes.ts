@@ -2,6 +2,12 @@ import { Hono } from "hono";
 import { createPrismaClient } from "../../lib/db";
 import type { Env } from "../../types";
 
+const STAGE_NAMES: Record<string, string> = {
+  TRANSCRIPTION: "Transcription",
+  DISTILLATION: "Distillation",
+  CLIP_GENERATION: "Clip Generation",
+};
+
 const episodesRoutes = new Hono<{ Bindings: Env }>();
 
 episodesRoutes.get("/health", (c) => c.json({ status: "ok" }));
@@ -112,44 +118,50 @@ episodesRoutes.get("/:id", async (c) => {
         })
       : [];
 
-    // Get pipeline trace - jobs related to this episode
-    let pipelineJobs: Awaited<ReturnType<typeof prisma.pipelineJob.findMany>> = [];
+    // Get pipeline trace - jobs + steps for this episode
+    let pipelineJobs: Awaited<ReturnType<typeof prisma.pipelineJob.findMany<{ include: { steps: true } }>>> = [];
     try {
       pipelineJobs = await prisma.pipelineJob.findMany({
-        where: { entityId: episode.id, entityType: "episode" },
+        where: { episodeId: episode.id },
         orderBy: { createdAt: "desc" },
+        include: { steps: { orderBy: { createdAt: "asc" } } },
       });
     } catch {
       // PipelineJob table may not exist
     }
 
-    const stages = [1, 2, 3, 4, 5].map((stage) => {
-      const stageJobs = pipelineJobs.filter((j) => j.stage === stage);
-      const latest = stageJobs[0];
-      const stageNames: Record<number, string> = {
-        1: "Feed Refresh", 2: "Transcription", 3: "Distillation",
-        4: "Clip Generation", 5: "Briefing Assembly",
-      };
+    // Build stage trace from steps across all jobs for this episode
+    const stageKeys = ["TRANSCRIPTION", "DISTILLATION", "CLIP_GENERATION"] as const;
+    const stages = stageKeys.map((stage) => {
+      // Find the most recent step for this stage across all jobs
+      let latestStep: (typeof pipelineJobs)[number]["steps"][number] | undefined;
+      for (const job of pipelineJobs) {
+        const step = job.steps.find((s) => s.stage === stage);
+        if (step && (!latestStep || step.createdAt > latestStep.createdAt)) {
+          latestStep = step;
+        }
+      }
 
-      if (!latest) {
+      if (!latestStep) {
         return {
           stage,
-          name: stageNames[stage] ?? `Stage ${stage}`,
+          name: STAGE_NAMES[stage] ?? stage,
           status: "pending" as const,
         };
       }
 
       return {
         stage,
-        name: stageNames[stage] ?? `Stage ${stage}`,
-        status: latest.status === "COMPLETED" ? "completed" as const
-          : latest.status === "FAILED" ? "failed" as const
-          : latest.status === "IN_PROGRESS" ? "in_progress" as const
+        name: STAGE_NAMES[stage] ?? stage,
+        status: latestStep.status === "COMPLETED" ? "completed" as const
+          : latestStep.status === "FAILED" ? "failed" as const
+          : latestStep.status === "IN_PROGRESS" ? "in_progress" as const
+          : latestStep.status === "SKIPPED" ? "skipped" as const
           : "pending" as const,
-        startedAt: latest.startedAt?.toISOString(),
-        completedAt: latest.completedAt?.toISOString(),
-        durationMs: latest.durationMs ?? undefined,
-        cost: latest.cost ?? undefined,
+        startedAt: latestStep.startedAt?.toISOString(),
+        completedAt: latestStep.completedAt?.toISOString(),
+        durationMs: latestStep.durationMs ?? undefined,
+        cost: latestStep.cost ?? undefined,
       };
     });
 
@@ -197,7 +209,7 @@ episodesRoutes.get("/:id", async (c) => {
   }
 });
 
-// POST /:id/reprocess - Create new pipeline job for episode
+// POST /:id/reprocess - Dispatch episode to transcription queue for reprocessing
 episodesRoutes.post("/:id/reprocess", async (c) => {
   const prisma = createPrismaClient(c.env.HYPERDRIVE);
   try {
@@ -209,19 +221,14 @@ episodesRoutes.post("/:id/reprocess", async (c) => {
     if (!episode) return c.json({ error: "Episode not found" }, 404);
 
     try {
-      const job = await prisma.pipelineJob.create({
-        data: {
-          type: "TRANSCRIPTION",
-          status: "PENDING",
-          entityId: episode.id,
-          entityType: "episode",
-          stage: 2,
-        },
+      await c.env.TRANSCRIPTION_QUEUE.send({
+        type: "manual",
+        episodeId: episode.id,
       });
 
-      return c.json({ data: { jobId: job.id, status: job.status } }, 201);
+      return c.json({ data: { episodeId: episode.id, status: "dispatched" } }, 201);
     } catch {
-      return c.json({ error: "Pipeline jobs not available" }, 503);
+      return c.json({ error: "Transcription queue not available" }, 503);
     }
   } finally {
     c.executionCtx.waitUntil(prisma.$disconnect());

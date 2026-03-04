@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { createPrismaClient } from "../../lib/db";
 import { getAuth } from "../../middleware/auth";
 import type { Env } from "../../types";
+import type { BriefingRequestItem } from "../../../src/types/admin";
 
 const requestsRoutes = new Hono<{ Bindings: Env }>();
 
@@ -35,7 +36,7 @@ requestsRoutes.get("/", async (c) => {
       userEmail: r.user?.email,
       status: r.status,
       targetMinutes: r.targetMinutes,
-      podcastIds: r.podcastIds,
+      items: r.items as unknown as BriefingRequestItem[],
       isTest: r.isTest,
       briefingId: r.briefingId,
       errorMessage: r.errorMessage,
@@ -49,7 +50,7 @@ requestsRoutes.get("/", async (c) => {
   }
 });
 
-// GET /:id — Request detail with episode progress
+// GET /:id — Request detail with job/step progress
 requestsRoutes.get("/:id", async (c) => {
   const prisma = createPrismaClient(c.env.HYPERDRIVE);
   try {
@@ -59,31 +60,32 @@ requestsRoutes.get("/:id", async (c) => {
     });
     if (!request) return c.json({ error: "Request not found" }, 404);
 
-    const episodeProgress = [];
-    for (const podcastId of request.podcastIds) {
-      const episode = await prisma.episode.findFirst({
-        where: { podcastId },
-        orderBy: { publishedAt: "desc" },
-        include: {
-          distillation: true,
-          clips: { where: { status: "COMPLETED" } },
-          podcast: { select: { title: true } },
-        },
-      });
-      if (!episode) continue;
+    const jobs = await prisma.pipelineJob.findMany({
+      where: { requestId: request.id },
+      include: {
+        episode: { select: { title: true, podcast: { select: { title: true } } } },
+        steps: { orderBy: { createdAt: "asc" } },
+      },
+      orderBy: { createdAt: "asc" },
+    });
 
-      const dist = episode.distillation;
-      episodeProgress.push({
-        episodeId: episode.id,
-        episodeTitle: episode.title,
-        podcastTitle: episode.podcast.title,
-        transcription: getStageStatus(dist, "transcription"),
-        distillation: getStageStatus(dist, "distillation"),
-        clipGeneration: {
-          status: episode.clips.length > 0 ? ("COMPLETED" as const) : ("WAITING" as const),
-        },
-      });
-    }
+    const jobProgress = jobs.map((job: any) => ({
+      jobId: job.id,
+      episodeId: job.episodeId,
+      episodeTitle: job.episode.title,
+      podcastTitle: job.episode.podcast.title,
+      durationTier: job.durationTier,
+      status: job.status,
+      currentStage: job.currentStage,
+      steps: job.steps.map((s: any) => ({
+        stage: s.stage,
+        status: s.status,
+        cached: s.cached,
+        durationMs: s.durationMs,
+        cost: s.cost,
+        errorMessage: s.errorMessage,
+      })),
+    }));
 
     return c.json({
       data: {
@@ -93,13 +95,13 @@ requestsRoutes.get("/:id", async (c) => {
         userEmail: (request as any).user?.email,
         status: request.status,
         targetMinutes: request.targetMinutes,
-        podcastIds: request.podcastIds,
+        items: request.items as unknown as BriefingRequestItem[],
         isTest: request.isTest,
         briefingId: request.briefingId,
         errorMessage: request.errorMessage,
         createdAt: request.createdAt.toISOString(),
         updatedAt: request.updatedAt.toISOString(),
-        episodeProgress,
+        jobProgress,
       },
     });
   } finally {
@@ -107,36 +109,38 @@ requestsRoutes.get("/:id", async (c) => {
   }
 });
 
-function getStageStatus(dist: any, stage: "transcription" | "distillation") {
-  if (!dist) return { status: "WAITING" as const };
-  if (stage === "transcription") {
-    if (dist.status === "PENDING") return { status: "WAITING" as const };
-    if (dist.status === "FETCHING_TRANSCRIPT") return { status: "IN_PROGRESS" as const };
-    if (dist.status === "FAILED") return { status: "FAILED" as const, errorMessage: dist.errorMessage };
-    return { status: "COMPLETED" as const };
-  }
-  if (["PENDING", "FETCHING_TRANSCRIPT", "TRANSCRIPT_READY"].includes(dist.status)) return { status: "WAITING" as const };
-  if (dist.status === "EXTRACTING_CLAIMS") return { status: "IN_PROGRESS" as const };
-  if (dist.status === "COMPLETED") return { status: "COMPLETED" as const };
-  return { status: "FAILED" as const, errorMessage: dist.errorMessage };
-}
-
 // POST /test-briefing — Create admin test briefing request
 requestsRoutes.post("/test-briefing", async (c) => {
   const prisma = createPrismaClient(c.env.HYPERDRIVE);
   try {
-    const body = await c.req.json<{ podcastIds: string[]; targetMinutes: number }>();
-    if (!body.podcastIds?.length) return c.json({ error: "podcastIds required" }, 400);
+    const body = await c.req.json<{
+      items: BriefingRequestItem[];
+      targetMinutes: number;
+    }>();
+    if (!body.items?.length) return c.json({ error: "items required" }, 400);
 
     const auth = getAuth(c);
     const user = await prisma.user.findUnique({ where: { clerkId: auth!.userId! } });
     if (!user) return c.json({ error: "User not found" }, 404);
 
+    // Resolve useLatest items to actual episodeIds
+    const resolvedItems = await Promise.all(
+      body.items.map(async (item) => {
+        if (!item.useLatest || item.episodeId) return item;
+        const latest = await prisma.episode.findFirst({
+          where: { podcastId: item.podcastId },
+          orderBy: { publishedAt: "desc" },
+          select: { id: true },
+        });
+        return { ...item, episodeId: latest?.id ?? null };
+      })
+    );
+
     const request = await prisma.briefingRequest.create({
       data: {
         userId: user.id,
         targetMinutes: body.targetMinutes || 5,
-        podcastIds: body.podcastIds,
+        items: resolvedItems as any,
         isTest: true,
         status: "PENDING",
       },

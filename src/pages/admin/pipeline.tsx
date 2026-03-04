@@ -3,7 +3,6 @@ import {
   Mic,
   Sparkles,
   Scissors,
-  Package,
   ArrowRight,
   Clock,
   DollarSign,
@@ -15,12 +14,10 @@ import {
   AlertTriangle,
   FileJson,
   Timer,
-  Pause,
   Play,
   FileText,
-  User,
-  Target,
   Ban,
+  Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -54,29 +51,29 @@ import { usePipelineConfig } from "@/hooks/use-pipeline-config";
 import { PipelineControls } from "@/components/admin/pipeline-controls";
 import type {
   PipelineJob,
+  PipelineStep,
+  PipelineStage,
   PipelineStageStats,
   PipelineJobStatus,
   PipelineTriggerResult,
   BriefingRequest,
-  EnrichedPipelineJob,
-  PipelineJobRequestContext,
 } from "@/types/admin";
 
 // ── Constants ──
 
-const STAGE_META = [
-  { stage: 2, name: "Transcription", icon: Mic, color: "#8B5CF6" },
-  { stage: 3, name: "Distillation", icon: Sparkles, color: "#F59E0B" },
-  { stage: 4, name: "Clip Generation", icon: Scissors, color: "#10B981" },
-  { stage: 5, name: "Briefing Assembly", icon: Package, color: "#14B8A6" },
+const STAGE_META: { stage: PipelineStage; name: string; icon: React.ElementType; color: string }[] = [
+  { stage: "TRANSCRIPTION", name: "Transcription", icon: Mic, color: "#8B5CF6" },
+  { stage: "DISTILLATION", name: "Distillation", icon: Sparkles, color: "#F59E0B" },
+  { stage: "CLIP_GENERATION", name: "Clip Generation", icon: Scissors, color: "#10B981" },
 ];
+
+const STAGE_ORDER: PipelineStage[] = ["TRANSCRIPTION", "DISTILLATION", "CLIP_GENERATION"];
 
 const STATUS_PRIORITY: Record<string, number> = {
   IN_PROGRESS: 0,
   PENDING: 1,
-  RETRYING: 2,
-  FAILED: 3,
-  COMPLETED: 4,
+  FAILED: 2,
+  COMPLETED: 3,
 };
 
 const STATUS_CONFIG: Record<string, { color: string; icon: React.ElementType; label: string }> = {
@@ -84,7 +81,6 @@ const STATUS_CONFIG: Record<string, { color: string; icon: React.ElementType; la
   FAILED: { color: "#EF4444", icon: XCircle, label: "Failed" },
   IN_PROGRESS: { color: "#F59E0B", icon: Loader2, label: "Running" },
   PENDING: { color: "#9CA3AF", icon: Clock, label: "Queued" },
-  RETRYING: { color: "#F97316", icon: RefreshCw, label: "Retry" },
 };
 
 // ── Helpers ──
@@ -113,6 +109,10 @@ function relativeTime(iso: string | undefined): string {
   return `${Math.floor(h / 24)}d ago`;
 }
 
+function stageName(stage: PipelineStage): string {
+  return STAGE_META.find((m) => m.stage === stage)?.name ?? stage;
+}
+
 // ── Sub-components ──
 
 function StatusBadge({ status }: { status: PipelineJobStatus }) {
@@ -129,13 +129,37 @@ function StatusBadge({ status }: { status: PipelineJobStatus }) {
   );
 }
 
+function DurationTierBadge({ minutes }: { minutes: number }) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-[#3B82F6]/10 text-[#3B82F6]">
+      <Timer className="h-3 w-3" />
+      {minutes} min
+    </span>
+  );
+}
+
+function StageBadge({ stage }: { stage: PipelineStage }) {
+  const meta = STAGE_META.find((m) => m.stage === stage);
+  if (!meta) return null;
+  const Icon = meta.icon;
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium"
+      style={{ backgroundColor: `${meta.color}15`, color: meta.color }}
+    >
+      <Icon className="h-3 w-3" />
+      {meta.name}
+    </span>
+  );
+}
+
 function StageHeader({
   meta,
   stats,
   stageToggle,
   pendingCount,
 }: {
-  meta: typeof STAGE_META[number];
+  meta: (typeof STAGE_META)[number];
   stats: PipelineStageStats | undefined;
   stageToggle?: React.ReactNode;
   pendingCount?: number;
@@ -145,12 +169,11 @@ function StageHeader({
     <div className="p-3 border-b border-white/5">
       <div className="flex items-center gap-2 mb-2">
         <span
-          className="flex items-center justify-center h-6 w-6 rounded-full text-xs font-bold"
+          className="flex items-center justify-center h-6 w-6 rounded-full"
           style={{ backgroundColor: `${meta.color}20`, color: meta.color }}
         >
-          {meta.stage}
+          <Icon className="h-3.5 w-3.5" />
         </span>
-        <Icon className="h-3.5 w-3.5" style={{ color: meta.color }} />
         <span className="text-xs font-semibold">{meta.name}</span>
         {pendingCount != null && pendingCount > 0 && (
           <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-mono font-medium bg-[#9CA3AF]/10 text-[#9CA3AF]">
@@ -198,7 +221,6 @@ function StageHeader({
 }
 
 function JobCard({ job, onClick }: { job: PipelineJob; onClick: () => void }) {
-  const stageMeta = STAGE_META.find((m) => m.stage === job.stage);
   return (
     <button
       onClick={onClick}
@@ -209,7 +231,7 @@ function JobCard({ job, onClick }: { job: PipelineJob; onClick: () => void }) {
     >
       <div className="flex items-start justify-between gap-1.5 mb-1.5">
         <span className="text-[11px] font-medium text-[#F9FAFB] truncate flex-1 leading-tight">
-          {job.episodeTitle ?? job.entityId}
+          {job.episodeTitle ?? job.episodeId}
         </span>
         <ChevronRight className="h-3 w-3 text-[#9CA3AF]/0 group-hover:text-[#9CA3AF]/60 transition-colors shrink-0 mt-0.5" />
       </div>
@@ -221,22 +243,15 @@ function JobCard({ job, onClick }: { job: PipelineJob; onClick: () => void }) {
           <span className="text-[10px] text-[#9CA3AF] truncate">{job.podcastTitle}</span>
         </div>
       )}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between mb-1.5">
         <StatusBadge status={job.status} />
-        <div className="flex items-center gap-2 text-[10px] text-[#9CA3AF]">
-          {job.durationMs != null && (
-            <span className="font-mono tabular-nums">{formatDuration(job.durationMs)}</span>
-          )}
-          {job.cost != null && (
-            <span className="font-mono tabular-nums">{formatCost(job.cost)}</span>
-          )}
+        <div className="flex items-center gap-1.5">
+          <DurationTierBadge minutes={job.durationTier} />
+          <StageBadge stage={job.currentStage} />
         </div>
       </div>
-      <div className="mt-1.5 text-[10px] text-[#9CA3AF]/60 font-mono">
-        {relativeTime(job.startedAt ?? job.createdAt)}
-        {job.retryCount > 0 && (
-          <span className="ml-1.5 text-[#F97316]">retry #{job.retryCount}</span>
-        )}
+      <div className="text-[10px] text-[#9CA3AF]/60 font-mono">
+        {relativeTime(job.createdAt)}
       </div>
     </button>
   );
@@ -262,12 +277,11 @@ function PipelineSummaryBar({
   onFilter: (status: PipelineJobStatus | null) => void;
   activeFilter: PipelineJobStatus | null;
 }) {
-  const counts = {
+  const counts: Record<PipelineJobStatus, number> = {
     PENDING: jobs.filter((j) => j.status === "PENDING").length,
     IN_PROGRESS: jobs.filter((j) => j.status === "IN_PROGRESS").length,
     COMPLETED: jobs.filter((j) => j.status === "COMPLETED").length,
     FAILED: jobs.filter((j) => j.status === "FAILED").length,
-    RETRYING: jobs.filter((j) => j.status === "RETRYING").length,
   };
 
   const badges: { status: PipelineJobStatus; label: string; color: string }[] = [
@@ -302,30 +316,36 @@ function PipelineSummaryBar({
   );
 }
 
-function UpstreamProgressDots({
-  progress,
-}: {
-  progress: EnrichedPipelineJob["upstreamProgress"];
-}) {
-  if (!progress || progress.length === 0) return null;
+function StepRow({ step }: { step: PipelineStep }) {
+  const meta = STAGE_META.find((m) => m.stage === step.stage);
+  const cfg = STATUS_CONFIG[step.status] ?? STATUS_CONFIG.PENDING;
+  const Icon = cfg.icon;
   return (
-    <div className="flex items-center gap-1">
-      {progress.map((s) => {
-        const color =
-          s.status === "COMPLETED" ? "#10B981" :
-          s.status === "IN_PROGRESS" ? "#F59E0B" :
-          s.status === "FAILED" ? "#EF4444" : "#9CA3AF";
-        return (
-          <div key={s.stage} className="flex flex-col items-center gap-0.5">
-            <span
-              className="h-2.5 w-2.5 rounded-full"
-              style={{ backgroundColor: color }}
-              title={`${s.name}: ${s.status}`}
-            />
-            <span className="text-[8px] text-[#9CA3AF]">{s.stage}</span>
-          </div>
-        );
-      })}
+    <div className="flex items-center gap-2 rounded-md bg-white/[0.03] border border-white/5 p-2">
+      <span
+        className="flex items-center justify-center h-5 w-5 rounded-full shrink-0"
+        style={{ backgroundColor: `${cfg.color}15` }}
+      >
+        <Icon className={cn("h-3 w-3", step.status === "IN_PROGRESS" && "animate-spin")} style={{ color: cfg.color }} />
+      </span>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5">
+          <span className="text-[11px] font-medium">{meta?.name ?? step.stage}</span>
+          {step.cached && (
+            <span className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-medium bg-[#10B981]/10 text-[#10B981]">
+              <Zap className="h-2.5 w-2.5" />
+              cached
+            </span>
+          )}
+        </div>
+        {step.errorMessage && (
+          <div className="text-[10px] text-[#EF4444]/80 truncate mt-0.5">{step.errorMessage}</div>
+        )}
+      </div>
+      <div className="flex items-center gap-2 text-[10px] text-[#9CA3AF] font-mono tabular-nums shrink-0">
+        {step.durationMs != null && <span>{formatDuration(step.durationMs)}</span>}
+        {step.cost != null && <span>{formatCost(step.cost)}</span>}
+      </div>
     </div>
   );
 }
@@ -342,46 +362,26 @@ function PipelineDetailSheet({
   onRefresh: () => void;
 }) {
   const apiFetch = useAdminFetch();
-  const [trace, setTrace] = useState<PipelineJob[]>([]);
-  const [traceLoading, setTraceLoading] = useState(false);
-  const [enriched, setEnriched] = useState<EnrichedPipelineJob | null>(null);
-  const [enrichedLoading, setEnrichedLoading] = useState(false);
+  const [detail, setDetail] = useState<PipelineJob | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [cancelling, setCancelling] = useState(false);
-  const [triggeringEpisode, setTriggeringEpisode] = useState<string | null>(null);
-
-  // Fetch enriched job details
-  useEffect(() => {
-    if (!job) return;
-    setEnrichedLoading(true);
-    setEnriched(null);
-    apiFetch<{ data: EnrichedPipelineJob }>(`/pipeline/jobs/${job.id}`)
-      .then((r) => setEnriched(r.data))
-      .catch(() => setEnriched(null))
-      .finally(() => setEnrichedLoading(false));
-  }, [job, apiFetch]);
 
   useEffect(() => {
     if (!job) return;
-    setTraceLoading(true);
-    const params = new URLSearchParams();
-    if (job.entityType === "episode") {
-      params.set("search", job.entityId);
-    }
-    apiFetch<{ data: PipelineJob[]; total: number }>(`/pipeline/jobs?${params}`)
-      .then((r) => {
-        const entityJobs = r.data.filter(
-          (j) => j.entityId === job.entityId && j.entityType === job.entityType
-        );
-        setTrace(entityJobs);
-      })
-      .catch(() => setTrace([]))
-      .finally(() => setTraceLoading(false));
+    setDetailLoading(true);
+    setDetail(null);
+    apiFetch<{ data: PipelineJob }>(`/pipeline/jobs/${job.id}`)
+      .then((r) => setDetail(r.data))
+      .catch(() => setDetail(null))
+      .finally(() => setDetailLoading(false));
   }, [job, apiFetch]);
 
   if (!job) return null;
 
-  const stageName = STAGE_META.find((m) => m.stage === job.stage)?.name ?? `Stage ${job.stage}`;
+  const steps = (detail?.steps ?? []).sort(
+    (a, b) => STAGE_ORDER.indexOf(a.stage) - STAGE_ORDER.indexOf(b.stage)
+  );
 
   return (
     <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
@@ -391,18 +391,17 @@ function PipelineDetailSheet({
       >
         <SheetHeader className="p-4 border-b border-white/5">
           <SheetTitle className="text-[#F9FAFB] text-sm">
-            {job.episodeTitle ?? job.entityId}
+            {job.episodeTitle ?? job.episodeId}
           </SheetTitle>
           <SheetDescription className="text-[#9CA3AF] text-xs">
-            Job {job.id.slice(0, 8)} &middot; {job.type.replace(/_/g, " ")}
+            Job {job.id.slice(0, 8)} &middot; {job.durationTier} min tier
           </SheetDescription>
         </SheetHeader>
 
         <Tabs defaultValue="overview" className="flex flex-col h-[calc(100%-5rem)]">
           <TabsList variant="line" className="px-4 border-b border-white/5 bg-transparent">
             <TabsTrigger value="overview" className="text-xs">Overview</TabsTrigger>
-            <TabsTrigger value="trace" className="text-xs">Pipeline Trace</TabsTrigger>
-            <TabsTrigger value="logs" className="text-xs">Logs</TabsTrigger>
+            <TabsTrigger value="steps" className="text-xs">Steps</TabsTrigger>
             <TabsTrigger value="actions" className="text-xs">Actions</TabsTrigger>
           </TabsList>
 
@@ -410,50 +409,12 @@ function PipelineDetailSheet({
             <div className="space-y-3 text-xs">
               <div className="grid grid-cols-2 gap-2">
                 <Field label="Status"><StatusBadge status={job.status} /></Field>
-                <Field label="Stage">{stageName}</Field>
+                <Field label="Current Stage"><StageBadge stage={job.currentStage} /></Field>
+                <Field label="Duration Tier"><DurationTierBadge minutes={job.durationTier} /></Field>
                 <Field label="Created">{relativeTime(job.createdAt)}</Field>
-                <Field label="Duration">{formatDuration(job.durationMs)}</Field>
-                <Field label="Cost">{formatCost(job.cost)}</Field>
-                <Field label="Retries">{job.retryCount}</Field>
+                <Field label="Request">{job.requestId.slice(0, 8)}...</Field>
+                <Field label="Updated">{relativeTime(job.updatedAt)}</Field>
               </div>
-
-              {/* PENDING job enriched info */}
-              {job.status === "PENDING" && enriched && (
-                <>
-                  {enriched.requestContext && (
-                    <div className="rounded-md bg-white/[0.03] border border-white/5 p-3 space-y-2">
-                      <div className="flex items-center gap-1.5 text-[10px] font-semibold text-[#9CA3AF] uppercase">
-                        <User className="h-3 w-3" /> Request Context
-                      </div>
-                      <div className="grid grid-cols-2 gap-1.5 text-[11px]">
-                        <div className="text-[#9CA3AF]">User</div>
-                        <div>{enriched.requestContext.userEmail ?? enriched.requestContext.userId}</div>
-                        <div className="text-[#9CA3AF]">Target</div>
-                        <div className="flex items-center gap-1">
-                          <Target className="h-3 w-3 text-[#3B82F6]" />
-                          {enriched.requestContext.targetMinutes} min
-                        </div>
-                        <div className="text-[#9CA3AF]">Requested</div>
-                        <div>{relativeTime(enriched.requestContext.createdAt)}</div>
-                      </div>
-                    </div>
-                  )}
-                  {enriched.queuePosition != null && (
-                    <div className="rounded-md bg-[#F59E0B]/10 border border-[#F59E0B]/20 p-2 flex items-center gap-2">
-                      <Clock className="h-3.5 w-3.5 text-[#F59E0B]" />
-                      <span className="text-[11px] font-medium text-[#F59E0B]">
-                        Position #{enriched.queuePosition} in queue
-                      </span>
-                    </div>
-                  )}
-                  {enriched.upstreamProgress && enriched.upstreamProgress.length > 0 && (
-                    <div className="rounded-md bg-white/[0.03] border border-white/5 p-3 space-y-2">
-                      <div className="text-[10px] font-semibold text-[#9CA3AF] uppercase">Upstream Progress</div>
-                      <UpstreamProgressDots progress={enriched.upstreamProgress} />
-                    </div>
-                  )}
-                </>
-              )}
 
               {job.errorMessage && (
                 <div className="rounded-md bg-[#EF4444]/10 border border-[#EF4444]/20 p-2">
@@ -478,120 +439,30 @@ function PipelineDetailSheet({
             </div>
           </TabsContent>
 
-          <TabsContent value="trace" className="flex-1 overflow-auto p-4">
-            {traceLoading ? (
+          <TabsContent value="steps" className="flex-1 overflow-auto p-4">
+            {detailLoading ? (
               <div className="space-y-3">
-                {Array.from({ length: 4 }).map((_, i) => (
+                {Array.from({ length: 3 }).map((_, i) => (
                   <Skeleton key={i} className="h-12 bg-white/5 rounded" />
                 ))}
               </div>
+            ) : steps.length > 0 ? (
+              <div className="space-y-2">
+                {steps.map((step) => (
+                  <StepRow key={step.id} step={step} />
+                ))}
+              </div>
             ) : (
-              <div className="relative pl-5">
-                <div className="absolute left-[7px] top-2 bottom-2 w-px bg-white/10" />
-                <div className="space-y-4">
-                  {STAGE_META.map((meta) => {
-                    const stageJob = trace.find((t) => t.stage === meta.stage);
-                    const status = stageJob?.status ?? "PENDING";
-                    const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.PENDING;
-                    return (
-                      <div key={meta.stage} className="relative flex gap-3">
-                        <span
-                          className="absolute -left-5 top-0.5 flex items-center justify-center h-4 w-4 rounded-full border-2"
-                          style={{
-                            borderColor: cfg.color,
-                            backgroundColor: status === "COMPLETED" ? cfg.color : "transparent",
-                          }}
-                        >
-                          {status === "COMPLETED" && <CheckCircle2 className="h-2.5 w-2.5 text-white" />}
-                          {status === "IN_PROGRESS" && <Loader2 className="h-2.5 w-2.5 animate-spin" style={{ color: cfg.color }} />}
-                          {status === "FAILED" && <XCircle className="h-2.5 w-2.5" style={{ color: cfg.color }} />}
-                        </span>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between">
-                            <span className="text-[11px] font-medium">{meta.name}</span>
-                            <div className="flex items-center gap-1.5">
-                              <StatusBadge status={status as PipelineJobStatus} />
-                              {(status === "PENDING" || status === "FAILED") && job.entityType === "episode" && (
-                                <button
-                                  onClick={async () => {
-                                    setTriggeringEpisode(job.entityId);
-                                    try {
-                                      await apiFetch<PipelineTriggerResult>(
-                                        `/pipeline/trigger/episode/${job.entityId}`,
-                                        { method: "POST" }
-                                      );
-                                      onRefresh();
-                                    } catch (e) {
-                                      console.error("Trigger failed:", e);
-                                    } finally {
-                                      setTriggeringEpisode(null);
-                                    }
-                                  }}
-                                  disabled={triggeringEpisode === job.entityId}
-                                  className="flex items-center justify-center h-5 w-5 rounded hover:bg-white/10 transition-colors text-[#3B82F6]"
-                                  title="Run from this stage"
-                                >
-                                  {triggeringEpisode === job.entityId ? (
-                                    <Loader2 className="h-3 w-3 animate-spin" />
-                                  ) : (
-                                    <Play className="h-3 w-3" />
-                                  )}
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                          {stageJob && (
-                            <div className="mt-1 flex items-center gap-3 text-[10px] text-[#9CA3AF]">
-                              {stageJob.startedAt && <span>{relativeTime(stageJob.startedAt)}</span>}
-                              {stageJob.durationMs != null && <span>{formatDuration(stageJob.durationMs)}</span>}
-                              {stageJob.cost != null && <span>{formatCost(stageJob.cost)}</span>}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+              <div className="flex flex-col items-center justify-center py-8 text-[#9CA3AF]">
+                <FileJson className="h-6 w-6 mb-2 opacity-40" />
+                <span className="text-xs">No step data available</span>
               </div>
             )}
           </TabsContent>
 
-          <TabsContent value="logs" className="flex-1 overflow-auto p-4">
-            <div className="space-y-3">
-              {job.input != null && (
-                <div>
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <FileJson className="h-3 w-3 text-[#3B82F6]" />
-                    <span className="text-[10px] font-semibold text-[#9CA3AF] uppercase">Input</span>
-                  </div>
-                  <pre className="rounded-md bg-[#0A1628] border border-white/5 p-2 text-[10px] font-mono text-[#9CA3AF] overflow-auto max-h-48 whitespace-pre-wrap break-all">
-                    {JSON.stringify(job.input, null, 2)}
-                  </pre>
-                </div>
-              )}
-              {job.output != null && (
-                <div>
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <FileJson className="h-3 w-3 text-[#10B981]" />
-                    <span className="text-[10px] font-semibold text-[#9CA3AF] uppercase">Output</span>
-                  </div>
-                  <pre className="rounded-md bg-[#0A1628] border border-white/5 p-2 text-[10px] font-mono text-[#9CA3AF] overflow-auto max-h-48 whitespace-pre-wrap break-all">
-                    {JSON.stringify(job.output, null, 2)}
-                  </pre>
-                </div>
-              )}
-              {job.input == null && job.output == null && (
-                <div className="flex flex-col items-center justify-center py-8 text-[#9CA3AF]">
-                  <FileJson className="h-6 w-6 mb-2 opacity-40" />
-                  <span className="text-xs">No log data available</span>
-                </div>
-              )}
-            </div>
-          </TabsContent>
-
           <TabsContent value="actions" className="flex-1 overflow-auto p-4">
             <div className="space-y-3">
-              {(job.status === "FAILED" || job.status === "RETRYING") && (
+              {job.status === "FAILED" && (
                 <Button
                   className="w-full bg-[#3B82F6] hover:bg-[#3B82F6]/80 text-white text-xs"
                   disabled={retrying}
@@ -635,9 +506,9 @@ function PipelineDetailSheet({
               <Separator className="bg-white/5" />
               <div className="text-[10px] text-[#9CA3AF] space-y-1 font-mono">
                 <div>ID: {job.id}</div>
-                <div>Entity: {job.entityType}/{job.entityId}</div>
+                <div>Episode: {job.episodeId}</div>
+                <div>Request: {job.requestId}</div>
                 <div>Created: {new Date(job.createdAt).toISOString()}</div>
-                {job.startedAt && <div>Started: {new Date(job.startedAt).toISOString()}</div>}
                 {job.completedAt && <div>Completed: {new Date(job.completedAt).toISOString()}</div>}
               </div>
             </div>
@@ -727,7 +598,7 @@ function TranscriptInspector({
 function PipelineSkeleton() {
   return (
     <div className="flex gap-0 h-full">
-      {Array.from({ length: 4 }).map((_, i) => (
+      {Array.from({ length: 3 }).map((_, i) => (
         <div key={i} className="flex-1 flex flex-col">
           {i > 0 && <div className="w-6" />}
           <Skeleton className="h-full bg-white/5 rounded-lg mx-1" />
@@ -751,7 +622,11 @@ export default function Pipeline() {
   } = usePipelineConfig();
 
   const [stageStats, setStageStats] = useState<PipelineStageStats[]>([]);
-  const [stageJobs, setStageJobs] = useState<Record<number, PipelineJob[]>>({});
+  const [stageJobs, setStageJobs] = useState<Record<PipelineStage, PipelineJob[]>>({
+    TRANSCRIPTION: [],
+    DISTILLATION: [],
+    CLIP_GENERATION: [],
+  });
   const [loading, setLoading] = useState(true);
   const [selectedJob, setSelectedJob] = useState<PipelineJob | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -759,6 +634,7 @@ export default function Pipeline() {
   // Filters
   const [requests, setRequests] = useState<{ id: string; status: string }[]>([]);
   const [requestFilter, setRequestFilter] = useState<string>("all");
+  const [stageFilter, setStageFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<PipelineJobStatus | null>(null);
 
   // Transcript inspector
@@ -778,24 +654,25 @@ export default function Pipeline() {
   const load = useCallback(() => {
     setLoading(true);
     const requestParam = requestFilter !== "all" ? `&requestId=${requestFilter}` : "";
+    const stageParam = stageFilter !== "all" ? `&currentStage=${stageFilter}` : "";
     Promise.all([
       apiFetch<{ data: PipelineStageStats[] }>("/pipeline/stages")
         .then((r) => setStageStats(r.data))
         .catch(console.error),
       ...STAGE_META.map((m) =>
-        apiFetch<{ data: PipelineJob[] }>(`/pipeline/jobs?stage=${m.stage}&limit=20${requestParam}`)
+        apiFetch<{ data: PipelineJob[] }>(`/pipeline/jobs?currentStage=${m.stage}&limit=20${requestParam}${stageFilter !== "all" && stageFilter !== m.stage ? "&skip=true" : ""}`)
           .then((r) => setStageJobs((prev) => ({ ...prev, [m.stage]: r.data })))
           .catch(console.error)
       ),
     ]).finally(() => setLoading(false));
-  }, [apiFetch, requestFilter]);
+  }, [apiFetch, requestFilter, stageFilter]);
 
   useEffect(() => { load(); }, [load]);
 
   const handleJobClick = (job: PipelineJob) => {
-    // Stage 2 (Transcription) jobs open transcript inspector
-    if (job.stage === 2 && job.entityType === "episode") {
-      setTranscriptEpisodeId(job.entityId);
+    // Transcription jobs open transcript inspector
+    if (job.currentStage === "TRANSCRIPTION") {
+      setTranscriptEpisodeId(job.episodeId);
       setTranscriptOpen(true);
       return;
     }
@@ -805,8 +682,8 @@ export default function Pipeline() {
 
   const allJobs = Object.values(stageJobs).flat();
 
-  const sortedFilteredJobs = (stageNum: number): PipelineJob[] => {
-    const jobs = stageJobs[stageNum] ?? [];
+  const sortedFilteredJobs = (stage: PipelineStage): PipelineJob[] => {
+    const jobs = stageJobs[stage] ?? [];
     const filtered = statusFilter ? jobs.filter((j) => j.status === statusFilter) : jobs;
     return filtered.sort(
       (a, b) => (STATUS_PRIORITY[a.status] ?? 9) - (STATUS_PRIORITY[b.status] ?? 9)
@@ -837,6 +714,18 @@ export default function Pipeline() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {/* Stage filter */}
+          <Select value={stageFilter} onValueChange={setStageFilter}>
+            <SelectTrigger className="w-40 h-8 text-xs bg-[#1A2942] border-white/10 text-[#F9FAFB]">
+              <SelectValue placeholder="Filter by stage" />
+            </SelectTrigger>
+            <SelectContent className="bg-[#1A2942] border-white/10 text-[#F9FAFB]">
+              <SelectItem value="all" className="text-xs">All Stages</SelectItem>
+              {STAGE_META.map((m) => (
+                <SelectItem key={m.stage} value={m.stage} className="text-xs">{m.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           {/* Request filter */}
           {requests.length > 0 && (
             <Select value={requestFilter} onValueChange={setRequestFilter}>
@@ -872,16 +761,20 @@ export default function Pipeline() {
         activeFilter={statusFilter}
       />
 
-      {/* Stage Columns */}
+      {/* Stage Columns — 3 columns: Transcription, Distillation, Clip Generation */}
       <div className="flex gap-0 flex-1 min-h-0" data-testid="pipeline-columns">
         {STAGE_META.map((meta, idx) => {
           const stats = stageStats.find((s) => s.stage === meta.stage);
           const jobs = sortedFilteredJobs(meta.stage);
           const rawJobs = stageJobs[meta.stage] ?? [];
           const pendingCount = rawJobs.filter((j) => j.status === "PENDING").length;
+
+          // If stage filter is active and doesn't match, hide this column
+          if (stageFilter !== "all" && stageFilter !== meta.stage) return null;
+
           return (
             <div key={meta.stage} className="contents">
-              {idx > 0 && <FlowArrow color={STAGE_META[idx - 1].color} />}
+              {idx > 0 && (stageFilter === "all") && <FlowArrow color={STAGE_META[idx - 1].color} />}
               <div className="flex-1 flex flex-col rounded-lg bg-[#1A2942] border border-white/5 min-h-0 overflow-hidden" data-testid={`stage-column-${meta.stage}`}>
                 <StageHeader
                   meta={meta}
@@ -890,7 +783,7 @@ export default function Pipeline() {
                   stageToggle={
                     <PipelineControls
                       variant="stage-only"
-                      stage={meta.stage}
+                      stage={STAGE_ORDER.indexOf(meta.stage) + 2}
                       config={pipelineConfig}
                       saving={pipelineSaving}
                       triggering={pipelineTriggering}

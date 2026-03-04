@@ -2,12 +2,10 @@ import { Hono } from "hono";
 import { createPrismaClient } from "../../lib/db";
 import type { Env } from "../../types";
 
-const STAGE_NAMES: Record<number, string> = {
-  1: "Feed Refresh",
-  2: "Transcription",
-  3: "Distillation",
-  4: "Clip Generation",
-  5: "Briefing Assembly",
+const STAGE_NAMES: Record<string, string> = {
+  TRANSCRIPTION: "Transcription",
+  DISTILLATION: "Distillation",
+  CLIP_GENERATION: "Clip Generation",
 };
 
 const podcastsRoutes = new Hono<{ Bindings: Env }>();
@@ -150,19 +148,22 @@ podcastsRoutes.get("/:id", async (c) => {
 
     if (!podcast) return c.json({ error: "Podcast not found" }, 404);
 
-    // Get recent pipeline activity for this podcast
-    let recentJobs: any[] = [];
+    // Get recent pipeline activity for this podcast's episodes
+    const episodeIds = podcast.episodes.map((e) => e.id);
+    let recentJobs: Awaited<ReturnType<typeof prisma.pipelineJob.findMany>> = [];
     try {
-      recentJobs = await prisma.pipelineJob.findMany({
-        where: {
-          OR: [
-            { entityId: podcast.id, entityType: "podcast" },
-            { entityId: { in: podcast.episodes.map((e) => e.id) }, entityType: "episode" },
-          ],
-        },
-        take: 10,
-        orderBy: { createdAt: "desc" },
-      });
+      if (episodeIds.length > 0) {
+        recentJobs = await prisma.pipelineJob.findMany({
+          where: {
+            episodeId: { in: episodeIds },
+          },
+          take: 10,
+          orderBy: { createdAt: "desc" },
+          include: {
+            episode: { select: { title: true, podcast: { select: { title: true } } } },
+          },
+        });
+      }
     } catch {
       // PipelineJob table may not exist
     }
@@ -190,11 +191,10 @@ podcastsRoutes.get("/:id", async (c) => {
     const recentPipelineActivity = recentJobs.map((job) => ({
       id: job.id,
       timestamp: job.createdAt.toISOString(),
-      stage: job.stage,
-      stageName: STAGE_NAMES[job.stage] ?? `Stage ${job.stage}`,
+      stage: job.currentStage,
+      stageName: STAGE_NAMES[job.currentStage] ?? job.currentStage,
       status: job.status.toLowerCase().replace("_", "-"),
-      processingTime: job.durationMs ?? undefined,
-      type: job.type,
+      type: job.currentStage,
     }));
 
     return c.json({
@@ -315,26 +315,14 @@ podcastsRoutes.post("/:id/refresh", async (c) => {
 
     if (!podcast) return c.json({ error: "Podcast not found" }, 404);
 
-    let job = null;
     try {
-      job = await prisma.pipelineJob.create({
-        data: {
-          type: "FEED_REFRESH",
-          status: "PENDING",
-          entityId: podcast.id,
-          entityType: "podcast",
-          stage: 1,
-        },
-      });
+      // Dispatch directly to the feed refresh queue
+      await c.env.FEED_REFRESH_QUEUE.send({ type: "manual", podcastId: podcast.id });
+
+      return c.json({ data: { podcastId: podcast.id, status: "dispatched" } }, 201);
     } catch {
-      // PipelineJob table may not exist
-      return c.json({ data: { jobId: null, status: "unavailable" } }, 201);
+      return c.json({ error: "Feed refresh queue not available" }, 503);
     }
-
-    // Dispatch to the feed refresh queue
-    await c.env.FEED_REFRESH_QUEUE.send({ type: "manual", podcastId: podcast.id });
-
-    return c.json({ data: { jobId: job.id, status: job.status } }, 201);
   } finally {
     c.executionCtx.waitUntil(prisma.$disconnect());
   }

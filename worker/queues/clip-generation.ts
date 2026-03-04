@@ -10,26 +10,21 @@ import type { Env } from "../types";
 
 /** Shape of a clip generation queue message body. */
 interface ClipGenerationMessage {
+  jobId: string;
   episodeId: string;
-  distillationId: string;
   durationTier: number;
-  claims: any[];
-  requestId?: string;
   type?: "manual";
 }
 
 /**
  * Queue consumer for clip generation jobs.
  *
- * For each message: generates a spoken narrative from claims (Pass 2),
- * converts it to audio via TTS, stores the MP3 in R2, and updates the
- * clip record. Handles idempotency and error recording.
+ * For each message: checks for a cached clip, otherwise generates a spoken
+ * narrative from distillation claims (Pass 2), converts to audio via TTS,
+ * stores the MP3 in R2, and updates the clip record. Creates PipelineStep
+ * audit records and reports completion to the orchestrator.
  *
  * Messages with `type: "manual"` bypass the stage-enabled check.
- *
- * @param batch - Cloudflare Queue message batch with clip generation requests
- * @param env - Worker environment bindings
- * @param ctx - Execution context for background work
  */
 export async function handleClipGeneration(
   batch: MessageBatch<ClipGenerationMessage>,
@@ -60,33 +55,79 @@ export async function handleClipGeneration(
     }
 
     for (const msg of batch.messages) {
-      const { episodeId, distillationId, durationTier, claims } = msg.body;
+      const { jobId, episodeId, durationTier } = msg.body;
+      const startTime = Date.now();
 
       try {
-        // Idempotency: check if clip is already completed
-        const existing = await prisma.clip.findUnique({
+        // Load job to get requestId
+        const job = await prisma.pipelineJob.findUniqueOrThrow({
+          where: { id: jobId },
+        });
+
+        // Update job status to IN_PROGRESS
+        await prisma.pipelineJob.update({
+          where: { id: jobId },
+          data: { status: "IN_PROGRESS" },
+        });
+
+        // Create PipelineStep audit record
+        const step = await prisma.pipelineStep.create({
+          data: {
+            jobId,
+            stage: "CLIP_GENERATION",
+            status: "IN_PROGRESS",
+            startedAt: new Date(),
+          },
+        });
+
+        // Cache check: find existing completed clip for (episodeId, durationTier)
+        const existingClip = await prisma.clip.findUnique({
           where: { episodeId_durationTier: { episodeId, durationTier } },
         });
 
-        if (existing?.status === "COMPLETED") {
-          log.debug("idempotency_skip", { episodeId, durationTier });
+        if (existingClip?.status === "COMPLETED") {
+          log.debug("cache_hit", { episodeId, durationTier });
+
+          // Mark step SKIPPED (cached)
+          await prisma.pipelineStep.update({
+            where: { id: step.id },
+            data: {
+              status: "SKIPPED",
+              cached: true,
+              completedAt: new Date(),
+              durationMs: Date.now() - startTime,
+            },
+          });
+
+          // Update job with cached clipId
+          await prisma.pipelineJob.update({
+            where: { id: jobId },
+            data: { clipId: existingClip.id },
+          });
+
+          // Report to orchestrator
+          await env.ORCHESTRATOR_QUEUE.send({
+            requestId: job.requestId,
+            action: "job-stage-complete",
+            jobId,
+          });
+
           msg.ack();
           continue;
         }
 
-        // Create or update clip record
-        const clip = await prisma.clip.upsert({
-          where: { episodeId_durationTier: { episodeId, durationTier } },
-          update: { status: "GENERATING_NARRATIVE", errorMessage: null },
-          create: {
-            episodeId,
-            distillationId,
-            durationTier,
-            status: "GENERATING_NARRATIVE",
-          },
+        // Load distillation claims from DB
+        const distillation = await prisma.distillation.findFirst({
+          where: { episodeId, status: "COMPLETED" },
         });
 
-        // Pass 2: generate narrative from claims
+        if (!distillation?.claimsJson) {
+          throw new Error("No completed distillation with claims found");
+        }
+
+        const claims = distillation.claimsJson as any[];
+
+        // Generate narrative from claims (Pass 2)
         const narrativeTimer = log.timer("narrative_generation");
         const narrative = await generateNarrative(
           anthropic,
@@ -97,15 +138,6 @@ export async function handleClipGeneration(
         narrativeTimer();
         log.info("narrative_generated", { episodeId, wordCount });
 
-        await prisma.clip.update({
-          where: { id: clip.id },
-          data: {
-            status: "GENERATING_AUDIO",
-            narrativeText: narrative,
-            wordCount,
-          },
-        });
-
         // Generate TTS audio
         const ttsTimer = log.timer("tts_generation");
         const audio = await generateSpeech(openai, narrative);
@@ -114,21 +146,52 @@ export async function handleClipGeneration(
         // Store in R2
         await putClip(env.R2, episodeId, durationTier, audio);
 
-        // Mark clip as completed
+        // Create/update Clip record
         const audioKey = `clips/${episodeId}/${durationTier}.mp3`;
-        await prisma.clip.update({
-          where: { id: clip.id },
-          data: { status: "COMPLETED", audioKey },
+        const clip = await prisma.clip.upsert({
+          where: { episodeId_durationTier: { episodeId, durationTier } },
+          update: {
+            status: "COMPLETED",
+            narrativeText: narrative,
+            wordCount,
+            audioKey,
+            distillationId: distillation.id,
+          },
+          create: {
+            episodeId,
+            distillationId: distillation.id,
+            durationTier,
+            status: "COMPLETED",
+            narrativeText: narrative,
+            wordCount,
+            audioKey,
+          },
+        });
+
+        // Mark step COMPLETED
+        await prisma.pipelineStep.update({
+          where: { id: step.id },
+          data: {
+            status: "COMPLETED",
+            completedAt: new Date(),
+            durationMs: Date.now() - startTime,
+          },
+        });
+
+        // Update job with clipId
+        await prisma.pipelineJob.update({
+          where: { id: jobId },
+          data: { clipId: clip.id },
         });
 
         log.info("clip_completed", { episodeId, durationTier, audioKey });
 
-        if (msg.body.requestId) {
-          await env.ORCHESTRATOR_QUEUE.send({
-            requestId: msg.body.requestId, action: "stage-complete", stage: 4, episodeId,
-          });
-          log.debug("orchestrator_notified", { episodeId, requestId: msg.body.requestId, stage: 4 });
-        }
+        // Report to orchestrator
+        await env.ORCHESTRATOR_QUEUE.send({
+          requestId: job.requestId,
+          action: "job-stage-complete",
+          jobId,
+        });
 
         msg.ack();
       } catch (err) {
@@ -136,6 +199,19 @@ export async function handleClipGeneration(
           err instanceof Error ? err.message : String(err);
 
         log.error("episode_error", { episodeId, durationTier }, err);
+
+        // Try to mark the step as FAILED
+        await prisma.pipelineStep
+          .updateMany({
+            where: { jobId, stage: "CLIP_GENERATION", status: "IN_PROGRESS" },
+            data: {
+              status: "FAILED",
+              errorMessage,
+              completedAt: new Date(),
+              durationMs: Date.now() - startTime,
+            },
+          })
+          .catch(() => {});
 
         // Try to record the error on the clip
         await prisma.clip
@@ -146,7 +222,7 @@ export async function handleClipGeneration(
             update: { status: "FAILED", errorMessage },
             create: {
               episodeId,
-              distillationId,
+              distillationId: "unknown",
               durationTier,
               status: "FAILED",
               errorMessage,

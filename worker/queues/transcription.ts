@@ -1,16 +1,16 @@
+import OpenAI from "openai";
 import { createPrismaClient } from "../lib/db";
 import { getConfig } from "../lib/config";
 import { createPipelineLogger } from "../lib/logger";
 import type { Env } from "../types";
 
 interface TranscriptionMessage {
+  jobId: string;
   episodeId: string;
-  transcriptUrl: string;
-  requestId?: string;
   type?: "manual";
 }
 
-const SKIP_STATUSES = new Set(["TRANSCRIPT_READY", "EXTRACTING_CLAIMS", "COMPLETED"]);
+const CACHE_STATUSES = new Set(["TRANSCRIPT_READY", "EXTRACTING_CLAIMS", "COMPLETED"]);
 
 export async function handleTranscription(
   batch: MessageBatch<TranscriptionMessage>,
@@ -34,58 +34,141 @@ export async function handleTranscription(
     }
 
     for (const msg of batch.messages) {
-      const { episodeId, transcriptUrl, requestId } = msg.body;
+      const { jobId, episodeId } = msg.body;
+      const startTime = Date.now();
 
       try {
-        const existing = await prisma.distillation.findUnique({ where: { episodeId } });
-        if (existing && SKIP_STATUSES.has(existing.status)) {
-          log.debug("idempotency_skip", { episodeId, existingStatus: existing.status });
-          if (requestId) {
-            await env.ORCHESTRATOR_QUEUE.send({
-              requestId, action: "stage-complete", stage: 2, episodeId,
-            });
-          }
+        // Load job to get requestId
+        const job = await prisma.pipelineJob.findUnique({ where: { id: jobId } });
+        if (!job) {
+          log.info("job_not_found", { jobId });
           msg.ack();
           continue;
         }
 
-        const distillation = await prisma.distillation.upsert({
-          where: { episodeId },
-          update: { status: "FETCHING_TRANSCRIPT", errorMessage: null },
-          create: { episodeId, status: "FETCHING_TRANSCRIPT" },
-        });
+        // Update job status to IN_PROGRESS if PENDING
+        if (job.status === "PENDING") {
+          await prisma.pipelineJob.update({
+            where: { id: jobId },
+            data: { status: "IN_PROGRESS" },
+          });
+        }
 
-        await prisma.pipelineJob.create({
+        // Create PipelineStep
+        const step = await prisma.pipelineStep.create({
           data: {
-            type: "TRANSCRIPTION",
+            jobId,
+            stage: "TRANSCRIPTION",
             status: "IN_PROGRESS",
-            entityId: episodeId,
-            entityType: "episode",
-            stage: 2,
-            requestId: requestId ?? null,
             startedAt: new Date(),
           },
         });
 
-        const response = await fetch(transcriptUrl);
-        const transcript = await response.text();
-        log.info("transcript_fetched", { episodeId, bytes: transcript.length });
+        // Cache check: existing Distillation with transcript
+        const cached = await prisma.distillation.findUnique({ where: { episodeId } });
+        if (cached && cached.transcript && CACHE_STATUSES.has(cached.status)) {
+          log.debug("cache_hit", { episodeId, existingStatus: cached.status });
 
-        await prisma.distillation.update({
-          where: { id: distillation.id },
-          data: { status: "TRANSCRIPT_READY", transcript },
+          await prisma.pipelineStep.update({
+            where: { id: step.id },
+            data: {
+              status: "SKIPPED",
+              cached: true,
+              completedAt: new Date(),
+              durationMs: Date.now() - startTime,
+            },
+          });
+
+          await prisma.pipelineJob.update({
+            where: { id: jobId },
+            data: { distillationId: cached.id },
+          });
+
+          await env.ORCHESTRATOR_QUEUE.send({
+            requestId: job.requestId,
+            action: "job-stage-complete",
+            jobId,
+          });
+
+          msg.ack();
+          continue;
+        }
+
+        // Load episode for transcript sources
+        const episode = await prisma.episode.findUnique({ where: { id: episodeId } });
+        if (!episode) {
+          throw new Error(`Episode not found: ${episodeId}`);
+        }
+
+        let transcript: string;
+
+        if (episode.transcriptUrl) {
+          // Feed URL source
+          const response = await fetch(episode.transcriptUrl);
+          transcript = await response.text();
+          log.info("transcript_fetched", { episodeId, bytes: transcript.length, source: "feed" });
+        } else {
+          // Whisper fallback
+          const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+          const audioResponse = await fetch(episode.audioUrl);
+          const audioBlob = await audioResponse.blob();
+          const file = new File([audioBlob], "audio.mp3", { type: "audio/mpeg" });
+          const transcription = await openai.audio.transcriptions.create({
+            model: "whisper-1",
+            file,
+          });
+          transcript = transcription.text;
+          log.info("transcript_fetched", { episodeId, bytes: transcript.length, source: "whisper" });
+        }
+
+        // Upsert Distillation with transcript
+        const distillation = await prisma.distillation.upsert({
+          where: { episodeId },
+          update: { status: "TRANSCRIPT_READY", transcript, errorMessage: null },
+          create: { episodeId, status: "TRANSCRIPT_READY", transcript },
         });
 
-        if (requestId) {
-          await env.ORCHESTRATOR_QUEUE.send({
-            requestId, action: "stage-complete", stage: 2, episodeId,
-          });
-          log.debug("orchestrator_notified", { episodeId, requestId, stage: 2 });
-        }
+        // Mark step COMPLETED
+        await prisma.pipelineStep.update({
+          where: { id: step.id },
+          data: {
+            status: "COMPLETED",
+            completedAt: new Date(),
+            durationMs: Date.now() - startTime,
+          },
+        });
+
+        // Update job distillationId
+        await prisma.pipelineJob.update({
+          where: { id: jobId },
+          data: { distillationId: distillation.id },
+        });
+
+        // Report to orchestrator
+        await env.ORCHESTRATOR_QUEUE.send({
+          requestId: job.requestId,
+          action: "job-stage-complete",
+          jobId,
+        });
 
         msg.ack();
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : String(err);
+
+        // Mark step FAILED if it was created
+        await prisma.pipelineStep
+          .updateMany({
+            where: { jobId, stage: "TRANSCRIPTION", status: "IN_PROGRESS" },
+            data: {
+              status: "FAILED",
+              errorMessage,
+              completedAt: new Date(),
+              durationMs: Date.now() - startTime,
+            },
+          })
+          .catch(() => {});
+
+        // Upsert distillation as FAILED
         await prisma.distillation
           .upsert({
             where: { episodeId },
@@ -93,7 +176,8 @@ export async function handleTranscription(
             create: { episodeId, status: "FAILED", errorMessage },
           })
           .catch(() => {});
-        log.error("episode_error", { episodeId }, err);
+
+        log.error("episode_error", { episodeId, jobId }, err);
         msg.retry();
       }
     }

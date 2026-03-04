@@ -7,23 +7,18 @@ import type { Env } from "../types";
 
 /** Shape of a distillation queue message body. */
 interface DistillationMessage {
+  jobId: string;
   episodeId: string;
-  requestId?: string;
   type?: "manual";
 }
 
 /**
  * Queue consumer for distillation jobs.
  *
- * For each message: fetches the episode transcript, runs Claude claim extraction
- * (Pass 1), and stores the results. Handles idempotency (skips already-completed
- * distillations) and records errors for failed attempts.
+ * For each message: loads the job, checks for cached distillation,
+ * runs Claude claim extraction if needed, and tracks progress via PipelineStep.
  *
  * Messages with `type: "manual"` bypass the stage-enabled check.
- *
- * @param batch - Cloudflare Queue message batch with distillation requests
- * @param env - Worker environment bindings
- * @param ctx - Execution context for background work
  */
 export async function handleDistillation(
   batch: MessageBatch<DistillationMessage>,
@@ -53,21 +48,65 @@ export async function handleDistillation(
     }
 
     for (const msg of batch.messages) {
-      const { episodeId, requestId } = msg.body;
+      const { jobId, episodeId } = msg.body;
+      const startedAt = new Date();
+
+      let step: { id: string } | null = null;
 
       try {
-        // Check for existing completed distillation (idempotency)
+        // Load job to get requestId
+        const job = await prisma.pipelineJob.findUniqueOrThrow({
+          where: { id: jobId },
+          select: { id: true, requestId: true },
+        });
+
+        // Mark job as IN_PROGRESS
+        await prisma.pipelineJob.update({
+          where: { id: jobId },
+          data: { status: "IN_PROGRESS" },
+        });
+
+        // Create PipelineStep for tracking
+        step = await prisma.pipelineStep.create({
+          data: {
+            jobId,
+            stage: "DISTILLATION",
+            status: "IN_PROGRESS",
+            startedAt,
+          },
+        });
+
+        // Cache check: is there a completed distillation for this episode?
         const existing = await prisma.distillation.findUnique({
           where: { episodeId },
         });
 
         if (existing?.status === "COMPLETED") {
-          log.debug("idempotency_skip", { episodeId, existingStatus: existing.status });
-          if (requestId) {
-            await env.ORCHESTRATOR_QUEUE.send({
-              requestId, action: "stage-complete", stage: 3, episodeId,
-            });
-          }
+          // Cache hit — skip processing
+          const completedAt = new Date();
+          await prisma.pipelineStep.update({
+            where: { id: step.id },
+            data: {
+              status: "SKIPPED",
+              cached: true,
+              completedAt,
+              durationMs: completedAt.getTime() - startedAt.getTime(),
+            },
+          });
+
+          await prisma.pipelineJob.update({
+            where: { id: jobId },
+            data: { distillationId: existing.id },
+          });
+
+          log.debug("cache_hit", { episodeId, jobId });
+
+          await env.ORCHESTRATOR_QUEUE.send({
+            requestId: job.requestId,
+            action: "job-stage-complete",
+            jobId,
+          });
+
           msg.ack();
           continue;
         }
@@ -89,25 +128,58 @@ export async function handleDistillation(
         elapsed();
         log.info("claims_extracted", { episodeId, claimCount: claims.length });
 
-        // Mark as completed with claims
+        // Mark distillation as completed with claims
         await prisma.distillation.update({
           where: { id: existing.id },
           data: { status: "COMPLETED", claimsJson: claims as any },
         });
 
-        if (requestId) {
-          await env.ORCHESTRATOR_QUEUE.send({
-            requestId, action: "stage-complete", stage: 3, episodeId,
-          });
-          log.debug("orchestrator_notified", { episodeId, requestId, stage: 3 });
-        }
+        // Mark step COMPLETED
+        const completedAt = new Date();
+        await prisma.pipelineStep.update({
+          where: { id: step.id },
+          data: {
+            status: "COMPLETED",
+            completedAt,
+            durationMs: completedAt.getTime() - startedAt.getTime(),
+          },
+        });
+
+        // Update job with distillation reference
+        await prisma.pipelineJob.update({
+          where: { id: jobId },
+          data: { distillationId: existing.id },
+        });
+
+        // Report to orchestrator
+        await env.ORCHESTRATOR_QUEUE.send({
+          requestId: job.requestId,
+          action: "job-stage-complete",
+          jobId,
+        });
+        log.debug("orchestrator_notified", { episodeId, jobId, requestId: job.requestId });
 
         msg.ack();
       } catch (err) {
-        // Record error and retry the message
         const errorMessage =
           err instanceof Error ? err.message : String(err);
 
+        // Mark step as FAILED if it was created
+        if (step) {
+          await prisma.pipelineStep
+            .update({
+              where: { id: step.id },
+              data: {
+                status: "FAILED",
+                errorMessage,
+                completedAt: new Date(),
+                durationMs: new Date().getTime() - startedAt.getTime(),
+              },
+            })
+            .catch(() => {});
+        }
+
+        // Upsert distillation as FAILED
         await prisma.distillation
           .upsert({
             where: { episodeId },
@@ -116,7 +188,7 @@ export async function handleDistillation(
           })
           .catch(() => {});
 
-        log.error("episode_error", { episodeId }, err);
+        log.error("episode_error", { episodeId, jobId }, err);
         msg.retry();
       }
     }

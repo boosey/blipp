@@ -23,6 +23,19 @@ vi.mock("../../lib/logger", () => ({
   createPipelineLogger: vi.fn().mockResolvedValue(mockLogger),
 }));
 
+const mockWhisperCreate = vi.fn();
+vi.mock("openai", () => {
+  return {
+    default: class MockOpenAI {
+      audio = {
+        transcriptions: {
+          create: mockWhisperCreate,
+        },
+      };
+    },
+  };
+});
+
 const { getConfig } = await import("../../lib/config");
 const { handleTranscription } = await import("../transcription");
 
@@ -33,6 +46,23 @@ function createMsg(body: any) {
 function createBatch(messages: any[], queue = "transcription") {
   return { queue, messages } as unknown as MessageBatch<any>;
 }
+
+const JOB = {
+  id: "job1",
+  requestId: "req1",
+  episodeId: "ep1",
+  durationTier: 5,
+  status: "PENDING",
+  currentStage: "TRANSCRIPTION",
+};
+
+const EPISODE = {
+  id: "ep1",
+  podcastId: "pod1",
+  title: "Test Episode",
+  audioUrl: "https://example.com/audio.mp3",
+  transcriptUrl: "https://example.com/transcript.txt",
+};
 
 describe("handleTranscription", () => {
   let env: ReturnType<typeof createMockEnv>;
@@ -54,14 +84,21 @@ describe("handleTranscription", () => {
       }
     });
     mockPrisma.$disconnect.mockResolvedValue(undefined);
+    // Ensure updateMany always returns a promise (used in error handler .catch())
+    mockPrisma.pipelineStep.updateMany.mockResolvedValue({ count: 0 });
 
-    // Re-set getConfig default after clearAllMocks
+    // Re-set getConfig default after clearAllMocks (mockReset to clear queued values)
+    (getConfig as any).mockReset();
     (getConfig as any).mockResolvedValue(true);
 
     // Default: fetch returns transcript text
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
       text: vi.fn().mockResolvedValue("This is a transcript."),
+      blob: vi.fn().mockResolvedValue(new Blob(["audio-data"])),
     }));
+
+    mockWhisperCreate.mockReset();
+    mockWhisperCreate.mockResolvedValue({ text: "Whisper transcript text." });
 
     mockLogger.info.mockReset();
     mockLogger.debug.mockReset();
@@ -69,90 +106,172 @@ describe("handleTranscription", () => {
     mockLogger.timer.mockReset().mockReturnValue(vi.fn());
   });
 
-  it("should fetch transcript and store it with TRANSCRIPT_READY status", async () => {
-    const msg = createMsg({ episodeId: "ep1", transcriptUrl: "https://example.com/t.txt" });
+  it("creates PipelineStep on processing", async () => {
+    const msg = createMsg({ jobId: "job1", episodeId: "ep1" });
+    mockPrisma.pipelineJob.findUnique.mockResolvedValue(JOB);
+    mockPrisma.pipelineJob.update.mockResolvedValue({});
+    mockPrisma.pipelineStep.create.mockResolvedValue({ id: "step1" });
     mockPrisma.distillation.findUnique.mockResolvedValue(null);
+    mockPrisma.episode.findUnique.mockResolvedValue(EPISODE);
     mockPrisma.distillation.upsert.mockResolvedValue({ id: "dist1", episodeId: "ep1" });
-    mockPrisma.pipelineJob.create.mockResolvedValue({});
-    mockPrisma.distillation.update.mockResolvedValue({});
+    mockPrisma.pipelineStep.update.mockResolvedValue({});
 
     await handleTranscription(createBatch([msg]), env, ctx);
 
-    expect(fetch).toHaveBeenCalledWith("https://example.com/t.txt");
-    expect(mockPrisma.distillation.update).toHaveBeenCalledWith({
-      where: { id: "dist1" },
-      data: { status: "TRANSCRIPT_READY", transcript: "This is a transcript." },
+    expect(mockPrisma.pipelineStep.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        jobId: "job1",
+        stage: "TRANSCRIPTION",
+        status: "IN_PROGRESS",
+        startedAt: expect.any(Date),
+      }),
     });
     expect(msg.ack).toHaveBeenCalled();
   });
 
-  it("should report to orchestrator when requestId is present", async () => {
-    const msg = createMsg({ episodeId: "ep1", transcriptUrl: "https://example.com/t.txt", requestId: "req1" });
+  it("cache hit -> step SKIPPED, cached: true", async () => {
+    const msg = createMsg({ jobId: "job1", episodeId: "ep1" });
+    mockPrisma.pipelineJob.findUnique.mockResolvedValue(JOB);
+    mockPrisma.pipelineJob.update.mockResolvedValue({});
+    mockPrisma.pipelineStep.create.mockResolvedValue({ id: "step1" });
+    mockPrisma.distillation.findUnique.mockResolvedValue({
+      id: "dist-cached",
+      episodeId: "ep1",
+      status: "TRANSCRIPT_READY",
+      transcript: "Cached transcript",
+    });
+    mockPrisma.pipelineStep.update.mockResolvedValue({});
+
+    await handleTranscription(createBatch([msg]), env, ctx);
+
+    expect(mockPrisma.pipelineStep.update).toHaveBeenCalledWith({
+      where: { id: "step1" },
+      data: expect.objectContaining({
+        status: "SKIPPED",
+        cached: true,
+      }),
+    });
+    expect(mockPrisma.pipelineJob.update).toHaveBeenCalledWith({
+      where: { id: "job1" },
+      data: { distillationId: "dist-cached" },
+    });
+    expect(env.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith({
+      requestId: "req1",
+      action: "job-stage-complete",
+      jobId: "job1",
+    });
+    expect(fetch).not.toHaveBeenCalled();
+    expect(msg.ack).toHaveBeenCalled();
+  });
+
+  it("feed URL -> fetches transcript, step COMPLETED", async () => {
+    const msg = createMsg({ jobId: "job1", episodeId: "ep1" });
+    mockPrisma.pipelineJob.findUnique.mockResolvedValue(JOB);
+    mockPrisma.pipelineJob.update.mockResolvedValue({});
+    mockPrisma.pipelineStep.create.mockResolvedValue({ id: "step1" });
     mockPrisma.distillation.findUnique.mockResolvedValue(null);
+    mockPrisma.episode.findUnique.mockResolvedValue(EPISODE);
     mockPrisma.distillation.upsert.mockResolvedValue({ id: "dist1", episodeId: "ep1" });
-    mockPrisma.pipelineJob.create.mockResolvedValue({});
-    mockPrisma.distillation.update.mockResolvedValue({});
+    mockPrisma.pipelineStep.update.mockResolvedValue({});
+
+    await handleTranscription(createBatch([msg]), env, ctx);
+
+    expect(fetch).toHaveBeenCalledWith("https://example.com/transcript.txt");
+    expect(mockPrisma.distillation.upsert).toHaveBeenCalledWith({
+      where: { episodeId: "ep1" },
+      update: { status: "TRANSCRIPT_READY", transcript: "This is a transcript.", errorMessage: null },
+      create: { episodeId: "ep1", status: "TRANSCRIPT_READY", transcript: "This is a transcript." },
+    });
+    expect(mockPrisma.pipelineStep.update).toHaveBeenCalledWith({
+      where: { id: "step1" },
+      data: expect.objectContaining({
+        status: "COMPLETED",
+        completedAt: expect.any(Date),
+        durationMs: expect.any(Number),
+      }),
+    });
+    expect(msg.ack).toHaveBeenCalled();
+  });
+
+  it("Whisper fallback when no transcriptUrl", async () => {
+    const episodeNoTranscript = { ...EPISODE, transcriptUrl: null };
+    const msg = createMsg({ jobId: "job1", episodeId: "ep1" });
+    mockPrisma.pipelineJob.findUnique.mockResolvedValue(JOB);
+    mockPrisma.pipelineJob.update.mockResolvedValue({});
+    mockPrisma.pipelineStep.create.mockResolvedValue({ id: "step1" });
+    mockPrisma.distillation.findUnique.mockResolvedValue(null);
+    mockPrisma.episode.findUnique.mockResolvedValue(episodeNoTranscript);
+    mockPrisma.distillation.upsert.mockResolvedValue({ id: "dist1", episodeId: "ep1" });
+    mockPrisma.pipelineStep.update.mockResolvedValue({});
+
+    // Stub File if not available in test env
+    if (typeof globalThis.File === "undefined") {
+      globalThis.File = class File extends Blob {
+        name: string;
+        lastModified: number;
+        constructor(parts: BlobPart[], name: string, opts?: FilePropertyBag) {
+          super(parts, opts);
+          this.name = name;
+          this.lastModified = Date.now();
+        }
+      } as any;
+    }
+
+    await handleTranscription(createBatch([msg]), env, ctx);
+
+    // Should fetch audio URL for Whisper
+    expect(fetch).toHaveBeenCalledWith("https://example.com/audio.mp3");
+    expect(mockWhisperCreate).toHaveBeenCalledWith({
+      model: "whisper-1",
+      file: expect.any(File),
+    });
+    expect(mockPrisma.distillation.upsert).toHaveBeenCalledWith({
+      where: { episodeId: "ep1" },
+      update: { status: "TRANSCRIPT_READY", transcript: "Whisper transcript text.", errorMessage: null },
+      create: { episodeId: "ep1", status: "TRANSCRIPT_READY", transcript: "Whisper transcript text." },
+    });
+    expect(msg.ack).toHaveBeenCalled();
+  });
+
+  it("reports to orchestrator with jobId", async () => {
+    const msg = createMsg({ jobId: "job1", episodeId: "ep1" });
+    mockPrisma.pipelineJob.findUnique.mockResolvedValue(JOB);
+    mockPrisma.pipelineJob.update.mockResolvedValue({});
+    mockPrisma.pipelineStep.create.mockResolvedValue({ id: "step1" });
+    mockPrisma.distillation.findUnique.mockResolvedValue(null);
+    mockPrisma.episode.findUnique.mockResolvedValue(EPISODE);
+    mockPrisma.distillation.upsert.mockResolvedValue({ id: "dist1", episodeId: "ep1" });
+    mockPrisma.pipelineStep.update.mockResolvedValue({});
 
     await handleTranscription(createBatch([msg]), env, ctx);
 
     expect(env.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith({
-      requestId: "req1", action: "stage-complete", stage: 2, episodeId: "ep1",
+      requestId: "req1",
+      action: "job-stage-complete",
+      jobId: "job1",
     });
   });
 
-  it("should not report to orchestrator when requestId is absent", async () => {
-    const msg = createMsg({ episodeId: "ep1", transcriptUrl: "https://example.com/t.txt" });
-    mockPrisma.distillation.findUnique.mockResolvedValue(null);
-    mockPrisma.distillation.upsert.mockResolvedValue({ id: "dist1", episodeId: "ep1" });
-    mockPrisma.pipelineJob.create.mockResolvedValue({});
-    mockPrisma.distillation.update.mockResolvedValue({});
-
-    await handleTranscription(createBatch([msg]), env, ctx);
-
-    expect(env.ORCHESTRATOR_QUEUE.send).not.toHaveBeenCalled();
-  });
-
-  it("should skip if distillation already has TRANSCRIPT_READY status", async () => {
-    const msg = createMsg({ episodeId: "ep1", transcriptUrl: "https://example.com/t.txt", requestId: "req1" });
-    mockPrisma.distillation.findUnique.mockResolvedValue({ status: "TRANSCRIPT_READY" });
-
-    await handleTranscription(createBatch([msg]), env, ctx);
-
-    expect(fetch).not.toHaveBeenCalled();
-    expect(mockPrisma.distillation.upsert).not.toHaveBeenCalled();
-    expect(env.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith({
-      requestId: "req1", action: "stage-complete", stage: 2, episodeId: "ep1",
-    });
-    expect(msg.ack).toHaveBeenCalled();
-  });
-
-  it("should skip if distillation already COMPLETED", async () => {
-    const msg = createMsg({ episodeId: "ep1", transcriptUrl: "https://example.com/t.txt" });
-    mockPrisma.distillation.findUnique.mockResolvedValue({ status: "COMPLETED" });
-
-    await handleTranscription(createBatch([msg]), env, ctx);
-
-    expect(fetch).not.toHaveBeenCalled();
-    expect(msg.ack).toHaveBeenCalled();
-  });
-
-  it("should respect stage gate when disabled", async () => {
+  it("stage gate disabled -> acks all", async () => {
     (getConfig as any).mockResolvedValueOnce(false);
-    const msg = createMsg({ episodeId: "ep1", transcriptUrl: "https://example.com/t.txt" });
+    const msg = createMsg({ jobId: "job1", episodeId: "ep1" });
 
     await handleTranscription(createBatch([msg]), env, ctx);
 
     expect(msg.ack).toHaveBeenCalled();
-    expect(fetch).not.toHaveBeenCalled();
+    expect(mockPrisma.pipelineJob.findUnique).not.toHaveBeenCalled();
   });
 
-  it("should bypass stage gate for manual messages", async () => {
+  it("bypasses stage gate for manual messages", async () => {
     (getConfig as any).mockResolvedValueOnce(false);
-    const msg = createMsg({ episodeId: "ep1", transcriptUrl: "https://example.com/t.txt", type: "manual" });
+    const msg = createMsg({ jobId: "job1", episodeId: "ep1", type: "manual" });
+    mockPrisma.pipelineJob.findUnique.mockResolvedValue(JOB);
+    mockPrisma.pipelineJob.update.mockResolvedValue({});
+    mockPrisma.pipelineStep.create.mockResolvedValue({ id: "step1" });
     mockPrisma.distillation.findUnique.mockResolvedValue(null);
+    mockPrisma.episode.findUnique.mockResolvedValue(EPISODE);
     mockPrisma.distillation.upsert.mockResolvedValue({ id: "dist1", episodeId: "ep1" });
-    mockPrisma.pipelineJob.create.mockResolvedValue({});
-    mockPrisma.distillation.update.mockResolvedValue({});
+    mockPrisma.pipelineStep.update.mockResolvedValue({});
 
     await handleTranscription(createBatch([msg]), env, ctx);
 
@@ -160,96 +279,54 @@ describe("handleTranscription", () => {
     expect(msg.ack).toHaveBeenCalled();
   });
 
-  it("should retry on error and mark distillation FAILED", async () => {
-    (getConfig as any).mockReset();
-    (getConfig as any).mockResolvedValue(true);
-    const msg = createMsg({ episodeId: "ep1", transcriptUrl: "https://example.com/t.txt" });
+  it("error -> step FAILED, msg.retry()", async () => {
+    const msg = createMsg({ jobId: "job1", episodeId: "ep1" });
+    mockPrisma.pipelineJob.findUnique.mockResolvedValue(JOB);
+    mockPrisma.pipelineJob.update.mockResolvedValue({});
+    mockPrisma.pipelineStep.create.mockResolvedValue({ id: "step1" });
     mockPrisma.distillation.findUnique.mockResolvedValue(null);
-    mockPrisma.distillation.upsert.mockResolvedValue({ id: "dist1", episodeId: "ep1" });
-    mockPrisma.pipelineJob.create.mockResolvedValue({});
-    // Make the final update (TRANSCRIPT_READY) fail to trigger catch
-    mockPrisma.distillation.update.mockRejectedValue(new Error("DB write failed"));
+    // Episode not found triggers "Episode not found" error
+    mockPrisma.episode.findUnique.mockResolvedValue(null);
+    mockPrisma.distillation.upsert.mockResolvedValue({});
 
     await handleTranscription(createBatch([msg]), env, ctx);
 
+    expect(mockPrisma.pipelineStep.updateMany).toHaveBeenCalledWith({
+      where: { jobId: "job1", stage: "TRANSCRIPTION", status: "IN_PROGRESS" },
+      data: expect.objectContaining({
+        status: "FAILED",
+        errorMessage: "Episode not found: ep1",
+      }),
+    });
     expect(msg.retry).toHaveBeenCalled();
     expect(msg.ack).not.toHaveBeenCalled();
   });
 
-  it("should create a PipelineJob record", async () => {
-    const msg = createMsg({ episodeId: "ep1", transcriptUrl: "https://example.com/t.txt", requestId: "req1" });
-    mockPrisma.distillation.findUnique.mockResolvedValue(null);
-    mockPrisma.distillation.upsert.mockResolvedValue({ id: "dist1", episodeId: "ep1" });
-    mockPrisma.pipelineJob.create.mockResolvedValue({});
-    mockPrisma.distillation.update.mockResolvedValue({});
+  it("acks when job not found", async () => {
+    const msg = createMsg({ jobId: "nonexistent", episodeId: "ep1" });
+    mockPrisma.pipelineJob.findUnique.mockResolvedValue(null);
 
     await handleTranscription(createBatch([msg]), env, ctx);
 
-    expect(mockPrisma.pipelineJob.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        type: "TRANSCRIPTION",
-        status: "IN_PROGRESS",
-        entityId: "ep1",
-        entityType: "episode",
-        stage: 2,
-        requestId: "req1",
-      }),
-    });
+    expect(msg.ack).toHaveBeenCalled();
+    expect(mockPrisma.pipelineStep.create).not.toHaveBeenCalled();
   });
 
-  describe("structured logging", () => {
-    it("should log batch_start", async () => {
-      const msg = createMsg({ episodeId: "ep1", transcriptUrl: "https://example.com/t.txt" });
-      mockPrisma.distillation.findUnique.mockResolvedValue(null);
-      mockPrisma.distillation.upsert.mockResolvedValue({ id: "dist1", episodeId: "ep1" });
-      mockPrisma.pipelineJob.create.mockResolvedValue({});
-      mockPrisma.distillation.update.mockResolvedValue({});
+  it("updates job status to IN_PROGRESS when PENDING", async () => {
+    const msg = createMsg({ jobId: "job1", episodeId: "ep1" });
+    mockPrisma.pipelineJob.findUnique.mockResolvedValue(JOB);
+    mockPrisma.pipelineJob.update.mockResolvedValue({});
+    mockPrisma.pipelineStep.create.mockResolvedValue({ id: "step1" });
+    mockPrisma.distillation.findUnique.mockResolvedValue(null);
+    mockPrisma.episode.findUnique.mockResolvedValue(EPISODE);
+    mockPrisma.distillation.upsert.mockResolvedValue({ id: "dist1", episodeId: "ep1" });
+    mockPrisma.pipelineStep.update.mockResolvedValue({});
 
-      await handleTranscription(createBatch([msg]), env, ctx);
+    await handleTranscription(createBatch([msg]), env, ctx);
 
-      expect(mockLogger.info).toHaveBeenCalledWith("batch_start", { messageCount: 1 });
-    });
-
-    it("should log stage_disabled when stage is off", async () => {
-      (getConfig as any).mockResolvedValueOnce(false);
-      const msg = createMsg({ episodeId: "ep1", transcriptUrl: "https://example.com/t.txt" });
-
-      await handleTranscription(createBatch([msg]), env, ctx);
-
-      expect(mockLogger.info).toHaveBeenCalledWith("stage_disabled", { stage: 2 });
-    });
-
-    it("should log transcript_fetched on success", async () => {
-      const msg = createMsg({ episodeId: "ep1", transcriptUrl: "https://example.com/t.txt" });
-      mockPrisma.distillation.findUnique.mockResolvedValue(null);
-      mockPrisma.distillation.upsert.mockResolvedValue({ id: "dist1", episodeId: "ep1" });
-      mockPrisma.pipelineJob.create.mockResolvedValue({});
-      mockPrisma.distillation.update.mockResolvedValue({});
-
-      await handleTranscription(createBatch([msg]), env, ctx);
-
-      expect(mockLogger.info).toHaveBeenCalledWith("transcript_fetched", {
-        episodeId: "ep1",
-        bytes: "This is a transcript.".length,
-      });
-    });
-
-    it("should log episode_error on failure", async () => {
-      (getConfig as any).mockReset();
-      (getConfig as any).mockResolvedValue(true);
-      const msg = createMsg({ episodeId: "ep1", transcriptUrl: "https://example.com/t.txt" });
-      mockPrisma.distillation.findUnique.mockResolvedValue(null);
-      mockPrisma.distillation.upsert.mockResolvedValue({ id: "dist1", episodeId: "ep1" });
-      mockPrisma.pipelineJob.create.mockResolvedValue({});
-      mockPrisma.distillation.update.mockRejectedValue(new Error("DB write failed"));
-
-      await handleTranscription(createBatch([msg]), env, ctx);
-
-      expect(mockLogger.error).toHaveBeenCalledWith(
-        "episode_error",
-        { episodeId: "ep1" },
-        expect.any(Error)
-      );
+    expect(mockPrisma.pipelineJob.update).toHaveBeenCalledWith({
+      where: { id: "job1" },
+      data: { status: "IN_PROGRESS" },
     });
   });
 });
