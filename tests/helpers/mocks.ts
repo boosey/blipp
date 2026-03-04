@@ -34,6 +34,7 @@ export function createMockPrisma() {
     briefing: modelMethods(),
     briefingSegment: modelMethods(),
     pipelineJob: modelMethods(),
+    pipelineStep: modelMethods(),
     briefingRequest: modelMethods(),
     platformConfig: modelMethods(),
     $disconnect: vi.fn().mockResolvedValue(undefined),

@@ -92,6 +92,7 @@ model Episode {
   podcast      Podcast       @relation(fields: [podcastId], references: [id], onDelete: Cascade)
   distillation Distillation?
   clips        Clip[]
+  pipelineJobs PipelineJob[]
 
   @@unique([podcastId, guid])
 }
@@ -201,44 +202,65 @@ model BriefingSegment {
   briefing Briefing @relation(fields: [briefingId], references: [id], onDelete: Cascade)
 }
 
-// ── Admin: Pipeline Observability ──
+// ── Admin: Pipeline Job Lifecycle ──
 
 model PipelineJob {
-  id           String            @id @default(cuid())
-  type         PipelineJobType
-  status       PipelineJobStatus @default(PENDING)
-  entityId     String            // podcastId, episodeId, or briefingId
-  entityType   String            // "podcast" | "episode" | "briefing"
-  stage        Int               @default(1) // 1-5 pipeline stage
-  input        Json?
-  output       Json?
-  errorMessage String?
-  cost         Float?            // estimated cost in dollars
-  startedAt    DateTime?
-  completedAt  DateTime?
-  durationMs   Int?
-  requestId    String?
-  parentJobId  String?
-  retryCount   Int               @default(0)
-  createdAt    DateTime          @default(now())
-  updatedAt    DateTime          @updatedAt
+  id             String            @id @default(cuid())
+  requestId      String
+  episodeId      String
+  durationTier   Int               // from request item — source of truth
+  status         PipelineJobStatus @default(PENDING)
+  currentStage   PipelineStage     @default(TRANSCRIPTION)
+  distillationId String?
+  clipId         String?
+  errorMessage   String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  completedAt    DateTime?
+
+  request  BriefingRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  episode  Episode         @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  steps    PipelineStep[]
 }
 
-enum PipelineJobType {
-  FEED_REFRESH
+enum PipelineStage {
   TRANSCRIPTION
   DISTILLATION
   CLIP_GENERATION
-  BRIEFING_ASSEMBLY
 }
 
 enum PipelineJobStatus {
   PENDING
-  RUNNING // legacy – treat as IN_PROGRESS
   IN_PROGRESS
   COMPLETED
   FAILED
-  RETRYING
+}
+
+model PipelineStep {
+  id           String             @id @default(cuid())
+  jobId        String
+  stage        PipelineStage
+  status       PipelineStepStatus @default(PENDING)
+  cached       Boolean            @default(false)
+  input        Json?
+  output       Json?
+  errorMessage String?
+  startedAt    DateTime?
+  completedAt  DateTime?
+  durationMs   Int?
+  cost         Float?
+  retryCount   Int                @default(0)
+  createdAt    DateTime           @default(now())
+
+  job PipelineJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+}
+
+enum PipelineStepStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  SKIPPED
+  FAILED
 }
 
 // ── Briefing Requests (Demand-Driven Pipeline) ──
@@ -248,15 +270,16 @@ model BriefingRequest {
   userId        String
   status        BriefingRequestStatus @default(PENDING)
   targetMinutes Int
-  podcastIds    String[]
+  items         Json                 // BriefingRequestItem[]
   isTest        Boolean              @default(false)
   briefingId    String?              @unique
   errorMessage  String?
   createdAt     DateTime             @default(now())
   updatedAt     DateTime             @updatedAt
 
-  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  briefing Briefing? @relation(fields: [briefingId], references: [id])
+  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  briefing Briefing?      @relation(fields: [briefingId], references: [id])
+  jobs     PipelineJob[]
 }
 
 enum BriefingRequestStatus {

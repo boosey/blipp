@@ -90,45 +90,51 @@ export interface ActiveIssue {
   actionable: boolean;
 }
 
-// ── Pipeline ──
+// ── Pipeline Job Lifecycle ──
 
-export interface PipelineJob {
+export type PipelineStage = "TRANSCRIPTION" | "DISTILLATION" | "CLIP_GENERATION";
+
+export type PipelineJobStatus = "PENDING" | "IN_PROGRESS" | "COMPLETED" | "FAILED";
+
+export type PipelineStepStatus = "PENDING" | "IN_PROGRESS" | "COMPLETED" | "SKIPPED" | "FAILED";
+
+export interface PipelineStep {
   id: string;
-  type: PipelineJobType;
-  status: PipelineJobStatus;
-  entityId: string;
-  entityType: string;
-  stage: number;
-  input?: unknown;
-  output?: unknown;
+  jobId: string;
+  stage: PipelineStage;
+  status: PipelineStepStatus;
+  cached: boolean;
   errorMessage?: string;
-  cost?: number;
   startedAt?: string;
   completedAt?: string;
   durationMs?: number;
+  cost?: number;
   retryCount: number;
   createdAt: string;
-  // Joined data
-  podcastTitle?: string;
-  podcastImageUrl?: string;
-  episodeTitle?: string;
 }
 
-export type PipelineJobType =
-  | "TRANSCRIPTION"
-  | "DISTILLATION"
-  | "CLIP_GENERATION"
-  | "BRIEFING_ASSEMBLY";
-
-export type PipelineJobStatus =
-  | "PENDING"
-  | "IN_PROGRESS"
-  | "COMPLETED"
-  | "FAILED"
-  | "RETRYING";
+export interface PipelineJob {
+  id: string;
+  requestId: string;
+  episodeId: string;
+  durationTier: number;
+  status: PipelineJobStatus;
+  currentStage: PipelineStage;
+  distillationId?: string;
+  clipId?: string;
+  errorMessage?: string;
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string;
+  // Joined data
+  episodeTitle?: string;
+  podcastTitle?: string;
+  podcastImageUrl?: string;
+  steps?: PipelineStep[];
+}
 
 export interface PipelineStageStats {
-  stage: number;
+  stage: PipelineStage;
   name: string;
   icon: string;
   activeJobs: number;
@@ -139,9 +145,9 @@ export interface PipelineStageStats {
 }
 
 export interface PipelineJobFilters {
-  stage?: number;
+  currentStage?: PipelineStage;
   status?: PipelineJobStatus;
-  type?: PipelineJobType;
+  requestId?: string;
   dateRange?: DateRange;
   search?: string;
 }
@@ -431,35 +437,21 @@ export interface PipelineTriggerResult {
   message: string;
 }
 
-// ── Enriched Pipeline Job (for detail sheet) ──
-
-export interface PipelineJobRequestContext {
-  requestId: string;
-  userId: string;
-  userEmail?: string;
-  targetMinutes: number;
-  status: BriefingRequestStatus;
-  createdAt: string;
-}
-
-export interface EnrichedPipelineJob extends PipelineJob {
-  requestContext?: PipelineJobRequestContext;
-  queuePosition?: number;
-  upstreamProgress?: {
-    stage: number;
-    name: string;
-    status: "COMPLETED" | "IN_PROGRESS" | "PENDING" | "FAILED";
-  }[];
-}
-
 // ── Briefing Requests ──
+
+export interface BriefingRequestItem {
+  podcastId: string;
+  episodeId: string | null;  // null when useLatest is true
+  durationTier: number;      // source of truth for this item's time
+  useLatest: boolean;
+}
 
 export interface BriefingRequest {
   id: string;
   userId: string;
   status: BriefingRequestStatus;
   targetMinutes: number;
-  podcastIds: string[];
+  items: BriefingRequestItem[];
   isTest: boolean;
   briefingId: string | null;
   errorMessage: string | null;
@@ -467,22 +459,27 @@ export interface BriefingRequest {
   updatedAt: string;
   userName?: string;
   userEmail?: string;
-  episodeProgress?: EpisodeProgress[];
+  jobProgress?: JobProgress[];
 }
 
 export type BriefingRequestStatus = "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED";
 
-export interface EpisodeProgress {
+export interface JobProgress {
+  jobId: string;
   episodeId: string;
   episodeTitle: string;
   podcastTitle: string;
-  transcription: StageProgress;
-  distillation: StageProgress;
-  clipGeneration: StageProgress;
+  durationTier: number;
+  status: PipelineJobStatus;
+  currentStage: PipelineStage;
+  steps: StepProgress[];
 }
 
-export interface StageProgress {
-  status: "WAITING" | "IN_PROGRESS" | "COMPLETED" | "FAILED";
+export interface StepProgress {
+  stage: PipelineStage;
+  status: PipelineStepStatus;
+  cached: boolean;
   durationMs?: number;
+  cost?: number;
   errorMessage?: string;
 }
