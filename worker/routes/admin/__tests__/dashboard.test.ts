@@ -213,6 +213,55 @@ describe("Dashboard Routes", () => {
     });
   });
 
+  describe("GET /dashboard/feed-refresh-summary", () => {
+    it("returns correct FeedRefreshSummary structure", async () => {
+      const lastFetched = new Date("2026-03-03T10:00:00Z");
+      mockPrisma.podcast.findFirst.mockResolvedValueOnce({ lastFetchedAt: lastFetched });
+      mockPrisma.podcast.count
+        .mockResolvedValueOnce(5)   // podcastsRefreshed (within 10 min window)
+        .mockResolvedValueOnce(10)  // totalPodcasts (active)
+        .mockResolvedValueOnce(2);  // feedErrors
+      mockPrisma.episode.count.mockResolvedValueOnce(8); // recentEpisodes (last 24h)
+
+      const res = await app.request("/dashboard/feed-refresh-summary", {}, env, mockExCtx);
+      expect(res.status).toBe(200);
+      const body: any = await res.json();
+      expect(body.data).toEqual({
+        lastRunAt: lastFetched.toISOString(),
+        podcastsRefreshed: 5,
+        totalPodcasts: 10,
+        recentEpisodes: 8,
+        feedErrors: 2,
+      });
+    });
+
+    it("returns null lastRunAt when no podcasts have been fetched", async () => {
+      mockPrisma.podcast.findFirst.mockResolvedValueOnce(null);
+      mockPrisma.podcast.count
+        .mockResolvedValueOnce(3)  // totalPodcasts
+        .mockResolvedValueOnce(0); // feedErrors
+      mockPrisma.episode.count.mockResolvedValueOnce(0); // recentEpisodes
+
+      const res = await app.request("/dashboard/feed-refresh-summary", {}, env, mockExCtx);
+      expect(res.status).toBe(200);
+      const body: any = await res.json();
+      expect(body.data.lastRunAt).toBeNull();
+      expect(body.data.podcastsRefreshed).toBe(0);
+      expect(body.data.totalPodcasts).toBe(3);
+    });
+
+    it("calls $disconnect", async () => {
+      mockPrisma.podcast.findFirst.mockResolvedValueOnce(null);
+      mockPrisma.podcast.count
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(0);
+      mockPrisma.episode.count.mockResolvedValueOnce(0);
+
+      await app.request("/dashboard/feed-refresh-summary", {}, env, mockExCtx);
+      expect(mockPrisma.$disconnect).toHaveBeenCalled();
+    });
+  });
+
   describe("GET /dashboard/issues", () => {
     it("returns issues from failed jobs and broken podcasts", async () => {
       const now = new Date();

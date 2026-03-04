@@ -117,7 +117,7 @@ pipelineRoutes.get("/jobs", async (c) => {
   }
 });
 
-// GET /jobs/:id - Single job detail
+// GET /jobs/:id - Enriched job detail
 pipelineRoutes.get("/jobs/:id", async (c) => {
   const prisma = createPrismaClient(c.env.HYPERDRIVE);
   try {
@@ -133,13 +133,119 @@ pipelineRoutes.get("/jobs/:id", async (c) => {
 
     if (!job) return c.json({ error: "Job not found" }, 404);
 
+    // Resolve entity names
+    let podcastTitle: string | undefined;
+    let podcastImageUrl: string | undefined;
+    let episodeTitle: string | undefined;
+
+    if (job.entityType === "episode") {
+      const ep = await prisma.episode.findUnique({
+        where: { id: job.entityId },
+        select: { title: true, podcast: { select: { title: true, imageUrl: true } } },
+      });
+      episodeTitle = ep?.title;
+      podcastTitle = ep?.podcast?.title;
+      podcastImageUrl = ep?.podcast?.imageUrl ?? undefined;
+    } else if (job.entityType === "podcast") {
+      const p = await prisma.podcast.findUnique({
+        where: { id: job.entityId },
+        select: { title: true, imageUrl: true },
+      });
+      podcastTitle = p?.title;
+      podcastImageUrl = p?.imageUrl ?? undefined;
+    }
+
+    // Enrich: requestContext (when job has requestId)
+    let requestContext: {
+      requestId: string;
+      userId: string;
+      userEmail?: string;
+      targetMinutes: number;
+      status: string;
+      createdAt: string;
+    } | undefined;
+
+    if (job.requestId) {
+      const br = await prisma.briefingRequest.findUnique({
+        where: { id: job.requestId },
+        select: {
+          id: true, userId: true, targetMinutes: true, status: true, createdAt: true,
+          user: { select: { email: true } },
+        },
+      });
+      if (br) {
+        requestContext = {
+          requestId: br.id,
+          userId: br.userId,
+          userEmail: br.user?.email,
+          targetMinutes: br.targetMinutes,
+          status: br.status,
+          createdAt: br.createdAt.toISOString(),
+        };
+      }
+    }
+
+    // Enrich: queuePosition (for PENDING jobs)
+    let queuePosition: number | undefined;
+    if (job.status === "PENDING") {
+      queuePosition = await prisma.pipelineJob.count({
+        where: {
+          stage: job.stage,
+          status: "PENDING",
+          createdAt: { lt: job.createdAt },
+        },
+      });
+    }
+
+    // Enrich: upstreamProgress (for episode entity type, stages 2-5)
+    let upstreamProgress: { stage: number; name: string; status: string }[] | undefined;
+    if (job.entityType === "episode") {
+      const relatedJobs = await prisma.pipelineJob.findMany({
+        where: { entityId: job.entityId, entityType: "episode", stage: { in: [2, 3, 4, 5] } },
+        orderBy: { stage: "asc" },
+        select: { stage: true, status: true },
+      });
+      // Deduplicate by stage, keeping the most recent (last in the array since ordered by stage)
+      const byStage = new Map<number, string>();
+      for (const rj of relatedJobs) {
+        byStage.set(rj.stage, rj.status);
+      }
+      upstreamProgress = [2, 3, 4, 5]
+        .filter((s) => byStage.has(s))
+        .map((s) => ({
+          stage: s,
+          name: STAGE_NAMES[s] ?? `Stage ${s}`,
+          status: byStage.get(s)!,
+        }));
+      if (upstreamProgress.length === 0) upstreamProgress = undefined;
+    }
+
     return c.json({
       data: {
-        ...job,
+        id: job.id,
+        type: job.type,
+        status: job.status,
+        entityId: job.entityId,
+        entityType: job.entityType,
+        stage: job.stage,
+        input: job.input,
+        output: job.output,
+        errorMessage: job.errorMessage,
+        cost: job.cost,
         startedAt: job.startedAt?.toISOString(),
         completedAt: job.completedAt?.toISOString(),
+        durationMs: job.durationMs,
+        requestId: job.requestId,
+        parentJobId: job.parentJobId,
+        retryCount: job.retryCount,
         createdAt: job.createdAt.toISOString(),
         updatedAt: job.updatedAt.toISOString(),
+        podcastTitle,
+        podcastImageUrl,
+        episodeTitle,
+        requestContext,
+        queuePosition,
+        upstreamProgress,
       },
     });
   } finally {
@@ -302,17 +408,7 @@ pipelineRoutes.post("/trigger/stage/:stage", async (c) => {
     const stage = parseInt(c.req.param("stage"));
 
     if (stage === 1) {
-      // Feed refresh: enqueue all active podcasts
-      const podcasts = await prisma.podcast.findMany({
-        where: { status: "active" },
-        select: { id: true },
-      });
-      for (const p of podcasts) {
-        await c.env.FEED_REFRESH_QUEUE.send({ type: "manual", podcastId: p.id });
-      }
-      return c.json({
-        data: { enqueued: podcasts.length, skipped: 0, message: `Feed refresh enqueued for ${podcasts.length} podcasts` },
-      });
+      return c.json({ error: "Feed refresh is not a pipeline stage. Use POST /trigger/feed-refresh." }, 400);
     }
 
     if (stage === 2) {
@@ -362,7 +458,7 @@ pipelineRoutes.post("/trigger/stage/:stage", async (c) => {
       return c.json({ error: "Briefing assembly is user-triggered and cannot be bulk-triggered" }, 400);
     }
 
-    return c.json({ error: `Invalid stage: ${stage}. Valid stages are 1-4.` }, 400);
+    return c.json({ error: `Invalid stage: ${stage}. Valid stages are 2-4.` }, 400);
   } finally {
     c.executionCtx.waitUntil(prisma.$disconnect());
   }
@@ -435,6 +531,8 @@ pipelineRoutes.get("/stages", async (c) => {
       1: "rss", 2: "file-audio", 3: "brain", 4: "scissors", 5: "package",
     };
 
+    const PIPELINE_STAGES = [2, 3, 4, 5];
+
     let statusGroups, avgDurations, costGroups;
     try {
       const todayStart = new Date();
@@ -444,21 +542,22 @@ pipelineRoutes.get("/stages", async (c) => {
         prisma.pipelineJob.groupBy({
           by: ["stage", "status"],
           _count: true,
+          where: { stage: { in: PIPELINE_STAGES } },
         }),
         prisma.pipelineJob.groupBy({
           by: ["stage"],
           _avg: { durationMs: true },
-          where: { durationMs: { not: null } },
+          where: { durationMs: { not: null }, stage: { in: PIPELINE_STAGES } },
         }),
         prisma.pipelineJob.groupBy({
           by: ["stage"],
           _sum: { cost: true },
-          where: { createdAt: { gte: todayStart }, cost: { not: null } },
+          where: { createdAt: { gte: todayStart }, cost: { not: null }, stage: { in: PIPELINE_STAGES } },
         }),
       ]);
     } catch {
       // PipelineJob table may not exist
-      const data = [1, 2, 3, 4, 5].map((stage) => ({
+      const data = PIPELINE_STAGES.map((stage) => ({
         stage,
         name: STAGE_NAMES[stage] ?? `Stage ${stage}`,
         icon: STAGE_ICONS[stage] ?? "circle",
@@ -496,7 +595,7 @@ pipelineRoutes.get("/stages", async (c) => {
       if (s) s.todayCost = Math.round((row._sum.cost ?? 0) * 100) / 100;
     }
 
-    const data = [1, 2, 3, 4, 5].map((stage) => {
+    const data = PIPELINE_STAGES.map((stage) => {
       const s = stageData.get(stage) ?? { active: 0, total: 0, completed: 0, avgDuration: 0, todayCost: 0 };
       return {
         stage,

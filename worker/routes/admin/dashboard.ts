@@ -339,4 +339,50 @@ dashboardRoutes.get("/issues", async (c) => {
   }
 });
 
+// GET /feed-refresh-summary - Feed refresh status for FeedRefreshCard
+dashboardRoutes.get("/feed-refresh-summary", async (c) => {
+  const prisma = createPrismaClient(c.env.HYPERDRIVE);
+  try {
+    // Get the most recent lastFetchedAt across all podcasts
+    const latestPodcast = await prisma.podcast.findFirst({
+      where: { lastFetchedAt: { not: null } },
+      orderBy: { lastFetchedAt: "desc" },
+      select: { lastFetchedAt: true },
+    });
+
+    const lastRunAt = latestPodcast?.lastFetchedAt ?? null;
+
+    // Count podcasts refreshed in the last run window (within 10 min of lastRunAt)
+    let podcastsRefreshed = 0;
+    if (lastRunAt) {
+      const windowStart = new Date(lastRunAt.getTime() - 10 * 60 * 1000);
+      podcastsRefreshed = await prisma.podcast.count({
+        where: {
+          lastFetchedAt: { gte: windowStart, lte: lastRunAt },
+        },
+      });
+    }
+
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    const [totalPodcasts, recentEpisodes, feedErrors] = await Promise.all([
+      prisma.podcast.count({ where: { status: "active" } }),
+      prisma.episode.count({ where: { createdAt: { gte: twentyFourHoursAgo } } }),
+      prisma.podcast.count({ where: { feedError: { not: null }, status: "active" } }),
+    ]);
+
+    return c.json({
+      data: {
+        lastRunAt: lastRunAt?.toISOString() ?? null,
+        podcastsRefreshed,
+        totalPodcasts,
+        recentEpisodes,
+        feedErrors,
+      },
+    });
+  } finally {
+    c.executionCtx.waitUntil(prisma.$disconnect());
+  }
+});
+
 export { dashboardRoutes };
