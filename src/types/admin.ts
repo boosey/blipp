@@ -25,6 +25,16 @@ export interface DateRange {
   to: string;
 }
 
+// ── Feed Refresh ──
+
+export interface FeedRefreshSummary {
+  lastRunAt: string | null;
+  podcastsRefreshed: number;
+  totalPodcasts: number;
+  recentEpisodes: number;
+  feedErrors: number;
+}
+
 // ── Dashboard / Command Center ──
 
 export interface SystemHealth {
@@ -105,7 +115,6 @@ export interface PipelineJob {
 }
 
 export type PipelineJobType =
-  | "FEED_REFRESH"
   | "TRANSCRIPTION"
   | "DISTILLATION"
   | "CLIP_GENERATION"
@@ -420,6 +429,27 @@ export interface PipelineTriggerResult {
   enqueued: number;
   skipped: number;
   message: string;
+}
+
+// ── Enriched Pipeline Job (for detail sheet) ──
+
+export interface PipelineJobRequestContext {
+  requestId: string;
+  userId: string;
+  userEmail?: string;
+  targetMinutes: number;
+  status: BriefingRequestStatus;
+  createdAt: string;
+}
+
+export interface EnrichedPipelineJob extends PipelineJob {
+  requestContext?: PipelineJobRequestContext;
+  queuePosition?: number;
+  upstreamProgress?: {
+    stage: number;
+    name: string;
+    status: "COMPLETED" | "IN_PROGRESS" | "PENDING" | "FAILED";
+  }[];
 }
 
 // ── Briefing Requests ──
