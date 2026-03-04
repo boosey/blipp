@@ -59,12 +59,13 @@ describe("Pipeline", () => {
 
     const urls = mockFetch.mock.calls.map((call: any[]) => call[0]);
     expect(urls).toContainEqual(expect.stringContaining("/api/admin/pipeline/stages"));
-    // Should fetch jobs for each of the 5 stages
-    expect(urls).toContainEqual(expect.stringContaining("/api/admin/pipeline/jobs?stage=1"));
+    // Should fetch jobs for stages 2-5 (feed refresh removed)
     expect(urls).toContainEqual(expect.stringContaining("/api/admin/pipeline/jobs?stage=2"));
     expect(urls).toContainEqual(expect.stringContaining("/api/admin/pipeline/jobs?stage=3"));
     expect(urls).toContainEqual(expect.stringContaining("/api/admin/pipeline/jobs?stage=4"));
     expect(urls).toContainEqual(expect.stringContaining("/api/admin/pipeline/jobs?stage=5"));
+    // Stage 1 should NOT be fetched
+    expect(urls).not.toContainEqual(expect.stringContaining("/api/admin/pipeline/jobs?stage=1"));
   });
 
   it("handles error responses without crashing", async () => {
@@ -108,12 +109,14 @@ describe("Pipeline", () => {
     });
   });
 
-  it("renders 'Run Feed Refresh' toolbar button", async () => {
+  it("does not render 'Run Feed Refresh' toolbar button (moved to Command Center/Catalog)", async () => {
     mockFetch.mockImplementation((url: string) => {
       if (url.includes("/config")) return Promise.resolve(CONFIG_RESPONSE);
       if (url.includes("/pipeline/stages")) {
         return Promise.resolve(mockJsonResponse({
-          data: [{ stage: 1, name: "Feed Refresh", activeJobs: 0, successRate: 100, avgProcessingTime: 0, todayCost: 0, perUnitCost: 0 }],
+          data: [
+            { stage: 2, name: "Transcription", activeJobs: 0, successRate: 100, avgProcessingTime: 0, todayCost: 0, perUnitCost: 0 },
+          ],
         }));
       }
       return Promise.resolve(mockJsonResponse({ data: [], total: 0 }));
@@ -125,47 +128,15 @@ describe("Pipeline", () => {
       expect(screen.getByText("Pipeline Flow")).toBeInTheDocument();
     });
 
-    expect(screen.getByText("Run Feed Refresh")).toBeInTheDocument();
+    expect(screen.queryByText("Run Feed Refresh")).not.toBeInTheDocument();
   });
 
-  it("'Run Feed Refresh' calls POST /pipeline/trigger/feed-refresh", async () => {
-    const user = userEvent.setup();
-    mockFetch.mockImplementation((url: string, options?: RequestInit) => {
-      if (options?.method === "POST") {
-        return Promise.resolve(mockJsonResponse({ data: { enqueued: 1, skipped: 0, message: "ok" } }));
-      }
-      if (url.includes("/config")) return Promise.resolve(CONFIG_RESPONSE);
-      if (url.includes("/pipeline/stages")) {
-        return Promise.resolve(mockJsonResponse({
-          data: [{ stage: 1, name: "Feed Refresh", activeJobs: 0, successRate: 100, avgProcessingTime: 0, todayCost: 0, perUnitCost: 0 }],
-        }));
-      }
-      return Promise.resolve(mockJsonResponse({ data: [], total: 0 }));
-    });
-
-    renderPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("Run Feed Refresh")).toBeInTheDocument();
-    });
-
-    await user.click(screen.getByText("Run Feed Refresh"));
-
-    await waitFor(() => {
-      const postCalls = mockFetch.mock.calls.filter(
-        (call: any[]) => call[1]?.method === "POST" && (call[0] as string).includes("/pipeline/trigger/feed-refresh")
-      );
-      expect(postCalls.length).toBeGreaterThanOrEqual(1);
-    });
-  });
-
-  it("renders all 5 stage column headers", async () => {
+  it("renders 4 stage column headers (stages 2-5, no Feed Refresh)", async () => {
     mockFetch.mockImplementation((url: string) => {
       if (url.includes("/config")) return Promise.resolve(CONFIG_RESPONSE);
       if (url.includes("/pipeline/stages")) {
         return Promise.resolve(mockJsonResponse({
           data: [
-            { stage: 1, name: "Feed Refresh", activeJobs: 0, successRate: 100, avgProcessingTime: 0, todayCost: 0, perUnitCost: 0 },
             { stage: 2, name: "Transcription", activeJobs: 0, successRate: 100, avgProcessingTime: 0, todayCost: 0, perUnitCost: 0 },
             { stage: 3, name: "Distillation", activeJobs: 0, successRate: 100, avgProcessingTime: 0, todayCost: 0, perUnitCost: 0 },
             { stage: 4, name: "Clip Generation", activeJobs: 0, successRate: 100, avgProcessingTime: 0, todayCost: 0, perUnitCost: 0 },
@@ -182,8 +153,8 @@ describe("Pipeline", () => {
       expect(screen.getByText("Pipeline Flow")).toBeInTheDocument();
     });
 
-    // All 5 stage names should be visible in column headers
-    expect(screen.getByText("Feed Refresh")).toBeInTheDocument();
+    // 4 stage names should be visible (no Feed Refresh)
+    expect(screen.queryByText("Feed Refresh")).not.toBeInTheDocument();
     expect(screen.getByText("Transcription")).toBeInTheDocument();
     expect(screen.getByText("Distillation")).toBeInTheDocument();
     expect(screen.getByText("Clip Generation")).toBeInTheDocument();

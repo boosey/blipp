@@ -107,20 +107,14 @@ describe("Pipeline Trigger Routes", () => {
   });
 
   describe("POST /pipeline/trigger/stage/:stage", () => {
-    it("stage 1: enqueues feed refresh for all active podcasts", async () => {
-      mockPrisma.podcast.findMany.mockResolvedValueOnce([
-        { id: "pod-1" },
-        { id: "pod-2" },
-      ]);
-
+    it("stage 1: returns 400 since feed refresh is not a pipeline stage", async () => {
       const res = await app.request("/pipeline/trigger/stage/1", {
         method: "POST",
       }, env, mockExCtx);
 
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(400);
       const body: any = await res.json();
-      expect(body.data.enqueued).toBe(2);
-      expect(env.FEED_REFRESH_QUEUE.send).toHaveBeenCalledTimes(2);
+      expect(body.error).toContain("Feed refresh");
     });
 
     it("stage 2: enqueues distillation for unprocessed episodes", async () => {

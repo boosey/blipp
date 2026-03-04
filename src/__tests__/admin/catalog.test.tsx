@@ -206,8 +206,10 @@ describe("Catalog", () => {
       expect(screen.getByText(/example\.com\/feed\.xml/)).toBeInTheDocument();
     });
 
-    // Find and click the Refresh button in the detail panel footer
-    const refreshBtn = screen.getAllByRole("button").find((btn) => btn.textContent?.includes("Refresh"));
+    // Find and click the Refresh button in the detail panel footer (not "Refresh Now" from FeedRefreshCard)
+    const refreshBtn = screen.getAllByRole("button").find(
+      (btn) => btn.textContent === "Refresh" || btn.textContent === "Refreshing..."
+    );
     expect(refreshBtn).toBeTruthy();
     await user.click(refreshBtn!);
 
