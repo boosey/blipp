@@ -186,3 +186,81 @@ podcasts.get("/subscriptions", async (c) => {
     c.executionCtx.waitUntil(prisma.$disconnect());
   }
 });
+
+/**
+ * GET /:id — Get podcast detail with subscription status.
+ *
+ * @param id - The podcast's database ID
+ * @returns Podcast detail with isSubscribed flag
+ */
+podcasts.get("/:id", async (c) => {
+  const userId = getAuth(c)!.userId!;
+  const podcastId = c.req.param("id");
+  const prisma = createPrismaClient(c.env.HYPERDRIVE);
+
+  try {
+    const user = await prisma.user.findUniqueOrThrow({
+      where: { clerkId: userId },
+    });
+
+    const podcast = await prisma.podcast.findUniqueOrThrow({
+      where: { id: podcastId },
+    });
+
+    const subscription = await prisma.subscription.findFirst({
+      where: { userId: user.id, podcastId },
+    });
+
+    return c.json({
+      podcast: {
+        id: podcast.id,
+        title: podcast.title,
+        description: podcast.description,
+        feedUrl: podcast.feedUrl,
+        imageUrl: podcast.imageUrl,
+        author: podcast.author,
+        podcastIndexId: podcast.podcastIndexId,
+        episodeCount: podcast.episodeCount,
+        isSubscribed: !!subscription,
+      },
+    });
+  } finally {
+    c.executionCtx.waitUntil(prisma.$disconnect());
+  }
+});
+
+/**
+ * GET /:id/episodes — List episodes for a podcast.
+ * Returns episodes from the local database, ordered by publish date descending.
+ *
+ * @param id - The podcast's database ID
+ * @returns Array of episode summaries
+ */
+podcasts.get("/:id/episodes", async (c) => {
+  const podcastId = c.req.param("id");
+  const prisma = createPrismaClient(c.env.HYPERDRIVE);
+
+  try {
+    // Verify podcast exists
+    await prisma.podcast.findUniqueOrThrow({
+      where: { id: podcastId },
+    });
+
+    const episodes = await prisma.episode.findMany({
+      where: { podcastId },
+      orderBy: { publishedAt: "desc" },
+      take: 50,
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        publishedAt: true,
+        durationSeconds: true,
+      },
+    });
+
+    return c.json({ episodes });
+  } finally {
+    c.executionCtx.waitUntil(prisma.$disconnect());
+  }
+});
