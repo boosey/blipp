@@ -3,8 +3,11 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { PodcastCard } from "../components/podcast-card";
 
-const mockFetch = vi.fn();
-globalThis.fetch = mockFetch;
+// Mock useApiFetch — the component now uses it instead of bare fetch
+const mockApiFetch = vi.fn();
+vi.mock("../lib/api", () => ({
+  useApiFetch: () => mockApiFetch,
+}));
 
 const defaultProps = {
   id: "p1",
@@ -19,6 +22,7 @@ const defaultProps = {
 describe("PodcastCard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockApiFetch.mockResolvedValue({});
   });
 
   it("renders title and author", () => {
@@ -40,23 +44,18 @@ describe("PodcastCard", () => {
     expect(screen.getByText("Subscribe")).toBeInTheDocument();
   });
 
-  it("shows Unsubscribe button when subscribed", () => {
+  it("shows Subscribed button when subscribed", () => {
     render(
       <MemoryRouter>
         <PodcastCard {...defaultProps} isSubscribed={true} />
       </MemoryRouter>
     );
-    expect(screen.getByText("Unsubscribe")).toBeInTheDocument();
+    expect(screen.getByText("Subscribed")).toBeInTheDocument();
   });
 
   it("calls API on subscribe click", async () => {
     const user = userEvent.setup();
     const onToggle = vi.fn();
-
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({}),
-    });
 
     render(
       <MemoryRouter>
@@ -67,8 +66,8 @@ describe("PodcastCard", () => {
     await user.click(screen.getByText("Subscribe"));
 
     await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledWith(
-        "/api/podcasts/subscribe",
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        "/podcasts/subscribe",
         expect.objectContaining({ method: "POST" })
       );
     });
