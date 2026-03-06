@@ -92,6 +92,14 @@ briefings.post("/generate", async (c) => {
       where: { clerkId: userId },
     });
 
+    // Parse optional body for episode-specific request
+    let body: { episodeId?: string } = {};
+    try {
+      body = await c.req.json();
+    } catch {
+      // No body or invalid JSON — treat as subscription-based request
+    }
+
     let targetMinutes = user.briefingLengthMinutes;
 
     // Enforce free-tier limits
@@ -121,23 +129,41 @@ briefings.post("/generate", async (c) => {
       }
     }
 
-    // Get user's podcast subscriptions
-    const subscriptions = await prisma.subscription.findMany({
-      where: { userId: user.id },
-      select: { podcastId: true },
-    });
-    if (!subscriptions.length) {
-      return c.json({ error: "No podcast subscriptions found" }, 400);
-    }
+    let items;
 
-    // Build items from subscriptions (useLatest for all, equal time split)
-    const perEpisodeTier = nearestTier(targetMinutes / subscriptions.length);
-    const items = subscriptions.map((s: { podcastId: string }) => ({
-      podcastId: s.podcastId,
-      episodeId: null,
-      durationTier: perEpisodeTier,
-      useLatest: true,
-    }));
+    if (body.episodeId) {
+      // One-off episode request
+      const episode = await prisma.episode.findUniqueOrThrow({
+        where: { id: body.episodeId },
+      });
+
+      const durationTier = nearestTier(targetMinutes);
+      items = [
+        {
+          podcastId: episode.podcastId,
+          episodeId: episode.id,
+          durationTier,
+          useLatest: false,
+        },
+      ];
+    } else {
+      // Subscription-based request (existing behavior)
+      const subscriptions = await prisma.subscription.findMany({
+        where: { userId: user.id },
+        select: { podcastId: true },
+      });
+      if (!subscriptions.length) {
+        return c.json({ error: "No podcast subscriptions found" }, 400);
+      }
+
+      const perEpisodeTier = nearestTier(targetMinutes / subscriptions.length);
+      items = subscriptions.map((s: { podcastId: string }) => ({
+        podcastId: s.podcastId,
+        episodeId: null,
+        durationTier: perEpisodeTier,
+        useLatest: true,
+      }));
+    }
 
     // Create a BriefingRequest and dispatch to orchestrator
     const request = await prisma.briefingRequest.create({
