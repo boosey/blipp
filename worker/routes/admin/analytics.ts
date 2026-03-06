@@ -6,6 +6,7 @@ const STAGE_NAMES: Record<string, string> = {
   TRANSCRIPTION: "Transcription",
   DISTILLATION: "Distillation",
   CLIP_GENERATION: "Clip Generation",
+  BRIEFING_ASSEMBLY: "Briefing Assembly",
 };
 
 const analyticsRoutes = new Hono<{ Bindings: Env }>();
@@ -307,7 +308,7 @@ analyticsRoutes.get("/pipeline", async (c) => {
       return c.json({
         data: {
           throughput: { episodesPerHour: 0, trend: 0 },
-          successRates: (["TRANSCRIPTION", "DISTILLATION", "CLIP_GENERATION"] as const).map((stage) => ({
+          successRates: (["TRANSCRIPTION", "DISTILLATION", "CLIP_GENERATION", "BRIEFING_ASSEMBLY"] as const).map((stage) => ({
             stage,
             name: STAGE_NAMES[stage] ?? stage,
             rate: 100,
@@ -322,7 +323,7 @@ analyticsRoutes.get("/pipeline", async (c) => {
     const hours = Math.max(1, (to.getTime() - from.getTime()) / (60 * 60 * 1000));
 
     // Per-stage success rates
-    const stageKeys = ["TRANSCRIPTION", "DISTILLATION", "CLIP_GENERATION"] as const;
+    const stageKeys = ["TRANSCRIPTION", "DISTILLATION", "CLIP_GENERATION", "BRIEFING_ASSEMBLY"] as const;
     const successRates = stageKeys.map((stage) => {
       const stageSteps = steps.filter((s) => s.stage === stage);
       const completed = stageSteps.filter((s) => s.status === "COMPLETED").length;

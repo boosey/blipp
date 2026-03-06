@@ -228,6 +228,7 @@ enum PipelineStage {
   TRANSCRIPTION
   DISTILLATION
   CLIP_GENERATION
+  BRIEFING_ASSEMBLY
 }
 
 enum PipelineJobStatus {

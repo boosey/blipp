@@ -3,29 +3,23 @@ import { getConfig } from "../lib/config";
 import { createPipelineLogger } from "../lib/logger";
 import { getClip, putBriefing } from "../lib/clip-cache";
 import { concatMp3Buffers } from "../lib/mp3-concat";
-import { allocateWordBudget } from "../lib/time-fitting";
 import { wpKey, putWorkProduct } from "../lib/work-products";
 import type { Env } from "../types";
 
 /** Shape of a briefing assembly queue message body. */
 interface BriefingAssemblyMessage {
-  briefingId: string;
-  userId: string;
+  requestId: string;
   type?: "manual";
 }
 
 /**
- * Queue consumer for briefing assembly jobs.
+ * Queue consumer for briefing assembly (stage 5).
  *
- * Collects the user's subscribed podcasts, finds latest episodes with completed
- * distillations, allocates a time budget, gathers cached clips, and concatenates
- * them into a final briefing MP3. Re-queues with delay if clips are still generating.
+ * This is the terminal pipeline stage. For each request it gathers completed
+ * clips from all PipelineJobs, concatenates them into a final MP3, creates a
+ * Briefing record with segments, and marks the BriefingRequest as COMPLETED.
  *
  * Messages with `type: "manual"` bypass the stage-enabled check.
- *
- * @param batch - Cloudflare Queue message batch with briefing assembly requests
- * @param env - Worker environment bindings
- * @param ctx - Execution context for background work
  */
 export async function handleBriefingAssembly(
   batch: MessageBatch<BriefingAssemblyMessage>,
@@ -33,19 +27,15 @@ export async function handleBriefingAssembly(
   ctx: ExecutionContext
 ): Promise<void> {
   const prisma = createPrismaClient(env.HYPERDRIVE);
-  const log = await createPipelineLogger({ stage: "briefing-assembly", prisma });
 
   try {
+    const log = await createPipelineLogger({ stage: "briefing-assembly", prisma });
     log.info("batch_start", { messageCount: batch.messages.length });
 
-    // Check if stage 5 (briefing assembly) is enabled — manual messages bypass this
+    // Stage gate: check if stage 5 is enabled (manual messages bypass)
     const hasManual = batch.messages.some((m) => m.body.type === "manual");
     if (!hasManual) {
-      const stageEnabled = await getConfig(
-        prisma,
-        "pipeline.stage.5.enabled",
-        true
-      );
+      const stageEnabled = await getConfig(prisma, "pipeline.stage.5.enabled", true);
       if (!stageEnabled) {
         log.info("stage_disabled", { stage: 5 });
         for (const msg of batch.messages) msg.ack();
@@ -54,200 +44,241 @@ export async function handleBriefingAssembly(
     }
 
     for (const msg of batch.messages) {
-      const { briefingId, userId } = msg.body;
+      const { requestId } = msg.body;
+      const startTime = Date.now();
+      let stepId: string | null = null;
 
       try {
-        log.info("assembly_start", { briefingId });
-
-        // Get briefing record
-        const briefing = await prisma.briefing.findUniqueOrThrow({
-          where: { id: briefingId },
+        // Load BriefingRequest with user
+        const request = await prisma.briefingRequest.findUnique({
+          where: { id: requestId },
+          include: { user: true },
         });
 
-        // Update to ASSEMBLING
-        await prisma.briefing.update({
-          where: { id: briefingId },
-          data: { status: "ASSEMBLING" },
-        });
-
-        // Get user's subscriptions with latest episodes that have completed distillations
-        const subscriptions = await prisma.subscription.findMany({
-          where: { userId },
-        });
-
-        log.debug("subscriptions_loaded", { briefingId, count: subscriptions.length });
-
-        if (subscriptions.length === 0) {
-          await prisma.briefing.update({
-            where: { id: briefingId },
-            data: { status: "FAILED", errorMessage: "No subscriptions found" },
-          });
+        // Guard: request not found or already terminal
+        if (!request) {
+          log.info("request_not_found", { requestId });
+          msg.ack();
+          continue;
+        }
+        if (request.status === "COMPLETED" || request.status === "FAILED") {
+          log.info("request_already_terminal", { requestId, status: request.status });
           msg.ack();
           continue;
         }
 
-        // Find latest episodes with completed distillations for each subscription
-        const readyEpisodes: Array<{
-          episode: any;
-          distillation: any;
-        }> = [];
+        log.info("assembly_start", { requestId, userId: request.userId });
 
-        for (const sub of subscriptions) {
-          const episode = await prisma.episode.findFirst({
-            where: {
-              podcastId: sub.podcastId,
-              distillation: { status: "COMPLETED" },
-            },
-            orderBy: { publishedAt: "desc" },
-          });
+        // Load all PipelineJobs for this request
+        const jobs = await prisma.pipelineJob.findMany({
+          where: { requestId },
+          include: { episode: true },
+        });
 
-          if (episode) {
-            const distillation = await prisma.distillation.findUnique({
-              where: { episodeId: episode.id },
-            });
-            if (distillation) {
-              readyEpisodes.push({ episode, distillation });
-            }
-          }
-        }
+        // Split into completed (with clipId) and failed
+        const completedJobs = jobs.filter(
+          (j) => j.status === "COMPLETED" && j.clipId
+        );
+        const failedJobs = jobs.filter((j) => j.status === "FAILED");
 
-        log.info("episodes_ready", { briefingId, readyCount: readyEpisodes.length, totalSubscriptions: subscriptions.length });
+        log.info("jobs_loaded", {
+          requestId,
+          total: jobs.length,
+          completed: completedJobs.length,
+          failed: failedJobs.length,
+        });
 
-        if (readyEpisodes.length === 0) {
-          await prisma.briefing.update({
-            where: { id: briefingId },
+        // If zero completed jobs, mark request FAILED
+        if (completedJobs.length === 0) {
+          await prisma.briefingRequest.update({
+            where: { id: requestId },
             data: {
               status: "FAILED",
-              errorMessage: "No episodes with completed distillations",
+              errorMessage: "No completed jobs with clips available for assembly",
             },
           });
+          log.info("assembly_no_clips", { requestId });
           msg.ack();
           continue;
         }
 
-        // Allocate time budget
-        const episodeInputs = readyEpisodes.map((re) => ({
-          transcriptWordCount: re.distillation.transcript
-            ? re.distillation.transcript.split(/\s+/).length
-            : 1000,
-        }));
+        // Create PipelineStep audit trail on first completed job
+        const anchorJobId = completedJobs[0].id;
+        const step = await prisma.pipelineStep.create({
+          data: {
+            jobId: anchorJobId,
+            stage: "BRIEFING_ASSEMBLY",
+            status: "IN_PROGRESS",
+            startedAt: new Date(),
+          },
+        });
+        stepId = step.id;
 
-        const allocations = allocateWordBudget(
-          episodeInputs,
-          briefing.targetMinutes
-        );
+        // Gather clip audio from R2 for each completed job
+        const clipEntries: Array<{
+          job: (typeof completedJobs)[0];
+          audio: ArrayBuffer;
+          clipId: string;
+        }> = [];
 
-        // Check for cached clips and queue missing ones
-        const clipBuffers: Array<ArrayBuffer | null> = [];
-        let allReady = true;
-
-        for (const alloc of allocations) {
-          const re = readyEpisodes[alloc.index];
-          const cached = await getClip(
-            env.R2,
-            re.episode.id,
-            alloc.durationTier
-          );
-
-          if (cached) {
-            clipBuffers.push(cached);
+        for (const job of completedJobs) {
+          const audio = await getClip(env.R2, job.episodeId, job.durationTier);
+          if (audio) {
+            clipEntries.push({ job, audio, clipId: job.clipId! });
           } else {
-            allReady = false;
-            clipBuffers.push(null);
-
-            // Queue clip generation for this episode/tier
-            await env.CLIP_GENERATION_QUEUE.send({
-              episodeId: re.episode.id,
-              distillationId: re.distillation.id,
-              durationTier: alloc.durationTier,
-              claims: re.distillation.claimsJson,
+            log.info("clip_audio_missing", {
+              requestId,
+              episodeId: job.episodeId,
+              durationTier: job.durationTier,
             });
           }
         }
 
-        log.info("clips_status", { briefingId, ready: clipBuffers.filter(b => b !== null).length, missing: clipBuffers.filter(b => b === null).length });
+        // If no audio buffers retrieved, mark step and request FAILED
+        if (clipEntries.length === 0) {
+          await prisma.pipelineStep.update({
+            where: { id: stepId },
+            data: {
+              status: "FAILED",
+              errorMessage: "No clip audio found in R2",
+              completedAt: new Date(),
+              durationMs: Date.now() - startTime,
+            },
+          });
 
-        if (!allReady) {
-          log.info("requeue_waiting", { briefingId, delaySeconds: 60 });
-          // Re-queue the briefing assembly with a 60s delay
-          await env.BRIEFING_ASSEMBLY_QUEUE.send(
-            { briefingId, userId },
-            { delaySeconds: 60 }
-          );
+          await prisma.briefingRequest.update({
+            where: { id: requestId },
+            data: {
+              status: "FAILED",
+              errorMessage: "No clip audio found in R2 for completed jobs",
+            },
+          });
+
+          log.info("assembly_no_audio", { requestId });
           msg.ack();
           continue;
         }
 
-        // All clips are ready — concatenate
-        const validBuffers = clipBuffers.filter(
-          (b): b is ArrayBuffer => b !== null
-        );
+        // Concatenate clip audio
         const concatTimer = log.timer("mp3_concat");
-        const finalAudio = concatMp3Buffers(validBuffers);
+        const clipBuffers = clipEntries.map((e) => e.audio);
+        const finalAudio = concatMp3Buffers(clipBuffers);
         concatTimer();
 
         // Store assembled briefing in R2
         const today = new Date().toISOString().split("T")[0];
-        const audioKey = await putBriefing(env.R2, userId, today, finalAudio);
+        const audioKey = await putBriefing(env.R2, request.userId, today, finalAudio);
 
         // Dual-write to WorkProduct registry
-        const wpR2Key = wpKey({ type: "BRIEFING_AUDIO", userId, date: today });
+        const isPartialCheck = failedJobs.length > 0;
+        const wpR2Key = wpKey({ type: "BRIEFING_AUDIO", userId: request.userId, date: today });
         await putWorkProduct(env.R2, wpR2Key, finalAudio);
-        await prisma.workProduct.create({
+        const wp = await prisma.workProduct.create({
           data: {
             type: "BRIEFING_AUDIO",
-            userId,
+            userId: request.userId,
             r2Key: wpR2Key,
             sizeBytes: finalAudio.byteLength,
             metadata: {
-              clipCount: validBuffers.length,
-              partial: validBuffers.length < readyEpisodes.length,
+              clipCount: clipEntries.length,
+              partial: isPartialCheck,
             },
           },
         });
 
-        // Create briefing segments for tracking
-        for (let i = 0; i < readyEpisodes.length; i++) {
-          const re = readyEpisodes[i];
-          const clip = await prisma.clip.findUnique({
-            where: {
-              episodeId_durationTier: {
-                episodeId: re.episode.id,
-                durationTier: allocations[i].durationTier,
-              },
-            },
-          });
-
-          if (clip) {
-            await prisma.briefingSegment.create({
-              data: {
-                briefingId,
-                clipId: clip.id,
-                orderIndex: i,
-                transitionText: `Next, from ${re.episode.title}...`,
-              },
-            });
-          }
-        }
-
-        // Mark briefing as completed
-        await prisma.briefing.update({
-          where: { id: briefingId },
-          data: { status: "COMPLETED", audioKey },
+        // Link WorkProduct to PipelineStep
+        await prisma.pipelineStep.update({
+          where: { id: stepId },
+          data: { workProductId: wp.id },
         });
 
-        log.info("assembly_complete", { briefingId, audioKey });
+        // Create Briefing record
+        const briefing = await prisma.briefing.create({
+          data: {
+            userId: request.userId,
+            status: "COMPLETED",
+            targetMinutes: request.targetMinutes,
+            audioKey,
+          },
+        });
+
+        // Create BriefingSegment per assembled clip
+        for (let i = 0; i < clipEntries.length; i++) {
+          const entry = clipEntries[i];
+          await prisma.briefingSegment.create({
+            data: {
+              briefingId: briefing.id,
+              clipId: entry.clipId,
+              orderIndex: i,
+              transitionText: `Next, from ${entry.job.episode.title}...`,
+            },
+          });
+        }
+
+        // Mark BriefingRequest COMPLETED with briefingId link
+        const isPartial = failedJobs.length > 0;
+        await prisma.briefingRequest.update({
+          where: { id: requestId },
+          data: {
+            status: "COMPLETED",
+            briefingId: briefing.id,
+            errorMessage: isPartial
+              ? `Partial assembly: ${failedJobs.length} of ${jobs.length} jobs failed`
+              : null,
+          },
+        });
+
+        // Mark PipelineStep COMPLETED with metadata
+        await prisma.pipelineStep.update({
+          where: { id: stepId },
+          data: {
+            status: "COMPLETED",
+            completedAt: new Date(),
+            durationMs: Date.now() - startTime,
+            output: {
+              audioKey,
+              briefingId: briefing.id,
+              clipCount: clipEntries.length,
+              partial: isPartial,
+            },
+          },
+        });
+
+        log.info("assembly_complete", {
+          requestId,
+          briefingId: briefing.id,
+          audioKey,
+          clipCount: clipEntries.length,
+          partial: isPartial,
+        });
 
         msg.ack();
       } catch (err) {
-        const errorMessage =
-          err instanceof Error ? err.message : String(err);
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        log.error("assembly_error", { requestId }, err);
 
-        log.error("assembly_error", { briefingId }, err);
+        // Mark step FAILED if it was created
+        if (stepId) {
+          await prisma.pipelineStep
+            .update({
+              where: { id: stepId },
+              data: {
+                status: "FAILED",
+                errorMessage,
+                completedAt: new Date(),
+                durationMs: Date.now() - startTime,
+              },
+            })
+            .catch(() => {});
+        }
 
-        await prisma.briefing
-          .update({
-            where: { id: briefingId },
+        // Mark request FAILED if not already terminal
+        await prisma.briefingRequest
+          .updateMany({
+            where: {
+              id: requestId,
+              status: { notIn: ["COMPLETED", "FAILED"] },
+            },
             data: { status: "FAILED", errorMessage },
           })
           .catch(() => {});

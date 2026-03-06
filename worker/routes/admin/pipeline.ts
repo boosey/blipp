@@ -6,15 +6,17 @@ const STAGE_NAMES: Record<string, string> = {
   TRANSCRIPTION: "Transcription",
   DISTILLATION: "Distillation",
   CLIP_GENERATION: "Clip Generation",
+  BRIEFING_ASSEMBLY: "Briefing Assembly",
 };
 
 const STAGE_ICONS: Record<string, string> = {
   TRANSCRIPTION: "file-audio",
   DISTILLATION: "brain",
   CLIP_GENERATION: "scissors",
+  BRIEFING_ASSEMBLY: "package",
 };
 
-const PIPELINE_STAGES = ["TRANSCRIPTION", "DISTILLATION", "CLIP_GENERATION"] as const;
+const PIPELINE_STAGES = ["TRANSCRIPTION", "DISTILLATION", "CLIP_GENERATION", "BRIEFING_ASSEMBLY"] as const;
 
 const pipelineRoutes = new Hono<{ Bindings: Env }>();
 
@@ -231,6 +233,13 @@ pipelineRoutes.post("/jobs/:id/retry", async (c) => {
           });
           break;
         }
+        case "BRIEFING_ASSEMBLY": {
+          await c.env.BRIEFING_ASSEMBLY_QUEUE.send({
+            type: "manual",
+            requestId: job.requestId,
+          });
+          break;
+        }
       }
 
       return c.json({ data: { id: job.id, status: "PENDING", currentStage: job.currentStage } });
@@ -288,6 +297,12 @@ pipelineRoutes.post("/jobs/bulk/retry", async (c) => {
               jobId: job.id,
               episodeId: job.episodeId,
               durationTier: job.durationTier,
+            });
+            break;
+          case "BRIEFING_ASSEMBLY":
+            await c.env.BRIEFING_ASSEMBLY_QUEUE.send({
+              type: "manual",
+              requestId: job.requestId,
             });
             break;
         }

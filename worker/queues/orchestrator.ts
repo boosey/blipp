@@ -1,7 +1,5 @@
 import { createPrismaClient } from "../lib/db";
 import { createPipelineLogger } from "../lib/logger";
-import { getClip, putBriefing } from "../lib/clip-cache";
-import { concatMp3Buffers } from "../lib/mp3-concat";
 import type { Env } from "../types";
 
 interface OrchestratorMessage {
@@ -224,127 +222,19 @@ async function handleJobStageComplete(
 
     log.info("job_completed", { jobId });
 
-    // Check if all jobs for this request are done
-    await checkAndAssemble(prisma, env, log, request, msg);
-  }
-}
-
-async function checkAndAssemble(
-  prisma: any,
-  env: Env,
-  log: any,
-  request: any,
-  msg: Message<OrchestratorMessage>
-): Promise<void> {
-  const allJobs = await prisma.pipelineJob.findMany({
-    where: { requestId: request.id },
-  });
-
-  const pendingOrInProgress = allJobs.filter(
-    (j: any) => j.status !== "COMPLETED" && j.status !== "FAILED"
-  );
-
-  if (pendingOrInProgress.length > 0) {
-    // Not all jobs done yet
-    msg.ack();
-    return;
-  }
-
-  const completedJobs = allJobs.filter((j: any) => j.status === "COMPLETED");
-  const failedJobs = allJobs.filter((j: any) => j.status === "FAILED");
-
-  log.info("all_jobs_done", {
-    requestId: request.id,
-    completed: completedJobs.length,
-    failed: failedJobs.length,
-  });
-
-  if (completedJobs.length === 0) {
-    await prisma.briefingRequest.update({
-      where: { id: request.id },
-      data: { status: "FAILED", errorMessage: "All jobs failed" },
+    // Check if ALL jobs for this request are done
+    const allJobs = await prisma.pipelineJob.findMany({
+      where: { requestId: request.id },
     });
-    log.info("request_failed", { requestId: request.id, reason: "All jobs failed" });
-    msg.ack();
-    return;
-  }
+    const pendingOrInProgress = allJobs.filter(
+      (j: any) => j.status !== "COMPLETED" && j.status !== "FAILED"
+    );
 
-  // Assembly: gather clips from completed jobs
-  const clipBuffers: ArrayBuffer[] = [];
-  const assembledJobs: any[] = [];
-
-  for (const job of completedJobs) {
-    if (!job.clipId) continue;
-
-    const clip = await prisma.clip.findUnique({
-      where: { id: job.clipId },
-    });
-
-    if (!clip || !clip.audioKey) continue;
-
-    const audio = await getClip(env.R2, job.episodeId, job.durationTier);
-    if (audio) {
-      clipBuffers.push(audio);
-      assembledJobs.push(job);
+    if (pendingOrInProgress.length === 0) {
+      await env.BRIEFING_ASSEMBLY_QUEUE.send({ requestId: request.id });
+      log.info("assembly_dispatched", { requestId: request.id });
     }
-  }
 
-  if (clipBuffers.length === 0) {
-    await prisma.briefingRequest.update({
-      where: { id: request.id },
-      data: { status: "FAILED", errorMessage: "No clip audio available for assembly" },
-    });
-    log.info("request_failed", { requestId: request.id, reason: "No clip audio available" });
     msg.ack();
-    return;
   }
-
-  const finalAudio = concatMp3Buffers(clipBuffers);
-
-  const today = new Date().toISOString().split("T")[0];
-  const audioKey = await putBriefing(env.R2, request.userId, today, finalAudio);
-
-  const briefing = await prisma.briefing.create({
-    data: {
-      userId: request.userId,
-      targetMinutes: request.targetMinutes,
-      status: "COMPLETED",
-      audioKey,
-    },
-  });
-
-  // Create BriefingSegments
-  for (let i = 0; i < assembledJobs.length; i++) {
-    const job = assembledJobs[i];
-    await prisma.briefingSegment.create({
-      data: {
-        briefingId: briefing.id,
-        clipId: job.clipId,
-        orderIndex: i,
-        transitionText: `Segment ${i + 1}`,
-      },
-    });
-  }
-
-  // Mark request completed
-  const errorNote = failedJobs.length > 0
-    ? `Partial assembly: ${failedJobs.length} of ${allJobs.length} jobs failed`
-    : null;
-
-  await prisma.briefingRequest.update({
-    where: { id: request.id },
-    data: {
-      status: "COMPLETED",
-      briefingId: briefing.id,
-      ...(errorNote ? { errorMessage: errorNote } : {}),
-    },
-  });
-
-  log.info("request_completed", {
-    requestId: request.id,
-    briefingId: briefing.id,
-    partial: failedJobs.length > 0,
-  });
-
-  msg.ack();
 }

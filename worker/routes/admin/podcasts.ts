@@ -6,6 +6,7 @@ const STAGE_NAMES: Record<string, string> = {
   TRANSCRIPTION: "Transcription",
   DISTILLATION: "Distillation",
   CLIP_GENERATION: "Clip Generation",
+  BRIEFING_ASSEMBLY: "Briefing Assembly",
 };
 
 const podcastsRoutes = new Hono<{ Bindings: Env }>();

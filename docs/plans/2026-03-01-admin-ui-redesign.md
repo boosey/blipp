@@ -39,42 +39,80 @@ isAdmin Boolean @default(false)
 ```
 
 Add new models:
+
 ```prisma
 model PipelineJob {
-  id           String          @id @default(cuid())
-  type         PipelineJobType
-  status       PipelineJobStatus @default(PENDING)
-  entityId     String          // podcastId or episodeId or briefingId
-  entityType   String          // "podcast" | "episode" | "briefing"
-  stage        Int             // 1-5 pipeline stage
+  id             String            @id @default(cuid())
+  requestId      String
+  episodeId      String
+  durationTier   Int               // computed by orchestrator from time allocation
+  status         PipelineJobStatus @default(PENDING)
+  currentStage   PipelineStage     @default(TRANSCRIPTION)
+  distillationId String?
+  clipId         String?
+  errorMessage   String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  completedAt    DateTime?
+
+  request  BriefingRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  episode  Episode         @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  steps    PipelineStep[]
+}
+
+enum PipelineStage { TRANSCRIPTION  DISTILLATION  CLIP_GENERATION }
+enum PipelineJobStatus { PENDING  IN_PROGRESS  COMPLETED  FAILED }
+
+model PipelineStep {
+  id           String             @id @default(cuid())
+  jobId        String
+  stage        PipelineStage
+  status       PipelineStepStatus @default(PENDING)
+  cached       Boolean            @default(false)
   input        Json?
   output       Json?
   errorMessage String?
-  cost         Float?          // estimated cost in dollars
   startedAt    DateTime?
   completedAt  DateTime?
   durationMs   Int?
-  retryCount   Int             @default(0)
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
+  cost         Float?
+  retryCount   Int                @default(0)
+  createdAt    DateTime           @default(now())
+
+  job PipelineJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
 }
 
-enum PipelineJobType {
-  FEED_REFRESH
-  TRANSCRIPTION
-  DISTILLATION
-  CLIP_GENERATION
-  BRIEFING_ASSEMBLY
-}
+enum PipelineStepStatus { PENDING  IN_PROGRESS  COMPLETED  SKIPPED  FAILED }
+```
 
-enum PipelineJobStatus {
-  PENDING
-  IN_PROGRESS
-  COMPLETED
-  FAILED
-  RETRYING
-}
+<details><summary>Original PipelineJob (2026-03-01) — replaced 2026-03-04</summary>
 
+```prisma
+~~ model PipelineJob {
+~~   id           String          @id @default(cuid())
+~~   type         PipelineJobType
+~~   status       PipelineJobStatus @default(PENDING)
+~~   entityId     String          // podcastId or episodeId or briefingId
+~~   entityType   String          // "podcast" | "episode" | "briefing"
+~~   stage        Int             // 1-5 pipeline stage
+~~   input        Json?
+~~   output       Json?
+~~   errorMessage String?
+~~   cost         Float?
+~~   startedAt    DateTime?
+~~   completedAt  DateTime?
+~~   durationMs   Int?
+~~   retryCount   Int             @default(0)
+~~   createdAt    DateTime        @default(now())
+~~   updatedAt    DateTime        @updatedAt
+~~ }
+~~ enum PipelineJobType { FEED_REFRESH TRANSCRIPTION DISTILLATION CLIP_GENERATION BRIEFING_ASSEMBLY }
+~~ enum PipelineJobStatus { PENDING IN_PROGRESS COMPLETED FAILED RETRYING }
+```
+
+</details>
+
+```prisma
 model PlatformConfig {
   id          String   @id @default(cuid())
   key         String   @unique

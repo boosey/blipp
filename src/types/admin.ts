@@ -92,7 +92,7 @@ export interface ActiveIssue {
 
 // ── Pipeline Job Lifecycle ──
 
-export type PipelineStage = "TRANSCRIPTION" | "DISTILLATION" | "CLIP_GENERATION";
+export type PipelineStage = "TRANSCRIPTION" | "DISTILLATION" | "CLIP_GENERATION" | "BRIEFING_ASSEMBLY";
 
 export type PipelineJobStatus = "PENDING" | "IN_PROGRESS" | "COMPLETED" | "FAILED";
 
@@ -459,6 +459,8 @@ export interface BriefingRequest {
   updatedAt: string;
   userName?: string;
   userEmail?: string;
+  podcastTitle?: string | null;
+  episodeTitle?: string | null;
   jobProgress?: JobProgress[];
 }
 
@@ -482,7 +484,7 @@ export interface StepProgress {
   durationMs?: number;
   cost?: number;
   errorMessage?: string;
-  workProduct?: WorkProductSummary;
+  workProducts?: WorkProductSummary[];
 }
 
 // ── Work Products ──

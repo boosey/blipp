@@ -103,12 +103,26 @@ interface FeedRefreshSummary {
 **New endpoint (`worker/routes/admin/dashboard.ts`):**
 - `GET /dashboard/feed-refresh-summary` — queries podcast/episode tables for summary stats
 
+## PipelineJob Data Model (revised 2026-03-04)
+
+Job cards on the Pipeline page now map to the redesigned PipelineJob model — one record per episode+durationTier per request, with PipelineStep audit records per stage. Each card shows:
+
+- Episode title + podcast name
+- Duration tier badge (e.g., "5 min")
+- Current stage indicator (Transcription → Distillation → Clip Gen)
+- Step-level detail on expand, including cached steps highlighted (e.g., "Transcription: cached")
+
+<details><summary>Original assumption (2026-03-03)</summary>
+
+~~Job cards mapped to the generic PipelineJob with `entityId`/`entityType`/`stage` (int). That model has been replaced.~~
+
+</details>
+
 ## What Doesn't Change
 
 - All queue handlers (feed-refresh, transcription, distillation, clip-gen, briefing-assembly, orchestrator)
 - Local queue shim
-- Pipeline logging
+- Pipeline logging (now includes `jobId` correlation)
 - Job retry/bulk-retry endpoints
 - Per-episode trigger endpoint
 - PipelineControls component (stage toggles still work for stages 2-5)
-- Prisma schema (no migrations needed)

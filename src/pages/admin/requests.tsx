@@ -34,6 +34,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useAuth } from "@clerk/clerk-react";
 import { useAdminFetch } from "@/lib/admin-api";
 import type {
   BriefingRequest,
@@ -179,6 +180,80 @@ function WorkProductBadge({ wp }: { wp: WorkProductSummary }) {
   );
 }
 
+/** Audio player that fetches audio from the admin API with auth. */
+function AudioPlayer({ wpId, sizeBytes }: { wpId: string; sizeBytes?: number }) {
+  const { getToken } = useAuth();
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const loadAudio = useCallback(async () => {
+    if (audioUrl || isLoading) return;
+    setIsLoading(true);
+    setLoadError(null);
+    try {
+      const token = await getToken();
+      const res = await fetch(`/api/admin/requests/work-product/${wpId}/audio`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error(res.statusText);
+      const blob = await res.blob();
+      setAudioUrl(URL.createObjectURL(blob));
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setIsLoading(false);
+    }
+  }, [getToken, wpId, audioUrl, isLoading]);
+
+  // Cleanup blob URL on unmount
+  useEffect(() => {
+    return () => {
+      if (audioUrl) URL.revokeObjectURL(audioUrl);
+    };
+  }, [audioUrl]);
+
+  if (loadError) {
+    return (
+      <div className="px-2.5 py-2 text-[10px] text-[#EF4444]">
+        Failed to load audio: {loadError}
+      </div>
+    );
+  }
+
+  if (!audioUrl) {
+    return (
+      <div className="px-2.5 py-2 flex items-center gap-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={loadAudio}
+          disabled={isLoading}
+          className="h-6 text-[10px] text-[#10B981] hover:text-[#10B981] hover:bg-[#10B981]/10"
+        >
+          {isLoading ? (
+            <Loader2 className="h-3 w-3 animate-spin mr-1" />
+          ) : (
+            <FileAudio className="h-3 w-3 mr-1" />
+          )}
+          {isLoading ? "Loading..." : "Load audio"}
+        </Button>
+        {sizeBytes != null && (
+          <span className="text-[9px] text-[#9CA3AF] font-mono">{formatBytes(sizeBytes)}</span>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="px-2.5 py-2">
+      <audio controls className="w-full h-8" style={{ filter: "invert(0.85) hue-rotate(180deg)" }}>
+        <source src={audioUrl} type="audio/mpeg" />
+      </audio>
+    </div>
+  );
+}
+
 interface WorkProductPreview {
   id: string;
   type: WorkProductType;
@@ -191,56 +266,64 @@ interface WorkProductPreview {
   message?: string;
 }
 
-function StepWorkProductPanel({ wpId }: { wpId: string }) {
+function StepWorkProductPanel({ wp }: { wp: WorkProductSummary }) {
   const apiFetch = useAdminFetch();
   const [preview, setPreview] = useState<WorkProductPreview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const isAudio = wp.type === "AUDIO_CLIP" || wp.type === "BRIEFING_AUDIO";
+
   useEffect(() => {
+    if (isAudio) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
-    apiFetch<{ data: WorkProductPreview }>(`/requests/work-product/${wpId}/preview`)
+    apiFetch<{ data: WorkProductPreview }>(`/requests/work-product/${wp.id}/preview`)
       .then((r) => setPreview(r.data))
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));
-  }, [apiFetch, wpId]);
+  }, [apiFetch, wp.id, isAudio]);
+
+  const cfg = WP_TYPE_CONFIG[wp.type] ?? WP_TYPE_CONFIG.TRANSCRIPT;
+  const meta = (preview?.metadata ?? wp.metadata) as Record<string, unknown> | null;
 
   if (loading) {
     return (
-      <div className="mt-1.5 ml-2">
-        <Skeleton className="h-20 bg-white/5 rounded" />
+      <div className="mt-1 rounded-md bg-[#0A1628] border border-white/5 overflow-hidden">
+        <Skeleton className="h-16 bg-white/5" />
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="mt-1.5 ml-2 rounded bg-[#EF4444]/10 border border-[#EF4444]/20 p-2 text-[10px] text-[#EF4444]">
+      <div className="mt-1 rounded bg-[#EF4444]/10 border border-[#EF4444]/20 p-2 text-[10px] text-[#EF4444]">
         Failed to load: {error}
       </div>
     );
   }
 
-  if (!preview) return null;
-
-  const meta = preview.metadata as Record<string, unknown> | null;
-
   return (
-    <div className="mt-1.5 ml-2 rounded-md bg-[#0A1628] border border-white/5 overflow-hidden">
+    <div className="mt-1 rounded-md bg-[#0A1628] border border-white/5 overflow-hidden">
       {/* Header bar */}
-      <div className="flex items-center gap-2 px-2.5 py-1.5 bg-[#0F1D32] border-b border-white/5">
-        <HardDrive className="h-3 w-3 text-[#9CA3AF]" />
-        <span className="text-[9px] text-[#9CA3AF] font-mono truncate flex-1">
-          {preview.r2Key}
+      <div className="flex items-center gap-2 px-2.5 py-1 bg-[#0F1D32] border-b border-white/5">
+        <cfg.icon className="h-2.5 w-2.5" style={{ color: cfg.color }} />
+        <span className="text-[8px] font-medium" style={{ color: cfg.color }}>
+          {cfg.label}
         </span>
-        {preview.sizeBytes != null && (
-          <span className="text-[9px] text-[#9CA3AF] font-mono tabular-nums shrink-0">
-            {formatBytes(preview.sizeBytes)}
+        <span className="text-[8px] text-[#9CA3AF] font-mono truncate flex-1">
+          {wp.r2Key}
+        </span>
+        {wp.sizeBytes != null && (
+          <span className="text-[8px] text-[#9CA3AF] font-mono tabular-nums shrink-0">
+            {formatBytes(wp.sizeBytes)}
           </span>
         )}
         {meta && Object.keys(meta).length > 0 && (
-          <span className="text-[9px] text-[#9CA3AF] font-mono shrink-0">
+          <span className="text-[8px] text-[#9CA3AF] font-mono shrink-0">
             {Object.entries(meta)
               .filter(([, v]) => v != null && v !== false)
               .map(([k, v]) => `${k}: ${v}`)
@@ -250,43 +333,40 @@ function StepWorkProductPanel({ wpId }: { wpId: string }) {
       </div>
 
       {/* Content area */}
-      {preview.contentType === "audio" ? (
-        <div className="px-2.5 py-3 flex items-center gap-2 text-[10px] text-[#9CA3AF]">
-          <FileAudio className="h-4 w-4 text-[#10B981]" />
-          Audio binary — {preview.sizeBytes != null ? formatBytes(preview.sizeBytes) : "unknown size"}
-        </div>
-      ) : preview.content == null ? (
-        <div className="px-2.5 py-3 text-[10px] text-[#9CA3AF] italic">
-          {preview.message ?? "No content available"}
+      {isAudio ? (
+        <AudioPlayer wpId={wp.id} sizeBytes={wp.sizeBytes} />
+      ) : preview?.content == null ? (
+        <div className="px-2.5 py-2 text-[10px] text-[#9CA3AF] italic">
+          {preview?.message ?? "No content available"}
         </div>
       ) : preview.contentType === "json" ? (
-        <ScrollArea className="max-h-64">
+        <div className="max-h-56 overflow-y-auto">
           <pre className="px-2.5 py-2 text-[10px] font-mono text-[#F9FAFB]/80 whitespace-pre-wrap break-all leading-relaxed">
             {(() => {
               try {
-                return JSON.stringify(JSON.parse(preview.content), null, 2);
+                return JSON.stringify(JSON.parse(preview.content!), null, 2);
               } catch {
                 return preview.content;
               }
             })()}
           </pre>
           {preview.truncated && (
-            <div className="px-2.5 py-1.5 border-t border-white/5 text-[9px] text-[#F59E0B]">
+            <div className="px-2.5 py-1 border-t border-white/5 text-[9px] text-[#F59E0B]">
               Content truncated — showing first 50KB
             </div>
           )}
-        </ScrollArea>
+        </div>
       ) : (
-        <ScrollArea className="max-h-64">
+        <div className="max-h-56 overflow-y-auto">
           <pre className="px-2.5 py-2 text-[10px] font-mono text-[#F9FAFB]/80 whitespace-pre-wrap break-words leading-relaxed">
             {preview.content}
           </pre>
           {preview.truncated && (
-            <div className="px-2.5 py-1.5 border-t border-white/5 text-[9px] text-[#F59E0B]">
+            <div className="px-2.5 py-1 border-t border-white/5 text-[9px] text-[#F59E0B]">
               Content truncated — showing first 50KB
             </div>
           )}
-        </ScrollArea>
+        </div>
       )}
     </div>
   );
@@ -294,15 +374,12 @@ function StepWorkProductPanel({ wpId }: { wpId: string }) {
 
 function ExpandableStepRow({
   step,
-  connector,
-  isLastStep,
 }: {
   step: StepProgress;
-  connector: string;
-  isLastStep: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const hasWp = !!step.workProduct;
+  const wps = step.workProducts ?? [];
+  const hasWp = wps.length > 0;
 
   return (
     <div>
@@ -313,9 +390,15 @@ function ExpandableStepRow({
         )}
         onClick={hasWp ? () => setExpanded((v) => !v) : undefined}
       >
-        <span className="text-[#9CA3AF] font-mono">
-          {connector} {isLastStep ? "\u2514\u2500" : "\u251C\u2500"}
-        </span>
+        {hasWp ? (
+          expanded ? (
+            <ChevronDown className="h-2.5 w-2.5 text-[#9CA3AF] shrink-0" />
+          ) : (
+            <ChevronRight className="h-2.5 w-2.5 text-[#9CA3AF] shrink-0" />
+          )
+        ) : (
+          <span className="w-2.5 shrink-0" />
+        )}
         <span className="text-[#9CA3AF] w-28">{formatStageName(step.stage)}:</span>
         <StepStatusIcon step={step} />
         {step.cached && (
@@ -334,16 +417,9 @@ function ExpandableStepRow({
             ${step.cost.toFixed(4)}
           </span>
         )}
-        {hasWp && (
-          <>
-            <WorkProductBadge wp={step.workProduct!} />
-            {expanded ? (
-              <ChevronDown className="h-2.5 w-2.5 text-[#9CA3AF] shrink-0" />
-            ) : (
-              <ChevronRight className="h-2.5 w-2.5 text-[#9CA3AF] shrink-0" />
-            )}
-          </>
-        )}
+        {hasWp && wps.map((wp) => (
+          <WorkProductBadge key={wp.id} wp={wp} />
+        ))}
         {step.status === "FAILED" && step.errorMessage && (
           <span className="text-[9px] text-[#EF4444] truncate max-w-[200px]" title={step.errorMessage}>
             {step.errorMessage}
@@ -351,9 +427,11 @@ function ExpandableStepRow({
         )}
       </div>
 
-      {expanded && step.workProduct && (
-        <div className="pl-8">
-          <StepWorkProductPanel wpId={step.workProduct.id} />
+      {expanded && wps.length > 0 && (
+        <div className="pl-8 space-y-1">
+          {wps.map((wp) => (
+            <StepWorkProductPanel key={wp.id} wp={wp} />
+          ))}
         </div>
       )}
     </div>
@@ -368,52 +446,12 @@ function JobProgressTree({ jobs }: { jobs: JobProgress[] }) {
   }
 
   return (
-    <div className="space-y-2 py-2">
-      {jobs.map((job, idx) => {
-        const isLast = idx === jobs.length - 1;
-        const jobStatusCfg = STEP_STATUS_ICON[job.status] ?? STEP_STATUS_ICON.PENDING;
-        const JobIcon = jobStatusCfg.icon;
-
-        return (
-          <div key={job.jobId} className="pl-2">
-            {/* Job header row */}
-            <div className="flex items-center gap-1.5 text-[11px]">
-              <span className="text-[#9CA3AF] font-mono">{isLast ? "\u2514\u2500" : "\u251C\u2500"}</span>
-              <JobIcon
-                className={cn("h-3 w-3 shrink-0", jobStatusCfg.spin && "animate-spin")}
-                style={{ color: jobStatusCfg.color }}
-              />
-              <span className="text-[#F9FAFB] font-medium truncate">
-                {job.episodeTitle}
-              </span>
-              <span className="text-[10px] text-[#9CA3AF] truncate">
-                ({job.podcastTitle})
-              </span>
-              <DurationTierBadge minutes={job.durationTier} />
-              <StatusBadge status={job.status as BriefingRequestStatus} />
-              <span className="text-[9px] text-[#9CA3AF] ml-auto shrink-0">
-                Stage: {job.currentStage}
-              </span>
-            </div>
-
-            {/* Steps sub-rows */}
-            <div className="pl-6 space-y-0.5 mt-1">
-              {job.steps.map((step, si) => {
-                const isLastStep = si === job.steps.length - 1;
-                const connector = isLast ? " " : "\u2502";
-                return (
-                  <ExpandableStepRow
-                    key={step.stage}
-                    step={step}
-                    connector={connector}
-                    isLastStep={isLastStep}
-                  />
-                );
-              })}
-            </div>
-          </div>
-        );
-      })}
+    <div className="space-y-0.5 py-1">
+      {jobs.flatMap((job) =>
+        job.steps.map((step) => (
+          <ExpandableStepRow key={`${job.jobId}-${step.stage}`} step={step} />
+        ))
+      )}
     </div>
   );
 }
@@ -423,6 +461,7 @@ function formatStageName(stage: string): string {
     case "TRANSCRIPTION": return "Transcription";
     case "DISTILLATION": return "Distillation";
     case "CLIP_GENERATION": return "Clip Gen";
+    case "BRIEFING_ASSEMBLY": return "Assembly";
     default: return stage;
   }
 }
@@ -462,6 +501,11 @@ function RequestRow({
           <span className="text-xs text-[#F9FAFB] truncate">
             {request.userEmail ?? request.userId}
           </span>
+          {request.podcastTitle && (
+            <span className="text-[10px] text-[#9CA3AF] truncate">
+              {request.podcastTitle}{request.episodeTitle ? ` — ${request.episodeTitle}` : ""}
+            </span>
+          )}
           {request.isTest && (
             <Badge className="bg-[#F97316]/15 text-[#F97316] text-[9px] shrink-0">
               Test
@@ -485,20 +529,6 @@ function RequestRow({
       {expanded && (
         <div className="px-3 pb-3 pl-10 bg-white/[0.01]">
           {/* Items summary */}
-          {request.items && request.items.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mb-2">
-              {request.items.map((item, i) => (
-                <span
-                  key={i}
-                  className="inline-flex items-center gap-1 rounded bg-white/5 px-1.5 py-0.5 text-[9px] text-[#9CA3AF]"
-                >
-                  {item.useLatest ? "Latest" : item.episodeId?.slice(0, 8)}
-                  <DurationTierBadge minutes={item.durationTier} />
-                </span>
-              ))}
-            </div>
-          )}
-
           {detailLoading ? (
             <div className="space-y-1 py-2">
               <Skeleton className="h-4 w-full bg-white/5" />

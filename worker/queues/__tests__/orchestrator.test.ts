@@ -19,15 +19,6 @@ vi.mock("../../lib/db", () => ({
   createPrismaClient: vi.fn(() => mockPrisma),
 }));
 
-vi.mock("../../lib/clip-cache", () => ({
-  getClip: vi.fn().mockResolvedValue(new ArrayBuffer(10)),
-  putBriefing: vi.fn().mockResolvedValue("briefings/user1/2026-03-04.mp3"),
-}));
-
-vi.mock("../../lib/mp3-concat", () => ({
-  concatMp3Buffers: vi.fn().mockReturnValue(new ArrayBuffer(20)),
-}));
-
 const { handleOrchestrator } = await import("../orchestrator");
 
 function createMsg(body: any) {
@@ -304,24 +295,20 @@ describe("handleOrchestrator", () => {
       });
     });
 
-    it("should mark job COMPLETED after CLIP_GENERATION and check assembly", async () => {
+    it("should mark job COMPLETED after CLIP_GENERATION and dispatch to assembly queue", async () => {
       const msg = createMsg({ requestId: "req1", action: "job-stage-complete", jobId: "job1" });
       mockPrisma.briefingRequest.findUnique.mockResolvedValue({
         id: "req1", status: "PROCESSING", userId: "u1", targetMinutes: 5,
       });
       mockPrisma.pipelineJob.findUnique.mockResolvedValue({
         id: "job1", requestId: "req1", episodeId: "ep1", durationTier: 5,
-        status: "IN_PROGRESS", currentStage: "CLIP_GENERATION", clipId: "clip1",
+        status: "IN_PROGRESS", currentStage: "CLIP_GENERATION",
       });
       mockPrisma.pipelineJob.update.mockResolvedValue({});
       // All jobs complete (just this one)
       mockPrisma.pipelineJob.findMany.mockResolvedValue([
         { id: "job1", status: "COMPLETED", clipId: "clip1", episodeId: "ep1", durationTier: 5 },
       ]);
-      mockPrisma.clip.findUnique.mockResolvedValue({ id: "clip1", audioKey: "clips/ep1/5.mp3" });
-      mockPrisma.briefing.create.mockResolvedValue({ id: "brief1" });
-      mockPrisma.briefingSegment.create.mockResolvedValue({});
-      mockPrisma.briefingRequest.update.mockResolvedValue({});
 
       await handleOrchestrator(createBatch([msg]), env, ctx);
 
@@ -329,6 +316,10 @@ describe("handleOrchestrator", () => {
       expect(mockPrisma.pipelineJob.update).toHaveBeenCalledWith({
         where: { id: "job1" },
         data: { status: "COMPLETED", completedAt: expect.any(Date) },
+      });
+      // Dispatched to assembly queue
+      expect(env.BRIEFING_ASSEMBLY_QUEUE.send).toHaveBeenCalledWith({
+        requestId: "req1",
       });
       expect(msg.ack).toHaveBeenCalled();
     });
@@ -361,10 +352,10 @@ describe("handleOrchestrator", () => {
     });
   });
 
-  // ── Assembly ──
+  // ── Dispatch to assembly ──
 
-  describe("assembly", () => {
-    it("should assemble briefing when all jobs are COMPLETED", async () => {
+  describe("dispatch to assembly", () => {
+    it("should dispatch to BRIEFING_ASSEMBLY_QUEUE when all jobs are done", async () => {
       const msg = createMsg({ requestId: "req1", action: "job-stage-complete", jobId: "job1" });
       mockPrisma.briefingRequest.findUnique.mockResolvedValue({
         id: "req1", status: "PROCESSING", userId: "u1", targetMinutes: 10,
@@ -378,93 +369,16 @@ describe("handleOrchestrator", () => {
         { id: "job1", status: "COMPLETED", clipId: "clip1", episodeId: "ep1", durationTier: 5 },
         { id: "job2", status: "COMPLETED", clipId: "clip2", episodeId: "ep2", durationTier: 5 },
       ]);
-      mockPrisma.clip.findUnique
-        .mockResolvedValueOnce({ id: "clip1", audioKey: "clips/ep1/5.mp3" })
-        .mockResolvedValueOnce({ id: "clip2", audioKey: "clips/ep2/5.mp3" });
-      mockPrisma.briefing.create.mockResolvedValue({ id: "brief1" });
-      mockPrisma.briefingSegment.create.mockResolvedValue({});
-      mockPrisma.briefingRequest.update.mockResolvedValue({});
 
       await handleOrchestrator(createBatch([msg]), env, ctx);
 
-      expect(mockPrisma.briefing.create).toHaveBeenCalledWith({
-        data: expect.objectContaining({
-          userId: "u1",
-          targetMinutes: 10,
-          status: "COMPLETED",
-        }),
+      expect(env.BRIEFING_ASSEMBLY_QUEUE.send).toHaveBeenCalledWith({
+        requestId: "req1",
       });
-      expect(mockPrisma.briefingSegment.create).toHaveBeenCalledTimes(2);
-      expect(mockPrisma.briefingRequest.update).toHaveBeenCalledWith({
-        where: { id: "req1" },
-        data: { status: "COMPLETED", briefingId: "brief1" },
-      });
+      expect(msg.ack).toHaveBeenCalled();
     });
 
-    it("should do partial assembly when some jobs fail", async () => {
-      const msg = createMsg({ requestId: "req1", action: "job-stage-complete", jobId: "job1" });
-      mockPrisma.briefingRequest.findUnique.mockResolvedValue({
-        id: "req1", status: "PROCESSING", userId: "u1", targetMinutes: 10,
-      });
-      mockPrisma.pipelineJob.findUnique.mockResolvedValue({
-        id: "job1", requestId: "req1", episodeId: "ep1", durationTier: 5,
-        status: "IN_PROGRESS", currentStage: "CLIP_GENERATION",
-      });
-      mockPrisma.pipelineJob.update.mockResolvedValue({});
-      mockPrisma.pipelineJob.findMany.mockResolvedValue([
-        { id: "job1", status: "COMPLETED", clipId: "clip1", episodeId: "ep1", durationTier: 5 },
-        { id: "job2", status: "FAILED", clipId: null, episodeId: "ep2", durationTier: 5 },
-      ]);
-      mockPrisma.clip.findUnique.mockResolvedValue({ id: "clip1", audioKey: "clips/ep1/5.mp3" });
-      mockPrisma.briefing.create.mockResolvedValue({ id: "brief1" });
-      mockPrisma.briefingSegment.create.mockResolvedValue({});
-      mockPrisma.briefingRequest.update.mockResolvedValue({});
-
-      await handleOrchestrator(createBatch([msg]), env, ctx);
-
-      // Still creates briefing from the 1 completed job
-      expect(mockPrisma.briefing.create).toHaveBeenCalled();
-      expect(mockPrisma.briefingSegment.create).toHaveBeenCalledTimes(1);
-
-      // Request marked COMPLETED with a partial note
-      expect(mockPrisma.briefingRequest.update).toHaveBeenCalledWith({
-        where: { id: "req1" },
-        data: {
-          status: "COMPLETED",
-          briefingId: "brief1",
-          errorMessage: "Partial assembly: 1 of 2 jobs failed",
-        },
-      });
-    });
-
-    it("should fail request when all jobs failed", async () => {
-      const msg = createMsg({ requestId: "req1", action: "job-stage-complete", jobId: "job1" });
-      mockPrisma.briefingRequest.findUnique.mockResolvedValue({
-        id: "req1", status: "PROCESSING", userId: "u1", targetMinutes: 5,
-      });
-      // Job at terminal stage but it was FAILED by the stage handler —
-      // simulate: orchestrator receives job-stage-complete but the job itself was marked FAILED
-      // Actually in normal flow the stage handler marks the job FAILED and doesn't report.
-      // But let's test: job reaches clip_gen completion, gets marked COMPLETED, then findMany returns all FAILED
-      mockPrisma.pipelineJob.findUnique.mockResolvedValue({
-        id: "job1", requestId: "req1", episodeId: "ep1", durationTier: 5,
-        status: "IN_PROGRESS", currentStage: "CLIP_GENERATION",
-      });
-      mockPrisma.pipelineJob.update.mockResolvedValue({});
-      mockPrisma.pipelineJob.findMany.mockResolvedValue([
-        { id: "job1", status: "FAILED", clipId: null, episodeId: "ep1", durationTier: 5 },
-      ]);
-      mockPrisma.briefingRequest.update.mockResolvedValue({});
-
-      await handleOrchestrator(createBatch([msg]), env, ctx);
-
-      expect(mockPrisma.briefingRequest.update).toHaveBeenCalledWith({
-        where: { id: "req1" },
-        data: { status: "FAILED", errorMessage: "All jobs failed" },
-      });
-    });
-
-    it("should not assemble if some jobs are still in progress", async () => {
+    it("should NOT dispatch to assembly when some jobs are still in progress", async () => {
       const msg = createMsg({ requestId: "req1", action: "job-stage-complete", jobId: "job1" });
       mockPrisma.briefingRequest.findUnique.mockResolvedValue({
         id: "req1", status: "PROCESSING", userId: "u1", targetMinutes: 10,
@@ -482,7 +396,32 @@ describe("handleOrchestrator", () => {
 
       await handleOrchestrator(createBatch([msg]), env, ctx);
 
-      expect(mockPrisma.briefing.create).not.toHaveBeenCalled();
+      expect(env.BRIEFING_ASSEMBLY_QUEUE.send).not.toHaveBeenCalled();
+      expect(msg.ack).toHaveBeenCalled();
+    });
+
+    it("should still dispatch to assembly when some jobs FAILED (partial assembly)", async () => {
+      const msg = createMsg({ requestId: "req1", action: "job-stage-complete", jobId: "job1" });
+      mockPrisma.briefingRequest.findUnique.mockResolvedValue({
+        id: "req1", status: "PROCESSING", userId: "u1", targetMinutes: 10,
+      });
+      mockPrisma.pipelineJob.findUnique.mockResolvedValue({
+        id: "job1", requestId: "req1", episodeId: "ep1", durationTier: 5,
+        status: "IN_PROGRESS", currentStage: "CLIP_GENERATION",
+      });
+      mockPrisma.pipelineJob.update.mockResolvedValue({});
+      // All jobs terminal: one COMPLETED, one FAILED
+      mockPrisma.pipelineJob.findMany.mockResolvedValue([
+        { id: "job1", status: "COMPLETED", clipId: "clip1", episodeId: "ep1", durationTier: 5 },
+        { id: "job2", status: "FAILED", clipId: null, episodeId: "ep2", durationTier: 5 },
+      ]);
+
+      await handleOrchestrator(createBatch([msg]), env, ctx);
+
+      // Assembly queue handles partial assembly logic
+      expect(env.BRIEFING_ASSEMBLY_QUEUE.send).toHaveBeenCalledWith({
+        requestId: "req1",
+      });
       expect(msg.ack).toHaveBeenCalled();
     });
   });

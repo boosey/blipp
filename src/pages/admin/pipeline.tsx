@@ -3,6 +3,7 @@ import {
   Mic,
   Sparkles,
   Scissors,
+  Package,
   ArrowRight,
   Clock,
   DollarSign,
@@ -65,9 +66,10 @@ const STAGE_META: { stage: PipelineStage; name: string; icon: React.ElementType;
   { stage: "TRANSCRIPTION", name: "Transcription", icon: Mic, color: "#8B5CF6" },
   { stage: "DISTILLATION", name: "Distillation", icon: Sparkles, color: "#F59E0B" },
   { stage: "CLIP_GENERATION", name: "Clip Generation", icon: Scissors, color: "#10B981" },
+  { stage: "BRIEFING_ASSEMBLY", name: "Briefing Assembly", icon: Package, color: "#3B82F6" },
 ];
 
-const STAGE_ORDER: PipelineStage[] = ["TRANSCRIPTION", "DISTILLATION", "CLIP_GENERATION"];
+const STAGE_ORDER: PipelineStage[] = ["TRANSCRIPTION", "DISTILLATION", "CLIP_GENERATION", "BRIEFING_ASSEMBLY"];
 
 const STATUS_PRIORITY: Record<string, number> = {
   IN_PROGRESS: 0,
@@ -626,6 +628,7 @@ export default function Pipeline() {
     TRANSCRIPTION: [],
     DISTILLATION: [],
     CLIP_GENERATION: [],
+    BRIEFING_ASSEMBLY: [],
   });
   const [loading, setLoading] = useState(true);
   const [selectedJob, setSelectedJob] = useState<PipelineJob | null>(null);

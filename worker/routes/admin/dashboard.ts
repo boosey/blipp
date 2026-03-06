@@ -7,6 +7,7 @@ const STAGE_NAMES: Record<string, string> = {
   TRANSCRIPTION: "Transcription",
   DISTILLATION: "Distillation",
   CLIP_GENERATION: "Clip Generation",
+  BRIEFING_ASSEMBLY: "Briefing Assembly",
 };
 
 const dashboardRoutes = new Hono<{ Bindings: Env }>();
@@ -49,7 +50,7 @@ dashboardRoutes.get("/", async (c) => {
       else if (row.status === "IN_PROGRESS") s.active += row._count;
     }
 
-    const stageKeys = ["TRANSCRIPTION", "DISTILLATION", "CLIP_GENERATION"] as const;
+    const stageKeys = ["TRANSCRIPTION", "DISTILLATION", "CLIP_GENERATION", "BRIEFING_ASSEMBLY"] as const;
     const stages = stageKeys.map((stage) => {
       const s = stageMap.get(stage) ?? { total: 0, completed: 0, failed: 0, active: 0 };
       const completionRate = s.total > 0 ? Math.round((s.completed / s.total) * 100) : 100;
@@ -241,6 +242,7 @@ const STAGE_LABELS: Record<string, string> = {
   TRANSCRIPTION: "Transcription",
   DISTILLATION: "Distillation",
   CLIP_GENERATION: "Clip generation",
+  BRIEFING_ASSEMBLY: "Briefing assembly",
 };
 
 // GET /issues - Active issues

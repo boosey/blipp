@@ -81,10 +81,14 @@ Every existing `catch` block gets `log.error(action, context, err)` alongside th
 
 ## Correlation
 
-All demand-driven pipeline logs include `requestId` (from BriefingRequest). Feed refresh (cron-triggered) logs include `batchId` (generated per batch) instead. This enables filtering in `wrangler tail`:
+All demand-driven pipeline logs include `requestId` (from BriefingRequest) and `jobId` (from PipelineJob, added in [pipeline-job-redesign](./2026-03-04-pipeline-job-redesign-design.md)). Feed refresh (cron-triggered) logs include `batchId` (generated per batch) instead. This enables filtering in `wrangler tail`:
 
 ```bash
+# Filter by request
 wrangler tail --format=json | jq 'select(.requestId == "req_abc")'
+
+# Filter by specific job
+wrangler tail --format=json | jq 'select(.jobId == "job_xyz")'
 ```
 
 ## UI Changes

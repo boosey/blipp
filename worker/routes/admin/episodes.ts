@@ -6,6 +6,7 @@ const STAGE_NAMES: Record<string, string> = {
   TRANSCRIPTION: "Transcription",
   DISTILLATION: "Distillation",
   CLIP_GENERATION: "Clip Generation",
+  BRIEFING_ASSEMBLY: "Briefing Assembly",
 };
 
 const episodesRoutes = new Hono<{ Bindings: Env }>();
@@ -131,7 +132,7 @@ episodesRoutes.get("/:id", async (c) => {
     }
 
     // Build stage trace from steps across all jobs for this episode
-    const stageKeys = ["TRANSCRIPTION", "DISTILLATION", "CLIP_GENERATION"] as const;
+    const stageKeys = ["TRANSCRIPTION", "DISTILLATION", "CLIP_GENERATION", "BRIEFING_ASSEMBLY"] as const;
     const stages = stageKeys.map((stage) => {
       // Find the most recent step for this stage across all jobs
       let latestStep: (typeof pipelineJobs)[number]["steps"][number] | undefined;
