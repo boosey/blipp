@@ -1,15 +1,17 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import { SignedIn, SignedOut, RedirectToSignIn } from "@clerk/clerk-react";
 import { lazy, Suspense } from "react";
-import { AppLayout } from "./layouts/app-layout";
+import { MobileLayout } from "./layouts/mobile-layout";
 import { AdminLayout } from "./layouts/admin-layout";
 import { AdminGuard } from "./components/admin-guard";
 import { Landing } from "./pages/landing";
 import { Pricing } from "./pages/pricing";
-import { Dashboard } from "./pages/dashboard";
+import { Home } from "./pages/home";
 import { Discover } from "./pages/discover";
+import { PodcastDetail } from "./pages/podcast-detail";
+import { LibraryPage } from "./pages/library";
 import { Settings } from "./pages/settings";
-import { Billing } from "./pages/billing";
+import { BriefingPlayer } from "./pages/briefing-player";
 
 // Lazy-load admin pages for code splitting
 const CommandCenter = lazy(() => import("./pages/admin/command-center"));
@@ -36,11 +38,17 @@ export default function App() {
     <Routes>
       <Route path="/" element={<Landing />} />
       <Route path="/pricing" element={<Pricing />} />
+
+      {/* Backwards compat */}
+      <Route path="/dashboard" element={<Navigate to="/home" replace />} />
+      <Route path="/billing" element={<Navigate to="/settings" replace />} />
+
+      {/* User routes — mobile layout */}
       <Route
         element={
           <>
             <SignedIn>
-              <AppLayout />
+              <MobileLayout />
             </SignedIn>
             <SignedOut>
               <RedirectToSignIn />
@@ -48,10 +56,12 @@ export default function App() {
           </>
         }
       >
-        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/home" element={<Home />} />
         <Route path="/discover" element={<Discover />} />
+        <Route path="/discover/:podcastId" element={<PodcastDetail />} />
+        <Route path="/library" element={<LibraryPage />} />
         <Route path="/settings" element={<Settings />} />
-        <Route path="/billing" element={<Billing />} />
+        <Route path="/briefing/:requestId" element={<BriefingPlayer />} />
       </Route>
 
       {/* Admin routes */}
