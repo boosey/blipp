@@ -2,6 +2,7 @@
 
 **Date:** 2026-02-26
 **Source:** Market Analyst Agent
+**Status:** Pre-launch market research. Core positioning ("every podcast, in the time you have") and competitive analysis remain relevant. See [architecture.md](../architecture.md) for the implemented product.
 
 ---
 

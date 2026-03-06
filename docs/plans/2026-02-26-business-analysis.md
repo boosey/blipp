@@ -1,6 +1,7 @@
 # Blipp: Business & Cost Analysis
 
 **Date:** 2026-02-26
+**Status:** Pre-build cost modeling. Clip caching architecture and tier structure were implemented as described. Platform costs are lower than projected (Cloudflare Workers vs. Vercel). See [architecture.md](../architecture.md) for the actual stack.
 
 ---
 
@@ -72,16 +73,18 @@ Assumes top 200 podcasts, ~120 new episodes/day.
 
 The cost flattens dramatically because user growth only increases concatenation (free) and cache hits, not generation.
 
-### Platform Cost at Scale
+### Platform Cost at Scale (implemented on Cloudflare)
 
 | Service | 1K DAU | 10K DAU | 50K DAU |
 |---------|--------|---------|---------|
 | Cloudflare Workers + Queues ($5/mo base) | $5 | $8 | $20 |
-| Neon PostgreSQL | Free | $15 | $30 |
+| Neon PostgreSQL (via Hyperdrive) | Free | $15 | $30 |
 | Cloudflare R2 (storage + zero egress) | Free | $1 | $5 |
 | Clerk Auth (50K MRU free) | Free | Free | Free |
 | Stripe | 2.9% + $0.30/txn | same | same |
 | **Platform subtotal** | **$5** | **$24** | **$55** |
+
+> These estimates proved accurate. The Cloudflare-native architecture eliminated Vercel hosting costs entirely.
 
 ### R2 Storage Growth
 

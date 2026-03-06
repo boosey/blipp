@@ -2,6 +2,7 @@
 
 **Date:** 2026-02-26
 **Source:** UX Strategist Agent
+**Status:** Pre-build UX research. Phase 1 (Busy Professional via Model 1) is implemented as the current MVP. Phases 2-4 remain future roadmap. See [architecture.md](../architecture.md) and [pipeline.md](../pipeline.md) for what shipped.
 
 ---
 

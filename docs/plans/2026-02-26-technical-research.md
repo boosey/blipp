@@ -2,6 +2,9 @@
 
 **Date:** 2026-02-26
 **Source:** Technical Research Agents
+**Status:** Pre-build research. See [architecture.md](../architecture.md) and [pipeline.md](../pipeline.md) for what was actually implemented.
+
+> **Implementation notes:** The final stack uses Cloudflare Workers + Hono (not Next.js/Inngest), Prisma 7 over Neon via Hyperdrive, Cloudflare Queues for background jobs (not Inngest), Clerk for auth (not NextAuth), and `fast-xml-parser` for RSS (not `rss-parser`). TTS and LLM recommendations below remain current. The transcript strategy landed on: cached transcripts > feed URL > Whisper STT fallback.
 
 ---
 
@@ -337,52 +340,27 @@ Use ffprobe to verify actual audio duration matches target within 10%.
 
 ## 6. Recommended Tech Stack (Phase 0 MVP)
 
-### Core
+> **What was actually built:** See [architecture.md](../architecture.md) for the implemented stack. Key differences from the recommendations below: Cloudflare Workers + Hono replaced Next.js, Cloudflare Queues replaced Inngest, Clerk was chosen over NextAuth, `fast-xml-parser` replaced `rss-parser`, and R2 is the sole storage backend.
 
-| Layer | Technology | Why |
-|-------|-----------|-----|
-| Web App | Next.js 15 (App Router) | Full-stack, SSR, API routes |
-| Language | TypeScript | Type safety across the stack |
-| Styling | Tailwind CSS + shadcn/ui | Fast MVP UI development |
-| Auth | NextAuth.js v5 or Clerk | Drop-in auth with OAuth |
+### Original Recommendations (for reference)
 
-### Data
+| Layer | Recommended | Actually Used |
+|-------|------------|---------------|
+| Web App | Next.js 15 | Cloudflare Workers + Hono v4 + Vite 7 React SPA |
+| Auth | NextAuth.js v5 or Clerk | Clerk |
+| Database | PostgreSQL (Neon/Supabase) | PostgreSQL on Neon via Hyperdrive |
+| ORM | Prisma | Prisma 7 with `@prisma/adapter-pg` |
+| File Storage | S3-compatible | Cloudflare R2 |
+| Background Jobs | Inngest | 6 Cloudflare Queues |
+| Hosting | Vercel | Cloudflare Workers/Pages |
+| RSS Parsing | rss-parser | fast-xml-parser |
 
-| Layer | Technology | Why |
-|-------|-----------|-----|
-| Database | PostgreSQL (Neon/Supabase) | Reliable, free tiers available |
-| ORM | Prisma | Type-safe queries, easy migrations |
-| File Storage | S3-compatible (AWS S3, R2, Supabase Storage) | Store generated audio files |
-
-### Background Jobs
-
-**Inngest (recommended for MVP)**
-- No infrastructure to manage, serverless-native
-- Free tier (5,000 runs/mo)
-- Works on Vercel
-- Define jobs as functions, Inngest invokes via HTTP
-
-### External Services
+### External Services (cost estimates remain relevant)
 
 | Service | Purpose | Cost |
 |---------|---------|------|
 | Podcast Index API | Podcast search, metadata, transcripts | Free |
 | Anthropic Claude API | Transcript distillation | ~$3/M input, $15/M output (Sonnet) |
 | OpenAI TTS API | TTS generation | ~$0.225 per 15-min briefing |
-| Vercel | Hosting | Free tier / $20/mo Pro |
-| Neon / Supabase | Managed PostgreSQL | Free tier |
-| Inngest | Background jobs | Free tier (5k runs/mo) |
-
-### Estimated Monthly Costs (1,000 DAU)
-
-| Service | Cost |
-|---------|------|
-| TTS (1,000 briefings/day) | ~$202/mo |
-| LLM distillation | ~$150/mo |
-| Hosting (Vercel Pro) | $20/mo |
-| Database (Neon) | Free-$25/mo |
-| S3 storage | ~$10/mo |
-| Inngest | Free tier |
-| **Total** | **~$400-$410/mo** |
-
-At $9.99/mo Pro subscription with 10% conversion = 100 paying users = $999/mo revenue. **Unit economics work from day one.**
+| Neon | Managed PostgreSQL | Free tier |
+| Cloudflare Workers + R2 | Hosting + storage | Near-free at low scale |

@@ -2,6 +2,7 @@
 
 **Date:** 2026-02-26
 **Source:** Product Strategist Agent
+**Status:** Future roadmap ideas. The current MVP implements Model 8 ("My Morning Blipp") as the core product -- a demand-driven personalized briefing system. See [architecture.md](../architecture.md) and [pipeline.md](../pipeline.md) for the implemented pipeline.
 
 Beyond the 3 user-proposed models, the agent team identified 6 additional delivery/content models.
 
