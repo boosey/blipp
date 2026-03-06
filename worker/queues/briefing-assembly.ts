@@ -4,6 +4,7 @@ import { createPipelineLogger } from "../lib/logger";
 import { getClip, putBriefing } from "../lib/clip-cache";
 import { concatMp3Buffers } from "../lib/mp3-concat";
 import { allocateWordBudget } from "../lib/time-fitting";
+import { wpKey, putWorkProduct } from "../lib/work-products";
 import type { Env } from "../types";
 
 /** Shape of a briefing assembly queue message body. */
@@ -188,6 +189,22 @@ export async function handleBriefingAssembly(
         // Store assembled briefing in R2
         const today = new Date().toISOString().split("T")[0];
         const audioKey = await putBriefing(env.R2, userId, today, finalAudio);
+
+        // Dual-write to WorkProduct registry
+        const wpR2Key = wpKey({ type: "BRIEFING_AUDIO", userId, date: today });
+        await putWorkProduct(env.R2, wpR2Key, finalAudio);
+        await prisma.workProduct.create({
+          data: {
+            type: "BRIEFING_AUDIO",
+            userId,
+            r2Key: wpR2Key,
+            sizeBytes: finalAudio.byteLength,
+            metadata: {
+              clipCount: validBuffers.length,
+              partial: validBuffers.length < readyEpisodes.length,
+            },
+          },
+        });
 
         // Create briefing segments for tracking
         for (let i = 0; i < readyEpisodes.length; i++) {

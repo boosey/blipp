@@ -22,6 +22,11 @@ vi.mock("../../lib/clip-cache", () => ({
   putClip: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("../../lib/work-products", () => ({
+  wpKey: vi.fn((params: any) => `wp/${params.type.toLowerCase()}/${params.episodeId}/${params.durationTier}${params.voice ? `/${params.voice}` : ""}`),
+  putWorkProduct: vi.fn().mockResolvedValue(undefined),
+}));
+
 const mockLogger = vi.hoisted(() => ({
   info: vi.fn(),
   debug: vi.fn(),
@@ -45,6 +50,7 @@ import { getConfig } from "../../lib/config";
 import { generateNarrative } from "../../lib/distillation";
 import { generateSpeech } from "../../lib/tts";
 import { putClip } from "../../lib/clip-cache";
+import { wpKey, putWorkProduct } from "../../lib/work-products";
 
 let mockPrisma: ReturnType<typeof createMockPrisma>;
 let mockEnv: ReturnType<typeof createMockEnv>;
@@ -80,6 +86,9 @@ beforeEach(() => {
   (generateNarrative as any).mockResolvedValue("A warm narrative about technology trends.");
   (generateSpeech as any).mockResolvedValue(new ArrayBuffer(2048));
   (putClip as any).mockResolvedValue(undefined);
+  (putWorkProduct as any).mockResolvedValue(undefined);
+  mockPrisma.workProduct.create.mockResolvedValue({ id: "wp-1" });
+  mockPrisma.workProduct.findFirst.mockResolvedValue(null);
   mockLogger.info.mockReset();
   mockLogger.debug.mockReset();
   mockLogger.error.mockReset();
@@ -133,11 +142,17 @@ describe("handleClipGeneration", () => {
       durationTier: 5,
       status: "COMPLETED",
     });
+    mockPrisma.workProduct.findFirst.mockResolvedValue({ id: "wp-cached" });
 
     const { mockMsg, mockBatch } = makeBatch(msgBody);
     await handleClipGeneration(mockBatch, mockEnv, mockCtx);
 
-    // Step marked SKIPPED with cached: true
+    // Work product lookup for existing AUDIO_CLIP
+    expect(mockPrisma.workProduct.findFirst).toHaveBeenCalledWith({
+      where: { type: "AUDIO_CLIP", episodeId: "ep-1", durationTier: 5 },
+    });
+
+    // Step marked SKIPPED with cached: true and workProductId
     expect(mockPrisma.pipelineStep.update).toHaveBeenCalledWith({
       where: { id: "step-1" },
       data: expect.objectContaining({
@@ -145,6 +160,7 @@ describe("handleClipGeneration", () => {
         cached: true,
         completedAt: expect.any(Date),
         durationMs: expect.any(Number),
+        workProductId: "wp-cached",
       }),
     });
 
@@ -213,13 +229,41 @@ describe("handleClipGeneration", () => {
       })
     );
 
-    // Step marked COMPLETED
+    // Work products dual-written
+    expect(putWorkProduct).toHaveBeenCalledTimes(2);
+    expect(putWorkProduct).toHaveBeenCalledWith(mockEnv.R2, expect.stringContaining("narrative"), "A warm narrative about technology trends.");
+    expect(putWorkProduct).toHaveBeenCalledWith(mockEnv.R2, expect.stringContaining("audio_clip"), expect.any(ArrayBuffer));
+
+    // NARRATIVE work product created
+    expect(mockPrisma.workProduct.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        type: "NARRATIVE",
+        episodeId: "ep-1",
+        durationTier: 5,
+        sizeBytes: expect.any(Number),
+        metadata: { wordCount: 6 },
+      }),
+    });
+
+    // AUDIO_CLIP work product created
+    expect(mockPrisma.workProduct.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        type: "AUDIO_CLIP",
+        episodeId: "ep-1",
+        durationTier: 5,
+        voice: "default",
+        sizeBytes: 2048,
+      }),
+    });
+
+    // Step marked COMPLETED with workProductId
     expect(mockPrisma.pipelineStep.update).toHaveBeenCalledWith({
       where: { id: "step-1" },
       data: expect.objectContaining({
         status: "COMPLETED",
         completedAt: expect.any(Date),
         durationMs: expect.any(Number),
+        workProductId: "wp-1",
       }),
     });
 

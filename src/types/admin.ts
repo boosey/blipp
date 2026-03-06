@@ -482,4 +482,23 @@ export interface StepProgress {
   durationMs?: number;
   cost?: number;
   errorMessage?: string;
+  workProduct?: WorkProductSummary;
+}
+
+// ── Work Products ──
+
+export type WorkProductType =
+  | "TRANSCRIPT"
+  | "CLAIMS"
+  | "NARRATIVE"
+  | "AUDIO_CLIP"
+  | "BRIEFING_AUDIO";
+
+export interface WorkProductSummary {
+  id: string;
+  type: WorkProductType;
+  r2Key: string;
+  sizeBytes?: number;
+  metadata?: Record<string, unknown>;
+  createdAt: string;
 }

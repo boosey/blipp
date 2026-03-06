@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import { createPrismaClient } from "../lib/db";
 import { getConfig } from "../lib/config";
 import { createPipelineLogger } from "../lib/logger";
+import { wpKey, putWorkProduct } from "../lib/work-products";
 import type { Env } from "../types";
 
 interface TranscriptionMessage {
@@ -69,6 +70,24 @@ export async function handleTranscription(
         if (cached && cached.transcript && CACHE_STATUSES.has(cached.status)) {
           log.debug("cache_hit", { episodeId, existingStatus: cached.status });
 
+          let existingWp = await prisma.workProduct.findFirst({
+            where: { type: "TRANSCRIPT", episodeId },
+          });
+
+          // Backfill: create WorkProduct from cached inline data if none exists
+          if (!existingWp && cached.transcript) {
+            const r2Key = wpKey({ type: "TRANSCRIPT", episodeId });
+            await putWorkProduct(env.R2, r2Key, cached.transcript);
+            existingWp = await prisma.workProduct.create({
+              data: {
+                type: "TRANSCRIPT",
+                episodeId,
+                r2Key,
+                sizeBytes: new TextEncoder().encode(cached.transcript).byteLength,
+              },
+            });
+          }
+
           await prisma.pipelineStep.update({
             where: { id: step.id },
             data: {
@@ -76,6 +95,7 @@ export async function handleTranscription(
               cached: true,
               completedAt: new Date(),
               durationMs: Date.now() - startTime,
+              ...(existingWp ? { workProductId: existingWp.id } : {}),
             },
           });
 
@@ -128,6 +148,18 @@ export async function handleTranscription(
           create: { episodeId, status: "TRANSCRIPT_READY", transcript },
         });
 
+        // Write WorkProduct to R2 and create DB row
+        const r2Key = wpKey({ type: "TRANSCRIPT", episodeId });
+        await putWorkProduct(env.R2, r2Key, transcript);
+        const wp = await prisma.workProduct.create({
+          data: {
+            type: "TRANSCRIPT",
+            episodeId,
+            r2Key,
+            sizeBytes: new TextEncoder().encode(transcript).byteLength,
+          },
+        });
+
         // Mark step COMPLETED
         await prisma.pipelineStep.update({
           where: { id: step.id },
@@ -135,6 +167,7 @@ export async function handleTranscription(
             status: "COMPLETED",
             completedAt: new Date(),
             durationMs: Date.now() - startTime,
+            workProductId: wp.id,
           },
         });
 

@@ -6,6 +6,7 @@ import { createPipelineLogger } from "../lib/logger";
 import { generateNarrative } from "../lib/distillation";
 import { generateSpeech } from "../lib/tts";
 import { putClip } from "../lib/clip-cache";
+import { wpKey, putWorkProduct } from "../lib/work-products";
 import type { Env } from "../types";
 
 /** Shape of a clip generation queue message body. */
@@ -88,6 +89,50 @@ export async function handleClipGeneration(
         if (existingClip?.status === "COMPLETED") {
           log.debug("cache_hit", { episodeId, durationTier });
 
+          // Backfill AUDIO_CLIP WorkProduct from cached clip if none exists
+          let existingWp = await prisma.workProduct.findFirst({
+            where: { type: "AUDIO_CLIP", episodeId, durationTier },
+          });
+
+          if (!existingWp && existingClip.audioKey) {
+            // Read the cached audio from old key pattern to get size
+            const cachedAudio = await env.R2.get(existingClip.audioKey);
+            const audioR2Key = wpKey({ type: "AUDIO_CLIP", episodeId, durationTier, voice: "default" });
+            if (cachedAudio) {
+              const audioBuffer = await cachedAudio.arrayBuffer();
+              await putWorkProduct(env.R2, audioR2Key, audioBuffer);
+              existingWp = await prisma.workProduct.create({
+                data: {
+                  type: "AUDIO_CLIP",
+                  episodeId,
+                  durationTier,
+                  voice: "default",
+                  r2Key: audioR2Key,
+                  sizeBytes: audioBuffer.byteLength,
+                },
+              });
+            }
+          }
+
+          // Also backfill NARRATIVE WorkProduct if missing
+          const existingNarrativeWp = await prisma.workProduct.findFirst({
+            where: { type: "NARRATIVE", episodeId, durationTier },
+          });
+          if (!existingNarrativeWp && existingClip.narrativeText) {
+            const narrativeR2Key = wpKey({ type: "NARRATIVE", episodeId, durationTier });
+            await putWorkProduct(env.R2, narrativeR2Key, existingClip.narrativeText);
+            await prisma.workProduct.create({
+              data: {
+                type: "NARRATIVE",
+                episodeId,
+                durationTier,
+                r2Key: narrativeR2Key,
+                sizeBytes: new TextEncoder().encode(existingClip.narrativeText).byteLength,
+                metadata: { wordCount: existingClip.wordCount },
+              },
+            });
+          }
+
           // Mark step SKIPPED (cached)
           await prisma.pipelineStep.update({
             where: { id: step.id },
@@ -96,6 +141,7 @@ export async function handleClipGeneration(
               cached: true,
               completedAt: new Date(),
               durationMs: Date.now() - startTime,
+              ...(existingWp ? { workProductId: existingWp.id } : {}),
             },
           });
 
@@ -168,6 +214,33 @@ export async function handleClipGeneration(
           },
         });
 
+        // Dual-write work products
+        const narrativeR2Key = wpKey({ type: "NARRATIVE", episodeId, durationTier });
+        await putWorkProduct(env.R2, narrativeR2Key, narrative);
+        await prisma.workProduct.create({
+          data: {
+            type: "NARRATIVE",
+            episodeId,
+            durationTier,
+            r2Key: narrativeR2Key,
+            sizeBytes: new TextEncoder().encode(narrative).byteLength,
+            metadata: { wordCount },
+          },
+        });
+
+        const audioR2Key = wpKey({ type: "AUDIO_CLIP", episodeId, durationTier, voice: "default" });
+        await putWorkProduct(env.R2, audioR2Key, audio);
+        const audioWp = await prisma.workProduct.create({
+          data: {
+            type: "AUDIO_CLIP",
+            episodeId,
+            durationTier,
+            voice: "default",
+            r2Key: audioR2Key,
+            sizeBytes: audio.byteLength,
+          },
+        });
+
         // Mark step COMPLETED
         await prisma.pipelineStep.update({
           where: { id: step.id },
@@ -175,6 +248,7 @@ export async function handleClipGeneration(
             status: "COMPLETED",
             completedAt: new Date(),
             durationMs: Date.now() - startTime,
+            workProductId: audioWp.id,
           },
         });
 

@@ -19,6 +19,11 @@ vi.mock("../../lib/mp3-concat", () => ({
   concatMp3Buffers: vi.fn().mockReturnValue(new ArrayBuffer(4096)),
 }));
 
+vi.mock("../../lib/work-products", () => ({
+  wpKey: vi.fn().mockReturnValue("wp/briefing/user-1/2026-02-26.mp3"),
+  putWorkProduct: vi.fn().mockResolvedValue(undefined),
+}));
+
 const mockLogger = vi.hoisted(() => ({
   info: vi.fn(),
   debug: vi.fn(),
@@ -39,6 +44,7 @@ import { createPrismaClient } from "../../lib/db";
 import { getConfig } from "../../lib/config";
 import { getClip, putBriefing } from "../../lib/clip-cache";
 import { concatMp3Buffers } from "../../lib/mp3-concat";
+import { wpKey, putWorkProduct } from "../../lib/work-products";
 
 let mockPrisma: ReturnType<typeof createMockPrisma>;
 let mockEnv: ReturnType<typeof createMockEnv>;
@@ -50,8 +56,10 @@ beforeEach(() => {
   mockEnv = createMockEnv();
   mockCtx = { waitUntil: vi.fn() } as unknown as ExecutionContext;
   (createPrismaClient as any).mockReturnValue(mockPrisma);
-  // Re-set getConfig default after clearAllMocks (vitest v4 resets mock implementations)
+  // Re-set mock defaults after clearAllMocks (vitest v4 resets mock implementations)
   (getConfig as any).mockResolvedValue(true);
+  (wpKey as any).mockReturnValue("wp/briefing/user-1/2026-02-26.mp3");
+  (putWorkProduct as any).mockResolvedValue(undefined);
   mockLogger.info.mockReset();
   mockLogger.debug.mockReset();
   mockLogger.error.mockReset();
@@ -93,6 +101,7 @@ describe("handleBriefingAssembly", () => {
       durationTier: 3,
     });
     mockPrisma.briefingSegment.create.mockResolvedValue({});
+    mockPrisma.workProduct.create.mockResolvedValue({});
 
     const mockMsg = { body: msgBody, ack: vi.fn(), retry: vi.fn() };
     const mockBatch = {
@@ -107,6 +116,25 @@ describe("handleBriefingAssembly", () => {
 
     // Verify briefing was stored in R2
     expect(putBriefing).toHaveBeenCalled();
+
+    // Verify WorkProduct dual-write
+    expect(wpKey).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "BRIEFING_AUDIO", userId: "user-1" })
+    );
+    expect(putWorkProduct).toHaveBeenCalledWith(
+      mockEnv.R2,
+      "wp/briefing/user-1/2026-02-26.mp3",
+      expect.any(ArrayBuffer)
+    );
+    expect(mockPrisma.workProduct.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        type: "BRIEFING_AUDIO",
+        userId: "user-1",
+        r2Key: "wp/briefing/user-1/2026-02-26.mp3",
+        sizeBytes: 4096,
+        metadata: { clipCount: 1, partial: false },
+      }),
+    });
 
     // Verify briefing was marked COMPLETED
     expect(mockPrisma.briefing.update).toHaveBeenCalledWith(
@@ -291,6 +319,7 @@ describe("handleBriefingAssembly", () => {
         id: "clip-1", episodeId: "ep-1", durationTier: 3,
       });
       mockPrisma.briefingSegment.create.mockResolvedValue({});
+      mockPrisma.workProduct.create.mockResolvedValue({});
 
       const mockMsg = { body: msgBody, ack: vi.fn(), retry: vi.fn() };
       const mockBatch = {

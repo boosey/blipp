@@ -3,6 +3,7 @@ import { createPrismaClient } from "../lib/db";
 import { getConfig } from "../lib/config";
 import { createPipelineLogger } from "../lib/logger";
 import { extractClaims } from "../lib/distillation";
+import { wpKey, putWorkProduct } from "../lib/work-products";
 import type { Env } from "../types";
 
 /** Shape of a distillation queue message body. */
@@ -82,7 +83,26 @@ export async function handleDistillation(
         });
 
         if (existing?.status === "COMPLETED") {
-          // Cache hit — skip processing
+          // Cache hit — skip processing, backfill WorkProduct if needed
+          let existingWp = await prisma.workProduct.findFirst({
+            where: { type: "CLAIMS", episodeId },
+          });
+
+          if (!existingWp && existing.claimsJson) {
+            const claimsStr = JSON.stringify(existing.claimsJson);
+            const r2Key = wpKey({ type: "CLAIMS", episodeId });
+            await putWorkProduct(env.R2, r2Key, claimsStr);
+            existingWp = await prisma.workProduct.create({
+              data: {
+                type: "CLAIMS",
+                episodeId,
+                r2Key,
+                sizeBytes: new TextEncoder().encode(claimsStr).byteLength,
+                metadata: { claimCount: Array.isArray(existing.claimsJson) ? (existing.claimsJson as any[]).length : 0 },
+              },
+            });
+          }
+
           const completedAt = new Date();
           await prisma.pipelineStep.update({
             where: { id: step.id },
@@ -91,6 +111,7 @@ export async function handleDistillation(
               cached: true,
               completedAt,
               durationMs: completedAt.getTime() - startedAt.getTime(),
+              ...(existingWp ? { workProductId: existingWp.id } : {}),
             },
           });
 
@@ -134,6 +155,20 @@ export async function handleDistillation(
           data: { status: "COMPLETED", claimsJson: claims as any },
         });
 
+        // Dual-write WorkProduct: store claims in R2 and register in DB
+        const claimsJson = JSON.stringify(claims);
+        const r2Key = wpKey({ type: "CLAIMS", episodeId });
+        await putWorkProduct(env.R2, r2Key, claimsJson);
+        const wp = await prisma.workProduct.create({
+          data: {
+            type: "CLAIMS",
+            episodeId,
+            r2Key,
+            sizeBytes: new TextEncoder().encode(claimsJson).byteLength,
+            metadata: { claimCount: claims.length },
+          },
+        });
+
         // Mark step COMPLETED
         const completedAt = new Date();
         await prisma.pipelineStep.update({
@@ -142,6 +177,7 @@ export async function handleDistillation(
             status: "COMPLETED",
             completedAt,
             durationMs: completedAt.getTime() - startedAt.getTime(),
+            workProductId: wp.id,
           },
         });
 

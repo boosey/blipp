@@ -15,6 +15,10 @@ import {
   SkipForward,
   Minus,
   Zap,
+  FileText,
+  FileJson,
+  FileAudio,
+  HardDrive,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -40,6 +44,8 @@ import type {
   PipelineStepStatus,
   AdminPodcast,
   AdminEpisode,
+  WorkProductSummary,
+  WorkProductType,
 } from "@/types/admin";
 
 // ── Constants ──
@@ -131,6 +137,229 @@ function DurationTierBadge({ minutes }: { minutes: number }) {
   );
 }
 
+const WP_TYPE_CONFIG: Record<
+  WorkProductType,
+  { icon: React.ElementType; label: string; color: string }
+> = {
+  TRANSCRIPT: { icon: FileText, label: "Transcript", color: "#3B82F6" },
+  CLAIMS: { icon: FileJson, label: "Claims", color: "#8B5CF6" },
+  NARRATIVE: { icon: FileText, label: "Narrative", color: "#F59E0B" },
+  AUDIO_CLIP: { icon: FileAudio, label: "Audio Clip", color: "#10B981" },
+  BRIEFING_AUDIO: { icon: FileAudio, label: "Briefing", color: "#EC4899" },
+};
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function WorkProductBadge({ wp }: { wp: WorkProductSummary }) {
+  const cfg = WP_TYPE_CONFIG[wp.type] ?? WP_TYPE_CONFIG.TRANSCRIPT;
+  const Icon = cfg.icon;
+  const meta = wp.metadata as Record<string, unknown> | null;
+  const details: string[] = [];
+  if (wp.sizeBytes != null) details.push(formatBytes(wp.sizeBytes));
+  if (meta?.claimCount != null) details.push(`${meta.claimCount} claims`);
+  if (meta?.wordCount != null) details.push(`${meta.wordCount} words`);
+
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[8px] font-medium"
+      style={{ backgroundColor: `${cfg.color}15`, color: cfg.color }}
+      title={`${cfg.label}: ${wp.r2Key}${details.length ? ` (${details.join(", ")})` : ""}`}
+    >
+      <Icon className="h-2.5 w-2.5" />
+      <HardDrive className="h-2 w-2 opacity-60" />
+      {cfg.label}
+      {details.length > 0 && (
+        <span className="opacity-70 font-mono">{details.join(" · ")}</span>
+      )}
+    </span>
+  );
+}
+
+interface WorkProductPreview {
+  id: string;
+  type: WorkProductType;
+  r2Key: string;
+  sizeBytes?: number;
+  metadata?: Record<string, unknown>;
+  contentType: "text" | "json" | "audio";
+  content: string | null;
+  truncated?: boolean;
+  message?: string;
+}
+
+function StepWorkProductPanel({ wpId }: { wpId: string }) {
+  const apiFetch = useAdminFetch();
+  const [preview, setPreview] = useState<WorkProductPreview | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    apiFetch<{ data: WorkProductPreview }>(`/requests/work-product/${wpId}/preview`)
+      .then((r) => setPreview(r.data))
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+      .finally(() => setLoading(false));
+  }, [apiFetch, wpId]);
+
+  if (loading) {
+    return (
+      <div className="mt-1.5 ml-2">
+        <Skeleton className="h-20 bg-white/5 rounded" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="mt-1.5 ml-2 rounded bg-[#EF4444]/10 border border-[#EF4444]/20 p-2 text-[10px] text-[#EF4444]">
+        Failed to load: {error}
+      </div>
+    );
+  }
+
+  if (!preview) return null;
+
+  const meta = preview.metadata as Record<string, unknown> | null;
+
+  return (
+    <div className="mt-1.5 ml-2 rounded-md bg-[#0A1628] border border-white/5 overflow-hidden">
+      {/* Header bar */}
+      <div className="flex items-center gap-2 px-2.5 py-1.5 bg-[#0F1D32] border-b border-white/5">
+        <HardDrive className="h-3 w-3 text-[#9CA3AF]" />
+        <span className="text-[9px] text-[#9CA3AF] font-mono truncate flex-1">
+          {preview.r2Key}
+        </span>
+        {preview.sizeBytes != null && (
+          <span className="text-[9px] text-[#9CA3AF] font-mono tabular-nums shrink-0">
+            {formatBytes(preview.sizeBytes)}
+          </span>
+        )}
+        {meta && Object.keys(meta).length > 0 && (
+          <span className="text-[9px] text-[#9CA3AF] font-mono shrink-0">
+            {Object.entries(meta)
+              .filter(([, v]) => v != null && v !== false)
+              .map(([k, v]) => `${k}: ${v}`)
+              .join(" · ")}
+          </span>
+        )}
+      </div>
+
+      {/* Content area */}
+      {preview.contentType === "audio" ? (
+        <div className="px-2.5 py-3 flex items-center gap-2 text-[10px] text-[#9CA3AF]">
+          <FileAudio className="h-4 w-4 text-[#10B981]" />
+          Audio binary — {preview.sizeBytes != null ? formatBytes(preview.sizeBytes) : "unknown size"}
+        </div>
+      ) : preview.content == null ? (
+        <div className="px-2.5 py-3 text-[10px] text-[#9CA3AF] italic">
+          {preview.message ?? "No content available"}
+        </div>
+      ) : preview.contentType === "json" ? (
+        <ScrollArea className="max-h-64">
+          <pre className="px-2.5 py-2 text-[10px] font-mono text-[#F9FAFB]/80 whitespace-pre-wrap break-all leading-relaxed">
+            {(() => {
+              try {
+                return JSON.stringify(JSON.parse(preview.content), null, 2);
+              } catch {
+                return preview.content;
+              }
+            })()}
+          </pre>
+          {preview.truncated && (
+            <div className="px-2.5 py-1.5 border-t border-white/5 text-[9px] text-[#F59E0B]">
+              Content truncated — showing first 50KB
+            </div>
+          )}
+        </ScrollArea>
+      ) : (
+        <ScrollArea className="max-h-64">
+          <pre className="px-2.5 py-2 text-[10px] font-mono text-[#F9FAFB]/80 whitespace-pre-wrap break-words leading-relaxed">
+            {preview.content}
+          </pre>
+          {preview.truncated && (
+            <div className="px-2.5 py-1.5 border-t border-white/5 text-[9px] text-[#F59E0B]">
+              Content truncated — showing first 50KB
+            </div>
+          )}
+        </ScrollArea>
+      )}
+    </div>
+  );
+}
+
+function ExpandableStepRow({
+  step,
+  connector,
+  isLastStep,
+}: {
+  step: StepProgress;
+  connector: string;
+  isLastStep: boolean;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const hasWp = !!step.workProduct;
+
+  return (
+    <div>
+      <div
+        className={cn(
+          "flex items-center gap-2 text-[10px]",
+          hasWp && "cursor-pointer hover:bg-white/[0.02] rounded -mx-1 px-1"
+        )}
+        onClick={hasWp ? () => setExpanded((v) => !v) : undefined}
+      >
+        <span className="text-[#9CA3AF] font-mono">
+          {connector} {isLastStep ? "\u2514\u2500" : "\u251C\u2500"}
+        </span>
+        <span className="text-[#9CA3AF] w-28">{formatStageName(step.stage)}:</span>
+        <StepStatusIcon step={step} />
+        {step.cached && (
+          <Badge className="bg-[#F59E0B]/15 text-[#F59E0B] text-[8px] px-1 py-0">
+            <Zap className="h-2 w-2 mr-0.5 inline" />
+            cached
+          </Badge>
+        )}
+        {step.durationMs != null && (
+          <span className="text-[9px] text-[#9CA3AF] font-mono tabular-nums">
+            {step.durationMs}ms
+          </span>
+        )}
+        {step.cost != null && (
+          <span className="text-[9px] text-[#10B981] font-mono tabular-nums">
+            ${step.cost.toFixed(4)}
+          </span>
+        )}
+        {hasWp && (
+          <>
+            <WorkProductBadge wp={step.workProduct!} />
+            {expanded ? (
+              <ChevronDown className="h-2.5 w-2.5 text-[#9CA3AF] shrink-0" />
+            ) : (
+              <ChevronRight className="h-2.5 w-2.5 text-[#9CA3AF] shrink-0" />
+            )}
+          </>
+        )}
+        {step.status === "FAILED" && step.errorMessage && (
+          <span className="text-[9px] text-[#EF4444] truncate max-w-[200px]" title={step.errorMessage}>
+            {step.errorMessage}
+          </span>
+        )}
+      </div>
+
+      {expanded && step.workProduct && (
+        <div className="pl-8">
+          <StepWorkProductPanel wpId={step.workProduct.id} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function JobProgressTree({ jobs }: { jobs: JobProgress[] }) {
   if (!jobs || jobs.length === 0) {
     return (
@@ -173,34 +402,12 @@ function JobProgressTree({ jobs }: { jobs: JobProgress[] }) {
                 const isLastStep = si === job.steps.length - 1;
                 const connector = isLast ? " " : "\u2502";
                 return (
-                  <div key={step.stage} className="flex items-center gap-2 text-[10px]">
-                    <span className="text-[#9CA3AF] font-mono">
-                      {connector} {isLastStep ? "\u2514\u2500" : "\u251C\u2500"}
-                    </span>
-                    <span className="text-[#9CA3AF] w-28">{formatStageName(step.stage)}:</span>
-                    <StepStatusIcon step={step} />
-                    {step.cached && (
-                      <Badge className="bg-[#F59E0B]/15 text-[#F59E0B] text-[8px] px-1 py-0">
-                        <Zap className="h-2 w-2 mr-0.5 inline" />
-                        cached
-                      </Badge>
-                    )}
-                    {step.durationMs != null && (
-                      <span className="text-[9px] text-[#9CA3AF] font-mono tabular-nums">
-                        {step.durationMs}ms
-                      </span>
-                    )}
-                    {step.cost != null && (
-                      <span className="text-[9px] text-[#10B981] font-mono tabular-nums">
-                        ${step.cost.toFixed(4)}
-                      </span>
-                    )}
-                    {step.status === "FAILED" && step.errorMessage && (
-                      <span className="text-[9px] text-[#EF4444] truncate max-w-[200px]" title={step.errorMessage}>
-                        {step.errorMessage}
-                      </span>
-                    )}
-                  </div>
+                  <ExpandableStepRow
+                    key={step.stage}
+                    step={step}
+                    connector={connector}
+                    isLastStep={isLastStep}
+                  />
                 );
               })}
             </div>

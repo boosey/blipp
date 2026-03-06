@@ -37,6 +37,7 @@ export function createMockPrisma() {
     pipelineStep: modelMethods(),
     briefingRequest: modelMethods(),
     platformConfig: modelMethods(),
+    workProduct: modelMethods(),
     $disconnect: vi.fn().mockResolvedValue(undefined),
   };
 }

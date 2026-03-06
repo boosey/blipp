@@ -93,6 +93,7 @@ model Episode {
   distillation Distillation?
   clips        Clip[]
   pipelineJobs PipelineJob[]
+  workProducts WorkProduct[]
 
   @@unique([podcastId, guid])
 }
@@ -237,22 +238,24 @@ enum PipelineJobStatus {
 }
 
 model PipelineStep {
-  id           String             @id @default(cuid())
-  jobId        String
-  stage        PipelineStage
-  status       PipelineStepStatus @default(PENDING)
-  cached       Boolean            @default(false)
-  input        Json?
-  output       Json?
-  errorMessage String?
-  startedAt    DateTime?
-  completedAt  DateTime?
-  durationMs   Int?
-  cost         Float?
-  retryCount   Int                @default(0)
-  createdAt    DateTime           @default(now())
+  id            String             @id @default(cuid())
+  jobId         String
+  stage         PipelineStage
+  status        PipelineStepStatus @default(PENDING)
+  cached        Boolean            @default(false)
+  input         Json?
+  output        Json?
+  errorMessage  String?
+  startedAt     DateTime?
+  completedAt   DateTime?
+  durationMs    Int?
+  cost          Float?
+  retryCount    Int                @default(0)
+  workProductId String?
+  createdAt     DateTime           @default(now())
 
-  job PipelineJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  job         PipelineJob  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  workProduct WorkProduct? @relation(fields: [workProductId], references: [id])
 }
 
 enum PipelineStepStatus {
@@ -287,6 +290,32 @@ enum BriefingRequestStatus {
   PROCESSING
   COMPLETED
   FAILED
+}
+
+// ── Work Products (Stage Outputs) ──
+
+model WorkProduct {
+  id           String          @id @default(cuid())
+  type         WorkProductType
+  episodeId    String?
+  userId       String?
+  durationTier Int?
+  voice        String?         // TTS voice identifier, null = default
+  r2Key        String          @unique
+  sizeBytes    Int?
+  metadata     Json?           // type-specific: { claimCount, wordCount, partial, etc. }
+  createdAt    DateTime        @default(now())
+
+  episode Episode?      @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  steps   PipelineStep[]
+}
+
+enum WorkProductType {
+  TRANSCRIPT
+  CLAIMS
+  NARRATIVE
+  AUDIO_CLIP
+  BRIEFING_AUDIO
 }
 
 // ── Admin: Runtime Configuration ──

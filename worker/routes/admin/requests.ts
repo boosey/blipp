@@ -64,7 +64,14 @@ requestsRoutes.get("/:id", async (c) => {
       where: { requestId: request.id },
       include: {
         episode: { select: { title: true, podcast: { select: { title: true } } } },
-        steps: { orderBy: { createdAt: "asc" } },
+        steps: {
+          orderBy: { createdAt: "asc" },
+          include: {
+            workProduct: {
+              select: { id: true, type: true, r2Key: true, sizeBytes: true, metadata: true, createdAt: true },
+            },
+          },
+        },
       },
       orderBy: { createdAt: "asc" },
     });
@@ -84,6 +91,16 @@ requestsRoutes.get("/:id", async (c) => {
         durationMs: s.durationMs,
         cost: s.cost,
         errorMessage: s.errorMessage,
+        workProduct: s.workProduct
+          ? {
+              id: s.workProduct.id,
+              type: s.workProduct.type,
+              r2Key: s.workProduct.r2Key,
+              sizeBytes: s.workProduct.sizeBytes,
+              metadata: s.workProduct.metadata,
+              createdAt: s.workProduct.createdAt?.toISOString?.() ?? s.workProduct.createdAt,
+            }
+          : undefined,
       })),
     }));
 
@@ -102,6 +119,59 @@ requestsRoutes.get("/:id", async (c) => {
         createdAt: request.createdAt.toISOString(),
         updatedAt: request.updatedAt.toISOString(),
         jobProgress,
+      },
+    });
+  } finally {
+    c.executionCtx.waitUntil(prisma.$disconnect());
+  }
+});
+
+// GET /work-product/:id/preview — Fetch work product content from R2
+requestsRoutes.get("/work-product/:id/preview", async (c) => {
+  const prisma = createPrismaClient(c.env.HYPERDRIVE);
+  try {
+    const wp = await prisma.workProduct.findUnique({
+      where: { id: c.req.param("id") },
+    });
+    if (!wp) return c.json({ error: "Work product not found" }, 404);
+
+    const obj = await c.env.R2.get(wp.r2Key);
+    if (!obj) {
+      return c.json({ data: { id: wp.id, type: wp.type, r2Key: wp.r2Key, content: null, message: "Object not found in R2" } });
+    }
+
+    const isAudio = wp.type === "AUDIO_CLIP" || wp.type === "BRIEFING_AUDIO";
+    if (isAudio) {
+      // For audio, return metadata only (no inline content)
+      return c.json({
+        data: {
+          id: wp.id,
+          type: wp.type,
+          r2Key: wp.r2Key,
+          sizeBytes: wp.sizeBytes,
+          metadata: wp.metadata,
+          contentType: "audio",
+          content: null,
+        },
+      });
+    }
+
+    // For text content (TRANSCRIPT, CLAIMS, NARRATIVE), return up to 50KB
+    const text = await obj.text();
+    const maxPreview = 50_000;
+    const truncated = text.length > maxPreview;
+    const content = truncated ? text.slice(0, maxPreview) : text;
+
+    return c.json({
+      data: {
+        id: wp.id,
+        type: wp.type,
+        r2Key: wp.r2Key,
+        sizeBytes: wp.sizeBytes,
+        metadata: wp.metadata,
+        contentType: wp.type === "CLAIMS" ? "json" : "text",
+        content,
+        truncated,
       },
     });
   } finally {

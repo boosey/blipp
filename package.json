@@ -9,7 +9,9 @@
     "test": "vitest run",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "typecheck": "tsc --noEmit",
-    "kill:port": "npx kill-port 5174"
+    "kill:port": "npx kill-port 5174",
+    "clean:pipeline": "node scripts/clean-pipeline.mjs",
+    "clean:pipeline:dry": "node scripts/clean-pipeline.mjs --dry-run"
   },
   "repository": {
     "type": "git",

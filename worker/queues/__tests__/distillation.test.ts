@@ -26,6 +26,11 @@ vi.mock("../../lib/distillation", () => ({
   ]),
 }));
 
+vi.mock("../../lib/work-products", () => ({
+  wpKey: vi.fn().mockReturnValue("wp/claims/ep-1.json"),
+  putWorkProduct: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock("@anthropic-ai/sdk", () => {
   return { default: class MockAnthropic {} };
 });
@@ -33,6 +38,7 @@ vi.mock("@anthropic-ai/sdk", () => {
 import { createPrismaClient } from "../../lib/db";
 import { getConfig } from "../../lib/config";
 import { extractClaims } from "../../lib/distillation";
+import { wpKey, putWorkProduct } from "../../lib/work-products";
 
 let mockPrisma: ReturnType<typeof createMockPrisma>;
 let mockEnv: ReturnType<typeof createMockEnv>;
@@ -82,6 +88,7 @@ describe("handleDistillation", () => {
       transcript: "This is a transcript of the episode.",
     });
     mockPrisma.distillation.update.mockResolvedValue({});
+    mockPrisma.workProduct.create.mockResolvedValue({ id: "wp-1" });
 
     const batch = makeBatch([{ jobId: "job-1", episodeId: "ep-1" }]);
     await handleDistillation(batch, mockEnv, mockCtx);
@@ -98,11 +105,29 @@ describe("handleDistillation", () => {
     // Claims extracted
     expect(extractClaims).toHaveBeenCalled();
 
-    // Step marked COMPLETED
+    // WorkProduct written to R2
+    expect(wpKey).toHaveBeenCalledWith({ type: "CLAIMS", episodeId: "ep-1" });
+    expect(putWorkProduct).toHaveBeenCalledWith(
+      mockEnv.R2,
+      "wp/claims/ep-1.json",
+      expect.any(String)
+    );
+
+    // WorkProduct row created
+    expect(mockPrisma.workProduct.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        type: "CLAIMS",
+        episodeId: "ep-1",
+        r2Key: "wp/claims/ep-1.json",
+        metadata: { claimCount: 1 },
+      }),
+    });
+
+    // Step marked COMPLETED with workProductId
     expect(mockPrisma.pipelineStep.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "step-1" },
-        data: expect.objectContaining({ status: "COMPLETED" }),
+        data: expect.objectContaining({ status: "COMPLETED", workProductId: "wp-1" }),
       })
     );
 
@@ -118,7 +143,7 @@ describe("handleDistillation", () => {
     expect(batch.messages[0].ack).toHaveBeenCalled();
   });
 
-  it("cache hit marks step SKIPPED with cached: true", async () => {
+  it("cache hit marks step SKIPPED with cached: true and links existing WorkProduct", async () => {
     mockPrisma.pipelineJob.findUniqueOrThrow.mockResolvedValue({
       id: "job-1",
       requestId: "req-1",
@@ -132,23 +157,33 @@ describe("handleDistillation", () => {
       status: "COMPLETED",
       claimsJson: [{ claim: "cached" }],
     });
+    mockPrisma.workProduct.findFirst.mockResolvedValue({ id: "wp-existing" });
 
     const batch = makeBatch([{ jobId: "job-1", episodeId: "ep-1" }]);
     await handleDistillation(batch, mockEnv, mockCtx);
 
-    // Step marked SKIPPED + cached
+    // WorkProduct lookup for existing claims
+    expect(mockPrisma.workProduct.findFirst).toHaveBeenCalledWith({
+      where: { type: "CLAIMS", episodeId: "ep-1" },
+    });
+
+    // Step marked SKIPPED + cached + workProductId linked
     expect(mockPrisma.pipelineStep.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "step-1" },
         data: expect.objectContaining({
           status: "SKIPPED",
           cached: true,
+          workProductId: "wp-existing",
         }),
       })
     );
 
     // extractClaims NOT called
     expect(extractClaims).not.toHaveBeenCalled();
+
+    // No new WorkProduct created
+    expect(mockPrisma.workProduct.create).not.toHaveBeenCalled();
 
     // Job updated with distillationId
     expect(mockPrisma.pipelineJob.update).toHaveBeenCalledWith(
@@ -177,6 +212,7 @@ describe("handleDistillation", () => {
       transcript: "Some transcript",
     });
     mockPrisma.distillation.update.mockResolvedValue({});
+    mockPrisma.workProduct.create.mockResolvedValue({ id: "wp-1" });
 
     const batch = makeBatch([{ jobId: "job-1", episodeId: "ep-1" }]);
     await handleDistillation(batch, mockEnv, mockCtx);
@@ -201,6 +237,7 @@ describe("handleDistillation", () => {
       episodeId: "ep-1",
       status: "COMPLETED",
     });
+    mockPrisma.workProduct.findFirst.mockResolvedValue(null);
 
     const batch = makeBatch([{ jobId: "job-1", episodeId: "ep-1" }]);
     await handleDistillation(batch, mockEnv, mockCtx);
@@ -239,6 +276,7 @@ describe("handleDistillation", () => {
         transcript: "This is a transcript.",
       });
       mockPrisma.distillation.update.mockResolvedValue({});
+      mockPrisma.workProduct.create.mockResolvedValue({ id: "wp-1" });
 
       const batch = makeBatch([{ jobId: "job-1", episodeId: "ep-1", type: "manual" }]);
       await handleDistillation(batch, mockEnv, mockCtx);
@@ -334,6 +372,7 @@ describe("handleDistillation", () => {
         transcript: "Some transcript",
       });
       mockPrisma.distillation.update.mockResolvedValue({});
+      mockPrisma.workProduct.create.mockResolvedValue({ id: "wp-1" });
 
       const batch = makeBatch([{ jobId: "job-1", episodeId: "ep-1" }]);
       await handleDistillation(batch, mockEnv, mockCtx);
@@ -356,6 +395,7 @@ describe("handleDistillation", () => {
         transcript: "This is a transcript.",
       });
       mockPrisma.distillation.update.mockResolvedValue({});
+      mockPrisma.workProduct.create.mockResolvedValue({ id: "wp-1" });
 
       const batch = makeBatch([{ jobId: "job-1", episodeId: "ep-1" }]);
       await handleDistillation(batch, mockEnv, mockCtx);
