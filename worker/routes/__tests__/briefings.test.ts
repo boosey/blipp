@@ -7,7 +7,7 @@ import { createMockEnv, createMockPrisma } from "../../../tests/helpers/mocks";
 vi.mock("@prisma/adapter-pg", () => ({ PrismaPg: vi.fn() }));
 vi.mock("../../../src/generated/prisma", () => ({ PrismaClient: vi.fn() }));
 
-// Mock createPrismaClient
+// Mock createPrismaClient (may still be transitively imported)
 const mockPrisma = createMockPrisma();
 vi.mock("../../lib/db", () => ({
   createPrismaClient: vi.fn(() => mockPrisma),
@@ -42,6 +42,7 @@ describe("Briefing Routes", () => {
     env = createMockEnv();
 
     app = new Hono<{ Bindings: Env }>();
+    app.use("/*", async (c, next) => { c.set("prisma", mockPrisma); await next(); });
     app.route("/briefings", briefings);
 
     // Reset mock prisma
@@ -54,7 +55,6 @@ describe("Briefing Routes", () => {
         });
       }
     });
-    mockPrisma.$disconnect.mockResolvedValue(undefined);
   });
 
   describe("GET /briefings/", () => {

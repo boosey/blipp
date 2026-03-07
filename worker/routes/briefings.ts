@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { Env } from "../types";
 import { requireAuth, getAuth } from "../middleware/auth";
-import { createPrismaClient } from "../lib/db";
+import { getCurrentUser } from "../lib/admin-helpers";
 import { nearestTier } from "../lib/time-fitting";
 
 /**
@@ -23,24 +23,16 @@ const FREE_MAX_MINUTES = 5;
  * @returns Array of briefing records ordered by creation date descending
  */
 briefings.get("/", async (c) => {
-  const userId = getAuth(c)!.userId!;
-  const prisma = createPrismaClient(c.env.HYPERDRIVE);
+  const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
 
-  try {
-    const user = await prisma.user.findUniqueOrThrow({
-      where: { clerkId: userId },
-    });
+  const list = await prisma.briefing.findMany({
+    where: { userId: user.id },
+    orderBy: { createdAt: "desc" },
+    take: 30,
+  });
 
-    const list = await prisma.briefing.findMany({
-      where: { userId: user.id },
-      orderBy: { createdAt: "desc" },
-      take: 30,
-    });
-
-    return c.json({ briefings: list });
-  } finally {
-    c.executionCtx.waitUntil(prisma.$disconnect());
-  }
+  return c.json({ briefings: list });
 });
 
 /**
@@ -50,29 +42,21 @@ briefings.get("/", async (c) => {
  * @returns The briefing object, or null if none exists for today
  */
 briefings.get("/today", async (c) => {
-  const userId = getAuth(c)!.userId!;
-  const prisma = createPrismaClient(c.env.HYPERDRIVE);
+  const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
 
-  try {
-    const user = await prisma.user.findUniqueOrThrow({
-      where: { clerkId: userId },
-    });
+  const startOfDay = new Date();
+  startOfDay.setUTCHours(0, 0, 0, 0);
 
-    const startOfDay = new Date();
-    startOfDay.setUTCHours(0, 0, 0, 0);
+  const briefing = await prisma.briefing.findFirst({
+    where: {
+      userId: user.id,
+      createdAt: { gte: startOfDay },
+    },
+    orderBy: { createdAt: "desc" },
+  });
 
-    const briefing = await prisma.briefing.findFirst({
-      where: {
-        userId: user.id,
-        createdAt: { gte: startOfDay },
-      },
-      orderBy: { createdAt: "desc" },
-    });
-
-    return c.json({ briefing: briefing ?? null });
-  } finally {
-    c.executionCtx.waitUntil(prisma.$disconnect());
-  }
+  return c.json({ briefing: briefing ?? null });
 });
 
 /**
@@ -84,107 +68,99 @@ briefings.get("/today", async (c) => {
  * @throws 429 if free-tier user exceeds weekly limit
  */
 briefings.post("/generate", async (c) => {
-  const userId = getAuth(c)!.userId!;
-  const prisma = createPrismaClient(c.env.HYPERDRIVE);
+  const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
 
+  // Parse optional body for episode-specific request
+  let body: { episodeId?: string } = {};
   try {
-    const user = await prisma.user.findUniqueOrThrow({
-      where: { clerkId: userId },
-    });
+    body = await c.req.json();
+  } catch {
+    // No body or invalid JSON — treat as subscription-based request
+  }
 
-    // Parse optional body for episode-specific request
-    let body: { episodeId?: string } = {};
-    try {
-      body = await c.req.json();
-    } catch {
-      // No body or invalid JSON — treat as subscription-based request
-    }
+  let targetMinutes = user.briefingLengthMinutes;
 
-    let targetMinutes = user.briefingLengthMinutes;
+  // Enforce free-tier limits
+  if (user.tier === "FREE") {
+    targetMinutes = Math.min(targetMinutes, FREE_MAX_MINUTES);
 
-    // Enforce free-tier limits
-    if (user.tier === "FREE") {
-      targetMinutes = Math.min(targetMinutes, FREE_MAX_MINUTES);
+    // Count briefings in the last 7 days
+    const oneWeekAgo = new Date();
+    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
 
-      // Count briefings in the last 7 days
-      const oneWeekAgo = new Date();
-      oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-
-      const weeklyCount = await prisma.briefing.count({
-        where: {
-          userId: user.id,
-          createdAt: { gte: oneWeekAgo },
-        },
-      });
-
-      if (weeklyCount >= FREE_WEEKLY_LIMIT) {
-        return c.json(
-          {
-            error: "Free tier limit reached: 3 briefings per week",
-            limit: FREE_WEEKLY_LIMIT,
-            used: weeklyCount,
-          },
-          429
-        );
-      }
-    }
-
-    let items;
-
-    if (body.episodeId) {
-      // One-off episode request
-      const episode = await prisma.episode.findUniqueOrThrow({
-        where: { id: body.episodeId },
-      });
-
-      const durationTier = nearestTier(targetMinutes);
-      items = [
-        {
-          podcastId: episode.podcastId,
-          episodeId: episode.id,
-          durationTier,
-          useLatest: false,
-        },
-      ];
-    } else {
-      // Subscription-based request (existing behavior)
-      const subscriptions = await prisma.subscription.findMany({
-        where: { userId: user.id },
-        select: { podcastId: true },
-      });
-      if (!subscriptions.length) {
-        return c.json({ error: "No podcast subscriptions found" }, 400);
-      }
-
-      const perEpisodeTier = nearestTier(targetMinutes / subscriptions.length);
-      items = subscriptions.map((s: { podcastId: string }) => ({
-        podcastId: s.podcastId,
-        episodeId: null,
-        durationTier: perEpisodeTier,
-        useLatest: true,
-      }));
-    }
-
-    // Create a BriefingRequest and dispatch to orchestrator
-    const request = await prisma.briefingRequest.create({
-      data: {
+    const weeklyCount = await prisma.briefing.count({
+      where: {
         userId: user.id,
-        targetMinutes,
-        items: items as any,
-        isTest: false,
-        status: "PENDING",
+        createdAt: { gte: oneWeekAgo },
       },
     });
 
-    await c.env.ORCHESTRATOR_QUEUE.send({
-      requestId: request.id,
-      action: "evaluate",
+    if (weeklyCount >= FREE_WEEKLY_LIMIT) {
+      return c.json(
+        {
+          error: "Free tier limit reached: 3 briefings per week",
+          limit: FREE_WEEKLY_LIMIT,
+          used: weeklyCount,
+        },
+        429
+      );
+    }
+  }
+
+  let items;
+
+  if (body.episodeId) {
+    // One-off episode request
+    const episode = await prisma.episode.findUniqueOrThrow({
+      where: { id: body.episodeId },
     });
 
-    return c.json({ request: { id: request.id, status: "PENDING", targetMinutes } }, 201);
-  } finally {
-    c.executionCtx.waitUntil(prisma.$disconnect());
+    const durationTier = nearestTier(targetMinutes);
+    items = [
+      {
+        podcastId: episode.podcastId,
+        episodeId: episode.id,
+        durationTier,
+        useLatest: false,
+      },
+    ];
+  } else {
+    // Subscription-based request (existing behavior)
+    const subscriptions = await prisma.subscription.findMany({
+      where: { userId: user.id },
+      select: { podcastId: true },
+    });
+    if (!subscriptions.length) {
+      return c.json({ error: "No podcast subscriptions found" }, 400);
+    }
+
+    const perEpisodeTier = nearestTier(targetMinutes / subscriptions.length);
+    items = subscriptions.map((s: { podcastId: string }) => ({
+      podcastId: s.podcastId,
+      episodeId: null,
+      durationTier: perEpisodeTier,
+      useLatest: true,
+    }));
   }
+
+  // Create a BriefingRequest and dispatch to orchestrator
+  const request = await prisma.briefingRequest.create({
+    data: {
+      userId: user.id,
+      targetMinutes,
+      items: items as any,
+      isTest: false,
+      status: "PENDING",
+    },
+  });
+
+  await c.env.ORCHESTRATOR_QUEUE.send({
+    requestId: request.id,
+    action: "evaluate",
+  });
+
+  return c.json({ request: { id: request.id, status: "PENDING", targetMinutes } }, 201);
 });
 
 /**
@@ -193,23 +169,15 @@ briefings.post("/generate", async (c) => {
  * @returns The user's briefing preferences and current tier
  */
 briefings.get("/preferences", async (c) => {
-  const userId = getAuth(c)!.userId!;
-  const prisma = createPrismaClient(c.env.HYPERDRIVE);
+  const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
 
-  try {
-    const user = await prisma.user.findUniqueOrThrow({
-      where: { clerkId: userId },
-    });
-
-    return c.json({
-      briefingLength: user.briefingLengthMinutes,
-      briefingTime: user.briefingTime,
-      timezone: user.timezone,
-      tier: user.tier,
-    });
-  } finally {
-    c.executionCtx.waitUntil(prisma.$disconnect());
-  }
+  return c.json({
+    briefingLength: user.briefingLengthMinutes,
+    briefingTime: user.briefingTime,
+    timezone: user.timezone,
+    tier: user.tier,
+  });
 });
 
 /**
@@ -226,35 +194,31 @@ briefings.patch("/preferences", async (c) => {
     timezone?: string;
   }>();
 
-  const prisma = createPrismaClient(c.env.HYPERDRIVE);
+  const prisma = c.get("prisma") as any;
 
-  try {
-    const updateData: Record<string, unknown> = {};
+  const updateData: Record<string, unknown> = {};
 
-    if (body.briefingLengthMinutes !== undefined) {
-      updateData.briefingLengthMinutes = body.briefingLengthMinutes;
-    }
-    if (body.briefingTime !== undefined) {
-      updateData.briefingTime = body.briefingTime;
-    }
-    if (body.timezone !== undefined) {
-      updateData.timezone = body.timezone;
-    }
-
-    const user = await prisma.user.update({
-      where: { clerkId: userId },
-      data: updateData,
-    });
-
-    return c.json({
-      preferences: {
-        briefingLengthMinutes: user.briefingLengthMinutes,
-        briefingTime: user.briefingTime,
-        timezone: user.timezone,
-        tier: user.tier,
-      },
-    });
-  } finally {
-    c.executionCtx.waitUntil(prisma.$disconnect());
+  if (body.briefingLengthMinutes !== undefined) {
+    updateData.briefingLengthMinutes = body.briefingLengthMinutes;
   }
+  if (body.briefingTime !== undefined) {
+    updateData.briefingTime = body.briefingTime;
+  }
+  if (body.timezone !== undefined) {
+    updateData.timezone = body.timezone;
+  }
+
+  const user = await prisma.user.update({
+    where: { clerkId: userId },
+    data: updateData,
+  });
+
+  return c.json({
+    preferences: {
+      briefingLengthMinutes: user.briefingLengthMinutes,
+      briefingTime: user.briefingTime,
+      timezone: user.timezone,
+      tier: user.tier,
+    },
+  });
 });

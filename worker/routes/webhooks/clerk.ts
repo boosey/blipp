@@ -1,6 +1,5 @@
 import { Hono } from "hono";
 import type { Env } from "../../types";
-import { createPrismaClient } from "../../lib/db";
 
 /**
  * Clerk webhook route handler.
@@ -27,56 +26,52 @@ clerkWebhooks.post("/", async (c) => {
     return c.json({ error: "Invalid webhook payload" }, 400);
   }
 
-  const prisma = createPrismaClient(c.env.HYPERDRIVE);
+  const prisma = c.get("prisma") as any;
 
-  try {
-    switch (eventType) {
-      case "user.created": {
-        const email =
-          data.email_addresses?.[0]?.email_address ?? `${data.id}@unknown.com`;
-        await prisma.user.create({
-          data: {
-            clerkId: data.id,
-            email,
-            name:
-              [data.first_name, data.last_name].filter(Boolean).join(" ") ||
-              null,
-            imageUrl: data.image_url ?? null,
-          },
-        });
-        break;
-      }
-
-      case "user.updated": {
-        const email =
-          data.email_addresses?.[0]?.email_address ?? undefined;
-        await prisma.user.update({
-          where: { clerkId: data.id },
-          data: {
-            ...(email && { email }),
-            name:
-              [data.first_name, data.last_name].filter(Boolean).join(" ") ||
-              null,
-            imageUrl: data.image_url ?? null,
-          },
-        });
-        break;
-      }
-
-      case "user.deleted": {
-        await prisma.user.delete({
-          where: { clerkId: data.id },
-        });
-        break;
-      }
-
-      default:
-        // Unhandled event type — acknowledge but ignore
-        break;
+  switch (eventType) {
+    case "user.created": {
+      const email =
+        data.email_addresses?.[0]?.email_address ?? `${data.id}@unknown.com`;
+      await prisma.user.create({
+        data: {
+          clerkId: data.id,
+          email,
+          name:
+            [data.first_name, data.last_name].filter(Boolean).join(" ") ||
+            null,
+          imageUrl: data.image_url ?? null,
+        },
+      });
+      break;
     }
 
-    return c.json({ received: true });
-  } finally {
-    c.executionCtx.waitUntil(prisma.$disconnect());
+    case "user.updated": {
+      const email =
+        data.email_addresses?.[0]?.email_address ?? undefined;
+      await prisma.user.update({
+        where: { clerkId: data.id },
+        data: {
+          ...(email && { email }),
+          name:
+            [data.first_name, data.last_name].filter(Boolean).join(" ") ||
+            null,
+          imageUrl: data.image_url ?? null,
+        },
+      });
+      break;
+    }
+
+    case "user.deleted": {
+      await prisma.user.delete({
+        where: { clerkId: data.id },
+      });
+      break;
+    }
+
+    default:
+      // Unhandled event type — acknowledge but ignore
+      break;
   }
+
+  return c.json({ received: true });
 });

@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { Env } from "../types";
-import { requireAuth, getAuth } from "../middleware/auth";
-import { createPrismaClient } from "../lib/db";
+import { requireAuth } from "../middleware/auth";
+import { getCurrentUser } from "../lib/admin-helpers";
 import { PodcastIndexClient } from "../lib/podcast-index";
 
 /**
@@ -64,7 +64,6 @@ podcasts.get("/trending", async (c) => {
  * @returns The created subscription with podcast data
  */
 podcasts.post("/subscribe", async (c) => {
-  const userId = getAuth(c)!.userId!;
   const body = await c.req.json<{
     feedUrl: string;
     title: string;
@@ -78,51 +77,44 @@ podcasts.post("/subscribe", async (c) => {
     return c.json({ error: "feedUrl and title are required" }, 400);
   }
 
-  const prisma = createPrismaClient(c.env.HYPERDRIVE);
+  const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
 
-  try {
-    const user = await prisma.user.findUniqueOrThrow({
-      where: { clerkId: userId },
-    });
+  // Upsert podcast — create if new, update metadata if exists
+  const podcast = await prisma.podcast.upsert({
+    where: { feedUrl: body.feedUrl },
+    create: {
+      feedUrl: body.feedUrl,
+      title: body.title,
+      description: body.description ?? null,
+      imageUrl: body.imageUrl ?? null,
+      podcastIndexId: body.podcastIndexId ?? null,
+      author: body.author ?? null,
+    },
+    update: {
+      title: body.title,
+      description: body.description ?? undefined,
+      imageUrl: body.imageUrl ?? undefined,
+      author: body.author ?? undefined,
+    },
+  });
 
-    // Upsert podcast — create if new, update metadata if exists
-    const podcast = await prisma.podcast.upsert({
-      where: { feedUrl: body.feedUrl },
-      create: {
-        feedUrl: body.feedUrl,
-        title: body.title,
-        description: body.description ?? null,
-        imageUrl: body.imageUrl ?? null,
-        podcastIndexId: body.podcastIndexId ?? null,
-        author: body.author ?? null,
-      },
-      update: {
-        title: body.title,
-        description: body.description ?? undefined,
-        imageUrl: body.imageUrl ?? undefined,
-        author: body.author ?? undefined,
-      },
-    });
-
-    // Create subscription (idempotent via unique constraint)
-    const subscription = await prisma.subscription.upsert({
-      where: {
-        userId_podcastId: {
-          userId: user.id,
-          podcastId: podcast.id,
-        },
-      },
-      create: {
+  // Create subscription (idempotent via unique constraint)
+  const subscription = await prisma.subscription.upsert({
+    where: {
+      userId_podcastId: {
         userId: user.id,
         podcastId: podcast.id,
       },
-      update: {},
-    });
+    },
+    create: {
+      userId: user.id,
+      podcastId: podcast.id,
+    },
+    update: {},
+  });
 
-    return c.json({ subscription: { ...subscription, podcast } }, 201);
-  } finally {
-    c.executionCtx.waitUntil(prisma.$disconnect());
-  }
+  return c.json({ subscription: { ...subscription, podcast } }, 201);
 });
 
 /**
@@ -132,29 +124,21 @@ podcasts.post("/subscribe", async (c) => {
  * @returns Success confirmation
  */
 podcasts.delete("/subscribe/:podcastId", async (c) => {
-  const userId = getAuth(c)!.userId!;
   const podcastId = c.req.param("podcastId");
 
-  const prisma = createPrismaClient(c.env.HYPERDRIVE);
+  const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
 
-  try {
-    const user = await prisma.user.findUniqueOrThrow({
-      where: { clerkId: userId },
-    });
-
-    await prisma.subscription.delete({
-      where: {
-        userId_podcastId: {
-          userId: user.id,
-          podcastId,
-        },
+  await prisma.subscription.delete({
+    where: {
+      userId_podcastId: {
+        userId: user.id,
+        podcastId,
       },
-    });
+    },
+  });
 
-    return c.json({ success: true });
-  } finally {
-    c.executionCtx.waitUntil(prisma.$disconnect());
-  }
+  return c.json({ success: true });
 });
 
 /**
@@ -174,23 +158,15 @@ podcasts.post("/refresh", async (c) => {
  * @returns Array of subscriptions with nested podcast data
  */
 podcasts.get("/subscriptions", async (c) => {
-  const userId = getAuth(c)!.userId!;
-  const prisma = createPrismaClient(c.env.HYPERDRIVE);
+  const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
 
-  try {
-    const user = await prisma.user.findUniqueOrThrow({
-      where: { clerkId: userId },
-    });
+  const subscriptions = await prisma.subscription.findMany({
+    where: { userId: user.id },
+    include: { podcast: true },
+  });
 
-    const subscriptions = await prisma.subscription.findMany({
-      where: { userId: user.id },
-      include: { podcast: true },
-    });
-
-    return c.json({ subscriptions });
-  } finally {
-    c.executionCtx.waitUntil(prisma.$disconnect());
-  }
+  return c.json({ subscriptions });
 });
 
 /**
@@ -200,39 +176,31 @@ podcasts.get("/subscriptions", async (c) => {
  * @returns Podcast detail with isSubscribed flag
  */
 podcasts.get("/:id", async (c) => {
-  const userId = getAuth(c)!.userId!;
   const podcastId = c.req.param("id");
-  const prisma = createPrismaClient(c.env.HYPERDRIVE);
+  const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
 
-  try {
-    const user = await prisma.user.findUniqueOrThrow({
-      where: { clerkId: userId },
-    });
+  const podcast = await prisma.podcast.findUniqueOrThrow({
+    where: { id: podcastId },
+  });
 
-    const podcast = await prisma.podcast.findUniqueOrThrow({
-      where: { id: podcastId },
-    });
+  const subscription = await prisma.subscription.findFirst({
+    where: { userId: user.id, podcastId },
+  });
 
-    const subscription = await prisma.subscription.findFirst({
-      where: { userId: user.id, podcastId },
-    });
-
-    return c.json({
-      podcast: {
-        id: podcast.id,
-        title: podcast.title,
-        description: podcast.description,
-        feedUrl: podcast.feedUrl,
-        imageUrl: podcast.imageUrl,
-        author: podcast.author,
-        podcastIndexId: podcast.podcastIndexId,
-        episodeCount: podcast.episodeCount,
-        isSubscribed: !!subscription,
-      },
-    });
-  } finally {
-    c.executionCtx.waitUntil(prisma.$disconnect());
-  }
+  return c.json({
+    podcast: {
+      id: podcast.id,
+      title: podcast.title,
+      description: podcast.description,
+      feedUrl: podcast.feedUrl,
+      imageUrl: podcast.imageUrl,
+      author: podcast.author,
+      podcastIndexId: podcast.podcastIndexId,
+      episodeCount: podcast.episodeCount,
+      isSubscribed: !!subscription,
+    },
+  });
 });
 
 /**
@@ -244,29 +212,25 @@ podcasts.get("/:id", async (c) => {
  */
 podcasts.get("/:id/episodes", async (c) => {
   const podcastId = c.req.param("id");
-  const prisma = createPrismaClient(c.env.HYPERDRIVE);
+  const prisma = c.get("prisma") as any;
 
-  try {
-    // Verify podcast exists
-    await prisma.podcast.findUniqueOrThrow({
-      where: { id: podcastId },
-    });
+  // Verify podcast exists
+  await prisma.podcast.findUniqueOrThrow({
+    where: { id: podcastId },
+  });
 
-    const episodes = await prisma.episode.findMany({
-      where: { podcastId },
-      orderBy: { publishedAt: "desc" },
-      take: 50,
-      select: {
-        id: true,
-        title: true,
-        description: true,
-        publishedAt: true,
-        durationSeconds: true,
-      },
-    });
+  const episodes = await prisma.episode.findMany({
+    where: { podcastId },
+    orderBy: { publishedAt: "desc" },
+    take: 50,
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      publishedAt: true,
+      durationSeconds: true,
+    },
+  });
 
-    return c.json({ episodes });
-  } finally {
-    c.executionCtx.waitUntil(prisma.$disconnect());
-  }
+  return c.json({ episodes });
 });

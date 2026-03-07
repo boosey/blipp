@@ -1,6 +1,5 @@
 import { Hono } from "hono";
 import type { Env } from "../../types";
-import { createPrismaClient } from "../../lib/db";
 import { createStripeClient } from "../../lib/stripe";
 
 /**
@@ -21,7 +20,7 @@ export const stripeWebhooks = new Hono<{ Bindings: Env }>();
  */
 async function tierFromPriceId(
   priceId: string,
-  prisma: ReturnType<typeof createPrismaClient>
+  prisma: any
 ): Promise<string> {
   const plan = await prisma.plan.findUnique({
     where: { stripePriceId: priceId },
@@ -56,48 +55,44 @@ stripeWebhooks.post("/", async (c) => {
     return c.json({ error: "Invalid signature" }, 400);
   }
 
-  const prisma = createPrismaClient(c.env.HYPERDRIVE);
+  const prisma = c.get("prisma") as any;
 
-  try {
-    switch (event.type) {
-      case "checkout.session.completed": {
-        const session = event.data.object;
-        const stripeCustomerId = session.customer as string;
-        const subscriptionId = session.subscription as string;
+  switch (event.type) {
+    case "checkout.session.completed": {
+      const session = event.data.object;
+      const stripeCustomerId = session.customer as string;
+      const subscriptionId = session.subscription as string;
 
-        // Fetch the subscription to get the price ID
-        const subscription =
-          await stripe.subscriptions.retrieve(subscriptionId);
-        const priceId = subscription.items.data[0]?.price.id;
+      // Fetch the subscription to get the price ID
+      const subscription =
+        await stripe.subscriptions.retrieve(subscriptionId);
+      const priceId = subscription.items.data[0]?.price.id;
 
-        if (!priceId) break;
+      if (!priceId) break;
 
-        const tier = await tierFromPriceId(priceId, prisma);
+      const tier = await tierFromPriceId(priceId, prisma);
 
-        await prisma.user.update({
-          where: { stripeCustomerId },
-          data: { tier: tier as "PRO" | "PRO_PLUS" },
-        });
-        break;
-      }
-
-      case "customer.subscription.deleted": {
-        const subscription = event.data.object;
-        const stripeCustomerId = subscription.customer as string;
-
-        await prisma.user.update({
-          where: { stripeCustomerId },
-          data: { tier: "FREE" },
-        });
-        break;
-      }
-
-      default:
-        break;
+      await prisma.user.update({
+        where: { stripeCustomerId },
+        data: { tier: tier as "PRO" | "PRO_PLUS" },
+      });
+      break;
     }
 
-    return c.json({ received: true });
-  } finally {
-    c.executionCtx.waitUntil(prisma.$disconnect());
+    case "customer.subscription.deleted": {
+      const subscription = event.data.object;
+      const stripeCustomerId = subscription.customer as string;
+
+      await prisma.user.update({
+        where: { stripeCustomerId },
+        data: { tier: "FREE" },
+      });
+      break;
+    }
+
+    default:
+      break;
   }
+
+  return c.json({ received: true });
 });
