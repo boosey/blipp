@@ -4,6 +4,10 @@ import { getConfig } from "../lib/config";
 import { getModelConfig } from "../lib/ai-models";
 import { createPipelineLogger } from "../lib/logger";
 import { wpKey, putWorkProduct } from "../lib/work-products";
+import { PodcastIndexClient } from "../lib/podcast-index";
+import { lookupPodcastIndexTranscript } from "../lib/transcript-source";
+import { fetchTranscript } from "../lib/transcript";
+import { getAudioMetadata, isMp3, transcribeChunked, WHISPER_MAX_BYTES } from "../lib/whisper-chunked";
 import type { Env } from "../types";
 
 interface TranscriptionMessage {
@@ -124,23 +128,57 @@ export async function handleTranscription(
         let transcript: string;
 
         if (episode.transcriptUrl) {
-          // Feed URL source
+          // Tier 1: RSS feed transcript URL
           const response = await fetch(episode.transcriptUrl);
           transcript = await response.text();
           log.info("transcript_fetched", { episodeId, bytes: transcript.length, source: "feed" });
         } else {
-          // Whisper fallback
-          const { model: sttModel } = await getModelConfig(prisma, "stt");
-          const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
-          const audioResponse = await fetch(episode.audioUrl);
-          const audioBlob = await audioResponse.blob();
-          const file = new File([audioBlob], "audio.mp3", { type: "audio/mpeg" });
-          const transcription = await openai.audio.transcriptions.create({
-            model: sttModel,
-            file,
-          });
-          transcript = transcription.text;
-          log.info("transcript_fetched", { episodeId, bytes: transcript.length, source: "whisper" });
+          // Tier 2: Podcast Index lookup
+          const podcast = await prisma.podcast.findUnique({ where: { id: episode.podcastId } });
+          const piClient = new PodcastIndexClient(env.PODCAST_INDEX_KEY, env.PODCAST_INDEX_SECRET);
+          const piTranscriptUrl = await lookupPodcastIndexTranscript(
+            piClient,
+            podcast?.podcastIndexId ?? null,
+            episode.guid,
+            episode.title
+          );
+
+          if (piTranscriptUrl) {
+            // Found via Podcast Index — fetch and parse, backfill episode
+            transcript = await fetchTranscript(piTranscriptUrl);
+            await prisma.episode.update({
+              where: { id: episodeId },
+              data: { transcriptUrl: piTranscriptUrl },
+            });
+            log.info("transcript_fetched", { episodeId, bytes: transcript.length, source: "podcast-index" });
+          } else {
+            // Tier 3: Whisper STT
+            const { model: sttModel } = await getModelConfig(prisma, "stt");
+            const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+            const { contentLength, contentType } = await getAudioMetadata(episode.audioUrl);
+
+            if (contentLength && contentLength > WHISPER_MAX_BYTES) {
+              // Oversized file — chunked transcription (MP3 only)
+              if (!isMp3(contentType, episode.audioUrl)) {
+                throw new Error(
+                  `Audio file too large (${Math.round(contentLength / 1024 / 1024)}MB) and not MP3 — cannot chunk non-MP3 formats`
+                );
+              }
+              transcript = await transcribeChunked(openai, episode.audioUrl, contentLength, sttModel);
+              log.info("transcript_fetched", { episodeId, bytes: transcript.length, source: "whisper-chunked" });
+            } else {
+              // Standard single-file Whisper
+              const audioResponse = await fetch(episode.audioUrl);
+              const audioBlob = await audioResponse.blob();
+              const file = new File([audioBlob], "audio.mp3", { type: "audio/mpeg" });
+              const transcription = await openai.audio.transcriptions.create({
+                model: sttModel,
+                file,
+              });
+              transcript = transcription.text;
+              log.info("transcript_fetched", { episodeId, bytes: transcript.length, source: "whisper" });
+            }
+          }
         }
 
         // Upsert Distillation with transcript

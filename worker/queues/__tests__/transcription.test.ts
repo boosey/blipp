@@ -23,6 +23,18 @@ vi.mock("../../lib/work-products", () => ({
   putWorkProduct: (...args: any[]) => mockPutWorkProduct(...args),
 }));
 
+vi.mock("../../lib/transcript-source", () => ({
+  lookupPodcastIndexTranscript: vi.fn().mockResolvedValue(null),
+}));
+
+vi.mock("../../lib/podcast-index", () => ({
+  PodcastIndexClient: class MockPodcastIndexClient {},
+}));
+
+vi.mock("../../lib/transcript", () => ({
+  fetchTranscript: vi.fn().mockResolvedValue("Parsed transcript text."),
+}));
+
 const mockLogger = vi.hoisted(() => ({
   info: vi.fn(),
   debug: vi.fn(),
@@ -46,8 +58,21 @@ vi.mock("openai", () => {
   };
 });
 
+const mockGetAudioMetadata = vi.fn().mockResolvedValue({ contentLength: 1000, contentType: "audio/mpeg" });
+const mockIsMp3 = vi.fn().mockReturnValue(true);
+const mockTranscribeChunked = vi.fn().mockResolvedValue("Chunked transcript text.");
+vi.mock("../../lib/whisper-chunked", () => ({
+  getAudioMetadata: (...args: any[]) => mockGetAudioMetadata(...args),
+  isMp3: (...args: any[]) => mockIsMp3(...args),
+  transcribeChunked: (...args: any[]) => mockTranscribeChunked(...args),
+  WHISPER_MAX_BYTES: 25 * 1024 * 1024,
+  CHUNK_SIZE: 20 * 1024 * 1024,
+}));
+
 const { getConfig } = await import("../../lib/config");
 const { getModelConfig } = await import("../../lib/ai-models");
+const { lookupPodcastIndexTranscript } = await import("../../lib/transcript-source");
+const { fetchTranscript } = await import("../../lib/transcript");
 const { handleTranscription } = await import("../transcription");
 
 function createMsg(body: any) {
@@ -71,8 +96,15 @@ const EPISODE = {
   id: "ep1",
   podcastId: "pod1",
   title: "Test Episode",
+  guid: "test-guid",
   audioUrl: "https://example.com/audio.mp3",
   transcriptUrl: "https://example.com/transcript.txt",
+};
+
+const PODCAST = {
+  id: "pod1",
+  podcastIndexId: "42",
+  feedUrl: "https://example.com/feed.xml",
 };
 
 describe("handleTranscription", () => {
@@ -117,6 +149,19 @@ describe("handleTranscription", () => {
 
     mockPutWorkProduct.mockReset();
     mockPutWorkProduct.mockResolvedValue(undefined);
+
+    mockGetAudioMetadata.mockReset();
+    mockGetAudioMetadata.mockResolvedValue({ contentLength: 1000, contentType: "audio/mpeg" });
+    mockIsMp3.mockReset();
+    mockIsMp3.mockReturnValue(true);
+    mockTranscribeChunked.mockReset();
+    mockTranscribeChunked.mockResolvedValue("Chunked transcript text.");
+
+    (lookupPodcastIndexTranscript as any).mockReset();
+    (lookupPodcastIndexTranscript as any).mockResolvedValue(null);
+
+    (fetchTranscript as any).mockReset();
+    (fetchTranscript as any).mockResolvedValue("Parsed transcript text.");
 
     mockLogger.info.mockReset();
     mockLogger.debug.mockReset();
@@ -238,6 +283,7 @@ describe("handleTranscription", () => {
     mockPrisma.pipelineStep.create.mockResolvedValue({ id: "step1" });
     mockPrisma.distillation.findUnique.mockResolvedValue(null);
     mockPrisma.episode.findUnique.mockResolvedValue(episodeNoTranscript);
+    mockPrisma.podcast.findUnique.mockResolvedValue(PODCAST);
     mockPrisma.distillation.upsert.mockResolvedValue({ id: "dist1", episodeId: "ep1" });
     mockPrisma.workProduct.create.mockResolvedValue({ id: "wp1" });
     mockPrisma.pipelineStep.update.mockResolvedValue({});
@@ -279,6 +325,7 @@ describe("handleTranscription", () => {
     mockPrisma.pipelineStep.create.mockResolvedValue({ id: "step1" });
     mockPrisma.distillation.findUnique.mockResolvedValue(null);
     mockPrisma.episode.findUnique.mockResolvedValue(episodeNoTranscript);
+    mockPrisma.podcast.findUnique.mockResolvedValue(PODCAST);
     mockPrisma.distillation.upsert.mockResolvedValue({ id: "dist1", episodeId: "ep1" });
     mockPrisma.workProduct.create.mockResolvedValue({ id: "wp1" });
     mockPrisma.pipelineStep.update.mockResolvedValue({});
@@ -442,5 +489,155 @@ describe("handleTranscription", () => {
         workProductId: "wp-new",
       }),
     });
+  });
+
+  it("Podcast Index lookup -> fetches transcript when RSS has none", async () => {
+    const episodeNoTranscript = { ...EPISODE, transcriptUrl: null };
+    const msg = createMsg({ jobId: "job1", episodeId: "ep1" });
+    mockPrisma.pipelineJob.findUnique.mockResolvedValue(JOB);
+    mockPrisma.pipelineJob.update.mockResolvedValue({});
+    mockPrisma.pipelineStep.create.mockResolvedValue({ id: "step1" });
+    mockPrisma.distillation.findUnique.mockResolvedValue(null);
+    mockPrisma.episode.findUnique.mockResolvedValue(episodeNoTranscript);
+    mockPrisma.podcast.findUnique.mockResolvedValue(PODCAST);
+    mockPrisma.episode.update.mockResolvedValue({});
+    mockPrisma.distillation.upsert.mockResolvedValue({ id: "dist1", episodeId: "ep1" });
+    mockPrisma.workProduct.create.mockResolvedValue({ id: "wp1" });
+    mockPrisma.pipelineStep.update.mockResolvedValue({});
+
+    (lookupPodcastIndexTranscript as any).mockResolvedValue("https://pi.example.com/transcript.vtt");
+    (fetchTranscript as any).mockResolvedValue("Hello from Podcast Index");
+
+    await handleTranscription(createBatch([msg]), env, ctx);
+
+    expect(lookupPodcastIndexTranscript).toHaveBeenCalled();
+    // Should NOT call Whisper
+    expect(mockWhisperCreate).not.toHaveBeenCalled();
+    // Should backfill episode.transcriptUrl
+    expect(mockPrisma.episode.update).toHaveBeenCalledWith({
+      where: { id: "ep1" },
+      data: { transcriptUrl: "https://pi.example.com/transcript.vtt" },
+    });
+    expect(msg.ack).toHaveBeenCalled();
+  });
+
+  it("falls through to Whisper when Podcast Index has no transcript", async () => {
+    const episodeNoTranscript = { ...EPISODE, transcriptUrl: null };
+    const msg = createMsg({ jobId: "job1", episodeId: "ep1" });
+    mockPrisma.pipelineJob.findUnique.mockResolvedValue(JOB);
+    mockPrisma.pipelineJob.update.mockResolvedValue({});
+    mockPrisma.pipelineStep.create.mockResolvedValue({ id: "step1" });
+    mockPrisma.distillation.findUnique.mockResolvedValue(null);
+    mockPrisma.episode.findUnique.mockResolvedValue(episodeNoTranscript);
+    mockPrisma.podcast.findUnique.mockResolvedValue(PODCAST);
+    mockPrisma.distillation.upsert.mockResolvedValue({ id: "dist1", episodeId: "ep1" });
+    mockPrisma.workProduct.create.mockResolvedValue({ id: "wp1" });
+    mockPrisma.pipelineStep.update.mockResolvedValue({});
+
+    (lookupPodcastIndexTranscript as any).mockResolvedValue(null);
+
+    if (typeof globalThis.File === "undefined") {
+      globalThis.File = class File extends Blob {
+        name: string;
+        lastModified: number;
+        constructor(parts: BlobPart[], name: string, opts?: FilePropertyBag) {
+          super(parts, opts);
+          this.name = name;
+          this.lastModified = Date.now();
+        }
+      } as any;
+    }
+
+    await handleTranscription(createBatch([msg]), env, ctx);
+
+    expect(lookupPodcastIndexTranscript).toHaveBeenCalled();
+    expect(mockWhisperCreate).toHaveBeenCalled();
+    expect(msg.ack).toHaveBeenCalled();
+  });
+
+  it("uses chunked transcription when audio exceeds 25MB", async () => {
+    const episodeNoTranscript = { ...EPISODE, transcriptUrl: null };
+    const msg = createMsg({ jobId: "job1", episodeId: "ep1" });
+    mockPrisma.pipelineJob.findUnique.mockResolvedValue(JOB);
+    mockPrisma.pipelineJob.update.mockResolvedValue({});
+    mockPrisma.pipelineStep.create.mockResolvedValue({ id: "step1" });
+    mockPrisma.distillation.findUnique.mockResolvedValue(null);
+    mockPrisma.episode.findUnique.mockResolvedValue(episodeNoTranscript);
+    mockPrisma.podcast.findUnique.mockResolvedValue(PODCAST);
+    mockPrisma.distillation.upsert.mockResolvedValue({ id: "dist1", episodeId: "ep1" });
+    mockPrisma.workProduct.create.mockResolvedValue({ id: "wp1" });
+    mockPrisma.pipelineStep.update.mockResolvedValue({});
+
+    (lookupPodcastIndexTranscript as any).mockResolvedValue(null);
+    mockGetAudioMetadata.mockResolvedValue({ contentLength: 50 * 1024 * 1024, contentType: "audio/mpeg" });
+    mockIsMp3.mockReturnValue(true);
+
+    await handleTranscription(createBatch([msg]), env, ctx);
+
+    expect(mockTranscribeChunked).toHaveBeenCalled();
+    expect(mockWhisperCreate).not.toHaveBeenCalled();
+    expect(msg.ack).toHaveBeenCalled();
+  });
+
+  it("fails with clear error for non-MP3 files over 25MB", async () => {
+    const episodeNoTranscript = { ...EPISODE, transcriptUrl: null, audioUrl: "https://example.com/audio.m4a" };
+    const msg = createMsg({ jobId: "job1", episodeId: "ep1" });
+    mockPrisma.pipelineJob.findUnique.mockResolvedValue(JOB);
+    mockPrisma.pipelineJob.update.mockResolvedValue({});
+    mockPrisma.pipelineStep.create.mockResolvedValue({ id: "step1" });
+    mockPrisma.distillation.findUnique.mockResolvedValue(null);
+    mockPrisma.episode.findUnique.mockResolvedValue(episodeNoTranscript);
+    mockPrisma.podcast.findUnique.mockResolvedValue(PODCAST);
+    mockPrisma.distillation.upsert.mockResolvedValue({});
+
+    (lookupPodcastIndexTranscript as any).mockResolvedValue(null);
+    mockGetAudioMetadata.mockResolvedValue({ contentLength: 50 * 1024 * 1024, contentType: "audio/mp4" });
+    mockIsMp3.mockReturnValue(false);
+
+    await handleTranscription(createBatch([msg]), env, ctx);
+
+    expect(mockPrisma.pipelineStep.updateMany).toHaveBeenCalledWith({
+      where: { jobId: "job1", stage: "TRANSCRIPTION", status: "IN_PROGRESS" },
+      data: expect.objectContaining({
+        status: "FAILED",
+        errorMessage: expect.stringContaining("too large"),
+      }),
+    });
+    expect(msg.retry).toHaveBeenCalled();
+  });
+
+  it("uses single-file Whisper when audio is under 25MB", async () => {
+    const episodeNoTranscript = { ...EPISODE, transcriptUrl: null };
+    const msg = createMsg({ jobId: "job1", episodeId: "ep1" });
+    mockPrisma.pipelineJob.findUnique.mockResolvedValue(JOB);
+    mockPrisma.pipelineJob.update.mockResolvedValue({});
+    mockPrisma.pipelineStep.create.mockResolvedValue({ id: "step1" });
+    mockPrisma.distillation.findUnique.mockResolvedValue(null);
+    mockPrisma.episode.findUnique.mockResolvedValue(episodeNoTranscript);
+    mockPrisma.podcast.findUnique.mockResolvedValue(PODCAST);
+    mockPrisma.distillation.upsert.mockResolvedValue({ id: "dist1", episodeId: "ep1" });
+    mockPrisma.workProduct.create.mockResolvedValue({ id: "wp1" });
+    mockPrisma.pipelineStep.update.mockResolvedValue({});
+
+    (lookupPodcastIndexTranscript as any).mockResolvedValue(null);
+    mockGetAudioMetadata.mockResolvedValue({ contentLength: 10 * 1024 * 1024, contentType: "audio/mpeg" });
+
+    if (typeof globalThis.File === "undefined") {
+      globalThis.File = class File extends Blob {
+        name: string;
+        lastModified: number;
+        constructor(parts: BlobPart[], name: string, opts?: FilePropertyBag) {
+          super(parts, opts);
+          this.name = name;
+          this.lastModified = Date.now();
+        }
+      } as any;
+    }
+
+    await handleTranscription(createBatch([msg]), env, ctx);
+
+    expect(mockWhisperCreate).toHaveBeenCalled();
+    expect(mockTranscribeChunked).not.toHaveBeenCalled();
+    expect(msg.ack).toHaveBeenCalled();
   });
 });
