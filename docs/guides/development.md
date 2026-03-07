@@ -231,6 +231,7 @@ Each queue handler follows this structure:
 | Branch | Purpose |
 |--------|---------|
 | `main` | Production baseline |
+| `feat/user-app` | User-facing app + pipeline improvements |
 | `moonchild-admin-ui` | Active admin platform + demand-driven pipeline (worktree) |
 
 Feature branches and large redesigns use git worktrees (`.claude/worktrees/`).
@@ -252,6 +253,10 @@ Use `db push` for prototyping. Switch to `prisma migrate dev` when you need migr
 ### Runtime Configuration
 
 The `PlatformConfig` table stores runtime config as key-value pairs. Access via `getConfig(prisma, key, fallback)` from `worker/lib/config.ts` (caches for 60 seconds).
+
+### AI Model Configuration
+
+AI models are configurable per pipeline stage via the admin Configuration page. The model registry lives in `worker/lib/ai-models.ts` (backend) and `src/lib/ai-models.ts` (frontend). Each queue handler reads its model from `PlatformConfig` via `getModelConfig(prisma, stage)`. Config keys: `ai.stt.model`, `ai.distillation.model`, `ai.narrative.model`, `ai.tts.model`.
 
 ### Cloudflare Runtime
 

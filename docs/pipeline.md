@@ -55,7 +55,7 @@ Blipp uses a **demand-driven pipeline** to transform podcast episodes into audio
 | Stage | Queue | Description |
 |-------|-------|-------------|
 | 1. Feed Refresh | `feed-refresh` | Polls RSS feeds, ingests new episodes into the database |
-| 2. Transcription | `transcription` | Fetches transcript from URL or generates via Whisper STT |
+| 2. Transcription | `transcription` | Three-tier waterfall: RSS feed URL → Podcast Index API → Whisper STT (with chunking for >25MB) |
 | 3. Distillation | `distillation` | Uses Claude to extract scored claims from transcript |
 | 4. Clip Generation | `clip-generation` | Generates narrative text + TTS audio for an (episode, durationTier) pair |
 | 5. Briefing Assembly | `briefing-assembly` | Combines clips into final briefing audio with transitions |
@@ -189,8 +189,13 @@ Each stage checks for existing work products before doing expensive processing:
 ```
 Stage 2 (Transcription):
   Has Distillation with transcript? --> SKIP
-  Episode has transcriptUrl?        --> Fetch from URL
-  Neither?                          --> Audio STT (Whisper)
+  Episode has transcriptUrl?        --> Fetch from URL (Tier 1: RSS feed)
+  Podcast has podcastIndexId?       --> Lookup via Podcast Index API (Tier 2)
+    Found? --> Fetch transcript, backfill episode.transcriptUrl
+  Neither?                          --> Whisper STT (Tier 3)
+    Audio > 25MB and MP3?           --> Chunked transcription (~20MB byte-range chunks)
+    Audio > 25MB and non-MP3?       --> Fail with clear error
+    Audio ≤ 25MB?                   --> Single-file transcription
 
 Stage 3 (Distillation):
   Completed Distillation exists for episode? --> SKIP
@@ -277,6 +282,10 @@ Stored in the `PlatformConfig` table, accessed via `getConfig(prisma, key, fallb
 | `pipeline.stage.4.enabled` | boolean | `true` | Clip Generation stage enable |
 | `pipeline.stage.5.enabled` | boolean | `true` | Briefing Assembly stage enable |
 | `pipeline.feedRefresh.maxEpisodesPerPodcast` | number | `10` | Episode cap per podcast per refresh |
+| `ai.stt.model` | string | `"whisper-1"` | Whisper STT model |
+| `ai.distillation.model` | string | `"claude-sonnet-4-20250514"` | Claude model for claim extraction |
+| `ai.narrative.model` | string | `"claude-sonnet-4-20250514"` | Claude model for narrative generation |
+| `ai.tts.model` | string | `"gpt-4o-mini-tts"` | TTS model for audio generation |
 
 ---
 
@@ -299,9 +308,9 @@ Defined in `wrangler.jsonc`.
 
 The `PipelineStep.cost` field (Float) records API costs per stage execution:
 
-- **Transcription:** Whisper STT costs (zero if transcript fetched from URL)
-- **Distillation:** Claude API costs for claim extraction
-- **Clip Generation:** OpenAI TTS costs for audio generation
+- **Transcription:** Whisper STT costs (zero if transcript fetched from RSS or Podcast Index)
+- **Distillation:** Claude API costs for claim extraction (model configurable via `ai.distillation.model`)
+- **Clip Generation:** Claude narrative + OpenAI TTS costs (models configurable via `ai.narrative.model` and `ai.tts.model`)
 
 The admin Dashboard and Analytics pages aggregate these values for cost reporting and budget monitoring.
 
@@ -342,7 +351,10 @@ Key behaviors:
 | File | Purpose |
 |------|---------|
 | `worker/queues/orchestrator.ts` | Push-based pipeline coordinator |
-| `worker/queues/transcription.ts` | Stage 2: transcript fetching/STT |
+| `worker/queues/transcription.ts` | Stage 2: three-tier transcript waterfall |
+| `worker/lib/transcript-source.ts` | Podcast Index transcript lookup helper |
+| `worker/lib/whisper-chunked.ts` | Chunked Whisper for oversized audio files |
+| `worker/lib/ai-models.ts` | AI model registry + `getModelConfig()` helper |
 | `worker/queues/distillation.ts` | Stage 3: Claude claim extraction |
 | `worker/queues/clip-generation.ts` | Stage 4: narrative + TTS |
 | `worker/queues/briefing-assembly.ts` | Stage 5: final audio assembly |

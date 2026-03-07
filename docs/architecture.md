@@ -15,8 +15,9 @@ Blipp is a podcast briefing app that distills podcast episodes into short audio 
 | Object Storage | Cloudflare R2 |
 | Task Queues | 6 Cloudflare Queues |
 | Frontend | React 19 + Vite 7 + Tailwind CSS v4 + shadcn/ui |
-| AI (Summarization) | Anthropic Claude |
-| AI (TTS) | OpenAI gpt-4o-mini-tts |
+| AI (Summarization) | Anthropic Claude (configurable model) |
+| AI (STT) | OpenAI Whisper (configurable model) |
+| AI (TTS) | OpenAI TTS (configurable model) |
 | Podcast Discovery | Podcast Index API |
 
 ## System Diagram
@@ -115,7 +116,7 @@ All three handlers pass the environment through `shimQueuesForLocalDev()` which 
 The pipeline is **demand-driven**: only feed refresh runs on a cron schedule. All other stages are triggered by a user requesting a briefing.
 
 1. **Feed Refresh (Stage 1)** -- Polls RSS feeds, upserts new episodes into the database. Runs on cron (`*/30 * * * *`), gated by runtime config.
-2. **Transcription (Stage 2)** -- Fetches transcript URL from podcast feed or cached source. Falls back to audio STT (Whisper) if unavailable.
+2. **Transcription (Stage 2)** -- Three-tier transcript waterfall: (1) RSS feed transcript URL, (2) Podcast Index API lookup by episode GUID, (3) Whisper STT with chunked transcription for files over 25MB.
 3. **Distillation (Stage 3)** -- Sends transcript to Anthropic Claude for claim extraction and narrative generation. Stores results in Distillation model.
 4. **Clip Generation (Stage 4)** -- Generates audio clips via OpenAI gpt-4o-mini-tts. Stores MP3s in R2, metadata in Clip model.
 5. **Briefing Assembly (Stage 5)** -- Concatenates clips (with ads for free-tier users), stores final briefing MP3 in R2, creates Briefing + BriefingSegment records.
@@ -140,6 +141,10 @@ Pipeline behavior is controlled via the `PlatformConfig` table with a 60-second 
 | `pipeline.minIntervalMinutes` | Throttle between feed refresh runs |
 | `pipeline.stage.N.enabled` | Per-stage enable/disable |
 | `pipeline.feedRefresh.maxEpisodesPerPodcast` | Cap on episodes ingested per podcast |
+| `ai.stt.model` | STT model selection (default: `whisper-1`) |
+| `ai.distillation.model` | Distillation model selection (default: `claude-sonnet-4-20250514`) |
+| `ai.narrative.model` | Narrative model selection (default: `claude-sonnet-4-20250514`) |
+| `ai.tts.model` | TTS model selection (default: `gpt-4o-mini-tts`) |
 
 Each queue handler checks its stage-enabled gate before processing. Messages with `type: "manual"` bypass the gate (for admin-triggered runs).
 
@@ -320,6 +325,9 @@ blipp/
       podcast-index.ts    # Podcast Index API client
       rss-parser.ts       # RSS feed parser
       transcript.ts       # Transcript fetching
+      transcript-source.ts # Podcast Index transcript lookup
+      whisper-chunked.ts  # Chunked Whisper for large files
+      ai-models.ts        # AI model registry + config helper
       distillation.ts     # Claude summarization
       clip-cache.ts       # Clip cache lookup
       time-fitting.ts     # Duration tier fitting
