@@ -42,24 +42,31 @@ NODE_OPTIONS="--max-old-space-size=4096" npx vitest run worker/  # Worker tests 
 ```typescript
 const routes = new Hono<{ Bindings: Env }>();
 routes.get("/", async (c) => {
-  const prisma = createPrismaClient(c.env.HYPERDRIVE);
-  try {
-    return c.json({ data: result });
-  } finally {
-    c.executionCtx.waitUntil(prisma.$disconnect());
-  }
+  const prisma = c.get("prisma") as any;
+  // Prisma middleware handles lifecycle — no try/finally needed
+  return c.json({ data: result });
 });
 ```
-Always create PrismaClient per-request, always disconnect in `finally`.
+Prisma middleware (`worker/middleware/prisma.ts`) creates per-request PrismaClient and disconnects automatically. Use `c.get("prisma")` in all route handlers.
+
+### Admin Route Helpers
+Use shared helpers from `worker/lib/admin-helpers.ts`:
+- `parsePagination(c)` — returns `{ page, pageSize, skip }`
+- `parseSort(c)` — returns Prisma `orderBy` object
+- `paginatedResponse(data, total, page, pageSize)` — standard list response
+- `getCurrentUser(c, prisma)` — resolves Clerk auth to DB User
 
 ### Queue Handler Pattern
-Iterate batch messages, try/catch each, `msg.ack()` on success, `msg.retry()` on failure.
+Iterate batch messages, try/catch each, `msg.ack()` on success, `msg.retry()` on failure. Use `checkStageEnabled()` from `worker/lib/queue-helpers.ts` for the stage gate. Queues keep manual `createPrismaClient` + try/finally (no Hono context).
+
+### Frontend Data Fetching
+Use `useFetch<T>(endpoint)` from `src/lib/use-fetch.ts` for simple load-on-mount patterns. For polling or user-triggered fetches, use manual `useApiFetch()`.
 
 ### Admin Routes
 All at `/api/admin/*`. Use `requireAdmin` middleware (checks `User.isAdmin`). Do NOT add `clerkMiddleware()` — it's global.
 
 ### Test Pattern
-Use factories from `tests/helpers/mocks.ts`: `createMockPrisma()`, `createMockEnv()`, `createMockContext()`.
+Use factories from `tests/helpers/mocks.ts`: `createMockPrisma()`, `createMockEnv()`, `createMockContext()`. Route tests must inject prisma middleware: `app.use("/*", async (c, next) => { c.set("prisma", mockPrisma); await next(); });`
 
 ## File Structure
 ```
@@ -68,8 +75,8 @@ worker/           — Backend (Hono API + queue handlers)
   types.ts        — Env type
   routes/         — API routes (public + admin/)
   queues/         — 6 queue consumers + orchestrator
-  middleware/     — auth.ts, admin.ts
-  lib/            — Shared utilities (db, config, tts, etc.)
+  middleware/     — auth.ts, admin.ts, prisma.ts
+  lib/            — Shared utilities (db, config, admin-helpers, queue-helpers, tts, etc.)
 src/              — Frontend (React SPA)
   pages/          — User pages + admin/ pages
   layouts/        — AppLayout, AdminLayout

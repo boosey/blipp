@@ -195,6 +195,27 @@ Episode ---< WorkProduct
 PipelineStep --- WorkProduct
 ```
 
+## Middleware Stack
+
+All `/api/*` routes pass through three global middleware layers in `worker/index.ts`:
+
+1. **CORS** (`hono/cors`) — standard CORS headers
+2. **Clerk auth** (`worker/middleware/auth.ts`) — populates auth context from JWT
+3. **Prisma** (`worker/middleware/prisma.ts`) — creates per-request PrismaClient on `c.get("prisma")` and disconnects via `waitUntil`
+
+Route handlers access the database with `const prisma = c.get("prisma") as any;` — no manual creation or cleanup needed.
+
+### Shared Helpers
+
+| Helper | Location | Purpose |
+|--------|----------|---------|
+| `parsePagination(c)` | `worker/lib/admin-helpers.ts` | Parse page/pageSize from query params |
+| `parseSort(c)` | `worker/lib/admin-helpers.ts` | Parse sort query into Prisma orderBy |
+| `paginatedResponse()` | `worker/lib/admin-helpers.ts` | Standard paginated response shape |
+| `getCurrentUser(c, prisma)` | `worker/lib/admin-helpers.ts` | Resolve Clerk auth to DB User |
+| `checkStageEnabled()` | `worker/lib/queue-helpers.ts` | Pipeline stage gate (config + manual bypass) |
+| `useFetch<T>(endpoint)` | `src/lib/use-fetch.ts` | Frontend data-fetching hook with loading/error state |
+
 ## Authentication & Authorization
 
 ### Auth Flow

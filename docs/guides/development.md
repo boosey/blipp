@@ -183,11 +183,17 @@ Test utilities live in `tests/helpers/mocks.ts`:
 
 ### API Route Tests
 
-Tests for public API routes live in `worker/routes/__tests__/`:
+Tests for public API routes live in `worker/routes/__tests__/`. Route tests must inject a prisma middleware into the test app before mounting routes:
 
-- `podcasts-detail.test.ts` -- Podcast detail endpoint (3 tests)
-- `requests.test.ts` -- Briefing request endpoints (4 tests)
-- `briefings-episode.test.ts` -- Episode briefing endpoint (2 tests)
+```typescript
+app.use("/*", async (c, next) => {
+  c.set("prisma", mockPrisma);
+  await next();
+});
+app.route("/path", myRoutes);
+```
+
+This mirrors the real Prisma middleware and provides the mock prisma client to route handlers via `c.get("prisma")`.
 
 ### Vitest v4 Mock Gotcha
 
@@ -203,35 +209,71 @@ Tests for public API routes live in `worker/routes/__tests__/`:
 const routes = new Hono<{ Bindings: Env }>();
 routes.use("*", requireAuth);
 routes.get("/", async (c) => {
-  const prisma = createPrismaClient(c.env.HYPERDRIVE);
-  try {
-    // ... query
-    return c.json({ data: result });
-  } finally {
-    c.executionCtx.waitUntil(prisma.$disconnect());
-  }
+  const prisma = c.get("prisma") as any;
+  // Prisma middleware handles lifecycle — no try/finally needed
+  return c.json({ data: result });
 });
 ```
 
 ### Database Access
 
-Always use `createPrismaClient(env.HYPERDRIVE)` per-request. Always disconnect in a `finally` block via `c.executionCtx.waitUntil(prisma.$disconnect())`. Never share a PrismaClient across requests.
+Prisma middleware (`worker/middleware/prisma.ts`) creates a per-request PrismaClient and sets it on `c.get("prisma")`. The middleware disconnects automatically via `waitUntil`. Route handlers simply call `c.get("prisma")` — no manual creation or cleanup needed.
+
+**Note:** Queue handlers do NOT use Hono context. They still use manual `createPrismaClient(env.HYPERDRIVE)` + try/finally disconnect.
+
+### Admin Route Helpers
+
+Shared helpers in `worker/lib/admin-helpers.ts` eliminate boilerplate in admin list endpoints:
+
+```typescript
+import { parsePagination, parseSort, paginatedResponse } from "../../lib/admin-helpers";
+
+routes.get("/", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const { page, pageSize, skip } = parsePagination(c);
+  const orderBy = parseSort(c);
+  const [data, total] = await Promise.all([
+    prisma.model.findMany({ skip, take: pageSize, orderBy }),
+    prisma.model.count(),
+  ]);
+  return c.json(paginatedResponse(data, total, page, pageSize));
+});
+```
+
+- `getCurrentUser(c, prisma)` — resolves Clerk auth to a DB User record
 
 ### Queue Handler Pattern
 
 Each queue handler follows this structure:
 
 1. Create PrismaClient from env
-2. Iterate over batch messages
-3. Process each message in try/catch
-4. `msg.ack()` on success, `msg.retry()` on failure
-5. Disconnect Prisma in `finally`
+2. Check stage gate: `if (!(await checkStageEnabled(prisma, batch, N, log))) return;`
+3. Iterate over batch messages
+4. Process each message in try/catch
+5. `msg.ack()` on success, `msg.retry()` on failure
+6. Disconnect Prisma in `finally`
+
+The `checkStageEnabled()` helper from `worker/lib/queue-helpers.ts` replaces the manual stage-enabled check pattern. Messages with `type: "manual"` bypass the gate.
+
+### Frontend Data Fetching
+
+Use the `useFetch` hook from `src/lib/use-fetch.ts` for simple load-on-mount data fetching:
+
+```typescript
+import { useFetch } from "../lib/use-fetch";
+
+const { data, loading, error, refetch } = useFetch<{ items: Item[] }>("/endpoint");
+const items = data?.items ?? [];
+```
+
+For polling or user-triggered fetches (search, form submissions), use `useApiFetch()` manually.
 
 ### Admin Routes
 
 - Do **not** duplicate `clerkMiddleware()` in admin route files -- it is applied globally in `worker/index.ts`
 - Admin routes use the `requireAdmin` middleware from `worker/middleware/admin.ts`
 - Admin auth checks the `isAdmin` boolean on the User model
+- Import `STAGE_NAMES` or `STAGE_DISPLAY_NAMES` from `worker/lib/config.ts` — do not define locally
 
 ### Frontend Structure
 
