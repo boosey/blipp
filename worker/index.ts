@@ -9,6 +9,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { clerkMiddleware } from "./middleware/auth";
+import { prismaMiddleware } from "./middleware/prisma";
 import { routes } from "./routes/index";
 import { handleQueue, scheduled } from "./queues/index";
 import { shimQueuesForLocalDev } from "./lib/local-queue";
@@ -21,6 +22,9 @@ app.use("/api/*", cors());
 
 // Clerk auth middleware — populates auth context for all API routes
 app.use("/api/*", clerkMiddleware());
+
+// Prisma middleware — creates per-request PrismaClient on c.get("prisma")
+app.use("/api/*", prismaMiddleware);
 
 // Health check — no auth required (runs before route tree)
 app.get("/api/health", (c) => {
