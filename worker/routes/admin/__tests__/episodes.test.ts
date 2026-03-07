@@ -42,6 +42,7 @@ describe("Episodes Routes", () => {
     env = createMockEnv();
 
     app = new Hono<{ Bindings: Env }>();
+    app.use("/*", async (c, next) => { c.set("prisma", mockPrisma); await next(); });
     app.route("/episodes", episodesRoutes);
 
     Object.values(mockPrisma).forEach((model) => {
@@ -166,11 +167,5 @@ describe("Episodes Routes", () => {
       expect(res.status).toBe(503);
     });
 
-    it("calls $disconnect", async () => {
-      mockPrisma.episode.findUnique.mockResolvedValueOnce({ id: "ep1" });
-      mockPrisma.pipelineJob.create.mockResolvedValueOnce({ id: "job1", status: "PENDING" });
-      await app.request("/episodes/ep1/reprocess", { method: "POST" }, env, mockExCtx);
-      expect(mockPrisma.$disconnect).toHaveBeenCalled();
-    });
   });
 });

@@ -42,6 +42,7 @@ describe("Dashboard Routes", () => {
     env = createMockEnv();
 
     app = new Hono<{ Bindings: Env }>();
+    app.use("/*", async (c, next) => { c.set("prisma", mockPrisma); await next(); });
     app.route("/dashboard", dashboardRoutes);
 
     Object.values(mockPrisma).forEach((model) => {
@@ -112,12 +113,6 @@ describe("Dashboard Routes", () => {
       expect(body.data.overall).toBe("operational");
     });
 
-    it("calls $disconnect", async () => {
-      mockPrisma.pipelineJob.count.mockResolvedValueOnce(0);
-      mockPrisma.pipelineJob.groupBy.mockResolvedValueOnce([]);
-      await app.request("/dashboard", {}, env, mockExCtx);
-      expect(mockPrisma.$disconnect).toHaveBeenCalled();
-    });
   });
 
   describe("GET /dashboard/stats", () => {
@@ -250,16 +245,6 @@ describe("Dashboard Routes", () => {
       expect(body.data.totalPodcasts).toBe(3);
     });
 
-    it("calls $disconnect", async () => {
-      mockPrisma.podcast.findFirst.mockResolvedValueOnce(null);
-      mockPrisma.podcast.count
-        .mockResolvedValueOnce(0)
-        .mockResolvedValueOnce(0);
-      mockPrisma.episode.count.mockResolvedValueOnce(0);
-
-      await app.request("/dashboard/feed-refresh-summary", {}, env, mockExCtx);
-      expect(mockPrisma.$disconnect).toHaveBeenCalled();
-    });
   });
 
   describe("GET /dashboard/issues", () => {

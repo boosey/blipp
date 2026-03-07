@@ -42,6 +42,7 @@ describe("Briefings Routes", () => {
     env = createMockEnv();
 
     app = new Hono<{ Bindings: Env }>();
+    app.use("/*", async (c, next) => { c.set("prisma", mockPrisma); await next(); });
     app.route("/briefings", briefingsRoutes);
 
     Object.values(mockPrisma).forEach((model) => {
@@ -157,10 +158,5 @@ describe("Briefings Routes", () => {
       expect(res.status).toBe(404);
     });
 
-    it("calls $disconnect", async () => {
-      mockPrisma.briefing.findUnique.mockResolvedValueOnce(null);
-      await app.request("/briefings/missing", {}, env, mockExCtx);
-      expect(mockPrisma.$disconnect).toHaveBeenCalled();
-    });
   });
 });

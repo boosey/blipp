@@ -42,6 +42,7 @@ describe("Analytics Routes", () => {
     env = createMockEnv();
 
     app = new Hono<{ Bindings: Env }>();
+    app.use("/*", async (c, next) => { c.set("prisma", mockPrisma); await next(); });
     app.route("/analytics", analyticsRoutes);
 
     Object.values(mockPrisma).forEach((model) => {
@@ -185,10 +186,5 @@ describe("Analytics Routes", () => {
       expect(body.data.bottlenecks).toEqual([]);
     });
 
-    it("calls $disconnect", async () => {
-      mockPrisma.pipelineJob.findMany.mockRejectedValueOnce(new Error("table missing"));
-      await app.request("/analytics/pipeline", {}, env, mockExCtx);
-      expect(mockPrisma.$disconnect).toHaveBeenCalled();
-    });
   });
 });

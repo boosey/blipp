@@ -42,6 +42,7 @@ describe("Pipeline Trigger Routes", () => {
     env = createMockEnv();
 
     app = new Hono<{ Bindings: Env }>();
+    app.use("/*", async (c, next) => { c.set("prisma", mockPrisma); await next(); });
     app.route("/pipeline", pipelineRoutes);
 
     Object.values(mockPrisma).forEach((model) => {

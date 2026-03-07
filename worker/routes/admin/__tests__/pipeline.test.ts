@@ -42,6 +42,7 @@ describe("Pipeline Routes", () => {
     env = createMockEnv();
 
     app = new Hono<{ Bindings: Env }>();
+    app.use("/*", async (c, next) => { c.set("prisma", mockPrisma); await next(); });
     app.route("/pipeline", pipelineRoutes);
 
     Object.values(mockPrisma).forEach((model) => {
@@ -307,11 +308,6 @@ describe("Pipeline Routes", () => {
       expect(body.data[0].successRate).toBe(100);
     });
 
-    it("calls $disconnect", async () => {
-      mockPrisma.pipelineJob.groupBy.mockRejectedValueOnce(new Error("table missing"));
-      await app.request("/pipeline/stages", {}, env, mockExCtx);
-      expect(mockPrisma.$disconnect).toHaveBeenCalled();
-    });
   });
 
   describe("POST /pipeline/trigger/stage/1", () => {

@@ -42,6 +42,7 @@ describe("requireAdmin middleware", () => {
     env = createMockEnv();
 
     app = new Hono<{ Bindings: Env }>();
+    app.use("/*", async (c, next) => { c.set("prisma", mockPrisma); await next(); });
     app.use("/admin/*", requireAdmin);
     app.get("/admin/test", (c) => c.json({ ok: true }));
 
@@ -87,9 +88,4 @@ describe("requireAdmin middleware", () => {
     expect(body.ok).toBe(true);
   });
 
-  it("calls $disconnect via waitUntil", async () => {
-    mockPrisma.user.findUnique.mockResolvedValueOnce({ isAdmin: true });
-    await app.request("/admin/test", {}, env, mockExCtx);
-    expect(mockPrisma.$disconnect).toHaveBeenCalled();
-  });
 });

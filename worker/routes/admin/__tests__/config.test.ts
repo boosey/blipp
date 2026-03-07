@@ -42,6 +42,7 @@ describe("Config Routes", () => {
     env = createMockEnv();
 
     app = new Hono<{ Bindings: Env }>();
+    app.use("/*", async (c, next) => { c.set("prisma", mockPrisma); await next(); });
     app.route("/config", configRoutes);
 
     Object.values(mockPrisma).forEach((model) => {
@@ -325,14 +326,5 @@ describe("Config Routes", () => {
       expect(res.status).toBe(503);
     });
 
-    it("calls $disconnect", async () => {
-      mockPrisma.platformConfig.findUnique.mockResolvedValueOnce(null);
-      await app.request("/config/features/missing", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled: true }),
-      }, env, mockExCtx);
-      expect(mockPrisma.$disconnect).toHaveBeenCalled();
-    });
   });
 });

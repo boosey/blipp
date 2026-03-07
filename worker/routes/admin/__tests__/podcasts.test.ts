@@ -42,6 +42,7 @@ describe("Admin Podcasts Routes", () => {
     env = createMockEnv();
 
     app = new Hono<{ Bindings: Env }>();
+    app.use("/*", async (c, next) => { c.set("prisma", mockPrisma); await next(); });
     app.route("/podcasts", podcastsRoutes);
 
     Object.values(mockPrisma).forEach((model) => {

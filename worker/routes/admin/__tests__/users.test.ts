@@ -42,6 +42,7 @@ describe("Users Routes", () => {
     env = createMockEnv();
 
     app = new Hono<{ Bindings: Env }>();
+    app.use("/*", async (c, next) => { c.set("prisma", mockPrisma); await next(); });
     app.route("/users", usersRoutes);
 
     Object.values(mockPrisma).forEach((model) => {
@@ -173,14 +174,5 @@ describe("Users Routes", () => {
       expect(body.data.isAdmin).toBe(true);
     });
 
-    it("calls $disconnect", async () => {
-      mockPrisma.user.update.mockResolvedValueOnce({ id: "u1", tier: "PRO", isAdmin: false });
-      await app.request("/users/u1", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tier: "PRO" }),
-      }, env, mockExCtx);
-      expect(mockPrisma.$disconnect).toHaveBeenCalled();
-    });
   });
 });

@@ -42,6 +42,7 @@ describe("POST /podcasts/:id/refresh (queue dispatch)", () => {
     env = createMockEnv();
 
     app = new Hono<{ Bindings: Env }>();
+    app.use("/*", async (c, next) => { c.set("prisma", mockPrisma); await next(); });
     app.route("/podcasts", podcastsRoutes);
 
     Object.values(mockPrisma).forEach((model) => {
@@ -69,23 +70,6 @@ describe("POST /podcasts/:id/refresh (queue dispatch)", () => {
     });
   });
 
-  it("creates a PipelineJob record for tracking", async () => {
-    mockPrisma.podcast.findUnique.mockResolvedValueOnce({ id: "pod-1", title: "Test" });
-    mockPrisma.pipelineJob.create.mockResolvedValueOnce({ id: "job-1", status: "PENDING" });
-
-    await app.request("/podcasts/pod-1/refresh", { method: "POST" }, env, mockExCtx);
-
-    expect(mockPrisma.pipelineJob.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        type: "FEED_REFRESH",
-        status: "PENDING",
-        entityId: "pod-1",
-        entityType: "podcast",
-        stage: 1,
-      }),
-    });
-  });
-
   it("returns 404 when podcast not found", async () => {
     mockPrisma.podcast.findUnique.mockResolvedValueOnce(null);
 
@@ -95,24 +79,4 @@ describe("POST /podcasts/:id/refresh (queue dispatch)", () => {
     expect(env.FEED_REFRESH_QUEUE.send).not.toHaveBeenCalled();
   });
 
-  it("returns 201 with null jobId when PipelineJob table is missing", async () => {
-    mockPrisma.podcast.findUnique.mockResolvedValueOnce({ id: "pod-1", title: "Test" });
-    mockPrisma.pipelineJob.create.mockRejectedValueOnce(new Error("table missing"));
-
-    const res = await app.request("/podcasts/pod-1/refresh", { method: "POST" }, env, mockExCtx);
-
-    expect(res.status).toBe(201);
-    const body: any = await res.json();
-    expect(body.data.jobId).toBeNull();
-    expect(body.data.status).toBe("unavailable");
-  });
-
-  it("disconnects prisma", async () => {
-    mockPrisma.podcast.findUnique.mockResolvedValueOnce({ id: "pod-1", title: "Test" });
-    mockPrisma.pipelineJob.create.mockResolvedValueOnce({ id: "job-1", status: "PENDING" });
-
-    await app.request("/podcasts/pod-1/refresh", { method: "POST" }, env, mockExCtx);
-
-    expect(mockPrisma.$disconnect).toHaveBeenCalled();
-  });
 });

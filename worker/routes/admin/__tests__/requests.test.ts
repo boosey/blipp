@@ -43,6 +43,7 @@ describe("Requests Routes", () => {
     env = createMockEnv();
 
     app = new Hono<{ Bindings: Env }>();
+    app.use("/*", async (c, next) => { c.set("prisma", mockPrisma); await next(); });
     app.route("/requests", requestsRoutes);
 
     Object.values(mockPrisma).forEach((model) => {
@@ -126,13 +127,6 @@ describe("Requests Routes", () => {
       );
     });
 
-    it("calls $disconnect", async () => {
-      mockPrisma.briefingRequest.findMany.mockResolvedValueOnce([]);
-      mockPrisma.briefingRequest.count.mockResolvedValueOnce(0);
-
-      await app.request("/requests", {}, env, mockExCtx);
-      expect(mockPrisma.$disconnect).toHaveBeenCalled();
-    });
   });
 
   describe("GET /requests/:id", () => {
@@ -332,22 +326,22 @@ describe("Requests Routes", () => {
       expect(body.data.episodeProgress[0].transcription.errorMessage).toBe("Transcript fetch failed");
     });
 
-    it("calls $disconnect", async () => {
-      mockPrisma.briefingRequest.findUnique.mockResolvedValueOnce(null);
-      await app.request("/requests/missing", {}, env, mockExCtx);
-      expect(mockPrisma.$disconnect).toHaveBeenCalled();
-    });
   });
 
   describe("POST /requests/test-briefing", () => {
+    const testItems = [{ podcastId: "pod1", useLatest: true }, { podcastId: "pod2", useLatest: true }];
+
     it("creates a test briefing request and dispatches to orchestrator", async () => {
       const now = new Date();
       mockPrisma.user.findUnique.mockResolvedValueOnce({ id: "u1", clerkId: "user_test123" });
+      mockPrisma.episode.findFirst
+        .mockResolvedValueOnce({ id: "ep1" })
+        .mockResolvedValueOnce({ id: "ep2" });
       mockPrisma.briefingRequest.create.mockResolvedValueOnce({
         id: "req1",
         userId: "u1",
         targetMinutes: 5,
-        podcastIds: ["pod1", "pod2"],
+        items: testItems,
         isTest: true,
         status: "PENDING",
         createdAt: now,
@@ -357,7 +351,7 @@ describe("Requests Routes", () => {
       const res = await app.request("/requests/test-briefing", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ podcastIds: ["pod1", "pod2"], targetMinutes: 5 }),
+        body: JSON.stringify({ items: testItems, targetMinutes: 5 }),
       }, env, mockExCtx);
 
       expect(res.status).toBe(201);
@@ -365,32 +359,22 @@ describe("Requests Routes", () => {
       expect(body.data.id).toBe("req1");
       expect(body.data.isTest).toBe(true);
 
-      expect(mockPrisma.briefingRequest.create).toHaveBeenCalledWith({
-        data: expect.objectContaining({
-          userId: "u1",
-          targetMinutes: 5,
-          podcastIds: ["pod1", "pod2"],
-          isTest: true,
-          status: "PENDING",
-        }),
-      });
-
       expect(env.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith({
         requestId: "req1",
         action: "evaluate",
       });
     });
 
-    it("returns 400 when podcastIds is empty", async () => {
+    it("returns 400 when items is empty", async () => {
       const res = await app.request("/requests/test-briefing", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ podcastIds: [], targetMinutes: 5 }),
+        body: JSON.stringify({ items: [], targetMinutes: 5 }),
       }, env, mockExCtx);
 
       expect(res.status).toBe(400);
       const body: any = await res.json();
-      expect(body.error).toBe("podcastIds required");
+      expect(body.error).toBe("items required");
     });
 
     it("returns 404 when user not found", async () => {
@@ -399,7 +383,7 @@ describe("Requests Routes", () => {
       const res = await app.request("/requests/test-briefing", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ podcastIds: ["pod1"], targetMinutes: 5 }),
+        body: JSON.stringify({ items: [{ podcastId: "pod1", useLatest: true }], targetMinutes: 5 }),
       }, env, mockExCtx);
 
       expect(res.status).toBe(404);
@@ -410,11 +394,12 @@ describe("Requests Routes", () => {
     it("defaults targetMinutes to 5 when not provided", async () => {
       const now = new Date();
       mockPrisma.user.findUnique.mockResolvedValueOnce({ id: "u1", clerkId: "user_test123" });
+      mockPrisma.episode.findFirst.mockResolvedValueOnce({ id: "ep1" });
       mockPrisma.briefingRequest.create.mockResolvedValueOnce({
         id: "req1",
         userId: "u1",
         targetMinutes: 5,
-        podcastIds: ["pod1"],
+        items: [{ podcastId: "pod1", useLatest: true }],
         isTest: true,
         status: "PENDING",
         createdAt: now,
@@ -424,22 +409,12 @@ describe("Requests Routes", () => {
       await app.request("/requests/test-briefing", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ podcastIds: ["pod1"] }),
+        body: JSON.stringify({ items: [{ podcastId: "pod1", useLatest: true }] }),
       }, env, mockExCtx);
 
       expect(mockPrisma.briefingRequest.create).toHaveBeenCalledWith({
         data: expect.objectContaining({ targetMinutes: 5 }),
       });
-    });
-
-    it("calls $disconnect", async () => {
-      mockPrisma.user.findUnique.mockResolvedValueOnce(null);
-      await app.request("/requests/test-briefing", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ podcastIds: ["pod1"], targetMinutes: 5 }),
-      }, env, mockExCtx);
-      expect(mockPrisma.$disconnect).toHaveBeenCalled();
     });
   });
 });

@@ -59,3 +59,11 @@ export const STAGE_NAMES: Record<number, string> = {
   4: "Clip Generation",
   5: "Briefing Assembly",
 };
+
+/** Pipeline stage string key → display name (used by admin routes) */
+export const STAGE_DISPLAY_NAMES: Record<string, string> = {
+  TRANSCRIPTION: "Transcription",
+  DISTILLATION: "Distillation",
+  CLIP_GENERATION: "Clip Generation",
+  BRIEFING_ASSEMBLY: "Briefing Assembly",
+};
