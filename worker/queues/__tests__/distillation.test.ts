@@ -31,6 +31,10 @@ vi.mock("../../lib/work-products", () => ({
   putWorkProduct: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("../../lib/ai-models", () => ({
+  getModelConfig: vi.fn().mockResolvedValue({ provider: "anthropic", model: "claude-sonnet-4-20250514" }),
+}));
+
 vi.mock("@anthropic-ai/sdk", () => {
   return { default: class MockAnthropic {} };
 });
@@ -39,6 +43,7 @@ import { createPrismaClient } from "../../lib/db";
 import { getConfig } from "../../lib/config";
 import { extractClaims } from "../../lib/distillation";
 import { wpKey, putWorkProduct } from "../../lib/work-products";
+import { getModelConfig } from "../../lib/ai-models";
 
 let mockPrisma: ReturnType<typeof createMockPrisma>;
 let mockEnv: ReturnType<typeof createMockEnv>;
@@ -52,6 +57,7 @@ beforeEach(() => {
   (createPrismaClient as any).mockReturnValue(mockPrisma);
   // Re-set getConfig default after clearAllMocks
   (getConfig as any).mockResolvedValue(true);
+  (getModelConfig as any).mockResolvedValue({ provider: "anthropic", model: "claude-sonnet-4-20250514" });
   (extractClaims as any).mockResolvedValue([
     { claim: "Test claim", speaker: "Host", importance: 9, novelty: 7 },
   ]);
@@ -247,6 +253,26 @@ describe("handleDistillation", () => {
       action: "job-stage-complete",
       jobId: "job-1",
     });
+  });
+
+  it("reads distillation model from config and passes to extractClaims", async () => {
+    (getModelConfig as any).mockResolvedValue({ provider: "anthropic", model: "claude-haiku-4-5-20251001" });
+
+    mockPrisma.pipelineJob.findUniqueOrThrow.mockResolvedValue({ id: "job-1", requestId: "req-1" });
+    mockPrisma.pipelineJob.update.mockResolvedValue({});
+    mockPrisma.pipelineStep.create.mockResolvedValue({ id: "step-1" });
+    mockPrisma.pipelineStep.update.mockResolvedValue({});
+    mockPrisma.distillation.findUnique.mockResolvedValue({
+      id: "dist-1", episodeId: "ep-1", status: "TRANSCRIPT_READY", transcript: "Some transcript",
+    });
+    mockPrisma.distillation.update.mockResolvedValue({});
+    mockPrisma.workProduct.create.mockResolvedValue({ id: "wp-1" });
+
+    const batch = makeBatch([{ jobId: "job-1", episodeId: "ep-1" }]);
+    await handleDistillation(batch, mockEnv, mockCtx);
+
+    expect(getModelConfig).toHaveBeenCalledWith(expect.anything(), "distillation");
+    expect(extractClaims).toHaveBeenCalledWith(expect.anything(), "Some transcript", "claude-haiku-4-5-20251001");
   });
 
   describe("stage-enabled check", () => {

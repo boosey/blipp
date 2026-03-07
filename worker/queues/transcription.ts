@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { createPrismaClient } from "../lib/db";
 import { getConfig } from "../lib/config";
+import { getModelConfig } from "../lib/ai-models";
 import { createPipelineLogger } from "../lib/logger";
 import { wpKey, putWorkProduct } from "../lib/work-products";
 import type { Env } from "../types";
@@ -129,12 +130,13 @@ export async function handleTranscription(
           log.info("transcript_fetched", { episodeId, bytes: transcript.length, source: "feed" });
         } else {
           // Whisper fallback
+          const { model: sttModel } = await getModelConfig(prisma, "stt");
           const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
           const audioResponse = await fetch(episode.audioUrl);
           const audioBlob = await audioResponse.blob();
           const file = new File([audioBlob], "audio.mp3", { type: "audio/mpeg" });
           const transcription = await openai.audio.transcriptions.create({
-            model: "whisper-1",
+            model: sttModel,
             file,
           });
           transcript = transcription.text;

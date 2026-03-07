@@ -24,13 +24,21 @@ describe("generateSpeech", () => {
     expect(result.byteLength).toBe(1024);
   });
 
-  it("should call OpenAI with correct model and format", async () => {
+  it("should use default TTS model when none specified", async () => {
     const client = createMockOpenAIClient(fakeAudio);
     await generateSpeech(client, "Hello world");
 
     const call = client.audio.speech.create.mock.calls[0][0];
     expect(call.model).toBe(TTS_MODEL);
     expect(call.response_format).toBe("mp3");
+  });
+
+  it("should use custom model when specified", async () => {
+    const client = createMockOpenAIClient(fakeAudio);
+    await generateSpeech(client, "Hello world", DEFAULT_VOICE, "tts-1-hd");
+
+    const call = client.audio.speech.create.mock.calls[0][0];
+    expect(call.model).toBe("tts-1-hd");
   });
 
   it("should use default voice when none specified", async () => {

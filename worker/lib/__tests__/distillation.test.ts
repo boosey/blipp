@@ -38,12 +38,20 @@ describe("extractClaims", () => {
     expect(call.messages[0].content).toContain("My specific transcript");
   });
 
-  it("should use claude-sonnet-4-20250514 model", async () => {
+  it("should use default model when none provided", async () => {
     const client = createMockAnthropicClient(JSON.stringify(sampleClaims));
     await extractClaims(client, "transcript");
 
     const call = client.messages.create.mock.calls[0][0];
     expect(call.model).toBe("claude-sonnet-4-20250514");
+  });
+
+  it("should use provided model when specified", async () => {
+    const client = createMockAnthropicClient(JSON.stringify(sampleClaims));
+    await extractClaims(client, "transcript", "claude-haiku-4-5-20251001");
+
+    const call = client.messages.create.mock.calls[0][0];
+    expect(call.model).toBe("claude-haiku-4-5-20251001");
   });
 
   it("should throw on invalid JSON response", async () => {
@@ -74,12 +82,20 @@ describe("generateNarrative", () => {
     expect(call.messages[0].content).toContain(`${expectedWords} words`);
   });
 
-  it("should use claude-sonnet-4-20250514 model", async () => {
+  it("should use default model when none provided", async () => {
     const client = createMockAnthropicClient("narrative text");
     await generateNarrative(client, claims, 3);
 
     const call = client.messages.create.mock.calls[0][0];
     expect(call.model).toBe("claude-sonnet-4-20250514");
+  });
+
+  it("should use provided model when specified", async () => {
+    const client = createMockAnthropicClient("narrative text");
+    await generateNarrative(client, claims, 3, "claude-haiku-4-5-20251001");
+
+    const call = client.messages.create.mock.calls[0][0];
+    expect(call.model).toBe("claude-haiku-4-5-20251001");
   });
 
   it("should include the claims in the prompt", async () => {

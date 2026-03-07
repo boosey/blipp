@@ -21,10 +21,11 @@ export const TTS_MODEL = "gpt-4o-mini-tts";
 export async function generateSpeech(
   client: OpenAI,
   text: string,
-  voice: string = DEFAULT_VOICE
+  voice: string = DEFAULT_VOICE,
+  model: string = TTS_MODEL
 ): Promise<ArrayBuffer> {
   const response = await client.audio.speech.create({
-    model: TTS_MODEL,
+    model,
     voice: voice as any,
     input: text,
     response_format: "mp3",

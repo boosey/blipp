@@ -28,10 +28,11 @@ export interface Claim {
  */
 export async function extractClaims(
   client: Anthropic,
-  transcript: string
+  transcript: string,
+  model: string = "claude-sonnet-4-20250514"
 ): Promise<Claim[]> {
   const response = await client.messages.create({
-    model: "claude-sonnet-4-20250514",
+    model,
     max_tokens: 2048,
     messages: [
       {
@@ -73,12 +74,13 @@ ${transcript}`,
 export async function generateNarrative(
   client: Anthropic,
   claims: Claim[],
-  durationMinutes: number
+  durationMinutes: number,
+  model: string = "claude-sonnet-4-20250514"
 ): Promise<string> {
   const targetWords = Math.round(durationMinutes * WORDS_PER_MINUTE);
 
   const response = await client.messages.create({
-    model: "claude-sonnet-4-20250514",
+    model,
     max_tokens: 4096,
     messages: [
       {

@@ -6,6 +6,7 @@ import { createPipelineLogger } from "../lib/logger";
 import { generateNarrative } from "../lib/distillation";
 import { generateSpeech } from "../lib/tts";
 import { putClip } from "../lib/clip-cache";
+import { getModelConfig } from "../lib/ai-models";
 import { wpKey, putWorkProduct } from "../lib/work-products";
 import type { Env } from "../types";
 
@@ -173,12 +174,17 @@ export async function handleClipGeneration(
 
         const claims = distillation.claimsJson as any[];
 
+        // Read model configs
+        const { model: narrativeModel } = await getModelConfig(prisma, "narrative");
+        const { model: ttsModel } = await getModelConfig(prisma, "tts");
+
         // Generate narrative from claims (Pass 2)
         const narrativeTimer = log.timer("narrative_generation");
         const narrative = await generateNarrative(
           anthropic,
           claims,
-          durationTier
+          durationTier,
+          narrativeModel
         );
         const wordCount = narrative.split(/\s+/).length;
         narrativeTimer();
@@ -186,7 +192,7 @@ export async function handleClipGeneration(
 
         // Generate TTS audio
         const ttsTimer = log.timer("tts_generation");
-        const audio = await generateSpeech(openai, narrative);
+        const audio = await generateSpeech(openai, narrative, undefined, ttsModel);
         ttsTimer();
 
         // Store in R2

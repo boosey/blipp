@@ -3,6 +3,7 @@ import { createPrismaClient } from "../lib/db";
 import { getConfig } from "../lib/config";
 import { createPipelineLogger } from "../lib/logger";
 import { extractClaims } from "../lib/distillation";
+import { getModelConfig } from "../lib/ai-models";
 import { wpKey, putWorkProduct } from "../lib/work-products";
 import type { Env } from "../types";
 
@@ -144,8 +145,9 @@ export async function handleDistillation(
         });
 
         // Extract claims via Claude (Pass 1)
+        const { model: distillationModel } = await getModelConfig(prisma, "distillation");
         const elapsed = log.timer("claude_extraction");
-        const claims = await extractClaims(anthropic, existing.transcript);
+        const claims = await extractClaims(anthropic, existing.transcript, distillationModel);
         elapsed();
         log.info("claims_extracted", { episodeId, claimCount: claims.length });
 

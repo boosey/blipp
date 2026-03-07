@@ -41,6 +41,10 @@ vi.mock("@anthropic-ai/sdk", () => {
   return { default: class MockAnthropic {} };
 });
 
+vi.mock("../../lib/ai-models", () => ({
+  getModelConfig: vi.fn().mockResolvedValue({ provider: "anthropic", model: "claude-sonnet-4-20250514" }),
+}));
+
 vi.mock("openai", () => {
   return { default: class MockOpenAI {} };
 });
@@ -51,6 +55,7 @@ import { generateNarrative } from "../../lib/distillation";
 import { generateSpeech } from "../../lib/tts";
 import { putClip } from "../../lib/clip-cache";
 import { wpKey, putWorkProduct } from "../../lib/work-products";
+import { getModelConfig } from "../../lib/ai-models";
 
 let mockPrisma: ReturnType<typeof createMockPrisma>;
 let mockEnv: ReturnType<typeof createMockEnv>;
@@ -83,6 +88,7 @@ beforeEach(() => {
 
   // Re-set mocks after clearAllMocks (vitest v4 clears mockResolvedValue)
   (getConfig as any).mockResolvedValue(true);
+  (getModelConfig as any).mockResolvedValue({ provider: "anthropic", model: "claude-sonnet-4-20250514" });
   (generateNarrative as any).mockResolvedValue("A warm narrative about technology trends.");
   (generateSpeech as any).mockResolvedValue(new ArrayBuffer(2048));
   (putClip as any).mockResolvedValue(undefined);
@@ -203,15 +209,21 @@ describe("handleClipGeneration", () => {
       where: { episodeId: "ep-1", status: "COMPLETED" },
     });
 
-    // Narrative generated
+    // Narrative generated with model from config
     expect(generateNarrative).toHaveBeenCalledWith(
       expect.anything(),
       DISTILLATION.claimsJson,
-      5
+      5,
+      "claude-sonnet-4-20250514"
     );
 
-    // TTS generated
-    expect(generateSpeech).toHaveBeenCalled();
+    // TTS generated with model from config
+    expect(generateSpeech).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      undefined,
+      "claude-sonnet-4-20250514"
+    );
 
     // Stored in R2
     expect(putClip).toHaveBeenCalledWith(
@@ -291,6 +303,24 @@ describe("handleClipGeneration", () => {
       action: "job-stage-complete",
       jobId: "job-1",
     });
+  });
+
+  it("reads narrative and TTS models from config", async () => {
+    (getModelConfig as any)
+      .mockResolvedValueOnce({ provider: "anthropic", model: "claude-haiku-4-5-20251001" })  // narrative
+      .mockResolvedValueOnce({ provider: "openai", model: "tts-1-hd" });                     // tts
+
+    mockPrisma.clip.findUnique.mockResolvedValue(null);
+    mockPrisma.distillation.findFirst.mockResolvedValue(DISTILLATION);
+    mockPrisma.clip.upsert.mockResolvedValue({ id: "clip-1" });
+
+    const { mockBatch } = makeBatch(msgBody);
+    await handleClipGeneration(mockBatch, mockEnv, mockCtx);
+
+    expect(getModelConfig).toHaveBeenCalledWith(expect.anything(), "narrative");
+    expect(getModelConfig).toHaveBeenCalledWith(expect.anything(), "tts");
+    expect(generateNarrative).toHaveBeenCalledWith(expect.anything(), expect.anything(), 5, "claude-haiku-4-5-20251001");
+    expect(generateSpeech).toHaveBeenCalledWith(expect.anything(), expect.anything(), undefined, "tts-1-hd");
   });
 
   describe("stage-enabled check", () => {

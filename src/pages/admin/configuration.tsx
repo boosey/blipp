@@ -36,6 +36,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { buildPipelineConfig } from "@/hooks/use-pipeline-config";
+import { AI_MODELS } from "@/lib/ai-models";
+import type { AIStage } from "@/lib/ai-models";
 import type {
   PlatformConfigEntry,
   DurationTier,
@@ -351,18 +353,53 @@ function PipelineControlsPanel({
 
 // ── AI Models Panel ──
 
-function AIModelsPanel({ configs }: { configs: PlatformConfigEntry[] }) {
-  // Extract model configs from the flat config list
-  function getModelConfig(prefix: string): { provider: string; model: string; costPer1k: string } {
-    const providerEntry = configs.find((c) => c.key === `${prefix}.provider`);
-    const modelEntry = configs.find((c) => c.key === `${prefix}.model`);
-    const costEntry = configs.find((c) => c.key === `${prefix}.cost_per_1k`);
+function AIModelsPanel({
+  configs,
+  apiFetch,
+  onReload,
+}: {
+  configs: PlatformConfigEntry[];
+  apiFetch: ReturnType<typeof useAdminFetch>;
+  onReload: () => void;
+}) {
+  const [editing, setEditing] = useState<string | null>(null);
+  const [saving, setSaving] = useState<string | null>(null);
+
+  function getModelConfig(prefix: string): { provider: string; model: string } {
+    const entry = configs.find((c) => c.key === `ai.${prefix}.model`);
+    const val = entry?.value as { provider?: string; model?: string } | null;
     return {
-      provider: (providerEntry?.value as string) ?? "Unknown",
-      model: (modelEntry?.value as string) ?? "Unknown",
-      costPer1k: costEntry?.value != null ? `$${Number(costEntry.value).toFixed(4)}/1k` : "-",
+      provider: val?.provider ?? "Unknown",
+      model: val?.model ?? "Unknown",
     };
   }
+
+  function getModelLabel(stageKey: string, modelId: string): string {
+    const entries = AI_MODELS[stageKey as AIStage];
+    if (!entries) return modelId;
+    const found = entries.find((m) => m.model === modelId);
+    return found?.label ?? modelId;
+  }
+
+  const handleModelChange = async (stageKey: string, modelId: string) => {
+    const entries = AI_MODELS[stageKey as AIStage];
+    if (!entries) return;
+    const entry = entries.find((m) => m.model === modelId);
+    if (!entry || entry.comingSoon) return;
+    setSaving(stageKey);
+    try {
+      await apiFetch(`/config/ai.${stageKey}.model`, {
+        method: "PATCH",
+        body: JSON.stringify({ value: { provider: entry.provider, model: entry.model } }),
+      });
+      onReload();
+      setEditing(null);
+    } catch (e) {
+      console.error("Failed to update model:", e);
+    } finally {
+      setSaving(null);
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -377,6 +414,9 @@ function AIModelsPanel({ configs }: { configs: PlatformConfigEntry[] }) {
         {MODEL_TYPES.map((mt) => {
           const cfg = getModelConfig(mt.key);
           const Icon = mt.icon;
+          const isEditing = editing === mt.key;
+          const isSaving = saving === mt.key;
+          const stageModels = AI_MODELS[mt.key as AIStage] ?? [];
           return (
             <div
               key={mt.key}
@@ -402,23 +442,56 @@ function AIModelsPanel({ configs }: { configs: PlatformConfigEntry[] }) {
                 </div>
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-[#9CA3AF]">Model</span>
-                  <span className="font-mono text-[10px] text-[#F9FAFB]">{cfg.model}</span>
-                </div>
-                <Separator className="bg-white/5" />
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-[#9CA3AF]">Cost</span>
-                  <span className="font-mono tabular-nums text-[#F59E0B] text-[10px]">{cfg.costPer1k}</span>
+                  <span className="font-mono text-[10px] text-[#F9FAFB]">
+                    {getModelLabel(mt.key, cfg.model)}
+                  </span>
                 </div>
               </div>
 
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full mt-3 border-white/10 text-[#9CA3AF] hover:text-[#F9FAFB] hover:bg-white/5 text-xs"
-              >
-                <Settings className="h-3 w-3" />
-                Change
-              </Button>
+              {isEditing ? (
+                <div className="flex items-center gap-1.5 mt-3">
+                  <Select
+                    value={cfg.model}
+                    onValueChange={(v) => handleModelChange(mt.key, v)}
+                    disabled={isSaving}
+                  >
+                    <SelectTrigger className="flex-1 h-8 text-xs bg-[#1A2942] border-white/10 text-[#F9FAFB]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-[#1A2942] border-white/10 text-[#F9FAFB]">
+                      {stageModels.map((m) => (
+                        <SelectItem
+                          key={m.model}
+                          value={m.model}
+                          disabled={m.comingSoon}
+                          className="text-xs"
+                        >
+                          {m.label}{m.comingSoon ? " (coming soon)" : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={() => setEditing(null)}
+                    disabled={isSaving}
+                    className="text-[#9CA3AF] hover:text-[#F9FAFB] shrink-0"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setEditing(mt.key)}
+                  className="w-full mt-3 border-white/10 text-[#9CA3AF] hover:text-[#F9FAFB] hover:bg-white/5 text-xs"
+                >
+                  <Settings className="h-3 w-3" />
+                  Change
+                </Button>
+              )}
             </div>
           );
         })}
@@ -884,7 +957,7 @@ export default function Configuration() {
               <PipelineControlsPanel configs={configs} apiFetch={apiFetch} onReload={load} />
             )}
             {selectedCategory === "ai-models" && (
-              <AIModelsPanel configs={configs} />
+              <AIModelsPanel configs={configs} apiFetch={apiFetch} onReload={load} />
             )}
             {selectedCategory === "duration-tiers" && (
               <DurationTiersPanel tiers={durationTiers} setDirty={setDirty} />

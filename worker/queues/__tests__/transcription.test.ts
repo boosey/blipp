@@ -13,6 +13,10 @@ vi.mock("../../lib/config", () => ({
   getConfig: vi.fn().mockResolvedValue(true),
 }));
 
+vi.mock("../../lib/ai-models", () => ({
+  getModelConfig: vi.fn().mockResolvedValue({ provider: "openai", model: "whisper-1" }),
+}));
+
 const mockPutWorkProduct = vi.fn().mockResolvedValue(undefined);
 vi.mock("../../lib/work-products", () => ({
   wpKey: vi.fn(({ type, episodeId }: any) => `wp/transcript/${episodeId}.txt`),
@@ -43,6 +47,7 @@ vi.mock("openai", () => {
 });
 
 const { getConfig } = await import("../../lib/config");
+const { getModelConfig } = await import("../../lib/ai-models");
 const { handleTranscription } = await import("../transcription");
 
 function createMsg(body: any) {
@@ -96,6 +101,10 @@ describe("handleTranscription", () => {
     // Re-set getConfig default after clearAllMocks (mockReset to clear queued values)
     (getConfig as any).mockReset();
     (getConfig as any).mockResolvedValue(true);
+
+    // Re-set getModelConfig default after clearAllMocks
+    (getModelConfig as any).mockReset();
+    (getModelConfig as any).mockResolvedValue({ provider: "openai", model: "whisper-1" });
 
     // Default: fetch returns transcript text
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
@@ -260,6 +269,39 @@ describe("handleTranscription", () => {
       create: { episodeId: "ep1", status: "TRANSCRIPT_READY", transcript: "Whisper transcript text." },
     });
     expect(msg.ack).toHaveBeenCalled();
+  });
+
+  it("reads STT model from config for Whisper path", async () => {
+    const episodeNoTranscript = { ...EPISODE, transcriptUrl: null };
+    const msg = createMsg({ jobId: "job1", episodeId: "ep1" });
+    mockPrisma.pipelineJob.findUnique.mockResolvedValue(JOB);
+    mockPrisma.pipelineJob.update.mockResolvedValue({});
+    mockPrisma.pipelineStep.create.mockResolvedValue({ id: "step1" });
+    mockPrisma.distillation.findUnique.mockResolvedValue(null);
+    mockPrisma.episode.findUnique.mockResolvedValue(episodeNoTranscript);
+    mockPrisma.distillation.upsert.mockResolvedValue({ id: "dist1", episodeId: "ep1" });
+    mockPrisma.workProduct.create.mockResolvedValue({ id: "wp1" });
+    mockPrisma.pipelineStep.update.mockResolvedValue({});
+
+    if (typeof globalThis.File === "undefined") {
+      globalThis.File = class File extends Blob {
+        name: string;
+        lastModified: number;
+        constructor(parts: BlobPart[], name: string, opts?: FilePropertyBag) {
+          super(parts, opts);
+          this.name = name;
+          this.lastModified = Date.now();
+        }
+      } as any;
+    }
+
+    await handleTranscription(createBatch([msg]), env, ctx);
+
+    expect(getModelConfig).toHaveBeenCalledWith(expect.anything(), "stt");
+    expect(mockWhisperCreate).toHaveBeenCalledWith({
+      model: "whisper-1",
+      file: expect.any(File),
+    });
   });
 
   it("reports to orchestrator with jobId", async () => {
