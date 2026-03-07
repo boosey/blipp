@@ -41,13 +41,19 @@ podcasts.get("/search", async (c) => {
  * @returns Array of trending podcast feeds
  */
 podcasts.get("/trending", async (c) => {
-  const client = new PodcastIndexClient(
-    c.env.PODCAST_INDEX_KEY,
-    c.env.PODCAST_INDEX_SECRET
-  );
+  try {
+    const client = new PodcastIndexClient(
+      c.env.PODCAST_INDEX_KEY,
+      c.env.PODCAST_INDEX_SECRET
+    );
 
-  const feeds = await client.trending();
-  return c.json({ feeds });
+    const feeds = await client.trending();
+    return c.json({ feeds });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "Unknown error";
+    console.error("Trending error:", message);
+    return c.json({ error: message }, 500);
+  }
 });
 
 /**

@@ -18,6 +18,7 @@ export function Discover() {
   const [trending, setTrending] = useState<PodcastFeed[]>([]);
   const [subscribedIds, setSubscribedIds] = useState<Set<string>>(new Set());
   const [searching, setSearching] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchSubscriptions = useCallback(async () => {
     try {
@@ -26,16 +27,17 @@ export function Discover() {
       }>("/podcasts/subscriptions");
       setSubscribedIds(new Set(data.subscriptions.map((s) => s.podcastId)));
     } catch {
-      // Ignore
+      // Ignore — subscriptions just won't show as toggled
     }
   }, [apiFetch]);
 
   const fetchTrending = useCallback(async () => {
     try {
+      setError(null);
       const data = await apiFetch<{ feeds: PodcastFeed[] }>("/podcasts/trending");
       setTrending(data.feeds || []);
-    } catch {
-      // Ignore
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load trending");
     }
   }, [apiFetch]);
 
@@ -48,12 +50,14 @@ export function Discover() {
     if (!query.trim()) return;
     setSearching(true);
     try {
+      setError(null);
       const data = await apiFetch<{ feeds: PodcastFeed[] }>(
         `/podcasts/search?q=${encodeURIComponent(query)}`
       );
       setResults(data.feeds || []);
-    } catch {
+    } catch (e) {
       setResults([]);
+      setError(e instanceof Error ? e.message : "Search failed");
     } finally {
       setSearching(false);
     }
@@ -103,7 +107,10 @@ export function Discover() {
             />
           ))}
         </div>
-        {displayList.length === 0 && !searching && (
+        {error && (
+          <p className="text-red-400 text-sm text-center py-4">{error}</p>
+        )}
+        {displayList.length === 0 && !searching && !error && (
           <p className="text-zinc-500 text-sm text-center py-8">
             {results.length === 0 && query ? "No results found." : "Loading..."}
           </p>
