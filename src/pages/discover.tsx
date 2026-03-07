@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { useApiFetch } from "../lib/api";
+import { useFetch } from "../lib/use-fetch";
 import { PodcastCard } from "../components/podcast-card";
 
 interface PodcastFeed {
@@ -15,49 +16,29 @@ export function Discover() {
   const apiFetch = useApiFetch();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<PodcastFeed[]>([]);
-  const [trending, setTrending] = useState<PodcastFeed[]>([]);
-  const [subscribedIds, setSubscribedIds] = useState<Set<string>>(new Set());
   const [searching, setSearching] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [searchError, setSearchError] = useState<string | null>(null);
 
-  const fetchSubscriptions = useCallback(async () => {
-    try {
-      const data = await apiFetch<{
-        subscriptions: { podcastId: string }[];
-      }>("/podcasts/subscriptions");
-      setSubscribedIds(new Set(data.subscriptions.map((s) => s.podcastId)));
-    } catch {
-      // Ignore — subscriptions just won't show as toggled
-    }
-  }, [apiFetch]);
+  const { data: subsData, refetch: refetchSubscriptions } = useFetch<{
+    subscriptions: { podcastId: string }[];
+  }>("/podcasts/subscriptions");
+  const subscribedIds = new Set(subsData?.subscriptions.map((s) => s.podcastId) ?? []);
 
-  const fetchTrending = useCallback(async () => {
-    try {
-      setError(null);
-      const data = await apiFetch<{ feeds: PodcastFeed[] }>("/podcasts/trending");
-      setTrending(data.feeds || []);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load trending");
-    }
-  }, [apiFetch]);
-
-  useEffect(() => {
-    fetchSubscriptions();
-    fetchTrending();
-  }, [fetchSubscriptions, fetchTrending]);
+  const { data: trendingData, error: trendingError } = useFetch<{ feeds: PodcastFeed[] }>("/podcasts/trending");
+  const trending = trendingData?.feeds ?? [];
 
   async function handleSearch() {
     if (!query.trim()) return;
     setSearching(true);
     try {
-      setError(null);
+      setSearchError(null);
       const data = await apiFetch<{ feeds: PodcastFeed[] }>(
         `/podcasts/search?q=${encodeURIComponent(query)}`
       );
       setResults(data.feeds || []);
     } catch (e) {
       setResults([]);
-      setError(e instanceof Error ? e.message : "Search failed");
+      setSearchError(e instanceof Error ? e.message : "Search failed");
     } finally {
       setSearching(false);
     }
@@ -103,14 +84,14 @@ export function Discover() {
               imageUrl={feed.image}
               feedUrl={feed.url}
               isSubscribed={subscribedIds.has(String(feed.id))}
-              onToggle={fetchSubscriptions}
+              onToggle={refetchSubscriptions}
             />
           ))}
         </div>
-        {error && (
-          <p className="text-red-400 text-sm text-center py-4">{error}</p>
+        {(searchError || trendingError) && (
+          <p className="text-red-400 text-sm text-center py-4">{searchError || trendingError}</p>
         )}
-        {displayList.length === 0 && !searching && !error && (
+        {displayList.length === 0 && !searching && !searchError && !trendingError && (
           <p className="text-zinc-500 text-sm text-center py-8">
             {results.length === 0 && query ? "No results found." : "Loading..."}
           </p>

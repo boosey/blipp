@@ -1,6 +1,5 @@
-import { useEffect, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
-import { useApiFetch } from "../lib/api";
+import { useFetch } from "../lib/use-fetch";
 
 interface SubscribedPodcast {
   id: string;
@@ -14,26 +13,8 @@ interface SubscribedPodcast {
 }
 
 export function LibraryPage() {
-  const apiFetch = useApiFetch();
-  const [subscriptions, setSubscriptions] = useState<SubscribedPodcast[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const fetchSubscriptions = useCallback(async () => {
-    try {
-      const data = await apiFetch<{ subscriptions: SubscribedPodcast[] }>(
-        "/podcasts/subscriptions"
-      );
-      setSubscriptions(data.subscriptions);
-    } catch {
-      // Ignore
-    } finally {
-      setLoading(false);
-    }
-  }, [apiFetch]);
-
-  useEffect(() => {
-    fetchSubscriptions();
-  }, [fetchSubscriptions]);
+  const { data, loading } = useFetch<{ subscriptions: SubscribedPodcast[] }>("/podcasts/subscriptions");
+  const subscriptions = data?.subscriptions ?? [];
 
   if (loading) {
     return (
