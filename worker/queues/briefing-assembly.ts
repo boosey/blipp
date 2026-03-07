@@ -1,6 +1,6 @@
 import { createPrismaClient } from "../lib/db";
-import { getConfig } from "../lib/config";
 import { createPipelineLogger } from "../lib/logger";
+import { checkStageEnabled } from "../lib/queue-helpers";
 import { getClip, putBriefing } from "../lib/clip-cache";
 import { concatMp3Buffers } from "../lib/mp3-concat";
 import { wpKey, putWorkProduct } from "../lib/work-products";
@@ -33,15 +33,7 @@ export async function handleBriefingAssembly(
     log.info("batch_start", { messageCount: batch.messages.length });
 
     // Stage gate: check if stage 5 is enabled (manual messages bypass)
-    const hasManual = batch.messages.some((m) => m.body.type === "manual");
-    if (!hasManual) {
-      const stageEnabled = await getConfig(prisma, "pipeline.stage.5.enabled", true);
-      if (!stageEnabled) {
-        log.info("stage_disabled", { stage: 5 });
-        for (const msg of batch.messages) msg.ack();
-        return;
-      }
-    }
+    if (!(await checkStageEnabled(prisma, batch, 5, log))) return;
 
     for (const msg of batch.messages) {
       const { requestId } = msg.body;

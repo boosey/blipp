@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { createPrismaClient } from "../lib/db";
-import { getConfig } from "../lib/config";
 import { createPipelineLogger } from "../lib/logger";
+import { checkStageEnabled } from "../lib/queue-helpers";
 import { extractClaims } from "../lib/distillation";
 import { getModelConfig } from "../lib/ai-models";
 import { wpKey, putWorkProduct } from "../lib/work-products";
@@ -35,19 +35,7 @@ export async function handleDistillation(
     log.info("batch_start", { messageCount: batch.messages.length });
 
     // Check if stage 3 (distillation) is enabled — manual messages bypass this
-    const hasManual = batch.messages.some((m) => m.body.type === "manual");
-    if (!hasManual) {
-      const stageEnabled = await getConfig(
-        prisma,
-        "pipeline.stage.3.enabled",
-        true
-      );
-      if (!stageEnabled) {
-        log.info("stage_disabled", { stage: 3 });
-        for (const msg of batch.messages) msg.ack();
-        return;
-      }
-    }
+    if (!(await checkStageEnabled(prisma, batch, 3, log))) return;
 
     for (const msg of batch.messages) {
       const { jobId, episodeId } = msg.body;

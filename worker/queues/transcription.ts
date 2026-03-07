@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 import { createPrismaClient } from "../lib/db";
-import { getConfig } from "../lib/config";
 import { getModelConfig } from "../lib/ai-models";
+import { checkStageEnabled } from "../lib/queue-helpers";
 import { createPipelineLogger } from "../lib/logger";
 import { wpKey, putWorkProduct } from "../lib/work-products";
 import { PodcastIndexClient } from "../lib/podcast-index";
@@ -29,15 +29,7 @@ export async function handleTranscription(
     const log = await createPipelineLogger({ stage: "transcription", prisma });
     log.info("batch_start", { messageCount: batch.messages.length });
 
-    const hasManual = batch.messages.some((m) => m.body.type === "manual");
-    if (!hasManual) {
-      const stageEnabled = await getConfig(prisma, "pipeline.stage.2.enabled", true);
-      if (!stageEnabled) {
-        log.info("stage_disabled", { stage: 2 });
-        for (const msg of batch.messages) msg.ack();
-        return;
-      }
-    }
+    if (!(await checkStageEnabled(prisma, batch, 2, log))) return;
 
     for (const msg of batch.messages) {
       const { jobId, episodeId } = msg.body;

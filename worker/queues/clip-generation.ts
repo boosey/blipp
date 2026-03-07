@@ -1,8 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import { createPrismaClient } from "../lib/db";
-import { getConfig } from "../lib/config";
 import { createPipelineLogger } from "../lib/logger";
+import { checkStageEnabled } from "../lib/queue-helpers";
 import { generateNarrative } from "../lib/distillation";
 import { generateSpeech } from "../lib/tts";
 import { putClip } from "../lib/clip-cache";
@@ -42,19 +42,7 @@ export async function handleClipGeneration(
     log.info("batch_start", { messageCount: batch.messages.length });
 
     // Check if stage 4 (clip generation) is enabled — manual messages bypass this
-    const hasManual = batch.messages.some((m) => m.body.type === "manual");
-    if (!hasManual) {
-      const stageEnabled = await getConfig(
-        prisma,
-        "pipeline.stage.4.enabled",
-        true
-      );
-      if (!stageEnabled) {
-        log.info("stage_disabled", { stage: 4 });
-        for (const msg of batch.messages) msg.ack();
-        return;
-      }
-    }
+    if (!(await checkStageEnabled(prisma, batch, 4, log))) return;
 
     for (const msg of batch.messages) {
       const { jobId, episodeId, durationTier } = msg.body;
