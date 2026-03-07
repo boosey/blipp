@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Clock,
   Loader2,
@@ -967,13 +967,16 @@ export default function Requests() {
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState<BriefingRequestStatus | "ALL">("ALL");
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [detailCache, setDetailCache] = useState<Record<string, BriefingRequest>>({});
   const [detailLoading, setDetailLoading] = useState(false);
   const [testDialogOpen, setTestDialogOpen] = useState(false);
 
-  const load = useCallback(() => {
-    setLoading(true);
+  const autoRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const load = useCallback((silent = false) => {
+    if (!silent) setLoading(true);
     const params = new URLSearchParams();
     params.set("page", String(page));
     if (statusFilter !== "ALL") params.set("status", statusFilter);
@@ -983,12 +986,30 @@ export default function Requests() {
         setTotal(r.total);
       })
       .catch(console.error)
-      .finally(() => setLoading(false));
+      .finally(() => {
+        setLoading(false);
+        setRefreshing(false);
+      });
   }, [apiFetch, page, statusFilter]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  // Auto-refresh every 10 seconds, including expanded row detail
+  useEffect(() => {
+    autoRefreshRef.current = setInterval(() => {
+      load(true);
+      if (expandedId) {
+        apiFetch<{ data: BriefingRequest }>(`/requests/${expandedId}`)
+          .then((r) => setDetailCache((prev) => ({ ...prev, [expandedId]: r.data })))
+          .catch(console.error);
+      }
+    }, 10_000);
+    return () => {
+      if (autoRefreshRef.current) clearInterval(autoRefreshRef.current);
+    };
+  }, [load, expandedId, apiFetch]);
 
   const toggleRow = useCallback(
     (id: string) => {
@@ -1023,17 +1044,22 @@ export default function Requests() {
           <Badge className="bg-white/5 text-[#9CA3AF] text-[10px]">
             {total} total
           </Badge>
+          <span className="inline-flex items-center gap-1 text-[10px] text-[#9CA3AF]/60">
+            <span className="h-1.5 w-1.5 rounded-full bg-[#10B981] animate-pulse" />
+            Live
+          </span>
         </div>
 
         <div className="flex items-center gap-2">
           <Button
             variant="ghost"
             size="sm"
-            onClick={load}
+            disabled={refreshing}
+            onClick={() => { setRefreshing(true); load(); }}
             className="text-[#9CA3AF] hover:text-[#F9FAFB] text-xs gap-1.5"
           >
-            <RefreshCw className="h-3.5 w-3.5" />
-            Refresh
+            <RefreshCw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} />
+            {refreshing ? "Refreshing..." : "Refresh"}
           </Button>
           <Button
             size="sm"

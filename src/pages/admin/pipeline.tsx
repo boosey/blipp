@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Mic,
   Sparkles,
@@ -227,7 +227,7 @@ function JobCard({ job, onClick }: { job: PipelineJob; onClick: () => void }) {
     <button
       onClick={onClick}
       className={cn(
-        "w-full text-left rounded-md border border-white/5 bg-[#0F1D32] p-2.5 hover:border-white/10 transition-colors group",
+        "w-full text-left rounded-md border border-white/5 bg-[#0F1D32] p-2.5 hover:border-white/10 transition-all duration-300 group animate-in fade-in slide-in-from-top-2",
         job.status === "FAILED" && "border-l-2 border-l-[#EF4444]"
       )}
     >
@@ -631,6 +631,7 @@ export default function Pipeline() {
     BRIEFING_ASSEMBLY: [],
   });
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [selectedJob, setSelectedJob] = useState<PipelineJob | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
 
@@ -644,6 +645,9 @@ export default function Pipeline() {
   const [transcriptOpen, setTranscriptOpen] = useState(false);
   const [transcriptEpisodeId, setTranscriptEpisodeId] = useState<string | null>(null);
 
+  // Auto-refresh ref
+  const autoRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   // Load request list for filter dropdown
   useEffect(() => {
     apiFetch<{ data: BriefingRequest[] }>("/requests?page=1")
@@ -654,23 +658,34 @@ export default function Pipeline() {
       .catch(() => setRequests([]));
   }, [apiFetch]);
 
-  const load = useCallback(() => {
-    setLoading(true);
+  const load = useCallback((silent = false) => {
+    if (!silent) setLoading(true);
     const requestParam = requestFilter !== "all" ? `&requestId=${requestFilter}` : "";
-    const stageParam = stageFilter !== "all" ? `&currentStage=${stageFilter}` : "";
+    const statusParam = statusFilter ? `&status=${statusFilter}` : "";
     Promise.all([
       apiFetch<{ data: PipelineStageStats[] }>("/pipeline/stages")
         .then((r) => setStageStats(r.data))
         .catch(console.error),
       ...STAGE_META.map((m) =>
-        apiFetch<{ data: PipelineJob[] }>(`/pipeline/jobs?currentStage=${m.stage}&limit=20${requestParam}${stageFilter !== "all" && stageFilter !== m.stage ? "&skip=true" : ""}`)
+        apiFetch<{ data: PipelineJob[] }>(`/pipeline/jobs?currentStage=${m.stage}&pageSize=20${requestParam}${statusParam}${stageFilter !== "all" && stageFilter !== m.stage ? "&skip=true" : ""}`)
           .then((r) => setStageJobs((prev) => ({ ...prev, [m.stage]: r.data })))
           .catch(console.error)
       ),
-    ]).finally(() => setLoading(false));
-  }, [apiFetch, requestFilter, stageFilter]);
+    ]).finally(() => {
+      setLoading(false);
+      setRefreshing(false);
+    });
+  }, [apiFetch, requestFilter, stageFilter, statusFilter]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Auto-refresh every 10 seconds
+  useEffect(() => {
+    autoRefreshRef.current = setInterval(() => load(true), 10_000);
+    return () => {
+      if (autoRefreshRef.current) clearInterval(autoRefreshRef.current);
+    };
+  }, [load]);
 
   const handleJobClick = (job: PipelineJob) => {
     // Transcription jobs open transcript inspector
@@ -687,7 +702,10 @@ export default function Pipeline() {
 
   const sortedFilteredJobs = (stage: PipelineStage): PipelineJob[] => {
     const jobs = stageJobs[stage] ?? [];
-    const filtered = statusFilter ? jobs.filter((j) => j.status === statusFilter) : jobs;
+    // When no status filter active, hide completed jobs from flow columns
+    const filtered = statusFilter
+      ? jobs.filter((j) => j.status === statusFilter)
+      : jobs.filter((j) => j.status !== "COMPLETED");
     return filtered.sort(
       (a, b) => (STATUS_PRIORITY[a.status] ?? 9) - (STATUS_PRIORITY[b.status] ?? 9)
     );
@@ -704,6 +722,10 @@ export default function Pipeline() {
           <Badge className="bg-white/5 text-[#9CA3AF] text-[10px]">
             {allJobs.filter((j) => j.status === "IN_PROGRESS").length} active
           </Badge>
+          <span className="inline-flex items-center gap-1 text-[10px] text-[#9CA3AF]/60">
+            <span className="h-1.5 w-1.5 rounded-full bg-[#10B981] animate-pulse" />
+            Live
+          </span>
           <div className="ml-4 border-l border-white/10 pl-4">
             <PipelineControls
               variant="master-only"
@@ -748,11 +770,12 @@ export default function Pipeline() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={load}
+            disabled={refreshing}
+            onClick={() => { setRefreshing(true); load(); }}
             className="text-[#9CA3AF] hover:text-[#F9FAFB] text-xs gap-1.5"
           >
-            <RefreshCw className="h-3.5 w-3.5" />
-            Refresh
+            <RefreshCw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} />
+            {refreshing ? "Refreshing..." : "Refresh"}
           </Button>
         </div>
       </div>
