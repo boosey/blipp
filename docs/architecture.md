@@ -231,13 +231,17 @@ PipelineStep --- WorkProduct
 |--------|------|---------|
 | GET | `/podcasts/search` | Search podcasts via Podcast Index |
 | GET | `/podcasts/trending` | Trending podcasts |
+| GET | `/podcasts/:id` | Podcast detail with subscription status |
+| GET | `/podcasts/:id/episodes` | Episode list for a podcast |
 | POST | `/podcasts/subscribe` | Subscribe to a podcast |
 | POST | `/podcasts/unsubscribe` | Unsubscribe from a podcast |
 | GET | `/podcasts/subscriptions` | List user subscriptions |
 | GET | `/briefings` | List user briefings |
 | GET | `/briefings/today` | Today's briefing |
-| POST | `/briefings/generate` | Request a new briefing |
+| POST | `/briefings/generate` | Request a new briefing (accepts optional `{ episodeId }` for one-off requests) |
 | GET | `/briefings/preferences` | Briefing preferences |
+| GET | `/requests` | User's briefing requests with status |
+| GET | `/requests/:id` | Single request detail with briefing link |
 | POST | `/billing/checkout` | Create Stripe checkout session |
 | POST | `/billing/portal` | Create Stripe customer portal session |
 
@@ -261,10 +265,29 @@ The frontend is built with Vite 7 using `@cloudflare/vite-plugin` in SPA mode. T
 | Section | Pages | Layout |
 |---------|-------|--------|
 | Public | Landing (`/`), Pricing (`/pricing`) | Minimal |
-| User | Dashboard, Discover, Settings, Billing | `AppLayout` |
+| User | Home (`/home`), Discover (`/discover`), Podcast Detail (`/discover/:podcastId`), Library (`/library`), Briefing Player (`/briefing/:requestId`), Settings (`/settings`) | `MobileLayout` |
 | Admin | 9 pages (Command Center, Pipeline, Catalog, Episodes, Briefings, Users, Analytics, Configuration, Requests) | `AdminLayout` (dark sidebar) |
 
+Redirects: `/dashboard` redirects to `/home`, `/billing` redirects to `/settings`.
+
 Admin pages are lazy-loaded via `React.lazy()` for code splitting. An `AdminGuard` component wraps admin routes and checks the user's admin status before rendering.
+
+### Mobile-First User App
+
+The user-facing app uses `MobileLayout`, a mobile-first layout with a bottom tab navigation bar (`BottomNav`). The four tabs are:
+
+| Tab | Route | Page |
+|-----|-------|------|
+| Home | `/home` | `home.tsx` -- Briefing overview and quick actions |
+| Discover | `/discover` | `discover.tsx` -- Podcast search and trending (mobile-optimized) |
+| Library | `/library` | `library.tsx` -- User's subscriptions and briefing history |
+| Settings | `/settings` | `settings.tsx` -- Account settings, billing, preferences |
+
+Additional user pages outside the tab bar:
+- **Podcast Detail** (`/discover/:podcastId`) -- `podcast-detail.tsx`, episode list and subscription toggle
+- **Briefing Player** (`/briefing/:requestId`) -- `briefing-player.tsx`, audio playback for a completed briefing
+
+The discover page uses `PodcastCard` components backed by the `useApiFetch` hook for data loading.
 
 ### Design System
 
@@ -295,8 +318,9 @@ blipp/
     routes/
       index.ts            # Route tree assembly
       plans.ts            # Public plan listing
-      podcasts.ts         # Search, subscribe, trending
+      podcasts.ts         # Search, subscribe, trending, detail
       briefings.ts        # Briefing generation + listing
+      requests.ts         # User briefing request status
       billing.ts          # Stripe checkout/portal
       webhooks/
         clerk.ts          # User sync webhook
@@ -339,12 +363,23 @@ blipp/
   src/
     App.tsx               # Routes + layouts
     main.tsx              # React entry point
-    pages/                # User-facing pages
-    pages/admin/          # 9 admin pages
+    pages/
+      home.tsx            # Home tab - briefing overview
+      discover.tsx        # Discover tab - podcast search (mobile)
+      podcast-detail.tsx  # Podcast detail with episodes
+      library.tsx         # Library tab - subscriptions & history
+      briefing-player.tsx # Audio playback for briefings
+      settings.tsx        # Settings tab - account & billing
+      admin/              # 9 admin pages
     layouts/
-      app-layout.tsx      # User page layout
+      mobile-layout.tsx   # Mobile-first layout with bottom nav
       admin-layout.tsx    # Admin dark sidebar layout
-    components/           # Shared UI components
+    components/
+      bottom-nav.tsx      # Bottom tab navigation bar
+      status-badge.tsx    # Status indicator badge
+      request-item.tsx    # Briefing request list item
+      podcast-card.tsx    # Podcast card (uses useApiFetch)
+      ...                 # Other shared UI components
     lib/
       api.ts              # User API client
       admin-api.ts        # Admin API client with auth
@@ -352,6 +387,7 @@ blipp/
       clerk-provider.tsx  # ClerkProvider wrapper
     types/
       admin.ts            # Shared admin type contracts
+      user.ts             # User-facing type contracts
   prisma/
     schema.prisma         # Full data model
   docs/
@@ -360,6 +396,14 @@ blipp/
   vite.config.ts          # Vite build config
   tailwind.config.ts      # Tailwind CSS config
 ```
+
+## PWA Support
+
+The app is configured as a Progressive Web App via `vite-plugin-pwa`. This provides:
+
+- **Web App Manifest** -- Enables "Add to Home Screen" on mobile devices with app name, icons, and theme colors.
+- **Service Worker** -- Caches the app shell (HTML, JS, CSS) for fast subsequent loads.
+- **Standalone Display Mode** -- When installed, the app runs in its own window without browser chrome, providing a native app experience.
 
 ## Development Notes
 
