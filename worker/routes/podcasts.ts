@@ -57,16 +57,18 @@ podcasts.get("/trending", async (c) => {
 });
 
 /**
- * POST /subscribe — Subscribe to a podcast.
+ * POST /subscribe — Subscribe to a podcast with a duration tier.
  * Upserts the podcast record and creates a subscription link.
+ * Creates a FeedItem for the latest episode and dispatches to pipeline.
  *
- * Body: `{ feedUrl, title, description?, imageUrl?, podcastIndexId?, author? }`
- * @returns The created subscription with podcast data
+ * Body: `{ feedUrl, title, durationTier, description?, imageUrl?, podcastIndexId?, author? }`
+ * @returns The created subscription with podcast data and optional feedItem
  */
 podcasts.post("/subscribe", async (c) => {
   const body = await c.req.json<{
     feedUrl: string;
     title: string;
+    durationTier: number;
     description?: string;
     imageUrl?: string;
     podcastIndexId?: string;
@@ -75,6 +77,10 @@ podcasts.post("/subscribe", async (c) => {
 
   if (!body.feedUrl || !body.title) {
     return c.json({ error: "feedUrl and title are required" }, 400);
+  }
+
+  if (!body.durationTier || ![1, 2, 3, 5, 7, 10, 15].includes(body.durationTier)) {
+    return c.json({ error: "durationTier is required and must be 1, 2, 3, 5, 7, 10, or 15" }, 400);
   }
 
   const prisma = c.get("prisma") as any;
@@ -99,7 +105,7 @@ podcasts.post("/subscribe", async (c) => {
     },
   });
 
-  // Create subscription (idempotent via unique constraint)
+  // Create/update subscription with durationTier
   const subscription = await prisma.subscription.upsert({
     where: {
       userId_podcastId: {
@@ -110,11 +116,101 @@ podcasts.post("/subscribe", async (c) => {
     create: {
       userId: user.id,
       podcastId: podcast.id,
+      durationTier: body.durationTier,
     },
-    update: {},
+    update: {
+      durationTier: body.durationTier,
+    },
   });
 
-  return c.json({ subscription: { ...subscription, podcast } }, 201);
+  // Find latest episode and create FeedItem + pipeline request
+  const latestEpisode = await prisma.episode.findFirst({
+    where: { podcastId: podcast.id },
+    orderBy: { publishedAt: "desc" },
+  });
+
+  let feedItem = null;
+  if (latestEpisode) {
+    feedItem = await prisma.feedItem.upsert({
+      where: {
+        userId_episodeId_durationTier: {
+          userId: user.id,
+          episodeId: latestEpisode.id,
+          durationTier: body.durationTier,
+        },
+      },
+      create: {
+        userId: user.id,
+        episodeId: latestEpisode.id,
+        podcastId: podcast.id,
+        durationTier: body.durationTier,
+        source: "SUBSCRIPTION",
+        status: "PENDING",
+      },
+      update: {},
+    });
+
+    // Only dispatch pipeline if the FeedItem isn't already processed
+    if (feedItem.status === "PENDING") {
+      const request = await prisma.briefingRequest.create({
+        data: {
+          userId: user.id,
+          targetMinutes: body.durationTier,
+          items: [{
+            podcastId: podcast.id,
+            episodeId: latestEpisode.id,
+            durationTier: body.durationTier,
+            useLatest: false,
+          }],
+          isTest: false,
+          status: "PENDING",
+        },
+      });
+
+      await prisma.feedItem.update({
+        where: { id: feedItem.id },
+        data: { requestId: request.id, status: "PROCESSING" },
+      });
+
+      await c.env.ORCHESTRATOR_QUEUE.send({
+        requestId: request.id,
+        action: "evaluate",
+      });
+    }
+  }
+
+  return c.json({ subscription: { ...subscription, podcast }, feedItem }, 201);
+});
+
+/**
+ * PATCH /subscribe/:podcastId — Update subscription durationTier.
+ *
+ * @param podcastId - The podcast's database ID
+ * Body: `{ durationTier }`
+ * @returns The updated subscription
+ */
+podcasts.patch("/subscribe/:podcastId", async (c) => {
+  const podcastId = c.req.param("podcastId");
+  const body = await c.req.json<{ durationTier: number }>();
+
+  if (!body.durationTier || ![1, 2, 3, 5, 7, 10, 15].includes(body.durationTier)) {
+    return c.json({ error: "durationTier must be 1, 2, 3, 5, 7, 10, or 15" }, 400);
+  }
+
+  const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
+
+  const subscription = await prisma.subscription.update({
+    where: {
+      userId_podcastId: {
+        userId: user.id,
+        podcastId,
+      },
+    },
+    data: { durationTier: body.durationTier },
+  });
+
+  return c.json({ subscription });
 });
 
 /**
@@ -199,6 +295,7 @@ podcasts.get("/:id", async (c) => {
       podcastIndexId: podcast.podcastIndexId,
       episodeCount: podcast.episodeCount,
       isSubscribed: !!subscription,
+      subscriptionDurationTier: subscription?.durationTier ?? null,
     },
   });
 });
