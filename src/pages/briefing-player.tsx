@@ -1,26 +1,15 @@
 import { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useApiFetch } from "../lib/api";
-
-interface RequestDetail {
-  id: string;
-  status: string;
-  podcastTitle: string | null;
-  podcastImageUrl: string | null;
-  episodeTitle: string | null;
-  briefing: {
-    audioUrl: string;
-    actualSeconds: number | null;
-  } | null;
-}
+import type { FeedItem } from "../types/feed";
 
 export function BriefingPlayer() {
-  const { requestId } = useParams<{ requestId: string }>();
+  const { feedItemId } = useParams<{ feedItemId: string }>();
   const navigate = useNavigate();
   const apiFetch = useApiFetch();
   const audioRef = useRef<HTMLAudioElement>(null);
 
-  const [request, setRequest] = useState<RequestDetail | null>(null);
+  const [item, setItem] = useState<FeedItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -28,12 +17,20 @@ export function BriefingPlayer() {
   const [playbackRate, setPlaybackRate] = useState(1);
 
   useEffect(() => {
-    if (!requestId) return;
-    apiFetch<{ request: RequestDetail }>(`/requests/${requestId}`)
-      .then((data) => setRequest(data.request))
+    if (!feedItemId) return;
+    apiFetch<{ item: FeedItem }>(`/feed/${feedItemId}`)
+      .then((data) => {
+        setItem(data.item);
+        // Auto-mark as listened if ready and not already listened
+        if (data.item.status === "READY" && !data.item.listened) {
+          apiFetch(`/feed/${feedItemId}/listened`, { method: "PATCH" }).catch(
+            () => {}
+          );
+        }
+      })
       .catch(() => navigate("/home"))
       .finally(() => setLoading(false));
-  }, [requestId, apiFetch, navigate]);
+  }, [feedItemId, apiFetch, navigate]);
 
   function togglePlayback() {
     const audio = audioRef.current;
@@ -90,7 +87,7 @@ export function BriefingPlayer() {
     );
   }
 
-  if (!request || !request.briefing?.audioUrl) {
+  if (!item || !item.clip?.audioUrl) {
     return (
       <div className="flex items-center justify-center py-20">
         <p className="text-zinc-400">Briefing not available.</p>
@@ -101,9 +98,9 @@ export function BriefingPlayer() {
   return (
     <div className="flex flex-col items-center justify-center min-h-[70vh] gap-6 px-4">
       {/* Artwork */}
-      {request.podcastImageUrl ? (
+      {item.podcast.imageUrl ? (
         <img
-          src={request.podcastImageUrl}
+          src={item.podcast.imageUrl}
           alt=""
           className="w-48 h-48 rounded-2xl object-cover shadow-lg"
         />
@@ -114,17 +111,16 @@ export function BriefingPlayer() {
       {/* Title info */}
       <div className="text-center">
         <h1 className="text-lg font-bold">
-          {request.episodeTitle || "Briefing"}
+          {item.episode.title || "Briefing"}
         </h1>
-        {request.podcastTitle && (
-          <p className="text-sm text-zinc-400 mt-1">{request.podcastTitle}</p>
-        )}
+        <p className="text-sm text-zinc-400 mt-1">{item.podcast.title}</p>
+        <p className="text-xs text-zinc-500 mt-1">{item.durationTier}m briefing</p>
       </div>
 
       {/* Audio element */}
       <audio
         ref={audioRef}
-        src={request.briefing.audioUrl}
+        src={item.clip.audioUrl}
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
         onEnded={() => setIsPlaying(false)}

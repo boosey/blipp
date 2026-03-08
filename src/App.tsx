@@ -61,7 +61,8 @@ export default function App() {
         <Route path="/discover/:podcastId" element={<PodcastDetail />} />
         <Route path="/library" element={<LibraryPage />} />
         <Route path="/settings" element={<Settings />} />
-        <Route path="/briefing/:requestId" element={<BriefingPlayer />} />
+        <Route path="/play/:feedItemId" element={<BriefingPlayer />} />
+        <Route path="/briefing/:requestId" element={<Navigate to="/home" replace />} />
       </Route>
 
       {/* Admin routes */}
