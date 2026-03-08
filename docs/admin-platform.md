@@ -41,18 +41,18 @@ Episode browser with search, filter, and sort. Pipeline status per episode. Epis
 
 ### 5. Briefings (`/admin/briefings`)
 
-Briefing list with filters (user, status, sort). Quality metrics including time-fit accuracy and segment balance. Briefing detail with segment breakdown.
+Briefing list with filters (user, status, sort). Each briefing card shows user info, clip status, duration tier, actual seconds, podcast/episode info, and feed item count. Briefing detail shows clip metadata (podcast image, episode/podcast title, duration stats), audio link, ad audio section (if present), and linked feed items table.
 
 ### 6. Users (`/admin/users`)
 
-User management with segments: all, power users, at risk, trial ending, never active. User list with badges. User detail showing subscriptions and recent briefings. Admin toggle and tier management.
+User management with segments: all, power users, at risk, trial ending, never active. User list with badges. User detail showing subscriptions and recent feed items (activity tab). Admin toggle and tier management.
 
 ### 7. Analytics (`/admin/analytics`)
 
 Four analytics views:
 
 - **Costs** — Daily cost chart by stage, period comparison
-- **Usage** — Briefing/episode/user trends, tier distribution, peak times
+- **Usage** — Feed item/episode/user trends, tier distribution, peak times
 - **Quality** — Time-fitting accuracy, claim coverage, transcription coverage, daily trend
 - **Pipeline** — Throughput, success rates, processing speed, bottlenecks
 

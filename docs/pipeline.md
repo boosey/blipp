@@ -46,8 +46,8 @@ Blipp uses a **demand-driven pipeline** to transform podcast episodes into audio
                   +----------------+
                            |
                            v
-                  FeedItems updated
-                  to READY + clipId
+                  Briefings created,
+                  FeedItems READY
 ```
 
 ### Stage Details
@@ -58,7 +58,7 @@ Blipp uses a **demand-driven pipeline** to transform podcast episodes into audio
 | 2. Transcription | `transcription` | Three-tier waterfall: RSS feed URL → Podcast Index API → Whisper STT (with chunking for >25MB) |
 | 3. Distillation | `distillation` | Uses Claude to extract scored claims from transcript |
 | 4. Clip Generation | `clip-generation` | Generates narrative text + TTS audio for an (episode, durationTier) pair |
-| 5. Briefing Assembly | `briefing-assembly` | Updates FeedItems to READY with clipId (no longer concatenates audio) |
+| 5. Briefing Assembly | `briefing-assembly` | Creates per-user Briefing records wrapping shared Clips, updates FeedItems to READY with briefingId |
 
 ---
 
@@ -128,13 +128,13 @@ Subscription auto / On-demand / Admin test
 COMPLETED   FAILED
     |
     v
-FeedItems updated to READY with clipId
+Briefings created, FeedItems READY
 ```
 
 - **Created by:** Subscription auto (feed refresh), on-demand (`POST /api/briefings/generate`), or admin test (`POST /api/admin/requests/test-briefing`)
 - **Evaluate:** Orchestrator resolves request items (`useLatest` becomes actual `episodeId`), creates PipelineJobs
 - **Completion:** When all jobs finish (or fail), assembly is dispatched
-- **Assembly:** Updates linked FeedItems to READY status with clipId on success, FAILED on failure (no longer creates Briefing/BriefingSegment records or concatenates audio)
+- **Assembly:** Creates per-user Briefing records (upsert on `userId + clipId`) wrapping shared Clips, then updates linked FeedItems to READY with `briefingId` on success, FAILED on failure
 
 ---
 
@@ -357,7 +357,7 @@ Key behaviors:
 | `worker/lib/ai-models.ts` | AI model registry + `getModelConfig()` helper |
 | `worker/queues/distillation.ts` | Stage 3: Claude claim extraction |
 | `worker/queues/clip-generation.ts` | Stage 4: narrative + TTS |
-| `worker/queues/briefing-assembly.ts` | Stage 5: final audio assembly |
+| `worker/queues/briefing-assembly.ts` | Stage 5: Briefing creation + FeedItem linking |
 | `worker/queues/feed-refresh.ts` | Stage 1: RSS polling |
 | `worker/lib/config.ts` | Runtime config helper with TTL cache |
 | `worker/index.ts` | Worker entry point (queue routing) |

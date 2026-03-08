@@ -88,7 +88,7 @@ All three handlers pass the environment through `shimQueuesForLocalDev()` which 
 | `TRANSCRIPTION_QUEUE` | Queue | Stage 2: Transcript fetching |
 | `DISTILLATION_QUEUE` | Queue | Stage 3: Claim extraction via Claude |
 | `CLIP_GENERATION_QUEUE` | Queue | Stage 4: TTS via OpenAI |
-| `BRIEFING_ASSEMBLY_QUEUE` | Queue | Stage 5: MP3 concatenation |
+| `BRIEFING_ASSEMBLY_QUEUE` | Queue | Stage 5: Briefing creation + FeedItem linking |
 | `ORCHESTRATOR_QUEUE` | Queue | Pipeline coordination |
 | `CLERK_SECRET_KEY` | string | Clerk authentication |
 | `CLERK_PUBLISHABLE_KEY` | string | Clerk frontend auth |
@@ -108,7 +108,7 @@ All three handlers pass the environment through `shimQueuesForLocalDev()` which 
 | transcription | `TRANSCRIPTION_QUEUE` | 5 | 3 | 2 - Transcript fetch |
 | distillation | `DISTILLATION_QUEUE` | 5 | 3 | 3 - Claim extraction |
 | clip-generation | `CLIP_GENERATION_QUEUE` | 3 | 3 | 4 - TTS generation |
-| briefing-assembly | `BRIEFING_ASSEMBLY_QUEUE` | 5 | 3 | 5 - MP3 assembly |
+| briefing-assembly | `BRIEFING_ASSEMBLY_QUEUE` | 5 | 3 | 5 - Briefing creation |
 | orchestrator | `ORCHESTRATOR_QUEUE` | 10 | 3 | Coordination |
 
 ### Pipeline Architecture
@@ -119,7 +119,7 @@ The pipeline is **demand-driven**: only feed refresh runs on a cron schedule. Al
 2. **Transcription (Stage 2)** -- Three-tier transcript waterfall: (1) RSS feed transcript URL, (2) Podcast Index API lookup by episode GUID, (3) Whisper STT with chunked transcription for files over 25MB.
 3. **Distillation (Stage 3)** -- Sends transcript to Anthropic Claude for claim extraction and narrative generation. Stores results in Distillation model.
 4. **Clip Generation (Stage 4)** -- Generates audio clips via OpenAI gpt-4o-mini-tts. Stores MP3s in R2, metadata in Clip model.
-5. **Briefing Assembly (Stage 5)** -- Updates FeedItems linked to the request: sets status to READY with clipId on success, FAILED on failure.
+5. **Briefing Assembly (Stage 5)** -- Creates per-user Briefing records wrapping shared Clips, then updates FeedItems to READY with briefingId on success, FAILED on failure.
 
 ### Orchestrator
 
@@ -365,7 +365,7 @@ blipp/
       transcription.ts    # Stage 2: Transcript fetching
       distillation.ts     # Stage 3: Claude claim extraction
       clip-generation.ts  # Stage 4: OpenAI TTS
-      briefing-assembly.ts # Stage 5: MP3 assembly
+      briefing-assembly.ts # Stage 5: Briefing creation + FeedItem linking
       orchestrator.ts     # Pipeline coordination
     lib/
       db.ts               # PrismaClient factory (Hyperdrive)

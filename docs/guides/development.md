@@ -298,8 +298,7 @@ The app is configured as a Progressive Web App via `vite-plugin-pwa`:
 | Branch | Purpose |
 |--------|---------|
 | `main` | Production baseline |
-| `feat/user-app` | User-facing app + pipeline improvements |
-| `moonchild-admin-ui` | Active admin platform + demand-driven pipeline (worktree) |
+| `feat/subscriptions-feed` | Subscriptions, feed, Briefing model, admin UI updates (worktree) |
 
 Feature branches and large redesigns use git worktrees (`.claude/worktrees/`).
 
