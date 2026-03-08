@@ -68,7 +68,10 @@ describe("PodcastCard", () => {
     await waitFor(() => {
       expect(mockApiFetch).toHaveBeenCalledWith(
         "/podcasts/subscribe",
-        expect.objectContaining({ method: "POST" })
+        expect.objectContaining({
+          method: "POST",
+          body: expect.stringContaining('"durationTier":5'),
+        })
       );
     });
     expect(onToggle).toHaveBeenCalled();

@@ -46,6 +46,7 @@ export function PodcastCard({
             imageUrl,
             podcastIndexId: id,
             author,
+            durationTier: 5,
           }),
         });
       }
