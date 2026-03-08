@@ -4,6 +4,7 @@ import { useFetch } from "../lib/use-fetch";
 interface SubscribedPodcast {
   id: string;
   podcastId: string;
+  durationTier: number | null;
   podcast: {
     id: string;
     title: string;
@@ -45,15 +46,22 @@ export function LibraryPage() {
             to={`/discover/${sub.podcast.id}`}
             className="flex flex-col items-center gap-2"
           >
-            {sub.podcast.imageUrl ? (
-              <img
-                src={sub.podcast.imageUrl}
-                alt={sub.podcast.title}
-                className="w-full aspect-square rounded-lg object-cover"
-              />
-            ) : (
-              <div className="w-full aspect-square rounded-lg bg-zinc-800" />
-            )}
+            <div className="relative w-full">
+              {sub.podcast.imageUrl ? (
+                <img
+                  src={sub.podcast.imageUrl}
+                  alt={sub.podcast.title}
+                  className="w-full aspect-square rounded-lg object-cover"
+                />
+              ) : (
+                <div className="w-full aspect-square rounded-lg bg-zinc-800" />
+              )}
+              {sub.durationTier && (
+                <span className="absolute bottom-1 right-1 text-[10px] font-medium bg-zinc-950/80 text-zinc-300 px-1.5 py-0.5 rounded">
+                  {sub.durationTier}m
+                </span>
+              )}
+            </div>
             <p className="text-xs text-center font-medium truncate w-full">
               {sub.podcast.title}
             </p>
