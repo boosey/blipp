@@ -20,30 +20,3 @@ export interface EpisodeSummary {
   publishedAt: string;
   durationSeconds: number | null;
 }
-
-/** Briefing request as seen by the user */
-export interface UserRequest {
-  id: string;
-  status: "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED";
-  targetMinutes: number;
-  createdAt: string;
-  briefingId: string | null;
-  podcastTitle: string | null;
-  podcastImageUrl: string | null;
-  episodeTitle: string | null;
-}
-
-/** User-friendly status label */
-export type RequestStatusLabel = "Creating" | "Complete" | "Error";
-
-export function toStatusLabel(status: UserRequest["status"]): RequestStatusLabel {
-  switch (status) {
-    case "PENDING":
-    case "PROCESSING":
-      return "Creating";
-    case "COMPLETED":
-      return "Complete";
-    case "FAILED":
-      return "Error";
-  }
-}
