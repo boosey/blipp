@@ -1,7 +1,35 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import { useApiFetch } from "../lib/api";
+import { DURATION_TIERS } from "../lib/duration-tiers";
 import type { PodcastDetail as PodcastDetailType, EpisodeSummary } from "../types/user";
+import type { DurationTier } from "../lib/duration-tiers";
+
+function TierPicker({
+  selected,
+  onSelect,
+}: {
+  selected: DurationTier | null;
+  onSelect: (tier: DurationTier) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {DURATION_TIERS.map((tier) => (
+        <button
+          key={tier}
+          onClick={() => onSelect(tier)}
+          className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+            selected === tier
+              ? "bg-white text-zinc-950"
+              : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
+          }`}
+        >
+          {tier}m
+        </button>
+      ))}
+    </div>
+  );
+}
 
 export function PodcastDetail() {
   const { podcastId } = useParams<{ podcastId: string }>();
@@ -11,6 +39,8 @@ export function PodcastDetail() {
   const [loading, setLoading] = useState(true);
   const [subscribing, setSubscribing] = useState(false);
   const [requestingEpisodeId, setRequestingEpisodeId] = useState<string | null>(null);
+  const [showSubscribeTierPicker, setShowSubscribeTierPicker] = useState(false);
+  const [briefTierPickerEpisodeId, setBriefTierPickerEpisodeId] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     if (!podcastId) return;
@@ -32,37 +62,55 @@ export function PodcastDetail() {
     fetchData();
   }, [fetchData]);
 
-  async function handleSubscribeToggle() {
+  async function handleSubscribeWithTier(tier: DurationTier) {
     if (!podcast) return;
     setSubscribing(true);
+    setShowSubscribeTierPicker(false);
     try {
-      if (podcast.isSubscribed) {
-        await apiFetch(`/podcasts/subscribe/${podcast.id}`, { method: "DELETE" });
-      } else {
-        await apiFetch("/podcasts/subscribe", {
-          method: "POST",
-          body: JSON.stringify({
-            feedUrl: podcast.feedUrl,
-            title: podcast.title,
-            description: podcast.description,
-            imageUrl: podcast.imageUrl,
-            podcastIndexId: podcast.podcastIndexId,
-            author: podcast.author,
-          }),
-        });
-      }
-      setPodcast((prev) => prev ? { ...prev, isSubscribed: !prev.isSubscribed } : prev);
+      await apiFetch("/podcasts/subscribe", {
+        method: "POST",
+        body: JSON.stringify({
+          feedUrl: podcast.feedUrl,
+          title: podcast.title,
+          description: podcast.description,
+          imageUrl: podcast.imageUrl,
+          podcastIndexId: podcast.podcastIndexId,
+          author: podcast.author,
+          durationTier: tier,
+        }),
+      });
+      setPodcast((prev) =>
+        prev
+          ? { ...prev, isSubscribed: true, subscriptionDurationTier: tier }
+          : prev
+      );
     } finally {
       setSubscribing(false);
     }
   }
 
-  async function handleCreateBriefing(episodeId: string) {
+  async function handleUnsubscribe() {
+    if (!podcast) return;
+    setSubscribing(true);
+    try {
+      await apiFetch(`/podcasts/subscribe/${podcast.id}`, { method: "DELETE" });
+      setPodcast((prev) =>
+        prev
+          ? { ...prev, isSubscribed: false, subscriptionDurationTier: null }
+          : prev
+      );
+    } finally {
+      setSubscribing(false);
+    }
+  }
+
+  async function handleCreateBriefing(episodeId: string, tier: DurationTier) {
     setRequestingEpisodeId(episodeId);
+    setBriefTierPickerEpisodeId(null);
     try {
       await apiFetch("/briefings/generate", {
         method: "POST",
-        body: JSON.stringify({ episodeId }),
+        body: JSON.stringify({ podcastId, episodeId, durationTier: tier }),
       });
     } finally {
       setRequestingEpisodeId(null);
@@ -112,21 +160,44 @@ export function PodcastDetail() {
           <p className="text-xs text-zinc-500 mt-1">
             {podcast.episodeCount} episodes
           </p>
-          <button
-            onClick={handleSubscribeToggle}
-            disabled={subscribing}
-            className={`mt-2 px-4 py-1.5 rounded-full text-xs font-medium transition-colors ${
-              podcast.isSubscribed
-                ? "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
-                : "bg-white text-zinc-950 hover:bg-zinc-200"
-            } disabled:opacity-50`}
-          >
-            {subscribing
-              ? "..."
-              : podcast.isSubscribed
-                ? "Subscribed"
-                : "Subscribe"}
-          </button>
+
+          {/* Subscribe / Subscribed button */}
+          {podcast.isSubscribed ? (
+            <div className="flex items-center gap-2 mt-2">
+              <button
+                onClick={handleUnsubscribe}
+                disabled={subscribing}
+                className="px-4 py-1.5 rounded-full text-xs font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors disabled:opacity-50"
+              >
+                {subscribing ? "..." : "Subscribed"}
+              </button>
+              {podcast.subscriptionDurationTier && (
+                <span className="text-[10px] text-zinc-500 bg-zinc-800 px-1.5 py-0.5 rounded">
+                  {podcast.subscriptionDurationTier}m
+                </span>
+              )}
+            </div>
+          ) : (
+            <div className="mt-2">
+              {showSubscribeTierPicker ? (
+                <div className="space-y-2">
+                  <p className="text-xs text-zinc-400">Briefing length:</p>
+                  <TierPicker
+                    selected={null}
+                    onSelect={handleSubscribeWithTier}
+                  />
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowSubscribeTierPicker(true)}
+                  disabled={subscribing}
+                  className="px-4 py-1.5 rounded-full text-xs font-medium bg-white text-zinc-950 hover:bg-zinc-200 transition-colors disabled:opacity-50"
+                >
+                  {subscribing ? "..." : "Subscribe"}
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -163,13 +234,25 @@ export function PodcastDetail() {
                       )}
                     </div>
                   </div>
-                  <button
-                    onClick={() => handleCreateBriefing(ep.id)}
-                    disabled={requestingEpisodeId === ep.id}
-                    className="px-3 py-1.5 bg-white text-zinc-950 rounded text-xs font-medium hover:bg-zinc-200 transition-colors disabled:opacity-50 flex-shrink-0"
-                  >
-                    {requestingEpisodeId === ep.id ? "..." : "Brief"}
-                  </button>
+                  {requestingEpisodeId === ep.id ? (
+                    <span className="text-xs text-zinc-500 px-3 py-1.5">
+                      ...
+                    </span>
+                  ) : briefTierPickerEpisodeId === ep.id ? (
+                    <div className="flex-shrink-0">
+                      <TierPicker
+                        selected={null}
+                        onSelect={(tier) => handleCreateBriefing(ep.id, tier)}
+                      />
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setBriefTierPickerEpisodeId(ep.id)}
+                      className="px-3 py-1.5 bg-white text-zinc-950 rounded text-xs font-medium hover:bg-zinc-200 transition-colors flex-shrink-0"
+                    >
+                      Brief
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
