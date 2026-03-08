@@ -9,6 +9,7 @@ export interface PodcastDetail {
   podcastIndexId: string | null;
   episodeCount: number;
   isSubscribed: boolean;
+  subscriptionDurationTier: number | null;
 }
 
 /** Episode summary for listing */
