@@ -36,14 +36,11 @@ model User {
   stripeCustomerId      String?  @unique
   tier                  UserTier @default(FREE)
   isAdmin               Boolean  @default(false)
-  briefingLengthMinutes Int      @default(15)
-  briefingTime          String   @default("07:00") // HH:MM in user's timezone
-  timezone              String   @default("America/New_York")
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
   subscriptions    Subscription[]
-  briefings        Briefing[]
+  feedItems        FeedItem[]
   briefingRequests BriefingRequest[]
 }
 
@@ -74,6 +71,7 @@ model Podcast {
 
   episodes      Episode[]
   subscriptions Subscription[]
+  feedItems     FeedItem[]
 }
 
 model Episode {
@@ -94,6 +92,7 @@ model Episode {
   clips        Clip[]
   pipelineJobs PipelineJob[]
   workProducts WorkProduct[]
+  feedItems    FeedItem[]
 
   @@unique([podcastId, guid])
 }
@@ -155,10 +154,12 @@ enum ClipStatus {
 // ── User Subscriptions ──
 
 model Subscription {
-  id        String   @id @default(cuid())
-  userId    String
-  podcastId String
-  createdAt DateTime @default(now())
+  id           String   @id @default(cuid())
+  userId       String
+  podcastId    String
+  durationTier Int      // 1, 2, 3, 5, 7, 10, or 15 (minutes)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   podcast Podcast @relation(fields: [podcastId], references: [id], onDelete: Cascade)
@@ -166,41 +167,41 @@ model Subscription {
   @@unique([userId, podcastId])
 }
 
-// ── Briefings ──
+// ── Feed Items ──
 
-model Briefing {
-  id            String         @id @default(cuid())
-  userId        String
-  status        BriefingStatus @default(PENDING)
-  targetMinutes Int
-  actualSeconds Int?
-  audioUrl      String?
-  audioKey      String? // R2 key: briefings/{userId}/{date}.mp3
-  errorMessage  String?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+model FeedItem {
+  id           String         @id @default(cuid())
+  userId       String
+  episodeId    String
+  podcastId    String
+  clipId       String?
+  durationTier Int
+  source       FeedItemSource
+  status       FeedItemStatus @default(PENDING)
+  listened     Boolean        @default(false)
+  listenedAt   DateTime?
+  requestId    String?
+  errorMessage String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
 
-  user     User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  segments BriefingSegment[]
-  request  BriefingRequest?
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  episode Episode @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  podcast Podcast @relation(fields: [podcastId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, episodeId, durationTier])
 }
 
-enum BriefingStatus {
+enum FeedItemSource {
+  SUBSCRIPTION
+  ON_DEMAND
+}
+
+enum FeedItemStatus {
   PENDING
-  ASSEMBLING
-  GENERATING_AUDIO
-  COMPLETED
+  PROCESSING
+  READY
   FAILED
-}
-
-model BriefingSegment {
-  id             String @id @default(cuid())
-  briefingId     String
-  clipId         String
-  orderIndex     Int
-  transitionText String // "Next, from podcast X..."
-
-  briefing Briefing @relation(fields: [briefingId], references: [id], onDelete: Cascade)
 }
 
 // ── Admin: Pipeline Job Lifecycle ──
@@ -276,14 +277,12 @@ model BriefingRequest {
   targetMinutes Int
   items         Json                 // BriefingRequestItem[]
   isTest        Boolean              @default(false)
-  briefingId    String?              @unique
   errorMessage  String?
   createdAt     DateTime             @default(now())
   updatedAt     DateTime             @updatedAt
 
-  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  briefing Briefing?      @relation(fields: [briefingId], references: [id])
-  jobs     PipelineJob[]
+  user User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobs PipelineJob[]
 }
 
 enum BriefingRequestStatus {
