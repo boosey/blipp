@@ -69,22 +69,24 @@ beforeEach(() => {
 });
 
 describe("handleFeedRefresh", () => {
-  it("should fetch feeds, create episodes, and queue distillation", async () => {
+  it("should fetch feeds and create episodes for specific podcast", async () => {
     const podcast = {
       id: "pod-1",
       feedUrl: "https://example.com/feed.xml",
       title: "Test",
     };
     mockPrisma.podcast.findMany.mockResolvedValue([podcast]);
+    // Return episode with old createdAt (not new)
     mockPrisma.episode.upsert.mockResolvedValue({
       id: "ep-1",
       podcastId: "pod-1",
       guid: "guid-1",
+      createdAt: new Date("2026-01-01"),
     });
     mockPrisma.podcast.update.mockResolvedValue(podcast);
 
     const mockMsg = {
-      body: { type: "cron" },
+      body: { type: "manual", podcastId: "pod-1" },
       ack: vi.fn(),
       retry: vi.fn(),
     };
@@ -100,9 +102,6 @@ describe("handleFeedRefresh", () => {
 
     // Verify episode was created
     expect(mockPrisma.episode.upsert).toHaveBeenCalled();
-
-    // Feed refresh no longer auto-chains to distillation (demand-driven)
-    expect(mockEnv.DISTILLATION_QUEUE.send).not.toHaveBeenCalled();
 
     // Verify message was acked
     expect(mockMsg.ack).toHaveBeenCalled();
@@ -137,11 +136,12 @@ describe("handleFeedRefresh", () => {
       id: "ep-2",
       podcastId: "pod-2",
       guid: "guid-1",
+      createdAt: new Date("2026-01-01"),
     });
     mockPrisma.podcast.update.mockResolvedValue(podcast2);
 
     const mockMsg = {
-      body: { type: "cron" },
+      body: { type: "manual", podcastId: "pod-1" },
       ack: vi.fn(),
       retry: vi.fn(),
     };
@@ -155,48 +155,6 @@ describe("handleFeedRefresh", () => {
     // Second podcast should still be processed
     expect(mockPrisma.episode.upsert).toHaveBeenCalled();
     expect(mockMsg.ack).toHaveBeenCalled();
-  });
-
-  it("should not queue distillation for episodes without transcripts", async () => {
-    // Override mock to return episodes without transcriptUrl
-    const { parseRssFeed } = await import("../../lib/rss-parser");
-    (parseRssFeed as any).mockReturnValueOnce({
-      title: "Test",
-      description: null,
-      imageUrl: null,
-      author: null,
-      episodes: [
-        {
-          title: "Ep No Transcript",
-          description: "",
-          audioUrl: "https://example.com/ep.mp3",
-          publishedAt: new Date().toISOString(),
-          durationSeconds: 1800,
-          guid: "guid-no-transcript",
-          transcriptUrl: null,
-        },
-      ],
-    });
-
-    mockPrisma.podcast.findMany.mockResolvedValue([
-      { id: "pod-1", feedUrl: "https://example.com/feed.xml" },
-    ]);
-    mockPrisma.episode.upsert.mockResolvedValue({ id: "ep-nt" });
-    mockPrisma.podcast.update.mockResolvedValue({});
-
-    const mockMsg = {
-      body: { type: "cron" },
-      ack: vi.fn(),
-      retry: vi.fn(),
-    };
-    const mockBatch = {
-      messages: [mockMsg],
-      queue: "feed-refresh",
-    } as unknown as MessageBatch;
-
-    await handleFeedRefresh(mockBatch, mockEnv, mockCtx);
-
-    expect(mockEnv.DISTILLATION_QUEUE.send).not.toHaveBeenCalled();
   });
 
   describe("stage-enabled check", () => {
@@ -221,13 +179,15 @@ describe("handleFeedRefresh", () => {
     });
 
     it("bypasses stage-enabled check for manual messages", async () => {
-      // getConfig would return false for stage enabled, but manual bypasses it
       (getConfig as any).mockResolvedValue(true);
 
       mockPrisma.podcast.findMany.mockResolvedValue([
         { id: "pod-1", feedUrl: "https://example.com/feed.xml" },
       ]);
-      mockPrisma.episode.upsert.mockResolvedValue({ id: "ep-1" });
+      mockPrisma.episode.upsert.mockResolvedValue({
+        id: "ep-1",
+        createdAt: new Date("2026-01-01"),
+      });
       mockPrisma.podcast.update.mockResolvedValue({});
 
       const mockMsg = {
@@ -242,7 +202,6 @@ describe("handleFeedRefresh", () => {
 
       await handleFeedRefresh(mockBatch, mockEnv, mockCtx);
 
-      // Should process even though it's a manual message — stage check is skipped
       expect(mockPrisma.podcast.findMany).toHaveBeenCalled();
       expect(mockMsg.ack).toHaveBeenCalled();
     });
@@ -254,7 +213,10 @@ describe("handleFeedRefresh", () => {
 
       const podcast = { id: "pod-1", feedUrl: "https://example.com/feed.xml" };
       mockPrisma.podcast.findMany.mockResolvedValue([podcast]);
-      mockPrisma.episode.upsert.mockResolvedValue({ id: "ep-1" });
+      mockPrisma.episode.upsert.mockResolvedValue({
+        id: "ep-1",
+        createdAt: new Date("2026-01-01"),
+      });
       mockPrisma.podcast.update.mockResolvedValue(podcast);
 
       const mockMsg = {
@@ -275,12 +237,20 @@ describe("handleFeedRefresh", () => {
       });
     });
 
-    it("fetches all podcasts when message has no podcastId (cron)", async () => {
+    it("fetches only subscribed podcasts when fetchAll (cron)", async () => {
       (getConfig as any).mockResolvedValue(true);
+
+      // Subscription query returns one subscribed podcast
+      mockPrisma.subscription.findMany.mockResolvedValue([
+        { podcastId: "pod-1" },
+      ]);
 
       const podcast = { id: "pod-1", feedUrl: "https://example.com/feed.xml" };
       mockPrisma.podcast.findMany.mockResolvedValue([podcast]);
-      mockPrisma.episode.upsert.mockResolvedValue({ id: "ep-1" });
+      mockPrisma.episode.upsert.mockResolvedValue({
+        id: "ep-1",
+        createdAt: new Date("2026-01-01"),
+      });
       mockPrisma.podcast.update.mockResolvedValue(podcast);
 
       const mockMsg = {
@@ -295,40 +265,229 @@ describe("handleFeedRefresh", () => {
 
       await handleFeedRefresh(mockBatch, mockEnv, mockCtx);
 
-      // Should fetch all podcasts (no where clause)
-      expect(mockPrisma.podcast.findMany).toHaveBeenCalledWith();
+      // Should query subscriptions first
+      expect(mockPrisma.subscription.findMany).toHaveBeenCalledWith({
+        select: { podcastId: true },
+        distinct: ["podcastId"],
+      });
+
+      // Then fetch only subscribed podcasts
+      expect(mockPrisma.podcast.findMany).toHaveBeenCalledWith({
+        where: { id: { in: ["pod-1"] } },
+      });
     });
 
-    it("fetches all when batch contains a mix of cron and podcast-specific messages", async () => {
+    it("skips podcast fetch when no subscriptions exist (cron)", async () => {
       (getConfig as any).mockResolvedValue(true);
 
-      mockPrisma.podcast.findMany.mockResolvedValue([]);
+      mockPrisma.subscription.findMany.mockResolvedValue([]);
 
-      const cronMsg = {
+      const mockMsg = {
         body: { type: "cron" },
         ack: vi.fn(),
         retry: vi.fn(),
       };
-      const podcastMsg = {
-        body: { type: "manual", podcastId: "pod-1" },
-        ack: vi.fn(),
-        retry: vi.fn(),
-      };
       const mockBatch = {
-        messages: [cronMsg, podcastMsg],
+        messages: [mockMsg],
         queue: "feed-refresh",
       } as unknown as MessageBatch;
 
       await handleFeedRefresh(mockBatch, mockEnv, mockCtx);
 
-      // Should fetch all because at least one message lacks podcastId
-      expect(mockPrisma.podcast.findMany).toHaveBeenCalledWith();
+      // No podcast fetch when no subscriptions
+      expect(mockPrisma.podcast.findMany).not.toHaveBeenCalled();
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(mockMsg.ack).toHaveBeenCalled();
+    });
+  });
+
+  describe("subscriber notification on new episodes", () => {
+    it("creates FeedItems and dispatches pipeline for new episodes with subscribers", async () => {
+      (getConfig as any).mockResolvedValue(true);
+
+      const podcast = { id: "pod-1", feedUrl: "https://example.com/feed.xml" };
+      mockPrisma.podcast.findMany.mockResolvedValue([podcast]);
+
+      // Episode is "new" (createdAt within 60 seconds)
+      mockPrisma.episode.upsert.mockResolvedValue({
+        id: "ep-new",
+        podcastId: "pod-1",
+        guid: "guid-1",
+        createdAt: new Date(), // just created
+      });
+
+      // Two subscribers at different tiers
+      mockPrisma.subscription.findMany.mockResolvedValue([
+        { userId: "user-1", podcastId: "pod-1", durationTier: 5 },
+        { userId: "user-2", podcastId: "pod-1", durationTier: 5 },
+        { userId: "user-3", podcastId: "pod-1", durationTier: 10 },
+      ]);
+
+      mockPrisma.feedItem.upsert.mockResolvedValue({});
+      mockPrisma.briefingRequest.create
+        .mockResolvedValueOnce({ id: "req-tier5" })
+        .mockResolvedValueOnce({ id: "req-tier10" });
+      mockPrisma.feedItem.updateMany.mockResolvedValue({ count: 2 });
+      mockPrisma.podcast.update.mockResolvedValue(podcast);
+
+      const mockMsg = {
+        body: { type: "manual", podcastId: "pod-1" },
+        ack: vi.fn(),
+        retry: vi.fn(),
+      };
+      const mockBatch = {
+        messages: [mockMsg],
+        queue: "feed-refresh",
+      } as unknown as MessageBatch;
+
+      await handleFeedRefresh(mockBatch, mockEnv, mockCtx);
+
+      // FeedItems created for each subscriber
+      expect(mockPrisma.feedItem.upsert).toHaveBeenCalledTimes(3);
+
+      // One BriefingRequest per tier
+      expect(mockPrisma.briefingRequest.create).toHaveBeenCalledTimes(2);
+
+      // FeedItems linked to requests
+      expect(mockPrisma.feedItem.updateMany).toHaveBeenCalledTimes(2);
+
+      // Dispatched to orchestrator for each tier
+      expect(mockEnv.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledTimes(2);
+      expect(mockEnv.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith({
+        requestId: "req-tier5",
+        action: "evaluate",
+      });
+      expect(mockEnv.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith({
+        requestId: "req-tier10",
+        action: "evaluate",
+      });
+
+      expect(mockMsg.ack).toHaveBeenCalled();
+    });
+
+    it("does not create FeedItems for existing (non-new) episodes", async () => {
+      (getConfig as any).mockResolvedValue(true);
+
+      const podcast = { id: "pod-1", feedUrl: "https://example.com/feed.xml" };
+      mockPrisma.podcast.findMany.mockResolvedValue([podcast]);
+
+      // Episode already existed (createdAt is old)
+      mockPrisma.episode.upsert.mockResolvedValue({
+        id: "ep-old",
+        podcastId: "pod-1",
+        guid: "guid-1",
+        createdAt: new Date("2025-01-01"),
+      });
+      mockPrisma.podcast.update.mockResolvedValue(podcast);
+
+      const mockMsg = {
+        body: { type: "manual", podcastId: "pod-1" },
+        ack: vi.fn(),
+        retry: vi.fn(),
+      };
+      const mockBatch = {
+        messages: [mockMsg],
+        queue: "feed-refresh",
+      } as unknown as MessageBatch;
+
+      await handleFeedRefresh(mockBatch, mockEnv, mockCtx);
+
+      // No subscriber queries or FeedItem creation
+      expect(mockPrisma.subscription.findMany).not.toHaveBeenCalled();
+      expect(mockPrisma.feedItem.upsert).not.toHaveBeenCalled();
+      expect(mockPrisma.briefingRequest.create).not.toHaveBeenCalled();
+      expect(mockEnv.ORCHESTRATOR_QUEUE.send).not.toHaveBeenCalled();
+    });
+
+    it("skips subscriber notification when no subscriptions for podcast", async () => {
+      (getConfig as any).mockResolvedValue(true);
+
+      const podcast = { id: "pod-1", feedUrl: "https://example.com/feed.xml" };
+      mockPrisma.podcast.findMany.mockResolvedValue([podcast]);
+
+      mockPrisma.episode.upsert.mockResolvedValue({
+        id: "ep-new",
+        podcastId: "pod-1",
+        guid: "guid-1",
+        createdAt: new Date(),
+      });
+      mockPrisma.subscription.findMany.mockResolvedValue([]);
+      mockPrisma.podcast.update.mockResolvedValue(podcast);
+
+      const mockMsg = {
+        body: { type: "manual", podcastId: "pod-1" },
+        ack: vi.fn(),
+        retry: vi.fn(),
+      };
+      const mockBatch = {
+        messages: [mockMsg],
+        queue: "feed-refresh",
+      } as unknown as MessageBatch;
+
+      await handleFeedRefresh(mockBatch, mockEnv, mockCtx);
+
+      expect(mockPrisma.feedItem.upsert).not.toHaveBeenCalled();
+      expect(mockPrisma.briefingRequest.create).not.toHaveBeenCalled();
+    });
+
+    it("groups subscribers by durationTier for efficient pipeline requests", async () => {
+      (getConfig as any).mockResolvedValue(true);
+
+      const podcast = { id: "pod-1", feedUrl: "https://example.com/feed.xml" };
+      mockPrisma.podcast.findMany.mockResolvedValue([podcast]);
+
+      mockPrisma.episode.upsert.mockResolvedValue({
+        id: "ep-new",
+        podcastId: "pod-1",
+        guid: "guid-1",
+        createdAt: new Date(),
+      });
+
+      // 3 subscribers: 2 at tier 5, 1 at tier 10
+      mockPrisma.subscription.findMany.mockResolvedValue([
+        { userId: "user-1", podcastId: "pod-1", durationTier: 5 },
+        { userId: "user-2", podcastId: "pod-1", durationTier: 5 },
+        { userId: "user-3", podcastId: "pod-1", durationTier: 10 },
+      ]);
+
+      mockPrisma.feedItem.upsert.mockResolvedValue({});
+      mockPrisma.briefingRequest.create
+        .mockResolvedValueOnce({ id: "req-5" })
+        .mockResolvedValueOnce({ id: "req-10" });
+      mockPrisma.feedItem.updateMany.mockResolvedValue({ count: 2 });
+      mockPrisma.podcast.update.mockResolvedValue(podcast);
+
+      const mockMsg = {
+        body: { type: "manual", podcastId: "pod-1" },
+        ack: vi.fn(),
+        retry: vi.fn(),
+      };
+      const mockBatch = {
+        messages: [mockMsg],
+        queue: "feed-refresh",
+      } as unknown as MessageBatch;
+
+      await handleFeedRefresh(mockBatch, mockEnv, mockCtx);
+
+      // BriefingRequest anchored to first user in each tier group
+      expect(mockPrisma.briefingRequest.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          userId: "user-1",
+          targetMinutes: 5,
+        }),
+      });
+      expect(mockPrisma.briefingRequest.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          userId: "user-3",
+          targetMinutes: 10,
+        }),
+      });
     });
   });
 
   describe("structured logging", () => {
     it("should log batch_start", async () => {
-      mockPrisma.podcast.findMany.mockResolvedValue([]);
+      mockPrisma.subscription.findMany.mockResolvedValue([]);
 
       const mockMsg = {
         body: { type: "cron" },
@@ -363,18 +522,21 @@ describe("handleFeedRefresh", () => {
       expect(mockLogger.info).toHaveBeenCalledWith("stage_disabled", { stage: 1 });
     });
 
-    it("should log podcast_refreshed on success", async () => {
+    it("should log podcast_refreshed with newEpisodes count", async () => {
       const podcast = {
         id: "pod-1",
         feedUrl: "https://example.com/feed.xml",
         title: "Test",
       };
       mockPrisma.podcast.findMany.mockResolvedValue([podcast]);
-      mockPrisma.episode.upsert.mockResolvedValue({ id: "ep-1" });
+      mockPrisma.episode.upsert.mockResolvedValue({
+        id: "ep-1",
+        createdAt: new Date("2026-01-01"),
+      });
       mockPrisma.podcast.update.mockResolvedValue(podcast);
 
       const mockMsg = {
-        body: { type: "cron" },
+        body: { type: "manual", podcastId: "pod-1" },
         ack: vi.fn(),
         retry: vi.fn(),
       };
@@ -388,6 +550,7 @@ describe("handleFeedRefresh", () => {
       expect(mockLogger.info).toHaveBeenCalledWith("podcast_refreshed", {
         podcastId: "pod-1",
         episodesProcessed: 1,
+        newEpisodes: 0,
       });
     });
 
@@ -400,7 +563,7 @@ describe("handleFeedRefresh", () => {
       mockFetch.mockRejectedValueOnce(new Error("Network error"));
 
       const mockMsg = {
-        body: { type: "cron" },
+        body: { type: "manual", podcastId: "pod-1" },
         ack: vi.fn(),
         retry: vi.fn(),
       };
