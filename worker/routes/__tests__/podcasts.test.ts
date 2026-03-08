@@ -134,11 +134,12 @@ describe("Podcast Routes", () => {
     it("should create subscription and return 201", async () => {
       const user = { id: "usr_1", clerkId: "user_test123" };
       const podcast = { id: "pod_1", feedUrl: "https://example.com/feed.xml", title: "Test Pod" };
-      const subscription = { id: "sub_1", userId: "usr_1", podcastId: "pod_1" };
+      const subscription = { id: "sub_1", userId: "usr_1", podcastId: "pod_1", durationTier: 5 };
 
       mockPrisma.user.findUniqueOrThrow.mockResolvedValueOnce(user);
       mockPrisma.podcast.upsert.mockResolvedValueOnce(podcast);
       mockPrisma.subscription.upsert.mockResolvedValueOnce(subscription);
+      mockPrisma.episode.findFirst.mockResolvedValueOnce(null); // no episodes yet
 
       const res = await app.request(
         "/podcasts/subscribe",
@@ -148,6 +149,7 @@ describe("Podcast Routes", () => {
           body: JSON.stringify({
             feedUrl: "https://example.com/feed.xml",
             title: "Test Pod",
+            durationTier: 5,
           }),
         },
         env,
@@ -173,6 +175,23 @@ describe("Podcast Routes", () => {
       );
 
       expect(res.status).toBe(400);
+    });
+
+    it("should return 400 when durationTier is missing", async () => {
+      const res = await app.request(
+        "/podcasts/subscribe",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ feedUrl: "https://example.com/feed.xml", title: "Test" }),
+        },
+        env,
+        mockExCtx
+      );
+
+      expect(res.status).toBe(400);
+      const body: any = await res.json();
+      expect(body.error).toContain("durationTier");
     });
   });
 
