@@ -63,21 +63,44 @@ export async function handleBriefingAssembly(
           failed: failedJobs.length,
         });
 
-        // Update FeedItems linked to this request
+        // Create Briefings and update FeedItems linked to this request
         if (completedJobs.length > 0) {
-          // For each completed job, update matching FeedItems
+          // For each completed job, create Briefing per user and update FeedItems
           for (const job of completedJobs) {
-            await prisma.feedItem.updateMany({
+            // Find all FeedItems for this job's episode+tier under this request
+            const feedItems = await prisma.feedItem.findMany({
               where: {
                 requestId,
                 episodeId: job.episodeId,
                 durationTier: job.durationTier,
               },
-              data: {
-                status: "READY",
-                clipId: job.clipId,
-              },
+              select: { id: true, userId: true },
             });
+
+            for (const fi of feedItems) {
+              // Upsert Briefing (per-user wrapper around shared Clip)
+              const briefing = await prisma.briefing.upsert({
+                where: {
+                  userId_clipId: {
+                    userId: fi.userId,
+                    clipId: job.clipId!,
+                  },
+                },
+                create: {
+                  userId: fi.userId,
+                  clipId: job.clipId!,
+                },
+                update: {},
+              });
+
+              await prisma.feedItem.update({
+                where: { id: fi.id },
+                data: {
+                  status: "READY",
+                  briefingId: briefing.id,
+                },
+              });
+            }
           }
 
           const isPartial = failedJobs.length > 0;

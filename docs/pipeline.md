@@ -46,8 +46,8 @@ Blipp uses a **demand-driven pipeline** to transform podcast episodes into audio
                   +----------------+
                            |
                            v
-                    Final Briefing
-                    Audio (R2)
+                  FeedItems updated
+                  to READY + clipId
 ```
 
 ### Stage Details
@@ -58,7 +58,7 @@ Blipp uses a **demand-driven pipeline** to transform podcast episodes into audio
 | 2. Transcription | `transcription` | Three-tier waterfall: RSS feed URL → Podcast Index API → Whisper STT (with chunking for >25MB) |
 | 3. Distillation | `distillation` | Uses Claude to extract scored claims from transcript |
 | 4. Clip Generation | `clip-generation` | Generates narrative text + TTS audio for an (episode, durationTier) pair |
-| 5. Briefing Assembly | `briefing-assembly` | Combines clips into final briefing audio with transitions |
+| 5. Briefing Assembly | `briefing-assembly` | Updates FeedItems to READY with clipId (no longer concatenates audio) |
 
 ---
 
@@ -114,7 +114,7 @@ TRANSCRIPTION --> DISTILLATION --> CLIP_GENERATION --> (complete)
 ## BriefingRequest Lifecycle
 
 ```
-User/Admin creates request
+Subscription auto / On-demand / Admin test
          |
          v
      PENDING ------> evaluate message sent to orchestrator
@@ -128,13 +128,13 @@ User/Admin creates request
 COMPLETED   FAILED
     |
     v
-Linked to Briefing record
+FeedItems updated to READY with clipId
 ```
 
-- **Created by:** User (`POST /api/briefings/generate`) or admin test (`POST /api/admin/requests/test-briefing`)
+- **Created by:** Subscription auto (feed refresh), on-demand (`POST /api/briefings/generate`), or admin test (`POST /api/admin/requests/test-briefing`)
 - **Evaluate:** Orchestrator resolves request items (`useLatest` becomes actual `episodeId`), creates PipelineJobs
 - **Completion:** When all jobs finish (or fail), assembly is dispatched
-- **Partial assembly:** If some jobs fail, assembly proceeds with successful ones
+- **Assembly:** Updates linked FeedItems to READY status with clipId on success, FAILED on failure (no longer creates Briefing/BriefingSegment records or concatenates audio)
 
 ---
 

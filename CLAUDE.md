@@ -73,7 +73,7 @@ Use factories from `tests/helpers/mocks.ts`: `createMockPrisma()`, `createMockEn
 worker/           — Backend (Hono API + queue handlers)
   index.ts        — Entry point
   types.ts        — Env type
-  routes/         — API routes (public + admin/)
+  routes/         — API routes (public + admin/ + feed)
   queues/         — 6 queue consumers + orchestrator
   middleware/     — auth.ts, admin.ts, prisma.ts
   lib/            — Shared utilities (db, config, admin-helpers, queue-helpers, tts, etc.)

@@ -15,17 +15,9 @@ All routes are served by a Hono app on Cloudflare Workers. The API is mounted at
 | `POST /api/webhooks/*` | Webhook signature verification |
 | `/api/podcasts/*` | Clerk auth (Bearer token) |
 | `/api/briefings/*` | Clerk auth (Bearer token) |
-| `/api/requests/*` | Clerk auth (Bearer token) |
+| `/api/feed/*` | Clerk auth (Bearer token) |
 | `/api/billing/*` | Clerk auth (Bearer token) |
 | `/api/admin/*` | Clerk auth + `isAdmin` flag |
-
-## Tier Enforcement
-
-| Tier | Briefings/Week | Max Minutes |
-|------|----------------|-------------|
-| FREE | 3 | 5 |
-| PRO | Unlimited | Unlimited |
-| PRO_PLUS | Unlimited | Unlimited |
 
 ## Common Patterns
 
@@ -80,11 +72,12 @@ All routes below require a valid Clerk session (Bearer token). Returns 401 if un
 |--------|------|-------------|
 | GET | `/api/podcasts/search?q=...` | Search podcasts via Podcast Index |
 | GET | `/api/podcasts/trending` | Fetch trending podcasts |
-| POST | `/api/podcasts/subscribe` | Subscribe to a podcast |
+| POST | `/api/podcasts/subscribe` | Subscribe to a podcast (requires durationTier) |
+| PATCH | `/api/podcasts/subscribe/:podcastId` | Update subscription durationTier |
 | DELETE | `/api/podcasts/subscribe/:podcastId` | Unsubscribe from a podcast |
 | POST | `/api/podcasts/refresh` | Queue a feed refresh |
 | GET | `/api/podcasts/subscriptions` | List user's subscriptions |
-| GET | `/api/podcasts/:id` | Podcast detail with subscription status |
+| GET | `/api/podcasts/:id` | Podcast detail with subscription status + tier |
 | GET | `/api/podcasts/:id/episodes` | Episode list (up to 50, newest first) |
 
 **`GET /api/podcasts/search?q=...`**
@@ -104,6 +97,7 @@ Body:
 {
   "feedUrl": "string (required)",
   "title": "string (required)",
+  "durationTier": "number (required, one of 1/2/3/5/7/10/15)",
   "description": "string",
   "imageUrl": "string",
   "podcastIndexId": "number",
@@ -113,7 +107,16 @@ Body:
 
 Response (201): `{ "subscription": { "...subscription", "podcast": {...} } }`
 
-Upserts the podcast and subscription records.
+Upserts podcast and subscription. Creates a FeedItem (SUBSCRIPTION source) for the latest episode and dispatches the pipeline.
+
+**`PATCH /api/podcasts/subscribe/:podcastId`**
+
+Body:
+```json
+{ "durationTier": "number (required, one of 1/2/3/5/7/10/15)" }
+```
+
+Response: `{ "subscription": {...} }`
 
 **`DELETE /api/podcasts/subscribe/:podcastId`**
 
@@ -145,7 +148,8 @@ Response:
     "author": "string",
     "podcastIndexId": "string",
     "episodeCount": 0,
-    "isSubscribed": true
+    "isSubscribed": true,
+    "subscriptionDurationTier": 5
   }
 }
 ```
@@ -171,66 +175,84 @@ Response:
 
 ---
 
-### Briefings (`/api/briefings`)
+### Briefings (`/api/briefings`) — On-Demand
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/briefings` | List user's briefings (last 30) |
-| GET | `/api/briefings/today` | Get today's briefing |
-| POST | `/api/briefings/generate` | Generate a new briefing |
-| GET | `/api/briefings/preferences` | Get briefing preferences |
-| PATCH | `/api/briefings/preferences` | Update briefing preferences |
-
-**`GET /api/briefings`**
-
-Returns `{ "briefings": [...] }` ordered by `createdAt` descending, limit 30.
-
-**`GET /api/briefings/today`**
-
-Returns `{ "briefing": {...} }` or `{ "briefing": null }` if no briefing exists for today.
+| POST | `/api/briefings/generate` | Create an on-demand briefing |
 
 **`POST /api/briefings/generate`**
 
-Creates a `BriefingRequest` and dispatches it to the orchestrator queue. Free-tier users are limited to 3/week and 5 minutes max.
+Creates an on-demand FeedItem and dispatches the pipeline. Requires a podcast and duration tier. Optionally target a specific episode; if omitted, uses the latest episode.
 
-Body (optional):
+Body:
 ```json
-{ "episodeId": "string" }
+{
+  "podcastId": "string (required)",
+  "episodeId": "string (optional — defaults to latest episode)",
+  "durationTier": "number (required, one of 1/2/3/5/7/10/15)"
+}
 ```
-
-When `episodeId` is provided, creates a one-off briefing request for that specific episode. When omitted, creates a subscription-based briefing using the user's subscribed podcasts (returns 400 if no subscriptions exist).
 
 Response (201):
 ```json
-{ "request": { "id": "string", "status": "PENDING", "targetMinutes": 5 } }
+{ "feedItem": { "id": "string", "status": "PENDING", "durationTier": 5 } }
 ```
 
-Response (429): Weekly briefing limit reached.
+Response (400): Missing required fields, invalid durationTier, or no episodes found.
 
-**`GET /api/briefings/preferences`**
+---
+
+### Feed (`/api/feed`)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/feed` | Paginated list of user's feed items |
+| GET | `/api/feed/counts` | Feed item counts (total, unlistened, pending) |
+| GET | `/api/feed/:id` | Feed item detail with briefing + clip |
+| PATCH | `/api/feed/:id/listened` | Mark a feed item as listened |
+
+**`GET /api/feed`**
+
+Query params: `limit` (default 50), `offset` (default 0)
 
 Response:
 ```json
 {
-  "briefingLength": 5,
-  "briefingTime": "08:00",
-  "timezone": "America/New_York",
-  "tier": "FREE"
+  "feedItems": [
+    {
+      "id": "string",
+      "source": "SUBSCRIPTION | ON_DEMAND",
+      "status": "PENDING | PROCESSING | READY | FAILED",
+      "durationTier": 5,
+      "listened": false,
+      "createdAt": "string",
+      "podcast": { "id": "string", "title": "string", "imageUrl": "string" },
+      "episode": { "id": "string", "title": "string", "publishedAt": "string" },
+      "briefing": {
+        "id": "string",
+        "clip": { "audioUrl": "string", "actualSeconds": 300 },
+        "adAudioUrl": null
+      }
+    }
+  ]
 }
 ```
 
-**`PATCH /api/briefings/preferences`**
+**`GET /api/feed/counts`**
 
-Body (all fields optional):
+Response:
 ```json
-{
-  "briefingLengthMinutes": 10,
-  "briefingTime": "07:30",
-  "timezone": "America/Chicago"
-}
+{ "total": 10, "unlistened": 3, "pending": 1 }
 ```
 
-Response: `{ "preferences": {...} }`
+**`GET /api/feed/:id`**
+
+Returns a single feed item with full clip detail. Returns 404 if not found or not owned by user.
+
+**`PATCH /api/feed/:id/listened`**
+
+Marks the feed item as listened. Returns the updated feed item.
 
 ---
 
@@ -258,62 +280,6 @@ Response: `{ "url": "https://billing.stripe.com/..." }`
 Returns 400 if user has never subscribed (no `stripeCustomerId`).
 
 ---
-
-### Requests (`/api/requests`)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/requests` | User's briefing requests with status + podcast info |
-| GET | `/api/requests/:id` | Single request with briefing audio URL |
-
-**`GET /api/requests`**
-
-Returns the user's 50 most recent briefing requests (excluding test requests), newest first.
-
-Response:
-```json
-{
-  "requests": [
-    {
-      "id": "string",
-      "status": "string",
-      "targetMinutes": 5,
-      "createdAt": "string",
-      "briefingId": "string | null",
-      "podcastTitle": "string | null",
-      "podcastImageUrl": "string | null",
-      "episodeTitle": "string | null"
-    }
-  ]
-}
-```
-
-**`GET /api/requests/:id`**
-
-Returns a single briefing request with briefing detail (audio URL, duration). Returns 404 if not found or not owned by the user.
-
-Response:
-```json
-{
-  "request": {
-    "id": "string",
-    "status": "string",
-    "targetMinutes": 5,
-    "createdAt": "string",
-    "briefingId": "string | null",
-    "podcastTitle": "string | null",
-    "podcastImageUrl": "string | null",
-    "episodeTitle": "string | null",
-    "briefing": {
-      "id": "string",
-      "audioUrl": "string",
-      "actualSeconds": 0
-    }
-  }
-}
-```
-
-`briefing` is `null` if the request has not yet completed.
 
 ---
 
@@ -380,7 +346,7 @@ Response:
     "podcasts": { "total": 0, "trend": 0 },
     "users": { "total": 0, "trend": 0 },
     "episodes": { "total": 0, "trend": 0 },
-    "briefings": { "total": 0, "trend": 0 }
+    "feedItems": { "total": 0, "trend": 0 }
   }
 }
 ```
@@ -686,7 +652,7 @@ Response:
     "...episode",
     "distillation": {...},
     "clips": [...],
-    "briefingAppearances": [...],
+    "feedItemAppearances": [...],
     "pipelineTrace": [...]
   }
 }
@@ -705,17 +671,33 @@ Response (201): `{ "data": { "episodeId": "string", "status": "dispatched" } }`
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/health` | Health check |
-| GET | `/` | Paginated briefing list with quality metrics |
-| GET | `/:id` | Briefing detail with segments |
+| GET | `/` | Paginated briefing list (per-user Clip wrappers) |
+| GET | `/:id` | Briefing detail with clip, episode, and feed items |
 
 **`GET /api/admin/briefings`**
 
-Query params: `page`, `pageSize`, `userId`, `status`, `sort`
+Query params: `page`, `pageSize`, `userId`, `sort`
 
 Response:
 ```json
 {
-  "data": [...],
+  "data": [
+    {
+      "id": "string",
+      "userId": "string",
+      "userEmail": "string",
+      "clipId": "string",
+      "durationTier": 5,
+      "clipStatus": "COMPLETED",
+      "actualSeconds": 300,
+      "audioUrl": "string",
+      "adAudioUrl": null,
+      "episodeTitle": "string",
+      "podcastTitle": "string",
+      "feedItemCount": 1,
+      "createdAt": "string"
+    }
+  ],
   "total": 0,
   "page": 1,
   "pageSize": 20,
@@ -729,9 +711,22 @@ Response:
 ```json
 {
   "data": {
-    "...briefing",
-    "segments": [...],
-    "qualityMetrics": {...}
+    "id": "string",
+    "userId": "string",
+    "clipId": "string",
+    "adAudioUrl": null,
+    "clip": {
+      "id": "string",
+      "durationTier": 5,
+      "status": "COMPLETED",
+      "actualSeconds": 300,
+      "audioUrl": "string",
+      "episodeTitle": "string",
+      "podcastTitle": "string"
+    },
+    "feedItems": [
+      { "id": "string", "status": "READY", "listened": false, "source": "SUBSCRIPTION" }
+    ]
   }
 }
 ```
@@ -787,7 +782,7 @@ Response:
   "data": {
     "...user",
     "subscriptions": [...],
-    "recentBriefings": [...]
+    "recentFeedItems": [...]
   }
 }
 ```

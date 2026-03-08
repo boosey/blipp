@@ -37,37 +37,36 @@ feed.get("/", async (c) => {
       include: {
         podcast: { select: { id: true, title: true, imageUrl: true } },
         episode: { select: { id: true, title: true, publishedAt: true, durationSeconds: true } },
+        briefing: {
+          include: {
+            clip: { select: { audioUrl: true, actualSeconds: true } },
+          },
+        },
       },
     }),
     prisma.feedItem.count({ where }),
   ]);
 
-  // Resolve clip audio URLs for items with clipId
-  const enrichedItems = await Promise.all(
-    items.map(async (item: any) => {
-      let clip = null;
-      if (item.clipId) {
-        clip = await prisma.clip.findUnique({
-          where: { id: item.clipId },
-          select: { audioUrl: true, actualSeconds: true },
-        });
-      }
-      return {
-        id: item.id,
-        source: item.source,
-        status: item.status,
-        listened: item.listened,
-        listenedAt: item.listenedAt,
-        durationTier: item.durationTier,
-        createdAt: item.createdAt,
-        podcast: item.podcast,
-        episode: item.episode,
-        clip,
-      };
-    })
-  );
+  const data = items.map((item: any) => ({
+    id: item.id,
+    source: item.source,
+    status: item.status,
+    listened: item.listened,
+    listenedAt: item.listenedAt,
+    durationTier: item.durationTier,
+    createdAt: item.createdAt,
+    podcast: item.podcast,
+    episode: item.episode,
+    briefing: item.briefing
+      ? {
+          id: item.briefing.id,
+          clip: item.briefing.clip,
+          adAudioUrl: item.briefing.adAudioUrl,
+        }
+      : null,
+  }));
 
-  return c.json({ items: enrichedItems, total });
+  return c.json({ items: data, total });
 });
 
 /**
@@ -99,19 +98,16 @@ feed.get("/:id", async (c) => {
     include: {
       podcast: { select: { id: true, title: true, imageUrl: true } },
       episode: { select: { id: true, title: true, publishedAt: true, durationSeconds: true } },
+      briefing: {
+        include: {
+          clip: { select: { audioUrl: true, actualSeconds: true } },
+        },
+      },
     },
   });
 
   if (!item) {
     return c.json({ error: "Feed item not found" }, 404);
-  }
-
-  let clip = null;
-  if (item.clipId) {
-    clip = await prisma.clip.findUnique({
-      where: { id: item.clipId },
-      select: { audioUrl: true, actualSeconds: true },
-    });
   }
 
   return c.json({
@@ -125,7 +121,13 @@ feed.get("/:id", async (c) => {
       createdAt: item.createdAt,
       podcast: item.podcast,
       episode: item.episode,
-      clip,
+      briefing: item.briefing
+        ? {
+            id: item.briefing.id,
+            clip: item.briefing.clip,
+            adAudioUrl: item.briefing.adAudioUrl,
+          }
+        : null,
     },
   });
 });

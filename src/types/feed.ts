@@ -17,9 +17,13 @@ export interface FeedItem {
     publishedAt: string;
     durationSeconds: number | null;
   };
-  clip: {
-    audioUrl: string;
-    actualSeconds: number | null;
+  briefing: {
+    id: string;
+    clip: {
+      audioUrl: string;
+      actualSeconds: number | null;
+    };
+    adAudioUrl: string | null;
   } | null;
 }
 

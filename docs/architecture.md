@@ -119,7 +119,7 @@ The pipeline is **demand-driven**: only feed refresh runs on a cron schedule. Al
 2. **Transcription (Stage 2)** -- Three-tier transcript waterfall: (1) RSS feed transcript URL, (2) Podcast Index API lookup by episode GUID, (3) Whisper STT with chunked transcription for files over 25MB.
 3. **Distillation (Stage 3)** -- Sends transcript to Anthropic Claude for claim extraction and narrative generation. Stores results in Distillation model.
 4. **Clip Generation (Stage 4)** -- Generates audio clips via OpenAI gpt-4o-mini-tts. Stores MP3s in R2, metadata in Clip model.
-5. **Briefing Assembly (Stage 5)** -- Concatenates clips (with ads for free-tier users), stores final briefing MP3 in R2, creates Briefing + BriefingSegment records.
+5. **Briefing Assembly (Stage 5)** -- Updates FeedItems linked to the request: sets status to READY with clipId on success, FAILED on failure.
 
 ### Orchestrator
 
@@ -171,12 +171,12 @@ Each queue handler checks its stage-enabled gate before processing. Messages wit
 | `Clip` | Cached TTS audio clip for a distillation segment |
 | `WorkProduct` | Generic keyed work product store for pipeline stages |
 
-### Output Models
+### Delivery Models
 
 | Model | Purpose |
 |-------|---------|
-| `Briefing` | Assembled audio briefing (R2 URL, duration, linked to request) |
-| `BriefingSegment` | Individual segments within a briefing |
+| `Briefing` | Per-user wrapper around a shared Clip (will carry personalized ad audio) |
+| `FeedItem` | Per-user feed entry, points to a Briefing (or Digest in future) |
 
 ### Configuration
 
@@ -188,8 +188,10 @@ Each queue handler checks its stage-enabled gate before processing. Messages wit
 
 ```
 User ---< Subscription >--- Podcast ---< Episode
+User ---< Briefing >--- Clip
+User ---< FeedItem >--- Episode
+FeedItem --- Briefing (via briefingId)
 User ---< BriefingRequest ---< PipelineJob ---< PipelineStep
-BriefingRequest --- Briefing ---< BriefingSegment
 Episode ---< Distillation ---< Clip
 Episode ---< WorkProduct
 PipelineStep --- WorkProduct
@@ -232,6 +234,7 @@ Route handlers access the database with `const prisma = c.get("prisma") as any;`
 | `/api/webhooks/*` | Webhook signature verification |
 | `/api/podcasts/*` | `requireAuth` |
 | `/api/briefings/*` | `requireAuth` |
+| `/api/feed/*` | `requireAuth` |
 | `/api/billing/*` | `requireAuth` |
 | `/api/admin/*` | `requireAdmin` |
 
@@ -254,15 +257,15 @@ Route handlers access the database with `const prisma = c.get("prisma") as any;`
 | GET | `/podcasts/trending` | Trending podcasts |
 | GET | `/podcasts/:id` | Podcast detail with subscription status |
 | GET | `/podcasts/:id/episodes` | Episode list for a podcast |
-| POST | `/podcasts/subscribe` | Subscribe to a podcast |
-| POST | `/podcasts/unsubscribe` | Unsubscribe from a podcast |
+| POST | `/podcasts/subscribe` | Subscribe to a podcast (requires durationTier) |
+| PATCH | `/podcasts/subscribe/:podcastId` | Update subscription durationTier |
+| DELETE | `/podcasts/subscribe/:podcastId` | Unsubscribe from a podcast |
 | GET | `/podcasts/subscriptions` | List user subscriptions |
-| GET | `/briefings` | List user briefings |
-| GET | `/briefings/today` | Today's briefing |
-| POST | `/briefings/generate` | Request a new briefing (accepts optional `{ episodeId }` for one-off requests) |
-| GET | `/briefings/preferences` | Briefing preferences |
-| GET | `/requests` | User's briefing requests with status |
-| GET | `/requests/:id` | Single request detail with briefing link |
+| POST | `/briefings/generate` | Create on-demand briefing (requires podcastId + durationTier) |
+| GET | `/feed` | Paginated feed items |
+| GET | `/feed/counts` | Feed item counts |
+| GET | `/feed/:id` | Feed item detail with clip |
+| PATCH | `/feed/:id/listened` | Mark feed item as listened |
 | POST | `/billing/checkout` | Create Stripe checkout session |
 | POST | `/billing/portal` | Create Stripe customer portal session |
 
@@ -286,10 +289,10 @@ The frontend is built with Vite 7 using `@cloudflare/vite-plugin` in SPA mode. T
 | Section | Pages | Layout |
 |---------|-------|--------|
 | Public | Landing (`/`), Pricing (`/pricing`) | Minimal |
-| User | Home (`/home`), Discover (`/discover`), Podcast Detail (`/discover/:podcastId`), Library (`/library`), Briefing Player (`/briefing/:requestId`), Settings (`/settings`) | `MobileLayout` |
+| User | Home (`/home`), Discover (`/discover`), Podcast Detail (`/discover/:podcastId`), Library (`/library`), Player (`/play/:feedItemId`), Settings (`/settings`) | `MobileLayout` |
 | Admin | 9 pages (Command Center, Pipeline, Catalog, Episodes, Briefings, Users, Analytics, Configuration, Requests) | `AdminLayout` (dark sidebar) |
 
-Redirects: `/dashboard` redirects to `/home`, `/billing` redirects to `/settings`.
+Redirects: `/dashboard` redirects to `/home`, `/billing` redirects to `/settings`, `/briefing/*` redirects to `/home`.
 
 Admin pages are lazy-loaded via `React.lazy()` for code splitting. An `AdminGuard` component wraps admin routes and checks the user's admin status before rendering.
 
@@ -299,14 +302,14 @@ The user-facing app uses `MobileLayout`, a mobile-first layout with a bottom tab
 
 | Tab | Route | Page |
 |-----|-------|------|
-| Home | `/home` | `home.tsx` -- Briefing overview and quick actions |
+| Home | `/home` | `home.tsx` -- Feed view with subscription and on-demand items |
 | Discover | `/discover` | `discover.tsx` -- Podcast search and trending (mobile-optimized) |
 | Library | `/library` | `library.tsx` -- User's subscriptions and briefing history |
-| Settings | `/settings` | `settings.tsx` -- Account settings, billing, preferences |
+| Settings | `/settings` | `settings.tsx` -- Account settings and billing |
 
 Additional user pages outside the tab bar:
-- **Podcast Detail** (`/discover/:podcastId`) -- `podcast-detail.tsx`, episode list and subscription toggle
-- **Briefing Player** (`/briefing/:requestId`) -- `briefing-player.tsx`, audio playback for a completed briefing
+- **Podcast Detail** (`/discover/:podcastId`) -- `podcast-detail.tsx`, episode list, subscribe with tier picker, on-demand briefing
+- **Player** (`/play/:feedItemId`) -- `briefing-player.tsx`, audio playback for a completed feed item clip
 
 The discover page uses `PodcastCard` components backed by the `useApiFetch` hook for data loading.
 
@@ -340,8 +343,8 @@ blipp/
       index.ts            # Route tree assembly
       plans.ts            # Public plan listing
       podcasts.ts         # Search, subscribe, trending, detail
-      briefings.ts        # Briefing generation + listing
-      requests.ts         # User briefing request status
+      briefings.ts        # On-demand briefing generation
+      feed.ts             # Feed item list, detail, listened, counts
       billing.ts          # Stripe checkout/portal
       webhooks/
         clerk.ts          # User sync webhook
@@ -398,7 +401,7 @@ blipp/
     components/
       bottom-nav.tsx      # Bottom tab navigation bar
       status-badge.tsx    # Status indicator badge
-      request-item.tsx    # Briefing request list item
+      feed-item.tsx       # Feed item card (podcast, episode, status, play)
       podcast-card.tsx    # Podcast card (uses useApiFetch)
       ...                 # Other shared UI components
     lib/
@@ -409,6 +412,7 @@ blipp/
     types/
       admin.ts            # Shared admin type contracts
       user.ts             # User-facing type contracts
+      feed.ts             # FeedItem and FeedCounts types
   prisma/
     schema.prisma         # Full data model
   docs/

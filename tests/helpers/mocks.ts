@@ -32,7 +32,6 @@ export function createMockPrisma() {
     clip: modelMethods(),
     subscription: modelMethods(),
     briefing: modelMethods(),
-    briefingSegment: modelMethods(),
     pipelineJob: modelMethods(),
     pipelineStep: modelMethods(),
     briefingRequest: modelMethods(),

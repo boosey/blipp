@@ -90,18 +90,21 @@ episodesRoutes.get("/:id", async (c) => {
 
   if (!episode) return c.json({ error: "Episode not found" }, 404);
 
-  // Find briefing appearances via BriefingSegment -> Clip
-  const clipIds = episode.clips.map((cl: any) => cl.id);
-  const briefingSegments = clipIds.length > 0
-    ? await prisma.briefingSegment.findMany({
-        where: { clipId: { in: clipIds } },
-        include: {
-          briefing: {
-            select: { id: true, userId: true, status: true, createdAt: true },
-          },
-        },
-      })
-    : [];
+  // Find feed item deliveries for this episode
+  const feedItemDeliveries = await prisma.feedItem.findMany({
+    where: { episodeId: episode.id },
+    select: {
+      id: true,
+      userId: true,
+      status: true,
+      source: true,
+      durationTier: true,
+      listened: true,
+      createdAt: true,
+    },
+    orderBy: { createdAt: "desc" },
+    take: 50,
+  });
 
   // Get pipeline trace - jobs + steps for this episode
   let pipelineJobs: any[] = [];
@@ -180,11 +183,14 @@ episodesRoutes.get("/:id", async (c) => {
         audioUrl: cl.audioUrl,
         createdAt: cl.createdAt.toISOString(),
       })),
-      briefingAppearances: briefingSegments.map((seg: any) => ({
-        briefingId: seg.briefing.id,
-        userId: seg.briefing.userId,
-        status: seg.briefing.status,
-        createdAt: seg.briefing.createdAt.toISOString(),
+      feedItemDeliveries: feedItemDeliveries.map((fi: any) => ({
+        id: fi.id,
+        userId: fi.userId,
+        status: fi.status,
+        source: fi.source,
+        durationTier: fi.durationTier,
+        listened: fi.listened,
+        createdAt: fi.createdAt.toISOString(),
       })),
       pipelineTrace: { episodeId: episode.id, stages },
     },

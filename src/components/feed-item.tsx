@@ -32,7 +32,7 @@ export function FeedItemCard({
   item: FeedItem;
   onPlay?: (id: string) => void;
 }) {
-  const isPlayable = item.status === "READY" && item.clip;
+  const isPlayable = item.status === "READY" && item.briefing?.clip;
 
   const card = (
     <div className="flex items-center gap-3 bg-zinc-900 border border-zinc-800 rounded-lg p-3">

@@ -11,58 +11,36 @@ usersRoutes.get("/segments", async (c) => {
   const prisma = c.get("prisma") as any;
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
-  const [
-    all,
-    ,
-    neverActive,
-  ] = await Promise.all([
-    prisma.user.count(),
-    // Power users: more than 50 briefings
-    prisma.user.count({
-      where: {
-        briefings: { some: {} },
-      },
-    }),
-    // Never active: no briefings at all
-    prisma.user.count({
-      where: { briefings: { none: {} } },
-    }),
-  ]);
+  const all = await prisma.user.count();
 
-  // Power users: need to count users with >50 briefings
-  // Use a more targeted query
-  const usersWithBriefingCounts = await prisma.user.findMany({
+  const usersWithFeedItemCounts = await prisma.user.findMany({
     select: {
       id: true,
       tier: true,
       createdAt: true,
-      _count: { select: { briefings: true } },
+      _count: { select: { feedItems: true } },
     },
   });
 
-  const powerUserCount = usersWithBriefingCounts.filter((u: any) => u._count.briefings > 50).length;
+  const powerUserCount = usersWithFeedItemCounts.filter((u: any) => u._count.feedItems > 50).length;
+  const neverActive = usersWithFeedItemCounts.filter((u: any) => u._count.feedItems === 0).length;
 
-  // At risk: users who had briefings before but none in last 7 days
-  const atRiskUsers = usersWithBriefingCounts.filter((u: any) => u._count.briefings > 0);
-  // We need to check last briefing date for at-risk
-  const recentBriefingUsers = await prisma.briefing.findMany({
+  // At risk: users who had feed items before but none in last 7 days
+  const atRiskCandidates = usersWithFeedItemCounts.filter((u: any) => u._count.feedItems > 0);
+  const recentFeedItemUsers = await prisma.feedItem.findMany({
     where: { createdAt: { gte: sevenDaysAgo } },
     select: { userId: true },
     distinct: ["userId"],
   });
-  const recentUserIds = new Set(recentBriefingUsers.map((b: any) => b.userId));
-  const atRiskCount = atRiskUsers.filter(
-    (u: any) => u._count.briefings > 0 && !recentUserIds.has(u.id)
+  const recentUserIds = new Set(recentFeedItemUsers.map((f: any) => f.userId));
+  const atRiskCount = atRiskCandidates.filter(
+    (u: any) => !recentUserIds.has(u.id)
   ).length;
 
   // Trial ending: FREE users created > 7 days ago who have used the service
-  const trialEndingCount = usersWithBriefingCounts.filter(
-    (u: any) => u.tier === "FREE" && u._count.briefings > 0 && u.createdAt < sevenDaysAgo
+  const trialEndingCount = usersWithFeedItemCounts.filter(
+    (u: any) => u.tier === "FREE" && u._count.feedItems > 0 && u.createdAt < sevenDaysAgo
   ).length;
-
-  // Recently cancelled: users who downgraded (we approximate as FREE users who had activity in last 30 days but tier changed)
-  // Simplified: FREE users with recent briefings (past 30 days) who might be downgraded
-  const recentlyCancelledCount = 0; // Not easily derivable without tier change history
 
   return c.json({
     data: {
@@ -70,7 +48,7 @@ usersRoutes.get("/segments", async (c) => {
       power_users: powerUserCount,
       at_risk: atRiskCount,
       trial_ending: trialEndingCount,
-      recently_cancelled: recentlyCancelledCount,
+      recently_cancelled: 0,
       never_active: neverActive,
     },
   });
@@ -96,9 +74,9 @@ usersRoutes.get("/", async (c) => {
 
   // Segment filters
   if (segment === "power_users") {
-    where.briefings = { some: {} };
+    where.feedItems = { some: {} };
   } else if (segment === "never_active") {
-    where.briefings = { none: {} };
+    where.feedItems = { none: {} };
   }
 
   const [users, total] = await Promise.all([
@@ -108,29 +86,29 @@ usersRoutes.get("/", async (c) => {
       take: pageSize,
       orderBy,
       include: {
-        _count: { select: { subscriptions: true, briefings: true } },
+        _count: { select: { subscriptions: true, feedItems: true, briefings: true } },
       },
     }),
     prisma.user.count({ where }),
   ]);
 
-  // Get last briefing dates for activity status
+  // Get last feed item dates for activity status
   const userIds = users.map((u: any) => u.id);
-  const lastBriefings = userIds.length > 0
-    ? await prisma.briefing.findMany({
+  const lastFeedItems = userIds.length > 0
+    ? await prisma.feedItem.findMany({
         where: { userId: { in: userIds } },
         orderBy: { createdAt: "desc" },
         distinct: ["userId"],
         select: { userId: true, createdAt: true },
       })
     : [];
-  const lastBriefingMap = new Map(lastBriefings.map((b: any) => [b.userId, b.createdAt]));
+  const lastActivityMap = new Map(lastFeedItems.map((f: any) => [f.userId, f.createdAt]));
 
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
   const data = users.map((u: any) => {
-    const lastActive = lastBriefingMap.get(u.id);
+    const lastActive = lastActivityMap.get(u.id);
     let status: "active" | "inactive" | "churned" = "inactive";
     if (lastActive) {
       if (lastActive >= sevenDaysAgo) status = "active";
@@ -139,8 +117,8 @@ usersRoutes.get("/", async (c) => {
     }
 
     const badges: string[] = [];
-    if (u._count.briefings > 50) badges.push("power_user");
-    if (status === "inactive" && u._count.briefings > 0) badges.push("at_risk");
+    if (u._count.feedItems > 50) badges.push("power_user");
+    if (status === "inactive" && u._count.feedItems > 0) badges.push("at_risk");
     if (u.isAdmin) badges.push("admin");
 
     return {
@@ -153,6 +131,7 @@ usersRoutes.get("/", async (c) => {
       isAdmin: u.isAdmin,
       status,
       briefingCount: u._count.briefings,
+      feedItemCount: u._count.feedItems,
       podcastCount: u._count.subscriptions,
       lastActiveAt: lastActive?.toISOString(),
       createdAt: u.createdAt.toISOString(),
@@ -172,21 +151,22 @@ usersRoutes.get("/:id", async (c) => {
       subscriptions: {
         include: { podcast: { select: { title: true } } },
       },
-      briefings: {
+      feedItems: {
         take: 10,
         orderBy: { createdAt: "desc" },
         include: {
-          _count: { select: { segments: true } },
+          podcast: { select: { title: true, imageUrl: true } },
+          episode: { select: { title: true } },
         },
       },
-      _count: { select: { subscriptions: true, briefings: true } },
+      _count: { select: { subscriptions: true, feedItems: true, briefings: true } },
     },
   });
 
   if (!user) return c.json({ error: "User not found" }, 404);
 
-  const lastBriefing = user.briefings[0];
-  const lastActive = lastBriefing?.createdAt;
+  const lastFeedItem = user.feedItems[0];
+  const lastActive = lastFeedItem?.createdAt;
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
@@ -198,8 +178,8 @@ usersRoutes.get("/:id", async (c) => {
   }
 
   const badges: string[] = [];
-  if (user._count.briefings > 50) badges.push("power_user");
-  if (status === "inactive" && user._count.briefings > 0) badges.push("at_risk");
+  if (user._count.feedItems > 50) badges.push("power_user");
+  if (status === "inactive" && user._count.feedItems > 0) badges.push("at_risk");
   if (user.isAdmin) badges.push("admin");
 
   return c.json({
@@ -213,32 +193,28 @@ usersRoutes.get("/:id", async (c) => {
       isAdmin: user.isAdmin,
       status,
       briefingCount: user._count.briefings,
+      feedItemCount: user._count.feedItems,
       podcastCount: user._count.subscriptions,
       lastActiveAt: lastActive?.toISOString(),
       createdAt: user.createdAt.toISOString(),
       badges,
       stripeCustomerId: user.stripeCustomerId,
-      briefingLengthMinutes: user.briefingLengthMinutes,
-      briefingTime: user.briefingTime,
-      timezone: user.timezone,
       subscriptions: user.subscriptions.map((s: any) => ({
         podcastId: s.podcastId,
         podcastTitle: s.podcast.title,
+        durationTier: s.durationTier,
         createdAt: s.createdAt.toISOString(),
       })),
-      recentBriefings: user.briefings.map((b: any) => ({
-        id: b.id,
-        userId: b.userId,
-        userEmail: user.email,
-        userTier: user.tier,
-        status: b.status,
-        targetMinutes: b.targetMinutes,
-        actualSeconds: b.actualSeconds,
-        audioUrl: b.audioUrl,
-        errorMessage: b.errorMessage,
-        segmentCount: b._count.segments,
-        podcastCount: 0, // simplified - would need another join
-        createdAt: b.createdAt.toISOString(),
+      recentFeedItems: user.feedItems.map((fi: any) => ({
+        id: fi.id,
+        status: fi.status,
+        source: fi.source,
+        durationTier: fi.durationTier,
+        listened: fi.listened,
+        podcastTitle: fi.podcast?.title,
+        podcastImageUrl: fi.podcast?.imageUrl,
+        episodeTitle: fi.episode?.title,
+        createdAt: fi.createdAt.toISOString(),
       })),
     },
   });

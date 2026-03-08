@@ -87,7 +87,7 @@ export function BriefingPlayer() {
     );
   }
 
-  if (!item || !item.clip?.audioUrl) {
+  if (!item || !item.briefing?.clip?.audioUrl) {
     return (
       <div className="flex items-center justify-center py-20">
         <p className="text-zinc-400">Briefing not available.</p>
@@ -120,7 +120,7 @@ export function BriefingPlayer() {
       {/* Audio element */}
       <audio
         ref={audioRef}
-        src={item.clip.audioUrl}
+        src={item.briefing!.clip.audioUrl}
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
         onEnded={() => setIsPlaying(false)}

@@ -119,10 +119,10 @@ analyticsRoutes.get("/usage", async (c) => {
   const { from, to } = parseDateRange(c);
   const days = daysBetween(from, to);
 
-  const [briefings, episodes, users, tierCounts] = await Promise.all([
-    prisma.briefing.findMany({
+  const [feedItems, episodes, users, tierCounts] = await Promise.all([
+    prisma.feedItem.findMany({
       where: { createdAt: { gte: from, lte: to } },
-      select: { createdAt: true, actualSeconds: true },
+      select: { createdAt: true, durationTier: true },
     }),
     prisma.episode.findMany({
       where: { createdAt: { gte: from, lte: to } },
@@ -142,7 +142,7 @@ analyticsRoutes.get("/usage", async (c) => {
     const key = dateKey(day);
     return {
       date: key,
-      briefings: briefings.filter((b: any) => dateKey(b.createdAt) === key).length,
+      feedItems: feedItems.filter((f: any) => dateKey(f.createdAt) === key).length,
       episodes: episodes.filter((e: any) => dateKey(e.createdAt) === key).length,
       users: users.filter((u: any) => dateKey(u.createdAt) === key).length,
     };
@@ -155,14 +155,15 @@ analyticsRoutes.get("/usage", async (c) => {
     percentage: totalUsers > 0 ? Math.round((t._count / totalUsers) * 100) : 0,
   }));
 
-  const avgDuration = briefings.length > 0
-    ? Math.round(briefings.reduce((s: number, b: any) => s + (b.actualSeconds ?? 0), 0) / briefings.length)
+  // Average duration tier
+  const avgDuration = feedItems.length > 0
+    ? Math.round(feedItems.reduce((s: number, f: any) => s + (f.durationTier ?? 0), 0) / feedItems.length * 60)
     : 0;
 
-  // Peak times - hours with most briefings
+  // Peak times - hours with most feed items
   const hourCounts = new Map<number, number>();
-  for (const b of briefings) {
-    const hour = b.createdAt.getHours();
+  for (const f of feedItems) {
+    const hour = f.createdAt.getHours();
     hourCounts.set(hour, (hourCounts.get(hour) ?? 0) + 1);
   }
   const peakTimes = Array.from(hourCounts.entries())
@@ -173,7 +174,7 @@ analyticsRoutes.get("/usage", async (c) => {
   return c.json({
     data: {
       metrics: {
-        briefings: briefings.length,
+        feedItems: feedItems.length,
         episodes: episodes.length,
         users: users.length,
         avgDuration,
@@ -191,10 +192,10 @@ analyticsRoutes.get("/quality", async (c) => {
   const prisma = c.get("prisma") as any;
   const { from, to } = parseDateRange(c);
 
-  const [briefings, distillations, episodes] = await Promise.all([
-    prisma.briefing.findMany({
+  const [clips, distillations, episodes] = await Promise.all([
+    prisma.clip.findMany({
       where: { createdAt: { gte: from, lte: to }, status: "COMPLETED" },
-      select: { targetMinutes: true, actualSeconds: true, createdAt: true },
+      select: { durationTier: true, actualSeconds: true, createdAt: true },
     }),
     prisma.distillation.findMany({
       where: { createdAt: { gte: from, lte: to } },
@@ -206,10 +207,10 @@ analyticsRoutes.get("/quality", async (c) => {
     }),
   ]);
 
-  // Time fitting accuracy
-  const fitScores = briefings
-    .filter((b: any) => b.actualSeconds && b.targetMinutes)
-    .map((b: any) => Math.max(0, 100 - Math.abs((b.actualSeconds! - b.targetMinutes * 60) / (b.targetMinutes * 60)) * 100));
+  // Time fitting accuracy (clip actual vs target duration tier)
+  const fitScores = clips
+    .filter((cl: any) => cl.actualSeconds && cl.durationTier)
+    .map((cl: any) => Math.max(0, 100 - Math.abs((cl.actualSeconds! - cl.durationTier * 60) / (cl.durationTier * 60)) * 100));
   const timeFitting = fitScores.length > 0 ? Math.round(fitScores.reduce((s: number, v: number) => s + v, 0) / fitScores.length) : 100;
 
   // Distillation success rate
@@ -228,12 +229,12 @@ analyticsRoutes.get("/quality", async (c) => {
   const days = daysBetween(from, to);
   const trend = days.map((day) => {
     const key = dateKey(day);
-    const dayBriefings = briefings.filter((b: any) => dateKey(b.createdAt) === key && b.actualSeconds && b.targetMinutes);
-    const dayScore = dayBriefings.length > 0
+    const dayClips = clips.filter((cl: any) => dateKey(cl.createdAt) === key && cl.actualSeconds && cl.durationTier);
+    const dayScore = dayClips.length > 0
       ? Math.round(
-          dayBriefings
-            .map((b: any) => Math.max(0, 100 - Math.abs((b.actualSeconds! - b.targetMinutes * 60) / (b.targetMinutes * 60)) * 100))
-            .reduce((s: number, v: number) => s + v, 0) / dayBriefings.length
+          dayClips
+            .map((cl: any) => Math.max(0, 100 - Math.abs((cl.actualSeconds! - cl.durationTier * 60) / (cl.durationTier * 60)) * 100))
+            .reduce((s: number, v: number) => s + v, 0) / dayClips.length
         )
       : 100;
     return { date: key, score: dayScore };

@@ -40,6 +40,7 @@ model User {
   updatedAt             DateTime @updatedAt
 
   subscriptions    Subscription[]
+  briefings        Briefing[]
   feedItems        FeedItem[]
   briefingRequests BriefingRequest[]
 }
@@ -139,8 +140,27 @@ model Clip {
 
   episode      Episode      @relation(fields: [episodeId], references: [id], onDelete: Cascade)
   distillation Distillation @relation(fields: [distillationId], references: [id], onDelete: Cascade)
+  briefings    Briefing[]
 
   @@unique([episodeId, durationTier])
+}
+
+// ── Briefings (per-user wrapper around a shared Clip) ──
+
+model Briefing {
+  id          String   @id @default(cuid())
+  userId      String
+  clipId      String
+  adAudioUrl  String?  // personalized ad audio URL (null until ads ship)
+  adAudioKey  String?  // R2 key for ad audio
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clip      Clip       @relation(fields: [clipId], references: [id], onDelete: Cascade)
+  feedItems FeedItem[]
+
+  @@unique([userId, clipId])
 }
 
 enum ClipStatus {
@@ -174,7 +194,7 @@ model FeedItem {
   userId       String
   episodeId    String
   podcastId    String
-  clipId       String?
+  briefingId   String?
   durationTier Int
   source       FeedItemSource
   status       FeedItemStatus @default(PENDING)
@@ -185,9 +205,10 @@ model FeedItem {
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  episode Episode @relation(fields: [episodeId], references: [id], onDelete: Cascade)
-  podcast Podcast @relation(fields: [podcastId], references: [id], onDelete: Cascade)
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  episode  Episode   @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  podcast  Podcast   @relation(fields: [podcastId], references: [id], onDelete: Cascade)
+  briefing Briefing? @relation(fields: [briefingId], references: [id])
 
   @@unique([userId, episodeId, durationTier])
 }

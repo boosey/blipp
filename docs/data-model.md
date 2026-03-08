@@ -1,6 +1,6 @@
 # Blipp Data Model Reference
 
-Generated from `prisma/schema.prisma` on the `moonchild-admin-ui` branch.
+Generated from `prisma/schema.prisma` on the `feat/subscriptions-feed` branch.
 
 ## Entity Relationship Diagram
 
@@ -9,50 +9,60 @@ Generated from `prisma/schema.prisma` on the `moonchild-admin-ui` branch.
                          | PlatformConfig |
                          +----------------+
 
-  +------+    +----------+    +---------+    +----------+    +-------+
-  | Plan |    |   User   |--->| Briefing|--->| Briefing |    |Podcast|
-  +------+    +----------+    |         |    | Segment  |    +-------+
-                 |   |        +---------+        |               |
-                 |   |             ^              |               |
-                 |   |             |              |               |
-                 |   |      +----------+         (clipId)         |
-                 |   |      | Briefing |                         |
-                 |   |      | Request  |                         |
-                 |   |      +----------+                         |
-                 |   |           |                               |
-                 |   |      +----------+    +-----------+        |
-                 |   |      | Pipeline |--->| Pipeline  |        |
-                 |   |      |   Job    |    |   Step    |        |
-                 |   |      +----------+    +-----------+        |
-                 |   |           |               |               |
-                 |   |           v               v               |
-                 |   |      +---------+    +------------+        |
-                 |   +----->| Episode |<---| WorkProduct|        |
-                 |          +---------+    +------------+        |
-                 |               |                               |
-                 |          +----+----+                          |
-                 |          |         |                          |
-                 |          v         v                          |
-                 |   +---------+  +------+                      |
-                 |   |Distilla-|  | Clip |                      |
-                 |   |  tion   |->|      |                      |
-                 |   +---------+  +------+                      |
-                 |                                               |
-                 +---------> Subscription <---------------------+
+  +------+    +----------+    +----------+    +-------+
+  | Plan |    |   User   |--->| FeedItem |    |Podcast|
+  +------+    +----------+    +----------+    +-------+
+                 |   |             |               |
+                 |   |        (briefingId)          |
+                 |   |             |               |
+                 |   |      +----------+           |
+                 |   +----->| Briefing |           |
+                 |   |      | (user+   |           |
+                 |   |      |  clip)   |           |
+                 |   |      +----------+           |
+                 |   |             |               |
+                 |   |      +----------+           |
+                 |   |      | Briefing |           |
+                 |   |      | Request  |           |
+                 |   |      +----------+           |
+                 |   |           |                 |
+                 |   |      +----------+    +-----------+
+                 |   |      | Pipeline |--->| Pipeline  |
+                 |   |      |   Job    |    |   Step    |
+                 |   |      +----------+    +-----------+
+                 |   |           |               |
+                 |   |           v               v
+                 |   |      +---------+    +------------+
+                 |   +----->| Episode |<---| WorkProduct|
+                 |          +---------+    +------------+
+                 |               |
+                 |          +----+----+
+                 |          |         |
+                 |          v         v
+                 |   +---------+  +------+
+                 |   |Distilla-|  | Clip |
+                 |   |  tion   |->|      |
+                 |   +---------+  +------+
+                 |
+                 +---------> Subscription <--------+
 ```
 
 ### Key Relationships
 
 ```
 User 1---* Subscription *---1 Podcast
-User 1---* Briefing 1---* BriefingSegment
-User 1---* BriefingRequest 1--? Briefing
+User 1---* Briefing *---1 Clip
+User 1---* FeedItem *---1 Episode
+User 1---* BriefingRequest
 BriefingRequest 1---* PipelineJob *---1 Episode
 PipelineJob 1---* PipelineStep *--? WorkProduct
 Podcast 1---* Episode
+Podcast 1---* FeedItem
 Episode 1--? Distillation 1---* Clip
 Episode 1---* Clip
 Episode 1---* WorkProduct
+FeedItem *--? Briefing (via briefingId)
+Briefing *---1 Clip (shared content)
 ```
 
 Legend: `1---*` = one-to-many, `1--?` = one-to-zero-or-one, `*---1` = many-to-one
@@ -91,7 +101,7 @@ Defines subscription tiers with pricing and Stripe integration.
 
 ### User
 
-Authenticated user from Clerk with preferences and tier info.
+Authenticated user from Clerk with tier info.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -103,15 +113,13 @@ Authenticated user from Clerk with preferences and tier info.
 | stripeCustomerId | String? | -- | Stripe Customer ID (unique) |
 | tier | UserTier | `FREE` | Current subscription tier |
 | isAdmin | Boolean | `false` | Admin access flag |
-| briefingLengthMinutes | Int | `15` | Preferred briefing length |
-| briefingTime | String | `"07:00"` | Preferred delivery time (HH:MM) |
-| timezone | String | `"America/New_York"` | User timezone |
 | createdAt | DateTime | `now()` | Record creation timestamp |
 | updatedAt | DateTime | `@updatedAt` | Last update timestamp |
 
 **Relations:**
 - `subscriptions` -> Subscription[] (one-to-many)
 - `briefings` -> Briefing[] (one-to-many)
+- `feedItems` -> FeedItem[] (one-to-many)
 - `briefingRequests` -> BriefingRequest[] (one-to-many)
 
 **Constraints:**
@@ -146,6 +154,7 @@ A podcast feed tracked by the platform.
 **Relations:**
 - `episodes` -> Episode[] (one-to-many)
 - `subscriptions` -> Subscription[] (one-to-many)
+- `feedItems` -> FeedItem[] (one-to-many)
 
 **Constraints:**
 - `feedUrl` is unique
@@ -175,6 +184,7 @@ A single episode from a podcast feed.
 - `podcast` -> Podcast (many-to-one, cascade delete)
 - `distillation` -> Distillation? (one-to-zero-or-one)
 - `clips` -> Clip[] (one-to-many)
+- `feedItems` -> FeedItem[] (one-to-many)
 - `pipelineJobs` -> PipelineJob[] (one-to-many)
 - `workProducts` -> WorkProduct[] (one-to-many)
 
@@ -230,6 +240,7 @@ A generated audio clip for a specific episode at a specific duration tier.
 **Relations:**
 - `episode` -> Episode (many-to-one, cascade delete)
 - `distillation` -> Distillation (many-to-one, cascade delete)
+- `briefings` -> Briefing[] (one-to-many)
 
 **Constraints:**
 - `@@unique([episodeId, durationTier])` -- one clip per episode per duration tier
@@ -238,14 +249,16 @@ A generated audio clip for a specific episode at a specific duration tier.
 
 ### Subscription
 
-Join table linking users to their subscribed podcasts.
+Join table linking users to their subscribed podcasts, with a per-subscription duration tier.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | id | String | `cuid()` | Primary key |
 | userId | String | -- | FK to User |
 | podcastId | String | -- | FK to Podcast |
+| durationTier | Int | -- | Briefing duration in minutes (1, 2, 3, 5, 7, 10, or 15) |
 | createdAt | DateTime | `now()` | Record creation timestamp |
+| updatedAt | DateTime | `@updatedAt` | Last update timestamp |
 
 **Relations:**
 - `user` -> User (many-to-one, cascade delete)
@@ -258,52 +271,63 @@ Join table linking users to their subscribed podcasts.
 
 ### Briefing
 
-A compiled audio briefing delivered to a user, composed of segments.
+Per-user wrapper around a shared Clip. Links a user to a specific content clip and will carry personalized ad audio in the future.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | id | String | `cuid()` | Primary key |
 | userId | String | -- | FK to User |
-| status | BriefingStatus | `PENDING` | Processing status |
-| targetMinutes | Int | -- | Requested briefing length |
-| actualSeconds | Int? | -- | Actual briefing duration |
-| audioUrl | String? | -- | Public audio URL |
-| audioKey | String? | -- | R2 object key for audio |
+| clipId | String | -- | FK to Clip (shared content) |
+| adAudioUrl | String? | -- | Personalized ad audio URL (null until ads ship) |
+| adAudioKey | String? | -- | R2 key for ad audio |
+| createdAt | DateTime | `now()` | Record creation timestamp |
+| updatedAt | DateTime | `@updatedAt` | Last update timestamp |
+
+**Relations:**
+- `user` -> User (many-to-one, cascade delete)
+- `clip` -> Clip (many-to-one, cascade delete)
+- `feedItems` -> FeedItem[] (one-to-many)
+
+**Constraints:**
+- `@@unique([userId, clipId])` -- one briefing per user per clip
+
+---
+
+### FeedItem
+
+Per-user delivery record. One entry in the user's feed, pointing to a Briefing (single episode) or Digest (future). Created by subscriptions (auto) or on-demand requests.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| id | String | `cuid()` | Primary key |
+| userId | String | -- | FK to User |
+| episodeId | String | -- | FK to Episode |
+| podcastId | String | -- | FK to Podcast |
+| briefingId | String? | -- | FK to Briefing (set when READY) |
+| durationTier | Int | -- | Briefing duration in minutes |
+| source | FeedItemSource | -- | SUBSCRIPTION or ON_DEMAND |
+| status | FeedItemStatus | `PENDING` | Processing status |
+| listened | Boolean | `false` | Whether user has listened |
+| listenedAt | DateTime? | -- | When user listened |
+| requestId | String? | -- | FK to BriefingRequest that triggered pipeline |
 | errorMessage | String? | -- | Error details on failure |
 | createdAt | DateTime | `now()` | Record creation timestamp |
 | updatedAt | DateTime | `@updatedAt` | Last update timestamp |
 
 **Relations:**
 - `user` -> User (many-to-one, cascade delete)
-- `segments` -> BriefingSegment[] (one-to-many)
-- `request` -> BriefingRequest? (one-to-zero-or-one, via BriefingRequest.briefingId)
+- `episode` -> Episode (many-to-one, cascade delete)
+- `podcast` -> Podcast (many-to-one, cascade delete)
+- `briefing` -> Briefing? (many-to-one)
 
-**Constraints:** None beyond standard FK
-
----
-
-### BriefingSegment
-
-An ordered clip within a briefing, with transition text.
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| id | String | `cuid()` | Primary key |
-| briefingId | String | -- | FK to Briefing |
-| clipId | String | -- | Reference to Clip used |
-| orderIndex | Int | -- | Position in briefing |
-| transitionText | String | -- | Intro/transition script |
-
-**Relations:**
-- `briefing` -> Briefing (many-to-one, cascade delete)
-
-**Constraints:** None beyond standard FK
+**Constraints:**
+- `@@unique([userId, episodeId, durationTier])` -- one feed item per user per episode per tier
 
 ---
 
 ### BriefingRequest
 
-A user's request for a briefing. Drives the demand-driven pipeline.
+A request that drives the pipeline. Created by subscriptions (auto), on-demand requests, or admin tests.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -313,18 +337,15 @@ A user's request for a briefing. Drives the demand-driven pipeline.
 | targetMinutes | Int | -- | Desired briefing length |
 | items | Json | -- | Requested content (podcast/episode IDs) |
 | isTest | Boolean | `false` | Whether this is an admin test request |
-| briefingId | String? | -- | FK to Briefing (unique, set on completion) |
 | errorMessage | String? | -- | Error details on failure |
 | createdAt | DateTime | `now()` | Record creation timestamp |
 | updatedAt | DateTime | `@updatedAt` | Last update timestamp |
 
 **Relations:**
 - `user` -> User (many-to-one, cascade delete)
-- `briefing` -> Briefing? (one-to-zero-or-one)
 - `jobs` -> PipelineJob[] (one-to-many)
 
-**Constraints:**
-- `briefingId` is unique (enforces 1:1 with Briefing)
+**Constraints:** None beyond standard FK
 
 ---
 
@@ -469,17 +490,25 @@ Processing stages for audio clip generation.
 | `COMPLETED` | Audio clip ready |
 | `FAILED` | Processing failed |
 
-### BriefingStatus
+### FeedItemSource
 
-Processing stages for final briefing assembly.
+How a feed item was created.
 
 | Value | Description |
 |-------|-------------|
-| `PENDING` | Not yet started |
-| `ASSEMBLING` | Combining clips into briefing |
-| `GENERATING_AUDIO` | Generating final audio |
-| `COMPLETED` | Briefing ready for playback |
-| `FAILED` | Assembly failed |
+| `SUBSCRIPTION` | Auto-generated when a new episode is detected for a subscribed podcast |
+| `ON_DEMAND` | Created by a user's explicit on-demand briefing request |
+
+### FeedItemStatus
+
+Lifecycle of a feed item.
+
+| Value | Description |
+|-------|-------------|
+| `PENDING` | Pipeline not yet started |
+| `PROCESSING` | Pipeline is generating the clip |
+| `READY` | Clip is available for playback |
+| `FAILED` | Pipeline failed |
 
 ### BriefingRequestStatus
 
@@ -548,11 +577,10 @@ All foreign key relations use `onDelete: Cascade`. Deleting a parent record remo
 
 | Deleted Parent | Cascaded Deletions |
 |----------------|-------------------|
-| User | Subscriptions, Briefings, BriefingRequests |
-| Podcast | Episodes, Subscriptions |
-| Episode | Distillation, Clips, PipelineJobs, WorkProducts |
+| User | Subscriptions, Briefings, FeedItems, BriefingRequests |
+| Podcast | Episodes, Subscriptions, FeedItems |
+| Episode | Distillation, Clips, FeedItems, PipelineJobs, WorkProducts |
 | Distillation | Clips |
-| Briefing | BriefingSegments |
 | BriefingRequest | PipelineJobs |
 | PipelineJob | PipelineSteps |
 
