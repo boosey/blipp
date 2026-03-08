@@ -1,224 +1,111 @@
 import { Hono } from "hono";
 import type { Env } from "../types";
-import { requireAuth, getAuth } from "../middleware/auth";
+import { requireAuth } from "../middleware/auth";
 import { getCurrentUser } from "../lib/admin-helpers";
-import { nearestTier } from "../lib/time-fitting";
 
 /**
- * Briefing routes for generating and managing daily podcast briefings.
- * All routes require Clerk authentication.
+ * Briefing routes — on-demand briefing generation only.
+ * Subscription-based briefings are handled automatically via feed refresh.
  */
 export const briefings = new Hono<{ Bindings: Env }>();
 
 briefings.use("*", requireAuth);
 
-/** Maximum briefings per week for free-tier users */
-const FREE_WEEKLY_LIMIT = 3;
-/** Maximum briefing length in minutes for free-tier users */
-const FREE_MAX_MINUTES = 5;
-
 /**
- * GET / — List the user's briefings (last 30, newest first).
+ * POST /generate — Create an on-demand briefing for a specific episode or podcast.
  *
- * @returns Array of briefing records ordered by creation date descending
- */
-briefings.get("/", async (c) => {
-  const prisma = c.get("prisma") as any;
-  const user = await getCurrentUser(c, prisma);
-
-  const list = await prisma.briefing.findMany({
-    where: { userId: user.id },
-    orderBy: { createdAt: "desc" },
-    take: 30,
-  });
-
-  return c.json({ briefings: list });
-});
-
-/**
- * GET /today — Get today's briefing for the authenticated user.
- * Returns the most recent briefing created today (in UTC).
+ * Body: { podcastId, episodeId?, durationTier }
+ * - podcastId: required
+ * - episodeId: optional — if omitted, uses latest episode for the podcast
+ * - durationTier: required — must be 1, 2, 3, 5, 7, 10, or 15
  *
- * @returns The briefing object, or null if none exists for today
- */
-briefings.get("/today", async (c) => {
-  const prisma = c.get("prisma") as any;
-  const user = await getCurrentUser(c, prisma);
-
-  const startOfDay = new Date();
-  startOfDay.setUTCHours(0, 0, 0, 0);
-
-  const briefing = await prisma.briefing.findFirst({
-    where: {
-      userId: user.id,
-      createdAt: { gte: startOfDay },
-    },
-    orderBy: { createdAt: "desc" },
-  });
-
-  return c.json({ briefing: briefing ?? null });
-});
-
-/**
- * POST /generate — Generate a new briefing.
- * Enforces tier limits: FREE users get 3/week and max 5 minutes.
- * Queues the briefing for assembly via BRIEFING_ASSEMBLY_QUEUE.
- *
- * @returns The created briefing record
- * @throws 429 if free-tier user exceeds weekly limit
+ * Creates a FeedItem and dispatches to the pipeline.
  */
 briefings.post("/generate", async (c) => {
-  const prisma = c.get("prisma") as any;
-  const user = await getCurrentUser(c, prisma);
-
-  // Parse optional body for episode-specific request
-  let body: { episodeId?: string } = {};
-  try {
-    body = await c.req.json();
-  } catch {
-    // No body or invalid JSON — treat as subscription-based request
-  }
-
-  let targetMinutes = user.briefingLengthMinutes;
-
-  // Enforce free-tier limits
-  if (user.tier === "FREE") {
-    targetMinutes = Math.min(targetMinutes, FREE_MAX_MINUTES);
-
-    // Count briefings in the last 7 days
-    const oneWeekAgo = new Date();
-    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-
-    const weeklyCount = await prisma.briefing.count({
-      where: {
-        userId: user.id,
-        createdAt: { gte: oneWeekAgo },
-      },
-    });
-
-    if (weeklyCount >= FREE_WEEKLY_LIMIT) {
-      return c.json(
-        {
-          error: "Free tier limit reached: 3 briefings per week",
-          limit: FREE_WEEKLY_LIMIT,
-          used: weeklyCount,
-        },
-        429
-      );
-    }
-  }
-
-  let items;
-
-  if (body.episodeId) {
-    // One-off episode request
-    const episode = await prisma.episode.findUniqueOrThrow({
-      where: { id: body.episodeId },
-    });
-
-    const durationTier = nearestTier(targetMinutes);
-    items = [
-      {
-        podcastId: episode.podcastId,
-        episodeId: episode.id,
-        durationTier,
-        useLatest: false,
-      },
-    ];
-  } else {
-    // Subscription-based request (existing behavior)
-    const subscriptions = await prisma.subscription.findMany({
-      where: { userId: user.id },
-      select: { podcastId: true },
-    });
-    if (!subscriptions.length) {
-      return c.json({ error: "No podcast subscriptions found" }, 400);
-    }
-
-    const perEpisodeTier = nearestTier(targetMinutes / subscriptions.length);
-    items = subscriptions.map((s: { podcastId: string }) => ({
-      podcastId: s.podcastId,
-      episodeId: null,
-      durationTier: perEpisodeTier,
-      useLatest: true,
-    }));
-  }
-
-  // Create a BriefingRequest and dispatch to orchestrator
-  const request = await prisma.briefingRequest.create({
-    data: {
-      userId: user.id,
-      targetMinutes,
-      items: items as any,
-      isTest: false,
-      status: "PENDING",
-    },
-  });
-
-  await c.env.ORCHESTRATOR_QUEUE.send({
-    requestId: request.id,
-    action: "evaluate",
-  });
-
-  return c.json({ request: { id: request.id, status: "PENDING", targetMinutes } }, 201);
-});
-
-/**
- * GET /preferences — Retrieve briefing preferences and tier.
- *
- * @returns The user's briefing preferences and current tier
- */
-briefings.get("/preferences", async (c) => {
-  const prisma = c.get("prisma") as any;
-  const user = await getCurrentUser(c, prisma);
-
-  return c.json({
-    briefingLength: user.briefingLengthMinutes,
-    briefingTime: user.briefingTime,
-    timezone: user.timezone,
-    tier: user.tier,
-  });
-});
-
-/**
- * PATCH /preferences — Update briefing preferences.
- * Accepts: briefingLengthMinutes, briefingTime, timezone.
- *
- * @returns The updated user record
- */
-briefings.patch("/preferences", async (c) => {
-  const userId = getAuth(c)!.userId!;
   const body = await c.req.json<{
-    briefingLengthMinutes?: number;
-    briefingTime?: string;
-    timezone?: string;
+    podcastId: string;
+    episodeId?: string;
+    durationTier: number;
   }>();
 
+  if (!body.podcastId) {
+    return c.json({ error: "podcastId is required" }, 400);
+  }
+
+  if (!body.durationTier || ![1, 2, 3, 5, 7, 10, 15].includes(body.durationTier)) {
+    return c.json({ error: "durationTier is required and must be 1, 2, 3, 5, 7, 10, or 15" }, 400);
+  }
+
   const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
 
-  const updateData: Record<string, unknown> = {};
+  // Resolve episode
+  let episodeId = body.episodeId;
+  let podcastId = body.podcastId;
 
-  if (body.briefingLengthMinutes !== undefined) {
-    updateData.briefingLengthMinutes = body.briefingLengthMinutes;
+  if (episodeId) {
+    const episode = await prisma.episode.findUniqueOrThrow({
+      where: { id: episodeId },
+    });
+    podcastId = episode.podcastId;
+  } else {
+    const episode = await prisma.episode.findFirst({
+      where: { podcastId: body.podcastId },
+      orderBy: { publishedAt: "desc" },
+    });
+    if (!episode) {
+      return c.json({ error: "No episodes found for this podcast" }, 404);
+    }
+    episodeId = episode.id;
   }
-  if (body.briefingTime !== undefined) {
-    updateData.briefingTime = body.briefingTime;
-  }
-  if (body.timezone !== undefined) {
-    updateData.timezone = body.timezone;
-  }
 
-  const user = await prisma.user.update({
-    where: { clerkId: userId },
-    data: updateData,
-  });
-
-  return c.json({
-    preferences: {
-      briefingLengthMinutes: user.briefingLengthMinutes,
-      briefingTime: user.briefingTime,
-      timezone: user.timezone,
-      tier: user.tier,
+  // Create FeedItem (upsert prevents duplicates)
+  const feedItem = await prisma.feedItem.upsert({
+    where: {
+      userId_episodeId_durationTier: {
+        userId: user.id,
+        episodeId,
+        durationTier: body.durationTier,
+      },
     },
+    create: {
+      userId: user.id,
+      episodeId,
+      podcastId,
+      durationTier: body.durationTier,
+      source: "ON_DEMAND",
+      status: "PENDING",
+    },
+    update: {},
   });
+
+  // Only dispatch pipeline if not already processed
+  if (feedItem.status === "PENDING") {
+    const request = await prisma.briefingRequest.create({
+      data: {
+        userId: user.id,
+        targetMinutes: body.durationTier,
+        items: [{
+          podcastId,
+          episodeId,
+          durationTier: body.durationTier,
+          useLatest: false,
+        }],
+        isTest: false,
+        status: "PENDING",
+      },
+    });
+
+    await prisma.feedItem.update({
+      where: { id: feedItem.id },
+      data: { requestId: request.id, status: "PROCESSING" },
+    });
+
+    await c.env.ORCHESTRATOR_QUEUE.send({
+      requestId: request.id,
+      action: "evaluate",
+    });
+  }
+
+  return c.json({ feedItem }, 201);
 });
