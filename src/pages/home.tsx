@@ -1,17 +1,17 @@
 import { useEffect, useState, useCallback } from "react";
 import { useApiFetch } from "../lib/api";
-import { RequestItem } from "../components/request-item";
-import type { UserRequest } from "../types/user";
+import { FeedItemCard } from "../components/feed-item";
+import type { FeedItem } from "../types/feed";
 
 export function Home() {
   const apiFetch = useApiFetch();
-  const [requests, setRequests] = useState<UserRequest[]>([]);
+  const [items, setItems] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchRequests = useCallback(async () => {
+  const fetchFeed = useCallback(async () => {
     try {
-      const data = await apiFetch<{ requests: UserRequest[] }>("/requests");
-      setRequests(data.requests);
+      const data = await apiFetch<{ items: FeedItem[] }>("/feed?limit=50");
+      setItems(data.items);
     } catch {
       // Silently handle
     } finally {
@@ -20,19 +20,26 @@ export function Home() {
   }, [apiFetch]);
 
   useEffect(() => {
-    fetchRequests();
-  }, [fetchRequests]);
+    fetchFeed();
+  }, [fetchFeed]);
 
-  // Poll for status updates on active requests
+  // Poll every 5s if any items are pending/processing
   useEffect(() => {
-    const hasActive = requests.some(
-      (r) => r.status === "PENDING" || r.status === "PROCESSING"
+    const hasActive = items.some(
+      (i) => i.status === "PENDING" || i.status === "PROCESSING"
     );
     if (!hasActive) return;
 
-    const interval = setInterval(fetchRequests, 5000);
+    const interval = setInterval(fetchFeed, 5000);
     return () => clearInterval(interval);
-  }, [requests, fetchRequests]);
+  }, [items, fetchFeed]);
+
+  function handlePlay(feedItemId: string) {
+    // Mark listened optimistically
+    apiFetch(`/feed/${feedItemId}/listened`, { method: "PATCH" }).catch(
+      () => {}
+    );
+  }
 
   if (loading) {
     return (
@@ -42,12 +49,13 @@ export function Home() {
     );
   }
 
-  if (requests.length === 0) {
+  if (items.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20 gap-3">
         <p className="text-zinc-400 text-center">No briefings yet.</p>
         <p className="text-zinc-500 text-sm text-center">
-          Head to Discover to find podcasts and create your first briefing.
+          Subscribe to podcasts or request on-demand briefings to fill your
+          feed.
         </p>
       </div>
     );
@@ -55,10 +63,10 @@ export function Home() {
 
   return (
     <div>
-      <h1 className="text-xl font-bold mb-4">Your Briefings</h1>
+      <h1 className="text-xl font-bold mb-4">Your Feed</h1>
       <div className="space-y-2">
-        {requests.map((req) => (
-          <RequestItem key={req.id} request={req} />
+        {items.map((item) => (
+          <FeedItemCard key={item.id} item={item} onPlay={handlePlay} />
         ))}
       </div>
     </div>
