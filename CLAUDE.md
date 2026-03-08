@@ -11,8 +11,7 @@ npm run typecheck        # TypeScript check (tsc --noEmit)
 npx prisma generate      # Regenerate Prisma client
 npx prisma db push       # Push schema to database
 npx prisma db seed       # Seed plans data
-npm run clean:requests   # Clean BriefingRequest data
-npm run clean:pipeline   # Clean pipeline data
+npm run clean:pipeline   # Clean all user/pipeline data (feed, briefings, subscriptions, pipeline)
 npm run db:check         # Database health check
 ```
 

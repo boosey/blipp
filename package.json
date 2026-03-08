@@ -10,7 +10,6 @@
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "typecheck": "tsc --noEmit",
     "kill:port": "npx kill-port 5174",
-    "clean:requests": "npx tsx prisma/clean-requests.ts",
     "clean:pipeline": "node scripts/clean-pipeline.mjs",
     "clean:pipeline:dry": "node scripts/clean-pipeline.mjs --dry-run",
     "db:check": "npx tsx prisma/check-db.ts",

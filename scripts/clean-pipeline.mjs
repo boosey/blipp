@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * Cleans all pipeline-related data: requests, jobs, steps, work products,
- * distillations, clips, briefings, and their R2 objects.
+ * Cleans all user-generated and pipeline data: feed items, briefings,
+ * subscriptions, requests, jobs, steps, work products, clips,
+ * distillations, and their R2 objects.
  *
  * Uses raw `pg` (not Prisma) to avoid runtime/adapter issues.
  * Uses `wrangler r2 object delete` for R2 cleanup.
@@ -75,14 +76,15 @@ async function main() {
 
   // Delete order respects FK constraints (children first)
   const tables = [
-    ["WorkProduct", '"WorkProduct"'],
+    ["FeedItem", '"FeedItem"'],
+    ["Briefing", '"Briefing"'],
     ["PipelineStep", '"PipelineStep"'],
+    ["WorkProduct", '"WorkProduct"'],
     ["PipelineJob", '"PipelineJob"'],
     ["BriefingRequest", '"BriefingRequest"'],
-    ["BriefingSegment", '"BriefingSegment"'],
-    ["Briefing", '"Briefing"'],
     ["Clip", '"Clip"'],
     ["Distillation", '"Distillation"'],
+    ["Subscription", '"Subscription"'],
   ];
 
   for (const [label, table] of tables) {
