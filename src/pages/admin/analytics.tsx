@@ -298,7 +298,7 @@ function UsageTrendsWidget({ data }: { data: UsageTrendsData }) {
 
       {/* Key metrics 2x2 */}
       <div className="grid grid-cols-2 gap-2 mb-4">
-        <MetricItem label="Briefings" value={formatNumber(data.metrics.briefings)} icon={Radio} color="#F59E0B" />
+        <MetricItem label="Feed Items" value={formatNumber(data.metrics.feedItems)} icon={Radio} color="#F59E0B" />
         <MetricItem label="Episodes" value={formatNumber(data.metrics.episodes)} icon={Disc3} color="#8B5CF6" />
         <MetricItem label="Active Users" value={formatNumber(data.metrics.users)} icon={Users} color="#14B8A6" />
         <MetricItem label="Avg Duration" value={formatDuration(data.metrics.avgDuration)} icon={Clock} color="#3B82F6" />
@@ -321,7 +321,7 @@ function UsageTrendsWidget({ data }: { data: UsageTrendsData }) {
             />
             <YAxis tick={{ fontSize: 10, fill: "#9CA3AF" }} tickLine={false} axisLine={false} />
             <Tooltip content={<ChartTooltip />} />
-            <Line type="monotone" dataKey="briefings" stroke="#F59E0B" strokeWidth={1.5} dot={false} name="Briefings" />
+            <Line type="monotone" dataKey="feedItems" stroke="#F59E0B" strokeWidth={1.5} dot={false} name="Feed Items" />
             <Line type="monotone" dataKey="episodes" stroke="#8B5CF6" strokeWidth={1.5} dot={false} name="Episodes" />
             <Line type="monotone" dataKey="users" stroke="#14B8A6" strokeWidth={1.5} dot={false} name="Users" />
           </LineChart>

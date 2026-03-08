@@ -123,7 +123,7 @@ describe("Episodes Routes", () => {
           { id: "cl1", durationTier: 3, status: "READY", wordCount: 500, actualSeconds: 180, audioUrl: "http://c.mp3", createdAt: now },
         ],
       });
-      mockPrisma.briefingSegment.findMany.mockResolvedValueOnce([]);
+      mockPrisma.feedItem.findMany.mockResolvedValueOnce([]);
       mockPrisma.pipelineJob.findMany.mockResolvedValueOnce([]);
 
       const res = await app.request("/episodes/ep1", {}, env, mockExCtx);

@@ -1,20 +1,15 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   Play,
-  Pause,
-  SkipBack,
-  SkipForward,
-  Volume2,
-  VolumeX,
-  Download,
   Search,
-  Flag,
-  RefreshCw,
-  Trash2,
   Clock,
   Mic,
   BarChart3,
   User,
+  Download,
+  Disc3,
+  ExternalLink,
+  Megaphone,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -34,7 +29,7 @@ import { useAdminFetch } from "@/lib/admin-api";
 import type {
   AdminBriefing,
   AdminBriefingDetail,
-  AdminBriefingSegment,
+  PaginatedResponse,
 } from "@/types/admin";
 
 // ── Helpers ──
@@ -76,102 +71,15 @@ function tierLabel(tier: string) {
   }
 }
 
-function fitColor(accuracy: number) {
-  if (accuracy >= 95) return "text-[#10B981]";
-  if (accuracy >= 90) return "text-[#F59E0B]";
-  return "text-[#EF4444]";
-}
-
 function statusBadge(status: string) {
-  switch (status) {
-    case "completed":
+  switch (status.toUpperCase()) {
+    case "COMPLETED":
       return "bg-[#10B981]/15 text-[#10B981] border-[#10B981]/30";
-    case "failed":
+    case "FAILED":
       return "bg-[#EF4444]/15 text-[#EF4444] border-[#EF4444]/30";
     default:
       return "bg-white/5 text-[#9CA3AF] border-white/10";
   }
-}
-
-// ── Radial Gauge ──
-
-function RadialGauge({ value, size = 80, label }: { value: number; size?: number; label: string }) {
-  const radius = (size - 8) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const offset = circumference - (value / 100) * circumference;
-  const color = value >= 95 ? "#10B981" : value >= 90 ? "#F59E0B" : "#EF4444";
-
-  return (
-    <div className="flex flex-col items-center gap-1">
-      <svg width={size} height={size} className="-rotate-90">
-        <circle cx={size / 2} cy={size / 2} r={radius} stroke="rgba(255,255,255,0.05)" strokeWidth={4} fill="none" />
-        <circle
-          cx={size / 2} cy={size / 2} r={radius}
-          stroke={color} strokeWidth={4} fill="none"
-          strokeDasharray={circumference} strokeDashoffset={offset}
-          strokeLinecap="round"
-          className="transition-all duration-700"
-        />
-        <text
-          x={size / 2} y={size / 2}
-          textAnchor="middle" dominantBaseline="central"
-          className="rotate-90 origin-center"
-          fill="#F9FAFB" fontSize={size * 0.2} fontWeight="bold" fontFamily="monospace"
-        >
-          {value.toFixed(0)}%
-        </text>
-      </svg>
-      <span className="text-[10px] text-[#9CA3AF]">{label}</span>
-    </div>
-  );
-}
-
-// ── Waveform Placeholder ──
-
-function WaveformVisualization({ segments }: { segments: AdminBriefingSegment[] }) {
-  const colors = ["#3B82F6", "#8B5CF6", "#F59E0B", "#10B981", "#14B8A6", "#EF4444", "#F97316"];
-  const totalDuration = segments.reduce((s, seg) => s + seg.clipDuration, 0) || 1;
-
-  return (
-    <div className="h-40 rounded-lg bg-[#0A1628] border border-white/5 overflow-hidden flex">
-      {segments.map((seg, i) => {
-        const width = (seg.clipDuration / totalDuration) * 100;
-        return (
-          <div
-            key={seg.id}
-            className="h-full relative flex items-end justify-center"
-            style={{ width: `${width}%`, backgroundColor: `${colors[i % colors.length]}10` }}
-          >
-            {/* Fake waveform bars */}
-            <div className="absolute inset-0 flex items-center justify-center gap-px px-1">
-              {Array.from({ length: Math.max(4, Math.floor(width / 2)) }).map((_, j) => {
-                const h = 20 + Math.random() * 60;
-                return (
-                  <div
-                    key={j}
-                    className="flex-1 rounded-full opacity-60"
-                    style={{
-                      height: `${h}%`,
-                      backgroundColor: colors[i % colors.length],
-                      maxWidth: 3,
-                    }}
-                  />
-                );
-              })}
-            </div>
-            <span className="absolute bottom-1 text-[8px] text-white/40 truncate px-1">
-              {seg.podcastTitle}
-            </span>
-          </div>
-        );
-      })}
-      {segments.length === 0 && (
-        <div className="flex-1 flex items-center justify-center text-[#9CA3AF] text-xs">
-          No audio segments
-        </div>
-      )}
-    </div>
-  );
 }
 
 // ── Briefing Card ──
@@ -185,8 +93,6 @@ function BriefingCard({
   selected: boolean;
   onClick: () => void;
 }) {
-  const isFailed = briefing.status === "failed";
-
   return (
     <button
       onClick={onClick}
@@ -194,8 +100,7 @@ function BriefingCard({
         "w-full text-left rounded-lg border p-3 space-y-2 transition-all",
         selected
           ? "bg-[#3B82F6]/10 border-[#3B82F6]/30"
-          : "bg-[#1A2942] border-white/5 hover:border-white/10",
-        isFailed && "border-l-2 border-l-[#EF4444] bg-[#EF4444]/[0.04]"
+          : "bg-[#1A2942] border-white/5 hover:border-white/10"
       )}
     >
       <div className="flex items-center justify-between gap-2">
@@ -205,90 +110,34 @@ function BriefingCard({
             {tierLabel(briefing.userTier)}
           </Badge>
         </div>
-        <Badge className={cn("text-[9px] uppercase shrink-0", statusBadge(briefing.status))}>
-          {briefing.status}
+        <Badge className={cn("text-[9px] uppercase shrink-0", statusBadge(briefing.clipStatus))}>
+          {briefing.clipStatus}
         </Badge>
       </div>
 
       <div className="flex items-center gap-3 text-[10px] text-[#9CA3AF]">
         <span>{relativeTime(briefing.createdAt)}</span>
+        <span>{briefing.durationTier}m tier</span>
         {briefing.actualSeconds != null && (
           <span>{formatDuration(briefing.actualSeconds)}</span>
         )}
-        {briefing.fitAccuracy != null && (
-          <span className={cn("font-mono tabular-nums", fitColor(briefing.fitAccuracy))}>
-            {briefing.fitAccuracy.toFixed(1)}%
-          </span>
-        )}
       </div>
+
+      {(briefing.episodeTitle || briefing.podcastTitle) && (
+        <div className="flex items-center gap-2 text-[10px] text-[#9CA3AF]">
+          {briefing.podcastImageUrl ? (
+            <img src={briefing.podcastImageUrl} alt="" className="h-4 w-4 rounded object-cover shrink-0" />
+          ) : (
+            <Disc3 className="h-3 w-3 shrink-0 opacity-40" />
+          )}
+          <span className="truncate">{briefing.episodeTitle ?? briefing.podcastTitle}</span>
+        </div>
+      )}
 
       <div className="flex items-center gap-3 text-[10px] text-[#9CA3AF]">
-        <span>{briefing.podcastCount} podcast{briefing.podcastCount !== 1 ? "s" : ""}</span>
-        <span>{briefing.segmentCount} segment{briefing.segmentCount !== 1 ? "s" : ""}</span>
+        <span>{briefing.feedItemCount} feed item{briefing.feedItemCount !== 1 ? "s" : ""}</span>
       </div>
     </button>
-  );
-}
-
-// ── Segment Card ──
-
-function SegmentCard({
-  segment,
-  isPlaying,
-}: {
-  segment: AdminBriefingSegment;
-  isPlaying: boolean;
-}) {
-  return (
-    <div
-      className={cn(
-        "rounded-lg border border-white/5 p-3 flex items-start gap-3 transition-all",
-        isPlaying ? "border-l-2 border-l-[#3B82F6] bg-[#3B82F6]/[0.04]" : "bg-[#0A1628]"
-      )}
-    >
-      <div className="flex items-center gap-2 shrink-0">
-        <span className="text-xs font-mono text-[#9CA3AF] w-4 text-right">{segment.orderIndex + 1}</span>
-        {segment.podcastImageUrl ? (
-          <img src={segment.podcastImageUrl} alt="" className="h-8 w-8 rounded object-cover" />
-        ) : (
-          <div className="h-8 w-8 rounded bg-white/5 flex items-center justify-center">
-            <Mic className="h-3 w-3 text-[#9CA3AF]" />
-          </div>
-        )}
-      </div>
-
-      <div className="flex-1 min-w-0 space-y-1">
-        <div className="flex items-center gap-2">
-          {isPlaying && (
-            <span className="relative flex h-2 w-2 shrink-0">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#3B82F6] opacity-75" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-[#3B82F6]" />
-            </span>
-          )}
-          <span className="text-xs text-[#F9FAFB] truncate">{segment.episodeTitle}</span>
-        </div>
-        <div className="text-[10px] text-[#9CA3AF]">{segment.podcastTitle}</div>
-
-        {/* Duration bar */}
-        <div className="flex items-center gap-2">
-          <div className="flex-1 h-1.5 bg-white/5 rounded-full overflow-hidden">
-            <div
-              className="h-full rounded-full bg-[#3B82F6]/60"
-              style={{ width: `${Math.min((segment.clipDuration / 120) * 100, 100)}%` }}
-            />
-          </div>
-          <span className="text-[10px] font-mono text-[#9CA3AF] tabular-nums">
-            {formatDuration(segment.clipDuration)}
-          </span>
-        </div>
-
-        {segment.transitionText && (
-          <p className="text-[10px] text-[#9CA3AF]/60 italic leading-relaxed line-clamp-2">
-            {segment.transitionText}
-          </p>
-        )}
-      </div>
-    </div>
   );
 }
 
@@ -303,12 +152,8 @@ function BriefingSkeleton() {
         ))}
       </div>
       <div className="flex-1 space-y-4">
-        <Skeleton className="h-40 bg-white/5 rounded-lg" />
-        <Skeleton className="h-60 bg-white/5 rounded-lg" />
-      </div>
-      <div className="w-[360px] shrink-0 space-y-4">
         <Skeleton className="h-48 bg-white/5 rounded-lg" />
-        <Skeleton className="h-64 bg-white/5 rounded-lg" />
+        <Skeleton className="h-48 bg-white/5 rounded-lg" />
       </div>
     </div>
   );
@@ -326,19 +171,12 @@ export default function BriefingsPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
 
-  // Audio state
-  const [playing, setPlaying] = useState(false);
-  const [currentSegment, setCurrentSegment] = useState(0);
-  const [speed, setSpeed] = useState(1);
-  const [volume, setVolume] = useState(80);
-  const [muted, setMuted] = useState(false);
-
   const load = useCallback(() => {
     setLoading(true);
     const params = new URLSearchParams();
     if (statusFilter !== "all") params.set("status", statusFilter);
     if (search) params.set("search", search);
-    apiFetch<{ data: AdminBriefing[] }>(`/briefings?${params}`)
+    apiFetch<PaginatedResponse<AdminBriefing>>(`/briefings?${params}`)
       .then((r) => setBriefings(r.data))
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -350,11 +188,7 @@ export default function BriefingsPage() {
     (id: string) => {
       setDetailLoading(true);
       apiFetch<{ data: AdminBriefingDetail }>(`/briefings/${id}`)
-        .then((r) => {
-          setSelected(r.data);
-          setCurrentSegment(0);
-          setPlaying(false);
-        })
+        .then((r) => setSelected(r.data))
         .catch(console.error)
         .finally(() => setDetailLoading(false));
     },
@@ -375,9 +209,9 @@ export default function BriefingsPage() {
             </SelectTrigger>
             <SelectContent className="bg-[#1A2942] border-white/10">
               <SelectItem value="all">All</SelectItem>
-              <SelectItem value="completed">Completed</SelectItem>
-              <SelectItem value="failed">Failed</SelectItem>
-              <SelectItem value="pending">Pending</SelectItem>
+              <SelectItem value="COMPLETED">Completed</SelectItem>
+              <SelectItem value="FAILED">Failed</SelectItem>
+              <SelectItem value="PENDING">Pending</SelectItem>
             </SelectContent>
           </Select>
           <div className="relative flex-1">
@@ -411,264 +245,168 @@ export default function BriefingsPage() {
         </ScrollArea>
       </div>
 
-      {/* ── CENTER: Player & Segments ── */}
+      {/* ── RIGHT: Detail Panel ── */}
       <div className="flex-1 flex flex-col gap-4 min-h-0 min-w-0">
         {selected ? (
-          <>
-            {/* Header */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <span className="text-sm text-[#F9FAFB] font-medium">{selected.userEmail}</span>
-                <Badge className={cn("text-[9px] uppercase", tierBadgeClass(selected.userTier))}>
-                  {tierLabel(selected.userTier)}
-                </Badge>
-                <span className="text-xs text-[#9CA3AF]">{relativeTime(selected.createdAt)}</span>
-              </div>
-              <Badge className={cn("text-[9px] uppercase", statusBadge(selected.status))}>
-                {selected.status}
-              </Badge>
-            </div>
-
-            {/* Waveform */}
-            <WaveformVisualization segments={selected.segments} />
-
-            {/* Playback Controls */}
-            <div className="rounded-lg bg-[#1A2942] border border-white/5 p-3 flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="ghost" size="icon-xs"
-                  className="text-[#9CA3AF] hover:text-[#F9FAFB]"
-                  onClick={() => setCurrentSegment((p) => Math.max(0, p - 1))}
-                >
-                  <SkipBack className="h-3.5 w-3.5" />
-                </Button>
-                <Button
-                  size="icon-sm"
-                  className="bg-[#3B82F6] hover:bg-[#3B82F6]/80 text-white rounded-full"
-                  onClick={() => setPlaying(!playing)}
-                >
-                  {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 ml-0.5" />}
-                </Button>
-                <Button
-                  variant="ghost" size="icon-xs"
-                  className="text-[#9CA3AF] hover:text-[#F9FAFB]"
-                  onClick={() => setCurrentSegment((p) => Math.min(selected.segments.length - 1, p + 1))}
-                >
-                  <SkipForward className="h-3.5 w-3.5" />
-                </Button>
+          <ScrollArea className="flex-1">
+            <div className="space-y-4 pr-2">
+              {/* Header */}
+              <div className="rounded-lg bg-[#1A2942] border border-white/5 p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <User className="h-4 w-4 text-[#14B8A6]" />
+                    <span className="text-sm text-[#F9FAFB] font-medium">{selected.userEmail}</span>
+                    <Badge className={cn("text-[9px] uppercase", tierBadgeClass(selected.userTier))}>
+                      {tierLabel(selected.userTier)}
+                    </Badge>
+                  </div>
+                  <span className="text-xs text-[#9CA3AF]">{relativeTime(selected.createdAt)}</span>
+                </div>
               </div>
 
-              <Separator orientation="vertical" className="h-6 bg-white/5" />
+              {/* Clip Detail */}
+              <div className="rounded-lg bg-[#1A2942] border border-white/5 p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Mic className="h-4 w-4 text-[#8B5CF6]" />
+                  <span className="text-sm font-semibold text-[#F9FAFB]">Clip</span>
+                  <Badge className={cn("text-[9px] uppercase ml-auto", statusBadge(selected.clip.status))}>
+                    {selected.clip.status}
+                  </Badge>
+                </div>
 
-              {/* Speed selector */}
-              <Select value={String(speed)} onValueChange={(v) => setSpeed(Number(v))}>
-                <SelectTrigger size="sm" className="w-16 bg-transparent border-white/5 text-xs text-[#9CA3AF]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-[#1A2942] border-white/10">
-                  <SelectItem value="1">1x</SelectItem>
-                  <SelectItem value="1.25">1.25x</SelectItem>
-                  <SelectItem value="1.5">1.5x</SelectItem>
-                  <SelectItem value="2">2x</SelectItem>
-                </SelectContent>
-              </Select>
+                {/* Podcast/Episode info */}
+                <div className="flex items-start gap-3">
+                  {selected.clip.podcastImageUrl ? (
+                    <img src={selected.clip.podcastImageUrl} alt="" className="h-12 w-12 rounded-lg object-cover shrink-0" />
+                  ) : (
+                    <div className="h-12 w-12 rounded-lg bg-white/5 flex items-center justify-center shrink-0">
+                      <Disc3 className="h-5 w-5 text-[#9CA3AF]/40" />
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-medium text-[#F9FAFB] truncate">
+                      {selected.clip.episodeTitle ?? "Unknown Episode"}
+                    </div>
+                    <div className="text-[10px] text-[#9CA3AF] truncate">
+                      {selected.clip.podcastTitle ?? "Unknown Podcast"}
+                    </div>
+                  </div>
+                </div>
 
-              {/* Volume */}
-              <div className="flex items-center gap-2 ml-auto">
-                <Button
-                  variant="ghost" size="icon-xs"
-                  className="text-[#9CA3AF] hover:text-[#F9FAFB]"
-                  onClick={() => setMuted(!muted)}
-                >
-                  {muted ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
-                </Button>
-                <input
-                  type="range" min={0} max={100}
-                  value={muted ? 0 : volume}
-                  onChange={(e) => { setVolume(Number(e.target.value)); setMuted(false); }}
-                  className="w-20 h-1 accent-[#3B82F6] bg-white/5 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#3B82F6]"
-                />
-              </div>
+                {/* Clip stats */}
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="rounded-md bg-[#0A1628] border border-white/5 p-2.5 text-center">
+                    <div className="text-sm font-bold font-mono tabular-nums text-[#F9FAFB]">
+                      {selected.clip.durationTier}m
+                    </div>
+                    <div className="text-[9px] text-[#9CA3AF]">Duration Tier</div>
+                  </div>
+                  <div className="rounded-md bg-[#0A1628] border border-white/5 p-2.5 text-center">
+                    <div className="text-sm font-bold font-mono tabular-nums text-[#F9FAFB]">
+                      {selected.clip.actualSeconds != null
+                        ? formatDuration(selected.clip.actualSeconds)
+                        : "-"}
+                    </div>
+                    <div className="text-[9px] text-[#9CA3AF]">Actual</div>
+                  </div>
+                  <div className="rounded-md bg-[#0A1628] border border-white/5 p-2.5 text-center">
+                    <div className="text-sm font-bold font-mono tabular-nums text-[#F9FAFB]">
+                      {selected.clip.wordCount ?? "-"}
+                    </div>
+                    <div className="text-[9px] text-[#9CA3AF]">Words</div>
+                  </div>
+                </div>
 
-              {selected.audioUrl && (
-                <Button variant="ghost" size="icon-xs" className="text-[#9CA3AF] hover:text-[#F9FAFB]" asChild>
-                  <a href={selected.audioUrl} download>
-                    <Download className="h-3.5 w-3.5" />
-                  </a>
-                </Button>
-              )}
-            </div>
-
-            {/* Segment Breakdown */}
-            <div className="flex items-center gap-2 mt-1">
-              <span className="text-sm font-semibold text-[#F9FAFB]">Segments</span>
-              <Badge className="bg-white/5 text-[#9CA3AF] text-[9px]">
-                {selected.segments.length}
-              </Badge>
-            </div>
-
-            <ScrollArea className="flex-1">
-              <div className="space-y-2 pr-2">
-                {selected.segments.map((seg, i) => (
-                  <SegmentCard
-                    key={seg.id}
-                    segment={seg}
-                    isPlaying={i === currentSegment && playing}
-                  />
-                ))}
-                {selected.segments.length === 0 && (
-                  <div className="text-center py-8 text-[#9CA3AF] text-xs">No segments</div>
+                {/* Audio link */}
+                {selected.clip.audioUrl && (
+                  <div className="flex items-center gap-2 rounded-md bg-white/[0.03] p-2">
+                    <Play className="h-3 w-3 text-[#3B82F6]" />
+                    <span className="text-[10px] text-[#3B82F6] truncate flex-1 font-mono">
+                      {selected.clip.audioUrl}
+                    </span>
+                    <Button variant="ghost" size="icon-xs" className="text-[#9CA3AF] hover:text-[#F9FAFB]" asChild>
+                      <a href={selected.clip.audioUrl} target="_blank" rel="noopener noreferrer">
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    </Button>
+                    <Button variant="ghost" size="icon-xs" className="text-[#9CA3AF] hover:text-[#F9FAFB]" asChild>
+                      <a href={selected.clip.audioUrl} download>
+                        <Download className="h-3 w-3" />
+                      </a>
+                    </Button>
+                  </div>
                 )}
               </div>
-            </ScrollArea>
-          </>
+
+              {/* Ad Audio (future) */}
+              {selected.adAudioUrl && (
+                <div className="rounded-lg bg-[#1A2942] border border-white/5 p-4 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Megaphone className="h-4 w-4 text-[#F59E0B]" />
+                    <span className="text-sm font-semibold text-[#F9FAFB]">Ad Audio</span>
+                  </div>
+                  <div className="flex items-center gap-2 rounded-md bg-white/[0.03] p-2">
+                    <Play className="h-3 w-3 text-[#F59E0B]" />
+                    <span className="text-[10px] text-[#F59E0B] truncate flex-1 font-mono">
+                      {selected.adAudioUrl}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Feed Items delivered from this briefing */}
+              <div className="rounded-lg bg-[#1A2942] border border-white/5 p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <BarChart3 className="h-4 w-4 text-[#F59E0B]" />
+                  <span className="text-sm font-semibold text-[#F9FAFB]">Feed Items</span>
+                  <Badge className="bg-white/5 text-[#9CA3AF] text-[9px] ml-auto">
+                    {selected.feedItems.length}
+                  </Badge>
+                </div>
+
+                {selected.feedItems.length > 0 ? (
+                  <div className="rounded-lg bg-[#0A1628] border border-white/5 overflow-hidden">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-white/5">
+                          <th className="text-left px-3 py-2 text-[10px] uppercase text-[#9CA3AF] font-medium">Status</th>
+                          <th className="text-left px-3 py-2 text-[10px] uppercase text-[#9CA3AF] font-medium">Source</th>
+                          <th className="text-center px-3 py-2 text-[10px] uppercase text-[#9CA3AF] font-medium">Listened</th>
+                          <th className="text-right px-3 py-2 text-[10px] uppercase text-[#9CA3AF] font-medium">Created</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selected.feedItems.map((fi) => (
+                          <tr key={fi.id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.03]">
+                            <td className="px-3 py-2">
+                              <Badge className={cn("text-[9px] uppercase", statusBadge(fi.status))}>
+                                {fi.status}
+                              </Badge>
+                            </td>
+                            <td className="px-3 py-2 text-[#9CA3AF]">{fi.source}</td>
+                            <td className="px-3 py-2 text-center">
+                              {fi.listened ? (
+                                <span className="text-[#10B981]">Yes</span>
+                              ) : (
+                                <span className="text-[#9CA3AF]">-</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-right text-[#9CA3AF]">{relativeTime(fi.createdAt)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="text-center py-6 text-[#9CA3AF] text-xs">No feed items</div>
+                )}
+              </div>
+            </div>
+          </ScrollArea>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-[#9CA3AF]">
             <Mic className="h-10 w-10 mb-3 opacity-20" />
             <span className="text-sm">Select a briefing to view details</span>
-          </div>
-        )}
-      </div>
-
-      {/* ── RIGHT: Context Panel ── */}
-      <div className="w-[360px] shrink-0 flex flex-col gap-4 min-h-0">
-        {selected ? (
-          <>
-            {/* User Context */}
-            <div className="rounded-lg bg-[#1A2942] border border-white/5 p-4 space-y-3">
-              <div className="flex items-center gap-2">
-                <User className="h-4 w-4 text-[#14B8A6]" />
-                <span className="text-sm font-semibold">User Context</span>
-              </div>
-              <div className="space-y-2 text-xs">
-                <div className="flex justify-between">
-                  <span className="text-[#9CA3AF]">Email</span>
-                  <span className="text-[#F9FAFB] truncate ml-2">{selected.userEmail}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-[#9CA3AF]">Tier</span>
-                  <Badge className={cn("text-[9px] uppercase", tierBadgeClass(selected.userTier))}>
-                    {tierLabel(selected.userTier)}
-                  </Badge>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-[#9CA3AF]">Target Duration</span>
-                  <span className="text-[#F9FAFB] font-mono tabular-nums">{selected.targetMinutes}m</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-[#9CA3AF]">Podcasts</span>
-                  <span className="text-[#F9FAFB] font-mono tabular-nums">{selected.podcastCount}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-[#9CA3AF]">Segments</span>
-                  <span className="text-[#F9FAFB] font-mono tabular-nums">{selected.segmentCount}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Quality Metrics */}
-            <div className="rounded-lg bg-[#1A2942] border border-white/5 p-4 space-y-4 flex-1 min-h-0 overflow-auto">
-              <div className="flex items-center gap-2">
-                <BarChart3 className="h-4 w-4 text-[#F59E0B]" />
-                <span className="text-sm font-semibold">Quality Metrics</span>
-              </div>
-
-              {selected.qualityMetrics ? (
-                <div className="space-y-4">
-                  {/* Time-Fitting Accuracy */}
-                  <div className="flex justify-center">
-                    <RadialGauge value={selected.qualityMetrics.fitAccuracy} size={96} label="Time-Fitting" />
-                  </div>
-
-                  {/* Content Coverage */}
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between text-[10px]">
-                      <span className="text-[#9CA3AF]">Content Coverage</span>
-                      <span className="font-mono tabular-nums text-[#F9FAFB]">
-                        {selected.qualityMetrics.contentCoverage}%
-                      </span>
-                    </div>
-                    <div className="h-2 bg-white/5 rounded-full overflow-hidden">
-                      <div
-                        className="h-full rounded-full bg-[#3B82F6] transition-all"
-                        style={{ width: `${selected.qualityMetrics.contentCoverage}%` }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Segment Balance */}
-                  <div className="space-y-1">
-                    <span className="text-[10px] text-[#9CA3AF]">Segment Balance</span>
-                    <div className="h-3 bg-white/5 rounded-full overflow-hidden flex">
-                      {selected.qualityMetrics.segmentBalance.map((seg, i) => {
-                        const colors = ["#3B82F6", "#8B5CF6", "#F59E0B", "#10B981", "#14B8A6"];
-                        return (
-                          <div
-                            key={seg.podcast}
-                            className="h-full first:rounded-l-full last:rounded-r-full"
-                            style={{
-                              width: `${seg.percentage}%`,
-                              backgroundColor: colors[i % colors.length],
-                            }}
-                            title={`${seg.podcast}: ${seg.percentage}%`}
-                          />
-                        );
-                      })}
-                    </div>
-                    <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1">
-                      {selected.qualityMetrics.segmentBalance.map((seg, i) => {
-                        const colors = ["#3B82F6", "#8B5CF6", "#F59E0B", "#10B981", "#14B8A6"];
-                        return (
-                          <div key={seg.podcast} className="flex items-center gap-1 text-[9px]">
-                            <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: colors[i % colors.length] }} />
-                            <span className="text-[#9CA3AF] truncate max-w-[100px]">{seg.podcast}</span>
-                            <span className="text-[#F9FAFB] font-mono tabular-nums">{seg.percentage}%</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Transition Quality */}
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] text-[#9CA3AF]">Transition Quality</span>
-                    <Badge
-                      className={cn(
-                        "text-[9px] uppercase",
-                        selected.qualityMetrics.transitionQuality === "good"
-                          ? "bg-[#10B981]/15 text-[#10B981] border-[#10B981]/30"
-                          : "bg-[#F59E0B]/15 text-[#F59E0B] border-[#F59E0B]/30"
-                      )}
-                    >
-                      {selected.qualityMetrics.transitionQuality === "good" ? "Good" : "Needs Review"}
-                    </Badge>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex flex-col items-center py-6 text-[#9CA3AF]">
-                  <BarChart3 className="h-6 w-6 mb-2 opacity-30" />
-                  <span className="text-xs">No quality data</span>
-                </div>
-              )}
-            </div>
-
-            {/* Actions */}
-            <div className="rounded-lg bg-[#1A2942] border border-white/5 p-4 space-y-2">
-              <Button size="sm" className="w-full bg-[#F59E0B]/15 text-[#F59E0B] hover:bg-[#F59E0B]/25 border border-[#F59E0B]/20">
-                <Flag className="h-3.5 w-3.5" /> Flag for Review
-              </Button>
-              <Button size="sm" className="w-full bg-[#3B82F6]/15 text-[#3B82F6] hover:bg-[#3B82F6]/25 border border-[#3B82F6]/20">
-                <RefreshCw className="h-3.5 w-3.5" /> Regenerate
-              </Button>
-              <Button size="sm" className="w-full bg-[#EF4444]/15 text-[#EF4444] hover:bg-[#EF4444]/25 border border-[#EF4444]/20">
-                <Trash2 className="h-3.5 w-3.5" /> Delete Preview
-              </Button>
-            </div>
-          </>
-        ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-[#9CA3AF]">
-            <BarChart3 className="h-8 w-8 mb-2 opacity-20" />
-            <span className="text-xs">Select a briefing</span>
           </div>
         )}
       </div>

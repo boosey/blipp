@@ -249,44 +249,54 @@ export interface EpisodeStageTrace {
   output?: unknown;
 }
 
-// ── Briefings ──
+// ── Briefings (per-user wrapper around shared Clip) ──
 
 export interface AdminBriefing {
   id: string;
   userId: string;
   userEmail: string;
   userTier: string;
-  status: string;
-  targetMinutes: number;
+  clipId: string;
+  durationTier: number;
+  clipStatus: string;
   actualSeconds?: number;
   audioUrl?: string;
-  errorMessage?: string;
-  segmentCount: number;
-  podcastCount: number;
-  fitAccuracy?: number; // 0-100
+  adAudioUrl?: string;
+  episodeTitle?: string;
+  podcastTitle?: string;
+  podcastImageUrl?: string;
+  feedItemCount: number;
   createdAt: string;
 }
 
-export interface AdminBriefingDetail extends AdminBriefing {
-  segments: AdminBriefingSegment[];
-  qualityMetrics?: BriefingQualityMetrics;
-}
-
-export interface AdminBriefingSegment {
+export interface AdminBriefingDetail {
   id: string;
-  orderIndex: number;
-  podcastTitle: string;
-  podcastImageUrl?: string;
-  episodeTitle: string;
-  clipDuration: number;
-  transitionText: string;
-}
-
-export interface BriefingQualityMetrics {
-  fitAccuracy: number;
-  contentCoverage: number;
-  segmentBalance: { podcast: string; percentage: number }[];
-  transitionQuality: "good" | "needs_review";
+  userId: string;
+  userEmail: string;
+  userTier: string;
+  clipId: string;
+  adAudioUrl?: string;
+  adAudioKey?: string;
+  createdAt: string;
+  clip: {
+    id: string;
+    durationTier: number;
+    status: string;
+    actualSeconds?: number;
+    audioUrl?: string;
+    wordCount?: number;
+    episodeTitle?: string;
+    podcastTitle?: string;
+    podcastId?: string;
+    podcastImageUrl?: string;
+  };
+  feedItems: {
+    id: string;
+    status: string;
+    listened: boolean;
+    source: string;
+    createdAt: string;
+  }[];
 }
 
 // ── Users ──
@@ -316,14 +326,23 @@ export interface AdminUser {
   badges: string[]; // "power_user", "at_risk", "trial", "anniversary"
 }
 
+export interface AdminFeedItem {
+  id: string;
+  status: string;
+  source: string;
+  durationTier: number;
+  listened: boolean;
+  podcastTitle?: string;
+  podcastImageUrl?: string;
+  episodeTitle?: string;
+  createdAt: string;
+}
+
 export interface AdminUserDetail extends AdminUser {
   stripeCustomerId?: string;
-  briefingLengthMinutes: number;
-  briefingTime: string;
-  timezone: string;
-  subscriptions: { podcastId: string; podcastTitle: string; createdAt: string }[];
-  recentBriefings: AdminBriefing[];
-  lifetimeValue?: number;
+  feedItemCount: number;
+  subscriptions: { podcastId: string; podcastTitle: string; durationTier: number; createdAt: string }[];
+  recentFeedItems: AdminFeedItem[];
 }
 
 export interface UserSegmentCounts {
@@ -346,8 +365,8 @@ export interface CostBreakdownData {
 }
 
 export interface UsageTrendsData {
-  metrics: { briefings: number; episodes: number; users: number; avgDuration: number };
-  trends: { date: string; briefings: number; episodes: number; users: number }[];
+  metrics: { feedItems: number; episodes: number; users: number; avgDuration: number };
+  trends: { date: string; feedItems: number; episodes: number; users: number }[];
   byTier: { tier: string; count: number; percentage: number }[];
   peakTimes: { hour: number; count: number }[];
   topPodcasts: { id: string; title: string; listens: number }[];

@@ -45,7 +45,7 @@ import type {
   UserSegment,
   UserSegmentCounts,
   UserTier,
-  AdminBriefing,
+  AdminFeedItem,
   PaginatedResponse,
 } from "@/types/admin";
 
@@ -294,9 +294,9 @@ function OverviewTab({ user }: { user: AdminUserDetail }) {
           </div>
           <div className="rounded-lg bg-[#0A1628] border border-white/5 p-3 text-center">
             <div className="text-lg font-bold font-mono tabular-nums text-[#F9FAFB]">
-              {user.recentBriefings?.filter(
-                (b) =>
-                  new Date(b.createdAt) >
+              {user.recentFeedItems?.filter(
+                (fi) =>
+                  new Date(fi.createdAt) >
                   new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
               ).length ?? 0}
             </div>
@@ -340,10 +340,10 @@ function OverviewTab({ user }: { user: AdminUserDetail }) {
   );
 }
 
-// ── Briefings Tab ──
+// ── Feed Items Tab ──
 
-function BriefingsTab({ briefings }: { briefings: AdminBriefing[] }) {
-  const failed = briefings.filter((b) => b.status === "failed");
+function FeedItemsTab({ feedItems }: { feedItems: AdminFeedItem[] }) {
+  const failed = feedItems.filter((fi) => fi.status === "FAILED");
 
   return (
     <div className="space-y-3">
@@ -351,7 +351,7 @@ function BriefingsTab({ briefings }: { briefings: AdminBriefing[] }) {
         <div className="rounded-md bg-[#EF4444]/10 border border-[#EF4444]/20 p-3 flex items-center gap-2">
           <AlertTriangle className="h-4 w-4 text-[#EF4444] shrink-0" />
           <span className="text-xs text-[#EF4444]">
-            {failed.length} failed briefing{failed.length > 1 ? "s" : ""}
+            {failed.length} failed item{failed.length > 1 ? "s" : ""}
           </span>
         </div>
       )}
@@ -364,57 +364,49 @@ function BriefingsTab({ briefings }: { briefings: AdminBriefing[] }) {
                 Date
               </th>
               <th className="text-left px-3 py-2 text-[10px] uppercase text-[#9CA3AF] font-medium">
+                Episode
+              </th>
+              <th className="text-left px-3 py-2 text-[10px] uppercase text-[#9CA3AF] font-medium">
                 Status
               </th>
               <th className="text-right px-3 py-2 text-[10px] uppercase text-[#9CA3AF] font-medium">
                 Duration
               </th>
-              <th className="text-right px-3 py-2 text-[10px] uppercase text-[#9CA3AF] font-medium">
-                Fit Accuracy
+              <th className="text-center px-3 py-2 text-[10px] uppercase text-[#9CA3AF] font-medium">
+                Listened
               </th>
             </tr>
           </thead>
           <tbody>
-            {briefings.map((b) => (
+            {feedItems.map((fi) => (
               <tr
-                key={b.id}
+                key={fi.id}
                 className="border-b border-white/5 last:border-0 hover:bg-white/[0.03]"
               >
-                <td className="px-3 py-2 text-[#F9FAFB]">{formatDate(b.createdAt)}</td>
+                <td className="px-3 py-2 text-[#F9FAFB]">{formatDate(fi.createdAt)}</td>
+                <td className="px-3 py-2 text-[#9CA3AF] truncate max-w-[160px]">
+                  {fi.episodeTitle || fi.podcastTitle || "-"}
+                </td>
                 <td className="px-3 py-2">
                   <Badge
                     className={cn(
                       "text-[9px] uppercase",
-                      b.status === "completed"
+                      fi.status === "READY"
                         ? "bg-[#10B981]/15 text-[#10B981] border-[#10B981]/30"
-                        : b.status === "failed"
+                        : fi.status === "FAILED"
                           ? "bg-[#EF4444]/15 text-[#EF4444] border-[#EF4444]/30"
                           : "bg-white/5 text-[#9CA3AF] border-white/10"
                     )}
                   >
-                    {b.status}
+                    {fi.status}
                   </Badge>
                 </td>
                 <td className="px-3 py-2 text-right font-mono tabular-nums text-[#9CA3AF]">
-                  {b.actualSeconds != null
-                    ? `${Math.floor(b.actualSeconds / 60)}m ${Math.floor(b.actualSeconds % 60)
-                        .toString()
-                        .padStart(2, "0")}s`
-                    : "-"}
+                  {fi.durationTier}m
                 </td>
-                <td className="px-3 py-2 text-right font-mono tabular-nums">
-                  {b.fitAccuracy != null ? (
-                    <span
-                      className={
-                        b.fitAccuracy >= 95
-                          ? "text-[#10B981]"
-                          : b.fitAccuracy >= 90
-                            ? "text-[#F59E0B]"
-                            : "text-[#EF4444]"
-                      }
-                    >
-                      {b.fitAccuracy.toFixed(1)}%
-                    </span>
+                <td className="px-3 py-2 text-center">
+                  {fi.listened ? (
+                    <span className="text-[#10B981]">Yes</span>
                   ) : (
                     <span className="text-[#9CA3AF]">-</span>
                   )}
@@ -423,8 +415,8 @@ function BriefingsTab({ briefings }: { briefings: AdminBriefing[] }) {
             ))}
           </tbody>
         </table>
-        {briefings.length === 0 && (
-          <div className="text-center py-8 text-[#9CA3AF] text-xs">No briefings yet</div>
+        {feedItems.length === 0 && (
+          <div className="text-center py-8 text-[#9CA3AF] text-xs">No feed items yet</div>
         )}
       </div>
     </div>
@@ -817,10 +809,10 @@ export default function UsersPage() {
                   Overview
                 </TabsTrigger>
                 <TabsTrigger
-                  value="briefings"
+                  value="activity"
                   className="text-xs text-[#9CA3AF] data-[state=active]:text-[#F9FAFB]"
                 >
-                  Briefings
+                  Activity
                 </TabsTrigger>
                 <TabsTrigger
                   value="billing"
@@ -835,8 +827,8 @@ export default function UsersPage() {
                   <TabsContent value="overview">
                     <OverviewTab user={selectedUser} />
                   </TabsContent>
-                  <TabsContent value="briefings">
-                    <BriefingsTab briefings={selectedUser.recentBriefings} />
+                  <TabsContent value="activity">
+                    <FeedItemsTab feedItems={selectedUser.recentFeedItems} />
                   </TabsContent>
                   <TabsContent value="billing">
                     <BillingTab user={selectedUser} onUpdate={handleUserUpdate} />
