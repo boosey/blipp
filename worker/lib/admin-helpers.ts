@@ -1,5 +1,7 @@
 import type { Context } from "hono";
+import { createClerkClient } from "@clerk/backend";
 import { getAuth } from "../middleware/auth";
+import type { Env } from "../types";
 
 /** Parse page/pageSize from query params with defaults and max cap. */
 export function parsePagination(c: Context) {
@@ -35,8 +37,24 @@ export function paginatedResponse<T>(
   };
 }
 
-/** Resolve the current Clerk user to a DB User record. */
-export async function getCurrentUser(c: Context, prisma: any) {
-  const userId = getAuth(c)!.userId!;
-  return prisma.user.findUniqueOrThrow({ where: { clerkId: userId } });
+/** Resolve the current Clerk user to a DB User record, creating if missing. */
+export async function getCurrentUser(c: Context<{ Bindings: Env }>, prisma: any) {
+  const clerkId = getAuth(c)!.userId!;
+
+  try {
+    return await prisma.user.findUniqueOrThrow({ where: { clerkId } });
+  } catch {
+    // User missing from DB — fetch from Clerk and create
+    const clerk = createClerkClient({ secretKey: c.env.CLERK_SECRET_KEY });
+    const clerkUser = await clerk.users.getUser(clerkId);
+
+    return prisma.user.create({
+      data: {
+        clerkId,
+        email: clerkUser.emailAddresses[0]?.emailAddress ?? `${clerkId}@unknown.com`,
+        name: [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ") || null,
+        imageUrl: clerkUser.imageUrl ?? null,
+      },
+    });
+  }
 }

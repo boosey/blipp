@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { Env } from "../types";
+import { me } from "./me";
 import { plans } from "./plans";
 import { podcasts } from "./podcasts";
 import { briefings } from "./briefings";
@@ -15,6 +16,7 @@ import { adminRoutes } from "./admin/index";
  */
 const routes = new Hono<{ Bindings: Env }>();
 
+routes.route("/me", me);
 routes.route("/plans", plans);
 routes.route("/podcasts", podcasts);
 routes.route("/briefings", briefings);

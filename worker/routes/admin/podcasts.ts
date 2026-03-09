@@ -203,6 +203,67 @@ podcastsRoutes.get("/:id", async (c) => {
   });
 });
 
+// POST /catalog-refresh - Fetch top 200 trending podcasts + their episodes
+podcastsRoutes.post("/catalog-refresh", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const { PodcastIndexClient } = await import("../../lib/podcast-index");
+
+  const client = new PodcastIndexClient(
+    c.env.PODCAST_INDEX_KEY,
+    c.env.PODCAST_INDEX_SECRET
+  );
+
+  // Fetch top 200 trending podcasts
+  const feeds = await client.trending(200);
+
+  let created = 0;
+  let updated = 0;
+  const podcastIds: string[] = [];
+
+  for (const feed of feeds) {
+    const podcast = await prisma.podcast.upsert({
+      where: { feedUrl: feed.url },
+      create: {
+        feedUrl: feed.url,
+        title: feed.title,
+        description: feed.description ?? null,
+        imageUrl: feed.image ?? null,
+        podcastIndexId: String(feed.id),
+        author: feed.author ?? null,
+      },
+      update: {
+        title: feed.title,
+        description: feed.description ?? undefined,
+        imageUrl: feed.image ?? undefined,
+        author: feed.author ?? undefined,
+        podcastIndexId: String(feed.id),
+      },
+    });
+
+    podcastIds.push(podcast.id);
+    // Detect if newly created (within last 5s)
+    if (Date.now() - new Date(podcast.createdAt).getTime() < 5000) {
+      created++;
+    } else {
+      updated++;
+    }
+  }
+
+  // Enqueue feed refresh for each podcast to pull episodes
+  for (const podcastId of podcastIds) {
+    await c.env.FEED_REFRESH_QUEUE.send({ type: "catalog", podcastId });
+  }
+
+  return c.json({
+    data: {
+      feedsFound: feeds.length,
+      created,
+      updated,
+      refreshesQueued: podcastIds.length,
+    },
+  });
+});
+
 // POST / - Create podcast
 podcastsRoutes.post("/", async (c) => {
   const prisma = c.get("prisma") as any;
