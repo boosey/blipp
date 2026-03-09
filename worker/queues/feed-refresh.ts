@@ -1,7 +1,6 @@
 import { createPrismaClient } from "../lib/db";
 import { getConfig } from "../lib/config";
 import { createPipelineLogger } from "../lib/logger";
-import { checkStageEnabled } from "../lib/queue-helpers";
 import { parseRssFeed, type ParsedEpisode } from "../lib/rss-parser";
 import type { Env } from "../types";
 
@@ -39,9 +38,6 @@ export async function handleFeedRefresh(
   try {
     const log = await createPipelineLogger({ stage: "feed-refresh", prisma });
     log.info("batch_start", { messageCount: batch.messages.length });
-
-    // Check if stage 1 (feed refresh) is enabled — manual messages bypass this
-    if (!(await checkStageEnabled(prisma, batch, 1, log))) return;
 
     // Collect specific podcast IDs from messages, if any
     const podcastIds = new Set<string>();

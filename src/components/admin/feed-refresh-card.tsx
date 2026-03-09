@@ -3,7 +3,7 @@ import { Rss, RefreshCw, Loader2, AlertTriangle, Clock, Podcast } from "lucide-r
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAdminFetch } from "@/lib/admin-api";
-import type { FeedRefreshSummary, PipelineTriggerResult } from "@/types/admin";
+import type { FeedRefreshSummary } from "@/types/admin";
 
 function relativeTime(iso: string | null): string {
   if (!iso) return "Never";
@@ -17,7 +17,7 @@ function relativeTime(iso: string | null): string {
   return `${Math.floor(h / 24)}d ago`;
 }
 
-export function FeedRefreshCard({ compact = false }: { compact?: boolean }) {
+export function FeedRefreshCard({ compact = false, onRefresh }: { compact?: boolean; onRefresh?: () => void }) {
   const apiFetch = useAdminFetch();
   const [summary, setSummary] = useState<FeedRefreshSummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -33,14 +33,14 @@ export function FeedRefreshCard({ compact = false }: { compact?: boolean }) {
 
   useEffect(() => { load(); }, [load]);
 
-  const handleRefresh = async () => {
+  const handleCatalogRefresh = async () => {
     setRefreshing(true);
     try {
-      await apiFetch<PipelineTriggerResult>("/pipeline/trigger/feed-refresh", { method: "POST" });
-      // Reload summary after a short delay
-      setTimeout(load, 1500);
+      await apiFetch("/podcasts/catalog-refresh", { method: "POST" });
+      load();
+      onRefresh?.();
     } catch (e) {
-      console.error("Feed refresh failed:", e);
+      console.error("Catalog refresh failed:", e);
     } finally {
       setRefreshing(false);
     }
@@ -91,13 +91,13 @@ export function FeedRefreshCard({ compact = false }: { compact?: boolean }) {
         <div className="ml-auto">
           <Button
             size="xs"
-            onClick={handleRefresh}
+            onClick={handleCatalogRefresh}
             disabled={refreshing}
             className="bg-[#3B82F6] hover:bg-[#3B82F6]/80 text-white text-[10px] gap-1"
             data-testid="feed-refresh-button"
           >
             {refreshing ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-            {refreshing ? "Refreshing..." : "Refresh Now"}
+            {refreshing ? "Refreshing..." : "Catalog Refresh"}
           </Button>
         </div>
       </div>
@@ -116,13 +116,13 @@ export function FeedRefreshCard({ compact = false }: { compact?: boolean }) {
         </div>
         <Button
           size="xs"
-          onClick={handleRefresh}
+          onClick={handleCatalogRefresh}
           disabled={refreshing}
           className="bg-[#3B82F6] hover:bg-[#3B82F6]/80 text-white text-[10px] gap-1"
           data-testid="feed-refresh-button"
         >
           {refreshing ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-          {refreshing ? "Refreshing..." : "Refresh Now"}
+          {refreshing ? "Refreshing..." : "Catalog Refresh"}
         </Button>
       </div>
 

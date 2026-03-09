@@ -31,7 +31,7 @@ describe("FeedRefreshCard", () => {
     vi.clearAllMocks();
     mockApiFetch.mockImplementation((path: string) => {
       if (path.includes("feed-refresh-summary")) return Promise.resolve(mockSummary);
-      if (path.includes("trigger/feed-refresh")) return Promise.resolve({ enqueued: 15, skipped: 0, message: "ok" });
+      if (path.includes("catalog-refresh")) return Promise.resolve({ data: { feedsFound: 200, created: 185, updated: 15, refreshesQueued: 200 } });
       return Promise.resolve({ data: null });
     });
   });
@@ -48,7 +48,7 @@ describe("FeedRefreshCard", () => {
     expect(screen.getByText("2")).toBeInTheDocument();
   });
 
-  it("triggers feed refresh on button click", async () => {
+  it("triggers catalog refresh on button click", async () => {
     const user = userEvent.setup();
     render(<FeedRefreshCard />);
 
@@ -59,7 +59,7 @@ describe("FeedRefreshCard", () => {
     await user.click(screen.getByTestId("feed-refresh-button"));
 
     expect(mockApiFetch).toHaveBeenCalledWith(
-      "/pipeline/trigger/feed-refresh",
+      "/podcasts/catalog-refresh",
       { method: "POST" }
     );
   });

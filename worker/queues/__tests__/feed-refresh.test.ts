@@ -157,55 +157,6 @@ describe("handleFeedRefresh", () => {
     expect(mockMsg.ack).toHaveBeenCalled();
   });
 
-  describe("stage-enabled check", () => {
-    it("ACKs without processing when stage 1 is disabled", async () => {
-      (getConfig as any).mockResolvedValueOnce(false); // pipeline.stage.1.enabled
-
-      const mockMsg = {
-        body: { type: "cron" },
-        ack: vi.fn(),
-        retry: vi.fn(),
-      };
-      const mockBatch = {
-        messages: [mockMsg],
-        queue: "feed-refresh",
-      } as unknown as MessageBatch;
-
-      await handleFeedRefresh(mockBatch, mockEnv, mockCtx);
-
-      expect(mockMsg.ack).toHaveBeenCalled();
-      expect(mockPrisma.podcast.findMany).not.toHaveBeenCalled();
-      expect(mockFetch).not.toHaveBeenCalled();
-    });
-
-    it("bypasses stage-enabled check for manual messages", async () => {
-      (getConfig as any).mockResolvedValue(true);
-
-      mockPrisma.podcast.findMany.mockResolvedValue([
-        { id: "pod-1", feedUrl: "https://example.com/feed.xml" },
-      ]);
-      mockPrisma.episode.upsert.mockResolvedValue({
-        id: "ep-1",
-        createdAt: new Date("2026-01-01"),
-      });
-      mockPrisma.podcast.update.mockResolvedValue({});
-
-      const mockMsg = {
-        body: { type: "manual", podcastId: "pod-1" },
-        ack: vi.fn(),
-        retry: vi.fn(),
-      };
-      const mockBatch = {
-        messages: [mockMsg],
-        queue: "feed-refresh",
-      } as unknown as MessageBatch;
-
-      await handleFeedRefresh(mockBatch, mockEnv, mockCtx);
-
-      expect(mockPrisma.podcast.findMany).toHaveBeenCalled();
-      expect(mockMsg.ack).toHaveBeenCalled();
-    });
-  });
 
   describe("per-podcast filtering", () => {
     it("fetches only the specified podcast when podcastId is in message", async () => {
@@ -502,24 +453,6 @@ describe("handleFeedRefresh", () => {
       await handleFeedRefresh(mockBatch, mockEnv, mockCtx);
 
       expect(mockLogger.info).toHaveBeenCalledWith("batch_start", { messageCount: 1 });
-    });
-
-    it("should log stage_disabled when stage is off", async () => {
-      (getConfig as any).mockResolvedValueOnce(false);
-
-      const mockMsg = {
-        body: { type: "cron" },
-        ack: vi.fn(),
-        retry: vi.fn(),
-      };
-      const mockBatch = {
-        messages: [mockMsg],
-        queue: "feed-refresh",
-      } as unknown as MessageBatch;
-
-      await handleFeedRefresh(mockBatch, mockEnv, mockCtx);
-
-      expect(mockLogger.info).toHaveBeenCalledWith("stage_disabled", { stage: 1 });
     });
 
     it("should log podcast_refreshed with newEpisodes count", async () => {

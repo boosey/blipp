@@ -249,9 +249,54 @@ podcastsRoutes.post("/catalog-refresh", async (c) => {
     }
   }
 
-  // Enqueue feed refresh for each podcast to pull episodes
-  for (const podcastId of podcastIds) {
-    await c.env.FEED_REFRESH_QUEUE.send({ type: "catalog", podcastId });
+  // Fetch last 5 episodes per podcast via Podcast Index API (concurrent batches)
+  let episodesCreated = 0;
+  let episodeErrors = 0;
+  const BATCH_SIZE = 10;
+
+  for (let i = 0; i < feeds.length; i += BATCH_SIZE) {
+    const batch = feeds.slice(i, i + BATCH_SIZE);
+    const results = await Promise.allSettled(
+      batch.map(async (feed) => {
+        const episodes = await client.episodesByFeedId(feed.id, 5);
+        const podcast = await prisma.podcast.findUnique({
+          where: { podcastIndexId: String(feed.id) },
+          select: { id: true },
+        });
+        if (!podcast) return 0;
+
+        let count = 0;
+        for (const ep of episodes) {
+          if (!ep.guid || !ep.enclosureUrl) continue;
+          await prisma.episode.upsert({
+            where: { podcastId_guid: { podcastId: podcast.id, guid: ep.guid } },
+            create: {
+              podcastId: podcast.id,
+              title: ep.title,
+              description: ep.description ?? null,
+              audioUrl: ep.enclosureUrl,
+              publishedAt: new Date(ep.datePublished * 1000),
+              durationSeconds: ep.duration || null,
+              guid: ep.guid,
+              transcriptUrl: ep.transcriptUrl ?? null,
+            },
+            update: {},
+          });
+          count++;
+        }
+
+        await prisma.podcast.update({
+          where: { id: podcast.id },
+          data: { lastFetchedAt: new Date() },
+        });
+        return count;
+      })
+    );
+
+    for (const r of results) {
+      if (r.status === "fulfilled") episodesCreated += r.value;
+      else episodeErrors++;
+    }
   }
 
   return c.json({
@@ -259,7 +304,8 @@ podcastsRoutes.post("/catalog-refresh", async (c) => {
       feedsFound: feeds.length,
       created,
       updated,
-      refreshesQueued: podcastIds.length,
+      episodesCreated,
+      episodeErrors,
     },
   });
 });
