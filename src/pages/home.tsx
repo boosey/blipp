@@ -34,6 +34,12 @@ export function Home() {
     return () => clearInterval(interval);
   }, [items, fetchFeed]);
 
+  // Background poll every 60s to pick up new feed items
+  useEffect(() => {
+    const interval = setInterval(fetchFeed, 60_000);
+    return () => clearInterval(interval);
+  }, [fetchFeed]);
+
   function handlePlay(feedItemId: string) {
     // Mark listened optimistically
     apiFetch(`/feed/${feedItemId}/listened`, { method: "PATCH" }).catch(
