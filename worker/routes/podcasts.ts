@@ -2,11 +2,10 @@ import { Hono } from "hono";
 import type { Env } from "../types";
 import { requireAuth } from "../middleware/auth";
 import { getCurrentUser } from "../lib/admin-helpers";
-import { PodcastIndexClient } from "../lib/podcast-index";
 
 /**
  * Podcast discovery and subscription routes.
- * Search and trending are public-ish; subscribe/unsubscribe/list require auth.
+ * All discovery uses the local catalog (populated by admin catalog-refresh).
  */
 export const podcasts = new Hono<{ Bindings: Env }>();
 
@@ -14,46 +13,58 @@ export const podcasts = new Hono<{ Bindings: Env }>();
 podcasts.use("*", requireAuth);
 
 /**
- * GET /search?q=... — Search podcasts via Podcast Index.
+ * GET /catalog?q=...&page=1&pageSize=50 — Browse/search the local podcast catalog.
  *
- * @param q - Search query string (required)
- * @returns Array of matching podcast feeds
- * @throws 400 if `q` parameter is missing
+ * @param q - Optional search query (searches title and author)
+ * @param page - Page number (default 1)
+ * @param pageSize - Results per page (default 50, max 100)
+ * @returns Array of catalog podcasts with episode counts
  */
-podcasts.get("/search", async (c) => {
-  const q = c.req.query("q");
-  if (!q) {
-    return c.json({ error: "Missing search query parameter: q" }, 400);
-  }
+podcasts.get("/catalog", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const q = c.req.query("q")?.trim();
+  const page = Math.max(1, parseInt(c.req.query("page") || "1"));
+  const pageSize = Math.min(100, Math.max(1, parseInt(c.req.query("pageSize") || "50")));
+  const skip = (page - 1) * pageSize;
 
-  const client = new PodcastIndexClient(
-    c.env.PODCAST_INDEX_KEY,
-    c.env.PODCAST_INDEX_SECRET
-  );
+  const where = q
+    ? {
+        OR: [
+          { title: { contains: q, mode: "insensitive" } },
+          { author: { contains: q, mode: "insensitive" } },
+        ],
+      }
+    : {};
 
-  const feeds = await client.searchByTerm(q);
-  return c.json({ feeds });
-});
+  const [podcasts, total] = await Promise.all([
+    prisma.podcast.findMany({
+      where,
+      orderBy: { title: "asc" },
+      skip,
+      take: pageSize,
+      select: {
+        id: true,
+        title: true,
+        author: true,
+        description: true,
+        imageUrl: true,
+        feedUrl: true,
+        _count: { select: { episodes: true } },
+      },
+    }),
+    prisma.podcast.count({ where }),
+  ]);
 
-/**
- * GET /trending — Fetch trending podcasts from Podcast Index.
- *
- * @returns Array of trending podcast feeds
- */
-podcasts.get("/trending", async (c) => {
-  try {
-    const client = new PodcastIndexClient(
-      c.env.PODCAST_INDEX_KEY,
-      c.env.PODCAST_INDEX_SECRET
-    );
-
-    const feeds = await client.trending();
-    return c.json({ feeds });
-  } catch (e) {
-    const message = e instanceof Error ? e.message : "Unknown error";
-    console.error("Trending error:", message);
-    return c.json({ error: message }, 500);
-  }
+  return c.json({
+    podcasts: podcasts.map((p: any) => ({
+      ...p,
+      episodeCount: p._count.episodes,
+      _count: undefined,
+    })),
+    total,
+    page,
+    pageSize,
+  });
 });
 
 /**

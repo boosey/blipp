@@ -7,6 +7,23 @@ export const feed = new Hono<{ Bindings: Env }>();
 
 feed.use("*", requireAuth);
 
+function mapClip(clip: any) {
+  if (!clip) return null;
+  return {
+    audioUrl: clip.audioKey ? `/api/clips/${clip.audioKey.replace(/^clips\//, "")}` : null,
+    actualSeconds: clip.actualSeconds,
+  };
+}
+
+function mapBriefing(briefing: any) {
+  if (!briefing) return null;
+  return {
+    id: briefing.id,
+    clip: mapClip(briefing.clip),
+    adAudioUrl: briefing.adAudioUrl,
+  };
+}
+
 /**
  * GET / — List the user's feed items.
  * Supports filtering by status and listened state.
@@ -39,7 +56,7 @@ feed.get("/", async (c) => {
         episode: { select: { id: true, title: true, publishedAt: true, durationSeconds: true } },
         briefing: {
           include: {
-            clip: { select: { audioUrl: true, actualSeconds: true } },
+            clip: { select: { id: true, audioKey: true, actualSeconds: true } },
           },
         },
       },
@@ -57,13 +74,7 @@ feed.get("/", async (c) => {
     createdAt: item.createdAt,
     podcast: item.podcast,
     episode: item.episode,
-    briefing: item.briefing
-      ? {
-          id: item.briefing.id,
-          clip: item.briefing.clip,
-          adAudioUrl: item.briefing.adAudioUrl,
-        }
-      : null,
+    briefing: mapBriefing(item.briefing),
   }));
 
   return c.json({ items: data, total });
@@ -100,7 +111,7 @@ feed.get("/:id", async (c) => {
       episode: { select: { id: true, title: true, publishedAt: true, durationSeconds: true } },
       briefing: {
         include: {
-          clip: { select: { audioUrl: true, actualSeconds: true } },
+          clip: { select: { id: true, audioKey: true, actualSeconds: true } },
         },
       },
     },
@@ -121,13 +132,7 @@ feed.get("/:id", async (c) => {
       createdAt: item.createdAt,
       podcast: item.podcast,
       episode: item.episode,
-      briefing: item.briefing
-        ? {
-            id: item.briefing.id,
-            clip: item.briefing.clip,
-            adAudioUrl: item.briefing.adAudioUrl,
-          }
-        : null,
+      briefing: mapBriefing(item.briefing),
     },
   });
 });
