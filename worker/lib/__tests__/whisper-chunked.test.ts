@@ -114,7 +114,13 @@ describe("transcribeChunked", () => {
       totalSize,
       "whisper-1"
     );
-    expect(result).toBe("Chunk one. Chunk two. Chunk three.");
+    expect(result.transcript).toBe("Chunk one. Chunk two. Chunk three.");
+    expect(result.usage).toEqual({
+      model: "whisper-1",
+      inputTokens: Math.round(totalSize / 16000),
+      outputTokens: 0,
+      cost: null,
+    });
     expect(mockOpenai.audio.transcriptions.create).toHaveBeenCalledTimes(3);
   });
 

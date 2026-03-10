@@ -60,7 +60,7 @@ vi.mock("openai", () => {
 
 const mockGetAudioMetadata = vi.fn().mockResolvedValue({ contentLength: 1000, contentType: "audio/mpeg" });
 const mockIsMp3 = vi.fn().mockReturnValue(true);
-const mockTranscribeChunked = vi.fn().mockResolvedValue("Chunked transcript text.");
+const mockTranscribeChunked = vi.fn().mockResolvedValue({ transcript: "Chunked transcript text.", usage: { model: "whisper-1", inputTokens: 3276, outputTokens: 0, cost: null } });
 vi.mock("../../lib/whisper-chunked", () => ({
   getAudioMetadata: (...args: any[]) => mockGetAudioMetadata(...args),
   isMp3: (...args: any[]) => mockIsMp3(...args),
@@ -155,7 +155,7 @@ describe("handleTranscription", () => {
     mockIsMp3.mockReset();
     mockIsMp3.mockReturnValue(true);
     mockTranscribeChunked.mockReset();
-    mockTranscribeChunked.mockResolvedValue("Chunked transcript text.");
+    mockTranscribeChunked.mockResolvedValue({ transcript: "Chunked transcript text.", usage: { model: "whisper-1", inputTokens: 3276, outputTokens: 0, cost: null } });
 
     (lookupPodcastIndexTranscript as any).mockReset();
     (lookupPodcastIndexTranscript as any).mockResolvedValue(null);

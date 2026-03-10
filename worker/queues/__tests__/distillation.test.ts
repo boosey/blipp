@@ -21,9 +21,10 @@ vi.mock("../../lib/logger", () => ({
 }));
 
 vi.mock("../../lib/distillation", () => ({
-  extractClaims: vi.fn().mockResolvedValue([
-    { claim: "Test claim", speaker: "Host", importance: 9, novelty: 7 },
-  ]),
+  extractClaims: vi.fn().mockResolvedValue({
+    claims: [{ claim: "Test claim", speaker: "Host", importance: 9, novelty: 7 }],
+    usage: { model: "test-model", inputTokens: 100, outputTokens: 50, cost: null },
+  }),
 }));
 
 vi.mock("../../lib/work-products", () => ({
@@ -58,9 +59,10 @@ beforeEach(() => {
   // Re-set getConfig default after clearAllMocks
   (getConfig as any).mockResolvedValue(true);
   (getModelConfig as any).mockResolvedValue({ provider: "anthropic", model: "claude-sonnet-4-20250514" });
-  (extractClaims as any).mockResolvedValue([
-    { claim: "Test claim", speaker: "Host", importance: 9, novelty: 7 },
-  ]);
+  (extractClaims as any).mockResolvedValue({
+    claims: [{ claim: "Test claim", speaker: "Host", importance: 9, novelty: 7 }],
+    usage: { model: "test-model", inputTokens: 100, outputTokens: 50, cost: null },
+  });
   mockLogger.info.mockReset();
   mockLogger.debug.mockReset();
   mockLogger.error.mockReset();

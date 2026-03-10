@@ -16,12 +16,18 @@ function createMockOpenAIClient(audioBuffer: ArrayBuffer) {
 describe("generateSpeech", () => {
   const fakeAudio = new ArrayBuffer(1024);
 
-  it("should return an ArrayBuffer of audio data", async () => {
+  it("should return an ArrayBuffer of audio data with usage", async () => {
     const client = createMockOpenAIClient(fakeAudio);
     const result = await generateSpeech(client, "Hello world");
 
-    expect(result).toBeInstanceOf(ArrayBuffer);
-    expect(result.byteLength).toBe(1024);
+    expect(result.audio).toBeInstanceOf(ArrayBuffer);
+    expect(result.audio.byteLength).toBe(1024);
+    expect(result.usage).toEqual({
+      model: "gpt-4o-mini-tts",
+      inputTokens: "Hello world".length,
+      outputTokens: 0,
+      cost: null,
+    });
   });
 
   it("should use default TTS model when none specified", async () => {

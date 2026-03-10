@@ -11,6 +11,8 @@ function createMockAnthropicClient(responseText: string) {
     messages: {
       create: vi.fn().mockResolvedValue({
         content: [{ type: "text", text: responseText }],
+        model: "claude-sonnet-4-20250514",
+        usage: { input_tokens: 100, output_tokens: 50 },
       }),
     },
   } as any;
@@ -26,8 +28,14 @@ describe("extractClaims", () => {
     const client = createMockAnthropicClient(JSON.stringify(sampleClaims));
     const result = await extractClaims(client, "Some transcript text");
 
-    expect(result).toEqual(sampleClaims);
-    expect(result).toHaveLength(2);
+    expect(result.claims).toEqual(sampleClaims);
+    expect(result.claims).toHaveLength(2);
+    expect(result.usage).toEqual({
+      model: "claude-sonnet-4-20250514",
+      inputTokens: 100,
+      outputTokens: 50,
+      cost: null,
+    });
   });
 
   it("should pass the transcript in the prompt", async () => {
@@ -70,7 +78,13 @@ describe("generateNarrative", () => {
     const client = createMockAnthropicClient(narrative);
 
     const result = await generateNarrative(client, claims, 3);
-    expect(result).toBe(narrative);
+    expect(result.narrative).toBe(narrative);
+    expect(result.usage).toEqual({
+      model: "claude-sonnet-4-20250514",
+      inputTokens: 100,
+      outputTokens: 50,
+      cost: null,
+    });
   });
 
   it("should include target word count in the prompt", async () => {

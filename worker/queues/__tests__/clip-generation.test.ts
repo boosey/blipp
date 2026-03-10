@@ -11,11 +11,17 @@ vi.mock("../../lib/config", () => ({
 }));
 
 vi.mock("../../lib/distillation", () => ({
-  generateNarrative: vi.fn().mockResolvedValue("A warm narrative about technology trends."),
+  generateNarrative: vi.fn().mockResolvedValue({
+    narrative: "A warm narrative about technology trends.",
+    usage: { model: "test-model", inputTokens: 100, outputTokens: 50, cost: null },
+  }),
 }));
 
 vi.mock("../../lib/tts", () => ({
-  generateSpeech: vi.fn().mockResolvedValue(new ArrayBuffer(2048)),
+  generateSpeech: vi.fn().mockResolvedValue({
+    audio: new ArrayBuffer(2048),
+    usage: { model: "test-tts-model", inputTokens: 40, outputTokens: 0, cost: null },
+  }),
 }));
 
 vi.mock("../../lib/clip-cache", () => ({
@@ -89,8 +95,14 @@ beforeEach(() => {
   // Re-set mocks after clearAllMocks (vitest v4 clears mockResolvedValue)
   (getConfig as any).mockResolvedValue(true);
   (getModelConfig as any).mockResolvedValue({ provider: "anthropic", model: "claude-sonnet-4-20250514" });
-  (generateNarrative as any).mockResolvedValue("A warm narrative about technology trends.");
-  (generateSpeech as any).mockResolvedValue(new ArrayBuffer(2048));
+  (generateNarrative as any).mockResolvedValue({
+    narrative: "A warm narrative about technology trends.",
+    usage: { model: "test-model", inputTokens: 100, outputTokens: 50, cost: null },
+  });
+  (generateSpeech as any).mockResolvedValue({
+    audio: new ArrayBuffer(2048),
+    usage: { model: "test-tts-model", inputTokens: 40, outputTokens: 0, cost: null },
+  });
   (putClip as any).mockResolvedValue(undefined);
   (putWorkProduct as any).mockResolvedValue(undefined);
   mockPrisma.workProduct.create.mockResolvedValue({ id: "wp-1" });
