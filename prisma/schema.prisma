@@ -273,6 +273,9 @@ model PipelineStep {
   completedAt   DateTime?
   durationMs    Int?
   cost          Float?
+  model         String?
+  inputTokens   Int?
+  outputTokens  Int?
   retryCount    Int                @default(0)
   workProductId String?
   createdAt     DateTime           @default(now())
