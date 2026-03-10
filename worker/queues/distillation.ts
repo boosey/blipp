@@ -135,7 +135,7 @@ export async function handleDistillation(
         // Extract claims via Claude (Pass 1)
         const { model: distillationModel } = await getModelConfig(prisma, "distillation");
         const elapsed = log.timer("claude_extraction");
-        const claims = await extractClaims(anthropic, existing.transcript, distillationModel);
+        const { claims, usage: claimsUsage } = await extractClaims(anthropic, existing.transcript, distillationModel);
         elapsed();
         log.info("claims_extracted", { episodeId, claimCount: claims.length });
 
@@ -168,6 +168,10 @@ export async function handleDistillation(
             completedAt,
             durationMs: completedAt.getTime() - startedAt.getTime(),
             workProductId: wp.id,
+            model: claimsUsage.model,
+            inputTokens: claimsUsage.inputTokens,
+            outputTokens: claimsUsage.outputTokens,
+            cost: claimsUsage.cost,
           },
         });
 

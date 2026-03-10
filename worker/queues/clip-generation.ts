@@ -168,7 +168,7 @@ export async function handleClipGeneration(
 
         // Generate narrative from claims (Pass 2)
         const narrativeTimer = log.timer("narrative_generation");
-        const narrative = await generateNarrative(
+        const { narrative, usage: narrativeUsage } = await generateNarrative(
           anthropic,
           claims,
           durationTier,
@@ -180,7 +180,7 @@ export async function handleClipGeneration(
 
         // Generate TTS audio
         const ttsTimer = log.timer("tts_generation");
-        const audio = await generateSpeech(openai, narrative, undefined, ttsModel);
+        const { audio, usage: ttsUsage } = await generateSpeech(openai, narrative, undefined, ttsModel);
         ttsTimer();
 
         // Store in R2
@@ -243,6 +243,10 @@ export async function handleClipGeneration(
             completedAt: new Date(),
             durationMs: Date.now() - startTime,
             workProductId: audioWp.id,
+            model: narrativeUsage.model + "+" + ttsUsage.model,
+            inputTokens: narrativeUsage.inputTokens + ttsUsage.inputTokens,
+            outputTokens: narrativeUsage.outputTokens + ttsUsage.outputTokens,
+            cost: (narrativeUsage.cost ?? 0) + (ttsUsage.cost ?? 0) || null,
           },
         });
 

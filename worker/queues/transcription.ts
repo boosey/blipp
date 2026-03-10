@@ -8,6 +8,7 @@ import { PodcastIndexClient } from "../lib/podcast-index";
 import { lookupPodcastIndexTranscript } from "../lib/transcript-source";
 import { fetchTranscript } from "../lib/transcript";
 import { getAudioMetadata, isMp3, transcribeChunked, WHISPER_MAX_BYTES } from "../lib/whisper-chunked";
+import type { AiUsage } from "../lib/ai-usage";
 import type { Env } from "../types";
 
 interface TranscriptionMessage {
@@ -118,6 +119,7 @@ export async function handleTranscription(
         }
 
         let transcript: string;
+        let sttUsage: AiUsage | null = null;
 
         if (episode.transcriptUrl) {
           // Tier 1: RSS feed transcript URL
@@ -156,7 +158,9 @@ export async function handleTranscription(
                   `Audio file too large (${Math.round(contentLength / 1024 / 1024)}MB) and not MP3 — cannot chunk non-MP3 formats`
                 );
               }
-              transcript = await transcribeChunked(openai, episode.audioUrl, contentLength, sttModel);
+              const chunkedResult = await transcribeChunked(openai, episode.audioUrl, contentLength, sttModel);
+              transcript = chunkedResult.transcript;
+              sttUsage = chunkedResult.usage;
               log.info("transcript_fetched", { episodeId, bytes: transcript.length, source: "whisper-chunked" });
             } else {
               // Standard single-file Whisper
@@ -168,6 +172,7 @@ export async function handleTranscription(
                 file,
               });
               transcript = transcription.text;
+              sttUsage = { model: sttModel, inputTokens: Math.round(audioBlob.size / 16000), outputTokens: 0, cost: null };
               log.info("transcript_fetched", { episodeId, bytes: transcript.length, source: "whisper" });
             }
           }
@@ -200,6 +205,7 @@ export async function handleTranscription(
             completedAt: new Date(),
             durationMs: Date.now() - startTime,
             workProductId: wp.id,
+            ...(sttUsage ? { model: sttUsage.model, inputTokens: sttUsage.inputTokens, outputTokens: sttUsage.outputTokens, cost: sttUsage.cost } : {}),
           },
         });
 
