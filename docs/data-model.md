@@ -394,6 +394,9 @@ Audit trail for each stage a PipelineJob passes through.
 | startedAt | DateTime? | -- | When processing began |
 | completedAt | DateTime? | -- | When processing finished |
 | durationMs | Int? | -- | Processing duration in ms |
+| model | String? | -- | AI model used (e.g. "claude-sonnet-4-20250514") |
+| inputTokens | Int? | -- | Input tokens consumed by AI call |
+| outputTokens | Int? | -- | Output tokens produced by AI call |
 | cost | Float? | -- | Estimated cost (API calls, etc.) |
 | retryCount | Int | `0` | Number of retries |
 | workProductId | String? | -- | FK to WorkProduct |

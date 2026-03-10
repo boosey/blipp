@@ -306,13 +306,19 @@ Defined in `wrangler.jsonc`.
 
 ## Cost Tracking
 
-The `PipelineStep.cost` field (Float) records API costs per stage execution:
+Each `PipelineStep` records AI usage metadata on completion:
 
-- **Transcription:** Whisper STT costs (zero if transcript fetched from RSS or Podcast Index)
-- **Distillation:** Claude API costs for claim extraction (model configurable via `ai.distillation.model`)
-- **Clip Generation:** Claude narrative + OpenAI TTS costs (models configurable via `ai.narrative.model` and `ai.tts.model`)
+- **model** (String?) — The AI model used (e.g. `whisper-1`, `claude-sonnet-4-20250514`, or `model1+model2` for multi-model stages like clip generation)
+- **inputTokens** (Int?) — Input tokens consumed (for Whisper, estimated from audio bytes / 16000; for TTS, text character count)
+- **outputTokens** (Int?) — Output tokens produced (0 for STT and TTS)
+- **cost** (Float?) — Estimated dollar cost (null when not yet calculable)
 
-The admin Dashboard and Analytics pages aggregate these values for cost reporting and budget monitoring.
+Per-stage behavior:
+- **Transcription:** Captured only for Whisper STT (Tier 3). Tiers 1/2 (RSS/Podcast Index) leave usage fields null since no AI call is made.
+- **Distillation:** Captures Claude API usage from claim extraction. Model, input/output tokens come directly from the Anthropic response.
+- **Clip Generation:** Combines narrative (Claude) + TTS (OpenAI) usage. Model field is `narrativeModel+ttsModel`, tokens are summed.
+
+The admin Analytics page includes a per-model cost breakdown widget (`GET /api/admin/analytics/costs/by-model`) for monitoring spend across models and stages.
 
 ---
 

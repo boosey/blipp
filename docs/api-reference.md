@@ -807,6 +807,7 @@ Response: `{ "data": { "id": "string", "tier": "string", "isAdmin": true } }`
 |--------|------|-------------|
 | GET | `/health` | Health check |
 | GET | `/costs` | Cost analytics by stage and period |
+| GET | `/costs/by-model` | Cost breakdown by AI model and stage |
 | GET | `/usage` | Usage trends and distribution |
 | GET | `/quality` | Quality metrics and trends |
 | GET | `/pipeline` | Pipeline throughput and bottlenecks |
@@ -824,6 +825,24 @@ Response:
     "dailyCosts": [...],
     "metrics": {...},
     "efficiencyScore": 0
+  }
+}
+```
+
+**`GET /api/admin/analytics/costs/by-model`**
+
+Query params: `from`, `to` (ISO date strings)
+
+Response:
+```json
+{
+  "data": {
+    "models": [
+      { "model": "claude-sonnet-4-20250514", "calls": 10, "inputTokens": 5000, "outputTokens": 2000, "cost": 0 }
+    ],
+    "byStage": [
+      { "stage": "DISTILLATION", "model": "claude-sonnet-4-20250514", "calls": 5, "inputTokens": 3000, "outputTokens": 1500, "cost": 0 }
+    ]
   }
 }
 ```
