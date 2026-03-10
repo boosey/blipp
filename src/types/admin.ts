@@ -109,6 +109,9 @@ export interface PipelineStep {
   completedAt?: string;
   durationMs?: number;
   cost?: number;
+  model?: string;
+  inputTokens?: number;
+  outputTokens?: number;
   retryCount: number;
   createdAt: string;
 }
@@ -391,6 +394,24 @@ export interface PipelinePerformanceData {
   bottlenecks: { stage: string; issue: string; recommendation: string }[];
 }
 
+export interface ModelCostData {
+  models: {
+    model: string;
+    totalCost: number;
+    totalInputTokens: number;
+    totalOutputTokens: number;
+    callCount: number;
+  }[];
+  byStage: {
+    stage: string;
+    stageName: string;
+    totalCost: number;
+    totalInputTokens: number;
+    totalOutputTokens: number;
+    callCount: number;
+  }[];
+}
+
 // ── Configuration ──
 
 export interface PlatformConfigEntry {
@@ -502,6 +523,9 @@ export interface StepProgress {
   cached: boolean;
   durationMs?: number;
   cost?: number;
+  model?: string;
+  inputTokens?: number;
+  outputTokens?: number;
   errorMessage?: string;
   workProducts?: WorkProductSummary[];
 }
