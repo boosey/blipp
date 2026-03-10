@@ -34,7 +34,7 @@ function dateKey(d: Date): string {
 // GET /costs - Cost data grouped by day (queries PipelineStep for cost)
 analyticsRoutes.get("/costs", async (c) => {
   const prisma = c.get("prisma") as any;
-  let steps: { stage: string; cost: number | null; createdAt: Date }[] = [];
+  let steps: { stage: string; model: string | null; inputTokens: number | null; outputTokens: number | null; cost: number | null; createdAt: Date }[] = [];
   let prevSteps: { cost: number | null }[] = [];
   const { from, to } = parseDateRange(c);
   const days = daysBetween(from, to);
@@ -43,9 +43,9 @@ analyticsRoutes.get("/costs", async (c) => {
     steps = await prisma.pipelineStep.findMany({
       where: {
         createdAt: { gte: from, lte: to },
-        cost: { not: null },
+        model: { not: null },
       },
-      select: { stage: true, cost: true, createdAt: true },
+      select: { stage: true, model: true, inputTokens: true, outputTokens: true, cost: true, createdAt: true },
     });
 
     // Previous period comparison
@@ -53,7 +53,7 @@ analyticsRoutes.get("/costs", async (c) => {
     prevSteps = await prisma.pipelineStep.findMany({
       where: {
         createdAt: { gte: prevFrom, lt: from },
-        cost: { not: null },
+        model: { not: null },
       },
       select: { cost: true },
     });
@@ -111,6 +111,69 @@ analyticsRoutes.get("/costs", async (c) => {
       efficiencyScore: 85, // placeholder
     },
   });
+});
+
+// GET /costs/by-model - Cost breakdown by model and stage
+analyticsRoutes.get("/costs/by-model", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const { from, to } = parseDateRange(c);
+
+  let steps: { stage: string; model: string; inputTokens: number | null; outputTokens: number | null; cost: number | null }[] = [];
+
+  try {
+    steps = await prisma.pipelineStep.findMany({
+      where: {
+        createdAt: { gte: from, lte: to },
+        model: { not: null },
+      },
+      select: { stage: true, model: true, inputTokens: true, outputTokens: true, cost: true },
+    });
+  } catch {
+    return c.json({ data: { models: [], byStage: [] } });
+  }
+
+  // Group by model
+  const modelMap = new Map<string, { totalCost: number; totalInputTokens: number; totalOutputTokens: number; callCount: number }>();
+  for (const step of steps) {
+    const key = step.model;
+    const entry = modelMap.get(key) ?? { totalCost: 0, totalInputTokens: 0, totalOutputTokens: 0, callCount: 0 };
+    entry.totalCost += step.cost ?? 0;
+    entry.totalInputTokens += step.inputTokens ?? 0;
+    entry.totalOutputTokens += step.outputTokens ?? 0;
+    entry.callCount += 1;
+    modelMap.set(key, entry);
+  }
+
+  const models = Array.from(modelMap.entries()).map(([model, agg]) => ({
+    model,
+    totalCost: round(agg.totalCost),
+    totalInputTokens: agg.totalInputTokens,
+    totalOutputTokens: agg.totalOutputTokens,
+    callCount: agg.callCount,
+  }));
+
+  // Group by stage
+  const stageMap = new Map<string, { totalCost: number; totalInputTokens: number; totalOutputTokens: number; callCount: number }>();
+  for (const step of steps) {
+    const key = step.stage;
+    const entry = stageMap.get(key) ?? { totalCost: 0, totalInputTokens: 0, totalOutputTokens: 0, callCount: 0 };
+    entry.totalCost += step.cost ?? 0;
+    entry.totalInputTokens += step.inputTokens ?? 0;
+    entry.totalOutputTokens += step.outputTokens ?? 0;
+    entry.callCount += 1;
+    stageMap.set(key, entry);
+  }
+
+  const byStage = Array.from(stageMap.entries()).map(([stage, agg]) => ({
+    stage,
+    name: STAGE_DISPLAY_NAMES[stage] ?? stage,
+    totalCost: round(agg.totalCost),
+    totalInputTokens: agg.totalInputTokens,
+    totalOutputTokens: agg.totalOutputTokens,
+    callCount: agg.callCount,
+  }));
+
+  return c.json({ data: { models, byStage } });
 });
 
 // GET /usage - Usage trends
