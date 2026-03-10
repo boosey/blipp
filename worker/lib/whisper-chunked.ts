@@ -1,4 +1,5 @@
 import type OpenAI from "openai";
+import type { AiUsage } from "./ai-usage";
 
 /** Whisper API maximum file size: 25MB */
 export const WHISPER_MAX_BYTES = 25 * 1024 * 1024;
@@ -40,7 +41,7 @@ export async function transcribeChunked(
   audioUrl: string,
   totalBytes: number,
   model: string
-): Promise<string> {
+): Promise<{ transcript: string; usage: AiUsage }> {
   const chunks: string[] = [];
   let offset = 0;
 
@@ -60,5 +61,14 @@ export async function transcribeChunked(
     offset = end + 1;
   }
 
-  return chunks.join(" ");
+  const transcript = chunks.join(" ");
+
+  const usage: AiUsage = {
+    model,
+    inputTokens: Math.round(totalBytes / 16000),
+    outputTokens: 0,
+    cost: null,
+  };
+
+  return { transcript, usage };
 }

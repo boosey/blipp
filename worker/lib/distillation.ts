@@ -1,4 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
+import type { AiUsage } from "./ai-usage";
 
 /** Words spoken per minute for podcast-style narration. */
 export const WORDS_PER_MINUTE = 150;
@@ -30,7 +31,7 @@ export async function extractClaims(
   client: Anthropic,
   transcript: string,
   model: string = "claude-sonnet-4-20250514"
-): Promise<Claim[]> {
+): Promise<{ claims: Claim[]; usage: AiUsage }> {
   const response = await client.messages.create({
     model,
     max_tokens: 2048,
@@ -57,7 +58,15 @@ ${transcript}`,
     response.content[0].type === "text" ? response.content[0].text : "";
   const text = raw.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
   const claims: Claim[] = JSON.parse(text);
-  return claims;
+
+  const usage: AiUsage = {
+    model: response.model,
+    inputTokens: response.usage.input_tokens,
+    outputTokens: response.usage.output_tokens,
+    cost: null,
+  };
+
+  return { claims, usage };
 }
 
 /**
@@ -77,7 +86,7 @@ export async function generateNarrative(
   claims: Claim[],
   durationMinutes: number,
   model: string = "claude-sonnet-4-20250514"
-): Promise<string> {
+): Promise<{ narrative: string; usage: AiUsage }> {
   const targetWords = Math.round(durationMinutes * WORDS_PER_MINUTE);
 
   const response = await client.messages.create({
@@ -103,7 +112,15 @@ ${JSON.stringify(claims, null, 2)}`,
     ],
   });
 
-  const text =
+  const narrative =
     response.content[0].type === "text" ? response.content[0].text : "";
-  return text;
+
+  const usage: AiUsage = {
+    model: response.model,
+    inputTokens: response.usage.input_tokens,
+    outputTokens: response.usage.output_tokens,
+    cost: null,
+  };
+
+  return { narrative, usage };
 }

@@ -1,4 +1,5 @@
 import type OpenAI from "openai";
+import type { AiUsage } from "./ai-usage";
 
 /** Default TTS voice for briefing narration. */
 export const DEFAULT_VOICE = "coral";
@@ -23,7 +24,7 @@ export async function generateSpeech(
   text: string,
   voice: string = DEFAULT_VOICE,
   model: string = TTS_MODEL
-): Promise<ArrayBuffer> {
+): Promise<{ audio: ArrayBuffer; usage: AiUsage }> {
   const response = await client.audio.speech.create({
     model,
     voice: voice as any,
@@ -34,5 +35,14 @@ export async function generateSpeech(
       "Maintain a steady, engaging pace. Pause naturally between topics.",
   });
 
-  return response.arrayBuffer();
+  const audio = await response.arrayBuffer();
+
+  const usage: AiUsage = {
+    model,
+    inputTokens: text.length,
+    outputTokens: 0,
+    cost: null,
+  };
+
+  return { audio, usage };
 }
