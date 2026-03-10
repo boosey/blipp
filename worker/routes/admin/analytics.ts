@@ -166,7 +166,7 @@ analyticsRoutes.get("/costs/by-model", async (c) => {
 
   const byStage = Array.from(stageMap.entries()).map(([stage, agg]) => ({
     stage,
-    name: STAGE_DISPLAY_NAMES[stage] ?? stage,
+    stageName: STAGE_DISPLAY_NAMES[stage] ?? stage,
     totalCost: round(agg.totalCost),
     totalInputTokens: agg.totalInputTokens,
     totalOutputTokens: agg.totalOutputTokens,
