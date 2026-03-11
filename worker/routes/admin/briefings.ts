@@ -89,6 +89,37 @@ briefingsRoutes.get("/:id", async (c) => {
 
   if (!briefing) return c.json({ error: "Briefing not found" }, 404);
 
+  // Load pipeline steps for the episode to show AI usage
+  let pipelineSteps: any[] = [];
+  try {
+    const jobs = await prisma.pipelineJob.findMany({
+      where: { episodeId: briefing.clip.episodeId },
+      include: { steps: { orderBy: { createdAt: "asc" } } },
+    });
+    // Flatten steps, take the latest per stage
+    const stageMap = new Map<string, any>();
+    for (const job of jobs) {
+      for (const step of job.steps) {
+        const existing = stageMap.get(step.stage);
+        if (!existing || step.createdAt > existing.createdAt) {
+          stageMap.set(step.stage, step);
+        }
+      }
+    }
+    pipelineSteps = Array.from(stageMap.values()).map((s: any) => ({
+      stage: s.stage,
+      status: s.status,
+      cached: s.cached,
+      durationMs: s.durationMs,
+      cost: s.cost,
+      model: s.model ?? undefined,
+      inputTokens: s.inputTokens ?? undefined,
+      outputTokens: s.outputTokens ?? undefined,
+    }));
+  } catch {
+    // PipelineJob may not exist
+  }
+
   return c.json({
     data: {
       id: briefing.id,
@@ -111,6 +142,7 @@ briefingsRoutes.get("/:id", async (c) => {
         podcastId: briefing.clip.episode?.podcast?.id,
         podcastImageUrl: briefing.clip.episode?.podcast?.imageUrl,
       },
+      pipelineSteps,
       feedItems: briefing.feedItems,
     },
   });

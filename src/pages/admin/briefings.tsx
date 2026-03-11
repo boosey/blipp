@@ -10,6 +10,8 @@ import {
   Disc3,
   ExternalLink,
   Megaphone,
+  Cpu,
+  Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -29,6 +31,7 @@ import { useAdminFetch } from "@/lib/admin-api";
 import type {
   AdminBriefing,
   AdminBriefingDetail,
+  BriefingPipelineStep,
   PaginatedResponse,
 } from "@/types/admin";
 
@@ -154,6 +157,51 @@ function BriefingSkeleton() {
       <div className="flex-1 space-y-4">
         <Skeleton className="h-48 bg-white/5 rounded-lg" />
         <Skeleton className="h-48 bg-white/5 rounded-lg" />
+      </div>
+    </div>
+  );
+}
+
+// ── Pipeline Step Row ──
+
+const STAGE_NAMES: Record<string, string> = {
+  TRANSCRIPTION: "Transcription",
+  DISTILLATION: "Distillation",
+  CLIP_GENERATION: "Clip Gen",
+  BRIEFING_ASSEMBLY: "Assembly",
+};
+
+function PipelineStepRow({ step }: { step: BriefingPipelineStep }) {
+  return (
+    <div className="flex items-center gap-2 rounded-md bg-[#0A1628] border border-white/5 p-2 text-[10px]">
+      <span className="text-[#9CA3AF] w-24 shrink-0">{STAGE_NAMES[step.stage] ?? step.stage}</span>
+      <Badge className={cn("text-[8px] uppercase shrink-0", statusBadge(step.status))}>
+        {step.status}
+      </Badge>
+      {step.cached && (
+        <Badge className="bg-[#F59E0B]/15 text-[#F59E0B] text-[8px] px-1 py-0">
+          <Zap className="h-2 w-2 mr-0.5 inline" />
+          cached
+        </Badge>
+      )}
+      <div className="flex items-center gap-2 ml-auto font-mono tabular-nums shrink-0">
+        {step.durationMs != null && (
+          <span className="text-[#9CA3AF]">{step.durationMs}ms</span>
+        )}
+        {step.cost != null && (
+          <span className="text-[#10B981]">${step.cost.toFixed(4)}</span>
+        )}
+        {step.model && (
+          <span className="text-[#8B5CF6]" title={step.model}>
+            {step.model.split("+").map(m => m.split("-").slice(0, 3).join("-")).join("+")}
+          </span>
+        )}
+        {(step.inputTokens != null || step.outputTokens != null) && (
+          <span className="text-[#9CA3AF]" title={`In: ${step.inputTokens ?? 0} / Out: ${step.outputTokens ?? 0}`}>
+            {step.inputTokens != null ? `${step.inputTokens.toLocaleString()}in` : ""}
+            {step.outputTokens != null && step.outputTokens > 0 ? `/${step.outputTokens.toLocaleString()}out` : ""}
+          </span>
+        )}
       </div>
     </div>
   );
@@ -337,6 +385,29 @@ export default function BriefingsPage() {
                   </div>
                 )}
               </div>
+
+              {/* AI Usage / Pipeline Steps */}
+              {selected.pipelineSteps && selected.pipelineSteps.length > 0 && (
+                <div className="rounded-lg bg-[#1A2942] border border-white/5 p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Cpu className="h-4 w-4 text-[#14B8A6]" />
+                    <span className="text-sm font-semibold text-[#F9FAFB]">AI Usage</span>
+                    {(() => {
+                      const totalCost = selected.pipelineSteps!.reduce((s, st) => s + (st.cost ?? 0), 0);
+                      return totalCost > 0 ? (
+                        <span className="text-xs text-[#10B981] font-mono tabular-nums ml-auto">
+                          ${totalCost.toFixed(4)} total
+                        </span>
+                      ) : null;
+                    })()}
+                  </div>
+                  <div className="space-y-1.5">
+                    {selected.pipelineSteps.map((step) => (
+                      <PipelineStepRow key={step.stage} step={step} />
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Ad Audio (future) */}
               {selected.adAudioUrl && (

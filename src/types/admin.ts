@@ -275,6 +275,17 @@ export interface AdminBriefing {
   createdAt: string;
 }
 
+export interface BriefingPipelineStep {
+  stage: string;
+  status: string;
+  cached: boolean;
+  durationMs?: number;
+  cost?: number;
+  model?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+}
+
 export interface AdminBriefingDetail {
   id: string;
   userId: string;
@@ -296,6 +307,7 @@ export interface AdminBriefingDetail {
     podcastId?: string;
     podcastImageUrl?: string;
   };
+  pipelineSteps?: BriefingPipelineStep[];
   feedItems: {
     id: string;
     status: string;
