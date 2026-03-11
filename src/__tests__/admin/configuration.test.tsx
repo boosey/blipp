@@ -119,10 +119,11 @@ function mockPipelineConfigs(overrides: Record<string, unknown> = {}) {
     "pipeline.enabled": true,
     "pipeline.minIntervalMinutes": 60,
     "pipeline.lastAutoRunAt": new Date(Date.now() - 12 * 60 * 1000).toISOString(),
-    "pipeline.stage.1.enabled": true,
-    "pipeline.stage.2.enabled": true,
-    "pipeline.stage.3.enabled": false,
-    "pipeline.stage.4.enabled": true,
+    "pipeline.stage.TRANSCRIPTION.enabled": true,
+    "pipeline.stage.DISTILLATION.enabled": true,
+    "pipeline.stage.NARRATIVE_GENERATION.enabled": false,
+    "pipeline.stage.AUDIO_GENERATION.enabled": true,
+    "pipeline.stage.BRIEFING_ASSEMBLY.enabled": true,
     ...overrides,
   };
   const entries = Object.entries(defaults).map(([key, value]) => ({
@@ -166,15 +167,16 @@ describe("PipelineControlsPanel", () => {
     expect(screen.getByText("Master switch for automated processing")).toBeInTheDocument();
   });
 
-  it("renders 4 stage toggles with correct labels", async () => {
+  it("renders 5 stage toggles with correct labels", async () => {
     setupPipelineMocks();
     renderPage();
 
     await waitFor(() => {
-      expect(screen.getByText("Feed Refresh")).toBeInTheDocument();
+      expect(screen.getByText("Transcription")).toBeInTheDocument();
     });
     expect(screen.getByText("Distillation")).toBeInTheDocument();
-    expect(screen.getByText("Clip Generation")).toBeInTheDocument();
+    expect(screen.getByText("Narrative Generation")).toBeInTheDocument();
+    expect(screen.getByText("Audio Generation")).toBeInTheDocument();
     expect(screen.getByText("Briefing Assembly")).toBeInTheDocument();
   });
 

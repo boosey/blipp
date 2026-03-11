@@ -57,16 +57,21 @@ Blipp uses a **demand-driven pipeline** to transform podcast episodes into audio
                   FeedItems READY
 ```
 
-### Stage Details
+### Standalone Jobs
 
-| Stage | Queue | Description |
-|-------|-------|-------------|
-| 1. Feed Refresh | `feed-refresh` | Polls RSS feeds, ingests new episodes into the database |
-| 2. Transcription | `transcription` | Three-tier waterfall: RSS feed URL → Podcast Index API → Whisper STT (with chunking for >25MB) |
-| 3. Distillation | `distillation` | Uses Claude to extract scored claims from transcript |
-| 4. Narrative Generation | `narrative-generation` | Generates narrative text from distillation claims using Claude LLM |
-| 5. Audio Generation | `audio-generation` | Converts narrative text to MP3 audio via TTS (OpenAI) |
-| 6. Briefing Assembly | `briefing-assembly` | Creates per-user Briefing records wrapping shared Clips, updates FeedItems to READY with briefingId |
+| Job | Queue | Description |
+|-----|-------|-------------|
+| Feed Refresh | `feed-refresh` | Polls RSS feeds, ingests new episodes into the database. Runs on cron, not part of the pipeline. |
+
+### Pipeline Stage Details
+
+| Stage | Queue | Config Key | Description |
+|-------|-------|------------|-------------|
+| 1. Transcription | `transcription` | `TRANSCRIPTION` | Three-tier waterfall: RSS feed URL → Podcast Index API → Whisper STT (with chunking for >25MB) |
+| 2. Distillation | `distillation` | `DISTILLATION` | Uses Claude to extract scored claims from transcript |
+| 3. Narrative Generation | `narrative-generation` | `NARRATIVE_GENERATION` | Generates narrative text from distillation claims using Claude LLM |
+| 4. Audio Generation | `audio-generation` | `AUDIO_GENERATION` | Converts narrative text to MP3 audio via TTS (OpenAI) |
+| 5. Briefing Assembly | `briefing-assembly` | `BRIEFING_ASSEMBLY` | Creates per-user Briefing records wrapping shared Clips, updates FeedItems to READY with briefingId |
 
 ---
 
@@ -288,12 +293,11 @@ Stored in the `PlatformConfig` table, accessed via `getConfig(prisma, key, fallb
 | `pipeline.enabled` | boolean | `true` | Master pipeline kill switch |
 | `pipeline.minIntervalMinutes` | number | `60` | Minimum interval between auto feed refreshes |
 | `pipeline.lastAutoRunAt` | string | `null` | Timestamp of last auto run |
-| `pipeline.stage.1.enabled` | boolean | `true` | Feed Refresh stage enable |
-| `pipeline.stage.2.enabled` | boolean | `true` | Transcription stage enable |
-| `pipeline.stage.3.enabled` | boolean | `true` | Distillation stage enable |
-| `pipeline.stage.4.enabled` | boolean | `true` | Narrative Generation stage enable |
-| `pipeline.stage.5.enabled` | boolean | `true` | Audio Generation stage enable |
-| `pipeline.stage.6.enabled` | boolean | `true` | Briefing Assembly stage enable |
+| `pipeline.stage.TRANSCRIPTION.enabled` | boolean | `true` | Transcription stage enable |
+| `pipeline.stage.DISTILLATION.enabled` | boolean | `true` | Distillation stage enable |
+| `pipeline.stage.NARRATIVE_GENERATION.enabled` | boolean | `true` | Narrative Generation stage enable |
+| `pipeline.stage.AUDIO_GENERATION.enabled` | boolean | `true` | Audio Generation stage enable |
+| `pipeline.stage.BRIEFING_ASSEMBLY.enabled` | boolean | `true` | Briefing Assembly stage enable |
 | `pipeline.feedRefresh.maxEpisodesPerPodcast` | number | `10` | Episode cap per podcast per refresh |
 | `ai.stt.model` | string | `"whisper-1"` | Whisper STT model |
 | `ai.distillation.model` | string | `"claude-sonnet-4-20250514"` | Claude model for claim extraction |

@@ -286,7 +286,7 @@ describe("handleNarrativeGeneration", () => {
       expect(mockMsg.ack).toHaveBeenCalled();
       expect(generateNarrative).not.toHaveBeenCalled();
       expect(mockPrisma.pipelineJob.findUniqueOrThrow).not.toHaveBeenCalled();
-      expect(mockLogger.info).toHaveBeenCalledWith("stage_disabled", { stage: 4 });
+      expect(mockLogger.info).toHaveBeenCalledWith("stage_disabled", { stage: "NARRATIVE_GENERATION" });
     });
 
     it("bypasses stage-enabled check for manual messages", async () => {

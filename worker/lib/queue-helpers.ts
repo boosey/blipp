@@ -7,7 +7,7 @@ import { getConfig } from "./config";
 export async function checkStageEnabled(
   prisma: any,
   batch: MessageBatch,
-  stageNumber: number,
+  stageName: string,
   log: { info: (action: string, data: Record<string, unknown>) => void }
 ): Promise<boolean> {
   const hasManual = batch.messages.some(
@@ -17,11 +17,11 @@ export async function checkStageEnabled(
 
   const enabled = await getConfig(
     prisma,
-    `pipeline.stage.${stageNumber}.enabled`,
+    `pipeline.stage.${stageName}.enabled`,
     true
   );
   if (!enabled) {
-    log.info("stage_disabled", { stage: stageNumber });
+    log.info("stage_disabled", { stage: stageName });
     for (const msg of batch.messages) msg.ack();
     return false;
   }

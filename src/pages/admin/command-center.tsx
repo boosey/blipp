@@ -170,23 +170,22 @@ function HealthBar({ rate, color, label, onClick }: { rate: number; color: strin
   );
 }
 
-const STAGE_COLOR_MAP: Record<number, string> = {
-  1: "#3B82F6", // Feed refresh (legacy events)
-  2: "#8B5CF6",
-  3: "#F59E0B",
-  4: "#10B981",
-  5: "#06B6D4",
-  6: "#14B8A6",
+const STAGE_COLOR_MAP: Record<string, string> = {
+  TRANSCRIPTION: "#8B5CF6",
+  DISTILLATION: "#F59E0B",
+  NARRATIVE_GENERATION: "#10B981",
+  AUDIO_GENERATION: "#06B6D4",
+  BRIEFING_ASSEMBLY: "#14B8A6",
 };
 
-function StageBadge({ stage }: { stage: number }) {
+function StageBadge({ stage }: { stage: string }) {
   const color = STAGE_COLOR_MAP[stage] ?? "#9CA3AF";
   return (
     <span
       className="inline-flex items-center justify-center h-5 w-5 rounded-full text-[10px] font-bold shrink-0"
       style={{ backgroundColor: `${color}20`, color }}
     >
-      {stage}
+      {Object.keys(STAGE_COLOR_MAP).indexOf(stage) + 1 || "?"}
     </span>
   );
 }

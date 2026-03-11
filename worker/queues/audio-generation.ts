@@ -38,8 +38,8 @@ export async function handleAudioGeneration(
   try {
     log.info("batch_start", { messageCount: batch.messages.length });
 
-    // Check if stage 5 (audio generation) is enabled — manual messages bypass this
-    if (!(await checkStageEnabled(prisma, batch, 5, log))) return;
+    // Check if audio generation stage is enabled — manual messages bypass this
+    if (!(await checkStageEnabled(prisma, batch, "AUDIO_GENERATION", log))) return;
 
     for (const msg of batch.messages) {
       const { jobId, episodeId, durationTier } = msg.body;

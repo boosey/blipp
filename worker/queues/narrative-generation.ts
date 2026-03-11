@@ -37,8 +37,8 @@ export async function handleNarrativeGeneration(
   try {
     log.info("batch_start", { messageCount: batch.messages.length });
 
-    // Check if stage 4 (narrative generation) is enabled — manual messages bypass this
-    if (!(await checkStageEnabled(prisma, batch, 4, log))) return;
+    // Check if narrative generation stage is enabled — manual messages bypass this
+    if (!(await checkStageEnabled(prisma, batch, "NARRATIVE_GENERATION", log))) return;
 
     for (const msg of batch.messages) {
       const { jobId, episodeId, durationTier } = msg.body;

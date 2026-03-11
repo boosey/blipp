@@ -3,20 +3,20 @@ import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import type { PipelineConfig } from "@/types/admin";
 
-const STAGE_COLORS: Record<number, string> = {
-  1: "#3B82F6",
-  2: "#8B5CF6",
-  3: "#F59E0B",
-  4: "#10B981",
-  5: "#14B8A6",
+const STAGE_COLORS: Record<string, string> = {
+  TRANSCRIPTION: "#8B5CF6",
+  DISTILLATION: "#F59E0B",
+  NARRATIVE_GENERATION: "#10B981",
+  AUDIO_GENERATION: "#06B6D4",
+  BRIEFING_ASSEMBLY: "#14B8A6",
 };
 
-const STAGE_NAMES: Record<number, string> = {
-  1: "Feed Refresh",
-  2: "Transcription",
-  3: "Distillation",
-  4: "Clip Generation",
-  5: "Briefing Assembly",
+const STAGE_NAMES: Record<string, string> = {
+  TRANSCRIPTION: "Transcription",
+  DISTILLATION: "Distillation",
+  NARRATIVE_GENERATION: "Narrative Generation",
+  AUDIO_GENERATION: "Audio Generation",
+  BRIEFING_ASSEMBLY: "Briefing Assembly",
 };
 
 interface PipelineControlsProps {
@@ -24,11 +24,11 @@ interface PipelineControlsProps {
   saving: string | null;
   triggering: boolean;
   onTogglePipeline: (v: boolean) => void;
-  onToggleStage: (stage: number, v: boolean) => void;
+  onToggleStage: (stage: string, v: boolean) => void;
   onTriggerFeedRefresh: () => void;
   variant: "full" | "master-only" | "stage-only";
   /** Required when variant is "stage-only" */
-  stage?: number;
+  stage?: string;
 }
 
 /**
@@ -80,26 +80,26 @@ function FullControls({
 
       {/* Stage toggles — vertical with names */}
       <div className="space-y-1.5">
-        {[1, 2, 3, 4, 5].map((s) => {
-          const stage = config.stages[s];
-          const color = STAGE_COLORS[s];
+        {Object.entries(STAGE_NAMES).map(([key, name], idx) => {
+          const stage = config.stages[key];
+          const color = STAGE_COLORS[key];
           const on = stage?.enabled ?? true;
           return (
-            <div key={s} className="flex items-center justify-between py-1">
+            <div key={key} className="flex items-center justify-between py-1">
               <div className="flex items-center gap-2">
                 <span
                   className="flex items-center justify-center h-5 w-5 rounded-full text-[9px] font-bold"
                   style={{ backgroundColor: `${color}20`, color }}
                 >
-                  {s}
+                  {idx + 1}
                 </span>
-                <span className="text-xs text-[#F9FAFB]">{STAGE_NAMES[s]}</span>
+                <span className="text-xs text-[#F9FAFB]">{name}</span>
               </div>
               <Switch
                 size="sm"
                 checked={on}
-                onCheckedChange={(v) => onToggleStage(s, v)}
-                disabled={saving === `pipeline.stage.${s}.enabled`}
+                onCheckedChange={(v) => onToggleStage(key, v)}
+                disabled={saving === `pipeline.stage.${key}.enabled`}
                 style={{ backgroundColor: on ? "#10B981" : "#4B5563" }}
               />
             </div>

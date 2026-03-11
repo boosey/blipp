@@ -84,12 +84,12 @@ All three handlers pass the environment through `shimQueuesForLocalDev()` which 
 | `ASSETS` | Fetcher | SPA static assets |
 | `HYPERDRIVE` | Hyperdrive | PostgreSQL connection pooling |
 | `R2` | R2Bucket | Audio clips and assembled briefings |
-| `FEED_REFRESH_QUEUE` | Queue | Stage 1: RSS feed polling |
-| `TRANSCRIPTION_QUEUE` | Queue | Stage 2: Transcript fetching |
-| `DISTILLATION_QUEUE` | Queue | Stage 3: Claim extraction via Claude |
-| `NARRATIVE_GENERATION_QUEUE` | Queue | Stage 4: Narrative writing via Claude |
-| `AUDIO_GENERATION_QUEUE` | Queue | Stage 5: TTS audio via OpenAI |
-| `BRIEFING_ASSEMBLY_QUEUE` | Queue | Stage 6: Briefing creation + FeedItem linking |
+| `FEED_REFRESH_QUEUE` | Queue | Periodic RSS feed polling (not a pipeline stage) |
+| `TRANSCRIPTION_QUEUE` | Queue | Pipeline: Transcript fetching |
+| `DISTILLATION_QUEUE` | Queue | Pipeline: Claim extraction via Claude |
+| `NARRATIVE_GENERATION_QUEUE` | Queue | Pipeline: Narrative writing via Claude |
+| `AUDIO_GENERATION_QUEUE` | Queue | Pipeline: TTS audio via OpenAI |
+| `BRIEFING_ASSEMBLY_QUEUE` | Queue | Pipeline: Briefing creation + FeedItem linking |
 | `ORCHESTRATOR_QUEUE` | Queue | Pipeline coordination |
 | `CLERK_SECRET_KEY` | string | Clerk authentication |
 | `CLERK_PUBLISHABLE_KEY` | string | Clerk frontend auth |
@@ -117,12 +117,15 @@ All three handlers pass the environment through `shimQueuesForLocalDev()` which 
 
 The pipeline is **demand-driven**: only feed refresh runs on a cron schedule. All other stages are triggered by a user requesting a briefing.
 
-1. **Feed Refresh (Stage 1)** -- Polls RSS feeds, upserts new episodes into the database. Runs on cron (`*/30 * * * *`), gated by runtime config.
-2. **Transcription (Stage 2)** -- Three-tier transcript waterfall: (1) RSS feed transcript URL, (2) Podcast Index API lookup by episode GUID, (3) Whisper STT with chunked transcription for files over 25MB.
-3. **Distillation (Stage 3)** -- Sends transcript to Anthropic Claude for claim extraction. Stores results in Distillation model.
-4. **Narrative Generation (Stage 4)** -- Generates narrative text from distillation claims using Claude LLM. Stores narrative on Clip record and creates NARRATIVE WorkProduct.
-5. **Audio Generation (Stage 5)** -- Converts narrative text to MP3 audio via OpenAI TTS. Stores MP3s in R2, updates Clip to COMPLETED, creates AUDIO_CLIP WorkProduct.
-6. **Briefing Assembly (Stage 6)** -- Creates per-user Briefing records wrapping shared Clips, then updates FeedItems to READY with briefingId on success, FAILED on failure.
+**Feed Refresh** (standalone cron job, not a pipeline stage) -- Polls RSS feeds, upserts new episodes into the database. Runs on cron (`*/30 * * * *`), gated by runtime config.
+
+The 5 pipeline stages (triggered by user briefing requests):
+
+1. **Transcription** -- Three-tier transcript waterfall: (1) RSS feed transcript URL, (2) Podcast Index API lookup by episode GUID, (3) Whisper STT with chunked transcription for files over 25MB.
+2. **Distillation** -- Sends transcript to Anthropic Claude for claim extraction. Stores results in Distillation model.
+3. **Narrative Generation** -- Generates narrative text from distillation claims using Claude LLM. Stores narrative on Clip record and creates NARRATIVE WorkProduct.
+4. **Audio Generation** -- Converts narrative text to MP3 audio via OpenAI TTS. Stores MP3s in R2, updates Clip to COMPLETED, creates AUDIO_CLIP WorkProduct.
+5. **Briefing Assembly** -- Creates per-user Briefing records wrapping shared Clips, then updates FeedItems to READY with briefingId on success, FAILED on failure.
 
 ### Orchestrator
 
@@ -364,10 +367,10 @@ blipp/
         requests.ts       # Briefing request management
     queues/
       index.ts            # Queue dispatcher + scheduled handler
-      feed-refresh.ts     # Stage 1: RSS polling
-      transcription.ts    # Stage 2: Transcript fetching
-      distillation.ts     # Stage 3: Claude claim extraction
-      narrative-generation.ts # Stage 4: Claude narrative writing
+      feed-refresh.ts     # Periodic RSS polling (standalone cron job)
+      transcription.ts    # Pipeline stage 1: Transcript fetching
+      distillation.ts     # Pipeline stage 2: Claude claim extraction
+      narrative-generation.ts # Pipeline stage 3: Claude narrative writing
       audio-generation.ts    # Stage 5: TTS audio rendering
       clip-generation.ts     # Legacy combined stage (backward compat)
       briefing-assembly.ts   # Stage 6: Briefing creation + FeedItem linking

@@ -34,8 +34,8 @@ export async function handleDistillation(
     const log = await createPipelineLogger({ stage: "distillation", prisma });
     log.info("batch_start", { messageCount: batch.messages.length });
 
-    // Check if stage 3 (distillation) is enabled — manual messages bypass this
-    if (!(await checkStageEnabled(prisma, batch, 3, log))) return;
+    // Check if distillation stage is enabled — manual messages bypass this
+    if (!(await checkStageEnabled(prisma, batch, "DISTILLATION", log))) return;
 
     for (const msg of batch.messages) {
       const { jobId, episodeId } = msg.body;

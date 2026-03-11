@@ -25,7 +25,7 @@ export async function handleBriefingAssembly(
     const log = await createPipelineLogger({ stage: "briefing-assembly", prisma });
     log.info("batch_start", { messageCount: batch.messages.length });
 
-    if (!(await checkStageEnabled(prisma, batch, 5, log))) return;
+    if (!(await checkStageEnabled(prisma, batch, "BRIEFING_ASSEMBLY", log))) return;
 
     for (const msg of batch.messages) {
       const { requestId } = msg.body;

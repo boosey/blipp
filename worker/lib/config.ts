@@ -42,24 +42,13 @@ export function clearConfigCache(): void {
   cache.clear();
 }
 
-/** Pipeline stage number → queue message type mapping */
-export const STAGE_QUEUE_MAP: Record<number, string> = {
-  1: "FEED_REFRESH",
-  2: "TRANSCRIPTION",
-  3: "DISTILLATION",
-  4: "NARRATIVE_GENERATION",
-  5: "AUDIO_GENERATION",
-  6: "BRIEFING_ASSEMBLY",
-};
-
-/** Pipeline stage number → display name */
-export const STAGE_NAMES: Record<number, string> = {
-  1: "Feed Refresh",
-  2: "Transcription",
-  3: "Distillation",
-  4: "Narrative Generation",
-  5: "Audio Generation",
-  6: "Briefing Assembly",
+/** Pipeline stage → display name (keyed by Prisma PipelineStage enum values) */
+export const STAGE_NAMES: Record<string, string> = {
+  TRANSCRIPTION: "Transcription",
+  DISTILLATION: "Distillation",
+  NARRATIVE_GENERATION: "Narrative Generation",
+  AUDIO_GENERATION: "Audio Generation",
+  BRIEFING_ASSEMBLY: "Briefing Assembly",
 };
 
 /** Pipeline stage string key → display name (used by admin routes) */

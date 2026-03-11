@@ -35,7 +35,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { buildPipelineConfig } from "@/hooks/use-pipeline-config";
+import { buildPipelineConfig, STAGE_NAMES } from "@/hooks/use-pipeline-config";
 import { AI_MODELS } from "@/lib/ai-models";
 import type { AIStage } from "@/lib/ai-models";
 import type {
@@ -240,19 +240,19 @@ function PipelineControlsPanel({
           <p className="text-[10px] text-[#9CA3AF] mt-0.5">Enable or disable individual pipeline stages</p>
         </div>
 
-        {[1, 2, 3, 4, 5].map((stage) => {
-          const stageConfig = pipelineConfig.stages[stage];
-          const configKey = `pipeline.stage.${stage}.enabled`;
+        {Object.entries(STAGE_NAMES).map(([key, name], idx) => {
+          const stageConfig = pipelineConfig.stages[key];
+          const configKey = `pipeline.stage.${key}.enabled`;
           return (
-            <div key={stage} className="flex items-center justify-between py-1.5">
+            <div key={key} className="flex items-center justify-between py-1.5">
               <div className="flex items-center gap-2.5">
                 <span
                   className="flex items-center justify-center h-6 w-6 rounded-full text-[10px] font-bold"
                   style={{ backgroundColor: "#3B82F620", color: "#3B82F6" }}
                 >
-                  {stage}
+                  {idx + 1}
                 </span>
-                <span className="text-xs text-[#F9FAFB]">{stageConfig?.name ?? `Stage ${stage}`}</span>
+                <span className="text-xs text-[#F9FAFB]">{stageConfig?.name ?? name}</span>
               </div>
               <Switch
                 checked={stageConfig?.enabled ?? true}

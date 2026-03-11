@@ -831,7 +831,7 @@ export default function Pipeline() {
                   stageToggle={
                     <PipelineControls
                       variant="stage-only"
-                      stage={STAGE_ORDER.indexOf(meta.stage) + 2}
+                      stage={meta.stage}
                       config={pipelineConfig}
                       saving={pipelineSaving}
                       triggering={pipelineTriggering}

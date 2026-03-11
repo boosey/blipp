@@ -308,7 +308,7 @@ describe("handleAudioGeneration", () => {
       expect(mockMsg.ack).toHaveBeenCalled();
       expect(generateSpeech).not.toHaveBeenCalled();
       expect(mockPrisma.pipelineJob.findUniqueOrThrow).not.toHaveBeenCalled();
-      expect(mockLogger.info).toHaveBeenCalledWith("stage_disabled", { stage: 5 });
+      expect(mockLogger.info).toHaveBeenCalledWith("stage_disabled", { stage: "AUDIO_GENERATION" });
     });
 
     it("bypasses stage-enabled check for manual messages", async () => {

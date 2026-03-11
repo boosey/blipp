@@ -44,7 +44,7 @@ export interface SystemHealth {
 }
 
 export interface PipelineStageHealth {
-  stage: number;
+  stage: string;
   name: string;
   completionRate: number; // 0-100
   activeJobs: number;
@@ -69,7 +69,7 @@ export interface CostSummary {
 export interface ActivityEvent {
   id: string;
   timestamp: string;
-  stage: number;
+  stage: string;
   stageName: string;
   episodeTitle?: string;
   podcastName?: string;
@@ -407,7 +407,7 @@ export interface QualityMetricsData {
 
 export interface PipelinePerformanceData {
   throughput: { episodesPerHour: number; trend: number };
-  successRates: { stage: number; name: string; rate: number }[];
+  successRates: { stage: string; name: string; rate: number }[];
   processingSpeed: { date: string; avgMs: number }[];
   bottlenecks: { stage: string; issue: string; recommendation: string }[];
 }
@@ -486,7 +486,7 @@ export interface PipelineConfig {
   enabled: boolean;
   minIntervalMinutes: number;
   lastAutoRunAt: string | null;
-  stages: Record<number, { enabled: boolean; name: string }>;
+  stages: Record<string, { enabled: boolean; name: string }>;
 }
 
 export interface PipelineTriggerResult {

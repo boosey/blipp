@@ -52,7 +52,7 @@ export async function handleTranscription(
     const log = await createPipelineLogger({ stage: "transcription", prisma });
     log.info("batch_start", { messageCount: batch.messages.length });
 
-    if (!(await checkStageEnabled(prisma, batch, 2, log))) return;
+    if (!(await checkStageEnabled(prisma, batch, "TRANSCRIPTION", log))) return;
 
     for (const msg of batch.messages) {
       const { jobId, episodeId } = msg.body;
