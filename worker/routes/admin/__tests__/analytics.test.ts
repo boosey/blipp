@@ -69,10 +69,10 @@ describe("Analytics Routes", () => {
   describe("GET /analytics/costs", () => {
     it("returns cost data with breakdown", async () => {
       const now = new Date();
-      mockPrisma.pipelineJob.findMany
+      mockPrisma.pipelineStep.findMany
         .mockResolvedValueOnce([
-          { type: "TRANSCRIPTION", cost: 0.50, createdAt: now },
-          { type: "DISTILLATION", cost: 0.30, createdAt: now },
+          { stage: "TRANSCRIPTION", model: "whisper-1", inputTokens: 100, outputTokens: 0, cost: 0.50, createdAt: now },
+          { stage: "DISTILLATION", model: "claude-sonnet", inputTokens: 200, outputTokens: 50, cost: 0.30, createdAt: now },
         ])
         .mockResolvedValueOnce([
           { cost: 0.40 },
@@ -89,7 +89,7 @@ describe("Analytics Routes", () => {
     });
 
     it("returns zeroed data when table missing", async () => {
-      mockPrisma.pipelineJob.findMany.mockRejectedValueOnce(new Error("table missing"));
+      mockPrisma.pipelineStep.findMany.mockRejectedValueOnce(new Error("table missing"));
 
       const res = await app.request("/analytics/costs", {}, env, mockExCtx);
       expect(res.status).toBe(200);
@@ -102,8 +102,8 @@ describe("Analytics Routes", () => {
   describe("GET /analytics/usage", () => {
     it("returns usage trends", async () => {
       const now = new Date();
-      mockPrisma.briefing.findMany.mockResolvedValueOnce([
-        { createdAt: now, actualSeconds: 300 },
+      mockPrisma.feedItem.findMany.mockResolvedValueOnce([
+        { createdAt: now, durationTier: 5 },
       ]);
       mockPrisma.episode.findMany.mockResolvedValueOnce([
         { createdAt: now },
@@ -123,15 +123,15 @@ describe("Analytics Routes", () => {
       expect(body.data).toHaveProperty("trends");
       expect(body.data).toHaveProperty("byTier");
       expect(body.data).toHaveProperty("peakTimes");
-      expect(body.data.metrics.briefings).toBe(1);
+      expect(body.data.metrics.feedItems).toBe(1);
     });
   });
 
   describe("GET /analytics/quality", () => {
     it("returns quality metrics", async () => {
       const now = new Date();
-      mockPrisma.briefing.findMany.mockResolvedValueOnce([
-        { targetMinutes: 5, actualSeconds: 295, createdAt: now },
+      mockPrisma.clip.findMany.mockResolvedValueOnce([
+        { durationTier: 5, actualSeconds: 295, createdAt: now },
       ]);
       mockPrisma.distillation.findMany.mockResolvedValueOnce([
         { status: "COMPLETED" },
@@ -158,12 +158,12 @@ describe("Analytics Routes", () => {
   describe("GET /analytics/pipeline", () => {
     it("returns pipeline performance with bottlenecks", async () => {
       const now = new Date();
-      mockPrisma.pipelineJob.findMany.mockResolvedValueOnce([
-        { stage: 2, status: "COMPLETED", durationMs: 500, createdAt: now },
-        { stage: 2, status: "FAILED", durationMs: null, createdAt: now },
-        { stage: 3, status: "COMPLETED", durationMs: 300, createdAt: now },
+      mockPrisma.pipelineStep.findMany.mockResolvedValueOnce([
+        { stage: "TRANSCRIPTION", status: "COMPLETED", durationMs: 500, createdAt: now },
+        { stage: "TRANSCRIPTION", status: "FAILED", durationMs: null, createdAt: now },
+        { stage: "DISTILLATION", status: "COMPLETED", durationMs: 300, createdAt: now },
       ]);
-      mockPrisma.pipelineJob.count.mockResolvedValueOnce(5);
+      mockPrisma.pipelineStep.count.mockResolvedValueOnce(5);
 
       const res = await app.request("/analytics/pipeline?from=2026-01-01&to=2026-01-02", {}, env, mockExCtx);
       expect(res.status).toBe(200);
@@ -176,7 +176,7 @@ describe("Analytics Routes", () => {
     });
 
     it("returns default data when table missing", async () => {
-      mockPrisma.pipelineJob.findMany.mockRejectedValueOnce(new Error("table missing"));
+      mockPrisma.pipelineStep.findMany.mockRejectedValueOnce(new Error("table missing"));
 
       const res = await app.request("/analytics/pipeline", {}, env, mockExCtx);
       expect(res.status).toBe(200);

@@ -90,7 +90,8 @@ requestsRoutes.get("/:id", async (c) => {
   const STAGE_WP_TYPES: Record<string, string[]> = {
     TRANSCRIPTION: ["TRANSCRIPT"],
     DISTILLATION: ["CLAIMS"],
-    CLIP_GENERATION: ["NARRATIVE", "AUDIO_CLIP"],
+    NARRATIVE_GENERATION: ["NARRATIVE"],
+    AUDIO_GENERATION: ["AUDIO_CLIP"],
     BRIEFING_ASSEMBLY: ["BRIEFING_AUDIO"],
   };
 

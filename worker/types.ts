@@ -35,8 +35,10 @@ export type Env = {
   FEED_REFRESH_QUEUE: Queue;
   /** Queue: fetches transcripts and extracts claims via Claude */
   DISTILLATION_QUEUE: Queue;
-  /** Queue: generates narrative + TTS for a specific (episode, tier) clip */
-  CLIP_GENERATION_QUEUE: Queue;
+  /** Queue: generates spoken narrative from distillation claims (Claude LLM) */
+  NARRATIVE_GENERATION_QUEUE: Queue;
+  /** Queue: converts narrative to MP3 audio via TTS (OpenAI) */
+  AUDIO_GENERATION_QUEUE: Queue;
   /** Queue: assembles cached clips into a user's final briefing */
   BRIEFING_ASSEMBLY_QUEUE: Queue;
   /** Queue: fetches episode transcripts from URLs */

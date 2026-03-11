@@ -1,7 +1,8 @@
 import { handleFeedRefresh } from "./feed-refresh";
 import { handleTranscription } from "./transcription";
 import { handleDistillation } from "./distillation";
-import { handleClipGeneration } from "./clip-generation";
+import { handleNarrativeGeneration } from "./narrative-generation";
+import { handleAudioGeneration } from "./audio-generation";
 import { handleBriefingAssembly } from "./briefing-assembly";
 import { handleOrchestrator } from "./orchestrator";
 import { createPrismaClient } from "../lib/db";
@@ -36,8 +37,14 @@ export async function handleQueue(
         env,
         ctx
       );
+    case "narrative-generation":
+      return handleNarrativeGeneration(
+        batch as MessageBatch<any>,
+        env,
+        ctx
+      );
     case "clip-generation":
-      return handleClipGeneration(
+      return handleAudioGeneration(
         batch as MessageBatch<any>,
         env,
         ctx

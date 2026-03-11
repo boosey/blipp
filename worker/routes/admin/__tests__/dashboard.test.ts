@@ -82,8 +82,8 @@ describe("Dashboard Routes", () => {
     it("returns critical when >20% fail rate", async () => {
       mockPrisma.pipelineJob.count.mockResolvedValueOnce(5);
       mockPrisma.pipelineJob.groupBy.mockResolvedValueOnce([
-        { stage: 2, status: "COMPLETED", _count: 3 },
-        { stage: 2, status: "FAILED", _count: 5 },
+        { currentStage: "TRANSCRIPTION", status: "COMPLETED", _count: 3 },
+        { currentStage: "TRANSCRIPTION", status: "FAILED", _count: 5 },
       ]);
 
       const res = await app.request("/dashboard", {}, env, mockExCtx);
@@ -94,8 +94,8 @@ describe("Dashboard Routes", () => {
     it("returns degraded when some warnings", async () => {
       mockPrisma.pipelineJob.count.mockResolvedValueOnce(1);
       mockPrisma.pipelineJob.groupBy.mockResolvedValueOnce([
-        { stage: 1, status: "COMPLETED", _count: 90 },
-        { stage: 1, status: "FAILED", _count: 8 },
+        { currentStage: "TRANSCRIPTION", status: "COMPLETED", _count: 90 },
+        { currentStage: "TRANSCRIPTION", status: "FAILED", _count: 8 },
       ]);
 
       const res = await app.request("/dashboard", {}, env, mockExCtx);
@@ -150,13 +150,10 @@ describe("Dashboard Routes", () => {
       const now = new Date();
       mockPrisma.pipelineJob.findMany.mockResolvedValueOnce([
         {
-          id: "job1", entityType: "episode", entityId: "ep1", stage: 2,
-          status: "COMPLETED", type: "TRANSCRIPTION", createdAt: now,
-          durationMs: 1000, startedAt: now, completedAt: now,
+          id: "job1", currentStage: "TRANSCRIPTION",
+          status: "COMPLETED", createdAt: now,
+          episode: { title: "Test Episode", podcast: { title: "Test Podcast" } },
         },
-      ]);
-      mockPrisma.episode.findMany.mockResolvedValueOnce([
-        { id: "ep1", title: "Test Episode", podcast: { title: "Test Podcast" } },
       ]);
 
       const res = await app.request("/dashboard/activity", {}, env, mockExCtx);
@@ -179,13 +176,13 @@ describe("Dashboard Routes", () => {
 
   describe("GET /dashboard/costs", () => {
     it("returns cost summary with breakdown", async () => {
-      mockPrisma.pipelineJob.findMany
+      mockPrisma.pipelineStep.findMany
         .mockResolvedValueOnce([
-          { type: "TRANSCRIPTION", cost: 0.50 },
-          { type: "DISTILLATION", cost: 0.30 },
+          { stage: "TRANSCRIPTION", cost: 0.50 },
+          { stage: "DISTILLATION", cost: 0.30 },
         ])
         .mockResolvedValueOnce([
-          { type: "TRANSCRIPTION", cost: 0.40 },
+          { stage: "TRANSCRIPTION", cost: 0.40 },
         ]);
 
       const res = await app.request("/dashboard/costs", {}, env, mockExCtx);
@@ -198,7 +195,7 @@ describe("Dashboard Routes", () => {
     });
 
     it("returns zeros when table missing", async () => {
-      mockPrisma.pipelineJob.findMany.mockRejectedValueOnce(new Error("table missing"));
+      mockPrisma.pipelineStep.findMany.mockRejectedValueOnce(new Error("table missing"));
 
       const res = await app.request("/dashboard/costs", {}, env, mockExCtx);
       expect(res.status).toBe(200);

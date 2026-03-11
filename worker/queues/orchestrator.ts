@@ -17,14 +17,16 @@ interface BriefingRequestItem {
 
 const NEXT_STAGE: Record<string, string | null> = {
   TRANSCRIPTION: "DISTILLATION",
-  DISTILLATION: "CLIP_GENERATION",
-  CLIP_GENERATION: null,
+  DISTILLATION: "NARRATIVE_GENERATION",
+  NARRATIVE_GENERATION: "AUDIO_GENERATION",
+  AUDIO_GENERATION: null,
 };
 
-const STAGE_QUEUE_MAP: Record<string, keyof Pick<Env, "TRANSCRIPTION_QUEUE" | "DISTILLATION_QUEUE" | "CLIP_GENERATION_QUEUE">> = {
+const STAGE_QUEUE_MAP: Record<string, keyof Pick<Env, "TRANSCRIPTION_QUEUE" | "DISTILLATION_QUEUE" | "NARRATIVE_GENERATION_QUEUE" | "AUDIO_GENERATION_QUEUE">> = {
   TRANSCRIPTION: "TRANSCRIPTION_QUEUE",
   DISTILLATION: "DISTILLATION_QUEUE",
-  CLIP_GENERATION: "CLIP_GENERATION_QUEUE",
+  NARRATIVE_GENERATION: "NARRATIVE_GENERATION_QUEUE",
+  AUDIO_GENERATION: "AUDIO_GENERATION_QUEUE",
 };
 
 export async function handleOrchestrator(
@@ -205,7 +207,7 @@ async function handleJobStageComplete(
 
     const queueBinding = STAGE_QUEUE_MAP[nextStage];
     const message: Record<string, any> = { jobId, episodeId: job.episodeId };
-    if (nextStage === "CLIP_GENERATION") {
+    if (nextStage === "NARRATIVE_GENERATION" || nextStage === "AUDIO_GENERATION") {
       message.durationTier = job.durationTier;
     }
 

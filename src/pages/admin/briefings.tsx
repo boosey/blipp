@@ -170,7 +170,9 @@ function BriefingSkeleton() {
 const STAGE_NAMES: Record<string, string> = {
   TRANSCRIPTION: "Transcription",
   DISTILLATION: "Distillation",
-  CLIP_GENERATION: "Clip Gen",
+  NARRATIVE_GENERATION: "Narrative",
+  AUDIO_GENERATION: "Audio Gen",
+  CLIP_GENERATION: "Clip Gen", // legacy
   BRIEFING_ASSEMBLY: "Assembly",
 };
 

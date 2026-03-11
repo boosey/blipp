@@ -47,8 +47,9 @@ export const STAGE_QUEUE_MAP: Record<number, string> = {
   1: "FEED_REFRESH",
   2: "TRANSCRIPTION",
   3: "DISTILLATION",
-  4: "CLIP_GENERATION",
-  5: "BRIEFING_ASSEMBLY",
+  4: "NARRATIVE_GENERATION",
+  5: "AUDIO_GENERATION",
+  6: "BRIEFING_ASSEMBLY",
 };
 
 /** Pipeline stage number → display name */
@@ -56,14 +57,17 @@ export const STAGE_NAMES: Record<number, string> = {
   1: "Feed Refresh",
   2: "Transcription",
   3: "Distillation",
-  4: "Clip Generation",
-  5: "Briefing Assembly",
+  4: "Narrative Generation",
+  5: "Audio Generation",
+  6: "Briefing Assembly",
 };
 
 /** Pipeline stage string key → display name (used by admin routes) */
 export const STAGE_DISPLAY_NAMES: Record<string, string> = {
   TRANSCRIPTION: "Transcription",
   DISTILLATION: "Distillation",
-  CLIP_GENERATION: "Clip Generation",
+  CLIP_GENERATION: "Clip Generation", // legacy data display
+  NARRATIVE_GENERATION: "Narrative Generation",
+  AUDIO_GENERATION: "Audio Generation",
   BRIEFING_ASSEMBLY: "Briefing Assembly",
 };

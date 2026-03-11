@@ -526,14 +526,16 @@ Lifecycle of a user's briefing request.
 
 ### PipelineStage
 
-The four stages of the demand-driven pipeline.
+The stages of the demand-driven pipeline.
 
 | Value | Description |
 |-------|-------------|
 | `TRANSCRIPTION` | Stage 2: Fetch or generate transcript |
 | `DISTILLATION` | Stage 3: Extract claims from transcript |
-| `CLIP_GENERATION` | Stage 4: Generate narrative and audio clip |
-| `BRIEFING_ASSEMBLY` | Stage 5: Assemble clips into final briefing |
+| `NARRATIVE_GENERATION` | Stage 4: Generate narrative text from claims |
+| `AUDIO_GENERATION` | Stage 5: Convert narrative to audio via TTS |
+| `CLIP_GENERATION` | Legacy value (kept for backward compatibility with existing data) |
+| `BRIEFING_ASSEMBLY` | Stage 6: Assemble clips into final briefing |
 
 Note: Stage 1 (Feed Refresh) runs on a cron schedule and is not tracked as a PipelineStage.
 

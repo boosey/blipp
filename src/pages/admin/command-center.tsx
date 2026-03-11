@@ -41,8 +41,8 @@ import type {
 
 // ── Helpers ──
 
-const STAGE_NAMES = ["Transcription", "Distillation", "Clip Gen", "Assembly"];
-const STAGE_COLORS = ["#8B5CF6", "#F59E0B", "#10B981", "#14B8A6"];
+const STAGE_NAMES = ["Transcription", "Distillation", "Narrative Gen", "Audio Gen", "Assembly"];
+const STAGE_COLORS = ["#8B5CF6", "#F59E0B", "#10B981", "#06B6D4", "#14B8A6"];
 
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -175,7 +175,8 @@ const STAGE_COLOR_MAP: Record<number, string> = {
   2: "#8B5CF6",
   3: "#F59E0B",
   4: "#10B981",
-  5: "#14B8A6",
+  5: "#06B6D4",
+  6: "#14B8A6",
 };
 
 function StageBadge({ stage }: { stage: number }) {
@@ -592,6 +593,8 @@ export default function CommandCenter() {
                     {evt.type === "FEED_REFRESH" ? "Refreshed feed" :
                      evt.type === "TRANSCRIPTION" ? "Transcribed" :
                      evt.type === "DISTILLATION" ? "Distilled" :
+                     evt.type === "NARRATIVE_GENERATION" ? "Generated narrative" :
+                     evt.type === "AUDIO_GENERATION" ? "Generated audio" :
                      evt.type === "CLIP_GENERATION" ? "Generated clips" :
                      "Assembled briefing"}
                     {evt.episodeTitle && <span className="text-[#9CA3AF]"> - {evt.episodeTitle}</span>}

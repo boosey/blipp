@@ -92,7 +92,7 @@ export interface ActiveIssue {
 
 // ── Pipeline Job Lifecycle ──
 
-export type PipelineStage = "TRANSCRIPTION" | "DISTILLATION" | "CLIP_GENERATION" | "BRIEFING_ASSEMBLY";
+export type PipelineStage = "TRANSCRIPTION" | "DISTILLATION" | "CLIP_GENERATION" | "NARRATIVE_GENERATION" | "AUDIO_GENERATION" | "BRIEFING_ASSEMBLY";
 
 export type PipelineJobStatus = "PENDING" | "IN_PROGRESS" | "COMPLETED" | "FAILED";
 

@@ -13,7 +13,7 @@ Blipp is a podcast briefing app that distills podcast episodes into short audio 
 | Auth | Clerk (`@hono/clerk-auth` middleware) |
 | Payments | Stripe (checkout, portal, webhooks) |
 | Object Storage | Cloudflare R2 |
-| Task Queues | 6 Cloudflare Queues |
+| Task Queues | 7 Cloudflare Queues |
 | Frontend | React 19 + Vite 7 + Tailwind CSS v4 + shadcn/ui |
 | AI (Summarization) | Anthropic Claude (configurable model) |
 | AI (STT) | OpenAI Whisper (configurable model) |
@@ -42,7 +42,7 @@ Blipp is a podcast briefing app that distills podcast episodes into short audio 
   Worker Handlers:
   ================
   fetch     -->  Hono HTTP server (API + SPA asset serving)
-  queue     -->  6 queue consumers (pipeline stages)
+  queue     -->  7 queue consumers (pipeline stages)
   scheduled -->  Cron trigger (*/30) for feed refresh
 
   Pipeline Flow (demand-driven):
@@ -57,14 +57,14 @@ Blipp is a podcast briefing app that distills podcast episodes into short audio 
   +-+-----+------+     +--------------+     +--------------+
     ^     |                                        |
     |     |             +--------------+     +-----v--------+
-    |     +-----------> | 4. Clip Gen  | <-- | 3. Distill-  |
-    |                   |  (TTS)       |     |    ation     |
-    |                   +------+-------+     +--------------+
-    |                          |
-    |                   +------v-------+
-    +-------------------| 5. Briefing  |
-      (stage reports)   |    Assembly  |
-                        +--------------+
+    |     +-----------> | 3. Distill-  | --> | 4. Narrative |
+    |                   |    ation     |     |    Gen       |
+    |                   +--------------+     +-----+--------+
+    |                                              |
+    |                   +--------------+     +-----v--------+
+    |                   | 6. Briefing  | <-- | 5. Audio     |
+    +-------------------+    Assembly  |     |    Gen       |
+      (stage reports)   +--------------+     +--------------+
 ```
 
 ## Worker Entry Point
@@ -87,8 +87,9 @@ All three handlers pass the environment through `shimQueuesForLocalDev()` which 
 | `FEED_REFRESH_QUEUE` | Queue | Stage 1: RSS feed polling |
 | `TRANSCRIPTION_QUEUE` | Queue | Stage 2: Transcript fetching |
 | `DISTILLATION_QUEUE` | Queue | Stage 3: Claim extraction via Claude |
-| `CLIP_GENERATION_QUEUE` | Queue | Stage 4: TTS via OpenAI |
-| `BRIEFING_ASSEMBLY_QUEUE` | Queue | Stage 5: Briefing creation + FeedItem linking |
+| `NARRATIVE_GENERATION_QUEUE` | Queue | Stage 4: Narrative writing via Claude |
+| `AUDIO_GENERATION_QUEUE` | Queue | Stage 5: TTS audio via OpenAI |
+| `BRIEFING_ASSEMBLY_QUEUE` | Queue | Stage 6: Briefing creation + FeedItem linking |
 | `ORCHESTRATOR_QUEUE` | Queue | Pipeline coordination |
 | `CLERK_SECRET_KEY` | string | Clerk authentication |
 | `CLERK_PUBLISHABLE_KEY` | string | Clerk frontend auth |
@@ -107,8 +108,9 @@ All three handlers pass the environment through `shimQueuesForLocalDev()` which 
 | feed-refresh | `FEED_REFRESH_QUEUE` | 10 | 3 | 1 - RSS polling |
 | transcription | `TRANSCRIPTION_QUEUE` | 5 | 3 | 2 - Transcript fetch |
 | distillation | `DISTILLATION_QUEUE` | 5 | 3 | 3 - Claim extraction |
-| clip-generation | `CLIP_GENERATION_QUEUE` | 3 | 3 | 4 - TTS generation |
-| briefing-assembly | `BRIEFING_ASSEMBLY_QUEUE` | 5 | 3 | 5 - Briefing creation |
+| narrative-generation | `NARRATIVE_GENERATION_QUEUE` | 3 | 3 | 4 - Narrative writing |
+| audio-generation | `AUDIO_GENERATION_QUEUE` | 3 | 3 | 5 - TTS generation |
+| briefing-assembly | `BRIEFING_ASSEMBLY_QUEUE` | 5 | 3 | 6 - Briefing creation |
 | orchestrator | `ORCHESTRATOR_QUEUE` | 10 | 3 | Coordination |
 
 ### Pipeline Architecture
@@ -117,9 +119,10 @@ The pipeline is **demand-driven**: only feed refresh runs on a cron schedule. Al
 
 1. **Feed Refresh (Stage 1)** -- Polls RSS feeds, upserts new episodes into the database. Runs on cron (`*/30 * * * *`), gated by runtime config.
 2. **Transcription (Stage 2)** -- Three-tier transcript waterfall: (1) RSS feed transcript URL, (2) Podcast Index API lookup by episode GUID, (3) Whisper STT with chunked transcription for files over 25MB.
-3. **Distillation (Stage 3)** -- Sends transcript to Anthropic Claude for claim extraction and narrative generation. Stores results in Distillation model.
-4. **Clip Generation (Stage 4)** -- Generates audio clips via OpenAI gpt-4o-mini-tts. Stores MP3s in R2, metadata in Clip model.
-5. **Briefing Assembly (Stage 5)** -- Creates per-user Briefing records wrapping shared Clips, then updates FeedItems to READY with briefingId on success, FAILED on failure.
+3. **Distillation (Stage 3)** -- Sends transcript to Anthropic Claude for claim extraction. Stores results in Distillation model.
+4. **Narrative Generation (Stage 4)** -- Generates narrative text from distillation claims using Claude LLM. Stores narrative on Clip record and creates NARRATIVE WorkProduct.
+5. **Audio Generation (Stage 5)** -- Converts narrative text to MP3 audio via OpenAI TTS. Stores MP3s in R2, updates Clip to COMPLETED, creates AUDIO_CLIP WorkProduct.
+6. **Briefing Assembly (Stage 6)** -- Creates per-user Briefing records wrapping shared Clips, then updates FeedItems to READY with briefingId on success, FAILED on failure.
 
 ### Orchestrator
 
@@ -364,8 +367,10 @@ blipp/
       feed-refresh.ts     # Stage 1: RSS polling
       transcription.ts    # Stage 2: Transcript fetching
       distillation.ts     # Stage 3: Claude claim extraction
-      clip-generation.ts  # Stage 4: OpenAI TTS
-      briefing-assembly.ts # Stage 5: Briefing creation + FeedItem linking
+      narrative-generation.ts # Stage 4: Claude narrative writing
+      audio-generation.ts    # Stage 5: TTS audio rendering
+      clip-generation.ts     # Legacy combined stage (backward compat)
+      briefing-assembly.ts   # Stage 6: Briefing creation + FeedItem linking
       orchestrator.ts     # Pipeline coordination
     lib/
       db.ts               # PrismaClient factory (Hyperdrive)

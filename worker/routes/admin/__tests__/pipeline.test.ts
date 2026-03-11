@@ -71,16 +71,14 @@ describe("Pipeline Routes", () => {
       const now = new Date();
       mockPrisma.pipelineJob.findMany.mockResolvedValueOnce([
         {
-          id: "job1", type: "TRANSCRIPTION", status: "COMPLETED", entityId: "ep1",
-          entityType: "episode", stage: 2, errorMessage: null, cost: 0.5,
-          startedAt: now, completedAt: now, durationMs: 1000, retryCount: 0,
-          createdAt: now,
+          id: "job1", requestId: null, episodeId: "ep1", durationTier: 5,
+          status: "COMPLETED", currentStage: "TRANSCRIPTION",
+          distillationId: null, clipId: null, errorMessage: null,
+          createdAt: now, updatedAt: now, completedAt: now,
+          episode: { title: "Ep", podcast: { title: "Pod", imageUrl: null } },
         },
       ]);
       mockPrisma.pipelineJob.count.mockResolvedValueOnce(1);
-      mockPrisma.episode.findMany.mockResolvedValueOnce([
-        { id: "ep1", title: "Ep", podcast: { title: "Pod", imageUrl: null } },
-      ]);
 
       const res = await app.request("/pipeline/jobs", {}, env, mockExCtx);
       expect(res.status).toBe(200);
@@ -116,20 +114,14 @@ describe("Pipeline Routes", () => {
     it("returns enriched job detail with entity names", async () => {
       const now = new Date();
       mockPrisma.pipelineJob.findUnique.mockResolvedValueOnce({
-        id: "job1", type: "TRANSCRIPTION", status: "COMPLETED", stage: 2,
-        entityId: "ep1", entityType: "episode", requestId: null, parentJobId: null,
-        input: null, output: null, errorMessage: null, cost: 0.5,
-        startedAt: now, completedAt: now, durationMs: 1200, retryCount: 0,
-        createdAt: now, updatedAt: now,
+        id: "job1", status: "COMPLETED", currentStage: "TRANSCRIPTION",
+        episodeId: "ep1", requestId: null, durationTier: 5,
+        distillationId: null, clipId: null, errorMessage: null,
+        createdAt: now, updatedAt: now, completedAt: now,
+        episode: { title: "Test Episode", podcast: { title: "Test Podcast", imageUrl: "http://img.png" } },
+        steps: [],
+        request: null,
       });
-      mockPrisma.episode.findUnique.mockResolvedValueOnce({
-        title: "Test Episode", podcast: { title: "Test Podcast", imageUrl: "http://img.png" },
-      });
-      // upstreamProgress query
-      mockPrisma.pipelineJob.findMany.mockResolvedValueOnce([
-        { stage: 2, status: "COMPLETED" },
-        { stage: 3, status: "IN_PROGRESS" },
-      ]);
 
       const res = await app.request("/pipeline/jobs/job1", {}, env, mockExCtx);
       expect(res.status).toBe(200);
@@ -144,15 +136,16 @@ describe("Pipeline Routes", () => {
     it("returns requestContext when job has requestId", async () => {
       const now = new Date();
       mockPrisma.pipelineJob.findUnique.mockResolvedValueOnce({
-        id: "job2", type: "BRIEFING_ASSEMBLY", status: "IN_PROGRESS", stage: 5,
-        entityId: "br1", entityType: "briefing", requestId: "req1", parentJobId: null,
-        input: null, output: null, errorMessage: null, cost: null,
-        startedAt: now, completedAt: null, durationMs: null, retryCount: 0,
-        createdAt: now, updatedAt: now,
-      });
-      mockPrisma.briefingRequest.findUnique.mockResolvedValueOnce({
-        id: "req1", userId: "user1", targetMinutes: 15, status: "PROCESSING",
-        createdAt: now, user: { email: "test@example.com" },
+        id: "job2", status: "IN_PROGRESS", currentStage: "BRIEFING_ASSEMBLY",
+        episodeId: null, requestId: "req1", durationTier: null,
+        distillationId: null, clipId: null, errorMessage: null,
+        createdAt: now, updatedAt: now, completedAt: null,
+        episode: null,
+        steps: [],
+        request: {
+          id: "req1", userId: "user1", targetMinutes: 15, status: "PROCESSING",
+          createdAt: now, user: { email: "test@example.com" },
+        },
       });
 
       const res = await app.request("/pipeline/jobs/job2", {}, env, mockExCtx);
@@ -167,17 +160,16 @@ describe("Pipeline Routes", () => {
     it("returns queuePosition for PENDING jobs", async () => {
       const now = new Date();
       mockPrisma.pipelineJob.findUnique.mockResolvedValueOnce({
-        id: "job3", type: "TRANSCRIPTION", status: "PENDING", stage: 2,
-        entityId: "ep2", entityType: "episode", requestId: null, parentJobId: null,
-        input: null, output: null, errorMessage: null, cost: null,
-        startedAt: null, completedAt: null, durationMs: null, retryCount: 0,
-        createdAt: now, updatedAt: now,
+        id: "job3", status: "PENDING", currentStage: "TRANSCRIPTION",
+        episodeId: "ep2", requestId: null, durationTier: 5,
+        distillationId: null, clipId: null, errorMessage: null,
+        createdAt: now, updatedAt: now, completedAt: null,
+        episode: null,
+        steps: [],
+        request: null,
       });
-      mockPrisma.episode.findUnique.mockResolvedValueOnce(null);
       // queuePosition count
       mockPrisma.pipelineJob.count.mockResolvedValueOnce(3);
-      // upstreamProgress query
-      mockPrisma.pipelineJob.findMany.mockResolvedValueOnce([]);
 
       const res = await app.request("/pipeline/jobs/job3", {}, env, mockExCtx);
       expect(res.status).toBe(200);
@@ -185,35 +177,29 @@ describe("Pipeline Routes", () => {
       expect(body.data.queuePosition).toBe(3);
     });
 
-    it("returns upstreamProgress for episode jobs", async () => {
+    it("returns steps for episode jobs", async () => {
       const now = new Date();
       mockPrisma.pipelineJob.findUnique.mockResolvedValueOnce({
-        id: "job4", type: "CLIP_GENERATION", status: "COMPLETED", stage: 4,
-        entityId: "ep3", entityType: "episode", requestId: null, parentJobId: null,
-        input: null, output: null, errorMessage: null, cost: 0.1,
-        startedAt: now, completedAt: now, durationMs: 500, retryCount: 0,
-        createdAt: now, updatedAt: now,
+        id: "job4", status: "COMPLETED", currentStage: "AUDIO_GENERATION",
+        episodeId: "ep3", requestId: null, durationTier: 5,
+        distillationId: null, clipId: null, errorMessage: null,
+        createdAt: now, updatedAt: now, completedAt: now,
+        episode: { title: "Ep 3", podcast: { title: "Pod", imageUrl: null } },
+        steps: [
+          { id: "s1", jobId: "job4", stage: "TRANSCRIPTION", status: "COMPLETED", cached: false, errorMessage: null, startedAt: now, completedAt: now, durationMs: 100, cost: null, model: null, inputTokens: null, outputTokens: null, workProductId: null, retryCount: 0, createdAt: now },
+          { id: "s2", jobId: "job4", stage: "DISTILLATION", status: "COMPLETED", cached: false, errorMessage: null, startedAt: now, completedAt: now, durationMs: 200, cost: null, model: null, inputTokens: null, outputTokens: null, workProductId: null, retryCount: 0, createdAt: now },
+          { id: "s3", jobId: "job4", stage: "AUDIO_GENERATION", status: "COMPLETED", cached: false, errorMessage: null, startedAt: now, completedAt: now, durationMs: 300, cost: null, model: null, inputTokens: null, outputTokens: null, workProductId: null, retryCount: 0, createdAt: now },
+        ],
+        request: null,
       });
-      mockPrisma.episode.findUnique.mockResolvedValueOnce({
-        title: "Ep 3", podcast: { title: "Pod", imageUrl: null },
-      });
-      // upstreamProgress query
-      mockPrisma.pipelineJob.findMany.mockResolvedValueOnce([
-        { stage: 2, status: "COMPLETED" },
-        { stage: 3, status: "COMPLETED" },
-        { stage: 4, status: "COMPLETED" },
-      ]);
 
       const res = await app.request("/pipeline/jobs/job4", {}, env, mockExCtx);
       expect(res.status).toBe(200);
       const body: any = await res.json();
-      expect(body.data.upstreamProgress).toHaveLength(3);
-      expect(body.data.upstreamProgress[0]).toEqual({
-        stage: 2, name: "Transcription", status: "COMPLETED",
-      });
-      expect(body.data.upstreamProgress[1]).toEqual({
-        stage: 3, name: "Distillation", status: "COMPLETED",
-      });
+      expect(body.data.steps).toHaveLength(3);
+      expect(body.data.steps[0].stage).toBe("TRANSCRIPTION");
+      expect(body.data.steps[1].stage).toBe("DISTILLATION");
+      expect(body.data.steps[2].stage).toBe("AUDIO_GENERATION");
     });
 
     it("returns 404 when not found", async () => {
@@ -237,8 +223,7 @@ describe("Pipeline Routes", () => {
       const res = await app.request("/pipeline/jobs/job1/retry", { method: "POST" }, env, mockExCtx);
       expect(res.status).toBe(200);
       const body: any = await res.json();
-      expect(body.data.status).toBe("RETRYING");
-      expect(body.data.retryCount).toBe(1);
+      expect(body.data.status).toBe("PENDING");
     });
 
     it("returns 404 when job not found", async () => {
@@ -272,39 +257,38 @@ describe("Pipeline Routes", () => {
   });
 
   describe("GET /pipeline/stages", () => {
-    it("returns stages 2-5 only (not stage 1)", async () => {
-      mockPrisma.pipelineJob.groupBy
+    it("returns all pipeline stages (not feed refresh)", async () => {
+      mockPrisma.pipelineStep.groupBy
         .mockResolvedValueOnce([
-          { stage: 2, status: "COMPLETED", _count: 10 },
-          { stage: 2, status: "IN_PROGRESS", _count: 2 },
-          { stage: 3, status: "COMPLETED", _count: 5 },
+          { stage: "TRANSCRIPTION", status: "COMPLETED", _count: 10 },
+          { stage: "TRANSCRIPTION", status: "IN_PROGRESS", _count: 2 },
+          { stage: "DISTILLATION", status: "COMPLETED", _count: 5 },
         ])
         .mockResolvedValueOnce([
-          { stage: 2, _avg: { durationMs: 500 } },
+          { stage: "TRANSCRIPTION", _avg: { durationMs: 500 } },
         ])
         .mockResolvedValueOnce([
-          { stage: 2, _sum: { cost: 1.5 } },
+          { stage: "TRANSCRIPTION", _sum: { cost: 1.5 } },
         ]);
 
       const res = await app.request("/pipeline/stages", {}, env, mockExCtx);
       expect(res.status).toBe(200);
       const body: any = await res.json();
-      expect(body.data).toHaveLength(4);
+      expect(body.data).toHaveLength(5);
       const stages = body.data.map((s: any) => s.stage);
-      expect(stages).toEqual([2, 3, 4, 5]);
-      expect(stages).not.toContain(1);
+      expect(stages).toEqual(["TRANSCRIPTION", "DISTILLATION", "NARRATIVE_GENERATION", "AUDIO_GENERATION", "BRIEFING_ASSEMBLY"]);
       expect(body.data[0]).toHaveProperty("name");
       expect(body.data[0]).toHaveProperty("successRate");
     });
 
     it("returns defaults when table missing", async () => {
-      mockPrisma.pipelineJob.groupBy.mockRejectedValueOnce(new Error("table missing"));
+      mockPrisma.pipelineStep.groupBy.mockRejectedValueOnce(new Error("table missing"));
 
       const res = await app.request("/pipeline/stages", {}, env, mockExCtx);
       expect(res.status).toBe(200);
       const body: any = await res.json();
-      expect(body.data).toHaveLength(4);
-      expect(body.data[0].stage).toBe(2);
+      expect(body.data).toHaveLength(5);
+      expect(body.data[0].stage).toBe("TRANSCRIPTION");
       expect(body.data[0].successRate).toBe(100);
     });
 

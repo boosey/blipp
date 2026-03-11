@@ -8,7 +8,8 @@ const QUEUE_BINDINGS: Record<string, string> = {
   FEED_REFRESH_QUEUE: "feed-refresh",
   TRANSCRIPTION_QUEUE: "transcription",
   DISTILLATION_QUEUE: "distillation",
-  CLIP_GENERATION_QUEUE: "clip-generation",
+  NARRATIVE_GENERATION_QUEUE: "narrative-generation",
+  AUDIO_GENERATION_QUEUE: "clip-generation",
   BRIEFING_ASSEMBLY_QUEUE: "briefing-assembly",
   ORCHESTRATOR_QUEUE: "orchestrator",
 };

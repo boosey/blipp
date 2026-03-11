@@ -550,7 +550,9 @@ function formatStageName(stage: string): string {
   switch (stage) {
     case "TRANSCRIPTION": return "Transcription";
     case "DISTILLATION": return "Distillation";
-    case "CLIP_GENERATION": return "Clip Gen";
+    case "NARRATIVE_GENERATION": return "Narrative Gen";
+    case "AUDIO_GENERATION": return "Audio Gen";
+    case "CLIP_GENERATION": return "Clip Gen"; // legacy
     case "BRIEFING_ASSEMBLY": return "Assembly";
     default: return stage;
   }

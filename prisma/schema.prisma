@@ -249,7 +249,9 @@ model PipelineJob {
 enum PipelineStage {
   TRANSCRIPTION
   DISTILLATION
-  CLIP_GENERATION
+  CLIP_GENERATION // legacy — kept for backward compat with existing data
+  NARRATIVE_GENERATION
+  AUDIO_GENERATION
   BRIEFING_ASSEMBLY
 }
 

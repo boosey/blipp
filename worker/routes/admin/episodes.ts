@@ -119,7 +119,7 @@ episodesRoutes.get("/:id", async (c) => {
   }
 
   // Build stage trace from steps across all jobs for this episode
-  const stageKeys = ["TRANSCRIPTION", "DISTILLATION", "CLIP_GENERATION", "BRIEFING_ASSEMBLY"] as const;
+  const stageKeys = ["TRANSCRIPTION", "DISTILLATION", "NARRATIVE_GENERATION", "AUDIO_GENERATION", "BRIEFING_ASSEMBLY"] as const;
   const stages = stageKeys.map((stage) => {
     // Find the most recent step for this stage across all jobs
     let latestStep: any | undefined;

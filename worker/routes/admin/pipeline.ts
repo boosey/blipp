@@ -6,11 +6,13 @@ import { parsePagination, paginatedResponse } from "../../lib/admin-helpers";
 const STAGE_ICONS: Record<string, string> = {
   TRANSCRIPTION: "file-audio",
   DISTILLATION: "brain",
-  CLIP_GENERATION: "scissors",
+  NARRATIVE_GENERATION: "pen-tool",
+  AUDIO_GENERATION: "volume-2",
+  CLIP_GENERATION: "scissors", // legacy
   BRIEFING_ASSEMBLY: "package",
 };
 
-const PIPELINE_STAGES = ["TRANSCRIPTION", "DISTILLATION", "CLIP_GENERATION", "BRIEFING_ASSEMBLY"] as const;
+const PIPELINE_STAGES = ["TRANSCRIPTION", "DISTILLATION", "NARRATIVE_GENERATION", "AUDIO_GENERATION", "BRIEFING_ASSEMBLY"] as const;
 
 const pipelineRoutes = new Hono<{ Bindings: Env }>();
 
@@ -212,8 +214,17 @@ pipelineRoutes.post("/jobs/:id/retry", async (c) => {
         });
         break;
       }
-      case "CLIP_GENERATION": {
-        await c.env.CLIP_GENERATION_QUEUE.send({
+      case "NARRATIVE_GENERATION": {
+        await c.env.NARRATIVE_GENERATION_QUEUE.send({
+          type: "manual",
+          jobId: job.id,
+          episodeId: job.episodeId,
+          durationTier: job.durationTier,
+        });
+        break;
+      }
+      case "AUDIO_GENERATION": {
+        await c.env.AUDIO_GENERATION_QUEUE.send({
           type: "manual",
           jobId: job.id,
           episodeId: job.episodeId,
@@ -275,8 +286,16 @@ pipelineRoutes.post("/jobs/bulk/retry", async (c) => {
             episodeId: job.episodeId,
           });
           break;
-        case "CLIP_GENERATION":
-          await c.env.CLIP_GENERATION_QUEUE.send({
+        case "NARRATIVE_GENERATION":
+          await c.env.NARRATIVE_GENERATION_QUEUE.send({
+            type: "manual",
+            jobId: job.id,
+            episodeId: job.episodeId,
+            durationTier: job.durationTier,
+          });
+          break;
+        case "AUDIO_GENERATION":
+          await c.env.AUDIO_GENERATION_QUEUE.send({
             type: "manual",
             jobId: job.id,
             episodeId: job.episodeId,
@@ -334,6 +353,10 @@ pipelineRoutes.post("/trigger/stage/:stage", async (c) => {
   const prisma = c.get("prisma") as any;
   const stage = c.req.param("stage");
 
+  if (stage === "FEED_REFRESH" || stage === "1") {
+    return c.json({ error: "Feed refresh is not a pipeline stage. Use /trigger/feed-refresh instead." }, 400);
+  }
+
   if (stage === "TRANSCRIPTION" || stage === "2") {
     // Transcription: episodes with no completed transcription pipeline step
     const episodes = await prisma.episode.findMany({
@@ -379,7 +402,7 @@ pipelineRoutes.post("/trigger/stage/:stage", async (c) => {
     });
   }
 
-  if (stage === "CLIP_GENERATION" || stage === "4") {
+  if (stage === "NARRATIVE_GENERATION" || stage === "4") {
     const distillations = await prisma.distillation.findMany({
       where: {
         status: "COMPLETED",
@@ -390,15 +413,34 @@ pipelineRoutes.post("/trigger/stage/:stage", async (c) => {
     });
 
     for (const d of distillations) {
-      await c.env.CLIP_GENERATION_QUEUE.send({ type: "manual", episodeId: d.episodeId });
+      await c.env.NARRATIVE_GENERATION_QUEUE.send({ type: "manual", episodeId: d.episodeId });
     }
 
     return c.json({
-      data: { enqueued: distillations.length, skipped: 0, message: `Clip generation enqueued for ${distillations.length} episodes` },
+      data: { enqueued: distillations.length, skipped: 0, message: `Narrative generation enqueued for ${distillations.length} episodes` },
     });
   }
 
-  return c.json({ error: `Invalid stage: ${stage}. Valid stages: TRANSCRIPTION, DISTILLATION, CLIP_GENERATION` }, 400);
+  if (stage === "AUDIO_GENERATION" || stage === "5") {
+    const distillations = await prisma.distillation.findMany({
+      where: {
+        status: "COMPLETED",
+        clips: { none: {} },
+      },
+      select: { id: true, episodeId: true },
+      take: 50,
+    });
+
+    for (const d of distillations) {
+      await c.env.AUDIO_GENERATION_QUEUE.send({ type: "manual", episodeId: d.episodeId });
+    }
+
+    return c.json({
+      data: { enqueued: distillations.length, skipped: 0, message: `Audio generation enqueued for ${distillations.length} episodes` },
+    });
+  }
+
+  return c.json({ error: `Invalid stage: ${stage}. Valid stages: TRANSCRIPTION, DISTILLATION, NARRATIVE_GENERATION, AUDIO_GENERATION` }, 400);
 });
 
 // POST /trigger/episode/:id - Trigger pipeline for a specific episode
@@ -432,15 +474,23 @@ pipelineRoutes.post("/trigger/episode/:id", async (c) => {
       await c.env.DISTILLATION_QUEUE.send({ type: "manual", episodeId: episode.id });
       return c.json({ data: { enqueued: 1, skipped: 0, message: "Distillation enqueued" } });
     }
-    if (body.stage === "CLIP_GENERATION") {
+    if (body.stage === "NARRATIVE_GENERATION") {
       const distillation = episode.distillation;
       if (!distillation || distillation.status !== "COMPLETED") {
         return c.json({ error: "No completed distillation found for this episode" }, 400);
       }
-      await c.env.CLIP_GENERATION_QUEUE.send({ type: "manual", episodeId: episode.id });
-      return c.json({ data: { enqueued: 1, skipped: 0, message: "Clip generation enqueued" } });
+      await c.env.NARRATIVE_GENERATION_QUEUE.send({ type: "manual", episodeId: episode.id });
+      return c.json({ data: { enqueued: 1, skipped: 0, message: "Narrative generation enqueued" } });
     }
-    return c.json({ error: `Invalid stage: ${body.stage}. Valid stages: TRANSCRIPTION, DISTILLATION, CLIP_GENERATION` }, 400);
+    if (body.stage === "AUDIO_GENERATION") {
+      const distillation = episode.distillation;
+      if (!distillation || distillation.status !== "COMPLETED") {
+        return c.json({ error: "No completed distillation found for this episode" }, 400);
+      }
+      await c.env.AUDIO_GENERATION_QUEUE.send({ type: "manual", episodeId: episode.id });
+      return c.json({ data: { enqueued: 1, skipped: 0, message: "Audio generation enqueued" } });
+    }
+    return c.json({ error: `Invalid stage: ${body.stage}. Valid stages: TRANSCRIPTION, DISTILLATION, NARRATIVE_GENERATION, AUDIO_GENERATION` }, 400);
   }
 
   // Auto-detect what's needed next
@@ -450,8 +500,8 @@ pipelineRoutes.post("/trigger/episode/:id", async (c) => {
   }
 
   if (episode.distillation.status === "COMPLETED" && episode.clips.length === 0) {
-    await c.env.CLIP_GENERATION_QUEUE.send({ type: "manual", episodeId: episode.id });
-    return c.json({ data: { enqueued: 1, skipped: 0, message: "Clip generation enqueued" } });
+    await c.env.NARRATIVE_GENERATION_QUEUE.send({ type: "manual", episodeId: episode.id });
+    return c.json({ data: { enqueued: 1, skipped: 0, message: "Narrative generation enqueued" } });
   }
 
   return c.json({ data: { enqueued: 0, skipped: 1, message: "Episode is already fully processed or in progress" } });

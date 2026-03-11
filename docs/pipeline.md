@@ -2,7 +2,7 @@
 
 Blipp uses a **demand-driven pipeline** to transform podcast episodes into audio briefings. Only feed refresh runs on a cron schedule -- all other processing is triggered by user briefing requests.
 
-## 5-Stage Pipeline
+## 6-Stage Pipeline
 
 ```
   [Cron]              [User Request]
@@ -31,7 +31,14 @@ Blipp uses a **demand-driven pipeline** to transform podcast episodes into audio
             |              |              |
             v              v              v
       +-----------+  +-----------+  +-----------+
-      | 4. Clip   |  | 4. Clip   |  | 4. Clip   |
+      | 4. Narr-  |  | 4. Narr-  |  | 4. Narr-  |
+      |   ative   |  |   ative   |  |   ative   |
+      |   Gen     |  |   Gen     |  |   Gen     |
+      +-----+-----+  +-----+-----+  +-----+-----+
+            |              |              |
+            v              v              v
+      +-----------+  +-----------+  +-----------+
+      | 5. Audio  |  | 5. Audio  |  | 5. Audio  |
       |   Gen     |  |   Gen     |  |   Gen     |
       +-----+-----+  +-----+-----+  +-----+-----+
             |              |              |
@@ -41,7 +48,7 @@ Blipp uses a **demand-driven pipeline** to transform podcast episodes into audio
                            |
                            v
                   +----------------+
-                  | 5. Briefing    |
+                  | 6. Briefing    |
                   |    Assembly    |
                   +----------------+
                            |
@@ -57,8 +64,9 @@ Blipp uses a **demand-driven pipeline** to transform podcast episodes into audio
 | 1. Feed Refresh | `feed-refresh` | Polls RSS feeds, ingests new episodes into the database |
 | 2. Transcription | `transcription` | Three-tier waterfall: RSS feed URL → Podcast Index API → Whisper STT (with chunking for >25MB) |
 | 3. Distillation | `distillation` | Uses Claude to extract scored claims from transcript |
-| 4. Clip Generation | `clip-generation` | Generates narrative text + TTS audio for an (episode, durationTier) pair |
-| 5. Briefing Assembly | `briefing-assembly` | Creates per-user Briefing records wrapping shared Clips, updates FeedItems to READY with briefingId |
+| 4. Narrative Generation | `narrative-generation` | Generates narrative text from distillation claims using Claude LLM |
+| 5. Audio Generation | `audio-generation` | Converts narrative text to MP3 audio via TTS (OpenAI) |
+| 6. Briefing Assembly | `briefing-assembly` | Creates per-user Briefing records wrapping shared Clips, updates FeedItems to READY with briefingId |
 
 ---
 
@@ -101,12 +109,12 @@ interface OrchestratorMessage {
 Each queue handler reports back to `ORCHESTRATOR_QUEUE` when its stage completes for a job. The orchestrator advances the job through stages:
 
 ```
-TRANSCRIPTION --> DISTILLATION --> CLIP_GENERATION --> (complete)
-                                                          |
-                                          When all jobs for a request complete:
-                                                          |
-                                                          v
-                                                  BRIEFING_ASSEMBLY
+TRANSCRIPTION --> DISTILLATION --> NARRATIVE_GENERATION --> AUDIO_GENERATION --> (complete)
+                                                                                    |
+                                                            When all jobs for a request complete:
+                                                                                    |
+                                                                                    v
+                                                                            BRIEFING_ASSEMBLY
 ```
 
 ---
@@ -144,7 +152,7 @@ One job per **(episode, durationTier)** per request.
 
 | Field | Description |
 |-------|-------------|
-| `currentStage` | Pipeline stage the job is at (TRANSCRIPTION, DISTILLATION, CLIP_GENERATION, BRIEFING_ASSEMBLY) |
+| `currentStage` | Pipeline stage the job is at (TRANSCRIPTION, DISTILLATION, NARRATIVE_GENERATION, AUDIO_GENERATION, BRIEFING_ASSEMBLY) |
 | `status` | PENDING, IN_PROGRESS, COMPLETED, FAILED |
 | `distillationId` | Link to cached distillation work product |
 | `clipId` | Link to cached clip work product |
@@ -201,9 +209,13 @@ Stage 3 (Distillation):
   Completed Distillation exists for episode? --> SKIP
   Otherwise                                  --> Run Claude extraction
 
-Stage 4 (Clip Generation):
-  Completed Clip exists for (episodeId, durationTier)? --> SKIP
-  Otherwise                                            --> Generate narrative + TTS
+Stage 4 (Narrative Generation):
+  NARRATIVE WorkProduct exists for (episodeId, durationTier)? --> SKIP
+  Otherwise                                                   --> Generate narrative from claims
+
+Stage 5 (Audio Generation):
+  Completed Clip + AUDIO_CLIP WorkProduct exists for (episodeId, durationTier)? --> SKIP
+  Otherwise                                                                     --> Generate TTS audio
 ```
 
 When a stage is skipped, the handler creates a PipelineStep with `status: SKIPPED` and `cached: true`, then immediately reports completion to the orchestrator.
@@ -279,8 +291,9 @@ Stored in the `PlatformConfig` table, accessed via `getConfig(prisma, key, fallb
 | `pipeline.stage.1.enabled` | boolean | `true` | Feed Refresh stage enable |
 | `pipeline.stage.2.enabled` | boolean | `true` | Transcription stage enable |
 | `pipeline.stage.3.enabled` | boolean | `true` | Distillation stage enable |
-| `pipeline.stage.4.enabled` | boolean | `true` | Clip Generation stage enable |
-| `pipeline.stage.5.enabled` | boolean | `true` | Briefing Assembly stage enable |
+| `pipeline.stage.4.enabled` | boolean | `true` | Narrative Generation stage enable |
+| `pipeline.stage.5.enabled` | boolean | `true` | Audio Generation stage enable |
+| `pipeline.stage.6.enabled` | boolean | `true` | Briefing Assembly stage enable |
 | `pipeline.feedRefresh.maxEpisodesPerPodcast` | number | `10` | Episode cap per podcast per refresh |
 | `ai.stt.model` | string | `"whisper-1"` | Whisper STT model |
 | `ai.distillation.model` | string | `"claude-sonnet-4-20250514"` | Claude model for claim extraction |
@@ -298,7 +311,8 @@ Defined in `wrangler.jsonc`.
 | `feed-refresh` | 10 | 3 | RSS polling |
 | `transcription` | 5 | 3 | Transcript fetching/generation |
 | `distillation` | 5 | 3 | Claude claim extraction |
-| `clip-generation` | 3 | 3 | Narrative + TTS |
+| `narrative-generation` | 3 | 3 | Claude narrative writing |
+| `audio-generation` | 3 | 3 | TTS audio rendering |
 | `briefing-assembly` | 5 | 3 | Final audio assembly |
 | `orchestrator` | 10 | 3 | Pipeline coordination |
 
@@ -316,7 +330,8 @@ Each `PipelineStep` records AI usage metadata on completion:
 Per-stage behavior:
 - **Transcription:** Captured only for Whisper STT (Tier 3). Tiers 1/2 (RSS/Podcast Index) leave usage fields null since no AI call is made.
 - **Distillation:** Captures Claude API usage from claim extraction. Model, input/output tokens come directly from the Anthropic response.
-- **Clip Generation:** Combines narrative (Claude) + TTS (OpenAI) usage. Model field is `narrativeModel+ttsModel`, tokens are summed.
+- **Narrative Generation:** Captures Claude API usage from narrative writing. Model and token counts from the Anthropic response.
+- **Audio Generation:** Captures TTS API usage. Model and token counts from the OpenAI TTS response.
 
 The admin Analytics page includes a per-model cost breakdown widget (`GET /api/admin/analytics/costs/by-model`) for monitoring spend across models and stages.
 
@@ -362,8 +377,10 @@ Key behaviors:
 | `worker/lib/whisper-chunked.ts` | Chunked Whisper for oversized audio files |
 | `worker/lib/ai-models.ts` | AI model registry + `getModelConfig()` helper |
 | `worker/queues/distillation.ts` | Stage 3: Claude claim extraction |
-| `worker/queues/clip-generation.ts` | Stage 4: narrative + TTS |
-| `worker/queues/briefing-assembly.ts` | Stage 5: Briefing creation + FeedItem linking |
+| `worker/queues/narrative-generation.ts` | Stage 4: Claude narrative writing |
+| `worker/queues/audio-generation.ts` | Stage 5: TTS audio rendering |
+| `worker/queues/clip-generation.ts` | Legacy combined stage (kept for backward compatibility) |
+| `worker/queues/briefing-assembly.ts` | Stage 6: Briefing creation + FeedItem linking |
 | `worker/queues/feed-refresh.ts` | Stage 1: RSS polling |
 | `worker/lib/config.ts` | Runtime config helper with TTL cache |
 | `worker/index.ts` | Worker entry point (queue routing) |

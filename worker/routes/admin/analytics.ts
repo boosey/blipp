@@ -76,7 +76,7 @@ analyticsRoutes.get("/costs", async (c) => {
 
     const stt = daySteps.filter((s) => s.stage === "TRANSCRIPTION").reduce((sum, s) => sum + (s.cost ?? 0), 0);
     const distillation = daySteps.filter((s) => s.stage === "DISTILLATION").reduce((sum, s) => sum + (s.cost ?? 0), 0);
-    const tts = daySteps.filter((s) => s.stage === "CLIP_GENERATION").reduce((sum, s) => sum + (s.cost ?? 0), 0);
+    const tts = daySteps.filter((s) => s.stage === "AUDIO_GENERATION").reduce((sum, s) => sum + (s.cost ?? 0), 0);
 
     return { date: key, stt: round(stt), distillation: round(distillation), tts: round(tts), infrastructure: 0 };
   });
@@ -89,7 +89,7 @@ analyticsRoutes.get("/costs", async (c) => {
   const comparisonAmount = totalCost - prevTotal;
   const comparisonPct = prevTotal > 0 ? Math.round((comparisonAmount / prevTotal) * 100) : 0;
 
-  const episodeSteps = steps.filter((s) => s.stage === "TRANSCRIPTION" || s.stage === "DISTILLATION" || s.stage === "CLIP_GENERATION");
+  const episodeSteps = steps.filter((s) => s.stage === "TRANSCRIPTION" || s.stage === "DISTILLATION" || s.stage === "NARRATIVE_GENERATION" || s.stage === "AUDIO_GENERATION");
   const uniqueDays = new Set(episodeSteps.map((s) => s.createdAt.toISOString().slice(0, 10)));
   const perEpisode = uniqueDays.size > 0 ? round(totalCost / uniqueDays.size) : 0;
 
@@ -352,7 +352,7 @@ analyticsRoutes.get("/pipeline", async (c) => {
     return c.json({
       data: {
         throughput: { episodesPerHour: 0, trend: 0 },
-        successRates: (["TRANSCRIPTION", "DISTILLATION", "CLIP_GENERATION", "BRIEFING_ASSEMBLY"] as const).map((stage) => ({
+        successRates: (["TRANSCRIPTION", "DISTILLATION", "NARRATIVE_GENERATION", "AUDIO_GENERATION", "BRIEFING_ASSEMBLY"] as const).map((stage) => ({
           stage,
           name: STAGE_DISPLAY_NAMES[stage] ?? stage,
           rate: 100,
@@ -367,7 +367,7 @@ analyticsRoutes.get("/pipeline", async (c) => {
   const hours = Math.max(1, (to.getTime() - from.getTime()) / (60 * 60 * 1000));
 
   // Per-stage success rates
-  const stageKeys = ["TRANSCRIPTION", "DISTILLATION", "CLIP_GENERATION", "BRIEFING_ASSEMBLY"] as const;
+  const stageKeys = ["TRANSCRIPTION", "DISTILLATION", "NARRATIVE_GENERATION", "AUDIO_GENERATION", "BRIEFING_ASSEMBLY"] as const;
   const successRates = stageKeys.map((stage) => {
     const stageSteps = steps.filter((s) => s.stage === stage);
     const completed = stageSteps.filter((s) => s.status === "COMPLETED").length;

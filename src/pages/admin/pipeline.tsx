@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Mic,
   Sparkles,
-  Scissors,
   Package,
   ArrowRight,
   Clock,
@@ -17,6 +16,7 @@ import {
   Timer,
   Play,
   FileText,
+  Volume2,
   Ban,
   Zap,
 } from "lucide-react";
@@ -65,11 +65,12 @@ import type {
 const STAGE_META: { stage: PipelineStage; name: string; icon: React.ElementType; color: string }[] = [
   { stage: "TRANSCRIPTION", name: "Transcription", icon: Mic, color: "#8B5CF6" },
   { stage: "DISTILLATION", name: "Distillation", icon: Sparkles, color: "#F59E0B" },
-  { stage: "CLIP_GENERATION", name: "Clip Generation", icon: Scissors, color: "#10B981" },
+  { stage: "NARRATIVE_GENERATION", name: "Narrative Gen", icon: FileText, color: "#10B981" },
+  { stage: "AUDIO_GENERATION", name: "Audio Gen", icon: Volume2, color: "#06B6D4" },
   { stage: "BRIEFING_ASSEMBLY", name: "Briefing Assembly", icon: Package, color: "#3B82F6" },
 ];
 
-const STAGE_ORDER: PipelineStage[] = ["TRANSCRIPTION", "DISTILLATION", "CLIP_GENERATION", "BRIEFING_ASSEMBLY"];
+const STAGE_ORDER: PipelineStage[] = ["TRANSCRIPTION", "DISTILLATION", "NARRATIVE_GENERATION", "AUDIO_GENERATION", "BRIEFING_ASSEMBLY"];
 
 const STATUS_PRIORITY: Record<string, number> = {
   IN_PROGRESS: 0,
@@ -646,7 +647,9 @@ export default function Pipeline() {
   const [stageJobs, setStageJobs] = useState<Record<PipelineStage, PipelineJob[]>>({
     TRANSCRIPTION: [],
     DISTILLATION: [],
-    CLIP_GENERATION: [],
+    NARRATIVE_GENERATION: [],
+    AUDIO_GENERATION: [],
+    CLIP_GENERATION: [], // legacy
     BRIEFING_ASSEMBLY: [],
   });
   const [loading, setLoading] = useState(true);

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createMockPrisma, createMockEnv } from "../../../tests/helpers/mocks";
-import { handleClipGeneration } from "../clip-generation";
+import { handleNarrativeGeneration } from "../narrative-generation";
 
 vi.mock("../../lib/db", () => ({
   createPrismaClient: vi.fn(),
@@ -15,17 +15,6 @@ vi.mock("../../lib/distillation", () => ({
     narrative: "A warm narrative about technology trends.",
     usage: { model: "test-model", inputTokens: 100, outputTokens: 50, cost: null },
   }),
-}));
-
-vi.mock("../../lib/tts", () => ({
-  generateSpeech: vi.fn().mockResolvedValue({
-    audio: new ArrayBuffer(2048),
-    usage: { model: "test-tts-model", inputTokens: 40, outputTokens: 0, cost: null },
-  }),
-}));
-
-vi.mock("../../lib/clip-cache", () => ({
-  putClip: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("../../lib/work-products", () => ({
@@ -51,16 +40,10 @@ vi.mock("../../lib/ai-models", () => ({
   getModelConfig: vi.fn().mockResolvedValue({ provider: "anthropic", model: "claude-sonnet-4-20250514" }),
 }));
 
-vi.mock("openai", () => {
-  return { default: class MockOpenAI {} };
-});
-
 import { createPrismaClient } from "../../lib/db";
 import { getConfig } from "../../lib/config";
 import { generateNarrative } from "../../lib/distillation";
-import { generateSpeech } from "../../lib/tts";
-import { putClip } from "../../lib/clip-cache";
-import { wpKey, putWorkProduct } from "../../lib/work-products";
+import { putWorkProduct } from "../../lib/work-products";
 import { getModelConfig } from "../../lib/ai-models";
 
 let mockPrisma: ReturnType<typeof createMockPrisma>;
@@ -73,10 +56,10 @@ const JOB = {
   episodeId: "ep-1",
   durationTier: 5,
   status: "PENDING",
-  currentStage: "CLIP_GENERATION",
+  currentStage: "NARRATIVE_GENERATION",
 };
 
-const STEP = { id: "step-1", jobId: "job-1", stage: "CLIP_GENERATION", status: "IN_PROGRESS" };
+const STEP = { id: "step-1", jobId: "job-1", stage: "NARRATIVE_GENERATION", status: "IN_PROGRESS" };
 
 const DISTILLATION = {
   id: "dist-1",
@@ -99,11 +82,6 @@ beforeEach(() => {
     narrative: "A warm narrative about technology trends.",
     usage: { model: "test-model", inputTokens: 100, outputTokens: 50, cost: null },
   });
-  (generateSpeech as any).mockResolvedValue({
-    audio: new ArrayBuffer(2048),
-    usage: { model: "test-tts-model", inputTokens: 40, outputTokens: 0, cost: null },
-  });
-  (putClip as any).mockResolvedValue(undefined);
   (putWorkProduct as any).mockResolvedValue(undefined);
   mockPrisma.workProduct.create.mockResolvedValue({ id: "wp-1" });
   mockPrisma.workProduct.findFirst.mockResolvedValue(null);
@@ -123,12 +101,12 @@ function makeBatch(body: any) {
   const mockMsg = { body, ack: vi.fn(), retry: vi.fn() };
   const mockBatch = {
     messages: [mockMsg],
-    queue: "clip-generation",
+    queue: "narrative-generation",
   } as unknown as MessageBatch<any>;
   return { mockMsg, mockBatch };
 }
 
-describe("handleClipGeneration", () => {
+describe("handleNarrativeGeneration", () => {
   const msgBody = {
     jobId: "job-1",
     episodeId: "ep-1",
@@ -140,34 +118,34 @@ describe("handleClipGeneration", () => {
     mockPrisma.distillation.findFirst.mockResolvedValue(DISTILLATION);
     mockPrisma.clip.upsert.mockResolvedValue({ id: "clip-1", episodeId: "ep-1", durationTier: 5 });
 
-    const { mockMsg, mockBatch } = makeBatch(msgBody);
-    await handleClipGeneration(mockBatch, mockEnv, mockCtx);
+    const { mockBatch } = makeBatch(msgBody);
+    await handleNarrativeGeneration(mockBatch, mockEnv, mockCtx);
 
     expect(mockPrisma.pipelineStep.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         jobId: "job-1",
-        stage: "CLIP_GENERATION",
+        stage: "NARRATIVE_GENERATION",
         status: "IN_PROGRESS",
         startedAt: expect.any(Date),
       }),
     });
   });
 
-  it("cache hit — step SKIPPED, reports to orchestrator", async () => {
+  it("cache hit — step SKIPPED when NARRATIVE work product exists", async () => {
+    mockPrisma.workProduct.findFirst.mockResolvedValue({ id: "wp-cached", type: "NARRATIVE" });
     mockPrisma.clip.findUnique.mockResolvedValue({
       id: "clip-cached",
       episodeId: "ep-1",
       durationTier: 5,
-      status: "COMPLETED",
+      narrativeText: "cached narrative",
     });
-    mockPrisma.workProduct.findFirst.mockResolvedValue({ id: "wp-cached" });
 
     const { mockMsg, mockBatch } = makeBatch(msgBody);
-    await handleClipGeneration(mockBatch, mockEnv, mockCtx);
+    await handleNarrativeGeneration(mockBatch, mockEnv, mockCtx);
 
-    // Work product lookup for existing AUDIO_CLIP
+    // Work product lookup for existing NARRATIVE
     expect(mockPrisma.workProduct.findFirst).toHaveBeenCalledWith({
-      where: { type: "AUDIO_CLIP", episodeId: "ep-1", durationTier: 5 },
+      where: { type: "NARRATIVE", episodeId: "ep-1", durationTier: 5 },
     });
 
     // Step marked SKIPPED with cached: true and workProductId
@@ -182,17 +160,8 @@ describe("handleClipGeneration", () => {
       }),
     });
 
-    // Job updated with cached clipId
-    expect(mockPrisma.pipelineJob.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: "job-1" },
-        data: { clipId: "clip-cached" },
-      })
-    );
-
-    // No narrative/TTS generation
+    // No narrative generation called
     expect(generateNarrative).not.toHaveBeenCalled();
-    expect(generateSpeech).not.toHaveBeenCalled();
 
     // Orchestrator notified
     expect(mockEnv.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith({
@@ -204,7 +173,8 @@ describe("handleClipGeneration", () => {
     expect(mockMsg.ack).toHaveBeenCalled();
   });
 
-  it("full flow: claims lookup → narrative → TTS → R2 → clip record", async () => {
+  it("full flow: claims lookup -> narrative generation -> clip upsert -> work product", async () => {
+    mockPrisma.workProduct.findFirst.mockResolvedValue(null);
     mockPrisma.clip.findUnique.mockResolvedValue(null);
     mockPrisma.distillation.findFirst.mockResolvedValue(DISTILLATION);
     mockPrisma.clip.upsert.mockResolvedValue({
@@ -214,7 +184,7 @@ describe("handleClipGeneration", () => {
     });
 
     const { mockMsg, mockBatch } = makeBatch(msgBody);
-    await handleClipGeneration(mockBatch, mockEnv, mockCtx);
+    await handleNarrativeGeneration(mockBatch, mockEnv, mockCtx);
 
     // Distillation claims loaded from DB
     expect(mockPrisma.distillation.findFirst).toHaveBeenCalledWith({
@@ -229,36 +199,25 @@ describe("handleClipGeneration", () => {
       "claude-sonnet-4-20250514"
     );
 
-    // TTS generated with model from config
-    expect(generateSpeech).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.anything(),
-      undefined,
-      "claude-sonnet-4-20250514"
-    );
-
-    // Stored in R2
-    expect(putClip).toHaveBeenCalledWith(
-      mockEnv.R2,
-      "ep-1",
-      5,
-      expect.any(ArrayBuffer)
-    );
-
-    // Clip upserted as COMPLETED
+    // Clip upserted with narrative but NOT as COMPLETED (audio gen does that)
     expect(mockPrisma.clip.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
-        update: expect.objectContaining({ status: "COMPLETED" }),
-        create: expect.objectContaining({ status: "COMPLETED", durationTier: 5 }),
+        update: expect.objectContaining({
+          narrativeText: "A warm narrative about technology trends.",
+          wordCount: 6,
+        }),
+        create: expect.objectContaining({
+          narrativeText: "A warm narrative about technology trends.",
+          wordCount: 6,
+          durationTier: 5,
+        }),
       })
     );
 
-    // Work products dual-written
-    expect(putWorkProduct).toHaveBeenCalledTimes(2);
+    // NARRATIVE work product created (R2 + DB)
+    expect(putWorkProduct).toHaveBeenCalledTimes(1);
     expect(putWorkProduct).toHaveBeenCalledWith(mockEnv.R2, expect.stringContaining("narrative"), "A warm narrative about technology trends.");
-    expect(putWorkProduct).toHaveBeenCalledWith(mockEnv.R2, expect.stringContaining("audio_clip"), expect.any(ArrayBuffer));
 
-    // NARRATIVE work product created
     expect(mockPrisma.workProduct.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         type: "NARRATIVE",
@@ -269,18 +228,7 @@ describe("handleClipGeneration", () => {
       }),
     });
 
-    // AUDIO_CLIP work product created
-    expect(mockPrisma.workProduct.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        type: "AUDIO_CLIP",
-        episodeId: "ep-1",
-        durationTier: 5,
-        voice: "default",
-        sizeBytes: 2048,
-      }),
-    });
-
-    // Step marked COMPLETED with workProductId
+    // Step marked COMPLETED with only narrative model/usage
     expect(mockPrisma.pipelineStep.update).toHaveBeenCalledWith({
       where: { id: "step-1" },
       data: expect.objectContaining({
@@ -288,27 +236,23 @@ describe("handleClipGeneration", () => {
         completedAt: expect.any(Date),
         durationMs: expect.any(Number),
         workProductId: "wp-1",
+        model: "test-model",
+        inputTokens: 100,
+        outputTokens: 50,
       }),
     });
-
-    // Job updated with clipId
-    expect(mockPrisma.pipelineJob.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: "job-1" },
-        data: { clipId: "clip-1" },
-      })
-    );
 
     expect(mockMsg.ack).toHaveBeenCalled();
   });
 
   it("reports to orchestrator on completion", async () => {
+    mockPrisma.workProduct.findFirst.mockResolvedValue(null);
     mockPrisma.clip.findUnique.mockResolvedValue(null);
     mockPrisma.distillation.findFirst.mockResolvedValue(DISTILLATION);
     mockPrisma.clip.upsert.mockResolvedValue({ id: "clip-1" });
 
     const { mockBatch } = makeBatch(msgBody);
-    await handleClipGeneration(mockBatch, mockEnv, mockCtx);
+    await handleNarrativeGeneration(mockBatch, mockEnv, mockCtx);
 
     expect(mockEnv.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith({
       requestId: "req-1",
@@ -317,22 +261,19 @@ describe("handleClipGeneration", () => {
     });
   });
 
-  it("reads narrative and TTS models from config", async () => {
-    (getModelConfig as any)
-      .mockResolvedValueOnce({ provider: "anthropic", model: "claude-haiku-4-5-20251001" })  // narrative
-      .mockResolvedValueOnce({ provider: "openai", model: "tts-1-hd" });                     // tts
+  it("reads narrative model from config", async () => {
+    (getModelConfig as any).mockResolvedValueOnce({ provider: "anthropic", model: "claude-haiku-4-5-20251001" });
 
+    mockPrisma.workProduct.findFirst.mockResolvedValue(null);
     mockPrisma.clip.findUnique.mockResolvedValue(null);
     mockPrisma.distillation.findFirst.mockResolvedValue(DISTILLATION);
     mockPrisma.clip.upsert.mockResolvedValue({ id: "clip-1" });
 
     const { mockBatch } = makeBatch(msgBody);
-    await handleClipGeneration(mockBatch, mockEnv, mockCtx);
+    await handleNarrativeGeneration(mockBatch, mockEnv, mockCtx);
 
     expect(getModelConfig).toHaveBeenCalledWith(expect.anything(), "narrative");
-    expect(getModelConfig).toHaveBeenCalledWith(expect.anything(), "tts");
     expect(generateNarrative).toHaveBeenCalledWith(expect.anything(), expect.anything(), 5, "claude-haiku-4-5-20251001");
-    expect(generateSpeech).toHaveBeenCalledWith(expect.anything(), expect.anything(), undefined, "tts-1-hd");
   });
 
   describe("stage-enabled check", () => {
@@ -340,69 +281,61 @@ describe("handleClipGeneration", () => {
       (getConfig as any).mockResolvedValueOnce(false);
 
       const { mockMsg, mockBatch } = makeBatch(msgBody);
-      await handleClipGeneration(mockBatch, mockEnv, mockCtx);
+      await handleNarrativeGeneration(mockBatch, mockEnv, mockCtx);
 
       expect(mockMsg.ack).toHaveBeenCalled();
       expect(generateNarrative).not.toHaveBeenCalled();
-      expect(generateSpeech).not.toHaveBeenCalled();
       expect(mockPrisma.pipelineJob.findUniqueOrThrow).not.toHaveBeenCalled();
       expect(mockLogger.info).toHaveBeenCalledWith("stage_disabled", { stage: 4 });
     });
 
     it("bypasses stage-enabled check for manual messages", async () => {
+      mockPrisma.workProduct.findFirst.mockResolvedValue(null);
       mockPrisma.clip.findUnique.mockResolvedValue(null);
       mockPrisma.distillation.findFirst.mockResolvedValue(DISTILLATION);
       mockPrisma.clip.upsert.mockResolvedValue({ id: "clip-1" });
 
       const manualBody = { ...msgBody, type: "manual" as const };
       const { mockMsg, mockBatch } = makeBatch(manualBody);
-      await handleClipGeneration(mockBatch, mockEnv, mockCtx);
+      await handleNarrativeGeneration(mockBatch, mockEnv, mockCtx);
 
       expect(mockMsg.ack).toHaveBeenCalled();
       expect(generateNarrative).toHaveBeenCalled();
-      expect(generateSpeech).toHaveBeenCalled();
     });
   });
 
   describe("error handling", () => {
     it("marks step FAILED and retries on error", async () => {
+      mockPrisma.workProduct.findFirst.mockResolvedValue(null);
       mockPrisma.clip.findUnique.mockResolvedValue(null);
       mockPrisma.distillation.findFirst.mockResolvedValue(DISTILLATION);
       (generateNarrative as any).mockRejectedValueOnce(new Error("Claude API error"));
       mockPrisma.pipelineStep.updateMany.mockResolvedValue({ count: 1 });
-      mockPrisma.clip.upsert.mockResolvedValue({});
 
       const { mockMsg, mockBatch } = makeBatch(msgBody);
-      await handleClipGeneration(mockBatch, mockEnv, mockCtx);
+      await handleNarrativeGeneration(mockBatch, mockEnv, mockCtx);
 
       // Step marked FAILED
       expect(mockPrisma.pipelineStep.updateMany).toHaveBeenCalledWith({
-        where: { jobId: "job-1", stage: "CLIP_GENERATION", status: "IN_PROGRESS" },
+        where: { jobId: "job-1", stage: "NARRATIVE_GENERATION", status: "IN_PROGRESS" },
         data: expect.objectContaining({
           status: "FAILED",
           errorMessage: "Claude API error",
         }),
       });
 
-      // Clip upserted as FAILED
-      expect(mockPrisma.clip.upsert).toHaveBeenCalledWith(
-        expect.objectContaining({
-          update: expect.objectContaining({ status: "FAILED", errorMessage: "Claude API error" }),
-        })
-      );
-
       expect(mockMsg.retry).toHaveBeenCalled();
       expect(mockMsg.ack).not.toHaveBeenCalled();
     });
 
     it("throws if no completed distillation found", async () => {
+      mockPrisma.workProduct.findFirst.mockResolvedValue(null);
       mockPrisma.clip.findUnique.mockResolvedValue(null);
       mockPrisma.distillation.findFirst.mockResolvedValue(null);
       mockPrisma.pipelineStep.updateMany.mockResolvedValue({ count: 1 });
-      mockPrisma.clip.upsert.mockResolvedValue({});
 
       const { mockMsg, mockBatch } = makeBatch(msgBody);
-      await handleClipGeneration(mockBatch, mockEnv, mockCtx);
+      await handleNarrativeGeneration(mockBatch, mockEnv, mockCtx);
 
       expect(mockMsg.retry).toHaveBeenCalled();
       expect(mockLogger.error).toHaveBeenCalledWith(
@@ -415,26 +348,30 @@ describe("handleClipGeneration", () => {
 
   describe("logging", () => {
     it("logs batch_start", async () => {
-      mockPrisma.clip.findUnique.mockResolvedValue({ id: "clip-1", status: "COMPLETED" });
+      mockPrisma.workProduct.findFirst.mockResolvedValue({ id: "wp-1", type: "NARRATIVE" });
+      mockPrisma.clip.findUnique.mockResolvedValue({
+        id: "clip-1",
+        narrativeText: "cached",
+      });
 
       const { mockBatch } = makeBatch(msgBody);
-      await handleClipGeneration(mockBatch, mockEnv, mockCtx);
+      await handleNarrativeGeneration(mockBatch, mockEnv, mockCtx);
 
       expect(mockLogger.info).toHaveBeenCalledWith("batch_start", { messageCount: 1 });
     });
 
-    it("logs clip_completed on success", async () => {
+    it("logs narrative_generated on success", async () => {
+      mockPrisma.workProduct.findFirst.mockResolvedValue(null);
       mockPrisma.clip.findUnique.mockResolvedValue(null);
       mockPrisma.distillation.findFirst.mockResolvedValue(DISTILLATION);
       mockPrisma.clip.upsert.mockResolvedValue({ id: "clip-1" });
 
       const { mockBatch } = makeBatch(msgBody);
-      await handleClipGeneration(mockBatch, mockEnv, mockCtx);
+      await handleNarrativeGeneration(mockBatch, mockEnv, mockCtx);
 
-      expect(mockLogger.info).toHaveBeenCalledWith("clip_completed", {
+      expect(mockLogger.info).toHaveBeenCalledWith("narrative_generated", {
         episodeId: "ep-1",
-        durationTier: 5,
-        audioKey: "clips/ep-1/5.mp3",
+        wordCount: 6,
       });
     });
   });

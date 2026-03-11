@@ -41,7 +41,7 @@ dashboardRoutes.get("/", async (c) => {
     else if (row.status === "IN_PROGRESS") s.active += row._count;
   }
 
-  const stageKeys = ["TRANSCRIPTION", "DISTILLATION", "CLIP_GENERATION", "BRIEFING_ASSEMBLY"] as const;
+  const stageKeys = ["TRANSCRIPTION", "DISTILLATION", "NARRATIVE_GENERATION", "AUDIO_GENERATION", "BRIEFING_ASSEMBLY"] as const;
   const stages = stageKeys.map((stage) => {
     const s = stageMap.get(stage) ?? { total: 0, completed: 0, failed: 0, active: 0 };
     const completionRate = s.total > 0 ? Math.round((s.completed / s.total) * 100) : 100;
@@ -217,7 +217,9 @@ function humanizeError(raw: string | null | undefined): { description: string; r
 const STAGE_LABELS: Record<string, string> = {
   TRANSCRIPTION: "Transcription",
   DISTILLATION: "Distillation",
-  CLIP_GENERATION: "Clip generation",
+  NARRATIVE_GENERATION: "Narrative generation",
+  AUDIO_GENERATION: "Audio generation",
+  CLIP_GENERATION: "Clip generation", // legacy
   BRIEFING_ASSEMBLY: "Briefing assembly",
 };
 

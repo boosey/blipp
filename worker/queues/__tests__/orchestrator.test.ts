@@ -271,7 +271,7 @@ describe("handleOrchestrator", () => {
       expect(msg.ack).toHaveBeenCalled();
     });
 
-    it("should advance job from DISTILLATION to CLIP_GENERATION with durationTier", async () => {
+    it("should advance job from DISTILLATION to NARRATIVE_GENERATION with durationTier", async () => {
       const msg = createMsg({ requestId: "req1", action: "job-stage-complete", jobId: "job1" });
       mockPrisma.briefingRequest.findUnique.mockResolvedValue({
         id: "req1", status: "PROCESSING", userId: "u1", targetMinutes: 5,
@@ -286,23 +286,47 @@ describe("handleOrchestrator", () => {
 
       expect(mockPrisma.pipelineJob.update).toHaveBeenCalledWith({
         where: { id: "job1" },
-        data: { currentStage: "CLIP_GENERATION", status: "IN_PROGRESS" },
+        data: { currentStage: "NARRATIVE_GENERATION", status: "IN_PROGRESS" },
       });
-      expect(env.CLIP_GENERATION_QUEUE.send).toHaveBeenCalledWith({
+      expect(env.NARRATIVE_GENERATION_QUEUE.send).toHaveBeenCalledWith({
         jobId: "job1",
         episodeId: "ep1",
         durationTier: 3,
       });
     });
 
-    it("should mark job COMPLETED after CLIP_GENERATION and dispatch to assembly queue", async () => {
+    it("should advance job from NARRATIVE_GENERATION to AUDIO_GENERATION", async () => {
+      const msg = createMsg({ requestId: "req1", action: "job-stage-complete", jobId: "job1" });
+      mockPrisma.briefingRequest.findUnique.mockResolvedValue({
+        id: "req1", status: "PROCESSING", userId: "u1", targetMinutes: 5,
+      });
+      mockPrisma.pipelineJob.findUnique.mockResolvedValue({
+        id: "job1", requestId: "req1", episodeId: "ep1", durationTier: 3,
+        status: "IN_PROGRESS", currentStage: "NARRATIVE_GENERATION",
+      });
+      mockPrisma.pipelineJob.update.mockResolvedValue({});
+
+      await handleOrchestrator(createBatch([msg]), env, ctx);
+
+      expect(mockPrisma.pipelineJob.update).toHaveBeenCalledWith({
+        where: { id: "job1" },
+        data: { currentStage: "AUDIO_GENERATION", status: "IN_PROGRESS" },
+      });
+      expect(env.AUDIO_GENERATION_QUEUE.send).toHaveBeenCalledWith({
+        jobId: "job1",
+        episodeId: "ep1",
+        durationTier: 3,
+      });
+    });
+
+    it("should mark job COMPLETED after AUDIO_GENERATION and dispatch to assembly queue", async () => {
       const msg = createMsg({ requestId: "req1", action: "job-stage-complete", jobId: "job1" });
       mockPrisma.briefingRequest.findUnique.mockResolvedValue({
         id: "req1", status: "PROCESSING", userId: "u1", targetMinutes: 5,
       });
       mockPrisma.pipelineJob.findUnique.mockResolvedValue({
         id: "job1", requestId: "req1", episodeId: "ep1", durationTier: 5,
-        status: "IN_PROGRESS", currentStage: "CLIP_GENERATION",
+        status: "IN_PROGRESS", currentStage: "AUDIO_GENERATION",
       });
       mockPrisma.pipelineJob.update.mockResolvedValue({});
       // All jobs complete (just this one)
@@ -330,7 +354,7 @@ describe("handleOrchestrator", () => {
         id: "req1", status: "PROCESSING", userId: "u1", targetMinutes: 5,
       });
       mockPrisma.pipelineJob.findUnique.mockResolvedValue({
-        id: "job1", status: "COMPLETED", currentStage: "CLIP_GENERATION",
+        id: "job1", status: "COMPLETED", currentStage: "AUDIO_GENERATION",
       });
 
       await handleOrchestrator(createBatch([msg]), env, ctx);
@@ -362,7 +386,7 @@ describe("handleOrchestrator", () => {
       });
       mockPrisma.pipelineJob.findUnique.mockResolvedValue({
         id: "job1", requestId: "req1", episodeId: "ep1", durationTier: 5,
-        status: "IN_PROGRESS", currentStage: "CLIP_GENERATION",
+        status: "IN_PROGRESS", currentStage: "AUDIO_GENERATION",
       });
       mockPrisma.pipelineJob.update.mockResolvedValue({});
       mockPrisma.pipelineJob.findMany.mockResolvedValue([
@@ -385,7 +409,7 @@ describe("handleOrchestrator", () => {
       });
       mockPrisma.pipelineJob.findUnique.mockResolvedValue({
         id: "job1", requestId: "req1", episodeId: "ep1", durationTier: 5,
-        status: "IN_PROGRESS", currentStage: "CLIP_GENERATION",
+        status: "IN_PROGRESS", currentStage: "AUDIO_GENERATION",
       });
       mockPrisma.pipelineJob.update.mockResolvedValue({});
       // job1 just completed but job2 is still in progress
@@ -407,7 +431,7 @@ describe("handleOrchestrator", () => {
       });
       mockPrisma.pipelineJob.findUnique.mockResolvedValue({
         id: "job1", requestId: "req1", episodeId: "ep1", durationTier: 5,
-        status: "IN_PROGRESS", currentStage: "CLIP_GENERATION",
+        status: "IN_PROGRESS", currentStage: "AUDIO_GENERATION",
       });
       mockPrisma.pipelineJob.update.mockResolvedValue({});
       // All jobs terminal: one COMPLETED, one FAILED
