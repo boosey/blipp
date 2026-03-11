@@ -7,5 +7,6 @@ dist/
 .claude/
 .firecrawl/
 .playwright-mcp/
+.worktrees/
 
 /src/generated/prisma
