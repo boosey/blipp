@@ -346,7 +346,18 @@ function StepRow({ step }: { step: PipelineStep }) {
       </div>
       <div className="flex items-center gap-2 text-[10px] text-[#9CA3AF] font-mono tabular-nums shrink-0">
         {step.durationMs != null && <span>{formatDuration(step.durationMs)}</span>}
-        {step.cost != null && <span>{formatCost(step.cost)}</span>}
+        {step.cost != null && <span className="text-[#10B981]">{formatCost(step.cost)}</span>}
+        {step.model && (
+          <span className="text-[#8B5CF6]" title={step.model}>
+            {step.model.split("+").map(m => m.split("-").slice(0, 3).join("-")).join("+")}
+          </span>
+        )}
+        {(step.inputTokens != null || step.outputTokens != null) && (
+          <span title={`In: ${step.inputTokens ?? 0} / Out: ${step.outputTokens ?? 0}`}>
+            {step.inputTokens != null ? `${step.inputTokens.toLocaleString()}in` : ""}
+            {step.outputTokens != null && step.outputTokens > 0 ? `/${step.outputTokens.toLocaleString()}out` : ""}
+          </span>
+        )}
       </div>
     </div>
   );

@@ -249,6 +249,9 @@ export interface EpisodeStageTrace {
   completedAt?: string;
   durationMs?: number;
   cost?: number;
+  model?: string;
+  inputTokens?: number;
+  outputTokens?: number;
   output?: unknown;
 }
 

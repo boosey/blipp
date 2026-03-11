@@ -315,6 +315,17 @@ function PipelineTraceView({ trace }: { trace: EpisodePipelineTrace | null }) {
                           {formatCost(stage.cost)}
                         </span>
                       )}
+                      {stage.model && (
+                        <span className="text-[#8B5CF6] font-mono" title={stage.model}>
+                          {stage.model.split("+").map(m => m.split("-").slice(0, 3).join("-")).join("+")}
+                        </span>
+                      )}
+                      {(stage.inputTokens != null || stage.outputTokens != null) && (
+                        <span className="font-mono" title={`In: ${stage.inputTokens ?? 0} / Out: ${stage.outputTokens ?? 0}`}>
+                          {stage.inputTokens != null ? `${stage.inputTokens.toLocaleString()}in` : ""}
+                          {stage.outputTokens != null && stage.outputTokens > 0 ? `/${stage.outputTokens.toLocaleString()}out` : ""}
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>

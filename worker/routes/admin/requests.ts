@@ -155,6 +155,9 @@ requestsRoutes.get("/:id", async (c) => {
         cached: s.cached,
         durationMs: s.durationMs,
         cost: s.cost,
+        model: s.model ?? undefined,
+        inputTokens: s.inputTokens ?? undefined,
+        outputTokens: s.outputTokens ?? undefined,
         errorMessage: s.errorMessage,
         workProducts: matched.length > 0 ? matched : undefined,
       };

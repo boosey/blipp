@@ -150,6 +150,9 @@ episodesRoutes.get("/:id", async (c) => {
       completedAt: latestStep.completedAt?.toISOString(),
       durationMs: latestStep.durationMs ?? undefined,
       cost: latestStep.cost ?? undefined,
+      model: latestStep.model ?? undefined,
+      inputTokens: latestStep.inputTokens ?? undefined,
+      outputTokens: latestStep.outputTokens ?? undefined,
     };
   });
 

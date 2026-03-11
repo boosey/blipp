@@ -417,6 +417,18 @@ function ExpandableStepRow({
             ${step.cost.toFixed(4)}
           </span>
         )}
+        {step.model && (
+          <span className="text-[9px] text-[#8B5CF6] font-mono tabular-nums" title={step.model}>
+            {step.model.split("+").map(m => m.split("-").slice(0, 3).join("-")).join("+")}
+          </span>
+        )}
+        {(step.inputTokens != null || step.outputTokens != null) && (
+          <span className="text-[9px] text-[#9CA3AF] font-mono tabular-nums" title={`In: ${step.inputTokens ?? 0} / Out: ${step.outputTokens ?? 0}`}>
+            {step.inputTokens != null ? `${step.inputTokens.toLocaleString()}in` : ""}
+            {step.inputTokens != null && step.outputTokens != null ? "/" : ""}
+            {step.outputTokens != null && step.outputTokens > 0 ? `${step.outputTokens.toLocaleString()}out` : ""}
+          </span>
+        )}
         {hasWp && wps.map((wp) => (
           <WorkProductBadge key={wp.id} wp={wp} />
         ))}
@@ -433,6 +445,33 @@ function ExpandableStepRow({
             <StepWorkProductPanel key={wp.id} wp={wp} />
           ))}
         </div>
+      )}
+    </div>
+  );
+}
+
+function RequestCostSummary({ jobs }: { jobs: JobProgress[] }) {
+  const allSteps = jobs.flatMap((j) => j.steps);
+  const totalCost = allSteps.reduce((s, st) => s + (st.cost ?? 0), 0);
+  const totalIn = allSteps.reduce((s, st) => s + (st.inputTokens ?? 0), 0);
+  const totalOut = allSteps.reduce((s, st) => s + (st.outputTokens ?? 0), 0);
+  const models = [...new Set(allSteps.map((s) => s.model).filter(Boolean))] as string[];
+
+  if (totalCost === 0 && totalIn === 0 && models.length === 0) return null;
+
+  return (
+    <div className="flex items-center gap-4 py-1.5 mb-1 text-[10px] border-b border-white/5">
+      <span className="text-[#9CA3AF] uppercase tracking-wider text-[9px]">Request Total</span>
+      {totalCost > 0 && (
+        <span className="text-[#10B981] font-mono tabular-nums">${totalCost.toFixed(4)}</span>
+      )}
+      {totalIn > 0 && (
+        <span className="text-[#9CA3AF] font-mono tabular-nums">{totalIn.toLocaleString()} in / {totalOut.toLocaleString()} out</span>
+      )}
+      {models.length > 0 && (
+        <span className="text-[#8B5CF6] font-mono tabular-nums">
+          {models.map(m => m.split("+").map(p => p.split("-").slice(0, 3).join("-")).join("+")).join(", ")}
+        </span>
       )}
     </div>
   );
@@ -536,7 +575,10 @@ function RequestRow({
               <Skeleton className="h-4 w-1/2 bg-white/5" />
             </div>
           ) : detail?.jobProgress ? (
-            <JobProgressTree jobs={detail.jobProgress} />
+            <>
+              <RequestCostSummary jobs={detail.jobProgress} />
+              <JobProgressTree jobs={detail.jobProgress} />
+            </>
           ) : (
             <div className="text-[10px] text-[#9CA3AF] py-2">
               No job progress data available

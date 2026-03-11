@@ -142,6 +142,9 @@ pipelineRoutes.get("/jobs/:id", async (c) => {
     completedAt: s.completedAt?.toISOString(),
     durationMs: s.durationMs,
     cost: s.cost,
+    model: s.model ?? undefined,
+    inputTokens: s.inputTokens ?? undefined,
+    outputTokens: s.outputTokens ?? undefined,
     retryCount: s.retryCount,
     createdAt: s.createdAt.toISOString(),
   }));
