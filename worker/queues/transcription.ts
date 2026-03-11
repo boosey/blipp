@@ -19,6 +19,28 @@ interface TranscriptionMessage {
 
 const CACHE_STATUSES = new Set(["TRANSCRIPT_READY", "EXTRACTING_CLAIMS", "COMPLETED"]);
 
+const MIME_TO_EXT: Record<string, string> = {
+  "audio/mpeg": "mp3", "audio/mp3": "mp3", "audio/mp4": "m4a",
+  "audio/x-m4a": "m4a", "audio/aac": "m4a", "audio/ogg": "ogg",
+  "audio/wav": "wav", "audio/webm": "webm", "audio/flac": "flac",
+  "audio/x-flac": "flac", "audio/mpga": "mpga", "audio/oga": "oga",
+};
+
+function extFromContentType(contentType: string | null, url: string): string {
+  if (contentType) {
+    const mime = contentType.split(";")[0].trim().toLowerCase();
+    const ext = MIME_TO_EXT[mime];
+    if (ext) return ext;
+  }
+  // Fallback: extract from URL path
+  const match = url.match(/\.(\w{2,5})(?:[?#]|$)/);
+  if (match) {
+    const urlExt = match[1].toLowerCase();
+    if (["mp3", "m4a", "mp4", "ogg", "oga", "wav", "webm", "flac", "mpeg", "mpga"].includes(urlExt)) return urlExt;
+  }
+  return "mp3"; // last resort default
+}
+
 export async function handleTranscription(
   batch: MessageBatch<TranscriptionMessage>,
   env: Env,
@@ -166,7 +188,8 @@ export async function handleTranscription(
               // Standard single-file Whisper
               const audioResponse = await fetch(episode.audioUrl);
               const audioBlob = await audioResponse.blob();
-              const file = new File([audioBlob], "audio.mp3", { type: "audio/mpeg" });
+              const ext = extFromContentType(contentType, episode.audioUrl);
+              const file = new File([audioBlob], `audio.${ext}`, { type: audioBlob.type || "audio/mpeg" });
               const transcription = await openai.audio.transcriptions.create({
                 model: sttModel,
                 file,
