@@ -26,7 +26,7 @@ describe("generateSpeech", () => {
       model: "gpt-4o-mini-tts",
       inputTokens: "Hello world".length,
       outputTokens: 0,
-      cost: null,
+      cost: ("Hello world".length * 12) / 1_000_000,
     });
   });
 

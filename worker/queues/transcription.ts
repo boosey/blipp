@@ -8,7 +8,7 @@ import { PodcastIndexClient } from "../lib/podcast-index";
 import { lookupPodcastIndexTranscript } from "../lib/transcript-source";
 import { fetchTranscript } from "../lib/transcript";
 import { getAudioMetadata, isMp3, transcribeChunked, WHISPER_MAX_BYTES } from "../lib/whisper-chunked";
-import type { AiUsage } from "../lib/ai-usage";
+import { calculateCost, type AiUsage } from "../lib/ai-usage";
 import type { Env } from "../types";
 
 interface TranscriptionMessage {
@@ -206,7 +206,8 @@ export async function handleTranscription(
                 file,
               });
               transcript = transcription.text;
-              sttUsage = { model: sttModel, inputTokens: Math.round(audioBlob.size / 16000), outputTokens: 0, cost: null };
+              const sttInputTokens = Math.round(audioBlob.size / 16000);
+              sttUsage = { model: sttModel, inputTokens: sttInputTokens, outputTokens: 0, cost: calculateCost(sttModel, sttInputTokens, 0) };
               log.info("transcript_fetched", { episodeId, bytes: transcript.length, source: "whisper" });
             }
           }

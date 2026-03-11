@@ -1,5 +1,5 @@
 import type OpenAI from "openai";
-import type { AiUsage } from "./ai-usage";
+import { calculateCost, type AiUsage } from "./ai-usage";
 
 /** Default TTS voice for briefing narration. */
 export const DEFAULT_VOICE = "coral";
@@ -41,7 +41,7 @@ export async function generateSpeech(
     model,
     inputTokens: text.length,
     outputTokens: 0,
-    cost: null,
+    cost: calculateCost(model, text.length, 0),
   };
 
   return { audio, usage };

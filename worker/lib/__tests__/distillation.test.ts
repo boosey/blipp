@@ -34,7 +34,7 @@ describe("extractClaims", () => {
       model: "claude-sonnet-4-20250514",
       inputTokens: 100,
       outputTokens: 50,
-      cost: null,
+      cost: (100 * 3 + 50 * 15) / 1_000_000,
     });
   });
 
@@ -83,7 +83,7 @@ describe("generateNarrative", () => {
       model: "claude-sonnet-4-20250514",
       inputTokens: 100,
       outputTokens: 50,
-      cost: null,
+      cost: (100 * 3 + 50 * 15) / 1_000_000,
     });
   });
 

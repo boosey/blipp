@@ -391,7 +391,7 @@ function ExpandableStepRow({
     <div>
       <div
         className={cn(
-          "grid grid-cols-[14px_90px_60px_55px_60px_60px_60px_1fr] gap-2 items-center text-[10px] py-0.5",
+          "grid grid-cols-[14px_90px_60px_55px_60px_60px_60px_auto_1fr] gap-2 items-center text-[10px] py-0.5",
           hasWp && "cursor-pointer hover:bg-white/[0.02] rounded -mx-1 px-1"
         )}
         onClick={hasWp ? () => setExpanded((v) => !v) : undefined}
@@ -438,16 +438,20 @@ function ExpandableStepRow({
           {step.cost != null ? `$${step.cost.toFixed(4)}` : "—"}
         </span>
 
-        {/* Work products + model + error */}
+        {/* Assets */}
+        <div className="flex items-center gap-1">
+          {hasWp && wps.map((wp) => (
+            <WorkProductBadge key={wp.id} wp={wp} />
+          ))}
+        </div>
+
+        {/* Model + error */}
         <div className="flex items-center gap-1 min-w-0">
           {step.model && (
             <span className="text-[8px] text-[#8B5CF6] font-mono tabular-nums truncate max-w-[120px]" title={step.model}>
               {step.model.split("+").map(m => m.split("-").slice(0, 3).join("-")).join("+")}
             </span>
           )}
-          {hasWp && wps.map((wp) => (
-            <WorkProductBadge key={wp.id} wp={wp} />
-          ))}
           {step.status === "FAILED" && step.errorMessage && (
             <span className="text-[9px] text-[#EF4444] truncate max-w-[200px]" title={step.errorMessage}>
               {step.errorMessage}
@@ -504,7 +508,7 @@ function JobProgressTree({ jobs }: { jobs: JobProgress[] }) {
   return (
     <div className="py-1">
       {/* Column headers */}
-      <div className="grid grid-cols-[14px_90px_60px_55px_60px_60px_60px_1fr] gap-2 items-center text-[8px] uppercase tracking-wider text-[#9CA3AF]/60 pb-1 mb-1 border-b border-white/5">
+      <div className="grid grid-cols-[14px_90px_60px_55px_60px_60px_60px_auto_1fr] gap-2 items-center text-[8px] uppercase tracking-wider text-[#9CA3AF]/60 pb-1 mb-1 border-b border-white/5">
         <span />
         <span>Stage</span>
         <span>Status</span>
@@ -512,6 +516,7 @@ function JobProgressTree({ jobs }: { jobs: JobProgress[] }) {
         <span className="text-right">Tok In</span>
         <span className="text-right">Tok Out</span>
         <span className="text-right">Cost</span>
+        <span>Assets</span>
         <span>Info</span>
       </div>
       <div className="space-y-0.5">

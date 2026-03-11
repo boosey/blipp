@@ -1,5 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
-import type { AiUsage } from "./ai-usage";
+import { calculateCost, type AiUsage } from "./ai-usage";
 
 /** Words spoken per minute for podcast-style narration. */
 export const WORDS_PER_MINUTE = 150;
@@ -63,7 +63,7 @@ ${transcript}`,
     model: response.model,
     inputTokens: response.usage.input_tokens,
     outputTokens: response.usage.output_tokens,
-    cost: null,
+    cost: calculateCost(response.model, response.usage.input_tokens, response.usage.output_tokens),
   };
 
   return { claims, usage };
@@ -119,7 +119,7 @@ ${JSON.stringify(claims, null, 2)}`,
     model: response.model,
     inputTokens: response.usage.input_tokens,
     outputTokens: response.usage.output_tokens,
-    cost: null,
+    cost: calculateCost(response.model, response.usage.input_tokens, response.usage.output_tokens),
   };
 
   return { narrative, usage };
