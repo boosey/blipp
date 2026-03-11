@@ -138,10 +138,27 @@ describe("handleTranscription", () => {
     (getModelConfig as any).mockReset();
     (getModelConfig as any).mockResolvedValue({ provider: "openai", model: "whisper-1" });
 
-    // Default: fetch returns transcript text
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
-      text: vi.fn().mockResolvedValue("This is a transcript."),
-      blob: vi.fn().mockResolvedValue(new Blob(["audio-data"])),
+    // Default: fetch returns a Response-like object
+    vi.stubGlobal("fetch", vi.fn().mockImplementation((url: string) => {
+      if (url.match(/\.(mp3|m4a|wav|ogg|webm|flac)(\?|$)/i) || url.includes("audio")) {
+        // Audio URL — return a proper Response-like object for Whisper path
+        const audioBlob = new Blob(["audio-data".repeat(2000)], { type: "audio/mpeg" });
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          headers: new Map([["content-type", "audio/mpeg"]]),
+          text: vi.fn().mockResolvedValue(""),
+          blob: vi.fn().mockResolvedValue(audioBlob),
+        });
+      }
+      // Transcript URL — return text
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        headers: new Map([["content-type", "text/plain"]]),
+        text: vi.fn().mockResolvedValue("This is a transcript."),
+        blob: vi.fn().mockResolvedValue(new Blob(["This is a transcript."])),
+      });
     }));
 
     mockWhisperCreate.mockReset();

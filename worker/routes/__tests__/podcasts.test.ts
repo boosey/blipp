@@ -13,18 +13,6 @@ vi.mock("../../lib/db", () => ({
   createPrismaClient: vi.fn(() => mockPrisma),
 }));
 
-// Mock PodcastIndexClient — use a real class so `new` works
-const mockSearchByTerm = vi.fn();
-const mockTrending = vi.fn();
-vi.mock("../../lib/podcast-index", () => {
-  return {
-    PodcastIndexClient: class {
-      searchByTerm = mockSearchByTerm;
-      trending = mockTrending;
-    },
-  };
-});
-
 // Mock Clerk auth
 const mockUserId = { userId: "user_test123" };
 let currentAuth: { userId: string } | null = mockUserId;
@@ -32,6 +20,23 @@ let currentAuth: { userId: string } | null = mockUserId;
 vi.mock("@hono/clerk-auth", () => ({
   clerkMiddleware: vi.fn(() => vi.fn((c: any, next: any) => next())),
   getAuth: vi.fn(() => currentAuth),
+}));
+
+vi.mock("../../middleware/auth", () => ({
+  clerkMiddleware: vi.fn(() => vi.fn((c: any, next: any) => next())),
+  getAuth: vi.fn(() => currentAuth),
+  requireAuth: vi.fn((c: any, next: any) => {
+    if (!currentAuth?.userId) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    return next();
+  }),
+}));
+
+vi.mock("@clerk/backend", () => ({
+  createClerkClient: vi.fn(() => ({
+    users: { getUser: vi.fn() },
+  })),
 }));
 
 vi.mock("hono/factory", () => ({
@@ -69,48 +74,40 @@ describe("Podcast Routes", () => {
     });
   });
 
-  describe("GET /podcasts/search", () => {
+  describe("GET /podcasts/catalog", () => {
     it("should return 401 when not authenticated", async () => {
       currentAuth = null;
 
-      const res = await app.request("/podcasts/search?q=test", {}, env, mockExCtx);
+      const res = await app.request("/podcasts/catalog?q=test", {}, env, mockExCtx);
       expect(res.status).toBe(401);
     });
 
-    it("should return 400 when q parameter is missing", async () => {
-      const res = await app.request("/podcasts/search", {}, env, mockExCtx);
-      expect(res.status).toBe(400);
-      const body: any = await res.json();
-      expect(body.error).toContain("Missing search query");
-    });
+    it("should return catalog results without query", async () => {
+      const podcasts = [
+        { id: "pod1", title: "Test Pod", author: "Auth", description: "desc", imageUrl: null, feedUrl: "http://x.com/feed", _count: { episodes: 5 } },
+      ];
+      mockPrisma.podcast.findMany.mockResolvedValueOnce(podcasts);
+      mockPrisma.podcast.count.mockResolvedValueOnce(1);
 
-    it("should return search results from Podcast Index", async () => {
-      const feeds = [{ id: 1, title: "Test Pod" }];
-      mockSearchByTerm.mockResolvedValueOnce(feeds);
-
-      const res = await app.request("/podcasts/search?q=test", {}, env, mockExCtx);
+      const res = await app.request("/podcasts/catalog", {}, env, mockExCtx);
       expect(res.status).toBe(200);
       const body: any = await res.json();
-      expect(body.feeds).toEqual(feeds);
-    });
-  });
-
-  describe("GET /podcasts/trending", () => {
-    it("should return 401 when not authenticated", async () => {
-      currentAuth = null;
-
-      const res = await app.request("/podcasts/trending", {}, env, mockExCtx);
-      expect(res.status).toBe(401);
+      expect(body.podcasts).toHaveLength(1);
+      expect(body.podcasts[0].episodeCount).toBe(5);
+      expect(body.total).toBe(1);
     });
 
-    it("should return trending podcasts", async () => {
-      const feeds = [{ id: 2, title: "Trending Pod" }];
-      mockTrending.mockResolvedValueOnce(feeds);
+    it("should return search results from local catalog", async () => {
+      const podcasts = [
+        { id: "pod1", title: "Test Pod", author: "Auth", description: "desc", imageUrl: null, feedUrl: "http://x.com/feed", _count: { episodes: 3 } },
+      ];
+      mockPrisma.podcast.findMany.mockResolvedValueOnce(podcasts);
+      mockPrisma.podcast.count.mockResolvedValueOnce(1);
 
-      const res = await app.request("/podcasts/trending", {}, env, mockExCtx);
+      const res = await app.request("/podcasts/catalog?q=test", {}, env, mockExCtx);
       expect(res.status).toBe(200);
       const body: any = await res.json();
-      expect(body.feeds).toEqual(feeds);
+      expect(body.podcasts).toHaveLength(1);
     });
   });
 

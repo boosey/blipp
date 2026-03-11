@@ -68,15 +68,12 @@ describe("Users Routes", () => {
 
   describe("GET /users/segments", () => {
     it("returns segment counts", async () => {
-      mockPrisma.user.count
-        .mockResolvedValueOnce(100) // all
-        .mockResolvedValueOnce(30)  // with briefings (power user candidates)
-        .mockResolvedValueOnce(20); // never active
+      mockPrisma.user.count.mockResolvedValueOnce(100); // all
       mockPrisma.user.findMany.mockResolvedValueOnce([
-        { id: "u1", tier: "PRO", createdAt: new Date("2025-01-01"), _count: { briefings: 60 } },
-        { id: "u2", tier: "FREE", createdAt: new Date("2025-12-01"), _count: { briefings: 5 } },
+        { id: "u1", tier: "PRO", createdAt: new Date("2025-01-01"), _count: { feedItems: 60 } },
+        { id: "u2", tier: "FREE", createdAt: new Date("2025-12-01"), _count: { feedItems: 5 } },
       ]);
-      mockPrisma.briefing.findMany.mockResolvedValueOnce([
+      mockPrisma.feedItem.findMany.mockResolvedValueOnce([
         { userId: "u2" },
       ]);
 
@@ -100,11 +97,11 @@ describe("Users Routes", () => {
           id: "u1", clerkId: "ck1", email: "admin@test.com", name: "Admin",
           imageUrl: null, tier: "PRO", isAdmin: true,
           createdAt: now, updatedAt: now,
-          _count: { subscriptions: 5, briefings: 60 },
+          _count: { subscriptions: 5, feedItems: 60, briefings: 10 },
         },
       ]);
       mockPrisma.user.count.mockResolvedValueOnce(1);
-      mockPrisma.briefing.findMany.mockResolvedValueOnce([
+      mockPrisma.feedItem.findMany.mockResolvedValueOnce([
         { userId: "u1", createdAt: new Date() },
       ]);
 
@@ -121,24 +118,24 @@ describe("Users Routes", () => {
   });
 
   describe("GET /users/:id", () => {
-    it("returns user detail with subscriptions and briefings", async () => {
+    it("returns user detail with subscriptions and feed items", async () => {
       const now = new Date();
       mockPrisma.user.findUnique.mockResolvedValueOnce({
         id: "u1", clerkId: "ck1", email: "user@test.com", name: "User",
         imageUrl: null, tier: "PRO", isAdmin: false,
-        stripeCustomerId: "cus_123", briefingLengthMinutes: 5,
-        briefingTime: "08:00", timezone: "US/Eastern",
+        stripeCustomerId: "cus_123",
         createdAt: now, updatedAt: now,
-        _count: { subscriptions: 2, briefings: 10 },
+        _count: { subscriptions: 2, feedItems: 10, briefings: 5 },
         subscriptions: [
-          { podcastId: "pod1", podcast: { title: "Podcast 1" }, createdAt: now },
+          { podcastId: "pod1", podcast: { title: "Podcast 1" }, durationTier: 5, createdAt: now },
         ],
-        briefings: [
+        feedItems: [
           {
-            id: "br1", userId: "u1", status: "COMPLETED",
-            targetMinutes: 5, actualSeconds: 290,
-            audioUrl: "http://a.mp3", errorMessage: null, createdAt: now,
-            _count: { segments: 3 },
+            id: "fi1", userId: "u1", status: "READY",
+            source: "SUBSCRIPTION", durationTier: 5, listened: false,
+            podcast: { title: "Podcast 1", imageUrl: null },
+            episode: { title: "Episode 1" },
+            createdAt: now,
           },
         ],
       });
@@ -148,7 +145,7 @@ describe("Users Routes", () => {
       const body: any = await res.json();
       expect(body.data.id).toBe("u1");
       expect(body.data.subscriptions).toHaveLength(1);
-      expect(body.data.recentBriefings).toHaveLength(1);
+      expect(body.data.recentFeedItems).toHaveLength(1);
       expect(body.data).toHaveProperty("badges");
     });
 

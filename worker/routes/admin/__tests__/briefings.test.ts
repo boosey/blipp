@@ -67,89 +67,94 @@ describe("Briefings Routes", () => {
   });
 
   describe("GET /briefings/", () => {
-    it("returns paginated list with fitAccuracy", async () => {
+    it("returns paginated list with clip data", async () => {
       const now = new Date();
       mockPrisma.briefing.findMany.mockResolvedValueOnce([
         {
-          id: "br1", userId: "u1", status: "COMPLETED",
-          targetMinutes: 5, actualSeconds: 290,
-          audioUrl: "http://a.mp3", errorMessage: null,
+          id: "br1", userId: "u1", clipId: "cl1",
+          adAudioUrl: null,
           createdAt: now,
           user: { email: "user@test.com", tier: "PRO" },
-          _count: { segments: 3 },
-          segments: [{ clipId: "cl1" }, { clipId: "cl2" }],
+          clip: {
+            id: "cl1", durationTier: 5, status: "READY",
+            actualSeconds: 290, audioUrl: "http://a.mp3",
+            episode: {
+              title: "Episode 1", durationSeconds: 3600,
+              podcast: { title: "Pod 1", imageUrl: null },
+            },
+          },
+          _count: { feedItems: 2 },
         },
       ]);
       mockPrisma.briefing.count.mockResolvedValueOnce(1);
-      mockPrisma.clip.findMany.mockResolvedValueOnce([
-        { id: "cl1", episode: { podcastId: "pod1" } },
-        { id: "cl2", episode: { podcastId: "pod2" } },
-      ]);
 
       const res = await app.request("/briefings", {}, env, mockExCtx);
       expect(res.status).toBe(200);
       const body: any = await res.json();
       expect(body.data).toHaveLength(1);
-      expect(body.data[0]).toHaveProperty("fitAccuracy");
-      expect(body.data[0].podcastCount).toBe(2);
-      expect(body.data[0].segmentCount).toBe(3);
+      expect(body.data[0].clipId).toBe("cl1");
+      expect(body.data[0].durationTier).toBe(5);
+      expect(body.data[0].actualSeconds).toBe(290);
+      expect(body.data[0].feedItemCount).toBe(2);
       expect(body.total).toBe(1);
     });
 
-    it("returns undefined fitAccuracy when no timing data", async () => {
+    it("returns clip data when no episode info", async () => {
       const now = new Date();
       mockPrisma.briefing.findMany.mockResolvedValueOnce([
         {
-          id: "br1", userId: "u1", status: "PENDING",
-          targetMinutes: 5, actualSeconds: null,
-          audioUrl: null, errorMessage: null, createdAt: now,
+          id: "br1", userId: "u1", clipId: "cl1",
+          adAudioUrl: null,
+          createdAt: now,
           user: { email: "user@test.com", tier: "FREE" },
-          _count: { segments: 0 },
-          segments: [],
+          clip: {
+            id: "cl1", durationTier: 3, status: "PENDING",
+            actualSeconds: null, audioUrl: null,
+            episode: null,
+          },
+          _count: { feedItems: 0 },
         },
       ]);
       mockPrisma.briefing.count.mockResolvedValueOnce(1);
 
       const res = await app.request("/briefings", {}, env, mockExCtx);
+      expect(res.status).toBe(200);
       const body: any = await res.json();
-      expect(body.data[0].fitAccuracy).toBeUndefined();
+      expect(body.data[0].episodeTitle).toBeUndefined();
     });
   });
 
   describe("GET /briefings/:id", () => {
-    it("returns briefing detail with quality metrics", async () => {
+    it("returns briefing detail with clip and pipeline steps", async () => {
       const now = new Date();
       mockPrisma.briefing.findUnique.mockResolvedValueOnce({
-        id: "br1", userId: "u1", status: "COMPLETED",
-        targetMinutes: 5, actualSeconds: 295,
-        audioUrl: "http://a.mp3", errorMessage: null, createdAt: now,
+        id: "br1", userId: "u1", clipId: "cl1",
+        adAudioUrl: null, adAudioKey: null,
+        createdAt: now,
         user: { email: "user@test.com", tier: "PRO" },
-        _count: { segments: 2 },
-        segments: [
-          { id: "s1", orderIndex: 0, clipId: "cl1", transitionText: "First up" },
-          { id: "s2", orderIndex: 1, clipId: "cl2", transitionText: "Next" },
+        clip: {
+          id: "cl1", durationTier: 5, status: "READY",
+          actualSeconds: 295, audioUrl: "http://a.mp3", wordCount: 500,
+          episodeId: "ep1",
+          episode: {
+            title: "Ep1", durationSeconds: 3600,
+            podcast: { id: "pod1", title: "Pod1", imageUrl: null },
+          },
+        },
+        feedItems: [
+          { id: "fi1", status: "READY", listened: false, source: "SUBSCRIPTION", createdAt: now },
         ],
       });
-      mockPrisma.clip.findMany.mockResolvedValueOnce([
-        {
-          id: "cl1", actualSeconds: 150, durationTier: 3,
-          episode: { podcastId: "pod1", title: "Ep1", podcast: { title: "Pod1", imageUrl: null } },
-        },
-        {
-          id: "cl2", actualSeconds: 120, durationTier: 2,
-          episode: { podcastId: "pod2", title: "Ep2", podcast: { title: "Pod2", imageUrl: null } },
-        },
-      ]);
+      mockPrisma.pipelineJob.findMany.mockResolvedValueOnce([]);
 
       const res = await app.request("/briefings/br1", {}, env, mockExCtx);
       expect(res.status).toBe(200);
       const body: any = await res.json();
       expect(body.data.id).toBe("br1");
-      expect(body.data.segments).toHaveLength(2);
-      expect(body.data.qualityMetrics).toHaveProperty("fitAccuracy");
-      expect(body.data.qualityMetrics).toHaveProperty("contentCoverage");
-      expect(body.data.qualityMetrics).toHaveProperty("segmentBalance");
-      expect(body.data.qualityMetrics).toHaveProperty("transitionQuality");
+      expect(body.data.clip).toHaveProperty("durationTier");
+      expect(body.data.clip.podcastTitle).toBe("Pod1");
+      expect(body.data.pipelineSteps).toBeDefined();
+      expect(body.data.feedItems).toHaveLength(1);
     });
 
     it("returns 404 when not found", async () => {

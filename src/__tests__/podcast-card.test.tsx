@@ -63,7 +63,18 @@ describe("PodcastCard", () => {
       </MemoryRouter>
     );
 
+    // First click opens the duration tier dialog
     await user.click(screen.getByText("Subscribe"));
+
+    // Wait for the dialog to appear, then click the Subscribe button inside it
+    await waitFor(() => {
+      expect(screen.getByText("Briefing Length")).toBeInTheDocument();
+    });
+
+    // The dialog has its own Subscribe button; click it (default tier is 5)
+    const dialogButtons = screen.getAllByText("Subscribe");
+    const dialogSubscribeBtn = dialogButtons[dialogButtons.length - 1];
+    await user.click(dialogSubscribeBtn);
 
     await waitFor(() => {
       expect(mockApiFetch).toHaveBeenCalledWith(
