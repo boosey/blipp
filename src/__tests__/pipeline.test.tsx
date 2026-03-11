@@ -18,29 +18,33 @@ vi.mock("@/lib/admin-api", () => ({
 
 import Pipeline from "../pages/admin/pipeline";
 
+// The 5 pipeline stages (CLIP_GENERATION was split into NARRATIVE_GENERATION + AUDIO_GENERATION)
+const STAGES = ["TRANSCRIPTION", "DISTILLATION", "NARRATIVE_GENERATION", "AUDIO_GENERATION", "BRIEFING_ASSEMBLY"];
+
 // Default mock responses
 function mockStageStats() {
   return {
     data: [
-      { stage: 2, name: "Transcription", activeJobs: 1, successRate: 95, avgProcessingTime: 5000, todayCost: 1.5, perUnitCost: 0.05 },
-      { stage: 3, name: "Distillation", activeJobs: 0, successRate: 98, avgProcessingTime: 3000, todayCost: 0.8, perUnitCost: 0.03 },
-      { stage: 4, name: "Clip Generation", activeJobs: 2, successRate: 90, avgProcessingTime: 8000, todayCost: 2.0, perUnitCost: 0.1 },
-      { stage: 5, name: "Briefing Assembly", activeJobs: 0, successRate: 100, avgProcessingTime: 2000, todayCost: 0.5, perUnitCost: 0.02 },
+      { stage: "TRANSCRIPTION", name: "Transcription", activeJobs: 1, successRate: 95, avgProcessingTime: 5000, todayCost: 1.5, perUnitCost: 0.05 },
+      { stage: "DISTILLATION", name: "Distillation", activeJobs: 0, successRate: 98, avgProcessingTime: 3000, todayCost: 0.8, perUnitCost: 0.03 },
+      { stage: "NARRATIVE_GENERATION", name: "Narrative Gen", activeJobs: 1, successRate: 92, avgProcessingTime: 6000, todayCost: 1.2, perUnitCost: 0.06 },
+      { stage: "AUDIO_GENERATION", name: "Audio Gen", activeJobs: 1, successRate: 90, avgProcessingTime: 8000, todayCost: 2.0, perUnitCost: 0.1 },
+      { stage: "BRIEFING_ASSEMBLY", name: "Briefing Assembly", activeJobs: 0, successRate: 100, avgProcessingTime: 2000, todayCost: 0.5, perUnitCost: 0.02 },
     ],
   };
 }
 
-function mockJobs(stage: number, count: number) {
+function mockJobs(stage: string, count: number) {
   return {
     data: Array.from({ length: count }, (_, i) => ({
       id: `job-${stage}-${i}`,
-      type: "TRANSCRIPTION",
+      requestId: `req-${i}`,
+      episodeId: `ep-${i}`,
+      durationTier: 5,
       status: i === 0 ? "IN_PROGRESS" : i === 1 ? "PENDING" : "COMPLETED",
-      entityId: `ep-${i}`,
-      entityType: "episode",
-      stage,
-      retryCount: 0,
+      currentStage: stage,
       createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
       episodeTitle: `Episode ${i}`,
       podcastTitle: `Podcast ${i}`,
     })),
@@ -70,8 +74,9 @@ function setupDefaultMocks() {
   mockApiFetch.mockImplementation((path: string) => {
     if (path.startsWith("/pipeline/stages")) return Promise.resolve(mockStageStats());
     if (path.startsWith("/pipeline/jobs")) {
-      const match = path.match(/stage=(\d+)/);
-      const stage = match ? Number(match[1]) : 2;
+      // Extract currentStage from query params
+      const match = path.match(/currentStage=([A-Z_]+)/);
+      const stage = match ? match[1] : "TRANSCRIPTION";
       return Promise.resolve(mockJobs(stage, 3));
     }
     if (path.startsWith("/requests")) return Promise.resolve({ data: [] });
@@ -94,24 +99,20 @@ describe("Pipeline Page", () => {
     setupDefaultMocks();
   });
 
-  it("renders 4 stage columns (no Feed Refresh)", async () => {
+  it("renders 5 stage columns (no Feed Refresh)", async () => {
     renderPipeline();
     await waitFor(() => {
       expect(screen.getByTestId("pipeline-columns")).toBeInTheDocument();
     });
 
-    // Should have 4 stage columns
+    // Should have 5 stage columns
     const columns = screen.getAllByTestId(/^stage-column-/);
-    expect(columns).toHaveLength(4);
+    expect(columns).toHaveLength(5);
 
-    // Stage numbers should be 2, 3, 4, 5
-    expect(screen.getByTestId("stage-column-2")).toBeInTheDocument();
-    expect(screen.getByTestId("stage-column-3")).toBeInTheDocument();
-    expect(screen.getByTestId("stage-column-4")).toBeInTheDocument();
-    expect(screen.getByTestId("stage-column-5")).toBeInTheDocument();
-
-    // Should NOT have a stage 1 column
-    expect(screen.queryByTestId("stage-column-1")).not.toBeInTheDocument();
+    // Stage names as test IDs
+    for (const stage of STAGES) {
+      expect(screen.getByTestId(`stage-column-${stage}`)).toBeInTheDocument();
+    }
   });
 
   it("renders the summary bar with correct counts", async () => {
@@ -121,11 +122,11 @@ describe("Pipeline Page", () => {
     });
 
     // Each stage returns 3 jobs: 1 IN_PROGRESS, 1 PENDING, 1 COMPLETED
-    // 4 stages = 4 IN_PROGRESS, 4 PENDING, 4 COMPLETED
+    // 5 stages = 5 IN_PROGRESS, 5 PENDING, 5 COMPLETED
     const summaryBar = screen.getByTestId("pipeline-summary-bar");
-    expect(summaryBar).toHaveTextContent("4Queued");
-    expect(summaryBar).toHaveTextContent("4Processing");
-    expect(summaryBar).toHaveTextContent("4Completed");
+    expect(summaryBar).toHaveTextContent("5Queued");
+    expect(summaryBar).toHaveTextContent("5Processing");
+    expect(summaryBar).toHaveTextContent("5Completed");
     expect(summaryBar).toHaveTextContent("0Failed");
   });
 

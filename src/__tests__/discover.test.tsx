@@ -5,7 +5,7 @@ import { Discover } from "../pages/discover";
 
 vi.mock("@clerk/clerk-react", () => ({
   useUser: vi.fn(() => ({ user: { publicMetadata: { tier: "FREE" } } })),
-  useAuth: vi.fn(() => ({ getToken: vi.fn() })),
+  useAuth: vi.fn(() => ({ getToken: vi.fn().mockResolvedValue("test-token") })),
   SignedIn: ({ children }: any) => children,
   SignedOut: ({ children }: any) => children,
   SignInButton: ({ children }: any) => children,
@@ -31,15 +31,29 @@ const mockPodcast = {
   author: "Alice",
   description: "A tech podcast",
   imageUrl: "https://example.com/img.jpg",
+  feedUrl: "https://example.com/feed.xml",
+  episodeCount: 10,
 };
+
+function mockJsonResponse(data: any) {
+  return {
+    ok: true,
+    json: () => Promise.resolve(data),
+  };
+}
 
 describe("Discover", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Default: subscriptions returns empty
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve([]),
+    // Default: subscriptions returns empty, catalog returns empty
+    mockFetch.mockImplementation((url: string) => {
+      if (url.includes("/podcasts/subscriptions")) {
+        return Promise.resolve(mockJsonResponse({ subscriptions: [] }));
+      }
+      if (url.includes("/podcasts/catalog")) {
+        return Promise.resolve(mockJsonResponse({ podcasts: [] }));
+      }
+      return Promise.resolve(mockJsonResponse({}));
     });
   });
 
@@ -53,16 +67,15 @@ describe("Discover", () => {
   it("search triggers API call", async () => {
     const user = userEvent.setup();
 
-    // First call: subscriptions, second: search
-    mockFetch
-      .mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve([]),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve([mockPodcast]),
-      });
+    mockFetch.mockImplementation((url: string) => {
+      if (url.includes("/podcasts/subscriptions")) {
+        return Promise.resolve(mockJsonResponse({ subscriptions: [] }));
+      }
+      if (url.includes("/podcasts/catalog")) {
+        return Promise.resolve(mockJsonResponse({ podcasts: [mockPodcast] }));
+      }
+      return Promise.resolve(mockJsonResponse({}));
+    });
 
     renderDiscover();
 
@@ -72,7 +85,7 @@ describe("Discover", () => {
 
     await waitFor(() => {
       expect(mockFetch).toHaveBeenCalledWith(
-        "/api/podcasts/search?q=tech",
+        expect.stringContaining("/api/podcasts/catalog?q=tech"),
         expect.any(Object)
       );
     });
@@ -81,15 +94,15 @@ describe("Discover", () => {
   it("renders search results", async () => {
     const user = userEvent.setup();
 
-    mockFetch
-      .mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve([]),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve([mockPodcast]),
-      });
+    mockFetch.mockImplementation((url: string) => {
+      if (url.includes("/podcasts/subscriptions")) {
+        return Promise.resolve(mockJsonResponse({ subscriptions: [] }));
+      }
+      if (url.includes("/podcasts/catalog")) {
+        return Promise.resolve(mockJsonResponse({ podcasts: [mockPodcast] }));
+      }
+      return Promise.resolve(mockJsonResponse({}));
+    });
 
     renderDiscover();
 

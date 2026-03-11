@@ -220,14 +220,18 @@ describe("Admin Podcasts Routes", () => {
   });
 
   describe("POST /podcasts/:id/refresh", () => {
-    it("creates a FEED_REFRESH job", async () => {
+    it("dispatches to feed refresh queue", async () => {
       mockPrisma.podcast.findUnique.mockResolvedValueOnce({ id: "pod1", title: "Test" });
-      mockPrisma.pipelineJob.create.mockResolvedValueOnce({ id: "job1", status: "PENDING" });
 
       const res = await app.request("/podcasts/pod1/refresh", { method: "POST" }, env, mockExCtx);
       expect(res.status).toBe(201);
       const body: any = await res.json();
-      expect(body.data.jobId).toBe("job1");
+      expect(body.data.podcastId).toBe("pod1");
+      expect(body.data.status).toBe("dispatched");
+      expect(env.FEED_REFRESH_QUEUE.send).toHaveBeenCalledWith({
+        type: "manual",
+        podcastId: "pod1",
+      });
     });
 
     it("returns 404 when podcast not found", async () => {
@@ -236,14 +240,12 @@ describe("Admin Podcasts Routes", () => {
       expect(res.status).toBe(404);
     });
 
-    it("returns 201 with null jobId when PipelineJob table missing", async () => {
+    it("returns 503 when queue not available", async () => {
       mockPrisma.podcast.findUnique.mockResolvedValueOnce({ id: "pod1", title: "Test" });
-      mockPrisma.pipelineJob.create.mockRejectedValueOnce(new Error("table missing"));
+      (env.FEED_REFRESH_QUEUE.send as any).mockRejectedValueOnce(new Error("queue unavailable"));
 
       const res = await app.request("/podcasts/pod1/refresh", { method: "POST" }, env, mockExCtx);
-      expect(res.status).toBe(201);
-      const body: any = await res.json();
-      expect(body.data.jobId).toBeNull();
+      expect(res.status).toBe(503);
     });
   });
 });

@@ -59,13 +59,12 @@ describe("Pipeline", () => {
 
     const urls = mockFetch.mock.calls.map((call: any[]) => call[0]);
     expect(urls).toContainEqual(expect.stringContaining("/api/admin/pipeline/stages"));
-    // Should fetch jobs for stages 2-5 (feed refresh removed)
-    expect(urls).toContainEqual(expect.stringContaining("/api/admin/pipeline/jobs?stage=2"));
-    expect(urls).toContainEqual(expect.stringContaining("/api/admin/pipeline/jobs?stage=3"));
-    expect(urls).toContainEqual(expect.stringContaining("/api/admin/pipeline/jobs?stage=4"));
-    expect(urls).toContainEqual(expect.stringContaining("/api/admin/pipeline/jobs?stage=5"));
-    // Stage 1 should NOT be fetched
-    expect(urls).not.toContainEqual(expect.stringContaining("/api/admin/pipeline/jobs?stage=1"));
+    // Should fetch jobs for each stage (by currentStage, no Feed Refresh)
+    expect(urls).toContainEqual(expect.stringContaining("/api/admin/pipeline/jobs?currentStage=TRANSCRIPTION"));
+    expect(urls).toContainEqual(expect.stringContaining("/api/admin/pipeline/jobs?currentStage=DISTILLATION"));
+    expect(urls).toContainEqual(expect.stringContaining("/api/admin/pipeline/jobs?currentStage=NARRATIVE_GENERATION"));
+    expect(urls).toContainEqual(expect.stringContaining("/api/admin/pipeline/jobs?currentStage=AUDIO_GENERATION"));
+    expect(urls).toContainEqual(expect.stringContaining("/api/admin/pipeline/jobs?currentStage=BRIEFING_ASSEMBLY"));
   });
 
   it("handles error responses without crashing", async () => {
@@ -131,16 +130,17 @@ describe("Pipeline", () => {
     expect(screen.queryByText("Run Feed Refresh")).not.toBeInTheDocument();
   });
 
-  it("renders 4 stage column headers (stages 2-5, no Feed Refresh)", async () => {
+  it("renders 5 stage column headers (no Feed Refresh)", async () => {
     mockFetch.mockImplementation((url: string) => {
       if (url.includes("/config")) return Promise.resolve(CONFIG_RESPONSE);
       if (url.includes("/pipeline/stages")) {
         return Promise.resolve(mockJsonResponse({
           data: [
-            { stage: 2, name: "Transcription", activeJobs: 0, successRate: 100, avgProcessingTime: 0, todayCost: 0, perUnitCost: 0 },
-            { stage: 3, name: "Distillation", activeJobs: 0, successRate: 100, avgProcessingTime: 0, todayCost: 0, perUnitCost: 0 },
-            { stage: 4, name: "Clip Generation", activeJobs: 0, successRate: 100, avgProcessingTime: 0, todayCost: 0, perUnitCost: 0 },
-            { stage: 5, name: "Briefing Assembly", activeJobs: 0, successRate: 100, avgProcessingTime: 0, todayCost: 0, perUnitCost: 0 },
+            { stage: "TRANSCRIPTION", name: "Transcription", activeJobs: 0, successRate: 100, avgProcessingTime: 0, todayCost: 0, perUnitCost: 0 },
+            { stage: "DISTILLATION", name: "Distillation", activeJobs: 0, successRate: 100, avgProcessingTime: 0, todayCost: 0, perUnitCost: 0 },
+            { stage: "NARRATIVE_GENERATION", name: "Narrative Gen", activeJobs: 0, successRate: 100, avgProcessingTime: 0, todayCost: 0, perUnitCost: 0 },
+            { stage: "AUDIO_GENERATION", name: "Audio Gen", activeJobs: 0, successRate: 100, avgProcessingTime: 0, todayCost: 0, perUnitCost: 0 },
+            { stage: "BRIEFING_ASSEMBLY", name: "Briefing Assembly", activeJobs: 0, successRate: 100, avgProcessingTime: 0, todayCost: 0, perUnitCost: 0 },
           ],
         }));
       }
@@ -153,11 +153,12 @@ describe("Pipeline", () => {
       expect(screen.getByText("Pipeline Flow")).toBeInTheDocument();
     });
 
-    // 4 stage names should be visible (no Feed Refresh)
+    // 5 stage names should be visible (no Feed Refresh)
     expect(screen.queryByText("Feed Refresh")).not.toBeInTheDocument();
     expect(screen.getByText("Transcription")).toBeInTheDocument();
     expect(screen.getByText("Distillation")).toBeInTheDocument();
-    expect(screen.getByText("Clip Generation")).toBeInTheDocument();
+    expect(screen.getByText("Narrative Gen")).toBeInTheDocument();
+    expect(screen.getByText("Audio Gen")).toBeInTheDocument();
     expect(screen.getByText("Briefing Assembly")).toBeInTheDocument();
   });
 });

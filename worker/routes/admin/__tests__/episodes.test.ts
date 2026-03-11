@@ -143,14 +143,18 @@ describe("Episodes Routes", () => {
   });
 
   describe("POST /episodes/:id/reprocess", () => {
-    it("creates TRANSCRIPTION job and returns 201", async () => {
+    it("dispatches to transcription queue and returns 201", async () => {
       mockPrisma.episode.findUnique.mockResolvedValueOnce({ id: "ep1" });
-      mockPrisma.pipelineJob.create.mockResolvedValueOnce({ id: "job1", status: "PENDING" });
 
       const res = await app.request("/episodes/ep1/reprocess", { method: "POST" }, env, mockExCtx);
       expect(res.status).toBe(201);
       const body: any = await res.json();
-      expect(body.data.jobId).toBe("job1");
+      expect(body.data.episodeId).toBe("ep1");
+      expect(body.data.status).toBe("dispatched");
+      expect(env.TRANSCRIPTION_QUEUE.send).toHaveBeenCalledWith({
+        type: "manual",
+        episodeId: "ep1",
+      });
     });
 
     it("returns 404 when episode not found", async () => {
@@ -159,9 +163,9 @@ describe("Episodes Routes", () => {
       expect(res.status).toBe(404);
     });
 
-    it("returns 503 when PipelineJob table missing", async () => {
+    it("returns 503 when queue not available", async () => {
       mockPrisma.episode.findUnique.mockResolvedValueOnce({ id: "ep1" });
-      mockPrisma.pipelineJob.create.mockRejectedValueOnce(new Error("table missing"));
+      (env.TRANSCRIPTION_QUEUE.send as any).mockRejectedValueOnce(new Error("queue unavailable"));
 
       const res = await app.request("/episodes/ep1/reprocess", { method: "POST" }, env, mockExCtx);
       expect(res.status).toBe(503);

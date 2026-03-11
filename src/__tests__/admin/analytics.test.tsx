@@ -67,14 +67,19 @@ describe("Analytics", () => {
 
   it("makes correct API calls on mount", async () => {
     mockFetch.mockImplementation((url: string) => {
+      if (url.includes("/analytics/costs/by-model")) {
+        return Promise.resolve(mockJsonResponse({
+          data: { models: [], byStage: [] },
+        }));
+      }
       if (url.includes("/analytics/costs")) {
         return Promise.resolve(mockJsonResponse({
-          data: { totalCost: 0, dailyCosts: [], comparison: { direction: "down", percentage: 0 }, metrics: { perEpisode: 0, dailyAvg: 0, projectedMonthly: 0, budgetStatus: "OK" }, efficiencyScore: 85 },
+          data: { totalCost: 0, dailyCosts: [], comparison: { amount: 0, direction: "down", percentage: 0 }, metrics: { perEpisode: 0, dailyAvg: 0, projectedMonthly: 0, budgetStatus: "OK" }, efficiencyScore: 85 },
         }));
       }
       if (url.includes("/analytics/usage")) {
         return Promise.resolve(mockJsonResponse({
-          data: { trends: [], metrics: { briefings: 0, episodes: 0, users: 0, avgDuration: 0 }, byTier: [], peakTimes: [] },
+          data: { trends: [], metrics: { feedItems: 0, episodes: 0, users: 0, avgDuration: 0 }, byTier: [], peakTimes: [], topPodcasts: [] },
         }));
       }
       if (url.includes("/analytics/quality")) {
@@ -119,12 +124,20 @@ describe("Analytics", () => {
 
   it("shows content after data loads", async () => {
     mockFetch.mockImplementation((url: string) => {
+      if (url.includes("/analytics/costs/by-model")) {
+        return Promise.resolve(mockJsonResponse({
+          data: {
+            models: [],
+            byStage: [],
+          },
+        }));
+      }
       if (url.includes("/analytics/costs")) {
         return Promise.resolve(mockJsonResponse({
           data: {
             totalCost: 42.50,
             dailyCosts: [{ date: "2026-03-01", stt: 1, distillation: 2, tts: 1.5, infrastructure: 0.5 }],
-            comparison: { direction: "down", percentage: 10 },
+            comparison: { amount: 4.25, direction: "down", percentage: 10 },
             metrics: { perEpisode: 0.05, dailyAvg: 1.42, projectedMonthly: 42.5, budgetStatus: "OK" },
             efficiencyScore: 85,
           },
@@ -133,10 +146,11 @@ describe("Analytics", () => {
       if (url.includes("/analytics/usage")) {
         return Promise.resolve(mockJsonResponse({
           data: {
-            trends: [{ date: "2026-03-01", briefings: 10, episodes: 20, users: 5 }],
-            metrics: { briefings: 100, episodes: 200, users: 50, avgDuration: 300 },
+            trends: [{ date: "2026-03-01", feedItems: 10, episodes: 20, users: 5 }],
+            metrics: { feedItems: 100, episodes: 200, users: 50, avgDuration: 300 },
             byTier: [{ tier: "FREE", count: 30, percentage: 60 }],
             peakTimes: [{ hour: 8, count: 15 }],
+            topPodcasts: [],
           },
         }));
       }
