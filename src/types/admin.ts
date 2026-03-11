@@ -519,6 +519,7 @@ export interface BriefingRequest {
   userEmail?: string;
   podcastTitle?: string | null;
   episodeTitle?: string | null;
+  totalCost?: number;
   jobProgress?: JobProgress[];
 }
 

@@ -24,9 +24,11 @@ requestsRoutes.get("/", async (c) => {
       include: {
         user: { select: { name: true, email: true } },
         jobs: {
-          take: 1,
           orderBy: { createdAt: "asc" },
-          include: { episode: { select: { title: true, podcast: { select: { title: true } } } } },
+          include: {
+            episode: { select: { title: true, podcast: { select: { title: true } } } },
+            steps: { select: { cost: true } },
+          },
         },
       },
     }),
@@ -35,6 +37,8 @@ requestsRoutes.get("/", async (c) => {
 
   const data = requests.map((r: any) => {
     const firstJob = r.jobs?.[0];
+    const totalCost = r.jobs?.reduce((sum: number, job: any) =>
+      sum + (job.steps?.reduce((s: number, step: any) => s + (step.cost ?? 0), 0) ?? 0), 0) ?? 0;
     return {
       id: r.id,
       userId: r.userId,
@@ -48,6 +52,7 @@ requestsRoutes.get("/", async (c) => {
       errorMessage: r.errorMessage,
       podcastTitle: firstJob?.episode?.podcast?.title ?? null,
       episodeTitle: firstJob?.episode?.title ?? null,
+      totalCost: totalCost > 0 ? totalCost : undefined,
       createdAt: r.createdAt.toISOString(),
       updatedAt: r.updatedAt.toISOString(),
     };
@@ -165,6 +170,10 @@ requestsRoutes.get("/:id", async (c) => {
     }),
   }));
 
+  // Compute total cost across all steps
+  const totalCost = jobs.reduce((sum: number, job: any) =>
+    sum + job.steps.reduce((s: number, step: any) => s + (step.cost ?? 0), 0), 0);
+
   return c.json({
     data: {
       id: request.id,
@@ -179,6 +188,7 @@ requestsRoutes.get("/:id", async (c) => {
       errorMessage: request.errorMessage,
       createdAt: request.createdAt.toISOString(),
       updatedAt: request.updatedAt.toISOString(),
+      totalCost: totalCost > 0 ? totalCost : undefined,
       jobProgress,
     },
   });

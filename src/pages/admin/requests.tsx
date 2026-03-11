@@ -372,6 +372,12 @@ function StepWorkProductPanel({ wp }: { wp: WorkProductSummary }) {
   );
 }
 
+function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return String(n);
+}
+
 function ExpandableStepRow({
   step,
 }: {
@@ -385,58 +391,69 @@ function ExpandableStepRow({
     <div>
       <div
         className={cn(
-          "flex items-center gap-2 text-[10px]",
+          "grid grid-cols-[14px_90px_60px_55px_60px_60px_60px_1fr] gap-2 items-center text-[10px] py-0.5",
           hasWp && "cursor-pointer hover:bg-white/[0.02] rounded -mx-1 px-1"
         )}
         onClick={hasWp ? () => setExpanded((v) => !v) : undefined}
       >
-        {hasWp ? (
-          expanded ? (
-            <ChevronDown className="h-2.5 w-2.5 text-[#9CA3AF] shrink-0" />
-          ) : (
-            <ChevronRight className="h-2.5 w-2.5 text-[#9CA3AF] shrink-0" />
-          )
-        ) : (
-          <span className="w-2.5 shrink-0" />
-        )}
-        <span className="text-[#9CA3AF] w-28">{formatStageName(step.stage)}:</span>
-        <StepStatusIcon step={step} />
-        {step.cached && (
-          <Badge className="bg-[#F59E0B]/15 text-[#F59E0B] text-[8px] px-1 py-0">
-            <Zap className="h-2 w-2 mr-0.5 inline" />
-            cached
-          </Badge>
-        )}
-        {step.durationMs != null && (
-          <span className="text-[9px] text-[#9CA3AF] font-mono tabular-nums">
-            {step.durationMs}ms
-          </span>
-        )}
-        {step.cost != null && (
-          <span className="text-[9px] text-[#10B981] font-mono tabular-nums">
-            ${step.cost.toFixed(4)}
-          </span>
-        )}
-        {step.model && (
-          <span className="text-[9px] text-[#8B5CF6] font-mono tabular-nums" title={step.model}>
-            {step.model.split("+").map(m => m.split("-").slice(0, 3).join("-")).join("+")}
-          </span>
-        )}
-        {(step.inputTokens != null || step.outputTokens != null) && (
-          <span className="text-[9px] text-[#9CA3AF] font-mono tabular-nums" title={`In: ${step.inputTokens ?? 0} / Out: ${step.outputTokens ?? 0}`}>
-            {step.inputTokens != null ? `${step.inputTokens.toLocaleString()}in` : ""}
-            {step.inputTokens != null && step.outputTokens != null ? "/" : ""}
-            {step.outputTokens != null && step.outputTokens > 0 ? `${step.outputTokens.toLocaleString()}out` : ""}
-          </span>
-        )}
-        {hasWp && wps.map((wp) => (
-          <WorkProductBadge key={wp.id} wp={wp} />
-        ))}
-        {step.status === "FAILED" && step.errorMessage && (
-          <span className="text-[9px] text-[#EF4444] truncate max-w-[200px]" title={step.errorMessage}>
-            {step.errorMessage}
-          </span>
-        )}
+        {/* Expand chevron */}
+        <div>
+          {hasWp ? (
+            expanded ? (
+              <ChevronDown className="h-2.5 w-2.5 text-[#9CA3AF]" />
+            ) : (
+              <ChevronRight className="h-2.5 w-2.5 text-[#9CA3AF]" />
+            )
+          ) : null}
+        </div>
+
+        {/* Stage name */}
+        <span className="text-[#9CA3AF] truncate">{formatStageName(step.stage)}</span>
+
+        {/* Status */}
+        <div className="flex items-center gap-1">
+          <StepStatusIcon step={step} />
+          {step.cached && (
+            <span title="Cached"><Zap className="h-2.5 w-2.5 text-[#F59E0B]" /></span>
+          )}
+        </div>
+
+        {/* Duration */}
+        <span className="text-[9px] text-[#9CA3AF] font-mono tabular-nums text-right">
+          {step.durationMs != null ? `${step.durationMs}ms` : "—"}
+        </span>
+
+        {/* Tokens In */}
+        <span className="text-[9px] text-[#9CA3AF] font-mono tabular-nums text-right">
+          {step.inputTokens != null ? formatTokens(step.inputTokens) : "—"}
+        </span>
+
+        {/* Tokens Out */}
+        <span className="text-[9px] text-[#9CA3AF] font-mono tabular-nums text-right">
+          {step.outputTokens != null ? formatTokens(step.outputTokens) : "—"}
+        </span>
+
+        {/* Cost */}
+        <span className="text-[9px] text-[#10B981] font-mono tabular-nums text-right">
+          {step.cost != null ? `$${step.cost.toFixed(4)}` : "—"}
+        </span>
+
+        {/* Work products + model + error */}
+        <div className="flex items-center gap-1 min-w-0">
+          {step.model && (
+            <span className="text-[8px] text-[#8B5CF6] font-mono tabular-nums truncate max-w-[120px]" title={step.model}>
+              {step.model.split("+").map(m => m.split("-").slice(0, 3).join("-")).join("+")}
+            </span>
+          )}
+          {hasWp && wps.map((wp) => (
+            <WorkProductBadge key={wp.id} wp={wp} />
+          ))}
+          {step.status === "FAILED" && step.errorMessage && (
+            <span className="text-[9px] text-[#EF4444] truncate max-w-[200px]" title={step.errorMessage}>
+              {step.errorMessage}
+            </span>
+          )}
+        </div>
       </div>
 
       {expanded && wps.length > 0 && (
@@ -485,7 +502,19 @@ function JobProgressTree({ jobs }: { jobs: JobProgress[] }) {
   }
 
   return (
-    <div className="space-y-0.5 py-1">
+    <div className="py-1">
+      {/* Column headers */}
+      <div className="grid grid-cols-[14px_90px_60px_55px_60px_60px_60px_1fr] gap-2 items-center text-[8px] uppercase tracking-wider text-[#9CA3AF]/60 pb-1 mb-1 border-b border-white/5">
+        <span />
+        <span>Stage</span>
+        <span>Status</span>
+        <span className="text-right">Time</span>
+        <span className="text-right">Tok In</span>
+        <span className="text-right">Tok Out</span>
+        <span className="text-right">Cost</span>
+        <span>Info</span>
+      </div>
+      <div className="space-y-0.5">
       {jobs.map((job) => (
         <div key={job.jobId}>
           {jobs.length > 1 && (
@@ -507,6 +536,7 @@ function JobProgressTree({ jobs }: { jobs: JobProgress[] }) {
           ))}
         </div>
       ))}
+      </div>
     </div>
   );
 }
@@ -540,7 +570,7 @@ function RequestRow({
     <div className="border-b border-white/5 last:border-b-0">
       <button
         onClick={onToggle}
-        className="w-full grid grid-cols-[24px_100px_1fr_80px_60px_80px_100px] gap-3 items-center px-3 py-3 text-left hover:bg-white/[0.02] transition-colors"
+        className="w-full grid grid-cols-[24px_100px_1fr_80px_60px_80px_80px_100px] gap-3 items-center px-3 py-3 text-left hover:bg-white/[0.02] transition-colors"
       >
         <div className="flex items-center">
           {expanded ? (
@@ -575,6 +605,9 @@ function RequestRow({
         </div>
         <div className="text-xs text-[#9CA3AF]">
           {request.isTest ? "Test" : "User"}
+        </div>
+        <div className="text-[10px] text-[#10B981] font-mono tabular-nums">
+          {request.totalCost != null ? `$${request.totalCost.toFixed(4)}` : "—"}
         </div>
         <div className="text-[10px] text-[#9CA3AF] font-mono tabular-nums">
           {relativeTime(request.createdAt)}
@@ -1154,13 +1187,14 @@ export default function Requests() {
       {/* Table */}
       <div className="flex-1 bg-[#1A2942] border border-white/5 rounded-lg flex flex-col min-h-0 overflow-hidden">
         {/* Table header */}
-        <div className="grid grid-cols-[24px_100px_1fr_80px_60px_80px_100px] gap-3 px-3 py-2 text-[10px] uppercase tracking-wider text-[#9CA3AF] border-b border-white/5 bg-[#0F1D32]">
+        <div className="grid grid-cols-[24px_100px_1fr_80px_60px_80px_80px_100px] gap-3 px-3 py-2 text-[10px] uppercase tracking-wider text-[#9CA3AF] border-b border-white/5 bg-[#0F1D32]">
           <span />
           <span>Status</span>
           <span>User</span>
           <span>Duration</span>
           <span>Items</span>
           <span>Type</span>
+          <span>Cost</span>
           <span>Created</span>
         </div>
 
