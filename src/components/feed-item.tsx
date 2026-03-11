@@ -62,6 +62,11 @@ export function FeedItemCard({
           <span className="text-[10px] text-zinc-500 bg-zinc-800 px-1.5 py-0.5 rounded">
             {item.durationTier}m
           </span>
+          {item.episode.durationSeconds != null && (
+            <span className="text-[10px] text-zinc-500 bg-zinc-800 px-1.5 py-0.5 rounded">
+              {Math.round(item.episode.durationSeconds / 60)}m ep
+            </span>
+          )}
           <span className="text-[10px] text-zinc-500 bg-zinc-800 px-1.5 py-0.5 rounded">
             {item.source === "SUBSCRIPTION" ? "Sub" : "On-demand"}
           </span>

@@ -553,7 +553,12 @@ function DetailsPanel({
                   <div key={ep.id} className="flex items-center gap-2 px-4 py-2 text-[11px] hover:bg-white/[0.03]">
                     <div className="flex-1 min-w-0">
                       <span className="truncate block">{ep.title}</span>
-                      <span className="text-[10px] text-[#9CA3AF]">{relativeTime(ep.publishedAt)}</span>
+                      <div className="flex items-center gap-2 text-[10px] text-[#9CA3AF]">
+                        <span>{relativeTime(ep.publishedAt)}</span>
+                        {ep.durationSeconds != null && (
+                          <span className="font-mono tabular-nums">{Math.round(ep.durationSeconds / 60)}m</span>
+                        )}
+                      </div>
                     </div>
                     <Badge className={cn(
                       "text-[9px]",

@@ -131,6 +131,7 @@ export interface PipelineJob {
   completedAt?: string;
   // Joined data
   episodeTitle?: string;
+  episodeDurationSeconds?: number;
   podcastTitle?: string;
   podcastImageUrl?: string;
   steps?: PipelineStep[];
@@ -269,6 +270,7 @@ export interface AdminBriefing {
   audioUrl?: string;
   adAudioUrl?: string;
   episodeTitle?: string;
+  episodeDurationSeconds?: number;
   podcastTitle?: string;
   podcastImageUrl?: string;
   feedItemCount: number;
@@ -303,6 +305,7 @@ export interface AdminBriefingDetail {
     audioUrl?: string;
     wordCount?: number;
     episodeTitle?: string;
+    episodeDurationSeconds?: number;
     podcastTitle?: string;
     podcastId?: string;
     podcastImageUrl?: string;
@@ -525,6 +528,7 @@ export interface JobProgress {
   jobId: string;
   episodeId: string;
   episodeTitle: string;
+  episodeDurationSeconds?: number;
   podcastTitle: string;
   durationTier: number;
   status: PipelineJobStatus;

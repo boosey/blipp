@@ -68,7 +68,7 @@ requestsRoutes.get("/:id", async (c) => {
   const jobs = await prisma.pipelineJob.findMany({
     where: { requestId: request.id },
     include: {
-      episode: { select: { title: true, podcast: { select: { title: true } } } },
+      episode: { select: { title: true, durationSeconds: true, podcast: { select: { title: true } } } },
       steps: {
         orderBy: { createdAt: "asc" },
         include: {
@@ -112,6 +112,7 @@ requestsRoutes.get("/:id", async (c) => {
     jobId: job.id,
     episodeId: job.episodeId,
     episodeTitle: job.episode.title,
+    episodeDurationSeconds: job.episode.durationSeconds ?? undefined,
     podcastTitle: job.episode.podcast.title,
     durationTier: job.durationTier,
     status: job.status,

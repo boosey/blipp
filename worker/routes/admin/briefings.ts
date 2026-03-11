@@ -34,6 +34,7 @@ briefingsRoutes.get("/", async (c) => {
             episode: {
               select: {
                 title: true,
+                durationSeconds: true,
                 podcast: { select: { title: true, imageUrl: true } },
               },
             },
@@ -57,6 +58,7 @@ briefingsRoutes.get("/", async (c) => {
     audioUrl: b.clip.audioUrl,
     adAudioUrl: b.adAudioUrl,
     episodeTitle: b.clip.episode?.title,
+    episodeDurationSeconds: b.clip.episode?.durationSeconds ?? undefined,
     podcastTitle: b.clip.episode?.podcast?.title,
     podcastImageUrl: b.clip.episode?.podcast?.imageUrl,
     feedItemCount: b._count.feedItems,
@@ -138,6 +140,7 @@ briefingsRoutes.get("/:id", async (c) => {
         audioUrl: briefing.clip.audioUrl,
         wordCount: briefing.clip.wordCount,
         episodeTitle: briefing.clip.episode?.title,
+        episodeDurationSeconds: briefing.clip.episode?.durationSeconds ?? undefined,
         podcastTitle: briefing.clip.episode?.podcast?.title,
         podcastId: briefing.clip.episode?.podcast?.id,
         podcastImageUrl: briefing.clip.episode?.podcast?.imageUrl,

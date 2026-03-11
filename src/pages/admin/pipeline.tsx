@@ -248,6 +248,11 @@ function JobCard({ job, onClick }: { job: PipelineJob; onClick: () => void }) {
       <div className="flex items-center justify-between mb-1.5">
         <StatusBadge status={job.status} />
         <div className="flex items-center gap-1.5">
+          {job.episodeDurationSeconds != null && (
+            <span className="text-[10px] text-[#9CA3AF] font-mono tabular-nums">
+              {Math.round(job.episodeDurationSeconds / 60)}m ep
+            </span>
+          )}
           <DurationTierBadge minutes={job.durationTier} />
           <StageBadge stage={job.currentStage} />
         </div>
@@ -424,6 +429,9 @@ function PipelineDetailSheet({
                 <Field label="Status"><StatusBadge status={job.status} /></Field>
                 <Field label="Current Stage"><StageBadge stage={job.currentStage} /></Field>
                 <Field label="Duration Tier"><DurationTierBadge minutes={job.durationTier} /></Field>
+                {job.episodeDurationSeconds != null && (
+                  <Field label="Episode Length">{Math.round(job.episodeDurationSeconds / 60)}m ({Math.round(job.episodeDurationSeconds / 60 * 10) / 10} min)</Field>
+                )}
                 <Field label="Created">{relativeTime(job.createdAt)}</Field>
                 <Field label="Request">{job.requestId.slice(0, 8)}...</Field>
                 <Field label="Updated">{relativeTime(job.updatedAt)}</Field>

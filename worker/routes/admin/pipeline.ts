@@ -71,6 +71,7 @@ pipelineRoutes.get("/jobs", async (c) => {
     updatedAt: job.updatedAt.toISOString(),
     completedAt: job.completedAt?.toISOString(),
     episodeTitle: job.episode?.title,
+    episodeDurationSeconds: job.episode?.durationSeconds ?? undefined,
     podcastTitle: job.episode?.podcast?.title,
     podcastImageUrl: job.episode?.podcast?.imageUrl ?? undefined,
   }));
@@ -164,6 +165,7 @@ pipelineRoutes.get("/jobs/:id", async (c) => {
       updatedAt: job.updatedAt.toISOString(),
       completedAt: job.completedAt?.toISOString(),
       episodeTitle: job.episode?.title,
+      episodeDurationSeconds: job.episode?.durationSeconds ?? undefined,
       podcastTitle: job.episode?.podcast?.title,
       podcastImageUrl: job.episode?.podcast?.imageUrl ?? undefined,
       steps,

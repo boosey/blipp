@@ -124,6 +124,9 @@ function BriefingCard({
         {briefing.actualSeconds != null && (
           <span>{formatDuration(briefing.actualSeconds)}</span>
         )}
+        {briefing.episodeDurationSeconds != null && (
+          <span>{Math.round(briefing.episodeDurationSeconds / 60)}m ep</span>
+        )}
       </div>
 
       {(briefing.episodeTitle || briefing.podcastTitle) && (
@@ -342,7 +345,7 @@ export default function BriefingsPage() {
                 </div>
 
                 {/* Clip stats */}
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-4 gap-2">
                   <div className="rounded-md bg-[#0A1628] border border-white/5 p-2.5 text-center">
                     <div className="text-sm font-bold font-mono tabular-nums text-[#F9FAFB]">
                       {selected.clip.durationTier}m
@@ -356,6 +359,14 @@ export default function BriefingsPage() {
                         : "-"}
                     </div>
                     <div className="text-[9px] text-[#9CA3AF]">Actual</div>
+                  </div>
+                  <div className="rounded-md bg-[#0A1628] border border-white/5 p-2.5 text-center">
+                    <div className="text-sm font-bold font-mono tabular-nums text-[#F9FAFB]">
+                      {selected.clip.episodeDurationSeconds != null
+                        ? `${Math.round(selected.clip.episodeDurationSeconds / 60)}m`
+                        : "-"}
+                    </div>
+                    <div className="text-[9px] text-[#9CA3AF]">Episode</div>
                   </div>
                   <div className="rounded-md bg-[#0A1628] border border-white/5 p-2.5 text-center">
                     <div className="text-sm font-bold font-mono tabular-nums text-[#F9FAFB]">

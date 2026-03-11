@@ -486,11 +486,27 @@ function JobProgressTree({ jobs }: { jobs: JobProgress[] }) {
 
   return (
     <div className="space-y-0.5 py-1">
-      {jobs.flatMap((job) =>
-        job.steps.map((step) => (
-          <ExpandableStepRow key={`${job.jobId}-${step.stage}`} step={step} />
-        ))
-      )}
+      {jobs.map((job) => (
+        <div key={job.jobId}>
+          {jobs.length > 1 && (
+            <div className="flex items-center gap-2 text-[10px] text-[#9CA3AF] py-1 mt-1 border-t border-white/5 first:border-t-0 first:mt-0">
+              <span className="font-medium text-[#F9FAFB]">{job.episodeTitle}</span>
+              {job.episodeDurationSeconds != null && (
+                <span className="font-mono tabular-nums">{Math.round(job.episodeDurationSeconds / 60)}m ep</span>
+              )}
+              <span className="font-mono tabular-nums">{job.durationTier}m tier</span>
+            </div>
+          )}
+          {jobs.length === 1 && job.episodeDurationSeconds != null && (
+            <div className="flex items-center gap-2 text-[10px] text-[#9CA3AF] py-1">
+              <span>Episode: {Math.round(job.episodeDurationSeconds / 60)}m</span>
+            </div>
+          )}
+          {job.steps.map((step) => (
+            <ExpandableStepRow key={`${job.jobId}-${step.stage}`} step={step} />
+          ))}
+        </div>
+      ))}
     </div>
   );
 }
