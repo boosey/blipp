@@ -187,9 +187,20 @@ export async function handleTranscription(
             } else {
               // Standard single-file Whisper
               const audioResponse = await fetch(episode.audioUrl);
+              if (!audioResponse.ok) {
+                throw new Error(`Audio fetch failed: HTTP ${audioResponse.status} for ${episode.audioUrl.slice(0, 120)}`);
+              }
+              const finalContentType = audioResponse.headers.get("content-type")?.split(";")[0].trim() || null;
+              if (finalContentType && !finalContentType.startsWith("audio/") && finalContentType !== "application/octet-stream") {
+                throw new Error(`Audio URL returned non-audio content (${finalContentType}, ${audioResponse.status}). The episode audio may be unavailable.`);
+              }
               const audioBlob = await audioResponse.blob();
-              const ext = extFromContentType(contentType, episode.audioUrl);
-              const file = new File([audioBlob], `audio.${ext}`, { type: audioBlob.type || "audio/mpeg" });
+              if (audioBlob.size < 10_000) {
+                throw new Error(`Audio file too small (${audioBlob.size} bytes) — likely an error page, not audio`);
+              }
+              const ext = extFromContentType(finalContentType, episode.audioUrl);
+              const mimeType = finalContentType && finalContentType.startsWith("audio/") ? finalContentType : `audio/${ext === "m4a" ? "mp4" : ext}`;
+              const file = new File([audioBlob], `audio.${ext}`, { type: mimeType });
               const transcription = await openai.audio.transcriptions.create({
                 model: sttModel,
                 file,
