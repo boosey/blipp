@@ -135,6 +135,31 @@ describe("generateNarrative", () => {
     const call = client.messages.create.mock.calls[0][0];
     expect(call.messages[0].content).toContain("AI will transform healthcare");
   });
+
+  it("should use excerpts-aware prompt when claims have excerpt field", async () => {
+    const claimsWithExcerpts: Claim[] = [
+      { claim: "AI transforms healthcare", speaker: "Dr. Smith", importance: 9, novelty: 7, excerpt: "I believe AI will completely transform how we deliver healthcare services." },
+    ];
+    const client = createMockAnthropicClient("narrative text");
+    await generateNarrative(client, claimsWithExcerpts, 3);
+
+    const call = client.messages.create.mock.calls[0][0];
+    expect(call.messages[0].content).toContain("CLAIMS AND EXCERPTS");
+    expect(call.messages[0].content).toContain("EXCERPT text for accurate detail");
+    expect(call.max_tokens).toBe(8192);
+  });
+
+  it("should use legacy prompt when claims lack excerpt field", async () => {
+    const legacyClaims = [
+      { claim: "AI transforms healthcare", speaker: "Dr. Smith", importance: 9, novelty: 7 },
+    ] as Claim[];
+    const client = createMockAnthropicClient("narrative text");
+    await generateNarrative(client, legacyClaims, 3);
+
+    const call = client.messages.create.mock.calls[0][0];
+    expect(call.messages[0].content).toContain("CLAIMS:");
+    expect(call.messages[0].content).not.toContain("CLAIMS AND EXCERPTS");
+  });
 });
 
 describe("selectClaimsForDuration", () => {

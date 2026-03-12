@@ -124,14 +124,26 @@ export async function generateNarrative(
   model: string = "claude-sonnet-4-20250514"
 ): Promise<{ narrative: string; usage: AiUsage }> {
   const targetWords = Math.round(durationMinutes * WORDS_PER_MINUTE);
+  const hasExcerpts = claims.length > 0 && "excerpt" in claims[0];
 
-  const response = await client.messages.create({
-    model,
-    max_tokens: 4096,
-    messages: [
-      {
-        role: "user",
-        content: `You are a podcast script writer. Write a spoken narrative summarizing these claims for a daily briefing podcast segment.
+  const prompt = hasExcerpts
+    ? `You are a podcast script writer. Write a spoken narrative summarizing the following claims and their source excerpts for a daily briefing podcast segment.
+
+TARGET: approximately ${targetWords} words (${durationMinutes} minutes at ${WORDS_PER_MINUTE} wpm).
+
+Rules:
+- Write in a conversational, engaging tone suitable for audio
+- Cover claims in rough order of importance, but group related topics
+- Use the EXCERPT text for accurate detail and context — do NOT invent facts beyond what the excerpts contain
+- Use natural transitions between topics
+- For shorter briefings, focus only on the highest-impact claims
+- For longer briefings, include supporting context and nuance from excerpts
+- Do NOT include stage directions, speaker labels, or markdown
+- Output ONLY the narrative text
+
+CLAIMS AND EXCERPTS:
+${JSON.stringify(claims, null, 2)}`
+    : `You are a podcast script writer. Write a spoken narrative summarizing these claims for a daily briefing podcast segment.
 
 TARGET: approximately ${targetWords} words (${durationMinutes} minutes at ${WORDS_PER_MINUTE} wpm).
 
@@ -143,9 +155,12 @@ Rules:
 - Output ONLY the narrative text
 
 CLAIMS:
-${JSON.stringify(claims, null, 2)}`,
-      },
-    ],
+${JSON.stringify(claims, null, 2)}`;
+
+  const response = await client.messages.create({
+    model,
+    max_tokens: 8192,
+    messages: [{ role: "user", content: prompt }],
   });
 
   const narrative =
