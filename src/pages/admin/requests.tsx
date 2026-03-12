@@ -339,6 +339,10 @@ function StepWorkProductPanel({ wp }: { wp: WorkProductSummary }) {
         <div className="px-2.5 py-2 text-[10px] text-[#9CA3AF] italic">
           {preview?.message ?? "No content available"}
         </div>
+      ) : preview.contentType === "json" && wp.type === "CLAIMS" ? (
+        <div className="max-h-56 overflow-y-auto">
+          <ClaimsTable content={preview.content!} />
+        </div>
       ) : preview.contentType === "json" ? (
         <div className="max-h-56 overflow-y-auto">
           <pre className="px-2.5 py-2 text-[10px] font-mono text-[#F9FAFB]/80 whitespace-pre-wrap break-all leading-relaxed">
@@ -369,6 +373,66 @@ function StepWorkProductPanel({ wp }: { wp: WorkProductSummary }) {
         </div>
       )}
     </div>
+  );
+}
+
+function ScoreBar({ score, color }: { score: number; color: string }) {
+  return (
+    <div className="flex gap-[1.5px]">
+      {Array.from({ length: 10 }, (_, i) => (
+        <div
+          key={i}
+          className="w-[5px] h-3 rounded-[1px]"
+          style={{ background: i < score ? color : "rgba(255,255,255,0.08)" }}
+        />
+      ))}
+    </div>
+  );
+}
+
+interface ClaimRow {
+  claim: string;
+  speaker: string;
+  importance: number;
+  novelty: number;
+}
+
+function ClaimsTable({ content }: { content: string }) {
+  let claims: ClaimRow[];
+  try {
+    claims = JSON.parse(content);
+    if (!Array.isArray(claims)) return null;
+  } catch {
+    return null;
+  }
+
+  return (
+    <table className="w-full text-[10px] border-collapse">
+      <thead>
+        <tr className="border-b border-white/15">
+          <th className="text-left px-2.5 py-1.5 text-[9px] text-[#6B7280] uppercase tracking-wider font-medium">Claim</th>
+          <th className="text-left px-2 py-1.5 text-[9px] text-[#6B7280] uppercase tracking-wider font-medium w-20">Speaker</th>
+          <th className="text-center px-2 py-1.5 text-[9px] text-[#6B7280] uppercase tracking-wider font-medium w-[72px]">Importance</th>
+          <th className="text-center px-2 py-1.5 text-[9px] text-[#6B7280] uppercase tracking-wider font-medium w-[72px]">Novelty</th>
+        </tr>
+      </thead>
+      <tbody>
+        {claims.map((c, i) => (
+          <tr key={i} className="border-b border-white/5">
+            <td className="px-2.5 py-2 text-[#F9FAFB] leading-relaxed break-words">{c.claim}</td>
+            <td className="px-2 py-2 align-top">
+              <span className="text-[9px] bg-[#1E3A5F] text-[#60A5FA] px-1.5 py-0.5 rounded-full whitespace-nowrap">{c.speaker}</span>
+            </td>
+            <td className="px-2 py-2 align-top">
+              <ScoreBar score={c.importance} color="#22C55E" />
+            </td>
+            <td className="px-2 py-2 align-top">
+              <ScoreBar score={c.novelty} color="#F59E0B" />
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
