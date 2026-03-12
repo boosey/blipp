@@ -18,17 +18,11 @@ sttBenchmarkRoutes.get("/eligible-episodes", async (c) => {
   const { page, pageSize, skip } = parsePagination(c);
   const search = c.req.query("search");
 
+  // Only episodes with official/external transcripts (transcriptUrl from RSS feed).
+  // Blipp-generated distillation transcripts are Whisper output and can't serve
+  // as ground truth for WER comparison.
   const where: Record<string, unknown> = {
-    OR: [
-      { transcriptUrl: { not: null } },
-      {
-        distillation: {
-          status: {
-            in: ["TRANSCRIPT_READY", "EXTRACTING_CLAIMS", "COMPLETED"],
-          },
-        },
-      },
-    ],
+    transcriptUrl: { not: null },
   };
 
   // Layer search filter on top

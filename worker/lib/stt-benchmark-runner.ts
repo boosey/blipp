@@ -252,28 +252,27 @@ async function resolveAudioInput(result: any, env: Env): Promise<AudioInput> {
 // ---------------------------------------------------------------------------
 
 /**
- * Get the reference transcript for WER comparison.
- * Prefers the episode's distillation transcript, falls back to fetching transcriptUrl.
+ * Get the official/external reference transcript for WER comparison.
+ * Only uses transcriptUrl (from the podcast's RSS feed) — never the Blipp
+ * distillation transcript, which is itself Whisper output and would make
+ * the WER comparison meaningless.
  */
 async function getReferenceTranscript(
   episode: any,
-  env: Env,
+  _env: Env,
 ): Promise<string> {
-  // Prefer distillation transcript (already stored in DB)
-  if (episode.distillation?.transcript) {
-    return episode.distillation.transcript;
-  }
-
-  // Fall back to fetching from transcriptUrl
   if (episode.transcriptUrl) {
     const resp = await fetch(episode.transcriptUrl);
     if (resp.ok) {
       return resp.text();
     }
+    throw new Error(
+      `Failed to fetch reference transcript from ${episode.transcriptUrl}: ${resp.status}`,
+    );
   }
 
   throw new Error(
-    `No reference transcript available for episode ${episode.id}`,
+    `No official reference transcript available for episode ${episode.id}`,
   );
 }
 
