@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { createPrismaClient } from "../lib/db";
 import { createPipelineLogger } from "../lib/logger";
 import { checkStageEnabled } from "../lib/queue-helpers";
-import { generateNarrative } from "../lib/distillation";
+import { generateNarrative, selectClaimsForDuration } from "../lib/distillation";
 import { getModelConfig } from "../lib/ai-models";
 import { wpKey, putWorkProduct } from "../lib/work-products";
 import { writeEvent } from "../lib/pipeline-events";
@@ -113,13 +113,19 @@ export async function handleNarrativeGeneration(
           throw new Error("No completed distillation with claims found");
         }
 
-        const claims = distillation.claimsJson as any[];
+        const allClaims = distillation.claimsJson as any[];
+
+        // Select claims for this duration tier (filters by importance/novelty composite score)
+        const hasExcerpts = allClaims.length > 0 && "excerpt" in allClaims[0];
+        const claims = hasExcerpts
+          ? selectClaimsForDuration(allClaims, durationTier)
+          : allClaims;
 
         // Read model config
         const { model: narrativeModel } = await getModelConfig(prisma, "narrative");
 
         // Generate narrative from claims (Pass 2)
-        await writeEvent(prisma, step.id, "INFO", `Generating ${durationTier}-minute narrative from ${claims.length} claims via ${narrativeModel}`);
+        await writeEvent(prisma, step.id, "INFO", `Generating ${durationTier}-minute narrative from ${claims.length}/${allClaims.length} claims via ${narrativeModel}`);
         const narrativeTimer = log.timer("narrative_generation");
         const { narrative, usage: narrativeUsage } = await generateNarrative(
           anthropic,

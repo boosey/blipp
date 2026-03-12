@@ -91,7 +91,10 @@ export async function handleDistillation(
                 episodeId,
                 r2Key,
                 sizeBytes: new TextEncoder().encode(claimsStr).byteLength,
-                metadata: { claimCount: Array.isArray(existing.claimsJson) ? (existing.claimsJson as any[]).length : 0 },
+                metadata: {
+                  claimCount: Array.isArray(existing.claimsJson) ? (existing.claimsJson as any[]).length : 0,
+                  hasExcerpts: Array.isArray(existing.claimsJson) && (existing.claimsJson as any[]).length > 0 && "excerpt" in (existing.claimsJson as any[])[0],
+                },
               },
             });
           }
@@ -163,7 +166,10 @@ export async function handleDistillation(
             episodeId,
             r2Key,
             sizeBytes: new TextEncoder().encode(claimsJson).byteLength,
-            metadata: { claimCount: claims.length },
+            metadata: {
+              claimCount: claims.length,
+              hasExcerpts: claims.length > 0 && "excerpt" in claims[0],
+            },
           },
         });
 

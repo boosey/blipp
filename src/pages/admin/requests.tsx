@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   Clock,
   Loader2,
@@ -399,9 +399,11 @@ interface ClaimRow {
   speaker: string;
   importance: number;
   novelty: number;
+  excerpt?: string;
 }
 
 function ClaimsTable({ content }: { content: string }) {
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
   let claims: ClaimRow[];
   try {
     claims = JSON.parse(content);
@@ -410,10 +412,22 @@ function ClaimsTable({ content }: { content: string }) {
     return null;
   }
 
+  const hasExcerpts = claims.some((c) => c.excerpt);
+
+  const toggleRow = (i: number) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
+      return next;
+    });
+  };
+
   return (
     <table className="w-full text-[10px] border-collapse">
       <thead>
         <tr className="border-b border-white/15">
+          {hasExcerpts && <th className="w-5" />}
           <th className="text-left px-2.5 py-1.5 text-[9px] text-[#6B7280] uppercase tracking-wider font-medium">Claim</th>
           <th className="text-left px-2 py-1.5 text-[9px] text-[#6B7280] uppercase tracking-wider font-medium w-20">Speaker</th>
           <th className="text-center px-2 py-1.5 text-[9px] text-[#6B7280] uppercase tracking-wider font-medium w-[72px]">Importance</th>
@@ -421,20 +435,43 @@ function ClaimsTable({ content }: { content: string }) {
         </tr>
       </thead>
       <tbody>
-        {claims.map((c, i) => (
-          <tr key={i} className="border-b border-white/5">
-            <td className="px-2.5 py-2 text-[#F9FAFB] leading-relaxed break-words">{c.claim}</td>
-            <td className="px-2 py-2 align-top">
-              <span className="text-[9px] bg-[#1E3A5F] text-[#60A5FA] px-1.5 py-0.5 rounded-full whitespace-nowrap">{c.speaker}</span>
-            </td>
-            <td className="px-2 py-2 align-top">
-              <ScoreBar score={c.importance} color="#22C55E" />
-            </td>
-            <td className="px-2 py-2 align-top">
-              <ScoreBar score={c.novelty} color="#F59E0B" />
-            </td>
-          </tr>
-        ))}
+        {claims.map((c, i) => {
+          const isOpen = expanded.has(i);
+          const colSpan = hasExcerpts ? 5 : 4;
+          return (
+            <React.Fragment key={i}>
+              <tr
+                className={`border-b border-white/5 ${c.excerpt ? "cursor-pointer hover:bg-white/[0.03]" : ""}`}
+                onClick={() => c.excerpt && toggleRow(i)}
+              >
+                {hasExcerpts && (
+                  <td className="pl-2 py-2 align-top w-5">
+                    {c.excerpt && (isOpen ? <ChevronDown className="w-3 h-3 text-[#6B7280]" /> : <ChevronRight className="w-3 h-3 text-[#6B7280]" />)}
+                  </td>
+                )}
+                <td className="px-2.5 py-2 text-[#F9FAFB] leading-relaxed break-words">{c.claim}</td>
+                <td className="px-2 py-2 align-top">
+                  <span className="text-[9px] bg-[#1E3A5F] text-[#60A5FA] px-1.5 py-0.5 rounded-full whitespace-nowrap">{c.speaker}</span>
+                </td>
+                <td className="px-2 py-2 align-top">
+                  <ScoreBar score={c.importance} color="#22C55E" />
+                </td>
+                <td className="px-2 py-2 align-top">
+                  <ScoreBar score={c.novelty} color="#F59E0B" />
+                </td>
+              </tr>
+              {isOpen && c.excerpt && (
+                <tr className="border-b border-white/5">
+                  <td colSpan={colSpan} className="px-4 py-2.5 bg-white/[0.02]">
+                    <div className="text-[10px] text-[#9CA3AF] leading-relaxed italic border-l-2 border-[#8B5CF6]/40 pl-3">
+                      {c.excerpt}
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </React.Fragment>
+          );
+        })}
       </tbody>
     </table>
   );

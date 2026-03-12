@@ -22,7 +22,7 @@ vi.mock("../../lib/logger", () => ({
 
 vi.mock("../../lib/distillation", () => ({
   extractClaims: vi.fn().mockResolvedValue({
-    claims: [{ claim: "Test claim", speaker: "Host", importance: 9, novelty: 7 }],
+    claims: [{ claim: "Test claim", speaker: "Host", importance: 9, novelty: 7, excerpt: "Verbatim excerpt from the transcript." }],
     usage: { model: "test-model", inputTokens: 100, outputTokens: 50, cost: null },
   }),
 }));
@@ -60,7 +60,7 @@ beforeEach(() => {
   (getConfig as any).mockResolvedValue(true);
   (getModelConfig as any).mockResolvedValue({ provider: "anthropic", model: "claude-sonnet-4-20250514" });
   (extractClaims as any).mockResolvedValue({
-    claims: [{ claim: "Test claim", speaker: "Host", importance: 9, novelty: 7 }],
+    claims: [{ claim: "Test claim", speaker: "Host", importance: 9, novelty: 7, excerpt: "Verbatim excerpt from the transcript." }],
     usage: { model: "test-model", inputTokens: 100, outputTokens: 50, cost: null },
   });
   mockLogger.info.mockReset();
@@ -127,7 +127,7 @@ describe("handleDistillation", () => {
         type: "CLAIMS",
         episodeId: "ep-1",
         r2Key: "wp/claims/ep-1.json",
-        metadata: { claimCount: 1 },
+        metadata: { claimCount: 1, hasExcerpts: true },
       }),
     });
 
