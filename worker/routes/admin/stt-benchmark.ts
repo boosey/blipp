@@ -69,6 +69,82 @@ sttBenchmarkRoutes.get("/eligible-episodes", async (c) => {
 });
 
 // ---------------------------------------------------------------------------
+// GET /episode-audio/:id — return audio URL for client-side processing
+// ---------------------------------------------------------------------------
+sttBenchmarkRoutes.get("/episode-audio/:id", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const id = c.req.param("id");
+
+  const episode = await prisma.episode.findUnique({
+    where: { id },
+    select: { audioUrl: true },
+  });
+
+  if (!episode) {
+    return c.json({ error: "Episode not found" }, 404);
+  }
+
+  return c.json({ data: { audioUrl: episode.audioUrl } });
+});
+
+// ---------------------------------------------------------------------------
+// GET /results/:resultId/transcript — fetch STT output transcript from R2
+// ---------------------------------------------------------------------------
+sttBenchmarkRoutes.get("/results/:resultId/transcript", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const resultId = c.req.param("resultId");
+
+  const result = await prisma.sttBenchmarkResult.findUnique({
+    where: { id: resultId },
+  });
+
+  if (!result) {
+    return c.json({ error: "Result not found" }, 404);
+  }
+
+  if (!result.r2TranscriptKey) {
+    return c.json({ error: "No transcript available" }, 404);
+  }
+
+  const obj = await c.env.R2.get(result.r2TranscriptKey);
+  if (!obj) {
+    return c.json({ error: "Transcript not found in storage" }, 404);
+  }
+
+  const text = await obj.text();
+  return c.json({ data: { transcript: text } });
+});
+
+// ---------------------------------------------------------------------------
+// GET /episodes/:episodeId/reference-transcript — fetch official transcript
+// ---------------------------------------------------------------------------
+sttBenchmarkRoutes.get("/episodes/:episodeId/reference-transcript", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const episodeId = c.req.param("episodeId");
+
+  const episode = await prisma.episode.findUnique({
+    where: { id: episodeId },
+    select: { transcriptUrl: true, durationSeconds: true },
+  });
+
+  if (!episode) {
+    return c.json({ error: "Episode not found" }, 404);
+  }
+
+  if (!episode.transcriptUrl) {
+    return c.json({ error: "No official transcript available" }, 404);
+  }
+
+  const resp = await fetch(episode.transcriptUrl);
+  if (!resp.ok) {
+    return c.json({ error: `Failed to fetch transcript: ${resp.status}` }, 502);
+  }
+
+  const text = await resp.text();
+  return c.json({ data: { transcript: text } });
+});
+
+// ---------------------------------------------------------------------------
 // POST /experiments — create a new benchmark experiment
 // ---------------------------------------------------------------------------
 sttBenchmarkRoutes.post("/experiments", async (c) => {

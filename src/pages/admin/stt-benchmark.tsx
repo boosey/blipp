@@ -130,11 +130,12 @@ async function processAudio(audioUrl: string, speed: number): Promise<Blob> {
   source.start();
 
   const rendered = await offlineCtx.startRendering();
-  return encodeToMp3(rendered);
+  return await encodeToMp3(rendered);
 }
 
-function encodeToMp3(audioBuffer: AudioBuffer): Blob {
-  const { Mp3Encoder } = require("lamejs") as typeof import("lamejs");
+async function encodeToMp3(audioBuffer: AudioBuffer): Promise<Blob> {
+  const lamejs = await import("lamejs");
+  const Mp3Encoder = lamejs.Mp3Encoder;
   const sampleRate = audioBuffer.sampleRate;
   const encoder = new Mp3Encoder(1, sampleRate, 128); // mono, 128kbps
 
@@ -1497,6 +1498,28 @@ function ResultsDashboard({
                           ))}
                       </div>
                     )}
+
+                    {/* Transcripts */}
+                    {epResults.some((r) => r.status === "COMPLETED") && (
+                      <div className="mt-3 border-t border-white/5 pt-3">
+                        <span className="text-[10px] font-medium text-[#9CA3AF] uppercase tracking-wider">
+                          Transcripts
+                        </span>
+                        <Accordion type="multiple" className="mt-1">
+                          <ReferenceTranscriptViewer episodeId={episodeId} />
+                          {epResults
+                            .filter((r) => r.status === "COMPLETED" && r.r2TranscriptKey)
+                            .map((r) => (
+                              <TranscriptViewer
+                                key={r.id}
+                                resultId={r.id}
+                                model={r.model}
+                                speed={r.speed}
+                              />
+                            ))}
+                        </Accordion>
+                      </div>
+                    )}
                   </AccordionContent>
                 </AccordionItem>
               );
@@ -1521,6 +1544,114 @@ function ResultsDashboard({
 }
 
 // ── Result status badge ──
+
+// ── Transcript Viewer (lazy-loaded per result) ──
+
+function TranscriptViewer({
+  resultId,
+  model,
+  speed,
+}: {
+  resultId: string;
+  model: string;
+  speed: number;
+}) {
+  const apiFetch = useAdminFetch();
+  const [transcript, setTranscript] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    if (transcript !== null) return; // already loaded
+    setLoading(true);
+    try {
+      const data = await apiFetch<{ data: { transcript: string } }>(
+        `/stt-benchmark/results/${resultId}/transcript`
+      );
+      setTranscript(data.data.transcript);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load");
+    } finally {
+      setLoading(false);
+    }
+  }, [apiFetch, resultId, transcript]);
+
+  return (
+    <AccordionItem value={`transcript-${resultId}`} className="border-white/5">
+      <AccordionTrigger
+        className="text-[#9CA3AF] text-[10px] hover:no-underline py-1"
+        onClick={load}
+      >
+        <span className="font-mono">{model}</span> @ {speed}x transcript
+      </AccordionTrigger>
+      <AccordionContent>
+        {loading && (
+          <div className="text-[#9CA3AF] text-xs flex items-center gap-2 py-2">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            Loading transcript...
+          </div>
+        )}
+        {error && (
+          <div className="text-[#EF4444] text-xs py-2">{error}</div>
+        )}
+        {transcript !== null && (
+          <pre className="text-[#D1D5DB] text-[11px] leading-relaxed whitespace-pre-wrap break-words bg-[#0A1628] rounded p-3 max-h-64 overflow-auto font-sans">
+            {transcript}
+          </pre>
+        )}
+      </AccordionContent>
+    </AccordionItem>
+  );
+}
+
+function ReferenceTranscriptViewer({ episodeId }: { episodeId: string }) {
+  const apiFetch = useAdminFetch();
+  const [transcript, setTranscript] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    if (transcript !== null) return;
+    setLoading(true);
+    try {
+      const data = await apiFetch<{ data: { transcript: string } }>(
+        `/stt-benchmark/episodes/${episodeId}/reference-transcript`
+      );
+      setTranscript(data.data.transcript);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load");
+    } finally {
+      setLoading(false);
+    }
+  }, [apiFetch, episodeId, transcript]);
+
+  return (
+    <AccordionItem value={`ref-${episodeId}`} className="border-white/5">
+      <AccordionTrigger
+        className="text-[#10B981] text-[10px] hover:no-underline py-1"
+        onClick={load}
+      >
+        Official Reference Transcript
+      </AccordionTrigger>
+      <AccordionContent>
+        {loading && (
+          <div className="text-[#9CA3AF] text-xs flex items-center gap-2 py-2">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            Loading transcript...
+          </div>
+        )}
+        {error && (
+          <div className="text-[#EF4444] text-xs py-2">{error}</div>
+        )}
+        {transcript !== null && (
+          <pre className="text-[#D1D5DB] text-[11px] leading-relaxed whitespace-pre-wrap break-words bg-[#0A1628] rounded p-3 max-h-64 overflow-auto font-sans">
+            {transcript}
+          </pre>
+        )}
+      </AccordionContent>
+    </AccordionItem>
+  );
+}
 
 function ResultStatusBadge({
   status,

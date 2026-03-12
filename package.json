@@ -12,6 +12,8 @@
     "kill:port": "npx kill-port 5174",
     "clean:pipeline": "node scripts/clean-pipeline.mjs",
     "clean:pipeline:dry": "node scripts/clean-pipeline.mjs --dry-run",
+    "clean:stt-benchmark": "node scripts/clean-stt-benchmark.mjs",
+    "clean:stt-benchmark:dry": "node scripts/clean-stt-benchmark.mjs --dry-run",
     "db:check": "npx tsx prisma/check-db.ts",
     "db:push": "npx prisma db push",
     "db:studio": "npx prisma studio"
