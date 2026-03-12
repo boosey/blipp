@@ -19,14 +19,15 @@ export interface Claim {
 }
 
 /**
- * Pass 1: Extracts the top 10 scored claims from a podcast transcript.
+ * Pass 1: Extracts all significant claims from a podcast transcript.
  *
  * Sends the full transcript to Claude and asks for structured JSON output
- * with claims ranked by importance and novelty.
+ * with claims including verbatim excerpts, ranked by importance and novelty.
+ * Claim count varies based on content density (typically 10-40).
  *
  * @param client - Anthropic SDK client instance
  * @param transcript - Full episode transcript text
- * @returns Array of up to 10 extracted claims, sorted by importance
+ * @returns Array of extracted claims with excerpts, sorted by importance
  * @throws If the Claude API call fails or returns unparseable JSON
  */
 export async function extractClaims(
@@ -109,10 +110,12 @@ export function selectClaimsForDuration(
  * Pass 2: Generates a spoken narrative from extracted claims at a target duration.
  *
  * Calculates a target word count from the desired duration in minutes and
- * instructs Claude to produce a podcast-ready script hitting that count.
+ * instructs Claude to produce a podcast-ready script. When claims include
+ * verbatim excerpts, uses an excerpts-aware prompt for higher quality
+ * output. Falls back to a simpler prompt for legacy claims without excerpts.
  *
  * @param client - Anthropic SDK client instance
- * @param claims - Array of claims from Pass 1
+ * @param claims - Array of claims (pre-filtered by selectClaimsForDuration)
  * @param durationMinutes - Target segment length in minutes
  * @returns Narrative text suitable for TTS conversion
  * @throws If the Claude API call fails
