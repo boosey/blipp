@@ -220,13 +220,35 @@ export interface AdminEpisode {
   updatedAt: string;
 }
 
+export interface AdminClipFeedItem {
+  id: string;
+  userId: string;
+  source: string;
+  status: string;
+  requestId: string | null;
+  createdAt: string;
+}
+
+export interface AdminClipSummary {
+  id: string;
+  durationTier: number;
+  actualSeconds: number | null;
+  status: string;
+  audioUrl: string | null;
+  feedItems: AdminClipFeedItem[];
+}
+
 export interface AdminEpisodeSummary {
   id: string;
   title: string;
+  audioUrl: string | null;
   publishedAt: string;
-  durationSeconds?: number;
+  durationSeconds: number | null;
+  transcriptUrl: string | null;
   pipelineStatus: EpisodePipelineStatus;
   clipCount: number;
+  totalCost: number | null;
+  clips: AdminClipSummary[];
 }
 
 export type EpisodePipelineStatus =
@@ -236,25 +258,6 @@ export type EpisodePipelineStatus =
   | "generating_clips"
   | "completed"
   | "failed";
-
-export interface EpisodePipelineTrace {
-  episodeId: string;
-  stages: EpisodeStageTrace[];
-}
-
-export interface EpisodeStageTrace {
-  stage: number;
-  name: string;
-  status: "completed" | "in_progress" | "pending" | "failed" | "skipped";
-  startedAt?: string;
-  completedAt?: string;
-  durationMs?: number;
-  cost?: number;
-  model?: string;
-  inputTokens?: number;
-  outputTokens?: number;
-  output?: unknown;
-}
 
 // ── Briefings (per-user wrapper around shared Clip) ──
 
