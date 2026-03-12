@@ -548,6 +548,7 @@ export interface StepProgress {
   outputTokens?: number;
   errorMessage?: string;
   workProducts?: WorkProductSummary[];
+  events?: PipelineEventSummary[];
 }
 
 // ── Work Products ──
@@ -565,5 +566,17 @@ export interface WorkProductSummary {
   r2Key: string;
   sizeBytes?: number;
   metadata?: Record<string, unknown>;
+  createdAt: string;
+}
+
+// ── Pipeline Events ──
+
+export type PipelineEventLevel = "DEBUG" | "INFO" | "WARN" | "ERROR";
+
+export interface PipelineEventSummary {
+  id: string;
+  level: PipelineEventLevel;
+  message: string;
+  data?: Record<string, unknown>;
   createdAt: string;
 }
