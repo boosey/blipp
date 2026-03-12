@@ -569,7 +569,38 @@ Response:
 {
   "data": {
     "...podcast",
-    "episodes": [...],
+    "episodes": [
+      {
+        "id": "string",
+        "title": "string",
+        "audioUrl": "string | null",
+        "publishedAt": "ISO string",
+        "durationSeconds": "number | null",
+        "transcriptUrl": "string | null",
+        "pipelineStatus": "pending | transcribing | distilling | generating_clips | completed | failed",
+        "clipCount": 0,
+        "totalCost": "number | null",
+        "clips": [
+          {
+            "id": "string",
+            "durationTier": 5,
+            "actualSeconds": 295,
+            "status": "COMPLETED",
+            "audioUrl": "string | null",
+            "feedItems": [
+              {
+                "id": "string",
+                "userId": "string",
+                "source": "SUBSCRIPTION | ON_DEMAND",
+                "status": "string",
+                "requestId": "string | null",
+                "createdAt": "ISO string"
+              }
+            ]
+          }
+        ]
+      }
+    ],
     "recentPipelineActivity": [...]
   }
 }

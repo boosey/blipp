@@ -33,21 +33,17 @@ Pipeline job browser with filters (stage, status, requestId, search). Job detail
 
 ### 3. Catalog (`/admin/catalog`)
 
-Podcast management: searchable/filterable/sortable list with feed health monitoring. Add, edit, and archive podcasts. Per-podcast episode list with pipeline status. Trigger feed refresh per podcast.
+Podcast management: searchable/filterable/sortable list with feed health monitoring. Add, edit, and archive podcasts. Clicking a podcast opens a wide detail modal with podcast info, stats, and action buttons. Episodes are shown in an accordion list; expanding an episode reveals Overview (metadata, cost, transcript/audio links) and Clips tabs. The Clips tab shows each clip with duration tier, status, inline audio player, and expandable feed items with request traceability. Trigger feed refresh per podcast.
 
-### 4. Episodes (`/admin/episodes`)
-
-Episode browser with search, filter, and sort. Pipeline status per episode. Episode detail view showing distillation, clips, briefing appearances, and full pipeline trace. Reprocess trigger.
-
-### 5. Briefings (`/admin/briefings`)
+### 4. Briefings (`/admin/briefings`)
 
 Briefing list with filters (user, status, sort). Each briefing card shows user info, clip status, duration tier, actual seconds, podcast/episode info, and feed item count. Briefing detail shows clip metadata (podcast image, episode/podcast title, duration stats), audio link, ad audio section (if present), and linked feed items table.
 
-### 6. Users (`/admin/users`)
+### 5. Users (`/admin/users`)
 
 User management with segments: all, power users, at risk, trial ending, never active. User list with badges. User detail showing subscriptions and recent feed items (activity tab). Admin toggle and tier management.
 
-### 7. Analytics (`/admin/analytics`)
+### 6. Analytics (`/admin/analytics`)
 
 Four analytics views:
 
@@ -56,11 +52,11 @@ Four analytics views:
 - **Quality** — Time-fitting accuracy, claim coverage, transcription coverage, daily trend
 - **Pipeline** — Throughput, success rates, processing speed, bottlenecks
 
-### 8. Configuration (`/admin/configuration`)
+### 7. Configuration (`/admin/configuration`)
 
 Runtime config editor grouped by prefix. Pipeline controls panel. Duration tier config. Subscription tier management. Feature flags with rollout percentage and tier-based controls.
 
-### 9. Requests (`/admin/requests`)
+### 8. Requests (`/admin/requests`)
 
 BriefingRequest browser with status filter. Request detail with per-job, per-step progress tree including WorkProduct links. Work product preview (text/JSON content, audio metadata). Test briefing creation dialog with episode picker.
 
@@ -84,7 +80,7 @@ All routes are mounted at `/api/admin/`. Backend route files live in `worker/rou
 
 | Category | Path |
 |----------|------|
-| Pages | `src/pages/admin/*.tsx` (9 files) |
+| Pages | `src/pages/admin/*.tsx` (8 files) |
 | Layout | `src/layouts/admin-layout.tsx` |
 | Guard | `src/components/admin-guard.tsx` |
 | API hook | `src/lib/admin-api.ts` |

@@ -277,7 +277,7 @@ Route handlers access the database with `const prisma = c.get("prisma") as any;`
 
 ### Admin Routes (`/api/admin`)
 
-9 route modules: dashboard, podcasts, pipeline, config, users, analytics, briefings, episodes, requests.
+8 route modules: dashboard, podcasts, pipeline, config, users, analytics, briefings, requests.
 
 Notable admin endpoints:
 - `POST /api/admin/requests/test-briefing` -- Trigger a test briefing with specific podcast/episode selection
@@ -296,7 +296,7 @@ The frontend is built with Vite 7 using `@cloudflare/vite-plugin` in SPA mode. T
 |---------|-------|--------|
 | Public | Landing (`/`), Pricing (`/pricing`) | Minimal |
 | User | Home (`/home`), Discover (`/discover`), Podcast Detail (`/discover/:podcastId`), Library (`/library`), Player (`/play/:feedItemId`), Settings (`/settings`) | `MobileLayout` |
-| Admin | 9 pages (Command Center, Pipeline, Catalog, Episodes, Briefings, Users, Analytics, Configuration, Requests) | `AdminLayout` (dark sidebar) |
+| Admin | 8 pages (Command Center, Pipeline, Catalog, Briefings, Users, Analytics, Configuration, Requests) | `AdminLayout` (dark sidebar) |
 
 Redirects: `/dashboard` redirects to `/home`, `/billing` redirects to `/settings`, `/briefing/*` redirects to `/home`.
 
@@ -402,7 +402,7 @@ blipp/
       library.tsx         # Library tab - subscriptions & history
       briefing-player.tsx # Audio playback for briefings
       settings.tsx        # Settings tab - account & billing
-      admin/              # 9 admin pages
+      admin/              # 8 admin pages
     layouts/
       mobile-layout.tsx   # Mobile-first layout with bottom nav
       admin-layout.tsx    # Admin dark sidebar layout

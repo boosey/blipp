@@ -119,7 +119,7 @@ describe("Catalog", () => {
     });
   });
 
-  it("detail panel Refresh calls POST /podcasts/:id/refresh on click", async () => {
+  it("detail modal Refresh calls POST /podcasts/:id/refresh on click", async () => {
     const user = userEvent.setup();
 
     // Use a stable getToken mock to prevent re-render loops
@@ -148,7 +148,7 @@ describe("Catalog", () => {
 
     mockFetch.mockImplementation((url: string, options?: RequestInit) => {
       if (options?.method === "POST") {
-        return Promise.resolve(mockJsonResponse({ ok: true }));
+        return Promise.resolve(mockJsonResponse({ data: podcastDetail }));
       }
       if (url.includes("/podcasts/stats")) {
         return Promise.resolve(mockJsonResponse({
@@ -197,16 +197,16 @@ describe("Catalog", () => {
       expect(screen.getByText("Test Podcast")).toBeInTheDocument();
     });
 
-    // Click podcast card to open detail panel
+    // Click podcast card to open detail modal
     const podcastCards = screen.getAllByText("Test Podcast");
     await user.click(podcastCards[0]);
 
-    // Wait for detail panel to render by looking for the feed URL (unique to detail)
+    // Wait for detail modal to render by looking for the feed URL (rendered in Dialog portal)
     await waitFor(() => {
       expect(screen.getByText(/example\.com\/feed\.xml/)).toBeInTheDocument();
     });
 
-    // Find and click the Refresh button in the detail panel footer (not "Refresh Now" from FeedRefreshCard)
+    // Find and click the Refresh button in the detail modal (not "Refresh Now" from FeedRefreshCard)
     const refreshBtn = screen.getAllByRole("button").find(
       (btn) => btn.textContent === "Refresh" || btn.textContent === "Refreshing..."
     );
