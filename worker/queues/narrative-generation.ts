@@ -5,6 +5,7 @@ import { checkStageEnabled } from "../lib/queue-helpers";
 import { generateNarrative } from "../lib/distillation";
 import { getModelConfig } from "../lib/ai-models";
 import { wpKey, putWorkProduct } from "../lib/work-products";
+import { writeEvent } from "../lib/pipeline-events";
 import type { Env } from "../types";
 
 /** Shape of a narrative generation queue message body. */
@@ -43,6 +44,7 @@ export async function handleNarrativeGeneration(
     for (const msg of batch.messages) {
       const { jobId, episodeId, durationTier } = msg.body;
       const startTime = Date.now();
+      let stepId: string | undefined;
 
       try {
         // Load job to get requestId
@@ -65,6 +67,9 @@ export async function handleNarrativeGeneration(
             startedAt: new Date(),
           },
         });
+        stepId = step.id;
+
+        await writeEvent(prisma, step.id, "INFO", "Checking cache for existing narrative");
 
         // Cache check: if NARRATIVE WorkProduct already exists for (episodeId, durationTier), mark SKIPPED
         const existingNarrativeWp = await prisma.workProduct.findFirst({
@@ -72,6 +77,7 @@ export async function handleNarrativeGeneration(
         });
 
         if (existingNarrativeWp) {
+          await writeEvent(prisma, step.id, "INFO", "Cache hit — narrative work product exists, skipping");
           log.debug("cache_hit", { episodeId, durationTier });
 
           // Mark step SKIPPED (cached)
@@ -103,6 +109,7 @@ export async function handleNarrativeGeneration(
         });
 
         if (!distillation?.claimsJson) {
+          await writeEvent(prisma, step.id, "ERROR", "No completed distillation with claims found");
           throw new Error("No completed distillation with claims found");
         }
 
@@ -112,6 +119,7 @@ export async function handleNarrativeGeneration(
         const { model: narrativeModel } = await getModelConfig(prisma, "narrative");
 
         // Generate narrative from claims (Pass 2)
+        await writeEvent(prisma, step.id, "INFO", `Generating ${durationTier}-minute narrative from ${claims.length} claims via ${narrativeModel}`);
         const narrativeTimer = log.timer("narrative_generation");
         const { narrative, usage: narrativeUsage } = await generateNarrative(
           anthropic,
@@ -121,6 +129,8 @@ export async function handleNarrativeGeneration(
         );
         const wordCount = narrative.split(/\s+/).length;
         narrativeTimer();
+        await writeEvent(prisma, step.id, "INFO", `Narrative generated: ${wordCount} words`);
+        await writeEvent(prisma, step.id, "DEBUG", `Model: ${narrativeUsage.model}`, { inputTokens: narrativeUsage.inputTokens, outputTokens: narrativeUsage.outputTokens, cost: narrativeUsage.cost });
         log.info("narrative_generated", { episodeId, wordCount });
 
         // Store narrative WorkProduct in R2
@@ -136,6 +146,8 @@ export async function handleNarrativeGeneration(
             metadata: { wordCount },
           },
         });
+
+        await writeEvent(prisma, step.id, "INFO", "Saved narrative work product to R2", { r2Key: narrativeR2Key, wordCount });
 
         // Upsert Clip record with narrative text (status stays partial — audio gen completes it)
         await prisma.clip.upsert({
@@ -198,6 +210,8 @@ export async function handleNarrativeGeneration(
             },
           })
           .catch(() => {});
+
+        if (stepId) await writeEvent(prisma, stepId, "ERROR", `Narrative generation failed: ${errorMessage}`);
 
         msg.retry();
       }
