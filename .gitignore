@@ -8,5 +8,6 @@ dist/
 .firecrawl/
 .playwright-mcp/
 .worktrees/
+.superpowers/
 
 /src/generated/prisma
