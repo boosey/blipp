@@ -24,6 +24,7 @@ import {
   LayoutGrid,
   Activity,
   Library,
+  Play,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -50,11 +51,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { useAdminFetch } from "@/lib/admin-api";
 import { FeedRefreshCard } from "@/components/admin/feed-refresh-card";
 import type {
   AdminPodcast,
   AdminPodcastDetail,
+  AdminClipSummary,
+  AdminClipFeedItem,
   CatalogFilters,
   CatalogStats,
   FeedHealth,
@@ -427,13 +431,111 @@ function PodcastRow({
   );
 }
 
-// ── Details Panel ──
+// ── Pipeline Status Badge ──
 
-function DetailsPanel({
+function PipelineStatusBadge({ status }: { status: string }) {
+  return (
+    <Badge className={cn(
+      "text-[9px]",
+      status === "completed" ? "bg-[#10B981]/15 text-[#10B981]" :
+      status === "failed" ? "bg-[#EF4444]/15 text-[#EF4444]" :
+      "bg-[#F59E0B]/15 text-[#F59E0B]"
+    )}>
+      {status}
+    </Badge>
+  );
+}
+
+// ── Clip Row ──
+
+function ClipRow({ clip }: { clip: AdminClipSummary }) {
+  const [playing, setPlaying] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+
+  const tierLabel = `${clip.durationTier} min`;
+  const clipStatusColor =
+    clip.status === "COMPLETED" ? "#10B981" :
+    clip.status === "FAILED" ? "#EF4444" : "#F59E0B";
+
+  return (
+    <div className="border-b border-white/5 last:border-b-0">
+      <div
+        className="flex items-center gap-2 px-2 py-1.5 text-[11px] hover:bg-white/[0.03] cursor-pointer"
+        onClick={() => setExpanded(!expanded)}
+      >
+        <span className="text-[10px] font-mono tabular-nums text-[#9CA3AF] w-12">{tierLabel}</span>
+        {clip.actualSeconds != null && (
+          <span className="text-[10px] font-mono tabular-nums text-[#9CA3AF] w-10">{clip.actualSeconds}s</span>
+        )}
+        <span
+          className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-medium"
+          style={{ backgroundColor: `${clipStatusColor}15`, color: clipStatusColor }}
+        >
+          {clip.status}
+        </span>
+        <span className="flex-1" />
+        {clip.audioUrl && (
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            className="text-[#9CA3AF] hover:text-[#3B82F6]"
+            onClick={(e) => { e.stopPropagation(); setPlaying(!playing); }}
+          >
+            <Play className="h-3 w-3" />
+          </Button>
+        )}
+      </div>
+      {playing && clip.audioUrl && (
+        <div className="px-2 pb-2">
+          <audio controls src={clip.audioUrl} className="w-full h-7" />
+        </div>
+      )}
+      {expanded && clip.feedItems.length > 0 && (
+        <div className="px-2 pb-2 space-y-1">
+          {clip.feedItems.map((fi) => (
+            <div key={fi.id} className="flex items-center gap-2 text-[10px] px-2 py-1 rounded bg-white/[0.02]">
+              <span className="text-[#9CA3AF] font-mono truncate w-16" title={fi.userId}>
+                {fi.userId.slice(0, 8)}...
+              </span>
+              <span className={cn(
+                "inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-medium",
+                fi.source === "SUBSCRIPTION" ? "bg-[#3B82F6]/15 text-[#3B82F6]" : "bg-[#A855F7]/15 text-[#A855F7]"
+              )}>
+                {fi.source === "SUBSCRIPTION" ? "sub" : "demand"}
+              </span>
+              <span
+                className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-medium"
+                style={{
+                  backgroundColor: fi.status === "READY" ? "#10B98115" : "#F59E0B15",
+                  color: fi.status === "READY" ? "#10B981" : "#F59E0B",
+                }}
+              >
+                {fi.status}
+              </span>
+              <span className="text-[#9CA3AF] font-mono truncate w-14" title={fi.requestId ?? undefined}>
+                {fi.requestId ? `${fi.requestId.slice(0, 6)}...` : "\u2014"}
+              </span>
+              <span className="text-[#9CA3AF] ml-auto">{relativeTime(fi.createdAt)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {expanded && clip.feedItems.length === 0 && (
+        <div className="px-4 pb-2 text-[10px] text-[#9CA3AF]">No feed items</div>
+      )}
+    </div>
+  );
+}
+
+// ── Podcast Detail Modal ──
+
+function PodcastDetailModal({
   podcastId,
+  open,
   onClose,
 }: {
   podcastId: string | null;
+  open: boolean;
   onClose: () => void;
 }) {
   const apiFetch = useAdminFetch();
@@ -442,202 +544,218 @@ function DetailsPanel({
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
-    if (!podcastId) return;
+    if (!podcastId || !open) { setDetail(null); return; }
     setLoading(true);
     apiFetch<{ data: AdminPodcastDetail }>(`/podcasts/${podcastId}`)
       .then((r) => setDetail(r.data))
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [podcastId, apiFetch]);
-
-  if (!podcastId) return null;
+  }, [podcastId, open, apiFetch]);
 
   return (
-    <div className="w-[360px] shrink-0 rounded-lg bg-[#1A2942] border border-white/5 flex flex-col overflow-hidden">
-      {loading || !detail ? (
-        <div className="p-4 space-y-3">
-          <Skeleton className="h-16 w-16 rounded-lg bg-white/5" />
-          <Skeleton className="h-4 w-3/4 bg-white/5" />
-          <Skeleton className="h-3 w-1/2 bg-white/5" />
-          <Skeleton className="h-24 bg-white/5 rounded" />
-        </div>
-      ) : (
-        <>
-          {/* Header */}
-          <div className="p-4 border-b border-white/5">
-            <div className="flex items-start gap-3">
-              {detail.imageUrl ? (
-                <img src={detail.imageUrl} alt="" className="h-16 w-16 rounded-lg object-cover shrink-0" />
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-[1200px] w-[80vw] max-h-[85vh] overflow-hidden flex flex-col bg-[#0F1D32] border-white/10 text-[#F9FAFB] p-0">
+        {loading || !detail ? (
+          <div className="p-6 space-y-3">
+            <Skeleton className="h-16 w-16 rounded-lg bg-white/5" />
+            <Skeleton className="h-4 w-3/4 bg-white/5" />
+            <Skeleton className="h-3 w-1/2 bg-white/5" />
+            <Skeleton className="h-32 bg-white/5 rounded" />
+          </div>
+        ) : (
+          <>
+            {/* Top section — compact, not scrollable */}
+            <div className="shrink-0 p-4 pb-0 space-y-3">
+              {/* Header row */}
+              <div className="flex items-start gap-4">
+                {detail.imageUrl ? (
+                  <img src={detail.imageUrl} alt="" className="h-16 w-16 rounded-lg object-cover shrink-0" />
+                ) : (
+                  <div className="h-16 w-16 rounded-lg bg-white/5 flex items-center justify-center shrink-0">
+                    <Rss className="h-6 w-6 text-[#9CA3AF]/40" />
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-sm font-semibold truncate">{detail.title}</h3>
+                  {detail.author && <p className="text-[11px] text-[#9CA3AF] mt-0.5">{detail.author}</p>}
+                  <div className="flex items-center gap-2 mt-1.5">
+                    <HealthBadge health={detail.feedHealth} />
+                    <StatusBadge status={detail.status} />
+                  </div>
+                </div>
+              </div>
+
+              {/* RSS URL */}
+              <div className="flex items-center gap-1.5 rounded-md bg-white/[0.03] p-2">
+                <Rss className="h-3 w-3 text-[#9CA3AF] shrink-0" />
+                <span className="text-[10px] text-[#9CA3AF] font-mono truncate flex-1">{detail.feedUrl}</span>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  className="text-[#9CA3AF] hover:text-[#F9FAFB]"
+                  onClick={() => navigator.clipboard.writeText(detail.feedUrl)}
+                >
+                  <Copy className="h-3 w-3" />
+                </Button>
+              </div>
+
+              {/* Stats row */}
+              <div className="flex items-center gap-6 text-[11px]">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[#9CA3AF]">Episodes</span>
+                  <span className="font-semibold font-mono tabular-nums">{detail.episodeCount}</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[#9CA3AF]">Subscribers</span>
+                  <span className="font-semibold font-mono tabular-nums">{detail.subscriberCount}</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[#9CA3AF]">Last Fetch</span>
+                  <span className="font-semibold font-mono tabular-nums">{relativeTime(detail.lastFetchedAt)}</span>
+                </div>
+              </div>
+
+              {/* Quick actions */}
+              <div className="flex gap-2 pb-3 border-b border-white/5">
+                <Button
+                  size="xs"
+                  className="bg-[#3B82F6] hover:bg-[#3B82F6]/80 text-white text-[10px]"
+                  disabled={refreshing}
+                  onClick={async () => {
+                    if (!podcastId) return;
+                    setRefreshing(true);
+                    try {
+                      await apiFetch(`/podcasts/${podcastId}/refresh`, { method: "POST" });
+                      const r = await apiFetch<{ data: AdminPodcastDetail }>(`/podcasts/${podcastId}`);
+                      setDetail(r.data);
+                    } catch (e) {
+                      console.error("Failed to refresh podcast:", e);
+                    } finally {
+                      setRefreshing(false);
+                    }
+                  }}
+                >
+                  {refreshing ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                  {refreshing ? "Refreshing..." : "Refresh"}
+                </Button>
+                <Button size="xs" variant="ghost" className="text-[#9CA3AF] hover:text-[#F9FAFB] text-[10px]">
+                  <Pause className="h-3 w-3" />
+                  Pause
+                </Button>
+                <Button size="xs" variant="ghost" className="text-[#9CA3AF] hover:text-[#F9FAFB] text-[10px]">
+                  <Archive className="h-3 w-3" />
+                  Archive
+                </Button>
+                <Button size="xs" variant="ghost" className="text-[#EF4444] hover:text-[#EF4444]/80 text-[10px]">
+                  <Trash2 className="h-3 w-3" />
+                  Delete
+                </Button>
+              </div>
+            </div>
+
+            {/* Scrollable episode list */}
+            <ScrollArea className="flex-1 min-h-0 px-4 pb-4">
+              {detail.episodes.length === 0 ? (
+                <div className="flex flex-col items-center py-12 text-[#9CA3AF]">
+                  <Clock className="h-5 w-5 mb-1.5 opacity-40" />
+                  <span className="text-[10px]">No episodes</span>
+                </div>
               ) : (
-                <div className="h-16 w-16 rounded-lg bg-white/5 flex items-center justify-center shrink-0">
-                  <Rss className="h-6 w-6 text-[#9CA3AF]/40" />
-                </div>
+                <Accordion type="single" collapsible className="w-full">
+                  {detail.episodes.map((ep) => (
+                    <AccordionItem key={ep.id} value={ep.id} className="border-white/5">
+                      <AccordionTrigger className="py-2 hover:no-underline">
+                        <div className="flex items-center gap-3 flex-1 min-w-0 pr-2">
+                          <span className="text-[11px] font-medium truncate flex-1 text-left">{ep.title}</span>
+                          <span className="text-[10px] text-[#9CA3AF] font-mono shrink-0">{relativeTime(ep.publishedAt)}</span>
+                          {ep.durationSeconds != null && (
+                            <span className="text-[10px] text-[#9CA3AF] font-mono tabular-nums shrink-0">
+                              {Math.round(ep.durationSeconds / 60)}m
+                            </span>
+                          )}
+                          <PipelineStatusBadge status={ep.pipelineStatus} />
+                        </div>
+                      </AccordionTrigger>
+                      <AccordionContent className="pb-3">
+                        <Tabs defaultValue="overview">
+                          <TabsList variant="line" className="bg-transparent border-b border-white/5 mb-2">
+                            <TabsTrigger value="overview" className="text-[10px]">Overview</TabsTrigger>
+                            <TabsTrigger value="clips" className="text-[10px]">
+                              Clips ({ep.clips?.length ?? 0})
+                            </TabsTrigger>
+                          </TabsList>
+
+                          <TabsContent value="overview">
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-[11px]">
+                              <div>
+                                <span className="text-[10px] text-[#9CA3AF] block">Published</span>
+                                <span className="font-mono tabular-nums">{new Date(ep.publishedAt).toLocaleDateString()}</span>
+                              </div>
+                              <div>
+                                <span className="text-[10px] text-[#9CA3AF] block">Duration</span>
+                                <span className="font-mono tabular-nums">
+                                  {ep.durationSeconds != null ? `${Math.round(ep.durationSeconds / 60)}m` : "\u2014"}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-[10px] text-[#9CA3AF] block">Pipeline</span>
+                                <PipelineStatusBadge status={ep.pipelineStatus} />
+                              </div>
+                              <div>
+                                <span className="text-[10px] text-[#9CA3AF] block">Cost</span>
+                                <span className="font-mono tabular-nums">
+                                  {ep.totalCost != null ? `$${ep.totalCost.toFixed(2)}` : "\u2014"}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-3 mt-2">
+                              {ep.transcriptUrl && (
+                                <a
+                                  href={ep.transcriptUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 text-[10px] text-[#3B82F6] hover:underline"
+                                >
+                                  <ExternalLink className="h-3 w-3" />
+                                  Transcript
+                                </a>
+                              )}
+                              {ep.audioUrl && (
+                                <a
+                                  href={ep.audioUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 text-[10px] text-[#3B82F6] hover:underline"
+                                >
+                                  <ExternalLink className="h-3 w-3" />
+                                  Audio
+                                </a>
+                              )}
+                            </div>
+                          </TabsContent>
+
+                          <TabsContent value="clips">
+                            {(ep.clips?.length ?? 0) === 0 ? (
+                              <div className="text-[10px] text-[#9CA3AF] py-4 text-center">No clips generated</div>
+                            ) : (
+                              <div className="rounded-md border border-white/5 overflow-hidden">
+                                {ep.clips!.map((clip) => (
+                                  <ClipRow key={clip.id} clip={clip} />
+                                ))}
+                              </div>
+                            )}
+                          </TabsContent>
+                        </Tabs>
+                      </AccordionContent>
+                    </AccordionItem>
+                  ))}
+                </Accordion>
               )}
-              <div className="flex-1 min-w-0">
-                <h3 className="text-sm font-semibold truncate">{detail.title}</h3>
-                {detail.author && <p className="text-[11px] text-[#9CA3AF] mt-0.5">{detail.author}</p>}
-                <div className="flex items-center gap-2 mt-1.5">
-                  <HealthBadge health={detail.feedHealth} />
-                  <StatusBadge status={detail.status} />
-                </div>
-              </div>
-              <Button variant="ghost" size="icon-xs" onClick={onClose} className="text-[#9CA3AF] hover:text-[#F9FAFB]">
-                <X className="h-3 w-3" />
-              </Button>
-            </div>
-
-            {/* RSS URL */}
-            <div className="mt-3 flex items-center gap-1.5 rounded-md bg-white/[0.03] p-2">
-              <Rss className="h-3 w-3 text-[#9CA3AF] shrink-0" />
-              <span className="text-[10px] text-[#9CA3AF] font-mono truncate flex-1">{detail.feedUrl}</span>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                className="text-[#9CA3AF] hover:text-[#F9FAFB]"
-                onClick={() => navigator.clipboard.writeText(detail.feedUrl)}
-              >
-                <Copy className="h-3 w-3" />
-              </Button>
-            </div>
-          </div>
-
-          {/* Stats */}
-          <div className="grid grid-cols-3 gap-px bg-white/5">
-            {[
-              { label: "Episodes", value: detail.episodeCount },
-              { label: "Subscribers", value: detail.subscriberCount },
-              { label: "Last Fetch", value: relativeTime(detail.lastFetchedAt) },
-            ].map((s) => (
-              <div key={s.label} className="bg-[#1A2942] p-2 text-center">
-                <div className="text-[10px] text-[#9CA3AF]">{s.label}</div>
-                <div className="text-xs font-semibold font-mono tabular-nums mt-0.5">{s.value}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* Tabs */}
-          <Tabs defaultValue="overview" className="flex flex-col flex-1 min-h-0">
-            <TabsList variant="line" className="px-4 border-b border-white/5 bg-transparent">
-              <TabsTrigger value="overview" className="text-[11px]">Overview</TabsTrigger>
-              <TabsTrigger value="episodes" className="text-[11px]">Episodes</TabsTrigger>
-              <TabsTrigger value="activity" className="text-[11px]">Activity</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="overview" className="flex-1 overflow-auto p-4">
-              <div className="space-y-3">
-                {detail.description && (
-                  <p className="text-[11px] text-[#9CA3AF] leading-relaxed line-clamp-4">{detail.description}</p>
-                )}
-                {detail.categories.length > 0 && (
-                  <div className="flex flex-wrap gap-1">
-                    {detail.categories.map((c) => (
-                      <Badge key={c} className="bg-white/5 text-[#9CA3AF] text-[10px]">{c}</Badge>
-                    ))}
-                  </div>
-                )}
-                {detail.feedError && (
-                  <div className="rounded-md bg-[#EF4444]/10 border border-[#EF4444]/20 p-2">
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <AlertTriangle className="h-3 w-3 text-[#EF4444]" />
-                      <span className="text-[10px] font-semibold text-[#EF4444]">Feed Error</span>
-                    </div>
-                    <p className="text-[10px] text-[#EF4444]/80">{detail.feedError}</p>
-                  </div>
-                )}
-              </div>
-            </TabsContent>
-
-            <TabsContent value="episodes" className="flex-1 overflow-auto">
-              <div className="divide-y divide-white/5">
-                {detail.episodes.map((ep) => (
-                  <div key={ep.id} className="flex items-center gap-2 px-4 py-2 text-[11px] hover:bg-white/[0.03]">
-                    <div className="flex-1 min-w-0">
-                      <span className="truncate block">{ep.title}</span>
-                      <div className="flex items-center gap-2 text-[10px] text-[#9CA3AF]">
-                        <span>{relativeTime(ep.publishedAt)}</span>
-                        {ep.durationSeconds != null && (
-                          <span className="font-mono tabular-nums">{Math.round(ep.durationSeconds / 60)}m</span>
-                        )}
-                      </div>
-                    </div>
-                    <Badge className={cn(
-                      "text-[9px]",
-                      ep.pipelineStatus === "completed" ? "bg-[#10B981]/15 text-[#10B981]" :
-                      ep.pipelineStatus === "failed" ? "bg-[#EF4444]/15 text-[#EF4444]" :
-                      "bg-[#F59E0B]/15 text-[#F59E0B]"
-                    )}>
-                      {ep.pipelineStatus}
-                    </Badge>
-                  </div>
-                ))}
-                {detail.episodes.length === 0 && (
-                  <div className="flex flex-col items-center py-8 text-[#9CA3AF]">
-                    <Clock className="h-5 w-5 mb-1.5 opacity-40" />
-                    <span className="text-[10px]">No episodes</span>
-                  </div>
-                )}
-              </div>
-            </TabsContent>
-
-            <TabsContent value="activity" className="flex-1 overflow-auto p-4">
-              <div className="space-y-2">
-                {detail.recentPipelineActivity.map((evt) => (
-                  <div key={evt.id} className="flex items-center gap-2 text-[10px]">
-                    <span className="text-[#9CA3AF] font-mono w-12 shrink-0">{relativeTime(evt.timestamp)}</span>
-                    <span className={cn(
-                      "h-1.5 w-1.5 rounded-full shrink-0",
-                      evt.status === "completed" ? "bg-[#10B981]" : evt.status === "failed" ? "bg-[#EF4444]" : "bg-[#F59E0B]"
-                    )} />
-                    <span className="text-[#F9FAFB]/80 truncate flex-1">{evt.stageName}</span>
-                  </div>
-                ))}
-                {detail.recentPipelineActivity.length === 0 && (
-                  <div className="flex flex-col items-center py-8 text-[#9CA3AF]">
-                    <Activity className="h-5 w-5 mb-1.5 opacity-40" />
-                    <span className="text-[10px]">No recent activity</span>
-                  </div>
-                )}
-              </div>
-            </TabsContent>
-          </Tabs>
-
-          {/* Quick Actions */}
-          <div className="p-3 border-t border-white/5 flex gap-2">
-            <Button
-              size="xs"
-              className="flex-1 bg-[#3B82F6] hover:bg-[#3B82F6]/80 text-white text-[10px]"
-              disabled={refreshing}
-              onClick={async () => {
-                if (!podcastId) return;
-                setRefreshing(true);
-                try {
-                  await apiFetch(`/podcasts/${podcastId}/refresh`, { method: "POST" });
-                  // Reload detail
-                  const r = await apiFetch<{ data: AdminPodcastDetail }>(`/podcasts/${podcastId}`);
-                  setDetail(r.data);
-                } catch (e) {
-                  console.error("Failed to refresh podcast:", e);
-                } finally {
-                  setRefreshing(false);
-                }
-              }}
-            >
-              {refreshing ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-              {refreshing ? "Refreshing..." : "Refresh"}
-            </Button>
-            <Button size="xs" variant="ghost" className="text-[#9CA3AF] hover:text-[#F9FAFB] text-[10px]">
-              <Pause className="h-3 w-3" />
-            </Button>
-            <Button size="xs" variant="ghost" className="text-[#9CA3AF] hover:text-[#F9FAFB] text-[10px]">
-              <Archive className="h-3 w-3" />
-            </Button>
-            <Button size="xs" variant="ghost" className="text-[#EF4444] hover:text-[#EF4444]/80 text-[10px]">
-              <Trash2 className="h-3 w-3" />
-            </Button>
-          </div>
-        </>
-      )}
-    </div>
+            </ScrollArea>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -998,10 +1116,8 @@ export default function Catalog() {
         )}
       </div>
 
-      {/* Details Panel */}
-      {selectedId && (
-        <DetailsPanel podcastId={selectedId} onClose={() => setSelectedId(null)} />
-      )}
+      {/* Podcast Detail Modal */}
+      <PodcastDetailModal podcastId={selectedId} open={!!selectedId} onClose={() => setSelectedId(null)} />
 
       {/* Add Dialog */}
       <AddPodcastDialog open={addOpen} onClose={() => { setAddOpen(false); load(); }} />
