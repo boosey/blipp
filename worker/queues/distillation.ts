@@ -5,6 +5,7 @@ import { checkStageEnabled } from "../lib/queue-helpers";
 import { extractClaims } from "../lib/distillation";
 import { getModelConfig } from "../lib/ai-models";
 import { wpKey, putWorkProduct } from "../lib/work-products";
+import { writeEvent } from "../lib/pipeline-events";
 import type { Env } from "../types";
 
 /** Shape of a distillation queue message body. */
@@ -66,12 +67,15 @@ export async function handleDistillation(
           },
         });
 
+        await writeEvent(prisma, step.id, "INFO", "Checking cache for completed distillation");
+
         // Cache check: is there a completed distillation for this episode?
         const existing = await prisma.distillation.findUnique({
           where: { episodeId },
         });
 
         if (existing?.status === "COMPLETED") {
+          await writeEvent(prisma, step.id, "INFO", "Cache hit — completed distillation found, skipping");
           // Cache hit — skip processing, backfill WorkProduct if needed
           let existingWp = await prisma.workProduct.findFirst({
             where: { type: "CLAIMS", episodeId },
@@ -123,6 +127,7 @@ export async function handleDistillation(
 
         // Transcript must already be present (fetched by transcription stage)
         if (!existing?.transcript) {
+          await writeEvent(prisma, step.id, "ERROR", "No transcript available — transcription stage must run first");
           throw new Error("No transcript available — run transcription first");
         }
 
@@ -134,9 +139,12 @@ export async function handleDistillation(
 
         // Extract claims via Claude (Pass 1)
         const { model: distillationModel } = await getModelConfig(prisma, "distillation");
+        await writeEvent(prisma, step.id, "INFO", `Sending transcript to ${distillationModel} for claim extraction`);
         const elapsed = log.timer("claude_extraction");
         const { claims, usage: claimsUsage } = await extractClaims(anthropic, existing.transcript, distillationModel);
         elapsed();
+        await writeEvent(prisma, step.id, "INFO", `Extracted ${claims.length} claims from transcript`);
+        await writeEvent(prisma, step.id, "DEBUG", `Model: ${claimsUsage.model}`, { inputTokens: claimsUsage.inputTokens, outputTokens: claimsUsage.outputTokens, cost: claimsUsage.cost });
         log.info("claims_extracted", { episodeId, claimCount: claims.length });
 
         // Mark distillation as completed with claims
@@ -158,6 +166,8 @@ export async function handleDistillation(
             metadata: { claimCount: claims.length },
           },
         });
+
+        await writeEvent(prisma, step.id, "INFO", "Saved claims work product to R2", { r2Key, sizeBytes: new TextEncoder().encode(claimsJson).byteLength, claimCount: claims.length });
 
         // Mark step COMPLETED
         const completedAt = new Date();
@@ -217,6 +227,8 @@ export async function handleDistillation(
             create: { episodeId, status: "FAILED", errorMessage },
           })
           .catch(() => {});
+
+        if (step) await writeEvent(prisma, step.id, "ERROR", `Distillation failed: ${errorMessage}`);
 
         log.error("episode_error", { episodeId, jobId }, err);
         msg.retry();

@@ -6,6 +6,7 @@ import { generateSpeech } from "../lib/tts";
 import { putClip } from "../lib/clip-cache";
 import { getModelConfig } from "../lib/ai-models";
 import { wpKey, putWorkProduct } from "../lib/work-products";
+import { writeEvent } from "../lib/pipeline-events";
 import type { Env } from "../types";
 
 /** Shape of an audio generation queue message body. */
@@ -67,6 +68,8 @@ export async function handleAudioGeneration(
           },
         });
 
+        await writeEvent(prisma, step.id, "INFO", "Checking cache for completed audio clip");
+
         // Cache check: if Clip already COMPLETED and AUDIO_CLIP WorkProduct exists, mark SKIPPED
         const existingClip = await prisma.clip.findUnique({
           where: { episodeId_durationTier: { episodeId, durationTier } },
@@ -79,6 +82,7 @@ export async function handleAudioGeneration(
 
           if (existingAudioWp) {
             log.debug("cache_hit", { episodeId, durationTier });
+            await writeEvent(prisma, step.id, "INFO", "Cache hit — completed audio clip exists, skipping");
 
             // Mark step SKIPPED (cached)
             await prisma.pipelineStep.update({
@@ -112,6 +116,7 @@ export async function handleAudioGeneration(
 
         // Load narrative text from Clip record (set by narrative stage)
         if (!existingClip?.narrativeText) {
+          await writeEvent(prisma, step.id, "ERROR", "No clip with narrative text found — narrative stage must run first");
           throw new Error("No clip with narrative text found — narrative stage must run first");
         }
 
@@ -121,9 +126,12 @@ export async function handleAudioGeneration(
         const { model: ttsModel } = await getModelConfig(prisma, "tts");
 
         // Generate TTS audio
+        await writeEvent(prisma, step.id, "INFO", `Generating audio via TTS (model: ${ttsModel})`);
         const ttsTimer = log.timer("tts_generation");
         const { audio, usage: ttsUsage } = await generateSpeech(openai, narrative, undefined, ttsModel);
         ttsTimer();
+        await writeEvent(prisma, step.id, "INFO", "Audio generated successfully");
+        await writeEvent(prisma, step.id, "DEBUG", `Audio size: ${audio.byteLength} bytes`, { model: ttsUsage.model, sizeBytes: audio.byteLength });
 
         // Store in R2 (legacy path)
         await putClip(env.R2, episodeId, durationTier, audio);
@@ -141,6 +149,8 @@ export async function handleAudioGeneration(
             sizeBytes: audio.byteLength,
           },
         });
+
+        await writeEvent(prisma, step.id, "INFO", "Saved audio clip to R2 and updated clip record", { r2Key: audioR2Key });
 
         // Update Clip record: status COMPLETED, store audioKey
         const audioKey = `clips/${episodeId}/${durationTier}.mp3`;
@@ -218,6 +228,19 @@ export async function handleAudioGeneration(
             },
           })
           .catch(() => {});
+
+        // Write error event — step may not exist if creation itself failed
+        try {
+          const failedStep = await prisma.pipelineStep.findFirst({
+            where: { jobId, stage: "AUDIO_GENERATION", status: "FAILED" },
+            select: { id: true },
+          });
+          if (failedStep) {
+            await writeEvent(prisma, failedStep.id, "ERROR", `Audio generation failed: ${errorMessage}`);
+          }
+        } catch {
+          // Swallow — event logging must never block error handling
+        }
 
         msg.retry();
       }

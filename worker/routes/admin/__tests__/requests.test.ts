@@ -259,6 +259,65 @@ describe("Requests Routes", () => {
       expect(body.data.totalCost).toBeCloseTo(0.35);
     });
 
+    it("GET /requests/:id includes events in step data", async () => {
+      const mockRequest = {
+        id: "req_1",
+        userId: "user_1",
+        status: "COMPLETED",
+        targetMinutes: 5,
+        items: [],
+        isTest: false,
+        briefingId: null,
+        errorMessage: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        user: { name: "Test", email: "test@test.com" },
+      };
+
+      const mockJobs = [{
+        id: "job_1",
+        requestId: "req_1",
+        episodeId: "ep_1",
+        durationTier: 5,
+        status: "COMPLETED",
+        currentStage: "BRIEFING_ASSEMBLY",
+        steps: [{
+          id: "step_1",
+          stage: "TRANSCRIPTION",
+          status: "COMPLETED",
+          cached: false,
+          durationMs: 2000,
+          cost: null,
+          model: null,
+          inputTokens: null,
+          outputTokens: null,
+          errorMessage: null,
+          workProduct: null,
+          events: [
+            { id: "evt_1", level: "INFO", message: "Cache miss", data: null, createdAt: new Date() },
+            { id: "evt_2", level: "INFO", message: "Fetched transcript", data: { bytes: 4532 }, createdAt: new Date() },
+          ],
+        }],
+        episode: { title: "Ep 1", durationSeconds: 3600, podcast: { title: "Pod 1" } },
+      }];
+
+      mockPrisma.briefingRequest.findUnique.mockResolvedValue(mockRequest);
+      mockPrisma.pipelineJob.findMany.mockResolvedValue(mockJobs);
+      mockPrisma.workProduct.findMany
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]);
+
+      const res = await app.request("/requests/req_1", {}, env, mockExCtx as any);
+      expect(res.status).toBe(200);
+
+      const body = await res.json() as any;
+      const step = body.data.jobProgress[0].steps[0];
+      expect(step.events).toHaveLength(2);
+      expect(step.events[0]).toMatchObject({ id: "evt_1", level: "INFO", message: "Cache miss" });
+      expect(step.events[1]).toMatchObject({ id: "evt_2", level: "INFO", message: "Fetched transcript" });
+      expect(step.events[1].data).toEqual({ bytes: 4532 });
+    });
+
   });
 
   describe("POST /requests/test-briefing", () => {

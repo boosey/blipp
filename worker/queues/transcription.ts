@@ -9,6 +9,7 @@ import { lookupPodcastIndexTranscript } from "../lib/transcript-source";
 import { fetchTranscript } from "../lib/transcript";
 import { getAudioMetadata, isMp3, transcribeChunked, WHISPER_MAX_BYTES } from "../lib/whisper-chunked";
 import { calculateCost, type AiUsage } from "../lib/ai-usage";
+import { writeEvent } from "../lib/pipeline-events";
 import type { Env } from "../types";
 
 interface TranscriptionMessage {
@@ -58,6 +59,7 @@ export async function handleTranscription(
       const { jobId, episodeId } = msg.body;
       const startTime = Date.now();
 
+      let stepId: string | null = null;
       try {
         // Load job to get requestId
         const job = await prisma.pipelineJob.findUnique({ where: { id: jobId } });
@@ -84,11 +86,16 @@ export async function handleTranscription(
             startedAt: new Date(),
           },
         });
+        stepId = step.id;
+
+        await writeEvent(prisma, step.id, "INFO", "Checking cache for existing transcript");
 
         // Cache check: existing Distillation with transcript
         const cached = await prisma.distillation.findUnique({ where: { episodeId } });
         if (cached && cached.transcript && CACHE_STATUSES.has(cached.status)) {
           log.debug("cache_hit", { episodeId, existingStatus: cached.status });
+          await writeEvent(prisma, step.id, "INFO", "Cache hit — existing transcript found, skipping");
+          await writeEvent(prisma, step.id, "DEBUG", `Existing distillation status: ${cached.status}`, { distillationId: cached.id });
 
           let existingWp = await prisma.workProduct.findFirst({
             where: { type: "TRANSCRIPT", episodeId },
@@ -139,14 +146,17 @@ export async function handleTranscription(
         if (!episode) {
           throw new Error(`Episode not found: ${episodeId}`);
         }
+        await writeEvent(prisma, step.id, "DEBUG", `Episode loaded: "${episode.title}"`, { audioUrl: episode.audioUrl?.slice(0, 120) });
 
         let transcript: string;
         let sttUsage: AiUsage | null = null;
 
         if (episode.transcriptUrl) {
           // Tier 1: RSS feed transcript URL
+          await writeEvent(prisma, step.id, "INFO", "Fetching transcript from RSS feed URL");
           const response = await fetch(episode.transcriptUrl);
           transcript = await response.text();
+          await writeEvent(prisma, step.id, "INFO", "Transcript fetched from RSS feed", { bytes: transcript.length, source: "feed" });
           log.info("transcript_fetched", { episodeId, bytes: transcript.length, source: "feed" });
         } else {
           // Tier 2: Podcast Index lookup
@@ -161,20 +171,24 @@ export async function handleTranscription(
 
           if (piTranscriptUrl) {
             // Found via Podcast Index — fetch and parse, backfill episode
+            await writeEvent(prisma, step.id, "INFO", "Found transcript via Podcast Index");
             transcript = await fetchTranscript(piTranscriptUrl);
             await prisma.episode.update({
               where: { id: episodeId },
               data: { transcriptUrl: piTranscriptUrl },
             });
+            await writeEvent(prisma, step.id, "DEBUG", "Backfilled episode transcriptUrl from Podcast Index", { source: "podcast-index", bytes: transcript.length });
             log.info("transcript_fetched", { episodeId, bytes: transcript.length, source: "podcast-index" });
           } else {
             // Tier 3: Whisper STT
+            await writeEvent(prisma, step.id, "WARN", "No transcript in RSS or Podcast Index — falling back to Whisper STT");
             const { model: sttModel } = await getModelConfig(prisma, "stt");
             const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
             const { contentLength, contentType } = await getAudioMetadata(episode.audioUrl);
 
             if (contentLength && contentLength > WHISPER_MAX_BYTES) {
               // Oversized file — chunked transcription (MP3 only)
+              await writeEvent(prisma, step.id, "INFO", `Audio file oversized (${Math.round(contentLength / 1024 / 1024)}MB) — using chunked Whisper`);
               if (!isMp3(contentType, episode.audioUrl)) {
                 throw new Error(
                   `Audio file too large (${Math.round(contentLength / 1024 / 1024)}MB) and not MP3 — cannot chunk non-MP3 formats`
@@ -183,9 +197,11 @@ export async function handleTranscription(
               const chunkedResult = await transcribeChunked(openai, episode.audioUrl, contentLength, sttModel);
               transcript = chunkedResult.transcript;
               sttUsage = chunkedResult.usage;
+              await writeEvent(prisma, step.id, "INFO", "Transcript generated via chunked Whisper", { bytes: transcript.length, source: "whisper-chunked" });
               log.info("transcript_fetched", { episodeId, bytes: transcript.length, source: "whisper-chunked" });
             } else {
               // Standard single-file Whisper
+              await writeEvent(prisma, step.id, "INFO", "Transcribing audio via Whisper");
               const audioResponse = await fetch(episode.audioUrl);
               if (!audioResponse.ok) {
                 throw new Error(`Audio fetch failed: HTTP ${audioResponse.status} for ${episode.audioUrl.slice(0, 120)}`);
@@ -208,6 +224,7 @@ export async function handleTranscription(
               transcript = transcription.text;
               const sttInputTokens = Math.round(audioBlob.size / 16000);
               sttUsage = { model: sttModel, inputTokens: sttInputTokens, outputTokens: 0, cost: calculateCost(sttModel, sttInputTokens, 0) };
+              await writeEvent(prisma, step.id, "INFO", "Transcript generated via Whisper", { bytes: transcript.length, source: "whisper" });
               log.info("transcript_fetched", { episodeId, bytes: transcript.length, source: "whisper" });
             }
           }
@@ -231,6 +248,7 @@ export async function handleTranscription(
             sizeBytes: new TextEncoder().encode(transcript).byteLength,
           },
         });
+        await writeEvent(prisma, step.id, "INFO", "Saved transcript work product to R2", { r2Key, sizeBytes: new TextEncoder().encode(transcript).byteLength });
 
         // Mark step COMPLETED
         await prisma.pipelineStep.update({
@@ -273,6 +291,11 @@ export async function handleTranscription(
             },
           })
           .catch(() => {});
+
+        // Write error event if step exists
+        if (stepId) {
+          await writeEvent(prisma, stepId, "ERROR", `Transcription failed: ${errorMessage}`);
+        }
 
         // Upsert distillation as FAILED
         await prisma.distillation
