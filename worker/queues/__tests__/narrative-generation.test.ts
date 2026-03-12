@@ -15,6 +15,7 @@ vi.mock("../../lib/distillation", () => ({
     narrative: "A warm narrative about technology trends.",
     usage: { model: "test-model", inputTokens: 100, outputTokens: 50, cost: null },
   }),
+  selectClaimsForDuration: vi.fn().mockImplementation((claims: any[]) => claims),
 }));
 
 vi.mock("../../lib/work-products", () => ({
@@ -42,7 +43,7 @@ vi.mock("../../lib/ai-models", () => ({
 
 import { createPrismaClient } from "../../lib/db";
 import { getConfig } from "../../lib/config";
-import { generateNarrative } from "../../lib/distillation";
+import { generateNarrative, selectClaimsForDuration } from "../../lib/distillation";
 import { putWorkProduct } from "../../lib/work-products";
 import { getModelConfig } from "../../lib/ai-models";
 
@@ -65,7 +66,7 @@ const DISTILLATION = {
   id: "dist-1",
   episodeId: "ep-1",
   status: "COMPLETED",
-  claimsJson: [{ claim: "Test claim", speaker: "Host", importance: 9, novelty: 7 }],
+  claimsJson: [{ claim: "Test claim", speaker: "Host", importance: 9, novelty: 7, excerpt: "Here is the verbatim excerpt for this claim." }],
 };
 
 beforeEach(() => {
@@ -83,6 +84,7 @@ beforeEach(() => {
     usage: { model: "test-model", inputTokens: 100, outputTokens: 50, cost: null },
   });
   (putWorkProduct as any).mockResolvedValue(undefined);
+  (selectClaimsForDuration as any).mockImplementation((claims: any[]) => claims);
   mockPrisma.workProduct.create.mockResolvedValue({ id: "wp-1" });
   mockPrisma.workProduct.findFirst.mockResolvedValue(null);
   mockLogger.info.mockReset();
@@ -259,6 +261,42 @@ describe("handleNarrativeGeneration", () => {
       action: "job-stage-complete",
       jobId: "job-1",
     });
+  });
+
+  it("calls selectClaimsForDuration before generating narrative", async () => {
+    mockPrisma.workProduct.findFirst.mockResolvedValue(null);
+    mockPrisma.distillation.findFirst.mockResolvedValue(DISTILLATION);
+    mockPrisma.clip.upsert.mockResolvedValue({ id: "clip-1" });
+
+    const { mockBatch } = makeBatch(msgBody);
+    await handleNarrativeGeneration(mockBatch, mockEnv, mockCtx);
+
+    expect(selectClaimsForDuration).toHaveBeenCalledWith(
+      DISTILLATION.claimsJson,
+      5 // durationTier from msgBody
+    );
+  });
+
+  it("skips selectClaimsForDuration for legacy claims without excerpts", async () => {
+    const legacyDistillation = {
+      ...DISTILLATION,
+      claimsJson: [{ claim: "Old claim", speaker: "Host", importance: 9, novelty: 7 }],
+    };
+    mockPrisma.workProduct.findFirst.mockResolvedValue(null);
+    mockPrisma.distillation.findFirst.mockResolvedValue(legacyDistillation);
+    mockPrisma.clip.upsert.mockResolvedValue({ id: "clip-1" });
+
+    const { mockBatch } = makeBatch(msgBody);
+    await handleNarrativeGeneration(mockBatch, mockEnv, mockCtx);
+
+    expect(selectClaimsForDuration).not.toHaveBeenCalled();
+    // All claims passed directly to generateNarrative
+    expect(generateNarrative).toHaveBeenCalledWith(
+      expect.anything(),
+      legacyDistillation.claimsJson,
+      5,
+      expect.any(String)
+    );
   });
 
   it("reads narrative model from config", async () => {
