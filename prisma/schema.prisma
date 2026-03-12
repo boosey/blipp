@@ -282,8 +282,9 @@ model PipelineStep {
   workProductId String?
   createdAt     DateTime           @default(now())
 
-  job         PipelineJob  @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  workProduct WorkProduct? @relation(fields: [workProductId], references: [id])
+  job         PipelineJob    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  workProduct WorkProduct?   @relation(fields: [workProductId], references: [id])
+  events      PipelineEvent[]
 }
 
 enum PipelineStepStatus {
@@ -292,6 +293,13 @@ enum PipelineStepStatus {
   COMPLETED
   SKIPPED
   FAILED
+}
+
+enum PipelineEventLevel {
+  DEBUG
+  INFO
+  WARN
+  ERROR
 }
 
 // ── Briefing Requests (Demand-Driven Pipeline) ──
@@ -342,6 +350,18 @@ enum WorkProductType {
   NARRATIVE
   AUDIO_CLIP
   BRIEFING_AUDIO
+}
+
+model PipelineEvent {
+  id        String             @id @default(cuid())
+  stepId    String
+  step      PipelineStep       @relation(fields: [stepId], references: [id], onDelete: Cascade)
+  level     PipelineEventLevel
+  message   String
+  data      Json?
+  createdAt DateTime           @default(now())
+
+  @@index([stepId, createdAt])
 }
 
 // ── Admin: Runtime Configuration ──
