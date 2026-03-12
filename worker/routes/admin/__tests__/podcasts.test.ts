@@ -135,12 +135,16 @@ describe("Admin Podcasts Routes", () => {
         episodes: [
           {
             id: "ep1", title: "Episode 1", publishedAt: now, durationSeconds: 600,
+            audioUrl: "http://example.com/ep1.mp3", transcriptUrl: null,
             distillation: { status: "COMPLETED" },
             _count: { clips: 3 },
+            clips: [],
+            feedItems: [],
           },
         ],
       });
       mockPrisma.pipelineJob.findMany.mockResolvedValueOnce([]);
+      mockPrisma.pipelineStep.aggregate.mockResolvedValueOnce({ _sum: { cost: null } });
 
       const res = await app.request("/podcasts/pod1", {}, env, mockExCtx);
       expect(res.status).toBe(200);
@@ -148,6 +152,55 @@ describe("Admin Podcasts Routes", () => {
       expect(body.data.id).toBe("pod1");
       expect(body.data.episodes).toHaveLength(1);
       expect(body.data).toHaveProperty("recentPipelineActivity");
+    });
+
+    it("returns clips and feedItems grouped by durationTier", async () => {
+      const now = new Date();
+      mockPrisma.podcast.findUnique.mockResolvedValueOnce({
+        id: "pod1", title: "Test", description: "desc", feedUrl: "http://x.com/feed",
+        imageUrl: null, author: "Auth", categories: [], lastFetchedAt: now,
+        feedHealth: "good", feedError: null, status: "active",
+        createdAt: now, updatedAt: now,
+        _count: { episodes: 1, subscriptions: 2 },
+        episodes: [
+          {
+            id: "ep1", title: "Episode 1", publishedAt: now, durationSeconds: 600,
+            audioUrl: "http://example.com/ep1.mp3", transcriptUrl: "http://example.com/ep1.txt",
+            distillation: { status: "COMPLETED" },
+            _count: { clips: 2 },
+            clips: [
+              { id: "clip1", durationTier: 2, actualSeconds: 120, status: "COMPLETED", audioUrl: "http://r2/clip1.mp3" },
+              { id: "clip2", durationTier: 5, actualSeconds: 295, status: "COMPLETED", audioUrl: "http://r2/clip2.mp3" },
+            ],
+            feedItems: [
+              { id: "fi1", userId: "u1", source: "on_demand", status: "READY", requestId: "req1", durationTier: 2, createdAt: now },
+              { id: "fi2", userId: "u2", source: "scheduled", status: "READY", requestId: null, durationTier: 5, createdAt: now },
+            ],
+          },
+        ],
+      });
+      mockPrisma.pipelineJob.findMany.mockResolvedValueOnce([]);
+      mockPrisma.pipelineStep.aggregate.mockResolvedValueOnce({ _sum: { cost: 0.05 } });
+
+      const res = await app.request("/podcasts/pod1", {}, env, mockExCtx);
+      expect(res.status).toBe(200);
+      const body: any = await res.json();
+
+      const ep = body.data.episodes[0];
+      expect(ep.audioUrl).toBe("http://example.com/ep1.mp3");
+      expect(ep.transcriptUrl).toBe("http://example.com/ep1.txt");
+      expect(ep.totalCost).toBe(0.05);
+      expect(ep.clips).toHaveLength(2);
+
+      // Clip 1 (durationTier 2) should have fi1
+      expect(ep.clips[0].id).toBe("clip1");
+      expect(ep.clips[0].feedItems).toHaveLength(1);
+      expect(ep.clips[0].feedItems[0].id).toBe("fi1");
+
+      // Clip 2 (durationTier 5) should have fi2
+      expect(ep.clips[1].id).toBe("clip2");
+      expect(ep.clips[1].feedItems).toHaveLength(1);
+      expect(ep.clips[1].feedItems[0].id).toBe("fi2");
     });
 
     it("returns 404 when not found", async () => {

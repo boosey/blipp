@@ -20,6 +20,7 @@ export function createMockPrisma() {
     upsert: vi.fn(),
     delete: vi.fn(),
     count: vi.fn(),
+    aggregate: vi.fn(),
     groupBy: vi.fn(),
   });
 

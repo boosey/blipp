@@ -124,6 +124,13 @@ podcastsRoutes.get("/:id", async (c) => {
         include: {
           _count: { select: { clips: true } },
           distillation: { select: { status: true } },
+          clips: {
+            orderBy: { durationTier: "asc" },
+            select: { id: true, durationTier: true, actualSeconds: true, status: true, audioUrl: true },
+          },
+          feedItems: {
+            select: { id: true, userId: true, source: true, status: true, requestId: true, durationTier: true, createdAt: true },
+          },
         },
       },
     },
@@ -151,6 +158,20 @@ podcastsRoutes.get("/:id", async (c) => {
     // PipelineJob table may not exist
   }
 
+  // Aggregate cost per episode
+  const episodeCosts = await Promise.all(
+    podcast.episodes.map(async (e: any) => {
+      try {
+        const result = await prisma.pipelineStep.aggregate({
+          where: { job: { episodeId: e.id } },
+          _sum: { cost: true },
+        });
+        return { episodeId: e.id, cost: result._sum.cost };
+      } catch { return { episodeId: e.id, cost: null }; }
+    })
+  );
+  const costMap = new Map(episodeCosts.map((c) => [c.episodeId, c.cost]));
+
   const episodes = podcast.episodes.map((e: any) => {
     let pipelineStatus: string = "pending";
     if (e.distillation) {
@@ -161,13 +182,36 @@ podcastsRoutes.get("/:id", async (c) => {
       else if (ds === "EXTRACTING_CLAIMS") pipelineStatus = "distilling";
       else pipelineStatus = "pending";
     }
+
+    const clips = (e.clips ?? []).map((clip: any) => ({
+      id: clip.id,
+      durationTier: clip.durationTier,
+      actualSeconds: clip.actualSeconds,
+      status: clip.status,
+      audioUrl: clip.audioUrl,
+      feedItems: (e.feedItems ?? [])
+        .filter((fi: any) => fi.durationTier === clip.durationTier)
+        .map((fi: any) => ({
+          id: fi.id,
+          userId: fi.userId,
+          source: fi.source,
+          status: fi.status,
+          requestId: fi.requestId,
+          createdAt: fi.createdAt.toISOString(),
+        })),
+    }));
+
     return {
       id: e.id,
       title: e.title,
+      audioUrl: e.audioUrl ?? null,
       publishedAt: e.publishedAt.toISOString(),
-      durationSeconds: e.durationSeconds,
+      durationSeconds: e.durationSeconds ?? null,
+      transcriptUrl: e.transcriptUrl ?? null,
       pipelineStatus,
       clipCount: e._count.clips,
+      totalCost: costMap.get(e.id) ?? null,
+      clips,
     };
   });
 
