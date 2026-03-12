@@ -64,7 +64,7 @@ Simple INSERT — no read-modify-write, no race conditions. Used directly in que
 
 ### Queue Handler Instrumentation
 
-Each of the 5 stage handlers gets ~5-12 `writeEvent()` calls at natural decision points:
+The 4 per-job stage handlers each get ~5-12 `writeEvent()` calls at natural decision points. Briefing assembly is excluded — it operates at the request level (not per-job), doesn't create PipelineStep records, and its outcome is already visible via BriefingRequest status.
 
 | Stage | Example INFO Events | Example DEBUG Events |
 |-------|--------------------|--------------------|
@@ -72,8 +72,6 @@ Each of the 5 stage handlers gets ~5-12 `writeEvent()` calls at natural decision
 | **Distillation** | Cache check result, sending to LLM, API errors/retries, claims extracted, saved to R2 | Model name (runtime), token counts, response time |
 | **Narrative** | Cache check result, reading claims, sending to LLM, narrative generated, clip created | Model name (runtime), word count, clip ID |
 | **Audio** | Cache check result, reading narrative, calling TTS, audio generated, clip updated | Voice/model (runtime), duration, file size |
-| **Assembly** | Loading jobs, linking briefings, marking feed items READY, request status update | Job count, briefing IDs, partial/full completion details |
-
 **Log levels:**
 - `INFO` — operational steps (what happened and why)
 - `DEBUG` — diagnostics (URLs, byte sizes, parsed counts, model names)
@@ -149,7 +147,7 @@ Add `PipelineEventSummary` interface and add `events` field to `StepProgress`.
 ### In scope
 - New `PipelineEvent` model + Prisma migration
 - `writeEvent()` utility in `worker/lib/pipeline-events.ts`
-- Instrument all 5 stage handlers with inline event messages
+- Instrument 4 per-job stage handlers with inline event messages (assembly excluded)
 - API endpoint returns events nested in steps
 - Nested accordion UI with Event Log + Work Products sub-rows
 - DEBUG/INFO toggle in UI
