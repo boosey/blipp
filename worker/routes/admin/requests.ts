@@ -80,6 +80,10 @@ requestsRoutes.get("/:id", async (c) => {
           workProduct: {
             select: { id: true, type: true, r2Key: true, sizeBytes: true, metadata: true, createdAt: true },
           },
+          events: {
+            orderBy: { createdAt: "asc" },
+            select: { id: true, level: true, message: true, data: true, createdAt: true },
+          },
         },
       },
     },
@@ -167,6 +171,15 @@ requestsRoutes.get("/:id", async (c) => {
         outputTokens: s.outputTokens ?? undefined,
         errorMessage: s.errorMessage,
         workProducts: matched.length > 0 ? matched : undefined,
+        events: s.events?.length > 0
+          ? s.events.map((e: any) => ({
+              id: e.id,
+              level: e.level,
+              message: e.message,
+              data: e.data ?? undefined,
+              createdAt: e.createdAt?.toISOString?.() ?? e.createdAt,
+            }))
+          : undefined,
       };
     }),
   }));
