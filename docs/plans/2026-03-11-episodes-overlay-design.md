@@ -31,7 +31,7 @@ Two tabs inside each expanded accordion item:
 
 **Clips tab**:
 - Clips sorted by `durationTier` ascending (shortest first)
-- Each clip shows: duration tier label, actual seconds, status badge, cached badge, **play button** (inline `<audio>` element)
+- Each clip shows: duration tier label, actual seconds, status badge, **play button** (inline `<audio>` element)
 - Clicking a clip row expands to show linked FeedItems:
   - User (userId)
   - Source (SUBSCRIPTION / ON_DEMAND)
@@ -80,14 +80,13 @@ episodes: Array<{
   durationSeconds: number | null;
   transcriptUrl: string | null;
   pipelineStatus: string;
-  cost: number | null;
+  totalCost: number | null; // aggregated from PipelineStep.cost across all jobs for this episode
   clips: Array<{
     id: string;
     durationTier: number;
     actualSeconds: number | null;
     status: string;
     audioUrl: string | null;
-    cached: boolean;
     feedItems: Array<{
       id: string;
       userId: string;
@@ -100,7 +99,9 @@ episodes: Array<{
 }>
 ```
 
-Clips sorted by `durationTier` asc. FeedItems matched by `episodeId` + `durationTier`.
+Clips sorted by `durationTier` asc. FeedItems are grouped under clips via application-level matching on `episodeId` + `durationTier` (no direct Prisma relation exists between Clip and FeedItem). The query fetches episodes with `include: { clips, feedItems }` then groups feedItems under the matching clip in code.
+
+`totalCost` is aggregated by summing `PipelineStep.cost` across all PipelineJobs for the episode (no `cost` column on Episode).
 
 ### Frontend: Modal Component
 
