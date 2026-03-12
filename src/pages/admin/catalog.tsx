@@ -554,7 +554,8 @@ function PodcastDetailModal({
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-[1200px] w-[80vw] max-h-[85vh] overflow-hidden flex flex-col bg-[#0F1D32] border-white/10 text-[#F9FAFB] p-0">
+      <DialogContent className="max-w-[1200px] w-[80vw] max-h-[85vh] overflow-hidden flex flex-col bg-[#0F1D32] border-white/10 text-[#F9FAFB] p-0" aria-describedby={undefined}>
+        <DialogTitle className="sr-only">{detail?.title ?? "Podcast Details"}</DialogTitle>
         {loading || !detail ? (
           <div className="p-6 space-y-3">
             <Skeleton className="h-16 w-16 rounded-lg bg-white/5" />
