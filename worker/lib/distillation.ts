@@ -36,19 +36,27 @@ export async function extractClaims(
 ): Promise<{ claims: Claim[]; usage: AiUsage }> {
   const response = await client.messages.create({
     model,
-    max_tokens: 2048,
+    max_tokens: 8192,
     messages: [
       {
         role: "user",
-        content: `You are a podcast analyst. Extract the top 10 most important factual claims from this transcript.
+        content: `You are a podcast analyst. Extract all significant factual claims, insights, arguments, and notable statements from this transcript.
 
-Return ONLY a JSON array of objects with these fields:
-- "claim": the factual assertion (one sentence)
+For each claim, include:
+- "claim": the factual assertion (one clear sentence)
 - "speaker": who made the claim
-- "importance": 1-10 rating
-- "novelty": 1-10 rating
+- "importance": 1-10 rating (10 = critical takeaway, 1 = minor detail)
+- "novelty": 1-10 rating (10 = surprising/counterintuitive, 1 = common knowledge)
+- "excerpt": the verbatim passage from the transcript that contains or supports this claim — include enough surrounding context that someone could write a detailed summary from the excerpt alone (may be one sentence or a full exchange)
 
-Sort by importance descending. Return valid JSON only, no markdown fences.
+Guidelines:
+- Extract every claim worth preserving — do NOT limit to a fixed number
+- A dense 3-hour episode may yield 30-40 claims; a light 20-minute episode may yield 8-12
+- Skip filler, repetition, ads, and off-topic tangents
+- Excerpts must be VERBATIM from the transcript, not paraphrased
+- Sort by importance descending
+
+Return ONLY a JSON array. No markdown fences, no commentary.
 
 TRANSCRIPT:
 ${transcript}`,

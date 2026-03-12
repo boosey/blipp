@@ -46,6 +46,21 @@ describe("extractClaims", () => {
     expect(call.messages[0].content).toContain("My specific transcript");
   });
 
+  it("should ask for variable claims with excerpts in the prompt", async () => {
+    const client = createMockAnthropicClient(JSON.stringify(sampleClaims));
+    await extractClaims(client, "My transcript");
+
+    const call = client.messages.create.mock.calls[0][0];
+    const prompt = call.messages[0].content;
+    // Should NOT ask for fixed "top 10"
+    expect(prompt).not.toContain("top 10");
+    // Should ask for excerpts
+    expect(prompt).toContain("excerpt");
+    expect(prompt).toContain("verbatim");
+    // Should use higher max_tokens
+    expect(call.max_tokens).toBe(8192);
+  });
+
   it("should use default model when none provided", async () => {
     const client = createMockAnthropicClient(JSON.stringify(sampleClaims));
     await extractClaims(client, "transcript");
