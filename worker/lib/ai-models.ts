@@ -17,6 +17,9 @@ export interface AIModelConfig {
 export const AI_MODELS: Record<AIStage, AIModelEntry[]> = {
   stt: [
     { provider: "openai", model: "whisper-1", label: "Whisper v1" },
+    { provider: "deepgram", model: "nova-2", label: "Deepgram Nova-2" },
+    { provider: "assemblyai", model: "assemblyai-best", label: "AssemblyAI Best" },
+    { provider: "google", model: "google-chirp", label: "Google Chirp" },
   ],
   distillation: [
     { provider: "anthropic", model: "claude-sonnet-4-20250514", label: "Sonnet 4" },

@@ -88,12 +88,13 @@ model Episode {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  podcast      Podcast       @relation(fields: [podcastId], references: [id], onDelete: Cascade)
-  distillation Distillation?
-  clips        Clip[]
-  pipelineJobs PipelineJob[]
-  workProducts WorkProduct[]
-  feedItems    FeedItem[]
+  podcast          Podcast             @relation(fields: [podcastId], references: [id], onDelete: Cascade)
+  distillation     Distillation?
+  clips            Clip[]
+  pipelineJobs     PipelineJob[]
+  workProducts     WorkProduct[]
+  feedItems        FeedItem[]
+  benchmarkResults SttBenchmarkResult[]
 
   @@unique([podcastId, guid])
 }
@@ -362,6 +363,56 @@ model PipelineEvent {
   createdAt DateTime           @default(now())
 
   @@index([stepId, createdAt])
+}
+
+// ── STT Benchmark ──
+
+model SttExperiment {
+  id           String              @id @default(cuid())
+  name         String
+  status       SttExperimentStatus @default(PENDING)
+  config       Json                // { models: string[], speeds: number[], episodeIds: string[] }
+  totalTasks   Int                 @default(0)
+  doneTasks    Int                 @default(0)
+  errorMessage String?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  completedAt  DateTime?
+  results      SttBenchmarkResult[]
+}
+
+enum SttExperimentStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+model SttBenchmarkResult {
+  id              String   @id @default(cuid())
+  experimentId    String
+  episodeId       String
+  model           String   // "whisper-1", "nova-2", "assemblyai-best", "google-chirp"
+  speed           Float    // 1.0, 1.5, 2.0
+  status          String   @default("PENDING") // PENDING, RUNNING, POLLING, COMPLETED, FAILED
+  costDollars     Float?
+  latencyMs       Int?
+  wer             Float?
+  wordCount       Int?
+  refWordCount    Int?
+  r2AudioKey      String?  // sped-up audio in R2 (null for 1x)
+  r2TranscriptKey String?
+  pollingId       String?  // external job ID for async APIs (AssemblyAI, Google)
+  errorMessage    String?
+  createdAt       DateTime @default(now())
+  completedAt     DateTime?
+
+  experiment SttExperiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  episode    Episode       @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+
+  @@unique([experimentId, episodeId, model, speed])
+  @@index([experimentId])
 }
 
 // ── Admin: Runtime Configuration ──

@@ -22,6 +22,7 @@ const AdminUsers = lazy(() => import("./pages/admin/users"));
 const Analytics = lazy(() => import("./pages/admin/analytics"));
 const Configuration = lazy(() => import("./pages/admin/configuration"));
 const Requests = lazy(() => import("./pages/admin/requests"));
+const SttBenchmark = lazy(() => import("./pages/admin/stt-benchmark"));
 
 function AdminLoading() {
   return (
@@ -84,6 +85,7 @@ export default function App() {
         <Route path="analytics" element={<Suspense fallback={<AdminLoading />}><Analytics /></Suspense>} />
         <Route path="configuration" element={<Suspense fallback={<AdminLoading />}><Configuration /></Suspense>} />
         <Route path="requests" element={<Suspense fallback={<AdminLoading />}><Requests /></Suspense>} />
+        <Route path="stt-benchmark" element={<Suspense fallback={<AdminLoading />}><SttBenchmark /></Suspense>} />
       </Route>
     </Routes>
   );

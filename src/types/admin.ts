@@ -583,3 +583,65 @@ export interface PipelineEventSummary {
   data?: Record<string, unknown>;
   createdAt: string;
 }
+
+// ── STT Benchmark ──
+
+export type SttExperimentStatus = "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | "CANCELLED";
+
+export type SttResultStatus = "PENDING" | "RUNNING" | "POLLING" | "COMPLETED" | "FAILED";
+
+export interface SttExperiment {
+  id: string;
+  name: string;
+  status: SttExperimentStatus;
+  config: { models: string[]; speeds: number[]; episodeIds: string[] };
+  totalTasks: number;
+  doneTasks: number;
+  errorMessage?: string;
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string;
+}
+
+export interface SttBenchmarkResult {
+  id: string;
+  experimentId: string;
+  episodeId: string;
+  model: string;
+  speed: number;
+  status: SttResultStatus;
+  costDollars?: number;
+  latencyMs?: number;
+  wer?: number;
+  wordCount?: number;
+  refWordCount?: number;
+  r2AudioKey?: string;
+  r2TranscriptKey?: string;
+  pollingId?: string;
+  errorMessage?: string;
+  createdAt: string;
+  completedAt?: string;
+  // Joined data
+  episodeTitle?: string;
+  podcastTitle?: string;
+}
+
+export interface SttResultsGrid {
+  model: string;
+  speed: number;
+  avgWer: number;
+  avgCost: number;
+  avgLatency: number;
+  completedCount: number;
+  failedCount: number;
+}
+
+export interface SttEligibleEpisode {
+  id: string;
+  title: string;
+  podcastTitle: string;
+  podcastImageUrl?: string;
+  durationSeconds?: number;
+  transcriptUrl?: string;
+  hasDistillationTranscript: boolean;
+}
