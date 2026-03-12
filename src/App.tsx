@@ -17,7 +17,6 @@ import { BriefingPlayer } from "./pages/briefing-player";
 const CommandCenter = lazy(() => import("./pages/admin/command-center"));
 const Pipeline = lazy(() => import("./pages/admin/pipeline"));
 const Catalog = lazy(() => import("./pages/admin/catalog"));
-const Episodes = lazy(() => import("./pages/admin/episodes"));
 const Briefings = lazy(() => import("./pages/admin/briefings"));
 const AdminUsers = lazy(() => import("./pages/admin/users"));
 const Analytics = lazy(() => import("./pages/admin/analytics"));
@@ -80,7 +79,6 @@ export default function App() {
         <Route path="command-center" element={<Suspense fallback={<AdminLoading />}><CommandCenter /></Suspense>} />
         <Route path="pipeline" element={<Suspense fallback={<AdminLoading />}><Pipeline /></Suspense>} />
         <Route path="catalog" element={<Suspense fallback={<AdminLoading />}><Catalog /></Suspense>} />
-        <Route path="episodes" element={<Suspense fallback={<AdminLoading />}><Episodes /></Suspense>} />
         <Route path="briefings" element={<Suspense fallback={<AdminLoading />}><Briefings /></Suspense>} />
         <Route path="users" element={<Suspense fallback={<AdminLoading />}><AdminUsers /></Suspense>} />
         <Route path="analytics" element={<Suspense fallback={<AdminLoading />}><Analytics /></Suspense>} />
