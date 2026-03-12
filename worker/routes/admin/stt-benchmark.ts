@@ -406,6 +406,7 @@ sttBenchmarkRoutes.get("/experiments/:id/results", async (c) => {
 
   return c.json({
     data: {
+      experiment,
       results: mappedResults,
       grid,
       winners,

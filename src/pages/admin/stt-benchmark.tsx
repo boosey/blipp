@@ -34,6 +34,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -552,6 +553,9 @@ function ExperimentSetupDialog({
             <FlaskConical className="h-5 w-5 text-[#3B82F6]" />
             New STT Benchmark Experiment
           </DialogTitle>
+          <DialogDescription className="text-[#9CA3AF]">
+            Compare STT models across audio speeds using episodes with official transcripts.
+          </DialogDescription>
         </DialogHeader>
 
         <ScrollArea className="flex-1 pr-4">
