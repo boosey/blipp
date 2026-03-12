@@ -20,8 +20,8 @@ function createMockAnthropicClient(responseText: string) {
 
 describe("extractClaims", () => {
   const sampleClaims: Claim[] = [
-    { claim: "AI will transform healthcare", speaker: "Dr. Smith", importance: 9, novelty: 7 },
-    { claim: "Costs will drop by 40%", speaker: "Dr. Smith", importance: 8, novelty: 6 },
+    { claim: "AI will transform healthcare", speaker: "Dr. Smith", importance: 9, novelty: 7, excerpt: "I truly believe that AI will transform healthcare in ways we can barely imagine right now." },
+    { claim: "Costs will drop by 40%", speaker: "Dr. Smith", importance: 8, novelty: 6, excerpt: "Our models show costs will drop by 40% within the next five years as automation scales." },
   ];
 
   it("should parse claims JSON from Claude response", async () => {
@@ -70,7 +70,7 @@ describe("extractClaims", () => {
 
 describe("generateNarrative", () => {
   const claims: Claim[] = [
-    { claim: "AI will transform healthcare", speaker: "Dr. Smith", importance: 9, novelty: 7 },
+    { claim: "AI will transform healthcare", speaker: "Dr. Smith", importance: 9, novelty: 7, excerpt: "I truly believe that AI will transform healthcare in ways we can barely imagine right now." },
   ];
 
   it("should return narrative text from Claude", async () => {

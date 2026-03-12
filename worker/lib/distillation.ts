@@ -14,6 +14,8 @@ export interface Claim {
   importance: number;
   /** 1-10 rating of how novel/surprising the claim is */
   novelty: number;
+  /** Verbatim source passage from the transcript supporting this claim */
+  excerpt: string;
 }
 
 /**
