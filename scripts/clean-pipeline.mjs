@@ -78,6 +78,7 @@ async function main() {
   const tables = [
     ["FeedItem", '"FeedItem"'],
     ["Briefing", '"Briefing"'],
+    ["PipelineEvent", '"PipelineEvent"'],
     ["PipelineStep", '"PipelineStep"'],
     ["WorkProduct", '"WorkProduct"'],
     ["PipelineJob", '"PipelineJob"'],
