@@ -80,6 +80,32 @@ ${transcript}`,
 }
 
 /**
+ * Selects and prioritizes claims for a target duration tier.
+ *
+ * Sorts claims by a composite score (70% importance, 30% novelty) and
+ * returns the top N claims where N scales with the target duration
+ * (~2.5 claims per minute, minimum 3).
+ */
+export function selectClaimsForDuration(
+  claims: Claim[],
+  durationMinutes: number
+): Claim[] {
+  if (claims.length === 0) return [];
+
+  const scored = claims
+    .map(c => ({ ...c, _score: c.importance * 0.7 + c.novelty * 0.3 }))
+    .sort((a, b) => b._score - a._score);
+
+  const targetCount = Math.min(
+    scored.length,
+    Math.max(3, Math.ceil(durationMinutes * 2.5))
+  );
+
+  // Strip the internal _score field before returning
+  return scored.slice(0, targetCount).map(({ _score, ...claim }) => claim);
+}
+
+/**
  * Pass 2: Generates a spoken narrative from extracted claims at a target duration.
  *
  * Calculates a target word count from the desired duration in minutes and

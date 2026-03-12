@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import {
   extractClaims,
   generateNarrative,
+  selectClaimsForDuration,
   WORDS_PER_MINUTE,
   type Claim,
 } from "../distillation";
@@ -133,6 +134,53 @@ describe("generateNarrative", () => {
 
     const call = client.messages.create.mock.calls[0][0];
     expect(call.messages[0].content).toContain("AI will transform healthcare");
+  });
+});
+
+describe("selectClaimsForDuration", () => {
+  // 10 claims with varying importance/novelty scores
+  const claims: Claim[] = Array.from({ length: 10 }, (_, i) => ({
+    claim: `Claim ${i + 1}`,
+    speaker: "Host",
+    importance: 10 - i,         // 10, 9, 8, 7, 6, 5, 4, 3, 2, 1
+    novelty: Math.max(1, 5 - i), // 5, 4, 3, 2, 1, 1, 1, 1, 1, 1
+    excerpt: `Excerpt for claim ${i + 1}`,
+  }));
+
+  it("returns minimum 3 claims for 1-minute tier", () => {
+    const result = selectClaimsForDuration(claims, 1);
+    expect(result).toHaveLength(3);
+  });
+
+  it("returns ~2.5 * duration claims for mid-range tiers", () => {
+    const result = selectClaimsForDuration(claims, 3);
+    // Math.ceil(3 * 2.5) = 8, capped at 10 available
+    expect(result).toHaveLength(8);
+  });
+
+  it("caps at available claims count", () => {
+    const result = selectClaimsForDuration(claims, 15);
+    // Math.ceil(15 * 2.5) = 38, but only 10 available
+    expect(result).toHaveLength(10);
+  });
+
+  it("sorts by composite score (importance 0.7 + novelty 0.3)", () => {
+    const result = selectClaimsForDuration(claims, 1);
+    // Top 3 by composite: claim 1 (10*0.7+5*0.3=8.5), claim 2 (9*0.7+4*0.3=7.5), claim 3 (8*0.7+3*0.3=6.5)
+    expect(result[0].claim).toBe("Claim 1");
+    expect(result[1].claim).toBe("Claim 2");
+    expect(result[2].claim).toBe("Claim 3");
+  });
+
+  it("returns all claims when duration would require more than available", () => {
+    const fewClaims = claims.slice(0, 2);
+    const result = selectClaimsForDuration(fewClaims, 5);
+    expect(result).toHaveLength(2);
+  });
+
+  it("handles empty claims array", () => {
+    const result = selectClaimsForDuration([], 5);
+    expect(result).toHaveLength(0);
   });
 });
 
