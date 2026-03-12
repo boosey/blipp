@@ -19,6 +19,9 @@ import {
   FileJson,
   FileAudio,
   HardDrive,
+  List,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -47,6 +50,7 @@ import type {
   AdminEpisode,
   WorkProductSummary,
   WorkProductType,
+  PipelineEventSummary,
 } from "@/types/admin";
 
 // ── Constants ──
@@ -378,27 +382,123 @@ function formatTokens(n: number): string {
   return String(n);
 }
 
+const EVENT_LEVEL_COLORS: Record<string, string> = {
+  ERROR: "#EF4444",
+  WARN: "#F59E0B",
+  INFO: "#9CA3AF",
+  DEBUG: "#6B7280",
+};
+
+const SUCCESS_KEYWORDS = ["saved", "extracted", "generated", "completed", "found", "fetched", "created", "linked", "assembly complete"];
+
+function isSuccessEvent(event: PipelineEventSummary): boolean {
+  if (event.level !== "INFO") return false;
+  const lower = event.message.toLowerCase();
+  return SUCCESS_KEYWORDS.some((kw) => lower.includes(kw));
+}
+
+function eventColor(event: PipelineEventSummary): string {
+  if (event.level === "ERROR") return EVENT_LEVEL_COLORS.ERROR;
+  if (event.level === "WARN") return EVENT_LEVEL_COLORS.WARN;
+  if (isSuccessEvent(event)) return "#22C55E";
+  if (event.level === "DEBUG") return EVENT_LEVEL_COLORS.DEBUG;
+  return EVENT_LEVEL_COLORS.INFO;
+}
+
+function formatEventTime(iso: string): string {
+  try {
+    return new Date(iso).toLocaleTimeString("en-US", {
+      hour12: false,
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+  } catch {
+    return "";
+  }
+}
+
+function EventTimeline({
+  events,
+  stepStatus,
+}: {
+  events: PipelineEventSummary[];
+  stepStatus: PipelineStepStatus;
+}) {
+  const [showDebug, setShowDebug] = useState(false);
+  const filtered = showDebug ? events : events.filter((e) => e.level !== "DEBUG");
+  const debugCount = events.filter((e) => e.level === "DEBUG").length;
+
+  const borderColor =
+    stepStatus === "FAILED" ? "#EF4444" :
+    stepStatus === "IN_PROGRESS" ? "#3B82F6" :
+    stepStatus === "COMPLETED" ? "#22C55E" :
+    "#6B7280";
+
+  return (
+    <div className="py-1">
+      {debugCount > 0 && (
+        <button
+          onClick={() => setShowDebug((v) => !v)}
+          className="flex items-center gap-1 text-[9px] text-[#6B7280] hover:text-[#9CA3AF] mb-1 transition-colors"
+        >
+          {showDebug ? <EyeOff className="h-2.5 w-2.5" /> : <Eye className="h-2.5 w-2.5" />}
+          {showDebug ? "Hide" : "Show"} debug ({debugCount})
+        </button>
+      )}
+      <div
+        className="border-l-2 pl-3 space-y-0.5"
+        style={{ borderColor }}
+      >
+        {filtered.map((event) => (
+          <div key={event.id} className="flex items-start gap-2 text-[10px]">
+            <span className="text-[#6B7280] font-mono text-[9px] shrink-0 tabular-nums">
+              {formatEventTime(event.createdAt)}
+            </span>
+            <span style={{ color: eventColor(event) }}>
+              {event.message}
+            </span>
+          </div>
+        ))}
+        {filtered.length === 0 && (
+          <span className="text-[9px] text-[#6B7280] italic">No events recorded</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ExpandableStepRow({
   step,
 }: {
   step: StepProgress;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const events = step.events ?? [];
   const wps = step.workProducts ?? [];
-  const hasWp = wps.length > 0;
+  const hasContent = events.length > 0 || wps.length > 0;
+
+  const [expanded, setExpanded] = useState(
+    step.status === "FAILED" || step.status === "IN_PROGRESS"
+  );
+  const [showEvents, setShowEvents] = useState(
+    step.status === "FAILED" || step.status === "IN_PROGRESS"
+  );
+  const [showWps, setShowWps] = useState(false);
+
+  const infoEventCount = events.filter((e) => e.level !== "DEBUG").length;
 
   return (
     <div>
+      {/* Main step row */}
       <div
         className={cn(
           "grid grid-cols-[14px_90px_60px_55px_60px_60px_60px_auto_1fr] gap-2 items-center text-[10px] py-0.5",
-          hasWp && "cursor-pointer hover:bg-white/[0.02] rounded -mx-1 px-1"
+          hasContent && "cursor-pointer hover:bg-white/[0.02] rounded -mx-1 px-1"
         )}
-        onClick={hasWp ? () => setExpanded((v) => !v) : undefined}
+        onClick={hasContent ? () => setExpanded((v) => !v) : undefined}
       >
-        {/* Expand chevron */}
         <div>
-          {hasWp ? (
+          {hasContent ? (
             expanded ? (
               <ChevronDown className="h-2.5 w-2.5 text-[#9CA3AF]" />
             ) : (
@@ -407,10 +507,8 @@ function ExpandableStepRow({
           ) : null}
         </div>
 
-        {/* Stage name */}
         <span className="text-[#9CA3AF] truncate">{formatStageName(step.stage)}</span>
 
-        {/* Status */}
         <div className="flex items-center gap-1">
           <StepStatusIcon step={step} />
           {step.cached && (
@@ -418,34 +516,28 @@ function ExpandableStepRow({
           )}
         </div>
 
-        {/* Duration */}
         <span className="text-[9px] text-[#9CA3AF] font-mono tabular-nums text-right">
           {step.durationMs != null ? `${step.durationMs}ms` : "—"}
         </span>
 
-        {/* Tokens In */}
         <span className="text-[9px] text-[#9CA3AF] font-mono tabular-nums text-right">
           {step.inputTokens != null ? formatTokens(step.inputTokens) : "—"}
         </span>
 
-        {/* Tokens Out */}
         <span className="text-[9px] text-[#9CA3AF] font-mono tabular-nums text-right">
           {step.outputTokens != null ? formatTokens(step.outputTokens) : "—"}
         </span>
 
-        {/* Cost */}
         <span className="text-[9px] text-[#10B981] font-mono tabular-nums text-right">
           {step.cost != null ? `$${step.cost.toFixed(4)}` : "—"}
         </span>
 
-        {/* Assets */}
         <div className="flex items-center gap-1">
-          {hasWp && wps.map((wp) => (
+          {wps.length > 0 && wps.map((wp) => (
             <WorkProductBadge key={wp.id} wp={wp} />
           ))}
         </div>
 
-        {/* Model + error */}
         <div className="flex items-center gap-1 min-w-0">
           {step.model && (
             <span className="text-[8px] text-[#8B5CF6] font-mono tabular-nums truncate max-w-[120px]" title={step.model}>
@@ -460,11 +552,56 @@ function ExpandableStepRow({
         </div>
       </div>
 
-      {expanded && wps.length > 0 && (
-        <div className="pl-8 space-y-1">
-          {wps.map((wp) => (
-            <StepWorkProductPanel key={wp.id} wp={wp} />
-          ))}
+      {/* Nested accordion: Event Log + Work Products */}
+      {expanded && (
+        <div className="pl-6 space-y-0.5 pb-1">
+          {events.length > 0 && (
+            <div>
+              <button
+                className="flex items-center gap-1.5 text-[10px] text-[#9CA3AF] hover:text-[#F9FAFB] py-0.5 transition-colors w-full text-left"
+                onClick={() => setShowEvents((v) => !v)}
+              >
+                {showEvents ? (
+                  <ChevronDown className="h-2.5 w-2.5" />
+                ) : (
+                  <ChevronRight className="h-2.5 w-2.5" />
+                )}
+                <List className="h-2.5 w-2.5" />
+                <span>Event Log</span>
+                <span className="text-[#6B7280]">({infoEventCount})</span>
+              </button>
+              {showEvents && (
+                <div className="pl-5">
+                  <EventTimeline events={events} stepStatus={step.status} />
+                </div>
+              )}
+            </div>
+          )}
+
+          {wps.length > 0 && (
+            <div>
+              <button
+                className="flex items-center gap-1.5 text-[10px] text-[#9CA3AF] hover:text-[#F9FAFB] py-0.5 transition-colors w-full text-left"
+                onClick={() => setShowWps((v) => !v)}
+              >
+                {showWps ? (
+                  <ChevronDown className="h-2.5 w-2.5" />
+                ) : (
+                  <ChevronRight className="h-2.5 w-2.5" />
+                )}
+                <HardDrive className="h-2.5 w-2.5" />
+                <span>Work Products</span>
+                <span className="text-[#6B7280]">({wps.length})</span>
+              </button>
+              {showWps && (
+                <div className="pl-5 space-y-1">
+                  {wps.map((wp) => (
+                    <StepWorkProductPanel key={wp.id} wp={wp} />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
