@@ -431,21 +431,6 @@ function PodcastRow({
   );
 }
 
-// ── Pipeline Status Badge ──
-
-function PipelineStatusBadge({ status }: { status: string }) {
-  return (
-    <Badge className={cn(
-      "text-[9px]",
-      status === "completed" ? "bg-[#10B981]/15 text-[#10B981]" :
-      status === "failed" ? "bg-[#EF4444]/15 text-[#EF4444]" :
-      "bg-[#F59E0B]/15 text-[#F59E0B]"
-    )}>
-      {status}
-    </Badge>
-  );
-}
-
 // ── Clip Row ──
 
 function ClipRow({ clip }: { clip: AdminClipSummary }) {
@@ -554,7 +539,7 @@ function PodcastDetailModal({
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-[1200px] w-[80vw] max-h-[85vh] overflow-hidden flex flex-col bg-[#0F1D32] border-white/10 text-[#F9FAFB] p-0" aria-describedby={undefined}>
+      <DialogContent className="sm:max-w-[90vw] w-[50vw] max-h-[90vh] overflow-hidden flex flex-col bg-[#0F1D32] border-white/10 text-[#F9FAFB] p-0" aria-describedby={undefined}>
         <DialogTitle className="sr-only">{detail?.title ?? "Podcast Details"}</DialogTitle>
         {loading || !detail ? (
           <div className="p-6 space-y-3">
@@ -674,20 +659,19 @@ function PodcastDetailModal({
                               {Math.round(ep.durationSeconds / 60)}m
                             </span>
                           )}
-                          <PipelineStatusBadge status={ep.pipelineStatus} />
                         </div>
                       </AccordionTrigger>
                       <AccordionContent className="pb-3">
                         <Tabs defaultValue="overview">
                           <TabsList variant="line" className="bg-transparent border-b border-white/5 mb-2">
-                            <TabsTrigger value="overview" className="text-[10px]">Overview</TabsTrigger>
-                            <TabsTrigger value="clips" className="text-[10px]">
+                            <TabsTrigger value="overview" className="text-[10px] text-[#9CA3AF] hover:text-[#F9FAFB] data-[state=active]:text-[#F9FAFB]">Overview</TabsTrigger>
+                            <TabsTrigger value="clips" className="text-[10px] text-[#9CA3AF] hover:text-[#F9FAFB] data-[state=active]:text-[#F9FAFB]">
                               Clips ({ep.clips?.length ?? 0})
                             </TabsTrigger>
                           </TabsList>
 
                           <TabsContent value="overview">
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-[11px]">
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-[11px]">
                               <div>
                                 <span className="text-[10px] text-[#9CA3AF] block">Published</span>
                                 <span className="font-mono tabular-nums">{new Date(ep.publishedAt).toLocaleDateString()}</span>
@@ -697,10 +681,6 @@ function PodcastDetailModal({
                                 <span className="font-mono tabular-nums">
                                   {ep.durationSeconds != null ? `${Math.round(ep.durationSeconds / 60)}m` : "\u2014"}
                                 </span>
-                              </div>
-                              <div>
-                                <span className="text-[10px] text-[#9CA3AF] block">Pipeline</span>
-                                <PipelineStatusBadge status={ep.pipelineStatus} />
                               </div>
                               <div>
                                 <span className="text-[10px] text-[#9CA3AF] block">Cost</span>
