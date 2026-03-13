@@ -14,6 +14,7 @@ import {
   ChevronRight,
   ClipboardList,
   FlaskConical,
+  Boxes,
 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
@@ -38,6 +39,7 @@ const navItems = [
   { path: "analytics", label: "Analytics", icon: BarChart3, shortcut: "A" },
   { path: "configuration", label: "Configuration", icon: Settings, shortcut: "," },
   { path: "stt-benchmark", label: "STT Benchmark", icon: FlaskConical, shortcut: "T" },
+  { path: "model-registry", label: "Model Registry", icon: Boxes, shortcut: "M" },
 ];
 
 export function AdminLayout() {
