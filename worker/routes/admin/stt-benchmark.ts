@@ -156,7 +156,20 @@ sttBenchmarkRoutes.get("/episodes/:episodeId/reference-transcript", async (c) =>
     return c.json({ error: `Failed to fetch transcript: ${resp.status}` }, 502);
   }
 
-  const text = await resp.text();
+  let text = await resp.text();
+
+  // Strip HTML/XML tags (speaker labels, timestamps) to match normalizeText
+  text = text.replace(/<[^>]*>/g, " ");
+
+  // Optional truncation: ?maxWords=N limits output to first N words
+  const maxWords = parseInt(c.req.query("maxWords") ?? "", 10);
+  if (maxWords > 0) {
+    const words = text.split(/\s+/).filter((w) => w.length > 0);
+    if (words.length > maxWords) {
+      text = words.slice(0, maxWords).join(" ") + " …";
+    }
+  }
+
   return c.json({ data: { transcript: text } });
 });
 
@@ -348,6 +361,9 @@ sttBenchmarkRoutes.post("/experiments/:id/run", async (c) => {
       data: { status: "RUNNING" },
     });
   }
+
+  // COMPLETED experiments can be resumed if orphaned POLLING/PENDING rows exist
+  // (runNextTask handles re-opening the experiment)
 
   try {
     const result = await runNextTask(id, c.env, prisma);

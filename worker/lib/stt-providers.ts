@@ -229,13 +229,14 @@ const AssemblyAIProvider: SttProvider = {
       throw new Error(`AssemblyAI poll error ${resp.status}: ${body}`);
     }
 
-    const data = (await resp.json()) as { status: string; text?: string };
+    const data = (await resp.json()) as { status: string; text?: string; error?: string };
+    console.log(`[AssemblyAI poll] jobId=${jobId}, status=${data.status}, hasText=${!!data.text}, textLen=${data.text?.length ?? 0}, error=${data.error ?? "none"}`);
 
     if (data.status === "completed") {
       return { done: true, transcript: data.text ?? "" };
     }
     if (data.status === "error") {
-      throw new Error("AssemblyAI transcription failed");
+      throw new Error(`AssemblyAI transcription failed: ${data.error ?? "unknown"}`);
     }
 
     return { done: false };

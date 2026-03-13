@@ -27,7 +27,7 @@ export async function runNextTask(
   if (!experiment) {
     throw new Error(`Experiment ${experimentId} not found`);
   }
-  if (experiment.status !== "RUNNING") {
+  if (experiment.status !== "RUNNING" && experiment.status !== "COMPLETED") {
     throw new Error(
       `Experiment ${experimentId} is ${experiment.status}, expected RUNNING`,
     );
@@ -48,14 +48,24 @@ export async function runNextTask(
 
   // 3. If no tasks left, mark experiment COMPLETED
   if (!pollingResult && !pendingResult) {
-    await prisma.sttExperiment.update({
-      where: { id: experimentId },
-      data: { status: "COMPLETED", completedAt: new Date() },
-    });
+    if (experiment.status !== "COMPLETED") {
+      await prisma.sttExperiment.update({
+        where: { id: experimentId },
+        data: { status: "COMPLETED", completedAt: new Date() },
+      });
+    }
     return {
       done: true,
       progress: { done: experiment.doneTasks, total: experiment.totalTasks },
     };
+  }
+
+  // 3b. Re-open a COMPLETED experiment if orphaned POLLING/PENDING rows exist
+  if (experiment.status === "COMPLETED") {
+    await prisma.sttExperiment.update({
+      where: { id: experimentId },
+      data: { status: "RUNNING", completedAt: null },
+    });
   }
 
   // 4. Run both in parallel: poll async job + start next pending task
@@ -122,15 +132,39 @@ async function markFailed(
   });
 }
 
-/** Strip ad/intro insertion blocks from hypothesis, then compute WER. */
+/**
+ * Strip ad insertion blocks from hypothesis, truncate reference to match,
+ * then compute WER.
+ *
+ * Two-pass approach:
+ * 1. Generous rough-cut of reference (1.5x hypothesis length) for alignment
+ * 2. Strip ad blocks from hypothesis using alignment
+ * 3. Tight truncation of reference to cleaned hypothesis length (1.2x margin)
+ * 4. Compute WER on the size-matched pair
+ */
 function calculateCleanWer(
   hypothesis: string,
   reference: string,
 ): { wer: number; wordCount: number; refWordCount: number } {
   const hypWords = normalizeText(hypothesis);
-  const refWords = normalizeText(reference);
-  const cleanedHyp = stripInsertionBlocks(hypWords, refWords);
-  return calculateWer(cleanedHyp.join(" "), reference);
+  const allRefWords = normalizeText(reference);
+
+  // Pass 1: generous cut for alignment (captures enough context to find ads)
+  const roughLimit = Math.ceil(hypWords.length * 1.5);
+  const roughRef = allRefWords.length > roughLimit
+    ? allRefWords.slice(0, roughLimit)
+    : allRefWords;
+
+  // Pass 2: strip ad blocks using rough-cut alignment
+  const cleanedHyp = stripInsertionBlocks(hypWords, roughRef);
+
+  // Pass 3: tight truncation based on cleaned hypothesis length
+  const tightLimit = Math.ceil(cleanedHyp.length * 1.2);
+  const finalRef = allRefWords.length > tightLimit
+    ? allRefWords.slice(0, tightLimit)
+    : allRefWords;
+
+  return calculateWer(cleanedHyp.join(" "), finalRef.join(" "));
 }
 
 // ---------------------------------------------------------------------------
@@ -158,11 +192,7 @@ async function handlePollingTask(
   // Transcription complete
   const transcript = pollResult.transcript ?? "";
   const referenceText = await getReferenceTranscript(result.episode, env);
-  const truncatedRef = truncateReferenceToWindow(
-    referenceText,
-    result.episode.durationSeconds,
-  );
-  const werResult = calculateCleanWer(transcript, truncatedRef);
+  const werResult = calculateCleanWer(transcript, referenceText);
 
   // Store transcript to R2
   const r2TranscriptKey = `benchmark/transcripts/${experiment.id}/${result.id}.txt`;
@@ -230,11 +260,7 @@ async function handlePendingTask(
   // Sync result — compute WER and save
   const transcript = sttResult.transcript;
   const referenceText = await getReferenceTranscript(result.episode, env);
-  const truncatedRef = truncateReferenceToWindow(
-    referenceText,
-    result.episode.durationSeconds,
-  );
-  const werResult = calculateCleanWer(transcript, truncatedRef);
+  const werResult = calculateCleanWer(transcript, referenceText);
 
   // Store transcript to R2
   const r2TranscriptKey = `benchmark/transcripts/${experiment.id}/${result.id}.txt`;
@@ -328,24 +354,4 @@ async function getReferenceTranscript(
   );
 }
 
-/**
- * Truncate reference transcript to match the ~15 minute benchmark window.
- * Since we only transcribe the first 15 minutes of audio, we proportionally
- * truncate the reference transcript to match.
- */
-function truncateReferenceToWindow(
-  referenceText: string,
-  episodeDurationSeconds?: number | null,
-): string {
-  if (
-    !episodeDurationSeconds ||
-    episodeDurationSeconds <= BENCHMARK_WINDOW_SECONDS
-  ) {
-    return referenceText;
-  }
 
-  const refWords = normalizeText(referenceText);
-  const fraction = BENCHMARK_WINDOW_SECONDS / episodeDurationSeconds;
-  const wordLimit = Math.floor(refWords.length * fraction);
-  return refWords.slice(0, wordLimit).join(" ");
-}

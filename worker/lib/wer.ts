@@ -13,6 +13,8 @@
  */
 export function normalizeText(text: string): string[] {
   return text
+    // Strip HTML/XML tags (speaker labels, timestamps, etc.)
+    .replace(/<[^>]*>/g, " ")
     .toLowerCase()
     // Remove punctuation except apostrophes that are between letters (contractions)
     .replace(/(?<![a-z])'|'(?![a-z])/g, "")

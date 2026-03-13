@@ -939,15 +939,19 @@ function ResultsDashboard({
     await loadResults();
   }, [apiFetch, experiment.id, loadResults]);
 
+  // Check if any results are still POLLING (orphaned async jobs)
+  const hasPollingResults = results.some((r) => r.status === "POLLING");
+  const shouldPoll = experiment.status === "RUNNING" || hasPollingResults;
+
   useEffect(() => {
-    if (experiment.status === "RUNNING") {
+    if (shouldPoll) {
       pollRef.current = setInterval(runNextAndPoll, 3000);
       return () => {
         if (pollRef.current) clearInterval(pollRef.current);
       };
     }
     if (pollRef.current) clearInterval(pollRef.current);
-  }, [experiment.status, runNextAndPoll]);
+  }, [shouldPoll, runNextAndPoll]);
 
   // Process and upload audio
   const processAndUploadAudio = useCallback(async () => {
@@ -1322,24 +1326,34 @@ function ResultsDashboard({
                       .filter((c) => c.avgLatency > 0)
                       .map((c) => c.avgLatency);
 
+                    const werMin = Math.min(...werValues);
+                    const werMax = Math.max(...werValues);
+                    const costMin = Math.min(...costValues);
+                    const costMax = Math.max(...costValues);
+                    const latMin = Math.min(...latValues);
+                    const latMax = Math.max(...latValues);
+
                     const isBestWer =
                       werValues.length > 0 &&
-                      cell.avgWer === Math.min(...werValues);
+                      cell.avgWer === werMin;
                     const isWorstWer =
                       werValues.length > 0 &&
-                      cell.avgWer === Math.max(...werValues);
+                      werMin !== werMax &&
+                      cell.avgWer === werMax;
                     const isBestCost =
                       costValues.length > 0 &&
-                      cell.avgCost === Math.min(...costValues);
+                      cell.avgCost === costMin;
                     const isWorstCost =
                       costValues.length > 0 &&
-                      cell.avgCost === Math.max(...costValues);
+                      costMin !== costMax &&
+                      cell.avgCost === costMax;
                     const isBestLat =
                       latValues.length > 0 &&
-                      cell.avgLatency === Math.min(...latValues);
+                      cell.avgLatency === latMin;
                     const isWorstLat =
                       latValues.length > 0 &&
-                      cell.avgLatency === Math.max(...latValues);
+                      latMin !== latMax &&
+                      cell.avgLatency === latMax;
 
                     return (
                       <TableCell key={speed} className="text-center">
@@ -1524,7 +1538,14 @@ function ResultsDashboard({
                           Transcripts
                         </span>
                         <Accordion type="multiple" className="mt-1">
-                          <ReferenceTranscriptViewer episodeId={episodeId} />
+                          <ReferenceTranscriptViewer
+                            episodeId={episodeId}
+                            maxWords={
+                              epResults.find(
+                                (r) => r.status === "COMPLETED" && r.wordCount
+                              )?.wordCount ?? undefined
+                            }
+                          />
                           {epResults
                             .filter((r) => r.status === "COMPLETED" && r.r2TranscriptKey)
                             .map((r) => (
@@ -1622,7 +1643,7 @@ function TranscriptViewer({
   );
 }
 
-function ReferenceTranscriptViewer({ episodeId }: { episodeId: string }) {
+function ReferenceTranscriptViewer({ episodeId, maxWords }: { episodeId: string; maxWords?: number }) {
   const apiFetch = useAdminFetch();
   const [transcript, setTranscript] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -1632,8 +1653,9 @@ function ReferenceTranscriptViewer({ episodeId }: { episodeId: string }) {
     if (transcript !== null) return;
     setLoading(true);
     try {
+      const params = maxWords ? `?maxWords=${Math.ceil(maxWords * 1.2)}` : "";
       const data = await apiFetch<{ data: { transcript: string } }>(
-        `/stt-benchmark/episodes/${episodeId}/reference-transcript`
+        `/stt-benchmark/episodes/${episodeId}/reference-transcript${params}`
       );
       setTranscript(data.data.transcript);
     } catch (err) {
