@@ -394,6 +394,7 @@ model SttBenchmarkResult {
   experimentId    String
   episodeId       String
   model           String   // "whisper-1", "nova-2", "nova-3", "assemblyai-best", "google-chirp"
+  provider        String?  // inference provider, e.g. "openai", "cloudflare", "deepgram"
   speed           Float    // 1.0, 1.5, 2.0
   status          String   @default("PENDING") // PENDING, RUNNING, POLLING, COMPLETED, FAILED
   costDollars     Float?
@@ -425,4 +426,48 @@ model PlatformConfig {
   description String?
   updatedAt   DateTime @updatedAt
   updatedBy   String?  // admin clerkId who last updated
+}
+
+// ── AI Model Registry ──
+
+enum AiStage {
+  stt
+  distillation
+  narrative
+  tts
+}
+
+model AiModel {
+  id        String    @id @default(cuid())
+  stage     AiStage
+  modelId   String    // e.g. "whisper-1", "nova-3", "claude-sonnet-4-20250514"
+  label     String    // e.g. "Whisper v1", "Deepgram Nova-3"
+  developer String    // e.g. "openai", "deepgram", "anthropic"
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+
+  providers AiModelProvider[]
+
+  @@unique([stage, modelId])
+}
+
+model AiModelProvider {
+  id                   String    @id @default(cuid())
+  aiModelId            String
+  provider             String    // inference provider: "openai", "cloudflare", "groq", "deepgram", etc.
+  providerLabel        String    // display name: "Cloudflare Workers AI"
+  pricePerMinute       Float?    // STT / TTS per audio minute
+  priceInputPerMToken  Float?    // LLM per 1M input tokens
+  priceOutputPerMToken Float?    // LLM per 1M output tokens
+  pricePerKChars       Float?    // TTS alt: per 1K characters
+  isDefault            Boolean   @default(false)
+  isAvailable          Boolean   @default(true)
+  priceUpdatedAt       DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  model AiModel @relation(fields: [aiModelId], references: [id], onDelete: Cascade)
+
+  @@unique([aiModelId, provider])
+  @@index([aiModelId])
 }
