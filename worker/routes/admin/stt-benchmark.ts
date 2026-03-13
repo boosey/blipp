@@ -7,6 +7,7 @@ import {
 } from "../../lib/admin-helpers";
 import { runNextTask } from "../../lib/stt-benchmark-runner";
 import { STT_PROVIDERS } from "../../lib/stt-providers";
+import { parseVTT, parseSRT } from "../../lib/transcript";
 
 const sttBenchmarkRoutes = new Hono<{ Bindings: Env }>();
 
@@ -132,6 +133,34 @@ sttBenchmarkRoutes.get("/results/:resultId/transcript", async (c) => {
 });
 
 // ---------------------------------------------------------------------------
+// GET /results/:resultId/reference-transcript — cleaned ref used in WER
+// ---------------------------------------------------------------------------
+sttBenchmarkRoutes.get("/results/:resultId/reference-transcript", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const resultId = c.req.param("resultId");
+
+  const result = await prisma.sttBenchmarkResult.findUnique({
+    where: { id: resultId },
+  });
+
+  if (!result) {
+    return c.json({ error: "Result not found" }, 404);
+  }
+
+  if (!result.r2RefTranscriptKey) {
+    return c.json({ error: "No reference transcript available" }, 404);
+  }
+
+  const obj = await c.env.R2.get(result.r2RefTranscriptKey);
+  if (!obj) {
+    return c.json({ error: "Reference transcript not found in storage" }, 404);
+  }
+
+  const text = await obj.text();
+  return c.json({ data: { transcript: text } });
+});
+
+// ---------------------------------------------------------------------------
 // GET /episodes/:episodeId/reference-transcript — fetch official transcript
 // ---------------------------------------------------------------------------
 sttBenchmarkRoutes.get("/episodes/:episodeId/reference-transcript", async (c) => {
@@ -156,10 +185,17 @@ sttBenchmarkRoutes.get("/episodes/:episodeId/reference-transcript", async (c) =>
     return c.json({ error: `Failed to fetch transcript: ${resp.status}` }, 502);
   }
 
-  let text = await resp.text();
+  const raw = await resp.text();
 
-  // Strip HTML/XML tags (speaker labels, timestamps) to match normalizeText
-  text = text.replace(/<[^>]*>/g, " ");
+  // Parse VTT/SRT to strip timestamps, speaker labels, headers
+  let text: string;
+  if (raw.trimStart().startsWith("WEBVTT") || episode.transcriptUrl.endsWith(".vtt")) {
+    text = parseVTT(raw);
+  } else if (episode.transcriptUrl.endsWith(".srt") || /^\d+\r?\n\d{2}:\d{2}/.test(raw.trimStart())) {
+    text = parseSRT(raw);
+  } else {
+    text = raw;
+  }
 
   // Optional truncation: ?maxWords=N limits output to first N words
   const maxWords = parseInt(c.req.query("maxWords") ?? "", 10);
@@ -440,6 +476,7 @@ sttBenchmarkRoutes.get("/experiments/:id/results", async (c) => {
     refWordCount: r.refWordCount ?? undefined,
     r2AudioKey: r.r2AudioKey ?? undefined,
     r2TranscriptKey: r.r2TranscriptKey ?? undefined,
+    r2RefTranscriptKey: r.r2RefTranscriptKey ?? undefined,
     pollingId: r.pollingId ?? undefined,
     errorMessage: r.errorMessage ?? undefined,
     createdAt: r.createdAt.toISOString(),

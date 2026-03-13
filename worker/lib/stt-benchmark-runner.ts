@@ -1,7 +1,9 @@
 import type { Env } from "../types";
 import type { AudioInput } from "./stt-providers";
 import { getProvider } from "./stt-providers";
-import { calculateWer, normalizeText, stripInsertionBlocks } from "./wer";
+import { parseVTT, parseSRT } from "./transcript";
+import { alignTranscriptWindow, calculateWer, normalizeText, stripInsertionBlocks } from "./wer";
+import { preWerNormalize } from "./transcript-normalizer";
 
 const BENCHMARK_WINDOW_SECONDS = 900; // 15 minutes
 
@@ -133,38 +135,38 @@ async function markFailed(
 }
 
 /**
- * Strip ad insertion blocks from hypothesis, truncate reference to match,
- * then compute WER.
+ * Align hypothesis and reference to the same content window, strip ad
+ * insertion blocks, then compute WER.
  *
- * Two-pass approach:
- * 1. Generous rough-cut of reference (1.5x hypothesis length) for alignment
- * 2. Strip ad blocks from hypothesis using alignment
- * 3. Tight truncation of reference to cleaned hypothesis length (1.2x margin)
- * 4. Compute WER on the size-matched pair
+ * 1. Anchor-based window alignment: use reference start words to skip
+ *    leading ads in hypothesis, use hypothesis end words to trim reference.
+ * 2. Strip remaining ad insertion blocks from hypothesis.
+ * 3. Compute WER on the aligned, cleaned pair.
  */
 function calculateCleanWer(
   hypothesis: string,
   reference: string,
-): { wer: number; wordCount: number; refWordCount: number } {
+): { wer: number; wordCount: number; refWordCount: number; cleanedHyp: string; cleanedRef: string } {
   const hypWords = normalizeText(hypothesis);
-  const allRefWords = normalizeText(reference);
+  const refWords = normalizeText(reference);
 
-  // Pass 1: generous cut for alignment (captures enough context to find ads)
-  const roughLimit = Math.ceil(hypWords.length * 1.5);
-  const roughRef = allRefWords.length > roughLimit
-    ? allRefWords.slice(0, roughLimit)
-    : allRefWords;
+  // Pre-WER normalization: numbers → words, compounds, spelling
+  const { normalizedRef, normalizedHyp } = preWerNormalize(refWords, hypWords);
 
-  // Pass 2: strip ad blocks using rough-cut alignment
-  const cleanedHyp = stripInsertionBlocks(hypWords, roughRef);
+  // Align to the same content window
+  const { trimmedHyp, trimmedRef } = alignTranscriptWindow(normalizedHyp, normalizedRef);
 
-  // Pass 3: tight truncation based on cleaned hypothesis length
-  const tightLimit = Math.ceil(cleanedHyp.length * 1.2);
-  const finalRef = allRefWords.length > tightLimit
-    ? allRefWords.slice(0, tightLimit)
-    : allRefWords;
+  // Strip mid-transcript ad insertion blocks
+  const cleanedHyp = stripInsertionBlocks(trimmedHyp, trimmedRef);
 
-  return calculateWer(cleanedHyp.join(" "), finalRef.join(" "));
+  const cleanedHypText = cleanedHyp.join(" ");
+  const cleanedRefText = trimmedRef.join(" ");
+
+  return {
+    ...calculateWer(cleanedHypText, cleanedRefText),
+    cleanedHyp: cleanedHypText,
+    cleanedRef: cleanedRefText,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -194,9 +196,13 @@ async function handlePollingTask(
   const referenceText = await getReferenceTranscript(result.episode, env);
   const werResult = calculateCleanWer(transcript, referenceText);
 
-  // Store transcript to R2
+  // Store the cleaned texts that WER was actually computed on
   const r2TranscriptKey = `benchmark/transcripts/${experiment.id}/${result.id}.txt`;
-  await env.R2.put(r2TranscriptKey, transcript);
+  const r2RefTranscriptKey = `benchmark/transcripts/${experiment.id}/${result.id}-ref.txt`;
+  await Promise.all([
+    env.R2.put(r2TranscriptKey, werResult.cleanedHyp),
+    env.R2.put(r2RefTranscriptKey, werResult.cleanedRef),
+  ]);
 
   await prisma.sttBenchmarkResult.update({
     where: { id: result.id },
@@ -207,6 +213,7 @@ async function handlePollingTask(
       wordCount: werResult.wordCount,
       refWordCount: werResult.refWordCount,
       r2TranscriptKey,
+      r2RefTranscriptKey,
       costDollars: pollResult.costDollars ?? result.costDollars,
     },
   });
@@ -262,9 +269,13 @@ async function handlePendingTask(
   const referenceText = await getReferenceTranscript(result.episode, env);
   const werResult = calculateCleanWer(transcript, referenceText);
 
-  // Store transcript to R2
+  // Store the cleaned texts that WER was actually computed on
   const r2TranscriptKey = `benchmark/transcripts/${experiment.id}/${result.id}.txt`;
-  await env.R2.put(r2TranscriptKey, transcript);
+  const r2RefTranscriptKey = `benchmark/transcripts/${experiment.id}/${result.id}-ref.txt`;
+  await Promise.all([
+    env.R2.put(r2TranscriptKey, werResult.cleanedHyp),
+    env.R2.put(r2RefTranscriptKey, werResult.cleanedRef),
+  ]);
 
   await prisma.sttBenchmarkResult.update({
     where: { id: result.id },
@@ -277,6 +288,7 @@ async function handlePendingTask(
       wordCount: werResult.wordCount,
       refWordCount: werResult.refWordCount,
       r2TranscriptKey,
+      r2RefTranscriptKey,
     },
   });
 
@@ -342,7 +354,15 @@ async function getReferenceTranscript(
   if (episode.transcriptUrl) {
     const resp = await fetch(episode.transcriptUrl);
     if (resp.ok) {
-      return resp.text();
+      const raw = await resp.text();
+      // Parse VTT/SRT to strip timestamps, speaker labels, headers
+      if (raw.trimStart().startsWith("WEBVTT") || episode.transcriptUrl.endsWith(".vtt")) {
+        return parseVTT(raw);
+      }
+      if (episode.transcriptUrl.endsWith(".srt") || /^\d+\r?\n\d{2}:\d{2}/.test(raw.trimStart())) {
+        return parseSRT(raw);
+      }
+      return raw; // plain text, return as-is
     }
     throw new Error(
       `Failed to fetch reference transcript from ${episode.transcriptUrl}: ${resp.status}`,

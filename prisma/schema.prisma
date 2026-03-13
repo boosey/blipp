@@ -393,7 +393,7 @@ model SttBenchmarkResult {
   id              String   @id @default(cuid())
   experimentId    String
   episodeId       String
-  model           String   // "whisper-1", "nova-2", "assemblyai-best", "google-chirp"
+  model           String   // "whisper-1", "nova-2", "nova-3", "assemblyai-best", "google-chirp"
   speed           Float    // 1.0, 1.5, 2.0
   status          String   @default("PENDING") // PENDING, RUNNING, POLLING, COMPLETED, FAILED
   costDollars     Float?
@@ -402,8 +402,9 @@ model SttBenchmarkResult {
   wordCount       Int?
   refWordCount    Int?
   r2AudioKey      String?  // sped-up audio in R2 (null for 1x)
-  r2TranscriptKey String?
-  pollingId       String?  // external job ID for async APIs (AssemblyAI, Google)
+  r2TranscriptKey    String?  // cleaned hypothesis text used in WER comparison
+  r2RefTranscriptKey String?  // cleaned reference text used in WER comparison
+  pollingId          String?  // external job ID for async APIs (AssemblyAI, Google)
   errorMessage    String?
   createdAt       DateTime @default(now())
   completedAt     DateTime?

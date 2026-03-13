@@ -156,6 +156,62 @@ const DeepgramProvider: SttProvider = {
 };
 
 // ---------------------------------------------------------------------------
+// Deepgram Nova-3
+// ---------------------------------------------------------------------------
+
+const DeepgramNova3Provider: SttProvider = {
+  name: "Deepgram Nova-3",
+  modelId: "nova-3",
+
+  async transcribe(audio: AudioInput, durationSeconds: number, env: Env): Promise<SttResult> {
+    const start = Date.now();
+
+    let resp: Response;
+    if ("url" in audio) {
+      resp = await fetch(
+        "https://api.deepgram.com/v1/listen?model=nova-3&smart_format=true",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Token ${env.DEEPGRAM_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ url: audio.url }),
+        },
+      );
+    } else {
+      resp = await fetch(
+        "https://api.deepgram.com/v1/listen?model=nova-3&smart_format=true",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Token ${env.DEEPGRAM_API_KEY}`,
+            "Content-Type": "audio/mpeg",
+          },
+          body: audio.buffer,
+        },
+      );
+    }
+
+    if (!resp.ok) {
+      const body = await resp.text();
+      console.error(`[Deepgram Nova-3] ${resp.status}: ${body}`);
+      throw new Error(`Deepgram API error ${resp.status}: ${body}`);
+    }
+
+    const data = (await resp.json()) as {
+      results: { channels: { alternatives: { transcript: string }[] }[] };
+    };
+
+    const latencyMs = Date.now() - start;
+    const costDollars = (durationSeconds / 60) * 0.0043;
+    const transcript = data.results.channels[0]?.alternatives[0]?.transcript ?? "";
+
+    return { transcript, costDollars, latencyMs };
+  },
+};
+
+// ---------------------------------------------------------------------------
 // AssemblyAI
 // ---------------------------------------------------------------------------
 
@@ -330,6 +386,7 @@ const GoogleSttProvider: SttProvider = {
 export const STT_PROVIDERS: SttProvider[] = [
   WhisperProvider,
   DeepgramProvider,
+  DeepgramNova3Provider,
   AssemblyAIProvider,
   GoogleSttProvider,
 ];

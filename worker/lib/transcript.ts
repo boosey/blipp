@@ -26,8 +26,12 @@ export function parseVTT(vtt: string): string {
     ) {
       continue;
     }
-    // Strip inline HTML tags (e.g., <v Speaker>, <b>, etc.)
-    const clean = trimmed.replace(/<[^>]+>/g, "").trim();
+    // Strip inline HTML tags (e.g., <v Speaker>, <b>, etc.) and bracket speaker labels
+    const clean = trimmed
+      .replace(/<[^>]+>/g, "")
+      .replace(/\[SPEAKER_\d+\]\s*:?\s*/gi, "")
+      .replace(/\[Speaker\s*\d*\]\s*:?\s*/gi, "")
+      .trim();
     if (clean) {
       textLines.push(clean);
     }

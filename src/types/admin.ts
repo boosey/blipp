@@ -617,6 +617,7 @@ export interface SttBenchmarkResult {
   refWordCount?: number;
   r2AudioKey?: string;
   r2TranscriptKey?: string;
+  r2RefTranscriptKey?: string;
   pollingId?: string;
   errorMessage?: string;
   createdAt: string;

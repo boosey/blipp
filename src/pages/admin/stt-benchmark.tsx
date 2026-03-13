@@ -61,6 +61,7 @@ import type {
 const STT_MODELS = [
   { id: "whisper-1", label: "OpenAI Whisper", price: 0.006 },
   { id: "nova-2", label: "Deepgram Nova-2", price: 0.0043 },
+  { id: "nova-3", label: "Deepgram Nova-3", price: 0.0043 },
   { id: "assemblyai-best", label: "AssemblyAI Best", price: 0.015 },
   { id: "google-chirp", label: "Google Chirp", price: 0.024 },
 ] as const;
@@ -1537,26 +1538,7 @@ function ResultsDashboard({
                         <span className="text-[10px] font-medium text-[#9CA3AF] uppercase tracking-wider">
                           Transcripts
                         </span>
-                        <Accordion type="multiple" className="mt-1">
-                          <ReferenceTranscriptViewer
-                            episodeId={episodeId}
-                            maxWords={
-                              epResults.find(
-                                (r) => r.status === "COMPLETED" && r.wordCount
-                              )?.wordCount ?? undefined
-                            }
-                          />
-                          {epResults
-                            .filter((r) => r.status === "COMPLETED" && r.r2TranscriptKey)
-                            .map((r) => (
-                              <TranscriptViewer
-                                key={r.id}
-                                resultId={r.id}
-                                model={r.model}
-                                speed={r.speed}
-                              />
-                            ))}
-                        </Accordion>
+                        <EpisodeTranscripts results={epResults} />
                       </div>
                     )}
                   </AccordionContent>
@@ -1584,36 +1566,232 @@ function ResultsDashboard({
 
 // ── Result status badge ──
 
-// ── Transcript Viewer (lazy-loaded per result) ──
+// ── Word-level diff engine ──
 
-function TranscriptViewer({
+type DiffOp =
+  | { type: "equal"; word: string }
+  | { type: "insert"; word: string }   // extra word in hypothesis
+  | { type: "delete"; word: string }   // missing word (in ref, not hyp)
+  | { type: "replace"; refWord: string; hypWord: string };
+
+const MAX_DIFF_WORDS = 8000; // skip diff for very long transcripts
+
+function computeWordDiff(refText: string, hypText: string): DiffOp[] | null {
+  const ref = refText.split(/\s+/).filter(Boolean);
+  const hyp = hypText.split(/\s+/).filter(Boolean);
+
+  if (ref.length > MAX_DIFF_WORDS || hyp.length > MAX_DIFF_WORDS) return null;
+
+  const n = ref.length;
+  const m = hyp.length;
+
+  // Wagner-Fischer with full backtrace matrix
+  // dir: 0=match/sub-diagonal, 1=delete-up, 2=insert-left
+  const dp = new Uint32Array((n + 1) * (m + 1));
+  const dir = new Uint8Array((n + 1) * (m + 1));
+  const idx = (i: number, j: number) => i * (m + 1) + j;
+
+  for (let j = 1; j <= m; j++) { dp[idx(0, j)] = j; dir[idx(0, j)] = 2; }
+  for (let i = 1; i <= n; i++) { dp[idx(i, 0)] = i; dir[idx(i, 0)] = 1; }
+
+  for (let i = 1; i <= n; i++) {
+    for (let j = 1; j <= m; j++) {
+      const k = idx(i, j);
+      if (ref[i - 1] === hyp[j - 1]) {
+        dp[k] = dp[idx(i - 1, j - 1)];
+        dir[k] = 0;
+      } else {
+        const sub = dp[idx(i - 1, j - 1)];
+        const del = dp[idx(i - 1, j)];
+        const ins = dp[idx(i, j - 1)];
+        if (sub <= del && sub <= ins) {
+          dp[k] = 1 + sub; dir[k] = 0;
+        } else if (del <= ins) {
+          dp[k] = 1 + del; dir[k] = 1;
+        } else {
+          dp[k] = 1 + ins; dir[k] = 2;
+        }
+      }
+    }
+  }
+
+  // Backtrace
+  const ops: DiffOp[] = [];
+  let i = n, j = m;
+  while (i > 0 || j > 0) {
+    const d = dir[idx(i, j)];
+    if (d === 0 && i > 0 && j > 0) {
+      if (ref[i - 1] === hyp[j - 1]) {
+        ops.push({ type: "equal", word: hyp[j - 1] });
+      } else {
+        ops.push({ type: "replace", refWord: ref[i - 1], hypWord: hyp[j - 1] });
+      }
+      i--; j--;
+    } else if (d === 1 && i > 0) {
+      ops.push({ type: "delete", word: ref[i - 1] });
+      i--;
+    } else {
+      ops.push({ type: "insert", word: hyp[j - 1] });
+      j--;
+    }
+  }
+  ops.reverse();
+  return ops;
+}
+
+// ── Diff renderer ──
+
+function WordDiffView({ ops }: { ops: DiffOp[] }) {
+  return (
+    <div className="text-[11px] leading-relaxed whitespace-pre-wrap break-words bg-[#0A1628] rounded p-3 max-h-80 overflow-auto font-sans">
+      {ops.map((op, i) => {
+        switch (op.type) {
+          case "equal":
+            return <span key={i}>{op.word} </span>;
+          case "insert":
+            return (
+              <span key={i} className="bg-[#10B981]/20 text-[#6EE7B7] rounded-sm px-0.5">
+                {op.word}
+              </span>
+            );
+          case "delete":
+            return (
+              <span key={i} className="bg-[#EF4444]/20 text-[#FCA5A5] line-through rounded-sm px-0.5">
+                {op.word}
+              </span>
+            );
+          case "replace":
+            return (
+              <span key={i}>
+                <span className="bg-[#EF4444]/20 text-[#FCA5A5] line-through rounded-sm px-0.5">
+                  {op.refWord}
+                </span>
+                <span className="bg-[#F59E0B]/20 text-[#FCD34D] rounded-sm px-0.5">
+                  {op.hypWord}
+                </span>
+              </span>
+            );
+        }
+        return null;
+      })}{" "}
+    </div>
+  );
+}
+
+// ── Episode transcripts section (fetches ref once, passes to hyp viewers) ──
+
+function EpisodeTranscripts({
+  results,
+}: {
+  results: SttBenchmarkResult[];
+}) {
+  const apiFetch = useAdminFetch();
+  const [refText, setRefText] = useState<string | null>(null);
+  const [refLoading, setRefLoading] = useState(false);
+  const [refError, setRefError] = useState<string | null>(null);
+  const refResultId = results.find((r) => r.status === "COMPLETED" && r.r2RefTranscriptKey)?.id ?? "";
+
+  const loadRef = useCallback(async () => {
+    if (refText !== null || !refResultId) return;
+    setRefLoading(true);
+    try {
+      const data = await apiFetch<{ data: { transcript: string } }>(
+        `/stt-benchmark/results/${refResultId}/reference-transcript`
+      );
+      setRefText(data.data.transcript);
+    } catch (err) {
+      setRefError(err instanceof Error ? err.message : "Failed to load");
+    } finally {
+      setRefLoading(false);
+    }
+  }, [apiFetch, refResultId, refText]);
+
+  return (
+    <Accordion type="multiple" className="mt-1">
+      {/* Official reference */}
+      <AccordionItem value={`ref-${refResultId}`} className="border-white/5">
+        <AccordionTrigger
+          className="text-[#10B981] text-[10px] hover:no-underline py-1"
+          onClick={loadRef}
+        >
+          Official Reference (as compared)
+        </AccordionTrigger>
+        <AccordionContent>
+          {refLoading && (
+            <div className="text-[#9CA3AF] text-xs flex items-center gap-2 py-2">
+              <Loader2 className="h-3 w-3 animate-spin" /> Loading...
+            </div>
+          )}
+          {refError && <div className="text-[#EF4444] text-xs py-2">{refError}</div>}
+          {refText !== null && (
+            <pre className="text-[#D1D5DB] text-[11px] leading-relaxed whitespace-pre-wrap break-words bg-[#0A1628] rounded p-3 max-h-64 overflow-auto font-sans">
+              {refText}
+            </pre>
+          )}
+        </AccordionContent>
+      </AccordionItem>
+
+      {/* Hypothesis viewers with diff */}
+      {results
+        .filter((r) => r.status === "COMPLETED" && r.r2TranscriptKey)
+        .map((r) => (
+          <HypothesisDiffViewer
+            key={r.id}
+            resultId={r.id}
+            model={r.model}
+            speed={r.speed}
+            refText={refText}
+            onNeedRef={loadRef}
+          />
+        ))}
+    </Accordion>
+  );
+}
+
+// ── Hypothesis transcript with word-level diff ──
+
+function HypothesisDiffViewer({
   resultId,
   model,
   speed,
+  refText,
+  onNeedRef,
 }: {
   resultId: string;
   model: string;
   speed: number;
+  refText: string | null;
+  onNeedRef: () => void;
 }) {
   const apiFetch = useAdminFetch();
-  const [transcript, setTranscript] = useState<string | null>(null);
+  const [hypText, setHypText] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [diffOps, setDiffOps] = useState<DiffOp[] | null>(null);
+  const [showDiff, setShowDiff] = useState(true);
 
   const load = useCallback(async () => {
-    if (transcript !== null) return; // already loaded
+    if (hypText !== null) return;
     setLoading(true);
+    onNeedRef(); // ensure ref is loading too
     try {
       const data = await apiFetch<{ data: { transcript: string } }>(
         `/stt-benchmark/results/${resultId}/transcript`
       );
-      setTranscript(data.data.transcript);
+      setHypText(data.data.transcript);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load");
     } finally {
       setLoading(false);
     }
-  }, [apiFetch, resultId, transcript]);
+  }, [apiFetch, resultId, hypText, onNeedRef]);
+
+  // Compute diff when both texts are available
+  useEffect(() => {
+    if (hypText !== null && refText !== null) {
+      setDiffOps(computeWordDiff(refText, hypText));
+    }
+  }, [hypText, refText]);
 
   return (
     <AccordionItem value={`transcript-${resultId}`} className="border-white/5">
@@ -1621,72 +1799,53 @@ function TranscriptViewer({
         className="text-[#9CA3AF] text-[10px] hover:no-underline py-1"
         onClick={load}
       >
-        <span className="font-mono">{model}</span> @ {speed}x transcript
+        <span className="font-mono">{model}</span> @ {speed}x — hypothesis (as compared)
       </AccordionTrigger>
       <AccordionContent>
         {loading && (
           <div className="text-[#9CA3AF] text-xs flex items-center gap-2 py-2">
-            <Loader2 className="h-3 w-3 animate-spin" />
-            Loading transcript...
+            <Loader2 className="h-3 w-3 animate-spin" /> Loading...
           </div>
         )}
-        {error && (
-          <div className="text-[#EF4444] text-xs py-2">{error}</div>
-        )}
-        {transcript !== null && (
-          <pre className="text-[#D1D5DB] text-[11px] leading-relaxed whitespace-pre-wrap break-words bg-[#0A1628] rounded p-3 max-h-64 overflow-auto font-sans">
-            {transcript}
-          </pre>
-        )}
-      </AccordionContent>
-    </AccordionItem>
-  );
-}
-
-function ReferenceTranscriptViewer({ episodeId, maxWords }: { episodeId: string; maxWords?: number }) {
-  const apiFetch = useAdminFetch();
-  const [transcript, setTranscript] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    if (transcript !== null) return;
-    setLoading(true);
-    try {
-      const params = maxWords ? `?maxWords=${Math.ceil(maxWords * 1.2)}` : "";
-      const data = await apiFetch<{ data: { transcript: string } }>(
-        `/stt-benchmark/episodes/${episodeId}/reference-transcript${params}`
-      );
-      setTranscript(data.data.transcript);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load");
-    } finally {
-      setLoading(false);
-    }
-  }, [apiFetch, episodeId, transcript]);
-
-  return (
-    <AccordionItem value={`ref-${episodeId}`} className="border-white/5">
-      <AccordionTrigger
-        className="text-[#10B981] text-[10px] hover:no-underline py-1"
-        onClick={load}
-      >
-        Official Reference Transcript
-      </AccordionTrigger>
-      <AccordionContent>
-        {loading && (
-          <div className="text-[#9CA3AF] text-xs flex items-center gap-2 py-2">
-            <Loader2 className="h-3 w-3 animate-spin" />
-            Loading transcript...
+        {error && <div className="text-[#EF4444] text-xs py-2">{error}</div>}
+        {hypText !== null && (
+          <div>
+            {diffOps && (
+              <div className="flex items-center gap-3 mb-2">
+                <button
+                  onClick={() => setShowDiff((d) => !d)}
+                  className={cn(
+                    "text-[10px] px-2 py-0.5 rounded border transition-colors",
+                    showDiff
+                      ? "border-[#F59E0B]/40 text-[#FCD34D] bg-[#F59E0B]/10"
+                      : "border-white/10 text-[#9CA3AF] hover:text-[#D1D5DB]"
+                  )}
+                >
+                  {showDiff ? "Diff on" : "Diff off"}
+                </button>
+                {showDiff && (
+                  <span className="text-[10px] text-[#9CA3AF] flex items-center gap-2">
+                    <span className="inline-flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-sm bg-[#EF4444]/30" /> deleted
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-sm bg-[#10B981]/30" /> inserted
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-sm bg-[#F59E0B]/30" /> replaced
+                    </span>
+                  </span>
+                )}
+              </div>
+            )}
+            {showDiff && diffOps ? (
+              <WordDiffView ops={diffOps} />
+            ) : (
+              <pre className="text-[#D1D5DB] text-[11px] leading-relaxed whitespace-pre-wrap break-words bg-[#0A1628] rounded p-3 max-h-64 overflow-auto font-sans">
+                {hypText}
+              </pre>
+            )}
           </div>
-        )}
-        {error && (
-          <div className="text-[#EF4444] text-xs py-2">{error}</div>
-        )}
-        {transcript !== null && (
-          <pre className="text-[#D1D5DB] text-[11px] leading-relaxed whitespace-pre-wrap break-words bg-[#0A1628] rounded p-3 max-h-64 overflow-auto font-sans">
-            {transcript}
-          </pre>
         )}
       </AccordionContent>
     </AccordionItem>

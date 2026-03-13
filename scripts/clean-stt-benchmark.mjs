@@ -5,8 +5,9 @@
  * Usage:  node scripts/clean-stt-benchmark.mjs [--dry-run]
  * Env:    DATABASE_URL from .dev.vars
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, rmSync, readdirSync, existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
+import { join } from "node:path";
 import pg from "pg";
 
 const dryRun = process.argv.includes("--dry-run");
@@ -106,7 +107,32 @@ async function main() {
     }
   }
 
-  console.log(`\nR2 cleanup done (${dryRun ? `${totalR2} would be deleted` : `${deletedR2}/${totalR2} deleted`})`);
+  console.log(`\nRemote R2 cleanup done (${dryRun ? `${totalR2} would be deleted` : `${deletedR2}/${totalR2} deleted`})`);
+
+  // Local R2 emulator cleanup — delete contents inside r2/ rather than the
+  // directory itself to avoid EPERM on Windows when miniflare holds locks.
+  const localR2Dir = join(process.cwd(), ".wrangler", "state", "v3", "r2");
+  if (existsSync(localR2Dir)) {
+    const entries = readdirSync(localR2Dir);
+    if (dryRun) {
+      console.log(`\n  [dry-run] Would delete ${entries.length} entries in local R2 state`);
+    } else {
+      console.log("\nCleaning local R2 emulator state...");
+      for (const entry of entries) {
+        const entryPath = join(localR2Dir, entry);
+        try {
+          rmSync(entryPath, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
+          console.log(`  Deleted ${entry}`);
+        } catch {
+          // miniflare SQLite metadata may be locked — safe to skip,
+          // it only holds references to the now-deleted blobs.
+        }
+      }
+    }
+  } else {
+    console.log("\nNo local R2 emulator state found");
+  }
+
   console.log("\n=== DONE ===\n");
 }
 
