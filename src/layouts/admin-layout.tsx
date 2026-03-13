@@ -13,6 +13,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardList,
+  FlaskConical,
 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
@@ -36,6 +37,7 @@ const navItems = [
   { path: "users", label: "Users", icon: Users, shortcut: "U" },
   { path: "analytics", label: "Analytics", icon: BarChart3, shortcut: "A" },
   { path: "configuration", label: "Configuration", icon: Settings, shortcut: "," },
+  { path: "stt-benchmark", label: "STT Benchmark", icon: FlaskConical, shortcut: "T" },
 ];
 
 export function AdminLayout() {

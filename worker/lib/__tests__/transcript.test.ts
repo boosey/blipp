@@ -47,6 +47,42 @@ Actual content`;
     expect(parseVTT("WEBVTT")).toBe("");
   });
 
+  it("should strip [SPEAKER_XX]: labels", () => {
+    const vtt = `WEBVTT
+
+00:00:00.000 --> 00:00:05.000
+[SPEAKER_00]: Hello there
+
+00:00:05.000 --> 00:00:10.000
+[SPEAKER_01]: How are you`;
+
+    const result = parseVTT(vtt);
+    expect(result).toBe("Hello there How are you");
+  });
+
+  it("should strip [Speaker N]: labels", () => {
+    const vtt = `WEBVTT
+
+00:00:00.000 --> 00:00:05.000
+[Speaker 1]: First speaker
+
+00:00:05.000 --> 00:00:10.000
+[Speaker 2]: Second speaker`;
+
+    const result = parseVTT(vtt);
+    expect(result).toBe("First speaker Second speaker");
+  });
+
+  it("should strip speaker labels without colon", () => {
+    const vtt = `WEBVTT
+
+00:00:00.000 --> 00:00:03.000
+[SPEAKER_00] No colon here`;
+
+    const result = parseVTT(vtt);
+    expect(result).toBe("No colon here");
+  });
+
   it("should handle multiple speakers on consecutive lines", () => {
     const vtt = `WEBVTT
 

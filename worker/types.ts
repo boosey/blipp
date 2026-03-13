@@ -45,4 +45,10 @@ export type Env = {
   TRANSCRIPTION_QUEUE: Queue;
   /** Queue: orchestrates demand-driven pipeline stages for briefing requests */
   ORCHESTRATOR_QUEUE: Queue;
+  /** Deepgram API key for STT benchmark */
+  DEEPGRAM_API_KEY: string;
+  /** AssemblyAI API key for STT benchmark */
+  ASSEMBLYAI_API_KEY: string;
+  /** Google Cloud STT API key for STT benchmark */
+  GOOGLE_STT_API_KEY: string;
 };
