@@ -47,7 +47,6 @@ import {
 import { Card } from "@/components/ui/card";
 import { useAuth } from "@clerk/clerk-react";
 import { useAdminFetch } from "@/lib/admin-api";
-import { AI_MODELS } from "@/lib/ai-models";
 import type {
   SttExperiment,
   SttExperimentStatus,
@@ -69,12 +68,14 @@ const COST_PER_MINUTE: Record<string, number> = {
   "google-chirp": 0.024,
 };
 
-// Derived from the canonical registry — no separate list to maintain.
-const STT_MODELS = AI_MODELS.stt.map((m) => ({
-  id: m.model,
-  label: m.label,
-  price: COST_PER_MINUTE[m.model] ?? 0,
-}));
+// Static STT model list for benchmark UI. Will be replaced by DB-backed registry in Task 8/9.
+const STT_MODELS = [
+  { id: "whisper-1", label: "Whisper v1", price: COST_PER_MINUTE["whisper-1"] ?? 0 },
+  { id: "nova-2", label: "Deepgram Nova-2", price: COST_PER_MINUTE["nova-2"] ?? 0 },
+  { id: "nova-3", label: "Deepgram Nova-3", price: COST_PER_MINUTE["nova-3"] ?? 0 },
+  { id: "assemblyai-best", label: "AssemblyAI Best", price: COST_PER_MINUTE["assemblyai-best"] ?? 0 },
+  { id: "google-chirp", label: "Google Chirp", price: COST_PER_MINUTE["google-chirp"] ?? 0 },
+];
 
 const SPEED_OPTIONS = [1, 1.5, 2] as const;
 

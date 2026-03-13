@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { AI_MODELS, getModelConfig, type AIStage } from "../ai-models";
+import { getModelConfig, getModelRegistry, type AIStage } from "../ai-models";
 
 vi.mock("../config", () => ({
   getConfig: vi.fn(),
@@ -9,25 +9,6 @@ import { getConfig } from "../config";
 
 beforeEach(() => {
   vi.clearAllMocks();
-});
-
-describe("AI_MODELS registry", () => {
-  it("has entries for all 4 stages", () => {
-    expect(AI_MODELS.stt.length).toBeGreaterThan(0);
-    expect(AI_MODELS.distillation.length).toBeGreaterThan(0);
-    expect(AI_MODELS.narrative.length).toBeGreaterThan(0);
-    expect(AI_MODELS.tts.length).toBeGreaterThan(0);
-  });
-
-  it("each entry has provider, model, and label", () => {
-    for (const stage of Object.values(AI_MODELS)) {
-      for (const entry of stage) {
-        expect(entry).toHaveProperty("provider");
-        expect(entry).toHaveProperty("model");
-        expect(entry).toHaveProperty("label");
-      }
-    }
-  });
 });
 
 describe("getModelConfig", () => {
@@ -51,5 +32,36 @@ describe("getModelConfig", () => {
     (getConfig as any).mockResolvedValue({ provider: "openai", model: "whisper-1" });
     await getModelConfig(mockPrisma, "stt");
     expect(getConfig).toHaveBeenCalledWith(mockPrisma, "ai.stt.model", expect.any(Object));
+  });
+});
+
+describe("getModelRegistry", () => {
+  it("returns models for a given stage from DB", async () => {
+    const mockPrisma = { aiModel: { findMany: vi.fn() } };
+    mockPrisma.aiModel.findMany.mockResolvedValue([
+      {
+        id: "m1", stage: "stt", modelId: "whisper-1", label: "Whisper v1",
+        developer: "openai", isActive: true, createdAt: new Date(),
+        providers: [
+          { id: "p1", provider: "openai", providerLabel: "OpenAI",
+            pricePerMinute: 0.006, isDefault: true, isAvailable: true },
+        ],
+      },
+    ]);
+    const result = await getModelRegistry(mockPrisma, "stt");
+    expect(result).toHaveLength(1);
+    expect(result[0].modelId).toBe("whisper-1");
+    expect(result[0].providers).toHaveLength(1);
+    expect(mockPrisma.aiModel.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { stage: "stt", isActive: true } })
+    );
+  });
+
+  it("returns all stages when no stage given", async () => {
+    const mockPrisma = { aiModel: { findMany: vi.fn().mockResolvedValue([]) } };
+    await getModelRegistry(mockPrisma);
+    expect(mockPrisma.aiModel.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { isActive: true } })
+    );
   });
 });

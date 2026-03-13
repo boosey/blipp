@@ -1,8 +1,12 @@
 import { getConfig } from "./config";
-export type { AIStage, AIModelEntry, AIModelConfig } from "../../src/lib/ai-models";
-export { STAGE_LABELS, AI_MODELS } from "../../src/lib/ai-models";
-import type { AIStage, AIModelConfig } from "../../src/lib/ai-models";
-import { AI_MODELS } from "../../src/lib/ai-models";
+export type { AIStage } from "../../src/lib/ai-models";
+export { STAGE_LABELS } from "../../src/lib/ai-models";
+import type { AIStage } from "../../src/lib/ai-models";
+
+export interface AIModelConfig {
+  provider: string;
+  model: string;
+}
 
 const DEFAULTS: Record<AIStage, AIModelConfig> = {
   stt: { provider: "openai", model: "whisper-1" },
@@ -16,4 +20,15 @@ export async function getModelConfig(
   stage: AIStage
 ): Promise<AIModelConfig> {
   return getConfig(prisma, `ai.${stage}.model`, DEFAULTS[stage]);
+}
+
+export async function getModelRegistry(
+  prisma: any,
+  stage?: AIStage
+): Promise<any[]> {
+  return prisma.aiModel.findMany({
+    where: { isActive: true, ...(stage ? { stage } : {}) },
+    include: { providers: { where: { isAvailable: true }, orderBy: { isDefault: "desc" } } },
+    orderBy: { label: "asc" },
+  });
 }

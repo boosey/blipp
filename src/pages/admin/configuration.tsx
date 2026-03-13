@@ -36,8 +36,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { buildPipelineConfig, STAGE_NAMES } from "@/hooks/use-pipeline-config";
-import { AI_MODELS, STAGE_LABELS } from "@/lib/ai-models";
+import { STAGE_LABELS } from "@/lib/ai-models";
 import type { AIStage } from "@/lib/ai-models";
+import type { AiModelEntry } from "@/types/admin";
 import type {
   PlatformConfigEntry,
   DurationTier,
@@ -364,6 +365,17 @@ function AIModelsPanel({
 }) {
   const [editing, setEditing] = useState<string | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
+  const [modelRegistry, setModelRegistry] = useState<AiModelEntry[]>([]);
+
+  useEffect(() => {
+    apiFetch("/ai-models").then((res: any) => setModelRegistry(res.data ?? []));
+  }, []);
+
+  function getStageModels(stage: string) {
+    return modelRegistry
+      .filter((m) => m.stage === stage)
+      .map((m) => ({ provider: m.providers[0]?.provider ?? m.developer, model: m.modelId, label: m.label }));
+  }
 
   function getModelConfig(prefix: string): { provider: string; model: string } {
     const entry = configs.find((c) => c.key === `ai.${prefix}.model`);
@@ -375,17 +387,17 @@ function AIModelsPanel({
   }
 
   function getModelLabel(stageKey: string, modelId: string): string {
-    const entries = AI_MODELS[stageKey as AIStage];
+    const entries = getStageModels(stageKey);
     if (!entries) return modelId;
     const found = entries.find((m) => m.model === modelId);
     return found?.label ?? modelId;
   }
 
   const handleModelChange = async (stageKey: string, modelId: string) => {
-    const entries = AI_MODELS[stageKey as AIStage];
+    const entries = getStageModels(stageKey);
     if (!entries) return;
     const entry = entries.find((m) => m.model === modelId);
-    if (!entry || entry.comingSoon) return;
+    if (!entry) return;
     setSaving(stageKey);
     try {
       await apiFetch(`/config/ai.${stageKey}.model`, {
@@ -416,7 +428,7 @@ function AIModelsPanel({
           const Icon = mt.icon;
           const isEditing = editing === mt.key;
           const isSaving = saving === mt.key;
-          const stageModels = AI_MODELS[mt.key as AIStage] ?? [];
+          const stageModels = getStageModels(mt.key);
           return (
             <div
               key={mt.key}
@@ -463,10 +475,9 @@ function AIModelsPanel({
                         <SelectItem
                           key={m.model}
                           value={m.model}
-                          disabled={m.comingSoon}
                           className="text-xs"
                         >
-                          {m.label}{m.comingSoon ? " (coming soon)" : ""}
+                          {m.label}
                         </SelectItem>
                       ))}
                     </SelectContent>

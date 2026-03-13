@@ -646,3 +646,29 @@ export interface SttEligibleEpisode {
   transcriptUrl?: string;
   hasDistillationTranscript: boolean;
 }
+
+// ── AI Model Registry ──
+
+export interface AiModelProviderEntry {
+  id: string;
+  aiModelId: string;
+  provider: string;
+  providerLabel: string;
+  pricePerMinute: number | null;
+  priceInputPerMToken: number | null;
+  priceOutputPerMToken: number | null;
+  pricePerKChars: number | null;
+  isDefault: boolean;
+  isAvailable: boolean;
+  priceUpdatedAt: string | null;
+}
+
+export interface AiModelEntry {
+  id: string;
+  stage: string;
+  modelId: string;
+  label: string;
+  developer: string;
+  isActive: boolean;
+  providers: AiModelProviderEntry[];
+}
