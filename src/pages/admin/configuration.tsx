@@ -36,7 +36,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { buildPipelineConfig, STAGE_NAMES } from "@/hooks/use-pipeline-config";
-import { AI_MODELS } from "@/lib/ai-models";
+import { AI_MODELS, STAGE_LABELS } from "@/lib/ai-models";
 import type { AIStage } from "@/lib/ai-models";
 import type {
   PlatformConfigEntry,
@@ -79,10 +79,10 @@ const INTERVAL_OPTIONS = [
 ];
 
 const MODEL_TYPES = [
-  { key: "stt", label: "Speech-to-Text", icon: Mic, color: "#3B82F6" },
-  { key: "distillation", label: "Distillation", icon: Sparkles, color: "#8B5CF6" },
-  { key: "narrative", label: "Narrative", icon: Brain, color: "#F59E0B" },
-  { key: "tts", label: "Text-to-Speech", icon: Volume2, color: "#10B981" },
+  { key: "stt" as AIStage, label: STAGE_LABELS.stt, icon: Mic, color: "#3B82F6" },
+  { key: "distillation" as AIStage, label: STAGE_LABELS.distillation, icon: Sparkles, color: "#8B5CF6" },
+  { key: "narrative" as AIStage, label: STAGE_LABELS.narrative, icon: Brain, color: "#F59E0B" },
+  { key: "tts" as AIStage, label: STAGE_LABELS.tts, icon: Volume2, color: "#10B981" },
 ];
 
 const TIER_COLORS: Record<string, string> = {

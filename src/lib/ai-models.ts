@@ -1,9 +1,16 @@
 /**
- * Frontend-safe AI model registry.
- * Mirrors worker/lib/ai-models.ts types and constants without server imports.
+ * Canonical AI model registry — single source of truth for both worker and frontend.
+ * No server-side imports; safe to use in any context.
  */
 
 export type AIStage = "stt" | "distillation" | "narrative" | "tts";
+
+export const STAGE_LABELS: Record<AIStage, string> = {
+  stt: "Transcription",
+  distillation: "Distillation",
+  narrative: "Narrative Generation",
+  tts: "Audio Generation",
+};
 
 export interface AIModelEntry {
   provider: string;
@@ -12,9 +19,18 @@ export interface AIModelEntry {
   comingSoon?: boolean;
 }
 
+export interface AIModelConfig {
+  provider: string;
+  model: string;
+}
+
 export const AI_MODELS: Record<AIStage, AIModelEntry[]> = {
   stt: [
     { provider: "openai", model: "whisper-1", label: "Whisper v1" },
+    { provider: "deepgram", model: "nova-2", label: "Deepgram Nova-2" },
+    { provider: "deepgram", model: "nova-3", label: "Deepgram Nova-3" },
+    { provider: "assemblyai", model: "assemblyai-best", label: "AssemblyAI Best" },
+    { provider: "google", model: "google-chirp", label: "Google Chirp" },
   ],
   distillation: [
     { provider: "anthropic", model: "claude-sonnet-4-20250514", label: "Sonnet 4" },

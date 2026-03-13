@@ -47,6 +47,7 @@ import {
 import { Card } from "@/components/ui/card";
 import { useAuth } from "@clerk/clerk-react";
 import { useAdminFetch } from "@/lib/admin-api";
+import { AI_MODELS } from "@/lib/ai-models";
 import type {
   SttExperiment,
   SttExperimentStatus,
@@ -58,22 +59,24 @@ import type {
 
 // ── Constants ──
 
-const STT_MODELS = [
-  { id: "whisper-1", label: "OpenAI Whisper", price: 0.006 },
-  { id: "nova-2", label: "Deepgram Nova-2", price: 0.0043 },
-  { id: "nova-3", label: "Deepgram Nova-3", price: 0.0043 },
-  { id: "assemblyai-best", label: "AssemblyAI Best", price: 0.015 },
-  { id: "google-chirp", label: "Google Chirp", price: 0.024 },
-] as const;
-
-const SPEED_OPTIONS = [1, 1.5, 2] as const;
-
+// Benchmark-specific pricing ($/min). Keep separate from the model registry
+// since prices are benchmark-relevant metadata, not pipeline config.
 const COST_PER_MINUTE: Record<string, number> = {
   "whisper-1": 0.006,
   "nova-2": 0.0043,
+  "nova-3": 0.0077,
   "assemblyai-best": 0.015,
   "google-chirp": 0.024,
 };
+
+// Derived from the canonical registry — no separate list to maintain.
+const STT_MODELS = AI_MODELS.stt.map((m) => ({
+  id: m.model,
+  label: m.label,
+  price: COST_PER_MINUTE[m.model] ?? 0,
+}));
+
+const SPEED_OPTIONS = [1, 1.5, 2] as const;
 
 const MAX_DURATION_SECONDS = 900; // 15 minutes
 
