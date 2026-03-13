@@ -1,7 +1,7 @@
 import type { Env } from "../types";
 import type { AudioInput } from "./stt-providers";
 import { getProvider } from "./stt-providers";
-import { calculateWer, normalizeText } from "./wer";
+import { calculateWer, normalizeText, stripInsertionBlocks } from "./wer";
 
 const BENCHMARK_WINDOW_SECONDS = 900; // 15 minutes
 
@@ -33,21 +33,21 @@ export async function runNextTask(
     );
   }
 
-  // 2. Find next result row: first try POLLING (resume async), then PENDING
-  let result = await prisma.sttBenchmarkResult.findFirst({
-    where: { experimentId, status: "POLLING" },
-    include: { episode: { include: { distillation: true } } },
-  });
-
-  if (!result) {
-    result = await prisma.sttBenchmarkResult.findFirst({
+  // 2. Find POLLING and PENDING tasks — handle both in parallel so async
+  //    providers (AssemblyAI) don't block synchronous ones (Whisper, Deepgram).
+  const [pollingResult, pendingResult] = await Promise.all([
+    prisma.sttBenchmarkResult.findFirst({
+      where: { experimentId, status: "POLLING" },
+      include: { episode: { include: { distillation: true } } },
+    }),
+    prisma.sttBenchmarkResult.findFirst({
       where: { experimentId, status: "PENDING" },
       include: { episode: { include: { distillation: true } } },
-    });
-  }
+    }),
+  ]);
 
   // 3. If no tasks left, mark experiment COMPLETED
-  if (!result) {
+  if (!pollingResult && !pendingResult) {
     await prisma.sttExperiment.update({
       where: { id: experimentId },
       data: { status: "COMPLETED", completedAt: new Date() },
@@ -58,30 +58,35 @@ export async function runNextTask(
     };
   }
 
-  const provider = getProvider(result.model);
+  // 4. Run both in parallel: poll async job + start next pending task
+  const tasks: Promise<void>[] = [];
+  let currentLabel = "";
 
-  try {
-    if (result.status === "POLLING") {
-      await handlePollingTask(result, provider, experiment, env, prisma);
-    } else {
-      await handlePendingTask(result, provider, experiment, env, prisma);
-    }
-  } catch (err: any) {
-    // Mark task as FAILED
-    await prisma.sttBenchmarkResult.update({
-      where: { id: result.id },
-      data: {
-        status: "FAILED",
-        errorMessage: err?.message || String(err),
-      },
-    });
-
-    // Increment doneTasks even on failure so the experiment progresses
-    await prisma.sttExperiment.update({
-      where: { id: experimentId },
-      data: { doneTasks: { increment: 1 } },
-    });
+  if (pollingResult) {
+    const provider = getProvider(pollingResult.model);
+    currentLabel = `polling ${provider.name}`;
+    tasks.push(
+      handlePollingTask(pollingResult, provider, experiment, env, prisma).catch(
+        async (err: any) => {
+          await markFailed(pollingResult, experimentId, err, prisma);
+        },
+      ),
+    );
   }
+
+  if (pendingResult) {
+    const provider = getProvider(pendingResult.model);
+    currentLabel = `${provider.name} @ ${pendingResult.speed}x — ${pendingResult.episode.title}`;
+    tasks.push(
+      handlePendingTask(pendingResult, provider, experiment, env, prisma).catch(
+        async (err: any) => {
+          await markFailed(pendingResult, experimentId, err, prisma);
+        },
+      ),
+    );
+  }
+
+  await Promise.all(tasks);
 
   // Reload experiment for updated progress
   const updated = await prisma.sttExperiment.findUnique({
@@ -93,9 +98,39 @@ export async function runNextTask(
     progress: {
       done: updated.doneTasks,
       total: updated.totalTasks,
-      current: `${provider.name} @ ${result.speed}x — ${result.episode.title}`,
+      current: currentLabel,
     },
   };
+}
+
+async function markFailed(
+  result: any,
+  experimentId: string,
+  err: any,
+  prisma: any,
+): Promise<void> {
+  await prisma.sttBenchmarkResult.update({
+    where: { id: result.id },
+    data: {
+      status: "FAILED",
+      errorMessage: err?.message || String(err),
+    },
+  });
+  await prisma.sttExperiment.update({
+    where: { id: experimentId },
+    data: { doneTasks: { increment: 1 } },
+  });
+}
+
+/** Strip ad/intro insertion blocks from hypothesis, then compute WER. */
+function calculateCleanWer(
+  hypothesis: string,
+  reference: string,
+): { wer: number; wordCount: number; refWordCount: number } {
+  const hypWords = normalizeText(hypothesis);
+  const refWords = normalizeText(reference);
+  const cleanedHyp = stripInsertionBlocks(hypWords, refWords);
+  return calculateWer(cleanedHyp.join(" "), reference);
 }
 
 // ---------------------------------------------------------------------------
@@ -127,7 +162,7 @@ async function handlePollingTask(
     referenceText,
     result.episode.durationSeconds,
   );
-  const werResult = calculateWer(transcript, truncatedRef);
+  const werResult = calculateCleanWer(transcript, truncatedRef);
 
   // Store transcript to R2
   const r2TranscriptKey = `benchmark/transcripts/${experiment.id}/${result.id}.txt`;
@@ -199,7 +234,7 @@ async function handlePendingTask(
     referenceText,
     result.episode.durationSeconds,
   );
-  const werResult = calculateWer(transcript, truncatedRef);
+  const werResult = calculateCleanWer(transcript, truncatedRef);
 
   // Store transcript to R2
   const r2TranscriptKey = `benchmark/transcripts/${experiment.id}/${result.id}.txt`;
