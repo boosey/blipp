@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { hirschbergAlign, normalizeText, stripInsertionBlocks } from "../wer";
+import { hirschbergAlign, normalizeText, stripInsertionBlocks, calculateWer } from "../wer";
 
 describe("hirschbergAlign", () => {
   it("returns all matches for identical sequences", () => {
@@ -102,5 +102,25 @@ describe("stripInsertionBlocks", () => {
     const words = ["the", "cat", "sat", "on", "the", "mat"];
     const cleaned = stripInsertionBlocks(words, words, 50);
     expect(cleaned).toEqual(words);
+  });
+});
+
+describe("end-to-end: ad stripping + WER", () => {
+  it("WER improves after stripping a large ad prefix", () => {
+    const adText = Array.from({ length: 80 }, (_, i) => `advertisement${i}`).join(" ");
+    const realContent = "the quick brown fox jumps over the lazy dog near the river bank on a sunny day";
+    const hypothesis = `${adText} ${realContent}`;
+    const reference = realContent;
+
+    // Raw WER: very high because of 80 inserted ad words against 16 ref words
+    const rawWer = calculateWer(hypothesis, reference);
+    expect(rawWer.wer).toBeGreaterThan(3);
+
+    // Clean WER: should be near 0 since content matches
+    const hypWords = normalizeText(hypothesis);
+    const refWords = normalizeText(reference);
+    const cleaned = stripInsertionBlocks(hypWords, refWords);
+    const cleanWer = calculateWer(cleaned.join(" "), reference);
+    expect(cleanWer.wer).toBeLessThan(0.1);
   });
 });
