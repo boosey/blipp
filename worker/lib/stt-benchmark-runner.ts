@@ -3,6 +3,8 @@ import type { AudioInput } from "./stt-providers";
 import { getProvider } from "./stt-providers";
 import { calculateWer, normalizeText } from "./wer";
 
+const BENCHMARK_WINDOW_SECONDS = 900; // 15 minutes
+
 export interface RunNextResult {
   done: boolean;
   progress: { done: number; total: number; current?: string };
@@ -230,7 +232,8 @@ async function handlePendingTask(
 /**
  * Resolve the audio source for a benchmark result.
  * If the result has an r2AudioKey (sped-up audio), read from R2 as buffer.
- * Otherwise use the episode's original audio URL.
+ * Otherwise fetch the episode's original audio URL, truncated to ~15 minutes
+ * via byte-range to avoid sending (and paying for) full-length episodes.
  */
 async function resolveAudioInput(result: any, env: Env): Promise<AudioInput> {
   if (result.r2AudioKey) {
@@ -244,7 +247,21 @@ async function resolveAudioInput(result: any, env: Env): Promise<AudioInput> {
     return { buffer, filename };
   }
 
-  return { url: result.episode.audioUrl };
+  // Fallback: fetch original audio, truncated to 15 minutes.
+  // Estimate max bytes: 15 min * 192kbps (generous upper-bound for podcasts) / 8
+  const MAX_BYTES = BENCHMARK_WINDOW_SECONDS * 192_000 / 8; // ~21.6 MB
+  const resp = await fetch(result.episode.audioUrl, {
+    headers: { Range: `bytes=0-${MAX_BYTES - 1}` },
+  });
+
+  if (!resp.ok && resp.status !== 206) {
+    throw new Error(`Audio fetch failed: HTTP ${resp.status} for ${result.episode.audioUrl}`);
+  }
+
+  const buffer = await resp.arrayBuffer();
+  const urlPath = new URL(result.episode.audioUrl).pathname;
+  const filename = urlPath.split("/").pop() || "audio.mp3";
+  return { buffer, filename };
 }
 
 // ---------------------------------------------------------------------------
@@ -285,8 +302,6 @@ function truncateReferenceToWindow(
   referenceText: string,
   episodeDurationSeconds?: number | null,
 ): string {
-  const BENCHMARK_WINDOW_SECONDS = 900; // 15 minutes
-
   if (
     !episodeDurationSeconds ||
     episodeDurationSeconds <= BENCHMARK_WINDOW_SECONDS

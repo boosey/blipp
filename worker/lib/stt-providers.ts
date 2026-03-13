@@ -105,6 +105,9 @@ const DeepgramProvider: SttProvider = {
 
   async transcribe(audio: AudioInput, durationSeconds: number, env: Env): Promise<SttResult> {
     const start = Date.now();
+    const keyPresent = !!env.DEEPGRAM_API_KEY;
+    const keyPrefix = env.DEEPGRAM_API_KEY?.slice(0, 8) ?? "MISSING";
+    console.log(`[Deepgram] key present: ${keyPresent}, prefix: ${keyPrefix}..., auth header: "Token ${env.DEEPGRAM_API_KEY}", audio type: ${"url" in audio ? "url" : "buffer"}`);
 
     // Deepgram accepts either a URL (JSON body) or raw audio bytes
     let resp: Response;
@@ -136,6 +139,7 @@ const DeepgramProvider: SttProvider = {
 
     if (!resp.ok) {
       const body = await resp.text();
+      console.error(`[Deepgram] ${resp.status}: ${body}`);
       throw new Error(`Deepgram API error ${resp.status}: ${body}`);
     }
 
@@ -161,6 +165,9 @@ const AssemblyAIProvider: SttProvider = {
 
   async transcribe(audio: AudioInput, durationSeconds: number, env: Env): Promise<SttResult> {
     const start = Date.now();
+    const keyPresent = !!env.ASSEMBLYAI_API_KEY;
+    const keyPrefix = env.ASSEMBLYAI_API_KEY?.slice(0, 8) ?? "MISSING";
+    console.log(`[AssemblyAI] key present: ${keyPresent}, prefix: ${keyPrefix}..., auth header: "${env.ASSEMBLYAI_API_KEY}", audio type: ${"url" in audio ? "url" : "buffer"}`);
 
     // AssemblyAI requires a URL. If we have a buffer, upload it first.
     let audioUrl: string;
@@ -177,6 +184,7 @@ const AssemblyAIProvider: SttProvider = {
       });
       if (!uploadResp.ok) {
         const body = await uploadResp.text();
+        console.error(`[AssemblyAI] upload ${uploadResp.status}: ${body}`);
         throw new Error(`AssemblyAI upload error ${uploadResp.status}: ${body}`);
       }
       const uploadData = (await uploadResp.json()) as { upload_url: string };
@@ -189,7 +197,7 @@ const AssemblyAIProvider: SttProvider = {
         Authorization: env.ASSEMBLYAI_API_KEY,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ audio_url: audioUrl, language_code: "en" }),
+      body: JSON.stringify({ audio_url: audioUrl, language_code: "en", speech_models: ["universal-3-pro"] }),
     });
 
     if (!resp.ok) {

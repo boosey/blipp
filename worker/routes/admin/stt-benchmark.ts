@@ -69,7 +69,7 @@ sttBenchmarkRoutes.get("/eligible-episodes", async (c) => {
 });
 
 // ---------------------------------------------------------------------------
-// GET /episode-audio/:id — return audio URL for client-side processing
+// GET /episode-audio/:id — proxy audio bytes to avoid CORS issues
 // ---------------------------------------------------------------------------
 sttBenchmarkRoutes.get("/episode-audio/:id", async (c) => {
   const prisma = c.get("prisma") as any;
@@ -84,7 +84,23 @@ sttBenchmarkRoutes.get("/episode-audio/:id", async (c) => {
     return c.json({ error: "Episode not found" }, 404);
   }
 
-  return c.json({ data: { audioUrl: episode.audioUrl } });
+  // Proxy the audio to avoid CORS — limit to first ~15 min at 192kbps
+  const MAX_BYTES = 900 * 192_000 / 8;
+  const upstream = await fetch(episode.audioUrl, {
+    headers: { Range: `bytes=0-${MAX_BYTES - 1}` },
+  });
+
+  if (!upstream.ok && upstream.status !== 206) {
+    return c.json({ error: `Audio fetch failed: ${upstream.status}` }, 502);
+  }
+
+  const contentType = upstream.headers.get("content-type") || "audio/mpeg";
+  return new Response(upstream.body, {
+    headers: {
+      "Content-Type": contentType,
+      "Cache-Control": "private, max-age=3600",
+    },
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -333,8 +349,14 @@ sttBenchmarkRoutes.post("/experiments/:id/run", async (c) => {
     });
   }
 
-  const result = await runNextTask(id, c.env, prisma);
-  return c.json({ data: result });
+  try {
+    const result = await runNextTask(id, c.env, prisma);
+    return c.json({ data: result });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("runNextTask error:", message);
+    return c.json({ error: message }, 500);
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -526,11 +548,14 @@ sttBenchmarkRoutes.delete("/experiments/:id", async (c) => {
 // POST /upload-audio — upload sped-up audio to R2
 // ---------------------------------------------------------------------------
 sttBenchmarkRoutes.post("/upload-audio", async (c) => {
+  try {
   const formData = await c.req.formData();
   const file = formData.get("file") as File | null;
   const experimentId = formData.get("experimentId") as string | null;
   const episodeId = formData.get("episodeId") as string | null;
   const speed = formData.get("speed") as string | null;
+
+  console.log(`[upload-audio] file: ${!!file} (${file?.size ?? 0} bytes), experimentId: ${experimentId}, episodeId: ${episodeId}, speed: ${speed}`);
 
   if (!file || !experimentId || !episodeId || !speed) {
     return c.json(
@@ -557,6 +582,11 @@ sttBenchmarkRoutes.post("/upload-audio", async (c) => {
   });
 
   return c.json({ data: { key } });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[upload-audio] error:", message);
+    return c.json({ error: message }, 500);
+  }
 });
 
 export { sttBenchmarkRoutes };

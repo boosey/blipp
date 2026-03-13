@@ -91,8 +91,13 @@ const PAGE_SIZE = 20;
 
 // ── Audio Processing ──
 
-async function processAudio(audioUrl: string, speed: number): Promise<Blob> {
-  const response = await fetch(audioUrl);
+async function processAudio(audioUrl: string, speed: number, token?: string | null): Promise<Blob> {
+  const headers: Record<string, string> = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const response = await fetch(audioUrl, { headers });
+  if (!response.ok) {
+    throw new Error(`Audio fetch failed: ${response.status} ${response.statusText}`);
+  }
   const arrayBuffer = await response.arrayBuffer();
   const audioCtx = new AudioContext();
   const decoded = await audioCtx.decodeAudioData(arrayBuffer);
@@ -130,12 +135,11 @@ async function processAudio(audioUrl: string, speed: number): Promise<Blob> {
   source.start();
 
   const rendered = await offlineCtx.startRendering();
-  return await encodeToMp3(rendered);
+  return encodeToMp3(rendered);
 }
 
 async function encodeToMp3(audioBuffer: AudioBuffer): Promise<Blob> {
-  const lamejs = await import("lamejs");
-  const Mp3Encoder = lamejs.Mp3Encoder;
+  const { Mp3Encoder } = await import("@/lib/lamejs-bundle");
   const sampleRate = audioBuffer.sampleRate;
   const encoder = new Mp3Encoder(1, sampleRate, 128); // mono, 128kbps
 
@@ -917,16 +921,33 @@ function ResultsDashboard({
     loadResults();
   }, [loadResults]);
 
-  // Auto-poll when RUNNING
+  // Drive tasks + poll results when RUNNING
+  const runNextAndPoll = useCallback(async () => {
+    try {
+      const res = await apiFetch<{ data: { done: boolean } }>(
+        `/stt-benchmark/experiments/${experiment.id}/run`,
+        { method: "POST" }
+      );
+      if (res.data.done) {
+        // Experiment completed — final results load
+        await loadResults();
+        return;
+      }
+    } catch (err) {
+      console.error("runNext error:", err instanceof Error ? err.message : err);
+    }
+    await loadResults();
+  }, [apiFetch, experiment.id, loadResults]);
+
   useEffect(() => {
     if (experiment.status === "RUNNING") {
-      pollRef.current = setInterval(loadResults, 2000);
+      pollRef.current = setInterval(runNextAndPoll, 3000);
       return () => {
         if (pollRef.current) clearInterval(pollRef.current);
       };
     }
     if (pollRef.current) clearInterval(pollRef.current);
-  }, [experiment.status, loadResults]);
+  }, [experiment.status, runNextAndPoll]);
 
   // Process and upload audio
   const processAndUploadAudio = useCallback(async () => {
@@ -949,18 +970,15 @@ function ResultsDashboard({
             (r) => r.episodeId === episodeId && r.speed === speed
           );
           if (!matchingResult?.r2AudioKey) {
-            // Try to fetch the episode's audio URL
-            const episodeData = await apiFetch<{
-              data: { audioUrl: string };
-            }>(`/stt-benchmark/episode-audio/${episodeId}`);
-            const audioUrl = episodeData.data.audioUrl;
+            // Fetch audio via worker proxy (avoids CORS, pre-trimmed to 15 min)
+            const proxyUrl = `/api/admin/stt-benchmark/episode-audio/${episodeId}`;
 
             // Process audio client-side
-            const blob = await processAudio(audioUrl, speed);
+            const blob = await processAudio(proxyUrl, speed, token);
 
             // Upload via multipart form
             const formData = new FormData();
-            formData.append("audio", blob, `${episodeId}_${speed}x.mp3`);
+            formData.append("file", blob, `${episodeId}_${speed}x.mp3`);
             formData.append("experimentId", experiment.id);
             formData.append("episodeId", episodeId);
             formData.append("speed", String(speed));
