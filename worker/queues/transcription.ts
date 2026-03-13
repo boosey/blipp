@@ -60,6 +60,7 @@ export async function handleTranscription(
       const startTime = Date.now();
 
       let stepId: string | null = null;
+      let requestId: string | undefined;
       try {
         // Load job to get requestId
         const job = await prisma.pipelineJob.findUnique({ where: { id: jobId } });
@@ -68,6 +69,7 @@ export async function handleTranscription(
           msg.ack();
           continue;
         }
+        requestId = job.requestId;
 
         // Update job status to IN_PROGRESS if PENDING
         if (job.status === "PENDING") {
@@ -307,7 +309,18 @@ export async function handleTranscription(
           .catch(() => {});
 
         log.error("episode_error", { episodeId, jobId }, err);
-        msg.retry();
+
+        // Notify orchestrator so job is marked FAILED and assembly can proceed
+        if (requestId) {
+          await env.ORCHESTRATOR_QUEUE.send({
+            requestId,
+            action: "job-failed",
+            jobId,
+            errorMessage,
+          }).catch(() => {});
+        }
+
+        msg.ack();
       }
     }
   } finally {

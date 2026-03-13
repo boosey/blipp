@@ -45,12 +45,14 @@ export async function handleAudioGeneration(
     for (const msg of batch.messages) {
       const { jobId, episodeId, durationTier } = msg.body;
       const startTime = Date.now();
+      let requestId: string | undefined;
 
       try {
         // Load job to get requestId
         const job = await prisma.pipelineJob.findUniqueOrThrow({
           where: { id: jobId },
         });
+        requestId = job.requestId;
 
         // Update job status to IN_PROGRESS
         await prisma.pipelineJob.update({
@@ -242,7 +244,17 @@ export async function handleAudioGeneration(
           // Swallow — event logging must never block error handling
         }
 
-        msg.retry();
+        // Notify orchestrator so job is marked FAILED and assembly can proceed
+        if (requestId) {
+          await env.ORCHESTRATOR_QUEUE.send({
+            requestId,
+            action: "job-failed",
+            jobId,
+            errorMessage,
+          }).catch(() => {});
+        }
+
+        msg.ack();
       }
     }
   } finally {

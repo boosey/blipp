@@ -416,7 +416,7 @@ describe("handleTranscription", () => {
     expect(msg.ack).toHaveBeenCalled();
   });
 
-  it("error -> step FAILED, msg.retry()", async () => {
+  it("error -> step FAILED, notifies orchestrator, msg.ack()", async () => {
     const msg = createMsg({ jobId: "job1", episodeId: "ep1" });
     mockPrisma.pipelineJob.findUnique.mockResolvedValue(JOB);
     mockPrisma.pipelineJob.update.mockResolvedValue({});
@@ -435,8 +435,14 @@ describe("handleTranscription", () => {
         errorMessage: "Episode not found: ep1",
       }),
     });
-    expect(msg.retry).toHaveBeenCalled();
-    expect(msg.ack).not.toHaveBeenCalled();
+    expect(env.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith({
+      requestId: "req1",
+      action: "job-failed",
+      jobId: "job1",
+      errorMessage: "Episode not found: ep1",
+    });
+    expect(msg.ack).toHaveBeenCalled();
+    expect(msg.retry).not.toHaveBeenCalled();
   });
 
   it("acks when job not found", async () => {
@@ -620,7 +626,14 @@ describe("handleTranscription", () => {
         errorMessage: expect.stringContaining("too large"),
       }),
     });
-    expect(msg.retry).toHaveBeenCalled();
+    expect(env.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "job-failed",
+        jobId: "job1",
+      }),
+    );
+    expect(msg.ack).toHaveBeenCalled();
+    expect(msg.retry).not.toHaveBeenCalled();
   });
 
   it("uses single-file Whisper when audio is under 25MB", async () => {

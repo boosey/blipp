@@ -43,6 +43,7 @@ export async function handleDistillation(
       const startedAt = new Date();
 
       let step: { id: string } | null = null;
+      let requestId: string | undefined;
 
       try {
         // Load job to get requestId
@@ -50,6 +51,7 @@ export async function handleDistillation(
           where: { id: jobId },
           select: { id: true, requestId: true },
         });
+        requestId = job.requestId;
 
         // Mark job as IN_PROGRESS
         await prisma.pipelineJob.update({
@@ -237,7 +239,18 @@ export async function handleDistillation(
         if (step) await writeEvent(prisma, step.id, "ERROR", `Distillation failed: ${errorMessage}`);
 
         log.error("episode_error", { episodeId, jobId }, err);
-        msg.retry();
+
+        // Notify orchestrator so job is marked FAILED and assembly can proceed
+        if (requestId) {
+          await env.ORCHESTRATOR_QUEUE.send({
+            requestId,
+            action: "job-failed",
+            jobId,
+            errorMessage,
+          }).catch(() => {});
+        }
+
+        msg.ack();
       }
     }
   } finally {

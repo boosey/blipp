@@ -325,7 +325,7 @@ describe("handleAudioGeneration", () => {
   });
 
   describe("error handling", () => {
-    it("marks step FAILED and retries on TTS error", async () => {
+    it("marks step FAILED, notifies orchestrator, and acks on TTS error", async () => {
       mockPrisma.clip.findUnique.mockResolvedValueOnce(CLIP_WITH_NARRATIVE);
       (generateSpeech as any).mockRejectedValueOnce(new Error("TTS API error"));
 
@@ -341,8 +341,14 @@ describe("handleAudioGeneration", () => {
         }),
       });
 
-      expect(mockMsg.retry).toHaveBeenCalled();
-      expect(mockMsg.ack).not.toHaveBeenCalled();
+      expect(mockEnv.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith({
+        requestId: "req-1",
+        action: "job-failed",
+        jobId: "job-1",
+        errorMessage: "TTS API error",
+      });
+      expect(mockMsg.ack).toHaveBeenCalled();
+      expect(mockMsg.retry).not.toHaveBeenCalled();
     });
 
     it("throws if no narrative found on clip", async () => {
@@ -351,7 +357,7 @@ describe("handleAudioGeneration", () => {
       const { mockMsg, mockBatch } = makeBatch(msgBody);
       await handleAudioGeneration(mockBatch, mockEnv, mockCtx);
 
-      expect(mockMsg.retry).toHaveBeenCalled();
+      expect(mockMsg.ack).toHaveBeenCalled();
       expect(mockLogger.error).toHaveBeenCalledWith(
         "episode_error",
         { episodeId: "ep-1", durationTier: 5 },

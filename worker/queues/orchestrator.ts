@@ -4,8 +4,9 @@ import type { Env } from "../types";
 
 interface OrchestratorMessage {
   requestId: string;
-  action: "evaluate" | "job-stage-complete";
+  action: "evaluate" | "job-stage-complete" | "job-failed";
   jobId?: string;
+  errorMessage?: string;
 }
 
 interface BriefingRequestItem {
@@ -56,6 +57,8 @@ export async function handleOrchestrator(
 
         if (action === "evaluate") {
           await handleEvaluate(prisma, env, log, request, msg);
+        } else if (action === "job-failed") {
+          await handleJobFailed(prisma, env, log, request, jobId!, msg.body.errorMessage ?? "Unknown error", msg);
         } else if (action === "job-stage-complete") {
           await handleJobStageComplete(prisma, env, log, request, jobId!, msg);
         } else {
@@ -239,4 +242,53 @@ async function handleJobStageComplete(
 
     msg.ack();
   }
+}
+
+async function handleJobFailed(
+  prisma: any,
+  env: Env,
+  log: any,
+  request: any,
+  jobId: string,
+  errorMessage: string,
+  msg: Message<OrchestratorMessage>
+): Promise<void> {
+  const job = await prisma.pipelineJob.findUnique({
+    where: { id: jobId },
+  });
+
+  if (!job) {
+    log.info("job_not_found", { jobId });
+    msg.ack();
+    return;
+  }
+
+  if (job.status === "COMPLETED" || job.status === "FAILED") {
+    log.info("job_already_terminal", { jobId, status: job.status });
+    msg.ack();
+    return;
+  }
+
+  // Mark job as FAILED
+  await prisma.pipelineJob.update({
+    where: { id: jobId },
+    data: { status: "FAILED", errorMessage, completedAt: new Date() },
+  });
+
+  log.info("job_failed", { jobId, stage: job.currentStage, errorMessage });
+
+  // Check if ALL jobs for this request are now terminal
+  const allJobs = await prisma.pipelineJob.findMany({
+    where: { requestId: request.id },
+  });
+  const pendingOrInProgress = allJobs.filter(
+    (j: any) => j.status !== "COMPLETED" && j.status !== "FAILED"
+  );
+
+  if (pendingOrInProgress.length === 0) {
+    await env.BRIEFING_ASSEMBLY_QUEUE.send({ requestId: request.id });
+    log.info("assembly_dispatched_after_failure", { requestId: request.id });
+  }
+
+  msg.ack();
 }

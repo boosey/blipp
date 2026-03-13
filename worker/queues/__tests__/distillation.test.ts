@@ -355,12 +355,18 @@ describe("handleDistillation", () => {
         create: { episodeId: "ep-1", status: "FAILED", errorMessage: "API error" },
       });
 
-      // Message retried
-      expect(batch.messages[0].retry).toHaveBeenCalled();
-      expect(batch.messages[0].ack).not.toHaveBeenCalled();
+      // Orchestrator notified of failure
+      expect(mockEnv.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith({
+        requestId: "req-1",
+        action: "job-failed",
+        jobId: "job-1",
+        errorMessage: "API error",
+      });
+      expect(batch.messages[0].ack).toHaveBeenCalled();
+      expect(batch.messages[0].retry).not.toHaveBeenCalled();
     });
 
-    it("retries when no transcript is available", async () => {
+    it("notifies orchestrator when no transcript is available", async () => {
       mockPrisma.pipelineJob.findUniqueOrThrow.mockResolvedValue({
         id: "job-1",
         requestId: "req-1",
@@ -379,8 +385,14 @@ describe("handleDistillation", () => {
       const batch = makeBatch([{ jobId: "job-1", episodeId: "ep-1" }]);
       await handleDistillation(batch, mockEnv, mockCtx);
 
-      expect(batch.messages[0].retry).toHaveBeenCalled();
-      expect(batch.messages[0].ack).not.toHaveBeenCalled();
+      expect(mockEnv.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: "job-failed",
+          jobId: "job-1",
+        }),
+      );
+      expect(batch.messages[0].ack).toHaveBeenCalled();
+      expect(batch.messages[0].retry).not.toHaveBeenCalled();
     });
   });
 

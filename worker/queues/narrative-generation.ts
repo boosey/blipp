@@ -45,12 +45,14 @@ export async function handleNarrativeGeneration(
       const { jobId, episodeId, durationTier } = msg.body;
       const startTime = Date.now();
       let stepId: string | undefined;
+      let requestId: string | undefined;
 
       try {
         // Load job to get requestId
         const job = await prisma.pipelineJob.findUniqueOrThrow({
           where: { id: jobId },
         });
+        requestId = job.requestId;
 
         // Update job status to IN_PROGRESS
         await prisma.pipelineJob.update({
@@ -219,7 +221,17 @@ export async function handleNarrativeGeneration(
 
         if (stepId) await writeEvent(prisma, stepId, "ERROR", `Narrative generation failed: ${errorMessage}`);
 
-        msg.retry();
+        // Notify orchestrator so job is marked FAILED and assembly can proceed
+        if (requestId) {
+          await env.ORCHESTRATOR_QUEUE.send({
+            requestId,
+            action: "job-failed",
+            jobId,
+            errorMessage,
+          }).catch(() => {});
+        }
+
+        msg.ack();
       }
     }
   } finally {

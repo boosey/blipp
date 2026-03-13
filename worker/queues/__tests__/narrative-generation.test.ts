@@ -343,7 +343,7 @@ describe("handleNarrativeGeneration", () => {
   });
 
   describe("error handling", () => {
-    it("marks step FAILED and retries on error", async () => {
+    it("marks step FAILED, notifies orchestrator, and acks on error", async () => {
       mockPrisma.workProduct.findFirst.mockResolvedValue(null);
       mockPrisma.clip.findUnique.mockResolvedValue(null);
       mockPrisma.distillation.findFirst.mockResolvedValue(DISTILLATION);
@@ -362,11 +362,17 @@ describe("handleNarrativeGeneration", () => {
         }),
       });
 
-      expect(mockMsg.retry).toHaveBeenCalled();
-      expect(mockMsg.ack).not.toHaveBeenCalled();
+      expect(mockEnv.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith({
+        requestId: "req-1",
+        action: "job-failed",
+        jobId: "job-1",
+        errorMessage: "Claude API error",
+      });
+      expect(mockMsg.ack).toHaveBeenCalled();
+      expect(mockMsg.retry).not.toHaveBeenCalled();
     });
 
-    it("throws if no completed distillation found", async () => {
+    it("notifies orchestrator when no completed distillation found", async () => {
       mockPrisma.workProduct.findFirst.mockResolvedValue(null);
       mockPrisma.clip.findUnique.mockResolvedValue(null);
       mockPrisma.distillation.findFirst.mockResolvedValue(null);
@@ -375,7 +381,7 @@ describe("handleNarrativeGeneration", () => {
       const { mockMsg, mockBatch } = makeBatch(msgBody);
       await handleNarrativeGeneration(mockBatch, mockEnv, mockCtx);
 
-      expect(mockMsg.retry).toHaveBeenCalled();
+      expect(mockMsg.ack).toHaveBeenCalled();
       expect(mockLogger.error).toHaveBeenCalledWith(
         "episode_error",
         { episodeId: "ep-1", durationTier: 5 },
