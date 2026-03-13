@@ -173,6 +173,51 @@ function alignSingleRef(
 }
 
 /**
+ * Remove large contiguous blocks of inserted words (ads, intros, outros)
+ * from the hypothesis before WER calculation.
+ *
+ * Uses Hirschberg alignment to find the optimal word mapping, then
+ * identifies runs of consecutive insertions (hypothesis words with no
+ * reference match) that exceed `minBlockSize` words. Those runs are
+ * stripped from the hypothesis.
+ *
+ * @param hypWords  Normalized hypothesis word array
+ * @param refWords  Normalized reference word array
+ * @param minBlockSize  Minimum consecutive insertion words to strip (default 50)
+ * @returns Cleaned hypothesis word array with large insertion blocks removed
+ */
+export function stripInsertionBlocks(
+  hypWords: string[],
+  refWords: string[],
+  minBlockSize: number = 50,
+): string[] {
+  if (hypWords.length === 0 || refWords.length === 0) return hypWords;
+
+  const ops = hirschbergAlign(hypWords, refWords);
+
+  // Collect indices of hypothesis words that are insertions
+  const insertionIndices = new Set<number>();
+  let run: number[] = [];
+
+  for (const op of ops) {
+    if (op.op === "insert") {
+      run.push(op.hypIdx);
+    } else {
+      if (run.length >= minBlockSize) {
+        for (const idx of run) insertionIndices.add(idx);
+      }
+      run = [];
+    }
+  }
+  // Handle trailing run
+  if (run.length >= minBlockSize) {
+    for (const idx of run) insertionIndices.add(idx);
+  }
+
+  return hypWords.filter((_, i) => !insertionIndices.has(i));
+}
+
+/**
  * Calculate Word Error Rate between hypothesis (STT output) and reference
  * (official transcript).
  *
