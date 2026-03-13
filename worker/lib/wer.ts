@@ -24,6 +24,154 @@ export function normalizeText(text: string): string[] {
     .filter((w) => w.length > 0);
 }
 
+export type AlignOp =
+  | { op: "match"; hypIdx: number; refIdx: number }
+  | { op: "substitute"; hypIdx: number; refIdx: number }
+  | { op: "insert"; hypIdx: number }
+  | { op: "delete"; refIdx: number };
+
+/**
+ * Hirschberg's algorithm: compute the optimal word-level alignment between
+ * hypothesis and reference word arrays, using O(min(n,m)) memory.
+ *
+ * Returns an array of edit operations in order.
+ */
+export function hirschbergAlign(
+  hyp: string[],
+  ref: string[],
+): AlignOp[] {
+  return hirschbergRecurse(hyp, 0, ref, 0);
+}
+
+function hirschbergRecurse(
+  hyp: string[],
+  hypOffset: number,
+  ref: string[],
+  refOffset: number,
+): AlignOp[] {
+  const n = hyp.length;
+  const m = ref.length;
+
+  // Base cases
+  if (n === 0) {
+    return ref.map((_, i) => ({ op: "delete" as const, refIdx: refOffset + i }));
+  }
+  if (m === 0) {
+    return hyp.map((_, i) => ({ op: "insert" as const, hypIdx: hypOffset + i }));
+  }
+  if (n === 1) {
+    return alignSingleHyp(hyp[0], hypOffset, ref, refOffset);
+  }
+  if (m === 1) {
+    return alignSingleRef(hyp, hypOffset, ref[0], refOffset);
+  }
+
+  // Divide: split hypothesis in half
+  const mid = Math.floor(n / 2);
+  const hypLeft = hyp.slice(0, mid);
+  const hypRight = hyp.slice(mid);
+
+  // Forward pass: last row of NW score for hyp[0..mid] vs ref[0..m]
+  const scoreL = nwLastRow(hypLeft, ref);
+  // Reverse pass: last row of NW score for hyp[mid..n] reversed vs ref reversed
+  const scoreR = nwLastRow([...hypRight].reverse(), [...ref].reverse());
+
+  // Find optimal split point on reference
+  let best = -1;
+  let bestScore = Infinity;
+  for (let j = 0; j <= m; j++) {
+    const total = scoreL[j] + scoreR[m - j];
+    if (total < bestScore) {
+      bestScore = total;
+      best = j;
+    }
+  }
+
+  // Conquer: recurse on each half
+  const left = hirschbergRecurse(hypLeft, hypOffset, ref.slice(0, best), refOffset);
+  const right = hirschbergRecurse(hypRight, hypOffset + mid, ref.slice(best), refOffset + best);
+
+  return left.concat(right);
+}
+
+/** Compute the last row of the Needleman-Wunsch distance matrix. O(m) space. */
+function nwLastRow(hyp: string[], ref: string[]): Uint32Array {
+  const m = ref.length;
+  let prev = new Uint32Array(m + 1);
+  let curr = new Uint32Array(m + 1);
+
+  for (let j = 0; j <= m; j++) prev[j] = j;
+
+  for (let i = 0; i < hyp.length; i++) {
+    curr[0] = i + 1;
+    for (let j = 1; j <= m; j++) {
+      const cost = hyp[i] === ref[j - 1] ? 0 : 1;
+      curr[j] = Math.min(
+        prev[j - 1] + cost,  // match/substitute
+        prev[j] + 1,         // deletion
+        curr[j - 1] + 1,     // insertion
+      );
+    }
+    [prev, curr] = [curr, prev];
+  }
+  return prev;
+}
+
+/** Align a single hypothesis word against the full reference. */
+function alignSingleHyp(
+  word: string,
+  hypOffset: number,
+  ref: string[],
+  refOffset: number,
+): AlignOp[] {
+  const ops: AlignOp[] = [];
+  const matchIdx = ref.indexOf(word);
+
+  if (matchIdx === -1) {
+    // No match — substitute first ref word, delete rest
+    ops.push({ op: "substitute", hypIdx: hypOffset, refIdx: refOffset });
+    for (let i = 1; i < ref.length; i++) {
+      ops.push({ op: "delete", refIdx: refOffset + i });
+    }
+  } else {
+    for (let i = 0; i < matchIdx; i++) {
+      ops.push({ op: "delete", refIdx: refOffset + i });
+    }
+    ops.push({ op: "match", hypIdx: hypOffset, refIdx: refOffset + matchIdx });
+    for (let i = matchIdx + 1; i < ref.length; i++) {
+      ops.push({ op: "delete", refIdx: refOffset + i });
+    }
+  }
+  return ops;
+}
+
+/** Align the full hypothesis against a single reference word. */
+function alignSingleRef(
+  hyp: string[],
+  hypOffset: number,
+  word: string,
+  refOffset: number,
+): AlignOp[] {
+  const ops: AlignOp[] = [];
+  const matchIdx = hyp.indexOf(word);
+
+  if (matchIdx === -1) {
+    ops.push({ op: "substitute", hypIdx: hypOffset, refIdx: refOffset });
+    for (let i = 1; i < hyp.length; i++) {
+      ops.push({ op: "insert", hypIdx: hypOffset + i });
+    }
+  } else {
+    for (let i = 0; i < matchIdx; i++) {
+      ops.push({ op: "insert", hypIdx: hypOffset + i });
+    }
+    ops.push({ op: "match", hypIdx: hypOffset + matchIdx, refIdx: refOffset });
+    for (let i = matchIdx + 1; i < hyp.length; i++) {
+      ops.push({ op: "insert", hypIdx: hypOffset + i });
+    }
+  }
+  return ops;
+}
+
 /**
  * Calculate Word Error Rate between hypothesis (STT output) and reference
  * (official transcript).
