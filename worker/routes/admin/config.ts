@@ -147,73 +147,6 @@ configRoutes.put("/tiers/duration", async (c) => {
   }
 });
 
-// GET /tiers/subscription - All plans
-configRoutes.get("/tiers/subscription", async (c) => {
-  const prisma = c.get("prisma") as any;
-  try {
-    const plans = await prisma.plan.findMany({
-      orderBy: { sortOrder: "asc" },
-    });
-
-    // Get user counts per tier
-    const userCounts = await prisma.user.groupBy({
-      by: ["tier"],
-      _count: true,
-    });
-    const countMap = new Map(userCounts.map((uc: any) => [uc.tier, uc._count]));
-
-    const data = plans.map((p: any) => ({
-      tier: p.tier,
-      name: p.name,
-      priceCents: p.priceCents,
-      active: p.active,
-      userCount: countMap.get(p.tier) ?? 0,
-      features: p.features,
-      highlighted: p.highlighted,
-      stripePriceId: p.stripePriceId,
-    }));
-
-    return c.json({ data });
-  } catch {
-    // Plan table may not exist
-    return c.json({ data: [] });
-  }
-});
-
-// PUT /tiers/subscription - Update a plan
-configRoutes.put("/tiers/subscription", async (c) => {
-  const prisma = c.get("prisma") as any;
-  const body = await c.req.json<{
-    tier: string;
-    name?: string;
-    priceCents?: number;
-    active?: boolean;
-    features?: string[];
-    highlighted?: boolean;
-    sortOrder?: number;
-  }>();
-
-  if (!body.tier) return c.json({ error: "tier is required" }, 400);
-
-  try {
-    const updated = await prisma.plan.update({
-      where: { tier: body.tier as "FREE" | "PRO" | "PRO_PLUS" },
-      data: {
-        ...(body.name !== undefined && { name: body.name }),
-        ...(body.priceCents !== undefined && { priceCents: body.priceCents }),
-        ...(body.active !== undefined && { active: body.active }),
-        ...(body.features !== undefined && { features: body.features }),
-        ...(body.highlighted !== undefined && { highlighted: body.highlighted }),
-        ...(body.sortOrder !== undefined && { sortOrder: body.sortOrder }),
-      },
-    });
-
-    return c.json({ data: updated });
-  } catch {
-    return c.json({ error: "Config not available" }, 503);
-  }
-});
-
 // GET /features - Feature flags
 configRoutes.get("/features", async (c) => {
   const prisma = c.get("prisma") as any;
@@ -235,7 +168,7 @@ configRoutes.get("/features", async (c) => {
       name: f.key.replace("feature.", ""),
       enabled: (val?.enabled as boolean) ?? false,
       rolloutPercentage: (val?.rolloutPercentage as number) ?? 100,
-      tierAvailability: (val?.tierAvailability as string[]) ?? ["FREE", "PRO", "PRO_PLUS"],
+      planAvailability: (val?.planAvailability as string[]) ?? ["free", "pro", "pro-plus"],
       description: f.description,
     };
   });
@@ -250,7 +183,7 @@ configRoutes.put("/features/:id", async (c) => {
   const body = await c.req.json<{
     enabled?: boolean;
     rolloutPercentage?: number;
-    tierAvailability?: string[];
+    planAvailability?: string[];
     description?: string;
   }>();
 
@@ -266,7 +199,7 @@ configRoutes.put("/features/:id", async (c) => {
       ...currentVal,
       ...(body.enabled !== undefined && { enabled: body.enabled }),
       ...(body.rolloutPercentage !== undefined && { rolloutPercentage: body.rolloutPercentage }),
-      ...(body.tierAvailability !== undefined && { tierAvailability: body.tierAvailability }),
+      ...(body.planAvailability !== undefined && { planAvailability: body.planAvailability }),
     };
 
     const updated = await prisma.platformConfig.update({
@@ -284,7 +217,7 @@ configRoutes.put("/features/:id", async (c) => {
         name: updated.key.replace("feature.", ""),
         enabled: (newVal.enabled as boolean) ?? false,
         rolloutPercentage: (newVal.rolloutPercentage as number) ?? 100,
-        tierAvailability: (newVal.tierAvailability as string[]) ?? ["FREE", "PRO", "PRO_PLUS"],
+        planAvailability: (newVal.planAvailability as string[]) ?? ["free", "pro", "pro-plus"],
         description: updated.description,
       },
     });

@@ -11,6 +11,7 @@ import { analyticsRoutes } from "./analytics";
 import { configRoutes } from "./config";
 import { requestsRoutes } from "./requests";
 import { sttBenchmarkRoutes } from "./stt-benchmark";
+import { plansRoutes } from "./plans";
 
 /**
  * Admin route tree. All routes require admin authentication.
@@ -31,5 +32,6 @@ adminRoutes.route("/analytics", analyticsRoutes);
 adminRoutes.route("/config", configRoutes);
 adminRoutes.route("/requests", requestsRoutes);
 adminRoutes.route("/stt-benchmark", sttBenchmarkRoutes);
+adminRoutes.route("/plans", plansRoutes);
 
 export { adminRoutes };

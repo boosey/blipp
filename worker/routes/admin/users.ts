@@ -16,8 +16,8 @@ usersRoutes.get("/segments", async (c) => {
   const usersWithFeedItemCounts = await prisma.user.findMany({
     select: {
       id: true,
-      tier: true,
       createdAt: true,
+      plan: { select: { isDefault: true, priceCentsMonthly: true } },
       _count: { select: { feedItems: true } },
     },
   });
@@ -37,9 +37,9 @@ usersRoutes.get("/segments", async (c) => {
     (u: any) => !recentUserIds.has(u.id)
   ).length;
 
-  // Trial ending: FREE users created > 7 days ago who have used the service
+  // Trial ending: users on default/free plan created > 7 days ago who have used the service
   const trialEndingCount = usersWithFeedItemCounts.filter(
-    (u: any) => u.tier === "FREE" && u._count.feedItems > 0 && u.createdAt < sevenDaysAgo
+    (u: any) => (u.plan.isDefault || u.plan.priceCentsMonthly === 0) && u._count.feedItems > 0 && u.createdAt < sevenDaysAgo
   ).length;
 
   return c.json({
@@ -58,13 +58,13 @@ usersRoutes.get("/segments", async (c) => {
 usersRoutes.get("/", async (c) => {
   const prisma = c.get("prisma") as any;
   const { page, pageSize, skip } = parsePagination(c);
-  const tier = c.req.query("tier");
+  const planId = c.req.query("planId");
   const search = c.req.query("search");
   const segment = c.req.query("segment");
   const orderBy = parseSort(c);
 
   const where: Record<string, unknown> = {};
-  if (tier) where.tier = tier;
+  if (planId) where.planId = planId;
   if (search) {
     where.OR = [
       { email: { contains: search, mode: "insensitive" } },
@@ -86,6 +86,7 @@ usersRoutes.get("/", async (c) => {
       take: pageSize,
       orderBy,
       include: {
+        plan: { select: { id: true, name: true, slug: true } },
         _count: { select: { subscriptions: true, feedItems: true, briefings: true } },
       },
     }),
@@ -127,7 +128,7 @@ usersRoutes.get("/", async (c) => {
       email: u.email,
       name: u.name,
       imageUrl: u.imageUrl,
-      tier: u.tier,
+      plan: { id: u.plan.id, name: u.plan.name, slug: u.plan.slug },
       isAdmin: u.isAdmin,
       status,
       briefingCount: u._count.briefings,
@@ -148,6 +149,7 @@ usersRoutes.get("/:id", async (c) => {
   const user = await prisma.user.findUnique({
     where: { id: c.req.param("id") },
     include: {
+      plan: { select: { id: true, name: true, slug: true } },
       subscriptions: {
         include: { podcast: { select: { title: true } } },
       },
@@ -189,7 +191,7 @@ usersRoutes.get("/:id", async (c) => {
       email: user.email,
       name: user.name,
       imageUrl: user.imageUrl,
-      tier: user.tier,
+      plan: { id: user.plan.id, name: user.plan.name, slug: user.plan.slug },
       isAdmin: user.isAdmin,
       status,
       briefingCount: user._count.briefings,
@@ -223,18 +225,19 @@ usersRoutes.get("/:id", async (c) => {
 // PATCH /:id - Update user
 usersRoutes.patch("/:id", async (c) => {
   const prisma = c.get("prisma") as any;
-  const body = await c.req.json<{ tier?: string; isAdmin?: boolean }>();
+  const body = await c.req.json<{ planId?: string; isAdmin?: boolean }>();
 
   const updated = await prisma.user.update({
     where: { id: c.req.param("id") },
     data: {
-      ...(body.tier !== undefined && { tier: body.tier as "FREE" | "PRO" | "PRO_PLUS" }),
+      ...(body.planId !== undefined && { planId: body.planId }),
       ...(body.isAdmin !== undefined && { isAdmin: body.isAdmin }),
     },
+    include: { plan: { select: { id: true, name: true, slug: true } } },
   });
 
   return c.json({
-    data: { id: updated.id, tier: updated.tier, isAdmin: updated.isAdmin },
+    data: { id: updated.id, plan: { id: updated.plan.id, name: updated.plan.name, slug: updated.plan.slug }, isAdmin: updated.isAdmin },
   });
 });
 

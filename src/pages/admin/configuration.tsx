@@ -2,12 +2,10 @@ import { useState, useEffect, useCallback } from "react";
 import {
   Brain,
   Clock,
-  CreditCard,
   Flag,
   Mic,
   Sparkles,
   Volume2,
-  Scissors,
   Save,
   Plus,
   Check,
@@ -41,16 +39,14 @@ import type { AIStage } from "@/lib/ai-models";
 import type {
   PlatformConfigEntry,
   DurationTier,
-  SubscriptionTierConfig,
   FeatureFlag,
-  UserTier,
   PipelineConfig,
   PipelineTriggerResult,
 } from "@/types/admin";
 
 // ── Types ──
 
-type CategoryId = "pipeline-controls" | "ai-models" | "duration-tiers" | "subscription-tiers" | "feature-flags";
+type CategoryId = "pipeline-controls" | "ai-models" | "duration-tiers" | "feature-flags";
 
 interface CategoryDef {
   id: CategoryId;
@@ -65,7 +61,6 @@ const CATEGORIES: CategoryDef[] = [
   { id: "pipeline-controls", label: "Pipeline Controls", icon: Zap, color: "#EF4444" },
   { id: "ai-models", label: "AI Models", icon: Brain, color: "#8B5CF6" },
   { id: "duration-tiers", label: "Duration Tiers", icon: Clock, color: "#3B82F6" },
-  { id: "subscription-tiers", label: "Subscription Tiers", icon: CreditCard, color: "#10B981" },
   { id: "feature-flags", label: "Feature Flags", icon: Flag, color: "#F97316" },
 ];
 
@@ -85,10 +80,10 @@ const MODEL_TYPES = [
   { key: "tts", label: "Text-to-Speech", icon: Volume2, color: "#10B981" },
 ];
 
-const TIER_COLORS: Record<string, string> = {
-  FREE: "#9CA3AF",
-  PRO: "#3B82F6",
-  PRO_PLUS: "#8B5CF6",
+const PLAN_COLORS: Record<string, string> = {
+  free: "#9CA3AF",
+  pro: "#3B82F6",
+  "pro-plus": "#8B5CF6",
 };
 
 // ── Helpers ──
@@ -96,10 +91,6 @@ const TIER_COLORS: Record<string, string> = {
 function formatCost(n: number | undefined): string {
   if (n == null) return "-";
   return `$${n.toFixed(2)}`;
-}
-
-function formatCents(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
 }
 
 // ── Loading Skeleton ──
@@ -589,167 +580,6 @@ function DurationTiersPanel({
   );
 }
 
-// ── Subscription Tiers Panel ──
-
-function SubscriptionTiersPanel({
-  tiers,
-  setDirty,
-}: {
-  tiers: SubscriptionTierConfig[];
-  setDirty: (v: boolean) => void;
-}) {
-  const [editingTier, setEditingTier] = useState<UserTier | null>(null);
-  const [editPrice, setEditPrice] = useState("");
-
-  function startEditing(tier: SubscriptionTierConfig) {
-    setEditingTier(tier.tier);
-    setEditPrice((tier.priceCents / 100).toFixed(2));
-  }
-
-  function cancelEditing() {
-    setEditingTier(null);
-    setEditPrice("");
-  }
-
-  return (
-    <div className="space-y-4">
-      <div>
-        <h3 className="text-sm font-semibold text-[#F9FAFB]">Subscription Tiers</h3>
-        <p className="text-[10px] text-[#9CA3AF] mt-0.5">Manage pricing, limits, and features for each plan</p>
-      </div>
-
-      <div className="grid grid-cols-1 gap-3">
-        {tiers.map((tier) => {
-          const color = TIER_COLORS[tier.tier] ?? "#9CA3AF";
-          const isEditing = editingTier === tier.tier;
-
-          return (
-            <div
-              key={tier.tier}
-              className="bg-[#0F1D32] border border-white/5 rounded-lg p-4 hover:border-white/10 transition-colors"
-            >
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex items-center gap-2.5">
-                  <div
-                    className="flex items-center justify-center h-8 w-8 rounded-lg"
-                    style={{ backgroundColor: `${color}15` }}
-                  >
-                    <CreditCard className="h-4 w-4" style={{ color }} />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-semibold text-[#F9FAFB]">{tier.name}</span>
-                      <Badge
-                        className="text-[10px]"
-                        style={{ backgroundColor: `${color}15`, color }}
-                      >
-                        {tier.tier}
-                      </Badge>
-                    </div>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      {isEditing ? (
-                        <div className="flex items-center gap-1">
-                          <span className="text-xs text-[#9CA3AF]">$</span>
-                          <Input
-                            value={editPrice}
-                            onChange={(e) => {
-                              setEditPrice(e.target.value);
-                              setDirty(true);
-                            }}
-                            className="h-6 w-20 text-xs bg-[#1A2942] border-white/10 text-[#F9FAFB] font-mono"
-                          />
-                          <span className="text-[10px] text-[#9CA3AF]">/mo</span>
-                          <Button
-                            size="icon-xs"
-                            variant="ghost"
-                            onClick={cancelEditing}
-                            className="text-[#9CA3AF] hover:text-[#F9FAFB]"
-                          >
-                            <X className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={() => startEditing(tier)}
-                          className="text-sm font-mono tabular-nums text-[#F9FAFB] hover:text-[#3B82F6] transition-colors"
-                        >
-                          {formatCents(tier.priceCents)}/mo
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <Badge className="bg-white/5 text-[#9CA3AF] text-[10px]">
-                    {tier.userCount.toLocaleString()} users
-                  </Badge>
-                  <div className="flex items-center gap-2">
-                    <Label className="text-[10px] text-[#9CA3AF]">Active</Label>
-                    <Switch
-                      checked={tier.active}
-                      onCheckedChange={() => setDirty(true)}
-                      className="data-[state=checked]:bg-[#10B981]"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Info */}
-              <div className="grid grid-cols-3 gap-3 mb-3">
-                <div className="rounded-md bg-[#1A2942] p-2">
-                  <span className="text-[10px] text-[#9CA3AF] uppercase tracking-wider block mb-0.5">Price</span>
-                  <span className="text-xs font-mono tabular-nums text-[#F9FAFB]">
-                    {formatCents(tier.priceCents)}/mo
-                  </span>
-                </div>
-                <div className="rounded-md bg-[#1A2942] p-2">
-                  <span className="text-[10px] text-[#9CA3AF] uppercase tracking-wider block mb-0.5">Users</span>
-                  <span className="text-xs font-mono tabular-nums text-[#F9FAFB]">
-                    {tier.userCount.toLocaleString()}
-                  </span>
-                </div>
-                <div className="rounded-md bg-[#1A2942] p-2">
-                  <span className="text-[10px] text-[#9CA3AF] uppercase tracking-wider block mb-0.5">Highlighted</span>
-                  <span className="text-xs font-mono tabular-nums text-[#F9FAFB]">
-                    {tier.highlighted ? "Yes" : "No"}
-                  </span>
-                </div>
-              </div>
-
-              {/* Features */}
-              <div>
-                <span className="text-[10px] text-[#9CA3AF] uppercase tracking-wider mb-1.5 block">Features</span>
-                <div className="flex flex-wrap gap-1.5">
-                  {tier.features.map((feature, i) => (
-                    <Badge
-                      key={i}
-                      className="bg-white/5 text-[#F9FAFB]/80 text-[10px] font-normal"
-                    >
-                      <Check className="h-2.5 w-2.5 text-[#10B981] mr-0.5" />
-                      {feature}
-                    </Badge>
-                  ))}
-                  {tier.features.length === 0 && (
-                    <span className="text-[10px] text-[#9CA3AF]">No features configured</span>
-                  )}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-
-        {tiers.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-12 text-[#9CA3AF]">
-            <CreditCard className="h-8 w-8 mb-2 opacity-40" />
-            <span className="text-xs">No subscription tiers configured</span>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // ── Feature Flags Panel ──
 
 function FeatureFlagsPanel({
@@ -778,7 +608,7 @@ function FeatureFlagsPanel({
           <span>Flag</span>
           <span>Status</span>
           <span>Rollout</span>
-          <span>Tiers</span>
+          <span>Plans</span>
           <span className="text-right">Toggle</span>
         </div>
 
@@ -826,21 +656,21 @@ function FeatureFlagsPanel({
                 </span>
               </div>
 
-              {/* Tier availability */}
+              {/* Plan availability */}
               <div className="flex gap-1 flex-wrap">
-                {flag.tierAvailability.map((tier) => (
+                {flag.planAvailability.map((plan) => (
                   <Badge
-                    key={tier}
+                    key={plan}
                     className="text-[9px] px-1.5"
                     style={{
-                      backgroundColor: `${TIER_COLORS[tier] ?? "#9CA3AF"}15`,
-                      color: TIER_COLORS[tier] ?? "#9CA3AF",
+                      backgroundColor: `${PLAN_COLORS[plan] ?? "#9CA3AF"}15`,
+                      color: PLAN_COLORS[plan] ?? "#9CA3AF",
                     }}
                   >
-                    {tier}
+                    {plan}
                   </Badge>
                 ))}
-                {flag.tierAvailability.length === 0 && (
+                {flag.planAvailability.length === 0 && (
                   <span className="text-[10px] text-[#9CA3AF]">All</span>
                 )}
               </div>
@@ -876,7 +706,6 @@ export default function Configuration() {
   const [selectedCategory, setSelectedCategory] = useState<CategoryId>("pipeline-controls");
   const [configs, setConfigs] = useState<PlatformConfigEntry[]>([]);
   const [durationTiers, setDurationTiers] = useState<DurationTier[]>([]);
-  const [subscriptionTiers, setSubscriptionTiers] = useState<SubscriptionTierConfig[]>([]);
   const [featureFlags, setFeatureFlags] = useState<FeatureFlag[]>([]);
   const [loading, setLoading] = useState(true);
   const [dirty, setDirty] = useState(false);
@@ -893,9 +722,6 @@ export default function Configuration() {
         .catch(console.error),
       apiFetch<{ data: DurationTier[] }>("/config/tiers/duration")
         .then((r) => setDurationTiers(r.data))
-        .catch(console.error),
-      apiFetch<{ data: SubscriptionTierConfig[] }>("/config/tiers/subscription")
-        .then((r) => setSubscriptionTiers(r.data))
         .catch(console.error),
       apiFetch<{ data: FeatureFlag[] }>("/config/features")
         .then((r) => setFeatureFlags(r.data))
@@ -961,9 +787,6 @@ export default function Configuration() {
             )}
             {selectedCategory === "duration-tiers" && (
               <DurationTiersPanel tiers={durationTiers} setDirty={setDirty} />
-            )}
-            {selectedCategory === "subscription-tiers" && (
-              <SubscriptionTiersPanel tiers={subscriptionTiers} setDirty={setDirty} />
             )}
             {selectedCategory === "feature-flags" && (
               <FeatureFlagsPanel flags={featureFlags} setDirty={setDirty} />

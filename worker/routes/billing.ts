@@ -14,24 +14,38 @@ billing.use("*", requireAuth);
 
 /**
  * POST /checkout — Creates a Stripe Checkout session for subscription upgrade.
- * Body: `{ tier: "PRO" | "PRO_PLUS" }`
+ * Body: `{ planId: string, interval: "monthly" | "annual" }`
  *
  * @returns `{ url: string }` — The Stripe Checkout URL to redirect the user
- * @throws 400 if tier is invalid, missing, or has no Stripe price
+ * @throws 400 if plan is invalid, missing, or has no Stripe price for the chosen interval
  * @throws 401 if not authenticated
  */
 billing.post("/checkout", async (c) => {
-  const { tier } = await c.req.json<{ tier: string }>();
+  const { planId, interval } = await c.req.json<{
+    planId: string;
+    interval: "monthly" | "annual";
+  }>();
+
+  if (!planId || !interval || !["monthly", "annual"].includes(interval)) {
+    return c.json({ error: "planId and interval (monthly|annual) required" }, 400);
+  }
 
   const prisma = c.get("prisma") as any;
 
-  // Look up plan and its Stripe price from the database
-  const plan = await prisma.plan.findFirst({
-    where: { tier: tier as any, active: true },
-  });
+  const plan = await prisma.plan.findUnique({ where: { id: planId } });
 
-  if (!plan || !plan.stripePriceId) {
+  if (!plan || !plan.active) {
     return c.json({ error: "Invalid or unavailable plan" }, 400);
+  }
+
+  const stripePriceId =
+    interval === "annual" ? plan.stripePriceIdAnnual : plan.stripePriceIdMonthly;
+
+  if (!stripePriceId) {
+    return c.json(
+      { error: `No Stripe price configured for ${interval} billing` },
+      400
+    );
   }
 
   const user = await getCurrentUser(c, prisma);
@@ -42,10 +56,10 @@ billing.post("/checkout", async (c) => {
 
   const sessionParams: Record<string, unknown> = {
     mode: "subscription" as const,
-    line_items: [{ price: plan.stripePriceId, quantity: 1 }],
+    line_items: [{ price: stripePriceId, quantity: 1 }],
     success_url: `${origin}/billing?success=true`,
     cancel_url: `${origin}/billing?canceled=true`,
-    metadata: { clerkId: user.clerkId },
+    metadata: { clerkId: user.clerkId, planId },
   };
 
   // Reuse existing Stripe customer if available

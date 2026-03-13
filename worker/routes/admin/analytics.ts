@@ -182,7 +182,7 @@ analyticsRoutes.get("/usage", async (c) => {
   const { from, to } = parseDateRange(c);
   const days = daysBetween(from, to);
 
-  const [feedItems, episodes, users, tierCounts] = await Promise.all([
+  const [feedItems, episodes, users, planCounts] = await Promise.all([
     prisma.feedItem.findMany({
       where: { createdAt: { gte: from, lte: to } },
       select: { createdAt: true, durationTier: true },
@@ -196,7 +196,7 @@ analyticsRoutes.get("/usage", async (c) => {
       select: { createdAt: true },
     }),
     prisma.user.groupBy({
-      by: ["tier"],
+      by: ["planId"],
       _count: true,
     }),
   ]);
@@ -211,11 +211,18 @@ analyticsRoutes.get("/usage", async (c) => {
     };
   });
 
-  const totalUsers = tierCounts.reduce((s: number, t: any) => s + t._count, 0);
-  const byTier = tierCounts.map((t: any) => ({
-    tier: t.tier,
-    count: t._count,
-    percentage: totalUsers > 0 ? Math.round((t._count / totalUsers) * 100) : 0,
+  // Look up plan names for the grouped planIds
+  const plans = await prisma.plan.findMany({
+    where: { id: { in: planCounts.map((p: any) => p.planId) } },
+    select: { id: true, name: true },
+  });
+  const planNameMap = new Map(plans.map((p: any) => [p.id, p.name]));
+
+  const totalUsers = planCounts.reduce((s: number, p: any) => s + p._count, 0);
+  const byPlan = planCounts.map((p: any) => ({
+    plan: planNameMap.get(p.planId) ?? "Unknown",
+    count: p._count,
+    percentage: totalUsers > 0 ? Math.round((p._count / totalUsers) * 100) : 0,
   }));
 
   // Average duration tier
@@ -243,7 +250,7 @@ analyticsRoutes.get("/usage", async (c) => {
         avgDuration,
       },
       trends,
-      byTier,
+      byPlan,
       peakTimes,
       topPodcasts: [], // Would need a more complex join
     },

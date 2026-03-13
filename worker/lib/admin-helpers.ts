@@ -48,12 +48,16 @@ export async function getCurrentUser(c: Context<{ Bindings: Env }>, prisma: any)
     const clerk = createClerkClient({ secretKey: c.env.CLERK_SECRET_KEY });
     const clerkUser = await clerk.users.getUser(clerkId);
 
+    const defaultPlan = await prisma.plan.findFirst({ where: { isDefault: true } });
+    if (!defaultPlan) throw new Error("No default plan configured");
+
     return prisma.user.create({
       data: {
         clerkId,
         email: clerkUser.emailAddresses[0]?.emailAddress ?? `${clerkId}@unknown.com`,
         name: [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ") || null,
         imageUrl: clerkUser.imageUrl ?? null,
+        planId: defaultPlan.id,
       },
     });
   }

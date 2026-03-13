@@ -5,33 +5,48 @@ import { apiFetch } from "../lib/api";
 
 interface Plan {
   id: string;
-  tier: string;
+  slug: string;
   name: string;
-  priceCents: number;
+  description?: string;
+  priceCentsMonthly: number;
+  priceCentsAnnual?: number | null;
   features: string[];
   highlighted: boolean;
 }
 
 export function Pricing() {
   const { user } = useUser();
-  const currentTier = (user?.publicMetadata?.tier as string) || "FREE";
   const [plans, setPlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(true);
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
+  const [interval, setInterval] = useState<"monthly" | "annual">("monthly");
+  const [currentPlanSlug, setCurrentPlanSlug] = useState<string | null>(null);
 
   useEffect(() => {
     apiFetch<Plan[]>("/plans")
-      .then(setPlans)
+      .then((data) => {
+        setPlans(data);
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
 
-  async function handleCheckout(tier: string) {
-    setCheckoutLoading(tier);
+  useEffect(() => {
+    if (user) {
+      apiFetch<{ user: { plan: { slug: string } } }>("/me")
+        .then((r) => setCurrentPlanSlug(r.user.plan.slug))
+        .catch(() => {});
+    }
+  }, [user]);
+
+  const hasAnnual = plans.some((p) => p.priceCentsAnnual != null && p.priceCentsAnnual > 0);
+
+  async function handleCheckout(plan: Plan) {
+    setCheckoutLoading(plan.id);
     try {
       const { url } = await apiFetch<{ url: string }>("/billing/checkout", {
         method: "POST",
-        body: JSON.stringify({ tier }),
+        body: JSON.stringify({ planId: plan.id, interval }),
       });
       window.location.href = url;
     } catch {
@@ -39,8 +54,12 @@ export function Pricing() {
     }
   }
 
-  function formatPrice(cents: number) {
-    return cents === 0 ? "Free" : `$${(cents / 100).toFixed(2)}`;
+  function displayPrice(plan: Plan): string {
+    if (plan.priceCentsMonthly === 0) return "Free";
+    const cents = interval === "annual" && plan.priceCentsAnnual
+      ? Math.round(plan.priceCentsAnnual / 12)
+      : plan.priceCentsMonthly;
+    return `$${(cents / 100).toFixed(2)}`;
   }
 
   if (loading) {
@@ -55,13 +74,41 @@ export function Pricing() {
     <div className="min-h-screen bg-zinc-950 text-zinc-50 py-20 px-6">
       <div className="max-w-4xl mx-auto">
         <h1 className="text-4xl font-bold text-center mb-2">Pricing</h1>
-        <p className="text-zinc-400 text-center mb-12">
+        <p className="text-zinc-400 text-center mb-8">
           Choose the plan that fits your listening.
         </p>
 
+        {hasAnnual && (
+          <div className="flex justify-center mb-8">
+            <div className="inline-flex items-center bg-zinc-900 rounded-lg p-0.5 border border-zinc-800">
+              <button
+                onClick={() => setInterval("monthly")}
+                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                  interval === "monthly"
+                    ? "bg-zinc-50 text-zinc-950"
+                    : "text-zinc-400 hover:text-zinc-200"
+                }`}
+              >
+                Monthly
+              </button>
+              <button
+                onClick={() => setInterval("annual")}
+                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                  interval === "annual"
+                    ? "bg-zinc-50 text-zinc-950"
+                    : "text-zinc-400 hover:text-zinc-200"
+                }`}
+              >
+                Annual
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {plans.map((plan) => {
-            const isCurrent = currentTier === plan.tier;
+            const isCurrent = currentPlanSlug === plan.slug;
+            const isFree = plan.slug === "free" || plan.priceCentsMonthly === 0;
             return (
               <div
                 key={plan.id}
@@ -77,14 +124,22 @@ export function Pricing() {
                   </span>
                 )}
                 <h2 className="text-2xl font-bold">{plan.name}</h2>
+                {plan.description && (
+                  <p className="text-sm text-zinc-400 mt-1">{plan.description}</p>
+                )}
                 <p className="text-3xl font-bold mt-2">
-                  {formatPrice(plan.priceCents)}
-                  {plan.priceCents > 0 && (
+                  {displayPrice(plan)}
+                  {!isFree && (
                     <span className="text-base font-normal text-zinc-400">
                       /mo
                     </span>
                   )}
                 </p>
+                {interval === "annual" && plan.priceCentsAnnual != null && plan.priceCentsAnnual > 0 && (
+                  <p className="text-xs text-zinc-500 mt-1">
+                    ${(plan.priceCentsAnnual / 100).toFixed(2)} billed annually
+                  </p>
+                )}
 
                 <ul className="mt-6 space-y-3 flex-1">
                   {plan.features.map((feature) => (
@@ -103,7 +158,7 @@ export function Pricing() {
                     <span className="block text-center py-2 text-sm text-zinc-500">
                       Current plan
                     </span>
-                  ) : plan.tier === "FREE" ? (
+                  ) : isFree ? (
                     <span className="block text-center py-2 text-sm text-zinc-500">
                       Included
                     </span>
@@ -111,15 +166,15 @@ export function Pricing() {
                     <>
                       <SignedIn>
                         <button
-                          onClick={() => handleCheckout(plan.tier)}
-                          disabled={checkoutLoading === plan.tier}
+                          onClick={() => handleCheckout(plan)}
+                          disabled={checkoutLoading === plan.id}
                           className={`w-full py-2.5 rounded-lg font-medium transition-colors disabled:opacity-50 ${
                             plan.highlighted
                               ? "bg-zinc-50 text-zinc-950 hover:bg-zinc-200"
                               : "bg-zinc-800 border border-zinc-700 hover:bg-zinc-700"
                           }`}
                         >
-                          {checkoutLoading === plan.tier
+                          {checkoutLoading === plan.id
                             ? "Redirecting..."
                             : "Upgrade"}
                         </button>

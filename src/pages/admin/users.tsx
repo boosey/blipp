@@ -44,8 +44,8 @@ import type {
   AdminUserDetail,
   UserSegment,
   UserSegmentCounts,
-  UserTier,
   AdminFeedItem,
+  AdminPlan,
   PaginatedResponse,
 } from "@/types/admin";
 
@@ -73,25 +73,14 @@ function formatDate(iso: string): string {
   });
 }
 
-function tierBadgeClass(tier: string) {
-  switch (tier.toUpperCase()) {
-    case "PRO_PLUS":
+function planBadgeClass(slug: string) {
+  switch (slug) {
+    case "pro-plus":
       return "bg-[#8B5CF6]/15 text-[#8B5CF6] border-[#8B5CF6]/30";
-    case "PRO":
+    case "pro":
       return "bg-[#3B82F6]/15 text-[#3B82F6] border-[#3B82F6]/30";
     default:
       return "bg-white/5 text-[#9CA3AF] border-white/10";
-  }
-}
-
-function tierLabel(tier: string) {
-  switch (tier.toUpperCase()) {
-    case "PRO_PLUS":
-      return "PRO+";
-    case "PRO":
-      return "PRO";
-    default:
-      return "FREE";
   }
 }
 
@@ -208,8 +197,8 @@ function UserRow({
             {user.name || user.email}
           </span>
           <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", statusDotClass(user.status))} />
-          <Badge className={cn("text-[9px] uppercase shrink-0", tierBadgeClass(user.tier))}>
-            {tierLabel(user.tier)}
+          <Badge className={cn("text-[9px] uppercase shrink-0", planBadgeClass(user.plan.slug))}>
+            {user.plan.name}
           </Badge>
         </div>
 
@@ -263,9 +252,9 @@ function OverviewTab({ user }: { user: AdminUserDetail }) {
             <span className="text-[#F9FAFB]">{user.name || "Not set"}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-[#9CA3AF]">Tier</span>
-            <Badge className={cn("text-[9px] uppercase", tierBadgeClass(user.tier))}>
-              {tierLabel(user.tier)}
+            <span className="text-[#9CA3AF]">Plan</span>
+            <Badge className={cn("text-[9px] uppercase", planBadgeClass(user.plan.slug))}>
+              {user.plan.name}
             </Badge>
           </div>
           <div className="flex justify-between">
@@ -433,24 +422,33 @@ function BillingTab({
   onUpdate: () => void;
 }) {
   const apiFetch = useAdminFetch();
-  const [tierModalOpen, setTierModalOpen] = useState(false);
-  const [selectedTier, setSelectedTier] = useState<UserTier>(user.tier);
+  const [planModalOpen, setPlanModalOpen] = useState(false);
+  const [selectedPlanId, setSelectedPlanId] = useState(user.plan.id);
+  const [availablePlans, setAvailablePlans] = useState<AdminPlan[]>([]);
   const [saving, setSaving] = useState(false);
 
-  const handleTierSave = useCallback(() => {
-    if (selectedTier === user.tier) return;
+  useEffect(() => {
+    if (planModalOpen && availablePlans.length === 0) {
+      apiFetch<{ data: AdminPlan[] }>("/plans")
+        .then((r) => setAvailablePlans(r.data))
+        .catch(console.error);
+    }
+  }, [planModalOpen, availablePlans.length, apiFetch]);
+
+  const handlePlanSave = useCallback(() => {
+    if (selectedPlanId === user.plan.id) return;
     setSaving(true);
     apiFetch(`/users/${user.id}`, {
       method: "PATCH",
-      body: JSON.stringify({ tier: selectedTier }),
+      body: JSON.stringify({ planId: selectedPlanId }),
     })
       .then(() => {
-        setTierModalOpen(false);
+        setPlanModalOpen(false);
         onUpdate();
       })
       .catch(console.error)
       .finally(() => setSaving(false));
-  }, [apiFetch, user.id, user.tier, selectedTier, onUpdate]);
+  }, [apiFetch, user.id, user.plan.id, selectedPlanId, onUpdate]);
 
   const handleAdminToggle = useCallback(
     (isAdmin: boolean) => {
@@ -476,9 +474,9 @@ function BillingTab({
         </div>
         <div className="space-y-2 text-xs">
           <div className="flex justify-between">
-            <span className="text-[#9CA3AF]">Current Tier</span>
-            <Badge className={cn("text-[9px] uppercase", tierBadgeClass(user.tier))}>
-              {tierLabel(user.tier)}
+            <span className="text-[#9CA3AF]">Current Plan</span>
+            <Badge className={cn("text-[9px] uppercase", planBadgeClass(user.plan.slug))}>
+              {user.plan.name}
             </Badge>
           </div>
           <div className="flex justify-between">
@@ -507,11 +505,11 @@ function BillingTab({
           size="sm"
           className="w-full bg-[#3B82F6]/15 text-[#3B82F6] hover:bg-[#3B82F6]/25 border border-[#3B82F6]/20"
           onClick={() => {
-            setSelectedTier(user.tier);
-            setTierModalOpen(true);
+            setSelectedPlanId(user.plan.id);
+            setPlanModalOpen(true);
           }}
         >
-          <CreditCard className="h-3.5 w-3.5" /> Change Tier
+          <CreditCard className="h-3.5 w-3.5" /> Change Plan
         </Button>
 
         <Separator className="bg-white/5" />
@@ -531,36 +529,36 @@ function BillingTab({
         </div>
       </div>
 
-      {/* Change Tier Modal */}
-      <Dialog open={tierModalOpen} onOpenChange={setTierModalOpen}>
+      {/* Change Plan Modal */}
+      <Dialog open={planModalOpen} onOpenChange={setPlanModalOpen}>
         <DialogContent className="bg-[#1A2942] border-white/10 text-[#F9FAFB]">
           <DialogHeader>
-            <DialogTitle className="text-sm">Change Tier for {user.email}</DialogTitle>
+            <DialogTitle className="text-sm">Change Plan for {user.email}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-4">
-            <Select value={selectedTier} onValueChange={(v) => setSelectedTier(v as UserTier)}>
+            <Select value={selectedPlanId} onValueChange={setSelectedPlanId}>
               <SelectTrigger className="bg-[#0A1628] border-white/5 text-[#F9FAFB]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="bg-[#1A2942] border-white/10">
-                <SelectItem value="FREE">FREE</SelectItem>
-                <SelectItem value="PRO">PRO</SelectItem>
-                <SelectItem value="PRO_PLUS">PRO+</SelectItem>
+                {availablePlans.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
           <DialogFooter>
             <Button
               variant="ghost"
-              onClick={() => setTierModalOpen(false)}
+              onClick={() => setPlanModalOpen(false)}
               className="text-[#9CA3AF]"
             >
               Cancel
             </Button>
             <Button
               className="bg-[#3B82F6] hover:bg-[#3B82F6]/80 text-white"
-              disabled={saving || selectedTier === user.tier}
-              onClick={handleTierSave}
+              disabled={saving || selectedPlanId === user.plan.id}
+              onClick={handlePlanSave}
             >
               {saving ? "Saving..." : "Save"}
             </Button>
@@ -763,9 +761,9 @@ export default function UsersPage() {
                       )}
                     />
                     <Badge
-                      className={cn("text-[9px] uppercase", tierBadgeClass(selectedUser.tier))}
+                      className={cn("text-[9px] uppercase", planBadgeClass(selectedUser.plan.slug))}
                     >
-                      {tierLabel(selectedUser.tier)}
+                      {selectedUser.plan.name}
                     </Badge>
                     <Badge
                       className={cn("text-[9px] uppercase", statusBadgeClass(selectedUser.status))}

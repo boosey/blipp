@@ -197,12 +197,12 @@ function AnalyticsSkeleton() {
   );
 }
 
-// ── Tier colors for pie chart ──
+// ── Plan colors for pie chart ──
 
-const TIER_COLORS: Record<string, string> = {
-  FREE: "#9CA3AF",
-  PRO: "#3B82F6",
-  PRO_PLUS: "#8B5CF6",
+const PLAN_COLORS: Record<string, string> = {
+  free: "#9CA3AF",
+  pro: "#3B82F6",
+  "pro-plus": "#8B5CF6",
 };
 
 // ── Widget Components ──
@@ -332,35 +332,35 @@ function UsageTrendsWidget({ data }: { data: UsageTrendsData }) {
 
       {/* Bottom row: pie chart + peak times */}
       <div className="grid grid-cols-2 gap-3 pt-2 border-t border-white/5">
-        {/* Usage by tier */}
+        {/* Usage by plan */}
         <div>
-          <span className="text-[10px] text-[#9CA3AF] uppercase tracking-wider mb-2 block">By Tier</span>
+          <span className="text-[10px] text-[#9CA3AF] uppercase tracking-wider mb-2 block">By Plan</span>
           <div className="flex items-center gap-3">
             <div style={{ width: 64, height: 64 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
-                    data={data.byTier}
+                    data={data.byPlan}
                     dataKey="count"
-                    nameKey="tier"
+                    nameKey="plan"
                     cx="50%"
                     cy="50%"
                     innerRadius={18}
                     outerRadius={28}
                     strokeWidth={0}
                   >
-                    {data.byTier.map((entry, i) => (
-                      <Cell key={i} fill={TIER_COLORS[entry.tier] ?? "#9CA3AF"} />
+                    {data.byPlan.map((entry, i) => (
+                      <Cell key={i} fill={PLAN_COLORS[entry.plan] ?? "#9CA3AF"} />
                     ))}
                   </Pie>
                 </PieChart>
               </ResponsiveContainer>
             </div>
             <div className="space-y-1">
-              {data.byTier.map((t) => (
-                <div key={t.tier} className="flex items-center gap-1.5 text-[10px]">
-                  <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: TIER_COLORS[t.tier] ?? "#9CA3AF" }} />
-                  <span className="text-[#9CA3AF]">{t.tier}</span>
+              {data.byPlan.map((t) => (
+                <div key={t.plan} className="flex items-center gap-1.5 text-[10px]">
+                  <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: PLAN_COLORS[t.plan] ?? "#9CA3AF" }} />
+                  <span className="text-[#9CA3AF]">{t.plan}</span>
                   <span className="font-mono tabular-nums text-[#F9FAFB]">{t.percentage}%</span>
                 </div>
               ))}
