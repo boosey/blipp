@@ -18,6 +18,7 @@ export type AudioInput = { url: string } | { buffer: ArrayBuffer; filename: stri
 export interface SttProvider {
   name: string;
   modelId: string;
+  provider: string;
   transcribe(audio: AudioInput, durationSeconds: number, env: Env): Promise<SttResult>;
   poll?(jobId: string, env: Env): Promise<SttPollResult>;
 }
@@ -65,6 +66,7 @@ async function resolveAudioBuffer(audio: AudioInput): Promise<ArrayBuffer> {
 const WhisperProvider: SttProvider = {
   name: "OpenAI Whisper",
   modelId: "whisper-1",
+  provider: "openai",
 
   async transcribe(audio: AudioInput, durationSeconds: number, env: Env): Promise<SttResult> {
     const start = Date.now();
@@ -102,6 +104,7 @@ const WhisperProvider: SttProvider = {
 const DeepgramProvider: SttProvider = {
   name: "Deepgram Nova-2",
   modelId: "nova-2",
+  provider: "deepgram",
 
   async transcribe(audio: AudioInput, durationSeconds: number, env: Env): Promise<SttResult> {
     const start = Date.now();
@@ -162,6 +165,7 @@ const DeepgramProvider: SttProvider = {
 const DeepgramNova3Provider: SttProvider = {
   name: "Deepgram Nova-3",
   modelId: "nova-3",
+  provider: "deepgram",
 
   async transcribe(audio: AudioInput, durationSeconds: number, env: Env): Promise<SttResult> {
     const start = Date.now();
@@ -218,6 +222,7 @@ const DeepgramNova3Provider: SttProvider = {
 const AssemblyAIProvider: SttProvider = {
   name: "AssemblyAI Best",
   modelId: "assemblyai-best",
+  provider: "assemblyai",
 
   async transcribe(audio: AudioInput, durationSeconds: number, env: Env): Promise<SttResult> {
     const start = Date.now();
@@ -306,6 +311,7 @@ const AssemblyAIProvider: SttProvider = {
 const GoogleSttProvider: SttProvider = {
   name: "Google Chirp",
   modelId: "google-chirp",
+  provider: "google",
 
   async transcribe(audio: AudioInput, durationSeconds: number, env: Env): Promise<SttResult> {
     const start = Date.now();

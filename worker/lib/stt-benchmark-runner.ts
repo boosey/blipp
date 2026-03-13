@@ -209,6 +209,7 @@ async function handlePollingTask(
     data: {
       status: "COMPLETED",
       completedAt: new Date(),
+      provider: provider.provider,
       wer: werResult.wer,
       wordCount: werResult.wordCount,
       refWordCount: werResult.refWordCount,
@@ -282,6 +283,7 @@ async function handlePendingTask(
     data: {
       status: "COMPLETED",
       completedAt: new Date(),
+      provider: provider.provider,
       costDollars: sttResult.costDollars,
       latencyMs: sttResult.latencyMs,
       wer: werResult.wer,
