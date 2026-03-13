@@ -123,6 +123,20 @@ export async function scheduled(
         description: "Timestamp of last automatic pipeline run",
       },
     });
+
+    // Refresh AI model pricing once per day
+    const lastPriceRefresh = await getConfig<string | null>(prisma, "pricing.lastRefreshedAt", null);
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    if (!lastPriceRefresh || new Date(lastPriceRefresh) < oneDayAgo) {
+      const { refreshPricing } = await import("../lib/pricing-updater");
+      const { updated } = await refreshPricing(prisma);
+      log.info("pricing_refreshed", { updated });
+      await prisma.platformConfig.upsert({
+        where: { key: "pricing.lastRefreshedAt" },
+        update: { value: new Date().toISOString() },
+        create: { key: "pricing.lastRefreshedAt", value: new Date().toISOString(), description: "Last pricing refresh timestamp" },
+      });
+    }
   } finally {
     ctx.waitUntil(prisma.$disconnect());
   }
