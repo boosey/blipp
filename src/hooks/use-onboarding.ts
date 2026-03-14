@@ -12,42 +12,20 @@ export function useOnboarding() {
     checkedRef.current = true;
 
     const check = async () => {
-      // Fast path: localStorage flag means they completed onboarding
-      if (localStorage.getItem("blipp:onboarding-complete")) {
-        setIsChecking(false);
-        return;
-      }
-
-      // Slow path: check if they have any activity (subscriptions or favorites)
       try {
-        const res = await apiFetch<{ subscriptions: { podcastId: string }[] }>(
-          "/podcasts/subscriptions"
-        );
-        if (res.subscriptions && res.subscriptions.length > 0) {
-          localStorage.setItem("blipp:onboarding-complete", "true");
+        const res = await apiFetch<{
+          user: { onboardingComplete?: boolean };
+        }>("/me");
+
+        if (res.user.onboardingComplete) {
           setIsChecking(false);
           return;
         }
+
+        setNeedsOnboarding(true);
       } catch {
         // API error — don't block, skip onboarding
-        setIsChecking(false);
-        return;
       }
-
-      try {
-        const res = await apiFetch<{ data: { id: string }[] }>(
-          "/podcasts/favorites"
-        );
-        if (res.data && res.data.length > 0) {
-          localStorage.setItem("blipp:onboarding-complete", "true");
-          setIsChecking(false);
-          return;
-        }
-      } catch {
-        // Non-critical
-      }
-
-      setNeedsOnboarding(true);
       setIsChecking(false);
     };
     check();

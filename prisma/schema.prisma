@@ -69,6 +69,7 @@ model User {
   planId                String
   isAdmin               Boolean  @default(false)
   status                String   @default("active")  // "active" | "suspended" | "banned"
+  onboardingComplete    Boolean  @default(false)
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 

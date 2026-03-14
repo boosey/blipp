@@ -68,7 +68,13 @@ export default function Onboarding() {
       }
     }
 
-    localStorage.setItem("blipp:onboarding-complete", "true");
+    // Mark onboarding complete in DB
+    try {
+      await apiFetch("/me/onboarding-complete", { method: "PATCH" });
+    } catch {
+      // Non-critical
+    }
+
     setStep(3);
     setSaving(false);
   }
@@ -197,8 +203,12 @@ export default function Onboarding() {
             {!saving && <ChevronRight className="w-4 h-4" />}
           </button>
           <button
-            onClick={() => {
-              localStorage.setItem("blipp:onboarding-complete", "true");
+            onClick={async () => {
+              try {
+                await apiFetch("/me/onboarding-complete", { method: "PATCH" });
+              } catch {
+                // Non-critical
+              }
               navigate("/home");
             }}
             className="w-full py-2 text-zinc-500 text-sm hover:text-zinc-300 transition-colors"

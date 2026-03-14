@@ -39,9 +39,36 @@ me.get("/", async (c) => {
         slug: fullUser.plan.slug,
       },
       isAdmin: fullUser.isAdmin,
+      onboardingComplete: fullUser.onboardingComplete,
       featureFlags: flags,
     },
   });
+});
+
+/**
+ * PATCH /onboarding-complete — Mark onboarding as complete (or reset for admins).
+ * Body (optional): { reset: true } — resets onboarding (admin only)
+ */
+me.patch("/onboarding-complete", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
+
+  let complete = true;
+  try {
+    const body = await c.req.json<{ reset?: boolean }>();
+    if (body.reset && user.isAdmin) {
+      complete = false;
+    }
+  } catch {
+    // No body — default to marking complete
+  }
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { onboardingComplete: complete },
+  });
+
+  return c.json({ data: { onboardingComplete: complete } });
 });
 
 /**

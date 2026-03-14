@@ -198,9 +198,16 @@ export function Settings() {
         <div className="space-y-4">
           <h2 className="text-lg font-semibold">Developer</h2>
           <button
-            onClick={() => {
-              localStorage.removeItem("blipp:onboarding-complete");
-              toast.success("Onboarding reset — refresh to see it");
+            onClick={async () => {
+              try {
+                await apiFetch("/me/onboarding-complete", {
+                  method: "PATCH",
+                  body: JSON.stringify({ reset: true }),
+                });
+                toast.success("Onboarding reset — refresh to see it");
+              } catch {
+                toast.error("Failed to reset onboarding");
+              }
             }}
             className="px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm hover:bg-zinc-700 transition-colors"
           >
