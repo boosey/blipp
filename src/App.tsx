@@ -26,6 +26,7 @@ const Plans = lazy(() => import("./pages/admin/plans"));
 const SttBenchmark = lazy(() => import("./pages/admin/stt-benchmark"));
 const ModelRegistry = lazy(() => import("./pages/admin/model-registry"));
 const Onboarding = lazy(() => import("./pages/onboarding"));
+const History = lazy(() => import("./pages/history"));
 
 function AdminLoading() {
   return (
@@ -64,6 +65,7 @@ export default function App() {
         <Route path="/discover/:podcastId" element={<PodcastDetail />} />
         <Route path="/library" element={<LibraryPage />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/history" element={<Suspense fallback={null}><History /></Suspense>} />
         <Route path="/play/:feedItemId" element={<BriefingPlayer />} />
         <Route path="/briefing/:requestId" element={<Navigate to="/home" replace />} />
         <Route path="/onboarding" element={<Suspense fallback={null}><Onboarding /></Suspense>} />

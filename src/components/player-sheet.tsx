@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Play, Pause, SkipBack, SkipForward } from "lucide-react";
 import {
   Sheet,
@@ -35,25 +35,6 @@ export function PlayerSheet({
     setRate,
   } = useAudio();
 
-  const seekBarRef = useRef<HTMLDivElement>(null);
-
-  const handleSeek = useCallback(
-    (e: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
-      const bar = seekBarRef.current;
-      if (!bar || !duration) return;
-
-      const rect = bar.getBoundingClientRect();
-      const clientX =
-        "touches" in e ? e.touches[0].clientX : e.clientX;
-      const fraction = Math.max(
-        0,
-        Math.min(1, (clientX - rect.left) / rect.width)
-      );
-      seek(fraction * duration);
-    },
-    [duration, seek]
-  );
-
   const cycleRate = useCallback(() => {
     const idx = RATE_CYCLE.indexOf(playbackRate as (typeof RATE_CYCLE)[number]);
     const next = RATE_CYCLE[(idx + 1) % RATE_CYCLE.length];
@@ -61,8 +42,6 @@ export function PlayerSheet({
   }, [playbackRate, setRate]);
 
   if (!currentItem) return null;
-
-  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -109,41 +88,18 @@ export function PlayerSheet({
         </div>
 
         {/* Seek bar */}
-        <div className="w-full max-w-sm mt-6">
-          <div
-            ref={seekBarRef}
-            className="relative w-full h-1.5 bg-zinc-700 rounded-full cursor-pointer"
-            onClick={handleSeek}
-            onTouchMove={handleSeek}
-            role="slider"
-            aria-label="Seek"
-            aria-valuemin={0}
-            aria-valuemax={duration}
-            aria-valuenow={currentTime}
-            tabIndex={0}
-          >
-            <div
-              className="absolute top-0 left-0 h-full bg-white rounded-full"
-              style={{ width: `${progress}%` }}
-            />
-            {/* Thumb */}
-            <div
-              className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow"
-              style={{ left: `${progress}%`, marginLeft: "-6px" }}
-            />
-          </div>
-          <div className="flex justify-between text-xs text-zinc-500 mt-2">
-            <span>{formatTime(currentTime)}</span>
-            <span>{formatTime(duration)}</span>
-          </div>
-        </div>
+        <SeekBar
+          currentTime={currentTime}
+          duration={duration}
+          onSeek={seek}
+        />
 
         {/* Controls */}
         <div className="flex items-center justify-center gap-8 mt-6 w-full max-w-sm">
           {/* Playback rate */}
           <button
             onClick={cycleRate}
-            className="text-xs text-zinc-400 bg-zinc-800 px-2.5 py-1 rounded min-w-[3rem]"
+            className="text-xs font-medium text-zinc-400 bg-zinc-800 px-2.5 py-1 rounded-full min-w-[3rem]"
           >
             {playbackRate}x
           </button>
@@ -151,10 +107,13 @@ export function PlayerSheet({
           {/* Skip back 15s */}
           <button
             onClick={() => seek(Math.max(0, currentTime - 15))}
-            className="p-2 text-zinc-300"
+            className="relative p-2 text-zinc-300"
             aria-label="Skip back 15 seconds"
           >
             <SkipBack className="w-6 h-6" />
+            <span className="absolute text-[10px] font-medium top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
+              15
+            </span>
           </button>
 
           {/* Play/Pause */}
@@ -166,17 +125,20 @@ export function PlayerSheet({
             {isPlaying ? (
               <Pause className="w-7 h-7" />
             ) : (
-              <Play className="w-7 h-7 ml-1" />
+              <Play className="w-7 h-7 ml-0.5" />
             )}
           </button>
 
           {/* Skip forward 30s */}
           <button
             onClick={() => seek(Math.min(duration, currentTime + 30))}
-            className="p-2 text-zinc-300"
+            className="relative p-2 text-zinc-300"
             aria-label="Skip forward 30 seconds"
           >
             <SkipForward className="w-6 h-6" />
+            <span className="absolute text-[10px] font-medium top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
+              30
+            </span>
           </button>
 
           {/* Spacer to balance rate button */}
@@ -184,5 +146,97 @@ export function PlayerSheet({
         </div>
       </SheetContent>
     </Sheet>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  SeekBar — custom styled scrubber with drag support                */
+/* ------------------------------------------------------------------ */
+
+function SeekBar({
+  currentTime,
+  duration,
+  onSeek,
+}: {
+  currentTime: number;
+  duration: number;
+  onSeek: (time: number) => void;
+}) {
+  const trackRef = useRef<HTMLDivElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+
+  const handleSeek = useCallback(
+    (clientX: number) => {
+      const track = trackRef.current;
+      if (!track || !duration) return;
+      const rect = track.getBoundingClientRect();
+      const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+      onSeek(pct * duration);
+    },
+    [duration, onSeek]
+  );
+
+  // Global mouse/touch handlers for drag seeking
+  useEffect(() => {
+    if (!isDragging) return;
+    const handleMove = (e: MouseEvent | TouchEvent) => {
+      const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
+      handleSeek(clientX);
+    };
+    const handleUp = () => setIsDragging(false);
+    window.addEventListener("mousemove", handleMove);
+    window.addEventListener("mouseup", handleUp);
+    window.addEventListener("touchmove", handleMove);
+    window.addEventListener("touchend", handleUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("mouseup", handleUp);
+      window.removeEventListener("touchmove", handleMove);
+      window.removeEventListener("touchend", handleUp);
+    };
+  }, [isDragging, handleSeek]);
+
+  return (
+    <div className="w-full max-w-sm mt-6">
+      <div
+        ref={trackRef}
+        className="relative w-full h-6 flex items-center cursor-pointer group"
+        role="slider"
+        aria-label="Seek"
+        aria-valuemin={0}
+        aria-valuemax={duration}
+        aria-valuenow={currentTime}
+        tabIndex={0}
+        onMouseDown={(e) => {
+          setIsDragging(true);
+          handleSeek(e.clientX);
+        }}
+        onTouchStart={(e) => {
+          setIsDragging(true);
+          handleSeek(e.touches[0].clientX);
+        }}
+      >
+        {/* Track background */}
+        <div className="absolute w-full h-0.5 bg-zinc-700 rounded-full" />
+        {/* Played progress */}
+        <div
+          className="absolute h-0.5 bg-white rounded-full"
+          style={{ width: `${progress}%` }}
+        />
+        {/* Thumb — visible on hover or drag */}
+        <div
+          className={`absolute w-3 h-3 bg-white rounded-full -translate-x-1/2 transition-opacity ${
+            isDragging ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+          }`}
+          style={{ left: `${progress}%` }}
+        />
+      </div>
+      <div className="flex justify-between text-xs text-zinc-500 mt-1">
+        <span>{formatTime(currentTime)}</span>
+        <span>{formatTime(duration)}</span>
+      </div>
+    </div>
   );
 }
