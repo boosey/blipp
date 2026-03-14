@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useApiFetch } from "../lib/api";
 import { useFetch } from "../lib/use-fetch";
+import { useOnboarding } from "../hooks/use-onboarding";
 import { Check, ChevronRight, Headphones } from "lucide-react";
 
 interface CatalogPodcast {
@@ -18,6 +19,7 @@ interface CatalogPodcast {
 export default function Onboarding() {
   const navigate = useNavigate();
   const apiFetch = useApiFetch();
+  const { markComplete } = useOnboarding();
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [selectedPodcasts, setSelectedPodcasts] = useState<Set<string>>(
     new Set()
@@ -68,12 +70,13 @@ export default function Onboarding() {
       }
     }
 
-    // Mark onboarding complete in DB
+    // Mark onboarding complete in DB + local state
     try {
       await apiFetch("/me/onboarding-complete", { method: "PATCH" });
     } catch {
       // Non-critical
     }
+    markComplete();
 
     setStep(3);
     setSaving(false);
@@ -209,6 +212,7 @@ export default function Onboarding() {
               } catch {
                 // Non-critical
               }
+              markComplete();
               navigate("/home");
             }}
             className="w-full py-2 text-zinc-500 text-sm hover:text-zinc-300 transition-colors"

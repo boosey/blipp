@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useApiFetch } from "../lib/api";
 
 export function useOnboarding() {
@@ -31,5 +31,10 @@ export function useOnboarding() {
     check();
   }, [apiFetch]);
 
-  return { needsOnboarding, isChecking };
+  /** Call after completing onboarding to prevent redirect loop. */
+  const markComplete = useCallback(() => {
+    setNeedsOnboarding(false);
+  }, []);
+
+  return { needsOnboarding, isChecking, markComplete };
 }
