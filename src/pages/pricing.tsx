@@ -10,8 +10,41 @@ interface Plan {
   description?: string;
   priceCentsMonthly: number;
   priceCentsAnnual?: number | null;
-  features: string[];
+  briefingsPerWeek: number | null;
+  maxDurationMinutes: number;
+  maxPodcastSubscriptions: number | null;
+  adFree: boolean;
+  priorityProcessing: boolean;
+  earlyAccess: boolean;
   highlighted: boolean;
+}
+
+function buildFeatures(plan: Plan): string[] {
+  const features: string[] = [];
+
+  // Briefings per week
+  if (plan.briefingsPerWeek === null) {
+    features.push("Unlimited briefings");
+  } else {
+    features.push(`${plan.briefingsPerWeek} briefings per week`);
+  }
+
+  // Max duration
+  features.push(`Up to ${plan.maxDurationMinutes} min briefings`);
+
+  // Podcast subscriptions
+  if (plan.maxPodcastSubscriptions === null) {
+    features.push("Unlimited podcast subscriptions");
+  } else if (plan.maxPodcastSubscriptions > 0) {
+    features.push(`${plan.maxPodcastSubscriptions} podcast subscriptions`);
+  }
+
+  // Feature flags
+  if (plan.adFree) features.push("Ad-free listening");
+  if (plan.priorityProcessing) features.push("Priority processing");
+  if (plan.earlyAccess) features.push("Early access to new features");
+
+  return features;
 }
 
 export function Pricing() {
@@ -142,7 +175,7 @@ export function Pricing() {
                 )}
 
                 <ul className="mt-6 space-y-3 flex-1">
-                  {plan.features.map((feature) => (
+                  {buildFeatures(plan).map((feature) => (
                     <li
                       key={feature}
                       className="flex items-start gap-2 text-sm text-zinc-300"
