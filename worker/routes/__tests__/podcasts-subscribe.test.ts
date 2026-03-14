@@ -12,11 +12,18 @@ vi.mock("../../lib/admin-helpers", () => ({
   getCurrentUser: vi.fn(),
 }));
 
+vi.mock("../../lib/plan-limits", () => ({
+  getUserWithPlan: vi.fn(),
+  checkDurationLimit: vi.fn().mockReturnValue(null),
+  checkSubscriptionLimit: vi.fn().mockResolvedValue(null),
+}));
+
 vi.mock("../../lib/podcast-index", () => ({
   PodcastIndexClient: vi.fn(),
 }));
 
 import { getCurrentUser } from "../../lib/admin-helpers";
+import { getUserWithPlan } from "../../lib/plan-limits";
 
 const mockExCtx = { waitUntil: vi.fn(), passThroughOnException: vi.fn(), props: {} };
 
@@ -37,6 +44,11 @@ describe("POST /subscribe", () => {
     });
     app.route("/", podcasts);
 
+    (getUserWithPlan as any).mockResolvedValue({
+      id: "user1",
+      clerkId: "clerk1",
+      plan: { maxDurationMinutes: 15, maxPodcastSubscriptions: null },
+    });
     (getCurrentUser as any).mockResolvedValue({ id: "user1", clerkId: "clerk1" });
   });
 
@@ -47,7 +59,7 @@ describe("POST /subscribe", () => {
       body: JSON.stringify({ feedUrl: "https://example.com/feed", title: "Test" }),
     }, env, mockExCtx);
     expect(res.status).toBe(400);
-    const data = await res.json();
+    const data: any = await res.json();
     expect(data.error).toContain("durationTier");
   });
 
@@ -127,7 +139,11 @@ describe("PATCH /subscribe/:podcastId", () => {
     });
     app.route("/", podcasts);
 
-    (getCurrentUser as any).mockResolvedValue({ id: "user1", clerkId: "clerk1" });
+    (getUserWithPlan as any).mockResolvedValue({
+      id: "user1",
+      clerkId: "clerk1",
+      plan: { maxDurationMinutes: 15, maxPodcastSubscriptions: null },
+    });
   });
 
   it("rejects invalid durationTier", async () => {
@@ -148,7 +164,7 @@ describe("PATCH /subscribe/:podcastId", () => {
       body: JSON.stringify({ durationTier: 10 }),
     }, env, mockExCtx);
     expect(res.status).toBe(200);
-    const data = await res.json();
+    const data: any = await res.json();
     expect(data.subscription.durationTier).toBe(10);
   });
 });

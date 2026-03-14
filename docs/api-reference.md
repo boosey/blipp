@@ -7,15 +7,19 @@ All routes are served by a Hono app on Cloudflare Workers. The API is mounted at
 - **Clerk auth**: Most routes require a valid Clerk session (Bearer token). The `requireAuth` middleware (`worker/middleware/auth.ts`) returns 401 if no authenticated user.
 - **Admin auth**: Admin routes use `requireAdmin` middleware (`worker/middleware/admin.ts`) which checks Clerk auth (401) then `User.isAdmin` (403).
 - **Webhooks**: Clerk and Stripe webhook endpoints verify signatures instead of using session auth.
+- **Plan limits**: Subscribe and briefing routes enforce plan-based limits (duration, subscriptions, weekly briefings) via helpers in `worker/lib/plan-limits.ts`.
 
 | Route Pattern | Auth Level |
 |---------------|------------|
 | `GET /api/plans` | None |
 | `GET /api/health` | None |
 | `POST /api/webhooks/*` | Webhook signature verification |
-| `/api/podcasts/*` | Clerk auth (Bearer token) |
-| `/api/briefings/*` | Clerk auth (Bearer token) |
+| `/api/me` | Clerk auth (Bearer token) |
+| `/api/plans/current` | Clerk auth (Bearer token) |
+| `/api/podcasts/*` | Clerk auth + plan limits |
+| `/api/briefings/*` | Clerk auth + plan limits |
 | `/api/feed/*` | Clerk auth (Bearer token) |
+| `/api/clips/*` | Clerk auth (Bearer token) |
 | `/api/billing/*` | Clerk auth (Bearer token) |
 | `/api/admin/*` | Clerk auth + `isAdmin` flag |
 
@@ -51,13 +55,36 @@ List active subscription plans. No auth required. Returns active plans sorted by
 [
   {
     "id": "string",
-    "tier": "FREE | PRO | PRO_PLUS",
-    "name": "string",
-    "priceCents": 0,
+    "slug": "free",
+    "name": "Free",
+    "description": "string",
+    "priceCentsMonthly": 0,
+    "priceCentsAnnual": null,
     "features": ["string"],
-    "highlighted": false
+    "highlighted": false,
+    "briefingsPerWeek": 5,
+    "maxDurationMinutes": 5,
+    "maxPodcastSubscriptions": 3,
+    "adFree": false,
+    "priorityProcessing": false,
+    "earlyAccess": false
   }
 ]
+```
+
+**`GET /api/plans/current`** (requires auth)
+
+Returns the authenticated user's current plan.
+
+```json
+{
+  "plan": {
+    "id": "string",
+    "name": "Free",
+    "slug": "free",
+    "priceCentsMonthly": 0
+  }
+}
 ```
 
 ---
@@ -66,29 +93,68 @@ List active subscription plans. No auth required. Returns active plans sorted by
 
 All routes below require a valid Clerk session (Bearer token). Returns 401 if unauthenticated.
 
+### Me (`/api/me`)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/me` | Get/create current user with plan info |
+
+**`GET /api/me`**
+
+Returns the authenticated user's DB record, creating it from Clerk if missing. Auto-assigns the default plan.
+
+Response:
+```json
+{
+  "user": {
+    "id": "string",
+    "email": "string",
+    "name": "string",
+    "imageUrl": "string",
+    "plan": { "id": "string", "name": "string", "slug": "string" },
+    "isAdmin": false
+  }
+}
+```
+
+---
+
 ### Podcasts (`/api/podcasts`)
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/podcasts/search?q=...` | Search podcasts via Podcast Index |
-| GET | `/api/podcasts/trending` | Fetch trending podcasts |
+| GET | `/api/podcasts/catalog` | Browse/search local podcast catalog |
 | POST | `/api/podcasts/subscribe` | Subscribe to a podcast (requires durationTier) |
 | PATCH | `/api/podcasts/subscribe/:podcastId` | Update subscription durationTier |
 | DELETE | `/api/podcasts/subscribe/:podcastId` | Unsubscribe from a podcast |
-| POST | `/api/podcasts/refresh` | Queue a feed refresh |
+| POST | `/api/podcasts/refresh` | Queue feed refresh |
 | GET | `/api/podcasts/subscriptions` | List user's subscriptions |
 | GET | `/api/podcasts/:id` | Podcast detail with subscription status + tier |
 | GET | `/api/podcasts/:id/episodes` | Episode list (up to 50, newest first) |
 
-**`GET /api/podcasts/search?q=...`**
+**`GET /api/podcasts/catalog?q=...&page=1&pageSize=50`**
 
-Query param `q` is required (400 if missing).
+Browse/search the local podcast catalog (populated by admin catalog refresh). Searches title and author.
 
-Response: `{ "feeds": [...] }`
-
-**`GET /api/podcasts/trending`**
-
-Response: `{ "feeds": [...] }`
+Response:
+```json
+{
+  "podcasts": [
+    {
+      "id": "string",
+      "title": "string",
+      "author": "string",
+      "description": "string",
+      "imageUrl": "string",
+      "feedUrl": "string",
+      "episodeCount": 0
+    }
+  ],
+  "total": 0,
+  "page": 1,
+  "pageSize": 50
+}
+```
 
 **`POST /api/podcasts/subscribe`**
 
@@ -100,14 +166,14 @@ Body:
   "durationTier": "number (required, one of 1/2/3/5/7/10/15/30)",
   "description": "string",
   "imageUrl": "string",
-  "podcastIndexId": "number",
+  "podcastIndexId": "string",
   "author": "string"
 }
 ```
 
-Response (201): `{ "subscription": { "...subscription", "podcast": {...} } }`
+Response (201): `{ "subscription": { "...subscription", "podcast": {...} }, "feedItem": {...} }`
 
-Upserts podcast and subscription. Creates a FeedItem (SUBSCRIPTION source) for the latest episode and dispatches the pipeline.
+Upserts podcast and subscription. Enforces plan limits (duration, subscription count). Creates a FeedItem (SUBSCRIPTION source) for the latest episode and dispatches the pipeline.
 
 **`PATCH /api/podcasts/subscribe/:podcastId`**
 
@@ -118,13 +184,15 @@ Body:
 
 Response: `{ "subscription": {...} }`
 
+Enforces plan duration limit.
+
 **`DELETE /api/podcasts/subscribe/:podcastId`**
 
 Response: `{ "success": true }`
 
 **`POST /api/podcasts/refresh`**
 
-Enqueues a manual feed refresh for all of the user's subscribed podcasts.
+Enqueues a manual feed refresh.
 
 Response: `{ "success": true, "message": "string" }`
 
@@ -134,7 +202,7 @@ Response: `{ "subscriptions": [{ "...subscription", "podcast": {...} }] }`
 
 **`GET /api/podcasts/:id`**
 
-Returns podcast detail with subscription status for the authenticated user. Returns 404 if podcast not found.
+Returns podcast detail with subscription status for the authenticated user.
 
 Response:
 ```json
@@ -156,7 +224,7 @@ Response:
 
 **`GET /api/podcasts/:id/episodes`**
 
-Returns up to 50 episodes for a podcast, ordered by `publishedAt` descending. Returns 404 if podcast not found.
+Returns up to 50 episodes for a podcast, ordered by `publishedAt` descending.
 
 Response:
 ```json
@@ -183,7 +251,7 @@ Response:
 
 **`POST /api/briefings/generate`**
 
-Creates an on-demand FeedItem and dispatches the pipeline. Requires a podcast and duration tier. Optionally target a specific episode; if omitted, uses the latest episode.
+Creates an on-demand FeedItem and dispatches the pipeline. Enforces plan limits (duration, weekly briefing cap).
 
 Body:
 ```json
@@ -200,6 +268,7 @@ Response (201):
 ```
 
 Response (400): Missing required fields, invalid durationTier, or no episodes found.
+Response (403): Plan limit exceeded (duration or weekly briefing cap).
 
 ---
 
@@ -214,28 +283,30 @@ Response (400): Missing required fields, invalid durationTier, or no episodes fo
 
 **`GET /api/feed`**
 
-Query params: `limit` (default 50), `offset` (default 0)
+Query params: `status` (filter), `listened` (true/false filter), `limit` (default 30, max 100), `offset` (default 0)
 
 Response:
 ```json
 {
-  "feedItems": [
+  "items": [
     {
       "id": "string",
       "source": "SUBSCRIPTION | ON_DEMAND",
       "status": "PENDING | PROCESSING | READY | FAILED",
       "durationTier": 5,
       "listened": false,
+      "listenedAt": null,
       "createdAt": "string",
       "podcast": { "id": "string", "title": "string", "imageUrl": "string" },
-      "episode": { "id": "string", "title": "string", "publishedAt": "string" },
+      "episode": { "id": "string", "title": "string", "publishedAt": "string", "durationSeconds": 0 },
       "briefing": {
         "id": "string",
-        "clip": { "audioUrl": "string", "actualSeconds": 300 },
+        "clip": { "audioUrl": "/api/clips/episodeId/durationTier", "actualSeconds": 300 },
         "adAudioUrl": null
       }
     }
-  ]
+  ],
+  "total": 10
 }
 ```
 
@@ -248,11 +319,30 @@ Response:
 
 **`GET /api/feed/:id`**
 
-Returns a single feed item with full clip detail. Returns 404 if not found or not owned by user.
+Returns a single feed item with full clip detail.
+
+Response: `{ "item": { ... } }` (same shape as feed list items)
 
 **`PATCH /api/feed/:id/listened`**
 
-Marks the feed item as listened. Returns the updated feed item.
+Marks the feed item as listened. Returns 404 if not found or not owned by user.
+
+Response: `{ "success": true }`
+
+---
+
+### Clips (`/api/clips`)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/clips/:episodeId/:durationTier` | Stream clip audio from R2 |
+
+**`GET /api/clips/:episodeId/:durationTier`**
+
+Streams MP3 audio from R2 for the given episode and duration tier. Returns `audio/mpeg` with `Cache-Control: public, max-age=86400`.
+
+Response: Binary audio stream
+Response (404): Clip not found in R2
 
 ---
 
@@ -265,11 +355,11 @@ Marks the feed item as listened. Returns the updated feed item.
 
 **`POST /api/billing/checkout`**
 
-Body: `{ "tier": "PRO" | "PRO_PLUS" }`
+Body: `{ "planId": "string", "interval": "monthly" | "annual" }`
 
 Response: `{ "url": "https://checkout.stripe.com/..." }`
 
-Returns 400 if plan is invalid or unavailable.
+Returns 400 if plan is invalid, unavailable, or has no Stripe price for the chosen interval.
 
 **`POST /api/billing/portal`**
 
@@ -278,8 +368,6 @@ No body required.
 Response: `{ "url": "https://billing.stripe.com/..." }`
 
 Returns 400 if user has never subscribed (no `stripeCustomerId`).
-
----
 
 ---
 
@@ -297,8 +385,8 @@ Response: `{ "received": true }`
 ### Stripe (`POST /api/webhooks/stripe`)
 
 Requires `stripe-signature` header (400 if missing/invalid). Handles:
-- `checkout.session.completed` -- Upgrades user tier based on Stripe price
-- `customer.subscription.deleted` -- Reverts user to FREE tier
+- `checkout.session.completed` -- Upgrades user plan based on Stripe price
+- `customer.subscription.deleted` -- Reverts user to default (free) plan
 
 Response: `{ "received": true }`
 
@@ -308,15 +396,12 @@ Response: `{ "received": true }`
 
 All admin routes require Clerk auth + `User.isAdmin = true`. Returns 401 if unauthenticated, 403 if not admin.
 
-Every admin route group includes a `GET /health` endpoint returning `{ "status": "ok" }`.
-
 ---
 
 ### Dashboard (`/api/admin/dashboard`)
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/health` | Health check |
 | GET | `/` | System health overview |
 | GET | `/stats` | Aggregate stat cards with 7-day trends |
 | GET | `/activity` | Recent pipeline activity (20 most recent jobs) |
@@ -324,111 +409,12 @@ Every admin route group includes a `GET /health` endpoint returning `{ "status":
 | GET | `/issues` | Active issues (failed jobs + broken feeds, last 48h) |
 | GET | `/feed-refresh-summary` | Feed refresh status |
 
-**`GET /api/admin/dashboard`**
-
-Response:
-```json
-{
-  "data": {
-    "overall": "operational | degraded | critical",
-    "stages": [...],
-    "activeIssuesCount": 0
-  }
-}
-```
-
-**`GET /api/admin/dashboard/stats`**
-
-Response:
-```json
-{
-  "data": {
-    "podcasts": { "total": 0, "trend": 0 },
-    "users": { "total": 0, "trend": 0 },
-    "episodes": { "total": 0, "trend": 0 },
-    "feedItems": { "total": 0, "trend": 0 }
-  }
-}
-```
-
-**`GET /api/admin/dashboard/activity`**
-
-Response:
-```json
-{
-  "data": [
-    {
-      "id": "string",
-      "timestamp": "string",
-      "stage": 1,
-      "stageName": "string",
-      "episodeTitle": "string",
-      "podcastName": "string",
-      "status": "string",
-      "type": "string"
-    }
-  ]
-}
-```
-
-**`GET /api/admin/dashboard/costs`**
-
-Response:
-```json
-{
-  "data": {
-    "todaySpend": 0,
-    "yesterdaySpend": 0,
-    "trend": 0,
-    "breakdown": [{ "category": "string", "amount": 0, "percentage": 0 }],
-    "budgetUsed": 0
-  }
-}
-```
-
-**`GET /api/admin/dashboard/issues`**
-
-Response:
-```json
-{
-  "data": [
-    {
-      "id": "string",
-      "severity": "string",
-      "title": "string",
-      "description": "string",
-      "rawError": "string",
-      "entityId": "string",
-      "entityType": "string",
-      "createdAt": "string",
-      "actionable": true
-    }
-  ]
-}
-```
-
-**`GET /api/admin/dashboard/feed-refresh-summary`**
-
-Response:
-```json
-{
-  "data": {
-    "lastRunAt": "string",
-    "podcastsRefreshed": 0,
-    "totalPodcasts": 0,
-    "recentEpisodes": 0,
-    "feedErrors": 0
-  }
-}
-```
-
 ---
 
 ### Pipeline (`/api/admin/pipeline`)
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/health` | Health check |
 | GET | `/jobs` | Paginated job list with filters |
 | GET | `/jobs/:id` | Job detail with steps and request context |
 | POST | `/jobs/:id/retry` | Retry a single failed job |
@@ -438,215 +424,19 @@ Response:
 | POST | `/trigger/episode/:id` | Trigger pipeline for episode |
 | GET | `/stages` | Per-stage aggregate stats |
 
-**`GET /api/admin/pipeline/jobs`**
-
-Query params: `page`, `pageSize`, `currentStage`, `status`, `requestId`, `search`
-
-Response:
-```json
-{
-  "data": [...],
-  "total": 0,
-  "page": 1,
-  "pageSize": 20,
-  "totalPages": 1
-}
-```
-
-**`GET /api/admin/pipeline/jobs/:id`**
-
-Response:
-```json
-{
-  "data": {
-    "...job",
-    "steps": [...],
-    "requestContext": {...},
-    "queuePosition": 0
-  }
-}
-```
-
-**`POST /api/admin/pipeline/jobs/:id/retry`**
-
-Response:
-```json
-{ "data": { "id": "string", "status": "PENDING", "currentStage": 1 } }
-```
-
-**`POST /api/admin/pipeline/jobs/bulk/retry`**
-
-Body: `{ "ids": ["string"] }`
-
-Response: `{ "data": { "retriedCount": 0 } }`
-
-**`POST /api/admin/pipeline/trigger/feed-refresh`**
-
-Body: `{ "podcastId": "string (optional)" }`
-
-Response: `{ "data": { "enqueued": 0, "skipped": 0, "message": "string" } }`
-
-**`POST /api/admin/pipeline/trigger/stage/:stage`**
-
-Trigger a specific stage for eligible episodes.
-
-Response: `{ "data": { "enqueued": 0, "skipped": 0, "message": "string" } }`
-
-**`POST /api/admin/pipeline/trigger/episode/:id`**
-
-Body: `{ "stage": 1 }` (optional)
-
-Response: `{ "data": { "enqueued": 0, "skipped": 0, "message": "string" } }`
-
-**`GET /api/admin/pipeline/stages`**
-
-Response:
-```json
-{
-  "data": [
-    {
-      "stage": 1,
-      "name": "string",
-      "icon": "string",
-      "activeJobs": 0,
-      "successRate": 0,
-      "avgProcessingTime": 0,
-      "todayCost": 0,
-      "perUnitCost": 0
-    }
-  ]
-}
-```
-
 ---
 
 ### Podcasts (`/api/admin/podcasts`)
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/health` | Health check |
 | GET | `/stats` | Catalog statistics |
 | GET | `/` | Paginated podcast list |
-| GET | `/:id` | Podcast detail with episodes and pipeline activity |
+| GET | `/:id` | Podcast detail with episodes, clips, and pipeline activity |
 | POST | `/` | Create podcast |
 | PATCH | `/:id` | Update podcast |
 | DELETE | `/:id` | Archive podcast (soft delete) |
 | POST | `/:id/refresh` | Trigger feed refresh for podcast |
-
-**`GET /api/admin/podcasts/stats`**
-
-Response:
-```json
-{
-  "data": {
-    "total": 0,
-    "byHealth": {...},
-    "byStatus": {...},
-    "needsAttention": 0
-  }
-}
-```
-
-**`GET /api/admin/podcasts`**
-
-Query params: `page`, `pageSize`, `search`, `health`, `status`, `sort`
-
-Response:
-```json
-{
-  "data": [...],
-  "total": 0,
-  "page": 1,
-  "pageSize": 20,
-  "totalPages": 1
-}
-```
-
-**`GET /api/admin/podcasts/:id`**
-
-Response:
-```json
-{
-  "data": {
-    "...podcast",
-    "episodes": [
-      {
-        "id": "string",
-        "title": "string",
-        "audioUrl": "string | null",
-        "publishedAt": "ISO string",
-        "durationSeconds": "number | null",
-        "transcriptUrl": "string | null",
-        "pipelineStatus": "pending | transcribing | distilling | generating_clips | completed | failed",
-        "clipCount": 0,
-        "totalCost": "number | null",
-        "clips": [
-          {
-            "id": "string",
-            "durationTier": 5,
-            "actualSeconds": 295,
-            "status": "COMPLETED",
-            "audioUrl": "string | null",
-            "feedItems": [
-              {
-                "id": "string",
-                "userId": "string",
-                "source": "SUBSCRIPTION | ON_DEMAND",
-                "status": "string",
-                "requestId": "string | null",
-                "createdAt": "ISO string"
-              }
-            ]
-          }
-        ]
-      }
-    ],
-    "recentPipelineActivity": [...]
-  }
-}
-```
-
-**`POST /api/admin/podcasts`**
-
-Body:
-```json
-{
-  "feedUrl": "string (required)",
-  "title": "string (required)",
-  "description": "string",
-  "imageUrl": "string",
-  "author": "string"
-}
-```
-
-Response (201): `{ "data": {...podcast} }`
-
-**`PATCH /api/admin/podcasts/:id`**
-
-Body (all fields optional):
-```json
-{
-  "status": "string",
-  "feedHealth": "string",
-  "feedError": "string",
-  "title": "string",
-  "description": "string"
-}
-```
-
-Response: `{ "data": {...podcast} }`
-
-**`DELETE /api/admin/podcasts/:id`**
-
-Archives the podcast (soft delete).
-
-Response: `{ "data": { "id": "string", "status": "archived" } }`
-
-**`POST /api/admin/podcasts/:id/refresh`**
-
-Enqueue feed refresh for a specific podcast.
-
-Response (201): `{ "data": { "podcastId": "string", "status": "dispatched" } }`
 
 ---
 
@@ -654,46 +444,9 @@ Response (201): `{ "data": { "podcastId": "string", "status": "dispatched" } }`
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/health` | Health check |
 | GET | `/` | Paginated episode list |
 | GET | `/:id` | Episode detail with pipeline trace |
 | POST | `/:id/reprocess` | Trigger reprocessing |
-
-**`GET /api/admin/episodes`**
-
-Query params: `page`, `pageSize`, `podcastId`, `search`, `sort`
-
-Response:
-```json
-{
-  "data": [...],
-  "total": 0,
-  "page": 1,
-  "pageSize": 20,
-  "totalPages": 1
-}
-```
-
-**`GET /api/admin/episodes/:id`**
-
-Response:
-```json
-{
-  "data": {
-    "...episode",
-    "distillation": {...},
-    "clips": [...],
-    "feedItemAppearances": [...],
-    "pipelineTrace": [...]
-  }
-}
-```
-
-**`POST /api/admin/episodes/:id/reprocess`**
-
-Dispatches episode to the transcription queue.
-
-Response (201): `{ "data": { "episodeId": "string", "status": "dispatched" } }`
 
 ---
 
@@ -701,66 +454,8 @@ Response (201): `{ "data": { "episodeId": "string", "status": "dispatched" } }`
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/health` | Health check |
 | GET | `/` | Paginated briefing list (per-user Clip wrappers) |
 | GET | `/:id` | Briefing detail with clip, episode, and feed items |
-
-**`GET /api/admin/briefings`**
-
-Query params: `page`, `pageSize`, `userId`, `sort`
-
-Response:
-```json
-{
-  "data": [
-    {
-      "id": "string",
-      "userId": "string",
-      "userEmail": "string",
-      "clipId": "string",
-      "durationTier": 5,
-      "clipStatus": "COMPLETED",
-      "actualSeconds": 300,
-      "audioUrl": "string",
-      "adAudioUrl": null,
-      "episodeTitle": "string",
-      "podcastTitle": "string",
-      "feedItemCount": 1,
-      "createdAt": "string"
-    }
-  ],
-  "total": 0,
-  "page": 1,
-  "pageSize": 20,
-  "totalPages": 1
-}
-```
-
-**`GET /api/admin/briefings/:id`**
-
-Response:
-```json
-{
-  "data": {
-    "id": "string",
-    "userId": "string",
-    "clipId": "string",
-    "adAudioUrl": null,
-    "clip": {
-      "id": "string",
-      "durationTier": 5,
-      "status": "COMPLETED",
-      "actualSeconds": 300,
-      "audioUrl": "string",
-      "episodeTitle": "string",
-      "podcastTitle": "string"
-    },
-    "feedItems": [
-      { "id": "string", "status": "READY", "listened": false, "source": "SUBSCRIPTION" }
-    ]
-  }
-}
-```
 
 ---
 
@@ -768,67 +463,22 @@ Response:
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/health` | Health check |
 | GET | `/segments` | User segment counts |
 | GET | `/` | Paginated user list |
 | GET | `/:id` | User detail with subscriptions |
-| PATCH | `/:id` | Update user (tier, admin toggle) |
+| PATCH | `/:id` | Update user (plan, admin toggle) |
 
-**`GET /api/admin/users/segments`**
+---
 
-Response:
-```json
-{
-  "data": {
-    "all": 0,
-    "power_users": 0,
-    "at_risk": 0,
-    "trial_ending": 0,
-    "recently_cancelled": 0,
-    "never_active": 0
-  }
-}
-```
+### Plans (`/api/admin/plans`)
 
-**`GET /api/admin/users`**
-
-Query params: `page`, `pageSize`, `tier`, `search`, `segment`, `sort`
-
-Response:
-```json
-{
-  "data": [...],
-  "total": 0,
-  "page": 1,
-  "pageSize": 20,
-  "totalPages": 1
-}
-```
-
-**`GET /api/admin/users/:id`**
-
-Response:
-```json
-{
-  "data": {
-    "...user",
-    "subscriptions": [...],
-    "recentFeedItems": [...]
-  }
-}
-```
-
-**`PATCH /api/admin/users/:id`**
-
-Body (all fields optional):
-```json
-{
-  "tier": "FREE | PRO | PRO_PLUS",
-  "isAdmin": true
-}
-```
-
-Response: `{ "data": { "id": "string", "tier": "string", "isAdmin": true } }`
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/` | Paginated plan list with user counts |
+| GET | `/:id` | Plan detail with user count |
+| POST | `/` | Create plan |
+| PATCH | `/:id` | Update plan fields |
+| DELETE | `/:id` | Soft delete (deactivate) plan |
 
 ---
 
@@ -836,7 +486,6 @@ Response: `{ "data": { "id": "string", "tier": "string", "isAdmin": true } }`
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/health` | Health check |
 | GET | `/costs` | Cost analytics by stage and period |
 | GET | `/costs/by-model` | Cost breakdown by AI model and stage |
 | GET | `/usage` | Usage trends and distribution |
@@ -845,94 +494,12 @@ Response: `{ "data": { "id": "string", "tier": "string", "isAdmin": true } }`
 
 All analytics endpoints accept `from` and `to` query params (ISO date strings).
 
-**`GET /api/admin/analytics/costs`**
-
-Response:
-```json
-{
-  "data": {
-    "totalCost": 0,
-    "comparison": {...},
-    "dailyCosts": [...],
-    "metrics": {...},
-    "efficiencyScore": 0
-  }
-}
-```
-
-**`GET /api/admin/analytics/costs/by-model`**
-
-Query params: `from`, `to` (ISO date strings)
-
-Response:
-```json
-{
-  "data": {
-    "models": [
-      { "model": "claude-sonnet-4-20250514", "calls": 10, "inputTokens": 5000, "outputTokens": 2000, "cost": 0 }
-    ],
-    "byStage": [
-      { "stage": "DISTILLATION", "model": "claude-sonnet-4-20250514", "calls": 5, "inputTokens": 3000, "outputTokens": 1500, "cost": 0 }
-    ]
-  }
-}
-```
-
-**`GET /api/admin/analytics/usage`**
-
-Response:
-```json
-{
-  "data": {
-    "metrics": {...},
-    "trends": [...],
-    "byTier": {...},
-    "peakTimes": [...],
-    "topPodcasts": [...]
-  }
-}
-```
-
-**`GET /api/admin/analytics/quality`**
-
-Response:
-```json
-{
-  "data": {
-    "overallScore": 0,
-    "components": {
-      "timeFitting": 0,
-      "claimCoverage": 0,
-      "transcription": 0,
-      "userSatisfaction": 0
-    },
-    "trend": [...],
-    "recentIssues": [...]
-  }
-}
-```
-
-**`GET /api/admin/analytics/pipeline`**
-
-Response:
-```json
-{
-  "data": {
-    "throughput": {...},
-    "successRates": {...},
-    "processingSpeed": {...},
-    "bottlenecks": [...]
-  }
-}
-```
-
 ---
 
 ### Configuration (`/api/admin/config`)
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/health` | Health check |
 | GET | `/` | All runtime config values grouped by prefix |
 | PATCH | `/:key` | Update a config value |
 | GET | `/tiers/duration` | Duration tier config |
@@ -941,126 +508,6 @@ Response:
 | PUT | `/tiers/subscription` | Update a subscription plan |
 | GET | `/features` | Feature flags |
 | PUT | `/features/:id` | Update a feature flag |
-
-**`GET /api/admin/config`**
-
-Response:
-```json
-{
-  "data": [
-    {
-      "category": "pipeline",
-      "entries": [
-        { "id": "string", "key": "pipeline.enabled", "value": "true", "description": "string" }
-      ]
-    }
-  ]
-}
-```
-
-**`PATCH /api/admin/config/:key`**
-
-Body:
-```json
-{
-  "value": "string (required)",
-  "description": "string"
-}
-```
-
-Response: `{ "data": { "id": "string", "key": "string", "value": "string" } }`
-
-**`GET /api/admin/config/tiers/duration`**
-
-Response:
-```json
-{
-  "data": [
-    {
-      "minutes": 5,
-      "cacheHitRate": 0,
-      "clipsGenerated": 0,
-      "storageCost": 0,
-      "usageFrequency": 0
-    }
-  ]
-}
-```
-
-**`PUT /api/admin/config/tiers/duration`**
-
-Body: `{ "tiers": [...] }`
-
-Response: `{ "data": { "success": true } }`
-
-**`GET /api/admin/config/tiers/subscription`**
-
-Response:
-```json
-{
-  "data": [
-    {
-      "tier": "FREE",
-      "name": "string",
-      "priceCents": 0,
-      "active": true,
-      "userCount": 0,
-      "features": ["string"],
-      "highlighted": false,
-      "stripePriceId": "string"
-    }
-  ]
-}
-```
-
-**`PUT /api/admin/config/tiers/subscription`**
-
-Body:
-```json
-{
-  "tier": "FREE | PRO | PRO_PLUS (required)",
-  "name": "string",
-  "priceCents": 0,
-  "active": true,
-  "features": ["string"],
-  "highlighted": false,
-  "sortOrder": 0
-}
-```
-
-Response: `{ "data": {...plan} }`
-
-**`GET /api/admin/config/features`**
-
-Response:
-```json
-{
-  "data": [
-    {
-      "id": "string",
-      "name": "string",
-      "enabled": true,
-      "rolloutPercentage": 100,
-      "tierAvailability": ["FREE", "PRO"],
-      "description": "string"
-    }
-  ]
-}
-```
-
-**`PUT /api/admin/config/features/:id`**
-
-Body (all fields optional):
-```json
-{
-  "enabled": true,
-  "rolloutPercentage": 100,
-  "tierAvailability": ["FREE", "PRO", "PRO_PLUS"],
-  "description": "string"
-}
-```
-
-Response: `{ "data": {...feature} }`
 
 ---
 
@@ -1074,83 +521,35 @@ Response: `{ "data": {...feature} }`
 | GET | `/work-product/:id/audio` | Stream work product audio |
 | POST | `/test-briefing` | Create admin test briefing request |
 
-**`GET /api/admin/requests`**
+---
 
-Query params: `page`, `pageSize`, `status`
+### AI Models (`/api/admin/ai-models`)
 
-Response:
-```json
-{
-  "data": [...],
-  "total": 0,
-  "page": 1,
-  "pageSize": 20,
-  "totalPages": 1
-}
-```
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/` | List models with providers (optional `?stage=` and `?includeInactive=true`) |
+| POST | `/` | Create a new model (stage, modelId, label, developer, notes) |
+| PATCH | `/:id` | Update model (isActive, notes) |
+| POST | `/:id/providers` | Add a provider to a model |
+| PATCH | `/:id/providers/:providerId` | Update provider pricing or availability |
+| DELETE | `/:id/providers/:providerId` | Remove a provider |
 
-**`GET /api/admin/requests/:id`**
+---
 
-Response:
-```json
-{
-  "data": {
-    "...request",
-    "jobProgress": [
-      {
-        "jobId": "string",
-        "steps": [
-          {
-            "stage": 1,
-            "workProducts": {...}
-          }
-        ]
-      }
-    ]
-  }
-}
-```
+### STT Benchmark (`/api/admin/stt-benchmark`)
 
-**`GET /api/admin/requests/work-product/:id/preview`**
-
-Returns work product content from R2. Text content returned up to 50KB; audio returns metadata only.
-
-Response:
-```json
-{
-  "data": {
-    "id": "string",
-    "type": "string",
-    "r2Key": "string",
-    "contentType": "string",
-    "content": "string",
-    "truncated": false
-  }
-}
-```
-
-**`GET /api/admin/requests/work-product/:id/audio`**
-
-Streams audio work product from R2.
-
-Response: `audio/mpeg` stream
-
-**`POST /api/admin/requests/test-briefing`**
-
-Create an admin test briefing request.
-
-Body:
-```json
-{
-  "items": [
-    {
-      "podcastId": "string",
-      "episodeId": "string",
-      "useLatest": false
-    }
-  ],
-  "targetMinutes": 5
-}
-```
-
-Response (201): `{ "data": {...request} }`
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/eligible-episodes` | Episodes with official transcripts (for WER ground truth) |
+| GET | `/episode-audio/:id` | Proxy episode audio (CORS-free, limited to ~15 min) |
+| GET | `/episodes/:episodeId/reference-transcript` | Fetch and parse official transcript (VTT/SRT stripped) |
+| POST | `/experiments` | Create benchmark experiment |
+| GET | `/experiments` | List experiments (paginated) |
+| GET | `/experiments/:id` | Experiment detail with status counts |
+| POST | `/experiments/:id/run` | Execute next pending task |
+| POST | `/experiments/:id/cancel` | Cancel experiment |
+| GET | `/experiments/:id/results` | Results with summary grid and winners |
+| DELETE | `/experiments/:id` | Delete experiment + R2 cleanup |
+| POST | `/upload-audio` | Upload speed-adjusted audio to R2 |
+| GET | `/results/:resultId/transcript` | Fetch STT output transcript from R2 |
+| GET | `/results/:resultId/reference-transcript` | Fetch cleaned reference transcript from R2 |

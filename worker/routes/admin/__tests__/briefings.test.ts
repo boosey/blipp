@@ -74,7 +74,7 @@ describe("Briefings Routes", () => {
           id: "br1", userId: "u1", clipId: "cl1",
           adAudioUrl: null,
           createdAt: now,
-          user: { email: "user@test.com", tier: "PRO" },
+          user: { email: "user@test.com", plan: { name: "Pro", slug: "pro" } },
           clip: {
             id: "cl1", durationTier: 5, status: "READY",
             actualSeconds: 290, audioUrl: "http://a.mp3",
@@ -106,7 +106,7 @@ describe("Briefings Routes", () => {
           id: "br1", userId: "u1", clipId: "cl1",
           adAudioUrl: null,
           createdAt: now,
-          user: { email: "user@test.com", tier: "FREE" },
+          user: { email: "user@test.com", plan: { name: "Free", slug: "free" } },
           clip: {
             id: "cl1", durationTier: 3, status: "PENDING",
             actualSeconds: null, audioUrl: null,
@@ -131,7 +131,7 @@ describe("Briefings Routes", () => {
         id: "br1", userId: "u1", clipId: "cl1",
         adAudioUrl: null, adAudioKey: null,
         createdAt: now,
-        user: { email: "user@test.com", tier: "PRO" },
+        user: { email: "user@test.com", plan: { name: "Pro", slug: "pro" } },
         clip: {
           id: "cl1", durationTier: 5, status: "READY",
           actualSeconds: 295, audioUrl: "http://a.mp3", wordCount: 500,

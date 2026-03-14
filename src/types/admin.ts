@@ -265,7 +265,7 @@ export interface AdminBriefing {
   id: string;
   userId: string;
   userEmail: string;
-  userTier: string;
+  userPlan: string;
   clipId: string;
   durationTier: number;
   clipStatus: string;
@@ -295,7 +295,7 @@ export interface AdminBriefingDetail {
   id: string;
   userId: string;
   userEmail: string;
-  userTier: string;
+  userPlan: string;
   clipId: string;
   adAudioUrl?: string;
   adAudioKey?: string;
@@ -390,7 +390,7 @@ export interface CostBreakdownData {
 export interface UsageTrendsData {
   metrics: { feedItems: number; episodes: number; users: number; avgDuration: number };
   trends: { date: string; feedItems: number; episodes: number; users: number }[];
-  byTier: { tier: string; count: number; percentage: number }[];
+  byPlan: { plan: string; count: number; percentage: number }[];
   peakTimes: { hour: number; count: number }[];
   topPodcasts: { id: string; title: string; listens: number }[];
 }
@@ -629,6 +629,38 @@ export interface SttEligibleEpisode {
   durationSeconds?: number;
   transcriptUrl?: string;
   hasDistillationTranscript: boolean;
+}
+
+// ── Plans ──
+
+export interface AdminPlan {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  briefingsPerWeek: number | null;
+  maxDurationMinutes: number;
+  maxPodcastSubscriptions: number | null;
+  adFree: boolean;
+  priorityProcessing: boolean;
+  earlyAccess: boolean;
+  researchMode: boolean;
+  crossPodcastSynthesis: boolean;
+  priceCentsMonthly: number;
+  priceCentsAnnual: number | null;
+  stripePriceIdMonthly: string | null;
+  stripePriceIdAnnual: string | null;
+  stripeProductId: string | null;
+  trialDays: number;
+  features: string[];
+  highlighted: boolean;
+  active: boolean;
+  sortOrder: number;
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+  userCount: number;
+  _count: { users: number };
 }
 
 // ── AI Model Registry ──

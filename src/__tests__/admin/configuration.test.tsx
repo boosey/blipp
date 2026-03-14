@@ -61,7 +61,6 @@ describe("Configuration", () => {
     // Verify exact paths without trailing slashes
     expect(urls).toContainEqual(expect.stringContaining("/api/admin/config"));
     expect(urls).toContainEqual(expect.stringContaining("/api/admin/config/tiers/duration"));
-    expect(urls).toContainEqual(expect.stringContaining("/api/admin/config/tiers/subscription"));
     expect(urls).toContainEqual(expect.stringContaining("/api/admin/config/features"));
 
     // Verify NO trailing slashes on any URL

@@ -6,18 +6,26 @@ import {
   WORDS_PER_MINUTE,
   type Claim,
 } from "../distillation";
+import type { LlmProvider, LlmResult } from "../llm-providers";
 
-function createMockAnthropicClient(responseText: string) {
+function createMockLlmProvider(responseText: string): LlmProvider {
   return {
-    messages: {
-      create: vi.fn().mockResolvedValue({
-        content: [{ type: "text", text: responseText }],
-        model: "claude-sonnet-4-20250514",
-        usage: { input_tokens: 100, output_tokens: 50 },
-      }),
-    },
-  } as any;
+    name: "MockLLM",
+    provider: "mock",
+    complete: vi.fn().mockResolvedValue({
+      text: responseText,
+      model: "mock-model-1",
+      inputTokens: 100,
+      outputTokens: 50,
+    } satisfies LlmResult),
+  };
 }
+
+const mockEnv = {} as any;
+const mockPricing = {
+  priceInputPerMToken: 3,
+  priceOutputPerMToken: 15,
+};
 
 describe("extractClaims", () => {
   const sampleClaims: Claim[] = [
@@ -25,14 +33,14 @@ describe("extractClaims", () => {
     { claim: "Costs will drop by 40%", speaker: "Dr. Smith", importance: 8, novelty: 6, excerpt: "Our models show costs will drop by 40% within the next five years as automation scales." },
   ];
 
-  it("should parse claims JSON from Claude response", async () => {
-    const client = createMockAnthropicClient(JSON.stringify(sampleClaims));
-    const result = await extractClaims(client, "Some transcript text");
+  it("should parse claims JSON from LLM response", async () => {
+    const llm = createMockLlmProvider(JSON.stringify(sampleClaims));
+    const result = await extractClaims(llm, "Some transcript text", "mock-model-1", 8192, mockEnv, mockPricing);
 
     expect(result.claims).toEqual(sampleClaims);
     expect(result.claims).toHaveLength(2);
     expect(result.usage).toEqual({
-      model: "claude-sonnet-4-20250514",
+      model: "mock-model-1",
       inputTokens: 100,
       outputTokens: 50,
       cost: (100 * 3 + 50 * 15) / 1_000_000,
@@ -40,47 +48,51 @@ describe("extractClaims", () => {
   });
 
   it("should pass the transcript in the prompt", async () => {
-    const client = createMockAnthropicClient(JSON.stringify(sampleClaims));
-    await extractClaims(client, "My specific transcript");
+    const llm = createMockLlmProvider(JSON.stringify(sampleClaims));
+    await extractClaims(llm, "My specific transcript", "mock-model-1", 8192, mockEnv);
 
-    const call = client.messages.create.mock.calls[0][0];
-    expect(call.messages[0].content).toContain("My specific transcript");
+    const call = (llm.complete as ReturnType<typeof vi.fn>).mock.calls[0];
+    const messages = call[0];
+    expect(messages[0].content).toContain("My specific transcript");
   });
 
   it("should ask for variable claims with excerpts in the prompt", async () => {
-    const client = createMockAnthropicClient(JSON.stringify(sampleClaims));
-    await extractClaims(client, "My transcript");
+    const llm = createMockLlmProvider(JSON.stringify(sampleClaims));
+    await extractClaims(llm, "My transcript", "mock-model-1", 8192, mockEnv);
 
-    const call = client.messages.create.mock.calls[0][0];
-    const prompt = call.messages[0].content;
-    // Should NOT ask for fixed "top 10"
+    const call = (llm.complete as ReturnType<typeof vi.fn>).mock.calls[0];
+    const messages = call[0];
+    const prompt = messages[0].content;
     expect(prompt).not.toContain("top 10");
-    // Should ask for excerpts
     expect(prompt).toContain("excerpt");
     expect(prompt).toContain("verbatim");
-    // Should use higher max_tokens
-    expect(call.max_tokens).toBe(8192);
   });
 
-  it("should use default model when none provided", async () => {
-    const client = createMockAnthropicClient(JSON.stringify(sampleClaims));
-    await extractClaims(client, "transcript");
+  it("should pass providerModelId and maxTokens to the provider", async () => {
+    const llm = createMockLlmProvider(JSON.stringify(sampleClaims));
+    await extractClaims(llm, "transcript", "custom-model", 4096, mockEnv);
 
-    const call = client.messages.create.mock.calls[0][0];
-    expect(call.model).toBe("claude-sonnet-4-20250514");
+    const call = (llm.complete as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(call[1]).toBe("custom-model");
+    expect(call[2]).toBe(4096);
   });
 
-  it("should use provided model when specified", async () => {
-    const client = createMockAnthropicClient(JSON.stringify(sampleClaims));
-    await extractClaims(client, "transcript", "claude-haiku-4-5-20251001");
+  it("should strip markdown fences from response", async () => {
+    const llm = createMockLlmProvider("```json\n" + JSON.stringify(sampleClaims) + "\n```");
+    const result = await extractClaims(llm, "transcript", "mock-model-1", 8192, mockEnv);
 
-    const call = client.messages.create.mock.calls[0][0];
-    expect(call.model).toBe("claude-haiku-4-5-20251001");
+    expect(result.claims).toEqual(sampleClaims);
   });
 
   it("should throw on invalid JSON response", async () => {
-    const client = createMockAnthropicClient("not valid json");
-    await expect(extractClaims(client, "transcript")).rejects.toThrow();
+    const llm = createMockLlmProvider("not valid json");
+    await expect(extractClaims(llm, "transcript", "mock-model-1", 8192, mockEnv)).rejects.toThrow();
+  });
+
+  it("should return null cost when no pricing provided", async () => {
+    const llm = createMockLlmProvider(JSON.stringify(sampleClaims));
+    const result = await extractClaims(llm, "transcript", "mock-model-1", 8192, mockEnv);
+    expect(result.usage.cost).toBeNull();
   });
 });
 
@@ -89,14 +101,14 @@ describe("generateNarrative", () => {
     { claim: "AI will transform healthcare", speaker: "Dr. Smith", importance: 9, novelty: 7, excerpt: "I truly believe that AI will transform healthcare in ways we can barely imagine right now." },
   ];
 
-  it("should return narrative text from Claude", async () => {
+  it("should return narrative text from LLM", async () => {
     const narrative = "Today we explore how AI is set to transform healthcare...";
-    const client = createMockAnthropicClient(narrative);
+    const llm = createMockLlmProvider(narrative);
 
-    const result = await generateNarrative(client, claims, 3);
+    const result = await generateNarrative(llm, claims, 3, "mock-model-1", 8192, mockEnv, mockPricing);
     expect(result.narrative).toBe(narrative);
     expect(result.usage).toEqual({
-      model: "claude-sonnet-4-20250514",
+      model: "mock-model-1",
       inputTokens: 100,
       outputTokens: 50,
       cost: (100 * 3 + 50 * 15) / 1_000_000,
@@ -104,71 +116,63 @@ describe("generateNarrative", () => {
   });
 
   it("should include target word count in the prompt", async () => {
-    const client = createMockAnthropicClient("narrative text");
-    await generateNarrative(client, claims, 5);
+    const llm = createMockLlmProvider("narrative text");
+    await generateNarrative(llm, claims, 5, "mock-model-1", 8192, mockEnv);
 
-    const call = client.messages.create.mock.calls[0][0];
+    const call = (llm.complete as ReturnType<typeof vi.fn>).mock.calls[0];
+    const messages = call[0];
     const expectedWords = 5 * WORDS_PER_MINUTE;
-    expect(call.messages[0].content).toContain(`${expectedWords} words`);
+    expect(messages[0].content).toContain(`${expectedWords} words`);
   });
 
-  it("should use default model when none provided", async () => {
-    const client = createMockAnthropicClient("narrative text");
-    await generateNarrative(client, claims, 3);
+  it("should pass providerModelId to the provider", async () => {
+    const llm = createMockLlmProvider("narrative text");
+    await generateNarrative(llm, claims, 3, "custom-model", 4096, mockEnv);
 
-    const call = client.messages.create.mock.calls[0][0];
-    expect(call.model).toBe("claude-sonnet-4-20250514");
-  });
-
-  it("should use provided model when specified", async () => {
-    const client = createMockAnthropicClient("narrative text");
-    await generateNarrative(client, claims, 3, "claude-haiku-4-5-20251001");
-
-    const call = client.messages.create.mock.calls[0][0];
-    expect(call.model).toBe("claude-haiku-4-5-20251001");
+    const call = (llm.complete as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(call[1]).toBe("custom-model");
+    expect(call[2]).toBe(4096);
   });
 
   it("should include the claims in the prompt", async () => {
-    const client = createMockAnthropicClient("narrative text");
-    await generateNarrative(client, claims, 3);
+    const llm = createMockLlmProvider("narrative text");
+    await generateNarrative(llm, claims, 3, "mock-model-1", 8192, mockEnv);
 
-    const call = client.messages.create.mock.calls[0][0];
-    expect(call.messages[0].content).toContain("AI will transform healthcare");
+    const call = (llm.complete as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(call[0][0].content).toContain("AI will transform healthcare");
   });
 
   it("should use excerpts-aware prompt when claims have excerpt field", async () => {
     const claimsWithExcerpts: Claim[] = [
       { claim: "AI transforms healthcare", speaker: "Dr. Smith", importance: 9, novelty: 7, excerpt: "I believe AI will completely transform how we deliver healthcare services." },
     ];
-    const client = createMockAnthropicClient("narrative text");
-    await generateNarrative(client, claimsWithExcerpts, 3);
+    const llm = createMockLlmProvider("narrative text");
+    await generateNarrative(llm, claimsWithExcerpts, 3, "mock-model-1", 8192, mockEnv);
 
-    const call = client.messages.create.mock.calls[0][0];
-    expect(call.messages[0].content).toContain("CLAIMS AND EXCERPTS");
-    expect(call.messages[0].content).toContain("EXCERPT text for accurate detail");
-    expect(call.max_tokens).toBe(8192);
+    const call = (llm.complete as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(call[0][0].content).toContain("CLAIMS AND EXCERPTS");
+    expect(call[0][0].content).toContain("EXCERPT text for accurate detail");
   });
 
   it("should use legacy prompt when claims lack excerpt field", async () => {
     const legacyClaims = [
       { claim: "AI transforms healthcare", speaker: "Dr. Smith", importance: 9, novelty: 7 },
     ] as Claim[];
-    const client = createMockAnthropicClient("narrative text");
-    await generateNarrative(client, legacyClaims, 3);
+    const llm = createMockLlmProvider("narrative text");
+    await generateNarrative(llm, legacyClaims, 3, "mock-model-1", 8192, mockEnv);
 
-    const call = client.messages.create.mock.calls[0][0];
-    expect(call.messages[0].content).toContain("CLAIMS:");
-    expect(call.messages[0].content).not.toContain("CLAIMS AND EXCERPTS");
+    const call = (llm.complete as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(call[0][0].content).toContain("CLAIMS:");
+    expect(call[0][0].content).not.toContain("CLAIMS AND EXCERPTS");
   });
 });
 
 describe("selectClaimsForDuration", () => {
-  // 10 claims with varying importance/novelty scores
   const claims: Claim[] = Array.from({ length: 10 }, (_, i) => ({
     claim: `Claim ${i + 1}`,
     speaker: "Host",
-    importance: 10 - i,         // 10, 9, 8, 7, 6, 5, 4, 3, 2, 1
-    novelty: Math.max(1, 5 - i), // 5, 4, 3, 2, 1, 1, 1, 1, 1, 1
+    importance: 10 - i,
+    novelty: Math.max(1, 5 - i),
     excerpt: `Excerpt for claim ${i + 1}`,
   }));
 
@@ -179,19 +183,16 @@ describe("selectClaimsForDuration", () => {
 
   it("returns ~2.5 * duration claims for mid-range tiers", () => {
     const result = selectClaimsForDuration(claims, 3);
-    // Math.ceil(3 * 2.5) = 8, capped at 10 available
     expect(result).toHaveLength(8);
   });
 
   it("caps at available claims count", () => {
     const result = selectClaimsForDuration(claims, 15);
-    // Math.ceil(15 * 2.5) = 38, but only 10 available
     expect(result).toHaveLength(10);
   });
 
   it("sorts by composite score (importance 0.7 + novelty 0.3)", () => {
     const result = selectClaimsForDuration(claims, 1);
-    // Top 3 by composite: claim 1 (10*0.7+5*0.3=8.5), claim 2 (9*0.7+4*0.3=7.5), claim 3 (8*0.7+3*0.3=6.5)
     expect(result[0].claim).toBe("Claim 1");
     expect(result[1].claim).toBe("Claim 2");
     expect(result[2].claim).toBe("Claim 3");

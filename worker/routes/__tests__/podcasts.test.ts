@@ -39,9 +39,17 @@ vi.mock("@clerk/backend", () => ({
   })),
 }));
 
+vi.mock("../../lib/plan-limits", () => ({
+  getUserWithPlan: vi.fn(),
+  checkDurationLimit: vi.fn().mockReturnValue(null),
+  checkSubscriptionLimit: vi.fn().mockResolvedValue(null),
+}));
+
 vi.mock("hono/factory", () => ({
   createMiddleware: vi.fn((fn) => fn),
 }));
+
+import { getUserWithPlan } from "../../lib/plan-limits";
 
 // Import after mocks are set up
 const { podcasts } = await import("../podcasts");
@@ -71,6 +79,13 @@ describe("Podcast Routes", () => {
           }
         });
       }
+    });
+
+    // Set up getUserWithPlan mock for routes that need it
+    (getUserWithPlan as any).mockResolvedValue({
+      id: "usr_1",
+      clerkId: "user_test123",
+      plan: { maxDurationMinutes: 15, maxPodcastSubscriptions: null },
     });
   });
 
@@ -129,11 +144,9 @@ describe("Podcast Routes", () => {
     });
 
     it("should create subscription and return 201", async () => {
-      const user = { id: "usr_1", clerkId: "user_test123" };
       const podcast = { id: "pod_1", feedUrl: "https://example.com/feed.xml", title: "Test Pod" };
       const subscription = { id: "sub_1", userId: "usr_1", podcastId: "pod_1", durationTier: 5 };
 
-      mockPrisma.user.findUniqueOrThrow.mockResolvedValueOnce(user);
       mockPrisma.podcast.upsert.mockResolvedValueOnce(podcast);
       mockPrisma.subscription.upsert.mockResolvedValueOnce(subscription);
       mockPrisma.episode.findFirst.mockResolvedValueOnce(null); // no episodes yet

@@ -94,7 +94,7 @@ describe("UsersPage", () => {
             email: "test@example.com",
             name: "Test User",
             imageUrl: null,
-            tier: "FREE",
+            plan: { id: "plan_free", name: "Free", slug: "free" },
             status: "active",
             briefingCount: 5,
             podcastCount: 3,

@@ -70,8 +70,8 @@ describe("Users Routes", () => {
     it("returns segment counts", async () => {
       mockPrisma.user.count.mockResolvedValueOnce(100); // all
       mockPrisma.user.findMany.mockResolvedValueOnce([
-        { id: "u1", tier: "PRO", createdAt: new Date("2025-01-01"), _count: { feedItems: 60 } },
-        { id: "u2", tier: "FREE", createdAt: new Date("2025-12-01"), _count: { feedItems: 5 } },
+        { id: "u1", createdAt: new Date("2025-01-01"), plan: { isDefault: false, priceCentsMonthly: 999 }, _count: { feedItems: 60 } },
+        { id: "u2", createdAt: new Date("2025-12-01"), plan: { isDefault: true, priceCentsMonthly: 0 }, _count: { feedItems: 5 } },
       ]);
       mockPrisma.feedItem.findMany.mockResolvedValueOnce([
         { userId: "u2" },
@@ -95,7 +95,8 @@ describe("Users Routes", () => {
       mockPrisma.user.findMany.mockResolvedValueOnce([
         {
           id: "u1", clerkId: "ck1", email: "admin@test.com", name: "Admin",
-          imageUrl: null, tier: "PRO", isAdmin: true,
+          imageUrl: null, isAdmin: true,
+          plan: { id: "plan_pro", name: "Pro", slug: "pro" },
           createdAt: now, updatedAt: now,
           _count: { subscriptions: 5, feedItems: 60, briefings: 10 },
         },
@@ -122,7 +123,8 @@ describe("Users Routes", () => {
       const now = new Date();
       mockPrisma.user.findUnique.mockResolvedValueOnce({
         id: "u1", clerkId: "ck1", email: "user@test.com", name: "User",
-        imageUrl: null, tier: "PRO", isAdmin: false,
+        imageUrl: null, isAdmin: false,
+        plan: { id: "plan_pro", name: "Pro", slug: "pro" },
         stripeCustomerId: "cus_123",
         createdAt: now, updatedAt: now,
         _count: { subscriptions: 2, feedItems: 10, briefings: 5 },
@@ -157,17 +159,21 @@ describe("Users Routes", () => {
   });
 
   describe("PATCH /users/:id", () => {
-    it("updates tier and isAdmin", async () => {
-      mockPrisma.user.update.mockResolvedValueOnce({ id: "u1", tier: "PRO_PLUS", isAdmin: true });
+    it("updates planId and isAdmin", async () => {
+      mockPrisma.user.update.mockResolvedValueOnce({
+        id: "u1",
+        plan: { id: "plan_proplus", name: "Pro Plus", slug: "pro-plus" },
+        isAdmin: true,
+      });
 
       const res = await app.request("/users/u1", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tier: "PRO_PLUS", isAdmin: true }),
+        body: JSON.stringify({ planId: "plan_proplus", isAdmin: true }),
       }, env, mockExCtx);
       expect(res.status).toBe(200);
       const body: any = await res.json();
-      expect(body.data.tier).toBe("PRO_PLUS");
+      expect(body.data.plan.name).toBe("Pro Plus");
       expect(body.data.isAdmin).toBe(true);
     });
 

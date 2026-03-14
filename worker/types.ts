@@ -1,3 +1,10 @@
+// Extend Hono's ContextVariableMap so c.get("prisma") / c.set("prisma", ...) is type-safe.
+declare module "hono" {
+  interface ContextVariableMap {
+    prisma: any;
+  }
+}
+
 /**
  * Cloudflare Worker environment bindings for the Blipp API.
  *

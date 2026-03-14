@@ -109,7 +109,7 @@ usersRoutes.get("/", async (c) => {
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
   const data = users.map((u: any) => {
-    const lastActive = lastActivityMap.get(u.id);
+    const lastActive = lastActivityMap.get(u.id) as Date | undefined;
     let status: "active" | "inactive" | "churned" = "inactive";
     if (lastActive) {
       if (lastActive >= sevenDaysAgo) status = "active";

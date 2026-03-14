@@ -19,6 +19,10 @@ vi.mock("../../lib/logger", () => ({
   createPipelineLogger: vi.fn().mockResolvedValue(mockLogger),
 }));
 
+vi.mock("../../lib/pricing-updater", () => ({
+  refreshPricing: vi.fn().mockResolvedValue({ updated: 0 }),
+}));
+
 import { createPrismaClient } from "../../lib/db";
 import { getConfig } from "../../lib/config";
 import { scheduled } from "../index";
@@ -46,7 +50,8 @@ describe("scheduled", () => {
     (getConfig as any)
       .mockResolvedValueOnce(true)    // pipeline.enabled
       .mockResolvedValueOnce(60)      // pipeline.minIntervalMinutes
-      .mockResolvedValueOnce(null);   // pipeline.lastAutoRunAt (never run)
+      .mockResolvedValueOnce(null)    // pipeline.lastAutoRunAt (never run)
+      .mockResolvedValueOnce(new Date().toISOString()); // pricing.lastRefreshedAt (recent, skip)
 
     mockPrisma.platformConfig.upsert.mockResolvedValue({});
 
@@ -86,7 +91,8 @@ describe("scheduled", () => {
     (getConfig as any)
       .mockResolvedValueOnce(true)          // pipeline.enabled
       .mockResolvedValueOnce(60)            // pipeline.minIntervalMinutes
-      .mockResolvedValueOnce(twoHoursAgo);  // pipeline.lastAutoRunAt
+      .mockResolvedValueOnce(twoHoursAgo)   // pipeline.lastAutoRunAt
+      .mockResolvedValueOnce(new Date().toISOString()); // pricing.lastRefreshedAt (recent, skip)
 
     mockPrisma.platformConfig.upsert.mockResolvedValue({});
 
@@ -99,7 +105,8 @@ describe("scheduled", () => {
     (getConfig as any)
       .mockResolvedValueOnce(true)
       .mockResolvedValueOnce(60)
-      .mockResolvedValueOnce(null);
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(new Date().toISOString()); // pricing.lastRefreshedAt (recent, skip)
 
     mockPrisma.platformConfig.upsert.mockResolvedValue({});
 
@@ -121,7 +128,8 @@ describe("scheduled", () => {
     (getConfig as any)
       .mockResolvedValueOnce(true)   // pipeline.enabled defaults to true
       .mockResolvedValueOnce(60)     // pipeline.minIntervalMinutes defaults to 60
-      .mockResolvedValueOnce(null);  // pipeline.lastAutoRunAt defaults to null
+      .mockResolvedValueOnce(null)   // pipeline.lastAutoRunAt defaults to null
+      .mockResolvedValueOnce(new Date().toISOString()); // pricing.lastRefreshedAt (recent, skip)
 
     mockPrisma.platformConfig.upsert.mockResolvedValue({});
 
@@ -142,7 +150,8 @@ describe("scheduled", () => {
     (getConfig as any)
       .mockResolvedValueOnce(true)   // pipeline.enabled
       .mockResolvedValueOnce(60)     // pipeline.minIntervalMinutes
-      .mockResolvedValueOnce(null);  // pipeline.lastAutoRunAt
+      .mockResolvedValueOnce(null)   // pipeline.lastAutoRunAt
+      .mockResolvedValueOnce(new Date().toISOString()); // pricing.lastRefreshedAt (recent, skip)
 
     mockPrisma.platformConfig.upsert.mockResolvedValue({});
 

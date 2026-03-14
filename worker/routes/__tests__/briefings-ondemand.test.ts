@@ -13,7 +13,13 @@ vi.mock("../../lib/admin-helpers", () => ({
   getCurrentUser: vi.fn(),
 }));
 
-import { getCurrentUser } from "../../lib/admin-helpers";
+vi.mock("../../lib/plan-limits", () => ({
+  getUserWithPlan: vi.fn(),
+  checkDurationLimit: vi.fn().mockReturnValue(null),
+  checkWeeklyBriefingLimit: vi.fn().mockResolvedValue(null),
+}));
+
+import { getUserWithPlan } from "../../lib/plan-limits";
 
 const mockExCtx = { waitUntil: vi.fn(), passThroughOnException: vi.fn(), props: {} };
 
@@ -34,7 +40,11 @@ describe("POST /generate (on-demand)", () => {
     });
     app.route("/", briefings);
 
-    (getCurrentUser as any).mockResolvedValue({ id: "user1", tier: "PRO" });
+    (getUserWithPlan as any).mockResolvedValue({
+      id: "user1",
+      tier: "PRO",
+      plan: { maxDurationMinutes: 15, briefingsPerWeek: null },
+    });
   });
 
   it("requires durationTier", async () => {

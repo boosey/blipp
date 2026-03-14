@@ -244,25 +244,27 @@ describe("Stripe Webhooks", () => {
     expect(body.error).toContain("Invalid signature");
   });
 
-  it("should update user tier on checkout.session.completed", async () => {
+  it("should update user planId on checkout.session.completed", async () => {
     mockConstructEventAsync.mockResolvedValueOnce({
       type: "checkout.session.completed",
       data: {
         object: {
           customer: "cus_123",
           subscription: "sub_456",
+          metadata: {},
         },
       },
     });
 
     mockSubscriptionsRetrieve.mockResolvedValueOnce({
       items: {
-        data: [{ price: { id: "price_pro_mock" } }],
+        data: [{ price: { id: "price_pro_monthly" } }],
       },
     });
 
-    mockPrisma.plan.findUnique.mockResolvedValueOnce({ tier: "PRO" });
-    mockPrisma.user.update.mockResolvedValueOnce({ id: "usr_1", tier: "PRO" });
+    // planFromPriceId uses findFirst with OR on stripePriceIdMonthly/stripePriceIdAnnual
+    mockPrisma.plan.findFirst.mockResolvedValueOnce({ id: "plan_pro", slug: "pro", name: "Pro" });
+    mockPrisma.user.update.mockResolvedValueOnce({ id: "usr_1", planId: "plan_pro" });
 
     const res = await app.request(
       "/webhooks/stripe",
@@ -281,11 +283,11 @@ describe("Stripe Webhooks", () => {
     expect(res.status).toBe(200);
     expect(mockPrisma.user.update).toHaveBeenCalledWith({
       where: { stripeCustomerId: "cus_123" },
-      data: { tier: "PRO" },
+      data: { planId: "plan_pro" },
     });
   });
 
-  it("should revert to FREE on customer.subscription.deleted", async () => {
+  it("should revert to default plan on customer.subscription.deleted", async () => {
     mockConstructEventAsync.mockResolvedValueOnce({
       type: "customer.subscription.deleted",
       data: {
@@ -295,9 +297,11 @@ describe("Stripe Webhooks", () => {
       },
     });
 
+    // Source looks up default plan with findFirst({ where: { isDefault: true } })
+    mockPrisma.plan.findFirst.mockResolvedValueOnce({ id: "plan_free", slug: "free", name: "Free" });
     mockPrisma.user.update.mockResolvedValueOnce({
       id: "usr_1",
-      tier: "FREE",
+      planId: "plan_free",
     });
 
     const res = await app.request(
@@ -317,7 +321,7 @@ describe("Stripe Webhooks", () => {
     expect(res.status).toBe(200);
     expect(mockPrisma.user.update).toHaveBeenCalledWith({
       where: { stripeCustomerId: "cus_123" },
-      data: { tier: "FREE" },
+      data: { planId: "plan_free" },
     });
   });
 });

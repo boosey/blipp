@@ -67,10 +67,10 @@ Blipp uses a **demand-driven pipeline** to transform podcast episodes into audio
 
 | Stage | Queue | Config Key | Description |
 |-------|-------|------------|-------------|
-| 1. Transcription | `transcription` | `TRANSCRIPTION` | Three-tier waterfall: RSS feed URL → Podcast Index API → Whisper STT (with chunking for >25MB) |
-| 2. Distillation | `distillation` | `DISTILLATION` | Uses Claude to extract scored claims from transcript |
-| 3. Narrative Generation | `narrative-generation` | `NARRATIVE_GENERATION` | Generates narrative text from distillation claims using Claude LLM |
-| 4. Audio Generation | `audio-generation` | `AUDIO_GENERATION` | Converts narrative text to MP3 audio via TTS (OpenAI) |
+| 1. Transcription | `transcription` | `TRANSCRIPTION` | Three-tier waterfall: RSS feed URL -> Podcast Index API -> Whisper STT (with chunking for >25MB) |
+| 2. Distillation | `distillation` | `DISTILLATION` | Uses LLM (multi-provider) to extract scored claims from transcript |
+| 3. Narrative Generation | `narrative-generation` | `NARRATIVE_GENERATION` | Generates narrative text from distillation claims using LLM (multi-provider) |
+| 4. Audio Generation | `clip-generation` (legacy name) | `AUDIO_GENERATION` | Converts narrative text to MP3 audio via TTS (multi-provider) |
 | 5. Briefing Assembly | `briefing-assembly` | `BRIEFING_ASSEMBLY` | Creates per-user Briefing records wrapping shared Clips, updates FeedItems to READY with briefingId |
 
 ---
@@ -171,6 +171,9 @@ BriefingRequest 1 ----> * PipelineJob
 
 PipelineJob 1 ----> * PipelineStep
                        (one per stage execution, audit trail)
+
+PipelineStep 1 ----> * PipelineEvent
+                        (structured log entries)
 ```
 
 A digest-style request produces multiple jobs (one per episode). A single-episode request produces one job.
@@ -188,10 +191,27 @@ One step per stage execution per job. Provides full observability into pipeline 
 | `cached` | Whether this step reused cached data |
 | `startedAt` / `completedAt` | Timing |
 | `durationMs` | Execution time |
+| `model` | AI model used (e.g. "claude-sonnet-4-20250514") |
+| `inputTokens` / `outputTokens` | Token usage |
 | `cost` | API cost for this step (for analytics) |
 | `retryCount` | Number of retries attempted |
 | `workProductId` | Link to WorkProduct if one was created |
 | `input` / `output` | JSON blobs for debugging |
+
+---
+
+## PipelineEvent Model (Structured Logging)
+
+Fine-grained event log entries per step. Written via `writeEvent()` from `worker/lib/pipeline-events.ts` (fire-and-forget -- errors are swallowed and logged to console so event writes never break stage processing).
+
+| Field | Description |
+|-------|-------------|
+| `level` | DEBUG, INFO, WARN, ERROR |
+| `message` | Human-readable event message |
+| `data` | Structured JSON payload |
+| `createdAt` | Event timestamp |
+
+Indexed on `[stepId, createdAt]` for efficient retrieval.
 
 ---
 
@@ -212,15 +232,15 @@ Stage 2 (Transcription):
 
 Stage 3 (Distillation):
   Completed Distillation exists for episode? --> SKIP
-  Otherwise                                  --> Run Claude extraction
+  Otherwise                                  --> Run LLM extraction (multi-provider)
 
 Stage 4 (Narrative Generation):
   NARRATIVE WorkProduct exists for (episodeId, durationTier)? --> SKIP
-  Otherwise                                                   --> Generate narrative from claims
+  Otherwise                                                   --> Generate narrative from claims (multi-provider)
 
 Stage 5 (Audio Generation):
   Completed Clip + AUDIO_CLIP WorkProduct exists for (episodeId, durationTier)? --> SKIP
-  Otherwise                                                                     --> Generate TTS audio
+  Otherwise                                                                     --> Generate TTS audio (multi-provider)
 ```
 
 When a stage is skipped, the handler creates a PipelineStep with `status: SKIPPED` and `cached: true`, then immediately reports completion to the orchestrator.
@@ -252,6 +272,33 @@ This allows admins to disable individual stages without losing queued messages. 
 
 ---
 
+## Multi-Provider AI Architecture
+
+Pipeline stages use a pluggable provider architecture. Each stage reads its model+provider config from `PlatformConfig` via `getModelConfig(prisma, stage)`, which returns `{ provider: string, model: string }`.
+
+### Provider Registries
+
+| Stage | Registry | Providers |
+|-------|----------|-----------|
+| STT | `worker/lib/stt-providers.ts` | OpenAI (whisper-1), Deepgram (nova-2, nova-3), AssemblyAI, Google (chirp), Groq, Cloudflare Workers AI |
+| LLM (distillation, narrative) | `worker/lib/llm-providers.ts` | Anthropic (Claude), Groq (Llama, Mixtral), Cloudflare Workers AI |
+| TTS | `worker/lib/tts-providers.ts` | OpenAI (gpt-4o-mini-tts, tts-1, tts-1-hd), Groq (Orpheus), Cloudflare Workers AI |
+
+### Model Registry (Database)
+
+Models and providers are tracked in the `AiModel` and `AiModelProvider` tables:
+
+- **AiModel**: `(stage, modelId)` unique — one entry per model per stage
+- **AiModelProvider**: `(aiModelId, provider)` unique — one provider entry per model
+
+Provider pricing metadata (per-minute, per-token, per-character) is stored and refreshed daily via `worker/lib/pricing-updater.ts`.
+
+### Async Providers
+
+Some STT providers (AssemblyAI, Google) are asynchronous — they return a job ID and require polling. The `SttProvider` interface supports an optional `poll()` method for this pattern.
+
+---
+
 ## WorkProduct Registry
 
 Work products are stored in **R2** and tracked in the database.
@@ -274,13 +321,17 @@ WorkProduct {
 
 ### R2 Key Scheme
 
+Work product keys are built via `wpKey()` from `worker/lib/work-products.ts`:
+
 | Type | Key Pattern |
 |------|-------------|
-| Transcript | `transcripts/{episodeId}.txt` |
-| Claims | `claims/{episodeId}.json` |
-| Narrative | `narratives/{episodeId}/{durationTier}.txt` |
-| Audio Clip | `clips/{episodeId}/{durationTier}.mp3` |
-| Briefing | `briefings/{userId}/{requestId}.mp3` |
+| Transcript | `wp/transcript/{episodeId}.txt` |
+| Claims | `wp/claims/{episodeId}.json` |
+| Narrative | `wp/narrative/{episodeId}/{durationTier}.txt` |
+| Audio Clip | `wp/clip/{episodeId}/{durationTier}/{voice}.mp3` |
+| Briefing | `wp/briefing/{userId}/{date}.mp3` |
+
+Legacy clip audio also exists at `clips/{episodeId}/{durationTier}.mp3` (served by `/api/clips/` route).
 
 ---
 
@@ -293,16 +344,18 @@ Stored in the `PlatformConfig` table, accessed via `getConfig(prisma, key, fallb
 | `pipeline.enabled` | boolean | `true` | Master pipeline kill switch |
 | `pipeline.minIntervalMinutes` | number | `60` | Minimum interval between auto feed refreshes |
 | `pipeline.lastAutoRunAt` | string | `null` | Timestamp of last auto run |
+| `pipeline.logLevel` | string | `"info"` | Structured log verbosity (error/info/debug) |
 | `pipeline.stage.TRANSCRIPTION.enabled` | boolean | `true` | Transcription stage enable |
 | `pipeline.stage.DISTILLATION.enabled` | boolean | `true` | Distillation stage enable |
 | `pipeline.stage.NARRATIVE_GENERATION.enabled` | boolean | `true` | Narrative Generation stage enable |
 | `pipeline.stage.AUDIO_GENERATION.enabled` | boolean | `true` | Audio Generation stage enable |
 | `pipeline.stage.BRIEFING_ASSEMBLY.enabled` | boolean | `true` | Briefing Assembly stage enable |
 | `pipeline.feedRefresh.maxEpisodesPerPodcast` | number | `10` | Episode cap per podcast per refresh |
-| `ai.stt.model` | string | `"whisper-1"` | Whisper STT model |
-| `ai.distillation.model` | string | `"claude-sonnet-4-20250514"` | Claude model for claim extraction |
-| `ai.narrative.model` | string | `"claude-sonnet-4-20250514"` | Claude model for narrative generation |
-| `ai.tts.model` | string | `"gpt-4o-mini-tts"` | TTS model for audio generation |
+| `ai.stt.model` | JSON | `null` | STT model+provider config: `{provider, model}` |
+| `ai.distillation.model` | JSON | `null` | Distillation LLM model+provider config |
+| `ai.narrative.model` | JSON | `null` | Narrative LLM model+provider config |
+| `ai.tts.model` | JSON | `null` | TTS model+provider config |
+| `pricing.lastRefreshedAt` | string | `null` | Daily pricing refresh timestamp |
 
 ---
 
@@ -314,9 +367,9 @@ Defined in `wrangler.jsonc`.
 |-------|-----------|-------------|---------|
 | `feed-refresh` | 10 | 3 | RSS polling |
 | `transcription` | 5 | 3 | Transcript fetching/generation |
-| `distillation` | 5 | 3 | Claude claim extraction |
-| `narrative-generation` | 3 | 3 | Claude narrative writing |
-| `audio-generation` | 3 | 3 | TTS audio rendering |
+| `distillation` | 5 | 3 | LLM claim extraction |
+| `narrative-generation` | 5 | 3 | LLM narrative writing |
+| `clip-generation` | 3 | 3 | TTS audio rendering (legacy queue name for audio generation) |
 | `briefing-assembly` | 5 | 3 | Final audio assembly |
 | `orchestrator` | 10 | 3 | Pipeline coordination |
 
@@ -326,18 +379,34 @@ Defined in `wrangler.jsonc`.
 
 Each `PipelineStep` records AI usage metadata on completion:
 
-- **model** (String?) — The AI model used (e.g. `whisper-1`, `claude-sonnet-4-20250514`, or `model1+model2` for multi-model stages like clip generation)
+- **model** (String?) — The AI model used (e.g. `whisper-1`, `claude-sonnet-4-20250514`, or `model1+model2` for multi-model stages)
 - **inputTokens** (Int?) — Input tokens consumed (for Whisper, estimated from audio bytes / 16000; for TTS, text character count)
 - **outputTokens** (Int?) — Output tokens produced (0 for STT and TTS)
 - **cost** (Float?) — Estimated dollar cost (null when not yet calculable)
 
 Per-stage behavior:
 - **Transcription:** Captured only for Whisper STT (Tier 3). Tiers 1/2 (RSS/Podcast Index) leave usage fields null since no AI call is made.
-- **Distillation:** Captures Claude API usage from claim extraction. Model, input/output tokens come directly from the Anthropic response.
-- **Narrative Generation:** Captures Claude API usage from narrative writing. Model and token counts from the Anthropic response.
-- **Audio Generation:** Captures TTS API usage. Model and token counts from the OpenAI TTS response.
+- **Distillation:** Captures LLM API usage from claim extraction. Model, input/output tokens come directly from the API response.
+- **Narrative Generation:** Captures LLM API usage from narrative writing. Model and token counts from the API response.
+- **Audio Generation:** Captures TTS API usage. Model and token counts from the API response.
 
 The admin Analytics page includes a per-model cost breakdown widget (`GET /api/admin/analytics/costs/by-model`) for monitoring spend across models and stages.
+
+---
+
+## Pipeline Logging
+
+### Structured JSON Logger
+
+The pipeline uses a structured JSON logger (`worker/lib/logger.ts`) with configurable verbosity via `pipeline.logLevel` PlatformConfig key.
+
+Log levels: `error` (0) < `info` (1) < `debug` (2)
+
+Each log line is JSON with: `{ level, stage, requestId?, jobId?, action, ...data, ts }`
+
+### Pipeline Events (Database)
+
+Fine-grained events within pipeline steps are written to the `PipelineEvent` table via `writeEvent()` from `worker/lib/pipeline-events.ts`. These provide step-level observability beyond what structured logs capture.
 
 ---
 
@@ -377,14 +446,19 @@ Key behaviors:
 |------|---------|
 | `worker/queues/orchestrator.ts` | Push-based pipeline coordinator |
 | `worker/queues/transcription.ts` | Stage 2: three-tier transcript waterfall |
-| `worker/lib/transcript-source.ts` | Podcast Index transcript lookup helper |
-| `worker/lib/whisper-chunked.ts` | Chunked Whisper for oversized audio files |
-| `worker/lib/ai-models.ts` | AI model registry + `getModelConfig()` helper |
-| `worker/queues/distillation.ts` | Stage 3: Claude claim extraction |
-| `worker/queues/narrative-generation.ts` | Stage 4: Claude narrative writing |
+| `worker/queues/distillation.ts` | Stage 3: LLM claim extraction |
+| `worker/queues/narrative-generation.ts` | Stage 4: LLM narrative writing |
 | `worker/queues/audio-generation.ts` | Stage 5: TTS audio rendering |
-| `worker/queues/clip-generation.ts` | Legacy combined stage (kept for backward compatibility) |
 | `worker/queues/briefing-assembly.ts` | Stage 6: Briefing creation + FeedItem linking |
 | `worker/queues/feed-refresh.ts` | Stage 1: RSS polling |
+| `worker/lib/stt-providers.ts` | Multi-provider STT interface |
+| `worker/lib/llm-providers.ts` | Multi-provider LLM interface |
+| `worker/lib/tts-providers.ts` | Multi-provider TTS interface |
+| `worker/lib/ai-models.ts` | AI model config reader |
+| `worker/lib/pipeline-events.ts` | Pipeline event writer |
+| `worker/lib/work-products.ts` | R2 key builders |
+| `worker/lib/transcript-source.ts` | Podcast Index transcript lookup helper |
+| `worker/lib/whisper-chunked.ts` | Chunked Whisper for oversized audio files |
 | `worker/lib/config.ts` | Runtime config helper with TTL cache |
+| `worker/lib/logger.ts` | Structured JSON pipeline logger |
 | `worker/index.ts` | Worker entry point (queue routing) |
