@@ -6,7 +6,7 @@ import { useApiFetch } from "../lib/api";
 import { DURATION_TIERS } from "../lib/duration-tiers";
 import { Skeleton } from "../components/ui/skeleton";
 import { usePlan } from "../contexts/plan-context";
-import { UpgradePrompt } from "../components/upgrade-prompt";
+import { UpgradePrompt, useUpgradeModal } from "../components/upgrade-prompt";
 import type { PodcastDetail as PodcastDetailType, EpisodeSummary } from "../types/user";
 import type { DurationTier } from "../lib/duration-tiers";
 
@@ -14,10 +14,12 @@ function TierPicker({
   selected,
   onSelect,
   maxDurationMinutes,
+  onUpgrade,
 }: {
   selected: DurationTier | null;
   onSelect: (tier: DurationTier) => void;
   maxDurationMinutes: number;
+  onUpgrade?: (msg: string) => void;
 }) {
   return (
     <div className="flex flex-wrap gap-1.5">
@@ -28,7 +30,7 @@ function TierPicker({
             key={tier}
             onClick={() => {
               if (locked) {
-                toast.error(`Your plan supports up to ${maxDurationMinutes}-minute briefings. Upgrade for longer.`);
+                onUpgrade?.(`Your plan supports briefings up to ${maxDurationMinutes} minutes. Upgrade for longer briefings.`);
                 return;
               }
               onSelect(tier);
@@ -62,6 +64,7 @@ export function PodcastDetail() {
   const [briefTierPickerEpisodeId, setBriefTierPickerEpisodeId] = useState<string | null>(null);
   const [isFavorited, setIsFavorited] = useState(false);
   const planUsage = usePlan();
+  const { showUpgrade, UpgradeModalElement } = useUpgradeModal();
 
   const fetchData = useCallback(async () => {
     if (!podcastId) return;
@@ -214,6 +217,7 @@ export function PodcastDetail() {
 
   return (
     <div className="space-y-6">
+      {UpgradeModalElement}
       {/* Podcast header */}
       <div className="flex gap-4">
         {podcast.imageUrl ? (
@@ -276,6 +280,7 @@ export function PodcastDetail() {
                     selected={null}
                     onSelect={handleSubscribeWithTier}
                     maxDurationMinutes={planUsage.maxDurationMinutes}
+                    onUpgrade={showUpgrade}
                   />
                 </div>
               ) : (

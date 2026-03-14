@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { Lock } from "lucide-react";
 import { useApiFetch } from "../lib/api";
 import { usePlan } from "../contexts/plan-context";
+import { useUpgradeModal } from "./upgrade-prompt";
 import {
   Dialog,
   DialogContent,
@@ -38,6 +39,7 @@ export function PodcastCard({
 }: PodcastCardProps) {
   const apiFetch = useApiFetch();
   const planUsage = usePlan();
+  const { showUpgrade, UpgradeModalElement } = useUpgradeModal();
   const [loading, setLoading] = useState(false);
   const [showTierDialog, setShowTierDialog] = useState(false);
   const [selectedTier, setSelectedTier] = useState(5);
@@ -93,9 +95,8 @@ export function PodcastCard({
         planUsage.subscriptions.remaining !== null &&
         planUsage.subscriptions.remaining <= 0
       ) {
-        toast.error(
-          `Your ${planUsage.plan.name} plan allows ${planUsage.subscriptions.limit} subscription${planUsage.subscriptions.limit !== 1 ? "s" : ""}. Upgrade to add more.`,
-          { action: { label: "View Plans", onClick: () => window.location.href = "/pricing" } }
+        showUpgrade(
+          `Your ${planUsage.plan.name} plan allows ${planUsage.subscriptions.limit} podcast subscription${planUsage.subscriptions.limit !== 1 ? "s" : ""}. Upgrade to subscribe to more podcasts.`
         );
         return;
       }
@@ -136,6 +137,7 @@ export function PodcastCard({
           {loading ? "..." : isSubscribed ? "Subscribed" : "Subscribe"}
         </button>
 
+        {UpgradeModalElement}
         <Dialog open={showTierDialog} onOpenChange={setShowTierDialog}>
           <DialogContent onClick={(e) => e.stopPropagation()}>
             <DialogHeader>
@@ -152,7 +154,7 @@ export function PodcastCard({
                     key={tier}
                     onClick={() => {
                       if (locked) {
-                        toast.error(`Upgrade for ${tier}-minute briefings`);
+                        showUpgrade(`Your plan supports briefings up to ${planUsage.maxDurationMinutes} minutes. Upgrade for longer briefings.`);
                         return;
                       }
                       setSelectedTier(tier);

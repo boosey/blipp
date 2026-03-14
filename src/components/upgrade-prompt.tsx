@@ -1,39 +1,50 @@
-import { Link } from "react-router-dom";
-import { Lock } from "lucide-react";
+import { useState } from "react";
+import { Sparkles } from "lucide-react";
+import { UpgradeModal } from "./upgrade-modal";
 
 interface UpgradePromptProps {
   message: string;
-  inline?: boolean;
 }
 
 /**
- * Upgrade prompt shown when a user action is blocked by plan limits.
- * `inline` renders a small inline badge; default renders a card.
+ * Inline upgrade prompt that opens the full upgrade modal on click.
  */
-export function UpgradePrompt({ message, inline }: UpgradePromptProps) {
-  if (inline) {
-    return (
-      <span className="inline-flex items-center gap-1 text-xs text-amber-400">
-        <Lock className="w-3 h-3" />
-        <Link to="/pricing" className="underline underline-offset-2 hover:text-amber-300">
-          Upgrade
-        </Link>
-      </span>
-    );
-  }
+export function UpgradePrompt({ message }: UpgradePromptProps) {
+  const [showModal, setShowModal] = useState(false);
 
   return (
-    <div className="bg-amber-900/15 border border-amber-800/30 rounded-xl p-4 space-y-2">
-      <div className="flex items-center gap-2">
-        <Lock className="w-4 h-4 text-amber-400 flex-shrink-0" />
-        <p className="text-sm text-amber-200">{message}</p>
-      </div>
-      <Link
-        to="/pricing"
-        className="inline-block px-4 py-1.5 bg-amber-500 text-zinc-950 text-sm font-medium rounded-lg hover:bg-amber-400 transition-colors"
+    <>
+      <button
+        onClick={() => setShowModal(true)}
+        className="w-full bg-zinc-800/50 border border-zinc-700/50 rounded-xl p-4 text-left hover:bg-zinc-800 transition-colors"
       >
-        View Plans
-      </Link>
-    </div>
+        <div className="flex items-center gap-2 mb-1">
+          <Sparkles className="w-4 h-4 text-amber-400 flex-shrink-0" />
+          <span className="text-sm font-medium text-zinc-200">Upgrade to unlock</span>
+        </div>
+        <p className="text-xs text-zinc-400">{message}</p>
+      </button>
+      <UpgradeModal open={showModal} onOpenChange={setShowModal} message={message} />
+    </>
   );
+}
+
+/**
+ * Hook that returns a function to show the upgrade modal.
+ * Use in components that need to gate actions behind plan limits.
+ */
+export function useUpgradeModal() {
+  const [open, setOpen] = useState(false);
+  const [message, setMessage] = useState("");
+
+  function showUpgrade(msg: string) {
+    setMessage(msg);
+    setOpen(true);
+  }
+
+  const modal = (
+    <UpgradeModal open={open} onOpenChange={setOpen} message={message} />
+  );
+
+  return { showUpgrade, UpgradeModalElement: modal };
 }
