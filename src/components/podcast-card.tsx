@@ -105,6 +105,7 @@ export function PodcastCard({
   }
 
   return (
+    <>
     <Link to={`/discover/${id}`}>
       <div className="flex gap-3 bg-zinc-900 border border-zinc-800 rounded-lg p-3">
         {imageUrl ? (
@@ -137,53 +138,54 @@ export function PodcastCard({
           {loading ? "..." : isSubscribed ? "Subscribed" : "Subscribe"}
         </button>
 
-        {UpgradeModalElement}
-        <Dialog open={showTierDialog} onOpenChange={setShowTierDialog}>
-          <DialogContent onClick={(e) => e.stopPropagation()}>
-            <DialogHeader>
-              <DialogTitle>Briefing Length</DialogTitle>
-              <DialogDescription>
-                How long should your briefings be for {title}?
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid grid-cols-4 gap-2 py-2">
-              {DURATION_TIERS.map((tier) => {
-                const locked = tier > planUsage.maxDurationMinutes;
-                return (
-                  <button
-                    key={tier}
-                    onClick={() => {
-                      if (locked) {
-                        showUpgrade(`Your plan supports briefings up to ${planUsage.maxDurationMinutes} minutes. Upgrade for longer briefings.`);
-                        return;
-                      }
-                      setSelectedTier(tier);
-                    }}
-                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-1 ${
-                      locked
-                        ? "bg-zinc-900 text-zinc-600 cursor-not-allowed"
-                        : selectedTier === tier
-                          ? "bg-white text-zinc-950"
-                          : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
-                    }`}
-                  >
-                    {tier}m
-                    {locked && <Lock className="w-3 h-3" />}
-                  </button>
-                );
-              })}
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setShowTierDialog(false)}>
-                Cancel
-              </Button>
-              <Button onClick={() => handleSubscribe(selectedTier)}>
-                Subscribe
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
       </div>
     </Link>
+    {UpgradeModalElement}
+    <Dialog open={showTierDialog} onOpenChange={setShowTierDialog}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Briefing Length</DialogTitle>
+          <DialogDescription>
+            How long should your briefings be for {title}?
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid grid-cols-4 gap-2 py-2">
+          {DURATION_TIERS.map((tier) => {
+            const locked = tier > planUsage.maxDurationMinutes;
+            return (
+              <button
+                key={tier}
+                onClick={() => {
+                  if (locked) {
+                    showUpgrade(`Your plan supports briefings up to ${planUsage.maxDurationMinutes} minutes. Upgrade for longer briefings.`);
+                    return;
+                  }
+                  setSelectedTier(tier);
+                }}
+                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-1 ${
+                  locked
+                    ? "bg-zinc-900 text-zinc-600 cursor-not-allowed"
+                    : selectedTier === tier
+                      ? "bg-white text-zinc-950"
+                      : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+                }`}
+              >
+                {tier}m
+                {locked && <Lock className="w-3 h-3" />}
+              </button>
+            );
+          })}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setShowTierDialog(false)}>
+            Cancel
+          </Button>
+          <Button onClick={() => handleSubscribe(selectedTier)}>
+            Subscribe
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
