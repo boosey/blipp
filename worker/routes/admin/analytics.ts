@@ -426,6 +426,58 @@ analyticsRoutes.get("/pipeline", async (c) => {
   });
 });
 
+// GET /revenue - Revenue metrics (MRR, user counts by plan, churn indicators)
+analyticsRoutes.get("/revenue", async (c) => {
+  const prisma = c.get("prisma") as any;
+
+  const [totalUsers, usersByPlan, plans, recentChurn] = await Promise.all([
+    prisma.user.count(),
+    prisma.user.groupBy({
+      by: ["planId"],
+      _count: true,
+    }),
+    prisma.plan.findMany({
+      select: { id: true, name: true, slug: true, priceCentsMonthly: true, priceCentsAnnual: true },
+    }) as Promise<{ id: string; name: string; slug: string; priceCentsMonthly: number; priceCentsAnnual: number | null }[]>,
+    // Users who downgraded to default plan in last 30 days (proxy for churn)
+    prisma.user.count({
+      where: {
+        plan: { isDefault: true },
+        updatedAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
+      },
+    }),
+  ]);
+
+  const planMap = new Map(plans.map((p: any) => [p.id, p]));
+
+  let mrr = 0;
+  const byPlan = usersByPlan.map((group: any) => {
+    const plan = planMap.get(group.planId);
+    const monthlyPrice = plan?.priceCentsMonthly ?? 0;
+    const planMrr = (monthlyPrice * group._count) / 100;
+    mrr += planMrr;
+
+    return {
+      planId: group.planId,
+      planName: plan?.name ?? "Unknown",
+      planSlug: plan?.slug ?? "unknown",
+      userCount: group._count,
+      mrr: Math.round(planMrr * 100) / 100,
+    };
+  });
+
+  return c.json({
+    data: {
+      totalUsers,
+      mrr: Math.round(mrr * 100) / 100,
+      arr: Math.round(mrr * 12 * 100) / 100,
+      byPlan,
+      churn30d: recentChurn,
+      arpu: totalUsers > 0 ? Math.round((mrr / totalUsers) * 100) / 100 : 0,
+    },
+  });
+});
+
 function round(n: number, decimals = 2): number {
   const f = Math.pow(10, decimals);
   return Math.round(n * f) / f;

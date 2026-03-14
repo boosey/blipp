@@ -4,6 +4,7 @@ import { requireAuth } from "../middleware/auth";
 import { getCurrentUser } from "../lib/admin-helpers";
 import { getUserWithPlan, checkDurationLimit, checkSubscriptionLimit } from "../lib/plan-limits";
 import { DURATION_TIERS, isValidDurationTier } from "../lib/constants";
+import { getConfig } from "../lib/config";
 
 /**
  * Podcast discovery and subscription routes.
@@ -294,6 +295,99 @@ podcasts.get("/subscriptions", async (c) => {
   });
 
   return c.json({ subscriptions });
+});
+
+/**
+ * POST /request — Submit a podcast request.
+ * Body: { feedUrl: string, title?: string }
+ */
+podcasts.post("/request", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
+  const body = await c.req.json<{ feedUrl: string; title?: string }>();
+
+  if (!body.feedUrl) return c.json({ error: "feedUrl is required" }, 400);
+
+  const requestsEnabled = await getConfig(prisma, "catalog.requests.enabled", true);
+  if (!requestsEnabled) return c.json({ error: "Podcast requests are currently disabled" }, 403);
+
+  // Check if already in catalog
+  const existing = await prisma.podcast.findFirst({ where: { feedUrl: body.feedUrl } });
+  if (existing) {
+    return c.json({ error: "This podcast is already in our catalog", podcastId: existing.id }, 409);
+  }
+
+  // Check max pending requests
+  const maxPerUser = await getConfig(prisma, "catalog.requests.maxPerUser", 5);
+  const pendingCount = await prisma.podcastRequest.count({
+    where: { userId: user.id, status: "PENDING" },
+  });
+  if (pendingCount >= (maxPerUser as number)) {
+    return c.json({ error: `Maximum ${maxPerUser} pending requests allowed` }, 429);
+  }
+
+  // Check for duplicate request
+  const existingRequest = await prisma.podcastRequest.findUnique({
+    where: { userId_feedUrl: { userId: user.id, feedUrl: body.feedUrl } },
+  });
+  if (existingRequest) {
+    return c.json({ error: "You already have a request for this podcast", requestId: existingRequest.id }, 409);
+  }
+
+  const request = await prisma.podcastRequest.create({
+    data: {
+      userId: user.id,
+      feedUrl: body.feedUrl,
+      title: body.title,
+    },
+  });
+
+  return c.json({ data: { id: request.id, status: request.status } }, 201);
+});
+
+/**
+ * GET /requests — List user's own podcast requests.
+ */
+podcasts.get("/requests", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
+
+  const requests = await prisma.podcastRequest.findMany({
+    where: { userId: user.id },
+    orderBy: { createdAt: "desc" },
+    include: { podcast: { select: { id: true, title: true } } },
+  });
+
+  return c.json({
+    data: requests.map((r: any) => ({
+      id: r.id,
+      feedUrl: r.feedUrl,
+      title: r.title,
+      status: r.status,
+      podcastId: r.podcastId,
+      podcastTitle: r.podcast?.title,
+      adminNote: r.adminNote,
+      createdAt: r.createdAt.toISOString(),
+    })),
+  });
+});
+
+/**
+ * DELETE /request/:id — Cancel a pending request.
+ */
+podcasts.delete("/request/:id", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
+  const id = c.req.param("id");
+
+  const request = await prisma.podcastRequest.findFirst({
+    where: { id, userId: user.id, status: "PENDING" },
+  });
+
+  if (!request) return c.json({ error: "Request not found or not cancellable" }, 404);
+
+  await prisma.podcastRequest.delete({ where: { id } });
+  return c.json({ data: { deleted: true } });
 });
 
 /**

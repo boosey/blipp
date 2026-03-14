@@ -1,0 +1,60 @@
+import type { Env } from "../types";
+
+export interface TranscriptLookupContext {
+  episodeGuid: string;
+  episodeTitle: string;
+  podcastTitle: string;
+  podcastIndexId: string | null;
+  feedUrl: string;
+  transcriptUrl: string | null;
+}
+
+export interface TranscriptSource {
+  name: string;
+  identifier: string;
+  lookup(ctx: TranscriptLookupContext, env: Env): Promise<string | null>;
+}
+
+const RssFeedSource: TranscriptSource = {
+  name: "RSS Feed",
+  identifier: "rss-feed",
+  async lookup(ctx) {
+    if (!ctx.transcriptUrl) return null;
+    try {
+      const resp = await fetch(ctx.transcriptUrl);
+      if (!resp.ok) return null;
+      return resp.text();
+    } catch {
+      return null;
+    }
+  },
+};
+
+const PodcastIndexTranscriptSource: TranscriptSource = {
+  name: "Podcast Index",
+  identifier: "podcast-index",
+  async lookup(ctx, env) {
+    const { PodcastIndexClient } = await import("./podcast-index");
+    const { lookupPodcastIndexTranscript } = await import("./transcript-source");
+    const client = new PodcastIndexClient(env.PODCAST_INDEX_KEY, env.PODCAST_INDEX_SECRET);
+    return lookupPodcastIndexTranscript(
+      client,
+      ctx.podcastIndexId,
+      ctx.episodeGuid,
+      ctx.episodeTitle
+    );
+  },
+};
+
+const registeredSources = new Map<string, TranscriptSource>([
+  ["rss-feed", RssFeedSource],
+  ["podcast-index", PodcastIndexTranscriptSource],
+]);
+
+export function getTranscriptSource(identifier: string): TranscriptSource | undefined {
+  return registeredSources.get(identifier);
+}
+
+export function getAllTranscriptSources(): TranscriptSource[] {
+  return Array.from(registeredSources.values());
+}

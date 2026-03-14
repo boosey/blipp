@@ -51,8 +51,14 @@ export async function getCurrentUser(c: Context<{ Bindings: Env }>, prisma: any)
   const clerkId = getAuth(c)!.userId!;
 
   try {
-    return await prisma.user.findUniqueOrThrow({ where: { clerkId } });
-  } catch {
+    const user = await prisma.user.findUniqueOrThrow({ where: { clerkId } });
+    if (user.status === "suspended" || user.status === "banned") {
+      throw new Error("Account suspended");
+    }
+    return user;
+  } catch (err: any) {
+    // Re-throw suspension errors — don't fall through to user creation
+    if (err?.message === "Account suspended") throw err;
     // User missing from DB — fetch from Clerk and create
     const clerk = createClerkClient({ secretKey: c.env.CLERK_SECRET_KEY });
     const clerkUser = await clerk.users.getUser(clerkId);

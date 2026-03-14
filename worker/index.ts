@@ -18,6 +18,7 @@ import { handleQueue, scheduled } from "./queues/index";
 import { shimQueuesForLocalDev } from "./lib/local-queue";
 import { rateLimit } from "./middleware/rate-limit";
 import { securityHeaders } from "./middleware/security-headers";
+import { cacheResponse } from "./middleware/cache";
 import { deepHealthCheck } from "./lib/health";
 import type { Env } from "./types";
 
@@ -112,6 +113,9 @@ app.use("/api/*", rateLimit({
   keyPrefix: "rl:api",
   skipPaths: ["/api/webhooks/", "/api/health"],
 }));
+
+// Cache catalog for 5 minutes (read-heavy, changes infrequently)
+app.use("/api/podcasts/catalog", cacheResponse({ maxAge: 300, staleWhileRevalidate: 60 }));
 
 // Security headers — CSP, X-Frame-Options, etc. for all responses
 app.use("/*", securityHeaders);

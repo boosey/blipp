@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { Env } from "../../types";
 import { PIPELINE_STAGE_NAMES } from "../../lib/constants";
 import { parsePagination, parseSort, paginatedResponse } from "../../lib/admin-helpers";
+import { getAuth } from "../../middleware/auth";
 
 const podcastsRoutes = new Hono<{ Bindings: Env }>();
 
@@ -334,6 +335,7 @@ podcastsRoutes.post("/catalog-refresh", async (c) => {
         imageUrl: feed.image ?? null,
         podcastIndexId: String(feed.id),
         author: feed.author ?? null,
+        source: "trending",
       },
       update: {
         title: feed.title,
@@ -501,6 +503,120 @@ podcastsRoutes.post("/:id/refresh", async (c) => {
   } catch {
     return c.json({ error: "Feed refresh queue not available" }, 503);
   }
+});
+
+// GET /requests - Paginated list of all podcast requests
+podcastsRoutes.get("/requests", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const { page, pageSize, skip } = parsePagination(c);
+  const status = c.req.query("status");
+
+  const where: Record<string, unknown> = {};
+  if (status) where.status = status;
+
+  const [requests, total] = await Promise.all([
+    prisma.podcastRequest.findMany({
+      where,
+      skip,
+      take: pageSize,
+      orderBy: { createdAt: "desc" },
+      include: {
+        user: { select: { email: true, name: true } },
+        podcast: { select: { id: true, title: true } },
+      },
+    }),
+    prisma.podcastRequest.count({ where }),
+  ]);
+
+  const data = requests.map((r: any) => ({
+    id: r.id,
+    feedUrl: r.feedUrl,
+    title: r.title,
+    status: r.status,
+    podcastId: r.podcastId,
+    podcastTitle: r.podcast?.title,
+    adminNote: r.adminNote,
+    userEmail: r.user.email,
+    userName: r.user.name,
+    createdAt: r.createdAt.toISOString(),
+  }));
+
+  return c.json(paginatedResponse(data, total, page, pageSize));
+});
+
+// POST /requests/:id/approve - Approve a podcast request
+podcastsRoutes.post("/requests/:id/approve", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const id = c.req.param("id");
+
+  const request = await prisma.podcastRequest.findUnique({ where: { id } });
+  if (!request) return c.json({ error: "Request not found" }, 404);
+  if (request.status !== "PENDING") return c.json({ error: "Request is not pending" }, 409);
+
+  // Upsert podcast from feed URL
+  const { parseRssFeed } = await import("../../lib/rss-parser");
+  let feedData;
+  try {
+    const resp = await fetch(request.feedUrl);
+    const xml = await resp.text();
+    feedData = parseRssFeed(xml);
+  } catch (err) {
+    return c.json({ error: `Failed to fetch feed: ${err instanceof Error ? err.message : String(err)}` }, 422);
+  }
+
+  const podcast = await prisma.podcast.upsert({
+    where: { feedUrl: request.feedUrl },
+    create: {
+      feedUrl: request.feedUrl,
+      title: feedData.title || request.title || "Unknown Podcast",
+      description: feedData.description || "",
+      imageUrl: feedData.imageUrl,
+      author: feedData.author,
+      source: "user_request",
+    },
+    update: {
+      title: feedData.title || undefined,
+      imageUrl: feedData.imageUrl || undefined,
+    },
+  });
+
+  // Update request
+  const auth = getAuth(c);
+  await prisma.podcastRequest.update({
+    where: { id },
+    data: {
+      status: "APPROVED",
+      podcastId: podcast.id,
+      reviewedBy: auth?.userId,
+      reviewedAt: new Date(),
+    },
+  });
+
+  return c.json({ data: { id, status: "APPROVED", podcastId: podcast.id } });
+});
+
+// POST /requests/:id/reject - Reject a podcast request
+podcastsRoutes.post("/requests/:id/reject", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const id = c.req.param("id");
+  const body = await c.req.json<{ adminNote?: string }>().catch(() => ({} as { adminNote?: string }));
+
+  const request = await prisma.podcastRequest.findUnique({ where: { id } });
+  if (!request) return c.json({ error: "Request not found" }, 404);
+  if (request.status !== "PENDING") return c.json({ error: "Request is not pending" }, 409);
+
+  const auth = getAuth(c);
+  await prisma.podcastRequest.update({
+    where: { id },
+    data: {
+      status: "REJECTED",
+      adminNote: body.adminNote,
+      reviewedBy: auth?.userId,
+      reviewedAt: new Date(),
+    },
+  });
+
+  return c.json({ data: { id, status: "REJECTED" } });
 });
 
 export { podcastsRoutes };

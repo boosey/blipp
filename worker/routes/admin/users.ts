@@ -227,7 +227,7 @@ usersRoutes.get("/:id", async (c) => {
 // PATCH /:id - Update user
 usersRoutes.patch("/:id", async (c) => {
   const prisma = c.get("prisma") as any;
-  const body = await c.req.json<{ planId?: string; isAdmin?: boolean }>();
+  const body = await c.req.json<{ planId?: string; isAdmin?: boolean; status?: string }>();
 
   // Block isAdmin changes via this endpoint — requires dedicated super-admin flow
   if (body.isAdmin !== undefined) {
@@ -241,7 +241,6 @@ usersRoutes.patch("/:id", async (c) => {
     );
   }
 
-  // Only allow plan assignment
   const data: Record<string, unknown> = {};
   if (body.planId !== undefined) {
     // Validate that the plan exists
@@ -252,14 +251,21 @@ usersRoutes.patch("/:id", async (c) => {
     data.planId = body.planId;
   }
 
+  if (body.status !== undefined) {
+    if (!["active", "suspended", "banned"].includes(body.status)) {
+      return c.json({ error: "Invalid status. Must be: active, suspended, or banned" }, 400);
+    }
+    data.status = body.status;
+  }
+
   if (Object.keys(data).length === 0) {
     return c.json({ error: "No valid fields to update" }, 400);
   }
 
-  // Capture old planId before update for audit log
+  // Capture old values before update for audit log
   const existingUser = await prisma.user.findUnique({
     where: { id: c.req.param("id") },
-    select: { planId: true },
+    select: { planId: true, status: true },
   });
 
   const updated = await prisma.user.update({
@@ -269,13 +275,14 @@ usersRoutes.patch("/:id", async (c) => {
   });
 
   const auth = getAuth(c);
+  const auditAction = body.status !== undefined ? "user.status.change" : "user.plan.change";
   writeAuditLog(prisma, {
     actorId: auth!.userId!,
-    action: "user.plan.change",
+    action: auditAction,
     entityType: "User",
     entityId: c.req.param("id"),
-    before: { planId: existingUser?.planId },
-    after: { planId: body.planId },
+    before: { planId: existingUser?.planId, status: existingUser?.status },
+    after: { planId: body.planId, status: body.status },
   }).catch(() => {});
 
   return c.json({
@@ -283,6 +290,7 @@ usersRoutes.patch("/:id", async (c) => {
       id: updated.id,
       plan: { id: updated.plan.id, name: updated.plan.name, slug: updated.plan.slug },
       isAdmin: updated.isAdmin,
+      status: updated.status,
     },
   });
 });
