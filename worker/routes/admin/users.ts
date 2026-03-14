@@ -164,6 +164,10 @@ usersRoutes.get("/:id", async (c) => {
         },
       },
       _count: { select: { subscriptions: true, feedItems: true, briefings: true } },
+      podcastFavorites: {
+        include: { podcast: { select: { id: true, title: true, imageUrl: true } } },
+        orderBy: { createdAt: "desc" },
+      },
     },
   });
 
@@ -220,6 +224,13 @@ usersRoutes.get("/:id", async (c) => {
         episodeTitle: fi.episode?.title,
         createdAt: fi.createdAt.toISOString(),
       })),
+      favorites: user.podcastFavorites.map((f: any) => ({
+        podcastId: f.podcast.id,
+        podcastTitle: f.podcast.title,
+        podcastImageUrl: f.podcast.imageUrl,
+        favoritedAt: f.createdAt.toISOString(),
+      })),
+      onboardingComplete: user.onboardingComplete,
     },
   });
 });

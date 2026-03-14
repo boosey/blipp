@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import { toast } from "sonner";
+import { Heart } from "lucide-react";
 import { useApiFetch } from "../lib/api";
 import { DURATION_TIERS } from "../lib/duration-tiers";
 import { Skeleton } from "../components/ui/skeleton";
@@ -43,16 +44,19 @@ export function PodcastDetail() {
   const [requestingEpisodeId, setRequestingEpisodeId] = useState<string | null>(null);
   const [showSubscribeTierPicker, setShowSubscribeTierPicker] = useState(false);
   const [briefTierPickerEpisodeId, setBriefTierPickerEpisodeId] = useState<string | null>(null);
+  const [isFavorited, setIsFavorited] = useState(false);
 
   const fetchData = useCallback(async () => {
     if (!podcastId) return;
     try {
-      const [podData, epData] = await Promise.all([
+      const [podData, epData, favData] = await Promise.all([
         apiFetch<{ podcast: PodcastDetailType }>(`/podcasts/${podcastId}`),
         apiFetch<{ episodes: EpisodeSummary[] }>(`/podcasts/${podcastId}/episodes`),
+        apiFetch<{ data: { id: string }[] }>("/podcasts/favorites").catch(() => ({ data: [] })),
       ]);
       setPodcast(podData.podcast);
       setEpisodes(epData.episodes);
+      setIsFavorited(favData.data.some((f) => f.id === podcastId));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to load podcast");
     } finally {
@@ -128,6 +132,23 @@ export function PodcastDetail() {
     }
   }
 
+  async function toggleFavorite() {
+    if (!podcast) return;
+    try {
+      if (isFavorited) {
+        await apiFetch(`/podcasts/favorites/${podcast.id}`, { method: "DELETE" });
+        setIsFavorited(false);
+        toast.success(`Removed from favorites`);
+      } else {
+        await apiFetch(`/podcasts/favorites/${podcast.id}`, { method: "POST" });
+        setIsFavorited(true);
+        toast.success(`Added to favorites`);
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to update favorites");
+    }
+  }
+
   function formatDuration(seconds: number | null) {
     if (!seconds) return "";
     const m = Math.floor(seconds / 60);
@@ -188,7 +209,18 @@ export function PodcastDetail() {
           <div className="w-24 h-24 rounded-lg bg-zinc-800 flex-shrink-0" />
         )}
         <div className="flex-1 min-w-0">
-          <h1 className="text-lg font-bold">{podcast.title}</h1>
+          <div className="flex items-start justify-between gap-2">
+            <h1 className="text-lg font-bold">{podcast.title}</h1>
+            <button
+              onClick={toggleFavorite}
+              className="p-1.5 rounded-full hover:bg-zinc-800 transition-colors flex-shrink-0"
+              title={isFavorited ? "Remove from favorites" : "Add to favorites"}
+            >
+              <Heart
+                className={`w-5 h-5 transition-colors ${isFavorited ? "fill-red-500 text-red-500" : "text-zinc-500"}`}
+              />
+            </button>
+          </div>
           {podcast.author && (
             <p className="text-sm text-zinc-400">{podcast.author}</p>
           )}
