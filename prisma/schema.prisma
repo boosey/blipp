@@ -155,7 +155,7 @@ model Clip {
   id             String     @id @default(cuid())
   episodeId      String
   distillationId String
-  durationTier   Int // 1, 2, 3, 5, 7, 10, or 15 (minutes)
+  durationTier   Int // 1, 2, 3, 5, 7, 10, 15, or 30 (minutes)
   status         ClipStatus @default(PENDING)
   narrativeText  String? // Pass 2 output: narrative for TTS
   wordCount      Int?
@@ -205,7 +205,7 @@ model Subscription {
   id           String   @id @default(cuid())
   userId       String
   podcastId    String
-  durationTier Int      // 1, 2, 3, 5, 7, 10, or 15 (minutes)
+  durationTier Int      // 1, 2, 3, 5, 7, 10, 15, or 30 (minutes)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

@@ -2,7 +2,7 @@
  * Generates the R2 object key for a cached clip.
  *
  * @param episodeId - The episode's database ID
- * @param durationTier - Duration tier in minutes (1, 2, 3, 5, 7, 10, or 15)
+ * @param durationTier - Duration tier in minutes (1, 2, 3, 5, 7, 10, 15, or 30)
  * @returns R2 key in the format `clips/{episodeId}/{durationTier}.mp3`
  */
 export function clipKey(episodeId: string, durationTier: number): string {

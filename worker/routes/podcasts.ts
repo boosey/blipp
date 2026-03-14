@@ -3,6 +3,7 @@ import type { Env } from "../types";
 import { requireAuth } from "../middleware/auth";
 import { getCurrentUser } from "../lib/admin-helpers";
 import { getUserWithPlan, checkDurationLimit, checkSubscriptionLimit } from "../lib/plan-limits";
+import { DURATION_TIERS } from "../lib/time-fitting";
 
 /**
  * Podcast discovery and subscription routes.
@@ -91,8 +92,8 @@ podcasts.post("/subscribe", async (c) => {
     return c.json({ error: "feedUrl and title are required" }, 400);
   }
 
-  if (!body.durationTier || ![1, 2, 3, 5, 7, 10, 15].includes(body.durationTier)) {
-    return c.json({ error: "durationTier is required and must be 1, 2, 3, 5, 7, 10, or 15" }, 400);
+  if (!body.durationTier || !(DURATION_TIERS as readonly number[]).includes(body.durationTier)) {
+    return c.json({ error: `durationTier is required and must be one of: ${DURATION_TIERS.join(", ")}` }, 400);
   }
 
   const prisma = c.get("prisma") as any;
@@ -218,8 +219,8 @@ podcasts.patch("/subscribe/:podcastId", async (c) => {
   const podcastId = c.req.param("podcastId");
   const body = await c.req.json<{ durationTier: number }>();
 
-  if (!body.durationTier || ![1, 2, 3, 5, 7, 10, 15].includes(body.durationTier)) {
-    return c.json({ error: "durationTier must be 1, 2, 3, 5, 7, 10, or 15" }, 400);
+  if (!body.durationTier || !(DURATION_TIERS as readonly number[]).includes(body.durationTier)) {
+    return c.json({ error: `durationTier must be one of: ${DURATION_TIERS.join(", ")}` }, 400);
   }
 
   const prisma = c.get("prisma") as any;

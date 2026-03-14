@@ -97,7 +97,7 @@ Body:
 {
   "feedUrl": "string (required)",
   "title": "string (required)",
-  "durationTier": "number (required, one of 1/2/3/5/7/10/15)",
+  "durationTier": "number (required, one of 1/2/3/5/7/10/15/30)",
   "description": "string",
   "imageUrl": "string",
   "podcastIndexId": "number",
@@ -113,7 +113,7 @@ Upserts podcast and subscription. Creates a FeedItem (SUBSCRIPTION source) for t
 
 Body:
 ```json
-{ "durationTier": "number (required, one of 1/2/3/5/7/10/15)" }
+{ "durationTier": "number (required, one of 1/2/3/5/7/10/15/30)" }
 ```
 
 Response: `{ "subscription": {...} }`
@@ -190,7 +190,7 @@ Body:
 {
   "podcastId": "string (required)",
   "episodeId": "string (optional — defaults to latest episode)",
-  "durationTier": "number (required, one of 1/2/3/5/7/10/15)"
+  "durationTier": "number (required, one of 1/2/3/5/7/10/15/30)"
 }
 ```
 

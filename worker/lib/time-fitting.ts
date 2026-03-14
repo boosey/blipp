@@ -2,7 +2,7 @@
 export const WORDS_PER_MINUTE = 150;
 
 /** Available duration tiers in minutes for episode clips. */
-export const DURATION_TIERS = [1, 2, 3, 5, 7, 10, 15] as const;
+export const DURATION_TIERS = [1, 2, 3, 5, 7, 10, 15, 30] as const;
 
 /** Union type of valid duration tier values. */
 export type DurationTier = (typeof DURATION_TIERS)[number];

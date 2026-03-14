@@ -89,6 +89,7 @@ configRoutes.get("/tiers/duration", async (c) => {
     { minutes: 7, cacheHitRate: 0, clipsGenerated: 0, storageCost: 0, usageFrequency: 0 },
     { minutes: 10, cacheHitRate: 0, clipsGenerated: 0, storageCost: 0, usageFrequency: 0 },
     { minutes: 15, cacheHitRate: 0, clipsGenerated: 0, storageCost: 0, usageFrequency: 0 },
+    { minutes: 30, cacheHitRate: 0, clipsGenerated: 0, storageCost: 0, usageFrequency: 0 },
   ];
 
   try {

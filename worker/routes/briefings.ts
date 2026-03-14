@@ -3,6 +3,7 @@ import type { Env } from "../types";
 import { requireAuth } from "../middleware/auth";
 import { getCurrentUser } from "../lib/admin-helpers";
 import { getUserWithPlan, checkDurationLimit, checkWeeklyBriefingLimit } from "../lib/plan-limits";
+import { DURATION_TIERS } from "../lib/time-fitting";
 
 /**
  * Briefing routes — on-demand briefing generation only.
@@ -18,7 +19,7 @@ briefings.use("*", requireAuth);
  * Body: { podcastId, episodeId?, durationTier }
  * - podcastId: required
  * - episodeId: optional — if omitted, uses latest episode for the podcast
- * - durationTier: required — must be 1, 2, 3, 5, 7, 10, or 15
+ * - durationTier: required — must be one of the valid duration tiers
  *
  * Creates a FeedItem and dispatches to the pipeline.
  */
@@ -33,8 +34,8 @@ briefings.post("/generate", async (c) => {
     return c.json({ error: "podcastId is required" }, 400);
   }
 
-  if (!body.durationTier || ![1, 2, 3, 5, 7, 10, 15].includes(body.durationTier)) {
-    return c.json({ error: "durationTier is required and must be 1, 2, 3, 5, 7, 10, or 15" }, 400);
+  if (!body.durationTier || !(DURATION_TIERS as readonly number[]).includes(body.durationTier)) {
+    return c.json({ error: `durationTier is required and must be one of: ${DURATION_TIERS.join(", ")}` }, 400);
   }
 
   const prisma = c.get("prisma") as any;

@@ -256,7 +256,7 @@ Join table linking users to their subscribed podcasts, with a per-subscription d
 | id | String | `cuid()` | Primary key |
 | userId | String | -- | FK to User |
 | podcastId | String | -- | FK to Podcast |
-| durationTier | Int | -- | Briefing duration in minutes (1, 2, 3, 5, 7, 10, or 15) |
+| durationTier | Int | -- | Briefing duration in minutes (1, 2, 3, 5, 7, 10, 15, or 30) |
 | createdAt | DateTime | `now()` | Record creation timestamp |
 | updatedAt | DateTime | `@updatedAt` | Last update timestamp |
 
