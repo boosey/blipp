@@ -12,6 +12,7 @@ import { configRoutes } from "./config";
 import { requestsRoutes } from "./requests";
 import { sttBenchmarkRoutes } from "./stt-benchmark";
 import { aiModelsRoutes } from "./ai-models";
+import { plansRoutes } from "./plans";
 
 /**
  * Admin route tree. All routes require admin authentication.
@@ -33,5 +34,6 @@ adminRoutes.route("/config", configRoutes);
 adminRoutes.route("/requests", requestsRoutes);
 adminRoutes.route("/stt-benchmark", sttBenchmarkRoutes);
 adminRoutes.route("/ai-models", aiModelsRoutes);
+adminRoutes.route("/plans", plansRoutes);
 
 export { adminRoutes };

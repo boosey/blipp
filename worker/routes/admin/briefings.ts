@@ -23,7 +23,7 @@ briefingsRoutes.get("/", async (c) => {
       take: pageSize,
       orderBy,
       include: {
-        user: { select: { email: true, tier: true } },
+        user: { select: { email: true, plan: { select: { name: true, slug: true } } } },
         clip: {
           select: {
             id: true,
@@ -50,7 +50,7 @@ briefingsRoutes.get("/", async (c) => {
     id: b.id,
     userId: b.userId,
     userEmail: b.user.email,
-    userTier: b.user.tier,
+    userPlan: b.user.plan.name,
     clipId: b.clipId,
     durationTier: b.clip.durationTier,
     clipStatus: b.clip.status,
@@ -74,7 +74,7 @@ briefingsRoutes.get("/:id", async (c) => {
   const briefing = await prisma.briefing.findUnique({
     where: { id: c.req.param("id") },
     include: {
-      user: { select: { email: true, tier: true } },
+      user: { select: { email: true, plan: { select: { name: true, slug: true } } } },
       clip: {
         include: {
           episode: {
@@ -127,7 +127,7 @@ briefingsRoutes.get("/:id", async (c) => {
       id: briefing.id,
       userId: briefing.userId,
       userEmail: briefing.user.email,
-      userTier: briefing.user.tier,
+      userPlan: briefing.user.plan.name,
       clipId: briefing.clipId,
       adAudioUrl: briefing.adAudioUrl,
       adAudioKey: briefing.adAudioKey,

@@ -4,28 +4,30 @@ import { createStripeClient } from "../../lib/stripe";
 
 /**
  * Stripe webhook route handler.
- * Processes subscription lifecycle events and updates user tiers.
+ * Processes subscription lifecycle events and updates user plans.
  *
  * Handles:
- * - `checkout.session.completed` — Upgrades user to PRO or PRO_PLUS
- * - `customer.subscription.deleted` — Reverts user to FREE tier
+ * - `checkout.session.completed` — Assigns user to the purchased plan
+ * - `customer.subscription.deleted` — Reverts user to the default (free) plan
  *
  * Uses `constructEventAsync` for Workers-compatible webhook verification.
  */
 export const stripeWebhooks = new Hono<{ Bindings: Env }>();
 
 /**
- * Looks up the UserTier for a Stripe Price ID from the Plan table.
- * Falls back to FREE if no matching plan is found.
+ * Looks up a Plan by its Stripe price ID (monthly or annual).
+ * Returns null if no matching plan is found.
  */
-async function tierFromPriceId(
-  priceId: string,
-  prisma: any
-): Promise<string> {
-  const plan = await prisma.plan.findUnique({
-    where: { stripePriceId: priceId },
+async function planFromPriceId(priceId: string, prisma: any) {
+  const plan = await prisma.plan.findFirst({
+    where: {
+      OR: [
+        { stripePriceIdMonthly: priceId },
+        { stripePriceIdAnnual: priceId },
+      ],
+    },
   });
-  return plan?.tier ?? "FREE";
+  return plan;
 }
 
 /**
@@ -70,12 +72,25 @@ stripeWebhooks.post("/", async (c) => {
 
       if (!priceId) break;
 
-      const tier = await tierFromPriceId(priceId, prisma);
+      // Try plan from price ID, then from checkout metadata, then fall back to default
+      let plan = await planFromPriceId(priceId, prisma);
 
-      await prisma.user.update({
-        where: { stripeCustomerId },
-        data: { tier: tier as "PRO" | "PRO_PLUS" },
-      });
+      if (!plan && session.metadata?.planId) {
+        plan = await prisma.plan.findUnique({
+          where: { id: session.metadata.planId },
+        });
+      }
+
+      if (!plan) {
+        plan = await prisma.plan.findFirst({ where: { isDefault: true } });
+      }
+
+      if (plan) {
+        await prisma.user.update({
+          where: { stripeCustomerId },
+          data: { planId: plan.id },
+        });
+      }
       break;
     }
 
@@ -83,10 +98,16 @@ stripeWebhooks.post("/", async (c) => {
       const subscription = event.data.object;
       const stripeCustomerId = subscription.customer as string;
 
-      await prisma.user.update({
-        where: { stripeCustomerId },
-        data: { tier: "FREE" },
+      const defaultPlan = await prisma.plan.findFirst({
+        where: { isDefault: true },
       });
+
+      if (defaultPlan) {
+        await prisma.user.update({
+          where: { stripeCustomerId },
+          data: { planId: defaultPlan.id },
+        });
+      }
       break;
     }
 

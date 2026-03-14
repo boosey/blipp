@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { Env } from "../types";
 import { requireAuth } from "../middleware/auth";
 import { getCurrentUser } from "../lib/admin-helpers";
+import { getUserWithPlan, checkDurationLimit, checkWeeklyBriefingLimit } from "../lib/plan-limits";
 
 /**
  * Briefing routes — on-demand briefing generation only.
@@ -37,7 +38,14 @@ briefings.post("/generate", async (c) => {
   }
 
   const prisma = c.get("prisma") as any;
-  const user = await getCurrentUser(c, prisma);
+  const user = await getUserWithPlan(c, prisma);
+
+  // Enforce plan limits
+  const durationError = checkDurationLimit(body.durationTier, user.plan.maxDurationMinutes);
+  if (durationError) return c.json({ error: durationError }, 403);
+
+  const weeklyError = await checkWeeklyBriefingLimit(user.id, user.plan.briefingsPerWeek, prisma);
+  if (weeklyError) return c.json({ error: weeklyError }, 403);
 
   // Resolve episode
   let episodeId = body.episodeId;

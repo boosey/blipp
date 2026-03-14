@@ -13,6 +13,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardList,
+  CreditCard,
   FlaskConical,
   Boxes,
 } from "lucide-react";
@@ -36,6 +37,7 @@ const navItems = [
   { path: "catalog", label: "Catalog", icon: Library, shortcut: "C" },
   { path: "briefings", label: "Briefings", icon: Radio, shortcut: "B" },
   { path: "users", label: "Users", icon: Users, shortcut: "U" },
+  { path: "plans", label: "Plans", icon: CreditCard, shortcut: "L" },
   { path: "analytics", label: "Analytics", icon: BarChart3, shortcut: "A" },
   { path: "configuration", label: "Configuration", icon: Settings, shortcut: "," },
   { path: "stt-benchmark", label: "STT Benchmark", icon: FlaskConical, shortcut: "T" },

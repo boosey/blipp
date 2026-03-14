@@ -22,6 +22,7 @@ const AdminUsers = lazy(() => import("./pages/admin/users"));
 const Analytics = lazy(() => import("./pages/admin/analytics"));
 const Configuration = lazy(() => import("./pages/admin/configuration"));
 const Requests = lazy(() => import("./pages/admin/requests"));
+const Plans = lazy(() => import("./pages/admin/plans"));
 const SttBenchmark = lazy(() => import("./pages/admin/stt-benchmark"));
 const ModelRegistry = lazy(() => import("./pages/admin/model-registry"));
 
@@ -83,6 +84,7 @@ export default function App() {
         <Route path="catalog" element={<Suspense fallback={<AdminLoading />}><Catalog /></Suspense>} />
         <Route path="briefings" element={<Suspense fallback={<AdminLoading />}><Briefings /></Suspense>} />
         <Route path="users" element={<Suspense fallback={<AdminLoading />}><AdminUsers /></Suspense>} />
+        <Route path="plans" element={<Suspense fallback={<AdminLoading />}><Plans /></Suspense>} />
         <Route path="analytics" element={<Suspense fallback={<AdminLoading />}><Analytics /></Suspense>} />
         <Route path="configuration" element={<Suspense fallback={<AdminLoading />}><Configuration /></Suspense>} />
         <Route path="requests" element={<Suspense fallback={<AdminLoading />}><Requests /></Suspense>} />

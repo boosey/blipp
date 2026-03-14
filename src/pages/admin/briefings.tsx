@@ -109,8 +109,8 @@ function BriefingCard({
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-xs text-[#F9FAFB] truncate">{briefing.userEmail}</span>
-          <Badge className={cn("text-[9px] uppercase shrink-0", tierBadgeClass(briefing.userTier))}>
-            {tierLabel(briefing.userTier)}
+          <Badge className={cn("text-[9px] uppercase shrink-0", tierBadgeClass(briefing.userPlan))}>
+            {tierLabel(briefing.userPlan)}
           </Badge>
         </div>
         <Badge className={cn("text-[9px] uppercase shrink-0", statusBadge(briefing.clipStatus))}>
@@ -309,8 +309,8 @@ export default function BriefingsPage() {
                   <div className="flex items-center gap-3">
                     <User className="h-4 w-4 text-[#14B8A6]" />
                     <span className="text-sm text-[#F9FAFB] font-medium">{selected.userEmail}</span>
-                    <Badge className={cn("text-[9px] uppercase", tierBadgeClass(selected.userTier))}>
-                      {tierLabel(selected.userTier)}
+                    <Badge className={cn("text-[9px] uppercase", tierBadgeClass(selected.userPlan))}>
+                      {tierLabel(selected.userPlan)}
                     </Badge>
                   </div>
                   <span className="text-xs text-[#9CA3AF]">{relativeTime(selected.createdAt)}</span>

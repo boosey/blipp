@@ -14,14 +14,22 @@ me.use("*", requireAuth);
 me.get("/", async (c) => {
   const prisma = c.get("prisma") as any;
   const user = await getCurrentUser(c, prisma);
+  const fullUser = await prisma.user.findUnique({
+    where: { id: user.id },
+    include: { plan: true },
+  });
   return c.json({
     user: {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      imageUrl: user.imageUrl,
-      tier: user.tier,
-      isAdmin: user.isAdmin,
+      id: fullUser.id,
+      email: fullUser.email,
+      name: fullUser.name,
+      imageUrl: fullUser.imageUrl,
+      plan: {
+        id: fullUser.plan.id,
+        name: fullUser.plan.name,
+        slug: fullUser.plan.slug,
+      },
+      isAdmin: fullUser.isAdmin,
     },
   });
 });

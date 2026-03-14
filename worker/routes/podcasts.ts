@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { Env } from "../types";
 import { requireAuth } from "../middleware/auth";
 import { getCurrentUser } from "../lib/admin-helpers";
+import { getUserWithPlan, checkDurationLimit, checkSubscriptionLimit } from "../lib/plan-limits";
 
 /**
  * Podcast discovery and subscription routes.
@@ -95,7 +96,20 @@ podcasts.post("/subscribe", async (c) => {
   }
 
   const prisma = c.get("prisma") as any;
-  const user = await getCurrentUser(c, prisma);
+  const user = await getUserWithPlan(c, prisma);
+
+  // Enforce plan limits
+  const durationError = checkDurationLimit(body.durationTier, user.plan.maxDurationMinutes);
+  if (durationError) return c.json({ error: durationError }, 403);
+
+  const subError = await checkSubscriptionLimit(user.id, user.plan.maxPodcastSubscriptions, prisma);
+  if (subError) {
+    // Allow if user is already subscribed (re-subscribe / update, not new)
+    const existing = await prisma.subscription.findFirst({
+      where: { userId: user.id, podcast: { feedUrl: body.feedUrl } },
+    });
+    if (!existing) return c.json({ error: subError }, 403);
+  }
 
   // Upsert podcast — create if new, update metadata if exists
   const podcast = await prisma.podcast.upsert({
@@ -209,7 +223,11 @@ podcasts.patch("/subscribe/:podcastId", async (c) => {
   }
 
   const prisma = c.get("prisma") as any;
-  const user = await getCurrentUser(c, prisma);
+  const user = await getUserWithPlan(c, prisma);
+
+  // Enforce duration limit
+  const durationError = checkDurationLimit(body.durationTier, user.plan.maxDurationMinutes);
+  if (durationError) return c.json({ error: durationError }, 403);
 
   const subscription = await prisma.subscription.update({
     where: {

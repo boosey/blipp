@@ -265,7 +265,7 @@ export interface AdminBriefing {
   id: string;
   userId: string;
   userEmail: string;
-  userTier: string;
+  userPlan: string;
   clipId: string;
   durationTier: number;
   clipStatus: string;
@@ -295,7 +295,7 @@ export interface AdminBriefingDetail {
   id: string;
   userId: string;
   userEmail: string;
-  userTier: string;
+  userPlan: string;
   clipId: string;
   adAudioUrl?: string;
   adAudioKey?: string;
@@ -323,9 +323,39 @@ export interface AdminBriefingDetail {
   }[];
 }
 
+// ── Plans ──
+
+export interface AdminPlan {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  briefingsPerWeek?: number | null;
+  maxDurationMinutes: number;
+  maxPodcastSubscriptions?: number | null;
+  adFree: boolean;
+  priorityProcessing: boolean;
+  earlyAccess: boolean;
+  researchMode: boolean;
+  crossPodcastSynthesis: boolean;
+  priceCentsMonthly: number;
+  priceCentsAnnual?: number | null;
+  stripePriceIdMonthly?: string | null;
+  stripePriceIdAnnual?: string | null;
+  stripeProductId?: string | null;
+  trialDays: number;
+  features: string[];
+  highlighted: boolean;
+  active: boolean;
+  sortOrder: number;
+  isDefault: boolean;
+  userCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ── Users ──
 
-export type UserTier = "FREE" | "PRO" | "PRO_PLUS";
 export type UserSegment =
   | "all"
   | "power_users"
@@ -340,7 +370,7 @@ export interface AdminUser {
   email: string;
   name?: string;
   imageUrl?: string;
-  tier: UserTier;
+  plan: { id: string; name: string; slug: string };
   isAdmin: boolean;
   status: "active" | "inactive" | "churned";
   briefingCount: number;
@@ -365,6 +395,7 @@ export interface AdminFeedItem {
 export interface AdminUserDetail extends AdminUser {
   stripeCustomerId?: string;
   feedItemCount: number;
+  planId: string;
   subscriptions: { podcastId: string; podcastTitle: string; durationTier: number; createdAt: string }[];
   recentFeedItems: AdminFeedItem[];
 }
@@ -391,7 +422,7 @@ export interface CostBreakdownData {
 export interface UsageTrendsData {
   metrics: { feedItems: number; episodes: number; users: number; avgDuration: number };
   trends: { date: string; feedItems: number; episodes: number; users: number }[];
-  byTier: { tier: string; count: number; percentage: number }[];
+  byPlan: { plan: string; count: number; percentage: number }[];
   peakTimes: { hour: number; count: number }[];
   topPodcasts: { id: string; title: string; listens: number }[];
 }
@@ -458,28 +489,12 @@ export interface DurationTier {
   usageFrequency: number;
 }
 
-export interface SubscriptionTierConfig {
-  tier: UserTier;
-  name: string;
-  priceCents: number;
-  active: boolean;
-  userCount: number;
-  highlighted?: boolean;
-  stripePriceId?: string;
-  limits: {
-    briefingsPerWeek: number | null; // null = unlimited
-    maxDurationMinutes: number;
-    maxPodcasts: number | null;
-  };
-  features: string[];
-}
-
 export interface FeatureFlag {
   id: string;
   name: string;
   enabled: boolean;
   rolloutPercentage: number;
-  tierAvailability: UserTier[];
+  planAvailability: string[];
   description?: string;
 }
 

@@ -17,18 +17,44 @@ datasource db {
 // ── Plans ──
 
 model Plan {
-  id             String   @id @default(cuid())
-  tier           UserTier @unique
-  name           String
-  priceCents     Int      // monthly price in cents (0 for free)
-  stripePriceId  String?  @unique // Stripe Price ID (null for free tier)
-  stripeProductId String? @unique // Stripe Product ID (null for free tier)
-  features       String[] // PostgreSQL array
-  highlighted    Boolean  @default(false)
-  active         Boolean  @default(true)
-  sortOrder      Int      @default(0)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id                      String   @id @default(cuid())
+  name                    String                        // "Free", "Pro Monthly"
+  slug                    String   @unique              // "free", "pro-monthly"
+  description             String?                       // Marketing copy
+
+  // Limits (null = unlimited)
+  briefingsPerWeek        Int?                          // null = unlimited
+  maxDurationMinutes      Int      @default(5)
+  maxPodcastSubscriptions Int?                          // null = unlimited
+
+  // Feature flags
+  adFree                  Boolean  @default(false)
+  priorityProcessing      Boolean  @default(false)
+  earlyAccess             Boolean  @default(false)
+  researchMode            Boolean  @default(false)
+  crossPodcastSynthesis   Boolean  @default(false)
+
+  // Billing — monthly
+  priceCentsMonthly       Int      @default(0)          // 0 = free
+  stripePriceIdMonthly    String?  @unique
+  // Billing — annual
+  priceCentsAnnual        Int?                          // null = no annual option
+  stripePriceIdAnnual     String?  @unique
+  // Shared Stripe
+  stripeProductId         String?  @unique
+  trialDays               Int      @default(0)
+
+  // Display
+  features                String[]                      // Marketing bullet points
+  highlighted             Boolean  @default(false)
+  active                  Boolean  @default(true)
+  sortOrder               Int      @default(0)
+  isDefault               Boolean  @default(false)      // Assigned to new users
+
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  users                   User[]
 }
 
 // ── Auth & Billing ──
@@ -40,21 +66,16 @@ model User {
   name                  String?
   imageUrl              String?
   stripeCustomerId      String?  @unique
-  tier                  UserTier @default(FREE)
+  planId                String
   isAdmin               Boolean  @default(false)
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
+  plan             Plan             @relation(fields: [planId], references: [id])
   subscriptions    Subscription[]
   briefings        Briefing[]
   feedItems        FeedItem[]
   briefingRequests BriefingRequest[]
-}
-
-enum UserTier {
-  FREE
-  PRO
-  PRO_PLUS
 }
 
 // ── Podcast & Episodes ──
