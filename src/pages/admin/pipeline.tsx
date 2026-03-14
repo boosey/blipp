@@ -874,6 +874,79 @@ export default function Pipeline() {
         onClose={() => { setTranscriptOpen(false); setTranscriptEpisodeId(null); }}
         episodeId={transcriptEpisodeId}
       />
+
+      {/* Dead Letter Queue */}
+      <DlqSection />
+    </div>
+  );
+}
+
+// ── DLQ Section ──
+
+interface DlqData {
+  stuckJobs: { id: string; currentStage: string; stuckMinutes: number }[];
+  exhaustedRetries: { id: string; stage: string; retryCount: number; errorMessage?: string }[];
+}
+
+function DlqSection() {
+  const apiFetch = useAdminFetch();
+  const [dlq, setDlq] = useState<DlqData | null>(null);
+
+  useEffect(() => {
+    apiFetch<{ data: DlqData }>("/pipeline/dlq")
+      .then((r) => setDlq(r.data))
+      .catch(() => {});
+  }, [apiFetch]);
+
+  if (!dlq) return null;
+  const totalIssues =
+    (dlq.stuckJobs?.length ?? 0) + (dlq.exhaustedRetries?.length ?? 0);
+  if (totalIssues === 0) return null;
+
+  return (
+    <div className="bg-[#EF4444]/5 border border-[#EF4444]/20 rounded-xl p-4 mt-1">
+      <h3 className="text-sm font-semibold text-[#EF4444] mb-3 flex items-center gap-2">
+        <AlertTriangle className="h-4 w-4" />
+        Dead Letter Queue ({totalIssues} issues)
+      </h3>
+      {dlq.stuckJobs?.length > 0 && (
+        <div className="mb-3">
+          <p className="text-xs text-[#9CA3AF] mb-1.5">
+            Stuck Jobs ({dlq.stuckJobs.length})
+          </p>
+          <div className="space-y-1">
+            {dlq.stuckJobs.map((j) => (
+              <div
+                key={j.id}
+                className="text-xs bg-[#0F1D32] border border-white/5 rounded p-2 font-mono text-[#9CA3AF]"
+              >
+                {j.id.slice(0, 12)}... &middot; {j.currentStage} &middot;
+                stuck {j.stuckMinutes}min
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {dlq.exhaustedRetries?.length > 0 && (
+        <div>
+          <p className="text-xs text-[#9CA3AF] mb-1.5">
+            Exhausted Retries ({dlq.exhaustedRetries.length})
+          </p>
+          <div className="space-y-1">
+            {dlq.exhaustedRetries.map((s) => (
+              <div
+                key={s.id}
+                className="text-xs bg-[#0F1D32] border border-white/5 rounded p-2 font-mono text-[#9CA3AF]"
+              >
+                {s.stage} &middot; {s.retryCount} retries
+                {s.errorMessage
+                  ? ` · ${s.errorMessage.slice(0, 80)}`
+                  : ""}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -16,6 +16,9 @@ import {
   CreditCard,
   FlaskConical,
   Boxes,
+  Key,
+  ScrollText,
+  AlertTriangle,
 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
@@ -42,6 +45,9 @@ const navItems = [
   { path: "configuration", label: "Configuration", icon: Settings, shortcut: "," },
   { path: "stt-benchmark", label: "STT Benchmark", icon: FlaskConical, shortcut: "T" },
   { path: "model-registry", label: "Model Registry", icon: Boxes, shortcut: "M" },
+  { path: "api-keys", label: "API Keys", icon: Key, shortcut: "K" },
+  { path: "audit-log", label: "Audit Log", icon: ScrollText, shortcut: "G" },
+  { path: "ai-errors", label: "AI Errors", icon: AlertTriangle, shortcut: "E" },
 ];
 
 export function AdminLayout() {

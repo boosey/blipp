@@ -16,6 +16,7 @@ import { classifyHttpError, type ApiErrorResponse } from "./lib/errors";
 import { routes } from "./routes/index";
 import { handleQueue, scheduled } from "./queues/index";
 import { shimQueuesForLocalDev } from "./lib/local-queue";
+import { apiKeyAuth } from "./middleware/api-key";
 import { rateLimit } from "./middleware/rate-limit";
 import { securityHeaders } from "./middleware/security-headers";
 import { cacheResponse } from "./middleware/cache";
@@ -83,6 +84,10 @@ app.use("/api/*", requestLogger);
 // Prisma middleware — creates per-request PrismaClient on c.get("prisma")
 app.use("/api/*", prismaMiddleware);
 
+// API key auth — after Prisma (needs DB lookup), before routes.
+// Falls through to Clerk auth if no API key header present.
+app.use("/api/*", apiKeyAuth);
+
 // Health check — no auth required (runs before route tree)
 app.get("/api/health", (c) => {
   return c.json({ status: "ok", timestamp: new Date().toISOString() });
@@ -114,8 +119,9 @@ app.use("/api/*", rateLimit({
   skipPaths: ["/api/webhooks/", "/api/health"],
 }));
 
-// Cache catalog for 5 minutes (read-heavy, changes infrequently)
+// Cache read-heavy endpoints
 app.use("/api/podcasts/catalog", cacheResponse({ maxAge: 300, staleWhileRevalidate: 60 }));
+app.use("/api/health/deep", cacheResponse({ maxAge: 30 }));
 
 // Security headers — CSP, X-Frame-Options, etc. for all responses
 app.use("/*", securityHeaders);

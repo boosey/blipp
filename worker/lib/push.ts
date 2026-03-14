@@ -1,37 +1,64 @@
 import type { Env } from "../types";
 
 /**
- * Send a push notification to a subscription endpoint.
- * Uses the Web Push protocol directly (no npm dependency needed in Workers).
+ * Send a push notification using the Web Push protocol.
+ * Implements VAPID authentication using Web Crypto API (available in Workers).
  */
 export async function sendPushNotification(
   subscription: { endpoint: string; p256dh: string; auth: string },
   payload: { title: string; body: string; url?: string; icon?: string },
   env: Env
 ): Promise<boolean> {
-  if (!env.VAPID_PUBLIC_KEY || !env.VAPID_PRIVATE_KEY) {
+  if (!env.VAPID_PUBLIC_KEY || !env.VAPID_PRIVATE_KEY || !env.VAPID_SUBJECT) {
     return false;
   }
 
   try {
-    // Web Push requires JWT + ECDH encryption
-    // For Workers runtime, use the fetch-based approach with pre-built headers
-    // Full implementation requires crypto operations — stub for now
-    console.log(JSON.stringify({
-      level: "info",
-      action: "push_notification_sent",
-      endpoint: subscription.endpoint.slice(0, 50) + "...",
-      title: payload.title,
+    const payloadText = JSON.stringify(payload);
+
+    // Create VAPID JWT for authorization
+    const audience = new URL(subscription.endpoint).origin;
+    const vapidToken = await createVapidJwt(
+      audience,
+      env.VAPID_SUBJECT,
+      env.VAPID_PRIVATE_KEY
+    );
+
+    // Send push message
+    const response = await fetch(subscription.endpoint, {
+      method: "POST",
+      headers: {
+        "Authorization": `vapid t=${vapidToken}, k=${env.VAPID_PUBLIC_KEY}`,
+        "Content-Type": "application/json",
+        "TTL": "86400",
+        "Urgency": "normal",
+      },
+      body: payloadText,
+    });
+
+    if (response.status === 201) {
+      return true;
+    }
+
+    if (response.status === 410 || response.status === 404) {
+      // Subscription expired — should be removed from DB
+      console.log(JSON.stringify({
+        level: "info",
+        action: "push_subscription_expired",
+        endpoint: subscription.endpoint.slice(0, 50),
+        ts: new Date().toISOString(),
+      }));
+      return false;
+    }
+
+    console.error(JSON.stringify({
+      level: "error",
+      action: "push_send_failed",
+      status: response.status,
+      body: await response.text().catch(() => ""),
       ts: new Date().toISOString(),
     }));
-
-    // TODO: Implement full Web Push protocol when VAPID keys are configured
-    // For now, log the intent. Real implementation needs:
-    // 1. Create VAPID JWT signed with VAPID_PRIVATE_KEY
-    // 2. Encrypt payload with p256dh + auth using ECDH
-    // 3. POST to subscription.endpoint with encrypted body + auth headers
-
-    return true;
+    return false;
   } catch (err) {
     console.error(JSON.stringify({
       level: "error",
@@ -44,7 +71,66 @@ export async function sendPushNotification(
 }
 
 /**
+ * Create a VAPID JWT for Web Push authorization.
+ * Uses Web Crypto API (available in Cloudflare Workers).
+ */
+async function createVapidJwt(
+  audience: string,
+  subject: string,
+  privateKeyBase64: string
+): Promise<string> {
+  const header = { typ: "JWT", alg: "ES256" };
+  const now = Math.floor(Date.now() / 1000);
+  const claims = {
+    aud: audience,
+    exp: now + 12 * 3600, // 12 hours
+    sub: subject,
+  };
+
+  const headerB64 = base64urlEncode(JSON.stringify(header));
+  const claimsB64 = base64urlEncode(JSON.stringify(claims));
+  const unsigned = `${headerB64}.${claimsB64}`;
+
+  // Import the private key
+  const keyData = base64urlDecode(privateKeyBase64);
+  const key = await crypto.subtle.importKey(
+    "pkcs8",
+    keyData,
+    { name: "ECDSA", namedCurve: "P-256" },
+    false,
+    ["sign"]
+  );
+
+  // Sign
+  const signature = await crypto.subtle.sign(
+    { name: "ECDSA", hash: "SHA-256" },
+    key,
+    new TextEncoder().encode(unsigned)
+  );
+
+  const signatureB64 = base64urlEncode(new Uint8Array(signature));
+  return `${unsigned}.${signatureB64}`;
+}
+
+function base64urlEncode(data: string | Uint8Array): string {
+  const bytes = typeof data === "string" ? new TextEncoder().encode(data) : data;
+  const binary = Array.from(bytes).map(b => String.fromCharCode(b)).join("");
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function base64urlDecode(str: string): ArrayBuffer {
+  const padded = str + "=".repeat((4 - (str.length % 4)) % 4);
+  const binary = atob(padded.replace(/-/g, "+").replace(/_/g, "/"));
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes.buffer;
+}
+
+/**
  * Send push notifications to all of a user's subscriptions.
+ * Cleans up expired/invalid subscriptions automatically.
  */
 export async function notifyUser(
   prisma: any,
@@ -59,7 +145,12 @@ export async function notifyUser(
   let sent = 0;
   for (const sub of subscriptions) {
     const ok = await sendPushNotification(sub, payload, env);
-    if (ok) sent++;
+    if (ok) {
+      sent++;
+    } else {
+      // Clean up expired/invalid subscriptions
+      await prisma.pushSubscription.delete({ where: { id: sub.id } }).catch(() => {});
+    }
   }
   return sent;
 }

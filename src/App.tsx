@@ -25,6 +25,9 @@ const Requests = lazy(() => import("./pages/admin/requests"));
 const Plans = lazy(() => import("./pages/admin/plans"));
 const SttBenchmark = lazy(() => import("./pages/admin/stt-benchmark"));
 const ModelRegistry = lazy(() => import("./pages/admin/model-registry"));
+const AdminApiKeys = lazy(() => import("./pages/admin/api-keys"));
+const AdminAuditLog = lazy(() => import("./pages/admin/audit-log"));
+const AdminAiErrors = lazy(() => import("./pages/admin/ai-errors"));
 const Onboarding = lazy(() => import("./pages/onboarding"));
 const History = lazy(() => import("./pages/history"));
 
@@ -94,6 +97,9 @@ export default function App() {
         <Route path="requests" element={<Suspense fallback={<AdminLoading />}><Requests /></Suspense>} />
         <Route path="stt-benchmark" element={<Suspense fallback={<AdminLoading />}><SttBenchmark /></Suspense>} />
         <Route path="model-registry" element={<Suspense fallback={<AdminLoading />}><ModelRegistry /></Suspense>} />
+        <Route path="api-keys" element={<Suspense fallback={<AdminLoading />}><AdminApiKeys /></Suspense>} />
+        <Route path="audit-log" element={<Suspense fallback={<AdminLoading />}><AdminAuditLog /></Suspense>} />
+        <Route path="ai-errors" element={<Suspense fallback={<AdminLoading />}><AdminAiErrors /></Suspense>} />
       </Route>
     </Routes>
   );
