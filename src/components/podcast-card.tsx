@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
+import { Lock } from "lucide-react";
 import { useApiFetch } from "../lib/api";
+import { usePlan } from "../contexts/plan-context";
 import {
   Dialog,
   DialogContent,
@@ -35,6 +37,7 @@ export function PodcastCard({
   onToggle,
 }: PodcastCardProps) {
   const apiFetch = useApiFetch();
+  const planUsage = usePlan();
   const [loading, setLoading] = useState(false);
   const [showTierDialog, setShowTierDialog] = useState(false);
   const [selectedTier, setSelectedTier] = useState(5);
@@ -84,6 +87,18 @@ export function PodcastCard({
     if (isSubscribed) {
       handleUnsubscribe(e);
     } else {
+      // Check subscription limit
+      if (
+        planUsage.subscriptions.limit !== null &&
+        planUsage.subscriptions.remaining !== null &&
+        planUsage.subscriptions.remaining <= 0
+      ) {
+        toast.error(
+          `Your ${planUsage.plan.name} plan allows ${planUsage.subscriptions.limit} subscription${planUsage.subscriptions.limit !== 1 ? "s" : ""}. Upgrade to add more.`,
+          { action: { label: "View Plans", onClick: () => window.location.href = "/pricing" } }
+        );
+        return;
+      }
       setShowTierDialog(true);
     }
   }
@@ -130,19 +145,31 @@ export function PodcastCard({
               </DialogDescription>
             </DialogHeader>
             <div className="grid grid-cols-4 gap-2 py-2">
-              {DURATION_TIERS.map((tier) => (
-                <button
-                  key={tier}
-                  onClick={() => setSelectedTier(tier)}
-                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    selectedTier === tier
-                      ? "bg-white text-zinc-950"
-                      : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
-                  }`}
-                >
-                  {tier}m
-                </button>
-              ))}
+              {DURATION_TIERS.map((tier) => {
+                const locked = tier > planUsage.maxDurationMinutes;
+                return (
+                  <button
+                    key={tier}
+                    onClick={() => {
+                      if (locked) {
+                        toast.error(`Upgrade for ${tier}-minute briefings`);
+                        return;
+                      }
+                      setSelectedTier(tier);
+                    }}
+                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-1 ${
+                      locked
+                        ? "bg-zinc-900 text-zinc-600 cursor-not-allowed"
+                        : selectedTier === tier
+                          ? "bg-white text-zinc-950"
+                          : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+                    }`}
+                  >
+                    {tier}m
+                    {locked && <Lock className="w-3 h-3" />}
+                  </button>
+                );
+              })}
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setShowTierDialog(false)}>

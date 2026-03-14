@@ -2,6 +2,7 @@ import { Outlet, useLocation, Navigate } from "react-router-dom";
 import { UserButton } from "@clerk/clerk-react";
 import { BottomNav } from "../components/bottom-nav";
 import { AudioProvider, useAudio } from "../contexts/audio-context";
+import { PlanProvider } from "../contexts/plan-context";
 import { MiniPlayer } from "../components/mini-player";
 import { useOnboarding } from "../hooks/use-onboarding";
 
@@ -48,7 +49,9 @@ function MobileLayoutInner() {
 export function MobileLayout() {
   return (
     <AudioProvider>
-      <MobileLayoutInner />
+      <PlanProvider>
+        <MobileLayoutInner />
+      </PlanProvider>
     </AudioProvider>
   );
 }

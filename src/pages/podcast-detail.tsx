@@ -1,35 +1,51 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import { toast } from "sonner";
-import { Heart } from "lucide-react";
+import { Heart, Lock } from "lucide-react";
 import { useApiFetch } from "../lib/api";
 import { DURATION_TIERS } from "../lib/duration-tiers";
 import { Skeleton } from "../components/ui/skeleton";
+import { usePlan } from "../contexts/plan-context";
+import { UpgradePrompt } from "../components/upgrade-prompt";
 import type { PodcastDetail as PodcastDetailType, EpisodeSummary } from "../types/user";
 import type { DurationTier } from "../lib/duration-tiers";
 
 function TierPicker({
   selected,
   onSelect,
+  maxDurationMinutes,
 }: {
   selected: DurationTier | null;
   onSelect: (tier: DurationTier) => void;
+  maxDurationMinutes: number;
 }) {
   return (
     <div className="flex flex-wrap gap-1.5">
-      {DURATION_TIERS.map((tier) => (
-        <button
-          key={tier}
-          onClick={() => onSelect(tier)}
-          className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
-            selected === tier
-              ? "bg-white text-zinc-950"
-              : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
-          }`}
-        >
-          {tier}m
-        </button>
-      ))}
+      {DURATION_TIERS.map((tier) => {
+        const locked = tier > maxDurationMinutes;
+        return (
+          <button
+            key={tier}
+            onClick={() => {
+              if (locked) {
+                toast.error(`Your plan supports up to ${maxDurationMinutes}-minute briefings. Upgrade for longer.`);
+                return;
+              }
+              onSelect(tier);
+            }}
+            className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors flex items-center gap-1 ${
+              locked
+                ? "bg-zinc-900 text-zinc-600 cursor-not-allowed"
+                : selected === tier
+                  ? "bg-white text-zinc-950"
+                  : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
+            }`}
+          >
+            {tier}m
+            {locked && <Lock className="w-2.5 h-2.5" />}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -45,6 +61,7 @@ export function PodcastDetail() {
   const [showSubscribeTierPicker, setShowSubscribeTierPicker] = useState(false);
   const [briefTierPickerEpisodeId, setBriefTierPickerEpisodeId] = useState<string | null>(null);
   const [isFavorited, setIsFavorited] = useState(false);
+  const planUsage = usePlan();
 
   const fetchData = useCallback(async () => {
     if (!podcastId) return;
@@ -246,12 +263,19 @@ export function PodcastDetail() {
             </div>
           ) : (
             <div className="mt-2">
-              {showSubscribeTierPicker ? (
+              {planUsage.subscriptions.limit !== null &&
+                planUsage.subscriptions.remaining !== null &&
+                planUsage.subscriptions.remaining <= 0 ? (
+                <UpgradePrompt
+                  message={`Your ${planUsage.plan.name} plan allows ${planUsage.subscriptions.limit} subscription${planUsage.subscriptions.limit !== 1 ? "s" : ""}. Upgrade to subscribe to more podcasts.`}
+                />
+              ) : showSubscribeTierPicker ? (
                 <div className="space-y-2">
                   <p className="text-xs text-zinc-400">Briefing length:</p>
                   <TierPicker
                     selected={null}
                     onSelect={handleSubscribeWithTier}
+                    maxDurationMinutes={planUsage.maxDurationMinutes}
                   />
                 </div>
               ) : (
@@ -310,6 +334,7 @@ export function PodcastDetail() {
                       <TierPicker
                         selected={null}
                         onSelect={(tier) => handleCreateBriefing(ep.id, tier)}
+                        maxDurationMinutes={planUsage.maxDurationMinutes}
                       />
                     </div>
                   ) : (
