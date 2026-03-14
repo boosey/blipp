@@ -566,6 +566,82 @@ describe("handleTranscription", () => {
     expect(msg.ack).toHaveBeenCalled();
   });
 
+  describe("AiProviderError handling", () => {
+    it("captures AI provider error via writeAiError and notifies orchestrator", async () => {
+      const { AiProviderError } = await import("../../lib/ai-errors");
+      const episodeNoTranscript = { ...EPISODE, transcriptUrl: null };
+      const msg = createMsg({ jobId: "job1", episodeId: "ep1" });
+      mockPrisma.pipelineJob.findUnique.mockResolvedValue(JOB);
+      mockPrisma.pipelineJob.update.mockResolvedValue({});
+      mockPrisma.pipelineStep.create.mockResolvedValue({ id: "step1" });
+      mockPrisma.distillation.findUnique.mockResolvedValue(null);
+      mockPrisma.episode.findUnique.mockResolvedValue(episodeNoTranscript);
+      mockPrisma.podcast.findUnique.mockResolvedValue(PODCAST);
+      mockPrisma.distillation.upsert.mockResolvedValue({});
+      mockPrisma.pipelineEvent.create.mockResolvedValue({});
+      mockPrisma.aiServiceError.create.mockResolvedValue({});
+
+      (lookupPodcastIndexTranscript as any).mockResolvedValue(null);
+
+      // STT provider throws AiProviderError
+      mockTranscribe.mockRejectedValueOnce(
+        new AiProviderError({
+          message: "Whisper API rate limited",
+          provider: "cloudflare",
+          model: "whisper-large-v3-turbo",
+          httpStatus: 429,
+          rawResponse: '{"error":"rate_limit"}',
+          requestDurationMs: 500,
+        })
+      );
+
+      // Mock fetch for audio download
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: new Map([["content-type", "audio/mpeg"]]),
+        arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(20000)),
+      }));
+
+      await handleTranscription(createBatch([msg]), env, ctx);
+
+      // Step marked FAILED
+      expect(mockPrisma.pipelineStep.updateMany).toHaveBeenCalledWith({
+        where: { jobId: "job1", stage: "TRANSCRIPTION", status: "IN_PROGRESS" },
+        data: expect.objectContaining({
+          status: "FAILED",
+          errorMessage: "Whisper API rate limited",
+        }),
+      });
+
+      // AI error captured to DB
+      expect(mockPrisma.aiServiceError.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          service: "stt",
+          provider: "cloudflare",
+          model: "whisper-large-v3-turbo",
+          category: "rate_limit",
+          severity: "transient",
+          httpStatus: 429,
+        }),
+      });
+
+      // Orchestrator notified with job-failed
+      expect(env.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          requestId: "req1",
+          action: "job-failed",
+          jobId: "job1",
+          errorMessage: "Whisper API rate limited",
+        })
+      );
+
+      // Message acked (not retried)
+      expect(msg.ack).toHaveBeenCalled();
+      expect(msg.retry).not.toHaveBeenCalled();
+    });
+  });
+
   it("fails gracefully when audio is too small", async () => {
     const episodeNoTranscript = { ...EPISODE, transcriptUrl: null };
     const msg = createMsg({ jobId: "job1", episodeId: "ep1" });

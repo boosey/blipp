@@ -421,6 +421,66 @@ describe("handleNarrativeGeneration", () => {
     });
   });
 
+  describe("AiProviderError handling", () => {
+    it("captures AI provider error via writeAiError and notifies orchestrator", async () => {
+      const { AiProviderError } = await import("../../lib/ai-errors");
+      mockPrisma.workProduct.findFirst.mockResolvedValue(null);
+      mockPrisma.clip.findUnique.mockResolvedValue(null);
+      mockPrisma.distillation.findFirst.mockResolvedValue(DISTILLATION);
+      mockPrisma.pipelineStep.updateMany.mockResolvedValue({ count: 1 });
+      mockPrisma.pipelineEvent.create.mockResolvedValue({});
+      mockPrisma.aiServiceError.create.mockResolvedValue({});
+
+      (generateNarrative as any).mockRejectedValueOnce(
+        new AiProviderError({
+          message: "Anthropic rate limit exceeded",
+          provider: "anthropic",
+          model: "claude-sonnet-4-20250514",
+          httpStatus: 429,
+          rawResponse: '{"error":"rate_limit_error"}',
+          requestDurationMs: 150,
+        })
+      );
+
+      const { mockMsg, mockBatch } = makeBatch(msgBody);
+      await handleNarrativeGeneration(mockBatch, mockEnv, mockCtx);
+
+      // Step marked FAILED
+      expect(mockPrisma.pipelineStep.updateMany).toHaveBeenCalledWith({
+        where: { jobId: "job-1", stage: "NARRATIVE_GENERATION", status: "IN_PROGRESS" },
+        data: expect.objectContaining({
+          status: "FAILED",
+          errorMessage: "Anthropic rate limit exceeded",
+        }),
+      });
+
+      // AI error captured to DB
+      expect(mockPrisma.aiServiceError.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          service: "narrative",
+          provider: "anthropic",
+          model: "claude-sonnet-4-20250514",
+          category: "rate_limit",
+          severity: "transient",
+          httpStatus: 429,
+        }),
+      });
+
+      // Orchestrator notified with job-failed
+      expect(mockEnv.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          requestId: "req-1",
+          action: "job-failed",
+          jobId: "job-1",
+          errorMessage: "Anthropic rate limit exceeded",
+        })
+      );
+
+      expect(mockMsg.ack).toHaveBeenCalled();
+      expect(mockMsg.retry).not.toHaveBeenCalled();
+    });
+  });
+
   describe("logging", () => {
     it("logs batch_start", async () => {
       mockPrisma.workProduct.findFirst.mockResolvedValue({ id: "wp-1", type: "NARRATIVE" });

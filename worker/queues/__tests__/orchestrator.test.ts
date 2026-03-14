@@ -468,6 +468,135 @@ describe("handleOrchestrator", () => {
     });
   });
 
+  // ── job-failed action ──
+
+  describe("job-failed", () => {
+    it("should mark job as FAILED and dispatch to assembly when all jobs terminal", async () => {
+      const msg = createMsg({
+        requestId: "req1", action: "job-failed", jobId: "job1",
+        errorMessage: "Transcription failed: Audio too small",
+      });
+      mockPrisma.briefingRequest.findUnique.mockResolvedValue({
+        id: "req1", status: "PROCESSING", userId: "u1", targetMinutes: 5,
+      });
+      mockPrisma.pipelineJob.findUnique.mockResolvedValue({
+        id: "job1", requestId: "req1", episodeId: "ep1", durationTier: 5,
+        status: "IN_PROGRESS", currentStage: "TRANSCRIPTION",
+      });
+      mockPrisma.pipelineJob.update.mockResolvedValue({});
+      // Only this one job, now terminal
+      mockPrisma.pipelineJob.findMany.mockResolvedValue([
+        { id: "job1", status: "FAILED", episodeId: "ep1", durationTier: 5 },
+      ]);
+
+      await handleOrchestrator(createBatch([msg]), env, ctx);
+
+      // Job marked FAILED with error message
+      expect(mockPrisma.pipelineJob.update).toHaveBeenCalledWith({
+        where: { id: "job1" },
+        data: {
+          status: "FAILED",
+          errorMessage: "Transcription failed: Audio too small",
+          completedAt: expect.any(Date),
+        },
+      });
+
+      // Assembly dispatched since all jobs are terminal
+      expect(env.BRIEFING_ASSEMBLY_QUEUE.send).toHaveBeenCalledWith(
+        expect.objectContaining({ requestId: "req1" })
+      );
+      expect(msg.ack).toHaveBeenCalled();
+    });
+
+    it("should NOT dispatch to assembly when other jobs still in progress", async () => {
+      const msg = createMsg({
+        requestId: "req1", action: "job-failed", jobId: "job1",
+        errorMessage: "STT failed",
+      });
+      mockPrisma.briefingRequest.findUnique.mockResolvedValue({
+        id: "req1", status: "PROCESSING", userId: "u1", targetMinutes: 10,
+      });
+      mockPrisma.pipelineJob.findUnique.mockResolvedValue({
+        id: "job1", requestId: "req1", episodeId: "ep1", durationTier: 5,
+        status: "IN_PROGRESS", currentStage: "TRANSCRIPTION",
+      });
+      mockPrisma.pipelineJob.update.mockResolvedValue({});
+      // job1 failed but job2 still going
+      mockPrisma.pipelineJob.findMany.mockResolvedValue([
+        { id: "job1", status: "FAILED", episodeId: "ep1", durationTier: 5 },
+        { id: "job2", status: "IN_PROGRESS", episodeId: "ep2", durationTier: 5 },
+      ]);
+
+      await handleOrchestrator(createBatch([msg]), env, ctx);
+
+      expect(env.BRIEFING_ASSEMBLY_QUEUE.send).not.toHaveBeenCalled();
+      expect(msg.ack).toHaveBeenCalled();
+    });
+
+    it("should skip already-terminal jobs", async () => {
+      const msg = createMsg({
+        requestId: "req1", action: "job-failed", jobId: "job1",
+        errorMessage: "Duplicate failure",
+      });
+      mockPrisma.briefingRequest.findUnique.mockResolvedValue({
+        id: "req1", status: "PROCESSING", userId: "u1", targetMinutes: 5,
+      });
+      mockPrisma.pipelineJob.findUnique.mockResolvedValue({
+        id: "job1", status: "FAILED", currentStage: "TRANSCRIPTION",
+      });
+
+      await handleOrchestrator(createBatch([msg]), env, ctx);
+
+      // Should NOT update job again
+      expect(mockPrisma.pipelineJob.update).not.toHaveBeenCalled();
+      expect(msg.ack).toHaveBeenCalled();
+    });
+
+    it("should ack when job not found for failure", async () => {
+      const msg = createMsg({
+        requestId: "req1", action: "job-failed", jobId: "ghost",
+        errorMessage: "Unknown error",
+      });
+      mockPrisma.briefingRequest.findUnique.mockResolvedValue({
+        id: "req1", status: "PROCESSING", userId: "u1", targetMinutes: 5,
+      });
+      mockPrisma.pipelineJob.findUnique.mockResolvedValue(null);
+
+      await handleOrchestrator(createBatch([msg]), env, ctx);
+
+      expect(mockPrisma.pipelineJob.update).not.toHaveBeenCalled();
+      expect(msg.ack).toHaveBeenCalled();
+    });
+
+    it("should dispatch to assembly when all jobs fail (total failure)", async () => {
+      const msg = createMsg({
+        requestId: "req1", action: "job-failed", jobId: "job2",
+        errorMessage: "Distillation timeout",
+      });
+      mockPrisma.briefingRequest.findUnique.mockResolvedValue({
+        id: "req1", status: "PROCESSING", userId: "u1", targetMinutes: 10,
+      });
+      mockPrisma.pipelineJob.findUnique.mockResolvedValue({
+        id: "job2", requestId: "req1", episodeId: "ep2", durationTier: 5,
+        status: "IN_PROGRESS", currentStage: "DISTILLATION",
+      });
+      mockPrisma.pipelineJob.update.mockResolvedValue({});
+      // Both jobs now FAILED
+      mockPrisma.pipelineJob.findMany.mockResolvedValue([
+        { id: "job1", status: "FAILED", episodeId: "ep1", durationTier: 5 },
+        { id: "job2", status: "FAILED", episodeId: "ep2", durationTier: 5 },
+      ]);
+
+      await handleOrchestrator(createBatch([msg]), env, ctx);
+
+      // Assembly still dispatched so it can handle the total failure
+      expect(env.BRIEFING_ASSEMBLY_QUEUE.send).toHaveBeenCalledWith(
+        expect.objectContaining({ requestId: "req1" })
+      );
+      expect(msg.ack).toHaveBeenCalled();
+    });
+  });
+
   // ── Error handling ──
 
   describe("error handling", () => {

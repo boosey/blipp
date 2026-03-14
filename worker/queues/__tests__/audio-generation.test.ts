@@ -365,6 +365,62 @@ describe("handleAudioGeneration", () => {
     });
   });
 
+  describe("AiProviderError handling", () => {
+    it("captures AI provider error via writeAiError and notifies orchestrator", async () => {
+      const { AiProviderError } = await import("../../lib/ai-errors");
+      mockPrisma.clip.findUnique.mockResolvedValueOnce(CLIP_WITH_NARRATIVE);
+      mockPrisma.pipelineEvent.create.mockResolvedValue({});
+      mockPrisma.aiServiceError.create.mockResolvedValue({});
+      mockPrisma.pipelineStep.findFirst.mockResolvedValue({ id: "step-1" });
+
+      (generateSpeech as any).mockRejectedValueOnce(
+        new AiProviderError({
+          message: "OpenAI TTS quota exceeded",
+          provider: "openai",
+          model: "gpt-4o-mini-tts",
+          httpStatus: 402,
+          rawResponse: '{"error":"insufficient_quota"}',
+          requestDurationMs: 300,
+        })
+      );
+
+      const { mockMsg, mockBatch } = makeBatch(msgBody);
+      await handleAudioGeneration(mockBatch, mockEnv, mockCtx);
+
+      // Step marked FAILED
+      expect(mockPrisma.pipelineStep.updateMany).toHaveBeenCalledWith({
+        where: { jobId: "job-1", stage: "AUDIO_GENERATION", status: "IN_PROGRESS" },
+        data: expect.objectContaining({
+          status: "FAILED",
+          errorMessage: "OpenAI TTS quota exceeded",
+        }),
+      });
+
+      // AI error captured to DB
+      expect(mockPrisma.aiServiceError.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          service: "tts",
+          provider: "openai",
+          model: "gpt-4o-mini-tts",
+          operation: "synthesize",
+        }),
+      });
+
+      // Orchestrator notified with job-failed
+      expect(mockEnv.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          requestId: "req-1",
+          action: "job-failed",
+          jobId: "job-1",
+          errorMessage: "OpenAI TTS quota exceeded",
+        })
+      );
+
+      expect(mockMsg.ack).toHaveBeenCalled();
+      expect(mockMsg.retry).not.toHaveBeenCalled();
+    });
+  });
+
   describe("logging", () => {
     it("logs batch_start", async () => {
       mockPrisma.clip.findUnique.mockResolvedValue({
