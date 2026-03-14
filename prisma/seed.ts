@@ -6,62 +6,59 @@ const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
 const prisma = new PrismaClient({ adapter });
 
 async function main() {
+  // ── Plans ──
+
   await prisma.plan.upsert({
-    where: { tier: "FREE" },
+    where: { slug: "free" },
     update: {},
     create: {
-      tier: "FREE",
       name: "Free",
-      priceCents: 0,
-      stripePriceId: null,
-      stripeProductId: null,
+      slug: "free",
+      priceCentsMonthly: 0,
+      briefingsPerWeek: 10,
+      maxDurationMinutes: 5,
+      maxPodcastSubscriptions: 0,
+      isDefault: true,
       features: [
         "3 briefings per week",
         "Up to 5 min briefings",
         "3 podcast subscriptions",
       ],
-      highlighted: false,
       sortOrder: 0,
     },
   });
 
   await prisma.plan.upsert({
-    where: { tier: "PRO" },
+    where: { slug: "pro" },
     update: {},
     create: {
-      tier: "PRO",
       name: "Pro",
-      priceCents: 999,
-      stripePriceId: process.env.STRIPE_PRO_PRICE_ID ?? null,
-      stripeProductId: process.env.STRIPE_PRO_PRODUCT_ID ?? null,
-      features: [
-        "Unlimited briefings",
-        "Up to 15 min briefings",
-        "Unlimited podcast subscriptions",
-        "Priority processing",
-      ],
-      highlighted: true,
+      slug: "pro",
+      priceCentsMonthly: 999,
+      priceCentsAnnual: 9999,
+      briefingsPerWeek: null,
+      maxDurationMinutes: 15,
+      maxPodcastSubscriptions: 5,
+      adFree: true,
       sortOrder: 1,
     },
   });
 
   await prisma.plan.upsert({
-    where: { tier: "PRO_PLUS" },
+    where: { slug: "pro-plus" },
     update: {},
     create: {
-      tier: "PRO_PLUS",
       name: "Pro+",
-      priceCents: 1999,
-      stripePriceId: process.env.STRIPE_PRO_PLUS_PRICE_ID ?? null,
-      stripeProductId: process.env.STRIPE_PRO_PLUS_PRODUCT_ID ?? null,
-      features: [
-        "Unlimited briefings",
-        "Up to 30 min briefings",
-        "Unlimited podcast subscriptions",
-        "Priority processing",
-        "Early access to new features",
-      ],
-      highlighted: false,
+      slug: "pro-plus",
+      priceCentsMonthly: 1999,
+      priceCentsAnnual: 17999,
+      briefingsPerWeek: null,
+      maxDurationMinutes: 30,
+      maxPodcastSubscriptions: null,
+      adFree: true,
+      priorityProcessing: true,
+      earlyAccess: true,
+      crossPodcastSynthesis: true,
       sortOrder: 2,
     },
   });

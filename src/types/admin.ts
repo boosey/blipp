@@ -325,7 +325,6 @@ export interface AdminBriefingDetail {
 
 // ── Users ──
 
-export type UserTier = "FREE" | "PRO" | "PRO_PLUS";
 export type UserSegment =
   | "all"
   | "power_users"
@@ -340,7 +339,7 @@ export interface AdminUser {
   email: string;
   name?: string;
   imageUrl?: string;
-  tier: UserTier;
+  plan: { id: string; name: string; slug: string };
   isAdmin: boolean;
   status: "active" | "inactive" | "churned";
   briefingCount: number;
@@ -458,28 +457,11 @@ export interface DurationTier {
   usageFrequency: number;
 }
 
-export interface SubscriptionTierConfig {
-  tier: UserTier;
-  name: string;
-  priceCents: number;
-  active: boolean;
-  userCount: number;
-  highlighted?: boolean;
-  stripePriceId?: string;
-  limits: {
-    briefingsPerWeek: number | null; // null = unlimited
-    maxDurationMinutes: number;
-    maxPodcasts: number | null;
-  };
-  features: string[];
-}
-
 export interface FeatureFlag {
   id: string;
   name: string;
   enabled: boolean;
   rolloutPercentage: number;
-  tierAvailability: UserTier[];
   description?: string;
 }
 
