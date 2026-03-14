@@ -51,6 +51,7 @@ podcasts.get("/catalog", async (c) => {
         description: true,
         imageUrl: true,
         feedUrl: true,
+        categories: true,
         _count: { select: { episodes: true } },
       },
     }),

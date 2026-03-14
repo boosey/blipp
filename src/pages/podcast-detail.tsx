@@ -1,7 +1,9 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "react-router-dom";
+import { toast } from "sonner";
 import { useApiFetch } from "../lib/api";
 import { DURATION_TIERS } from "../lib/duration-tiers";
+import { Skeleton } from "../components/ui/skeleton";
 import type { PodcastDetail as PodcastDetailType, EpisodeSummary } from "../types/user";
 import type { DurationTier } from "../lib/duration-tiers";
 
@@ -51,8 +53,8 @@ export function PodcastDetail() {
       ]);
       setPodcast(podData.podcast);
       setEpisodes(epData.episodes);
-    } catch {
-      // Handle error
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to load podcast");
     } finally {
       setLoading(false);
     }
@@ -79,11 +81,14 @@ export function PodcastDetail() {
           durationTier: tier,
         }),
       });
+      toast.success(`Subscribed to ${podcast.title}`);
       setPodcast((prev) =>
         prev
           ? { ...prev, isSubscribed: true, subscriptionDurationTier: tier }
           : prev
       );
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to subscribe");
     } finally {
       setSubscribing(false);
     }
@@ -94,11 +99,14 @@ export function PodcastDetail() {
     setSubscribing(true);
     try {
       await apiFetch(`/podcasts/subscribe/${podcast.id}`, { method: "DELETE" });
+      toast.success(`Unsubscribed from ${podcast.title}`);
       setPodcast((prev) =>
         prev
           ? { ...prev, isSubscribed: false, subscriptionDurationTier: null }
           : prev
       );
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to unsubscribe");
     } finally {
       setSubscribing(false);
     }
@@ -112,6 +120,9 @@ export function PodcastDetail() {
         method: "POST",
         body: JSON.stringify({ podcastId, episodeId, durationTier: tier }),
       });
+      toast("Briefing requested — usually ready in 2-5 minutes", { duration: 4000 });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to request briefing");
     } finally {
       setRequestingEpisodeId(null);
     }
@@ -125,8 +136,32 @@ export function PodcastDetail() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <p className="text-zinc-400">Loading...</p>
+      <div className="space-y-6">
+        <div className="flex gap-4">
+          <Skeleton className="w-24 h-24 rounded-lg flex-shrink-0" />
+          <div className="flex-1 space-y-2">
+            <Skeleton className="h-5 w-3/4" />
+            <Skeleton className="h-4 w-1/2" />
+            <Skeleton className="h-3 w-20" />
+            <Skeleton className="h-8 w-24 rounded-full mt-2" />
+          </div>
+        </div>
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-2/3" />
+        <div className="space-y-2">
+          <Skeleton className="h-5 w-20" />
+          {Array.from({ length: 5 }, (_, i) => (
+            <div key={i} className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-4 w-3/4" />
+                  <Skeleton className="h-3 w-1/3" />
+                </div>
+                <Skeleton className="h-7 w-14 rounded" />
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     );
   }

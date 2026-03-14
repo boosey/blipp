@@ -3,6 +3,8 @@ import type { Env } from "../types";
 import { requireAuth } from "../middleware/auth";
 import { getCurrentUser } from "../lib/admin-helpers";
 import { buildUserExport, deleteUserAccount } from "../lib/user-data";
+import { getActiveFlags } from "../lib/feature-flags";
+import { getUserUsage } from "../lib/plan-limits";
 
 export const me = new Hono<{ Bindings: Env }>();
 
@@ -19,6 +21,12 @@ me.get("/", async (c) => {
     where: { id: user.id },
     include: { plan: true },
   });
+
+  const flags = await getActiveFlags(prisma, {
+    userId: fullUser.clerkId,
+    planSlug: fullUser.plan?.slug,
+  });
+
   return c.json({
     user: {
       id: fullUser.id,
@@ -31,8 +39,19 @@ me.get("/", async (c) => {
         slug: fullUser.plan.slug,
       },
       isAdmin: fullUser.isAdmin,
+      featureFlags: flags,
     },
   });
+});
+
+/**
+ * GET /usage — Return the current user's usage metering data.
+ */
+me.get("/usage", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
+  const usage = await getUserUsage(user.id, prisma);
+  return c.json({ data: usage });
 });
 
 /**

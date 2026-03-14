@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { toast } from "sonner";
 import { useApiFetch } from "../lib/api";
 import {
   Dialog,
@@ -53,7 +54,10 @@ export function PodcastCard({
           durationTier,
         }),
       });
+      toast.success(`Subscribed to ${title}`);
       onToggle?.();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to subscribe");
     } finally {
       setLoading(false);
     }
@@ -65,7 +69,10 @@ export function PodcastCard({
     setLoading(true);
     try {
       await apiFetch(`/podcasts/subscribe/${id}`, { method: "DELETE" });
+      toast.success(`Unsubscribed from ${title}`);
       onToggle?.();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to unsubscribe");
     } finally {
       setLoading(false);
     }

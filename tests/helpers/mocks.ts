@@ -46,6 +46,7 @@ export function createMockPrisma() {
     sttBenchmarkResult: modelMethods(),
     aiServiceError: modelMethods(),
     auditLog: modelMethods(),
+    apiKey: modelMethods(),
     $disconnect: vi.fn().mockResolvedValue(undefined),
   };
 }

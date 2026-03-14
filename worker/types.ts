@@ -3,6 +3,8 @@ declare module "hono" {
   interface ContextVariableMap {
     prisma: any;
     requestId: string;
+    apiKeyScopes: string[];
+    apiKeyUserId: string;
   }
 }
 
@@ -65,4 +67,8 @@ export type Env = {
   GROQ_API_KEY: string;
   /** Comma-separated list of allowed CORS origins (optional, overrides defaults) */
   ALLOWED_ORIGINS?: string;
+  /** Neon API key for backup verification (optional) */
+  NEON_API_KEY?: string;
+  /** Neon project ID for backup verification (optional) */
+  NEON_PROJECT_ID?: string;
 };

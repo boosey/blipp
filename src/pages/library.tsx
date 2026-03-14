@@ -1,5 +1,8 @@
 import { Link } from "react-router-dom";
+import { Library } from "lucide-react";
 import { useFetch } from "../lib/use-fetch";
+import { LibrarySkeleton } from "../components/skeletons/library-skeleton";
+import { EmptyState } from "../components/empty-state";
 
 interface SubscribedPodcast {
   id: string;
@@ -18,21 +21,17 @@ export function LibraryPage() {
   const subscriptions = data?.subscriptions ?? [];
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <p className="text-zinc-400">Loading...</p>
-      </div>
-    );
+    return <LibrarySkeleton />;
   }
 
   if (subscriptions.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 gap-3">
-        <p className="text-zinc-400 text-center">No subscriptions yet.</p>
-        <p className="text-zinc-500 text-sm text-center">
-          Search for podcasts in Discover and subscribe to your favorites.
-        </p>
-      </div>
+      <EmptyState
+        icon={Library}
+        title="Your library is empty"
+        description="Find podcasts you love and subscribe for automatic briefings."
+        action={{ label: "Browse Podcasts", to: "/discover" }}
+      />
     );
   }
 

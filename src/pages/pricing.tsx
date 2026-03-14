@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { SignedIn, SignedOut, SignInButton, useUser } from "@clerk/clerk-react";
+import { toast } from "sonner";
 import { apiFetch } from "../lib/api";
 
 interface Plan {
@@ -60,7 +61,7 @@ export function Pricing() {
       .then((data) => {
         setPlans(data);
       })
-      .catch(() => {})
+      .catch(() => toast.error("Failed to load pricing plans"))
       .finally(() => setLoading(false));
   }, []);
 
@@ -68,7 +69,7 @@ export function Pricing() {
     if (user) {
       apiFetch<{ user: { plan: { slug: string } } }>("/me")
         .then((r) => setCurrentPlanSlug(r.user.plan.slug))
-        .catch(() => {});
+        .catch(() => toast.error("Failed to load current plan"));
     }
   }, [user]);
 
@@ -82,7 +83,8 @@ export function Pricing() {
         body: JSON.stringify({ planId: plan.id, interval }),
       });
       window.location.href = url;
-    } catch {
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to start checkout");
       setCheckoutLoading(null);
     }
   }

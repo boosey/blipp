@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import { useApiFetch } from "../lib/api";
 import { useAudio } from "../contexts/audio-context";
+import { PlayerSkeleton } from "../components/skeletons/player-skeleton";
 import type { FeedItem } from "../types/feed";
 
 export function BriefingPlayer() {
@@ -26,7 +28,8 @@ export function BriefingPlayer() {
         }
         navigate("/home", { replace: true });
       })
-      .catch(() => {
+      .catch((e) => {
+        toast.error(e instanceof Error ? e.message : "Failed to load briefing");
         setError(true);
         setLoading(false);
       });
@@ -43,11 +46,7 @@ export function BriefingPlayer() {
   }
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <p className="text-zinc-400">Loading...</p>
-      </div>
-    );
+    return <PlayerSkeleton />;
   }
 
   return null;

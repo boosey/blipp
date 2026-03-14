@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { toast } from "sonner";
 import { useApiFetch } from "../lib/api";
+import { Skeleton } from "../components/ui/skeleton";
 
 interface PlanInfo {
   id: string;
@@ -25,14 +27,14 @@ export function Settings() {
   useEffect(() => {
     apiFetch<{ user: { plan: PlanInfo } }>("/me")
       .then((r) => setPlan(r.user.plan))
-      .catch(() => {});
+      .catch(() => toast.error("Failed to load account info"));
   }, [apiFetch]);
 
   useEffect(() => {
     if (plan?.slug === "free") {
       apiFetch<UpgradePlan[]>("/plans")
         .then((plans) => setUpgradePlans(plans.filter((p) => p.priceCentsMonthly > 0)))
-        .catch(() => {});
+        .catch(() => toast.error("Failed to load plans"));
     }
   }, [apiFetch, plan?.slug]);
 
@@ -45,7 +47,8 @@ export function Settings() {
         body: JSON.stringify({ planId: upgradePlan.id, interval: "monthly" }),
       });
       window.location.href = url;
-    } catch {
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to start checkout");
       setActionLoading(null);
     }
   }
@@ -58,7 +61,8 @@ export function Settings() {
         method: "POST",
       });
       window.location.href = url;
-    } catch {
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to open billing portal");
       setActionLoading(null);
     }
   }
@@ -72,7 +76,7 @@ export function Settings() {
         <p className="text-zinc-400">
           Current plan:{" "}
           <span className="font-medium text-zinc-50">
-            {plan?.name ?? "Loading..."}
+            {plan ? plan.name : <Skeleton className="h-5 w-24 inline-block" />}
           </span>
         </p>
 

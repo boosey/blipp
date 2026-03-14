@@ -1,6 +1,10 @@
 import { useEffect, useState, useCallback } from "react";
+import { Headphones } from "lucide-react";
+import { toast } from "sonner";
 import { useApiFetch } from "../lib/api";
 import { FeedItemCard } from "../components/feed-item";
+import { FeedSkeleton } from "../components/skeletons/feed-skeleton";
+import { EmptyState } from "../components/empty-state";
 import type { FeedItem } from "../types/feed";
 
 export function Home() {
@@ -12,8 +16,8 @@ export function Home() {
     try {
       const data = await apiFetch<{ items: FeedItem[] }>("/feed?limit=50");
       setItems(data.items);
-    } catch {
-      // Silently handle
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to load feed");
     } finally {
       setLoading(false);
     }
@@ -41,29 +45,24 @@ export function Home() {
   }, [fetchFeed]);
 
   function handlePlay(feedItemId: string) {
-    // Mark listened optimistically
+    // Mark listened optimistically — non-critical, no toast
     apiFetch(`/feed/${feedItemId}/listened`, { method: "PATCH" }).catch(
       () => {}
     );
   }
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <p className="text-zinc-400">Loading...</p>
-      </div>
-    );
+    return <FeedSkeleton />;
   }
 
   if (items.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 gap-3">
-        <p className="text-zinc-400 text-center">No briefings yet.</p>
-        <p className="text-zinc-500 text-sm text-center">
-          Subscribe to podcasts or request on-demand briefings to fill your
-          feed.
-        </p>
-      </div>
+      <EmptyState
+        icon={Headphones}
+        title="No briefings yet"
+        description="Subscribe to your favorite podcasts and we'll create bite-sized briefings for you."
+        action={{ label: "Discover Podcasts", to: "/discover" }}
+      />
     );
   }
 

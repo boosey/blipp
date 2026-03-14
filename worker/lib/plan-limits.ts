@@ -76,3 +76,51 @@ export async function checkWeeklyBriefingLimit(
   }
   return null;
 }
+
+export interface UsageData {
+  period: { start: string; end: string; daysRemaining: number };
+  briefings: { used: number; limit: number | null; remaining: number | null; percentUsed: number };
+  subscriptions: { used: number; limit: number | null; remaining: number | null; percentUsed: number };
+  maxDurationMinutes: number;
+  plan: { name: string; slug: string };
+}
+
+export async function getUserUsage(userId: string, prisma: any): Promise<UsageData> {
+  const user = await prisma.user.findUniqueOrThrow({
+    where: { id: userId },
+    include: { plan: true },
+  });
+
+  const oneWeekAgo = new Date();
+  oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+
+  const [briefingCount, subscriptionCount] = await Promise.all([
+    prisma.feedItem.count({
+      where: { userId, createdAt: { gte: oneWeekAgo } },
+    }),
+    prisma.subscription.count({ where: { userId } }),
+  ]);
+
+  const plan = user.plan;
+  return {
+    period: {
+      start: oneWeekAgo.toISOString(),
+      end: new Date().toISOString(),
+      daysRemaining: 7,
+    },
+    briefings: {
+      used: briefingCount,
+      limit: plan.briefingsPerWeek,
+      remaining: plan.briefingsPerWeek !== null ? Math.max(0, plan.briefingsPerWeek - briefingCount) : null,
+      percentUsed: plan.briefingsPerWeek !== null ? Math.round((briefingCount / plan.briefingsPerWeek) * 100) : 0,
+    },
+    subscriptions: {
+      used: subscriptionCount,
+      limit: plan.maxPodcastSubscriptions,
+      remaining: plan.maxPodcastSubscriptions !== null ? Math.max(0, plan.maxPodcastSubscriptions - subscriptionCount) : null,
+      percentUsed: plan.maxPodcastSubscriptions !== null ? Math.round((subscriptionCount / plan.maxPodcastSubscriptions) * 100) : 0,
+    },
+    maxDurationMinutes: plan.maxDurationMinutes,
+    plan: { name: plan.name, slug: plan.slug },
+  };
+}

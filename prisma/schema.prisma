@@ -76,6 +76,7 @@ model User {
   briefings        Briefing[]
   feedItems        FeedItem[]
   briefingRequests BriefingRequest[]
+  apiKeys          ApiKey[]
 }
 
 // ── Podcast & Episodes ──
@@ -456,6 +457,23 @@ model AuditLog {
   @@index([actorId])
   @@index([entityType, entityId])
   @@index([createdAt])
+}
+
+// ── API Keys ──
+
+model ApiKey {
+  id         String    @id @default(cuid())
+  name       String                        // "Monitoring", "Partner Feed"
+  keyHash    String    @unique             // SHA-256 hash of the key
+  keyPrefix  String                        // First 8 chars: "blp_live..."
+  scopes     String[]                      // ["health:read", "feed:read"]
+  userId     String                        // Admin who created it
+  expiresAt  DateTime?                     // null = no expiry
+  lastUsedAt DateTime?
+  revokedAt  DateTime?                     // Soft revoke
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 // ── STT Benchmark ──

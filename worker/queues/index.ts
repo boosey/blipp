@@ -8,6 +8,7 @@ import { handleOrchestrator } from "./orchestrator";
 import { createPrismaClient } from "../lib/db";
 import { getConfig } from "../lib/config";
 import { createPipelineLogger } from "../lib/logger";
+import { checkCostThresholds } from "../lib/cost-alerts";
 import type {
   TranscriptionMessage,
   DistillationMessage,
@@ -145,6 +146,31 @@ export async function scheduled(
         update: { value: new Date().toISOString() },
         create: { key: "pricing.lastRefreshedAt", value: new Date().toISOString(), description: "Last pricing refresh timestamp" },
       });
+    }
+
+    // Check cost thresholds and persist alerts
+    try {
+      const costAlerts = await checkCostThresholds(prisma);
+      if (costAlerts.length > 0) {
+        await prisma.platformConfig.upsert({
+          where: { key: "cost.alert.active" },
+          update: { value: costAlerts as any },
+          create: { key: "cost.alert.active", value: costAlerts as any, description: "Active cost threshold alerts" },
+        });
+        console.log(JSON.stringify({
+          level: "warn",
+          action: "cost_threshold_exceeded",
+          alerts: costAlerts,
+          ts: new Date().toISOString(),
+        }));
+      }
+    } catch (err) {
+      console.error(JSON.stringify({
+        level: "error",
+        action: "cost_check_failed",
+        error: err instanceof Error ? err.message : String(err),
+        ts: new Date().toISOString(),
+      }));
     }
   } finally {
     ctx.waitUntil(prisma.$disconnect());

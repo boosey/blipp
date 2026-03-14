@@ -1,7 +1,10 @@
 import { useState } from "react";
+import { Search } from "lucide-react";
 import { useApiFetch } from "../lib/api";
 import { useFetch } from "../lib/use-fetch";
 import { PodcastCard } from "../components/podcast-card";
+import { DiscoverSkeleton } from "../components/skeletons/discover-skeleton";
+import { EmptyState } from "../components/empty-state";
 
 interface CatalogPodcast {
   id: string;
@@ -112,9 +115,15 @@ export function Discover() {
           <p className="text-red-400 text-sm text-center py-4">{searchError || catalogError}</p>
         )}
         {displayList.length === 0 && !searching && !searchError && !catalogError && (
-          <p className="text-zinc-500 text-sm text-center py-8">
-            {searchResults !== null ? "No results found." : "Loading..."}
-          </p>
+          searchResults !== null ? (
+            <EmptyState
+              icon={Search}
+              title="No podcasts found"
+              description="Try a different search term or browse our catalog."
+            />
+          ) : (
+            <DiscoverSkeleton />
+          )
         )}
       </div>
     </div>
