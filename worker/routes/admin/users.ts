@@ -227,7 +227,7 @@ usersRoutes.get("/:id", async (c) => {
 // PATCH /:id - Update user
 usersRoutes.patch("/:id", async (c) => {
   const prisma = c.get("prisma") as any;
-  const body = await c.req.json<{ planId?: string; isAdmin?: boolean; status?: string }>();
+  const body = await c.req.json<{ planId?: string; isAdmin?: boolean; status?: string; onboardingComplete?: boolean }>();
 
   // Block isAdmin changes via this endpoint — requires dedicated super-admin flow
   if (body.isAdmin !== undefined) {
@@ -258,6 +258,10 @@ usersRoutes.patch("/:id", async (c) => {
     data.status = body.status;
   }
 
+  if (body.onboardingComplete !== undefined) {
+    data.onboardingComplete = !!body.onboardingComplete;
+  }
+
   if (Object.keys(data).length === 0) {
     return c.json({ error: "No valid fields to update" }, 400);
   }
@@ -265,7 +269,7 @@ usersRoutes.patch("/:id", async (c) => {
   // Capture old values before update for audit log
   const existingUser = await prisma.user.findUnique({
     where: { id: c.req.param("id") },
-    select: { planId: true, status: true },
+    select: { planId: true, status: true, onboardingComplete: true },
   });
 
   const updated = await prisma.user.update({
@@ -275,7 +279,8 @@ usersRoutes.patch("/:id", async (c) => {
   });
 
   const auth = getAuth(c);
-  const auditAction = body.status !== undefined ? "user.status.change" : "user.plan.change";
+  const auditAction = body.onboardingComplete !== undefined ? "user.onboarding.reset"
+    : body.status !== undefined ? "user.status.change" : "user.plan.change";
   writeAuditLog(prisma, {
     actorId: auth!.userId!,
     action: auditAction,

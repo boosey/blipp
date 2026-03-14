@@ -28,15 +28,14 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
 export function Settings() {
   const apiFetch = useApiFetch();
   const [plan, setPlan] = useState<PlanInfo | null>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
   const [upgradePlans, setUpgradePlans] = useState<UpgradePlan[]>([]);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushLoading, setPushLoading] = useState(false);
 
   useEffect(() => {
-    apiFetch<{ user: { plan: PlanInfo; isAdmin?: boolean } }>("/me")
-      .then((r) => { setPlan(r.user.plan); setIsAdmin(!!r.user.isAdmin); })
+    apiFetch<{ user: { plan: PlanInfo } }>("/me")
+      .then((r) => setPlan(r.user.plan))
       .catch(() => toast.error("Failed to load account info"));
   }, [apiFetch]);
 
@@ -192,29 +191,6 @@ export function Settings() {
           </button>
         )}
       </div>
-
-      {/* Developer Tools — admin only */}
-      {isAdmin && (
-        <div className="space-y-4">
-          <h2 className="text-lg font-semibold">Developer</h2>
-          <button
-            onClick={async () => {
-              try {
-                await apiFetch("/me/onboarding-complete", {
-                  method: "PATCH",
-                  body: JSON.stringify({ reset: true }),
-                });
-                toast.success("Onboarding reset — refresh to see it");
-              } catch {
-                toast.error("Failed to reset onboarding");
-              }
-            }}
-            className="px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm hover:bg-zinc-700 transition-colors"
-          >
-            Reset Onboarding
-          </button>
-        </div>
-      )}
 
       {/* Push Notifications */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">

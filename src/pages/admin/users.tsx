@@ -527,6 +527,27 @@ function BillingTab({
             disabled={saving}
           />
         </div>
+
+        <Separator className="bg-white/5" />
+
+        <Button
+          size="sm"
+          variant="ghost"
+          className="w-full text-[#F59E0B] hover:bg-[#F59E0B]/10 border border-[#F59E0B]/20"
+          disabled={saving}
+          onClick={() => {
+            setSaving(true);
+            apiFetch(`/users/${user.id}`, {
+              method: "PATCH",
+              body: JSON.stringify({ onboardingComplete: false }),
+            })
+              .then(() => onUpdate())
+              .catch(console.error)
+              .finally(() => setSaving(false));
+          }}
+        >
+          Reset Onboarding
+        </Button>
       </div>
 
       {/* Change Plan Modal */}
