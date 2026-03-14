@@ -49,6 +49,7 @@ export function createMockPrisma() {
     apiKey: modelMethods(),
     podcastRequest: modelMethods(),
     pushSubscription: modelMethods(),
+    podcastFavorite: modelMethods(),
     $disconnect: vi.fn().mockResolvedValue(undefined),
   };
 }

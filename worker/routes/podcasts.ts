@@ -333,6 +333,83 @@ podcasts.get("/subscriptions", async (c) => {
 });
 
 /**
+ * GET /favorites — List the authenticated user's favorited podcasts.
+ */
+podcasts.get("/favorites", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
+
+  const favorites = await prisma.podcastFavorite.findMany({
+    where: { userId: user.id },
+    include: { podcast: { select: { id: true, title: true, imageUrl: true, author: true } } },
+    orderBy: { createdAt: "desc" },
+  });
+
+  return c.json({ data: favorites.map((f: any) => f.podcast) });
+});
+
+/**
+ * POST /favorites — Set the user's podcast favorites (replaces all).
+ * Body: { podcastIds: string[] }
+ */
+podcasts.post("/favorites", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
+  const { podcastIds } = await c.req.json<{ podcastIds: string[] }>();
+
+  if (!Array.isArray(podcastIds)) {
+    return c.json({ error: "podcastIds must be an array" }, 400);
+  }
+
+  // Replace all favorites atomically
+  await prisma.podcastFavorite.deleteMany({ where: { userId: user.id } });
+
+  if (podcastIds.length > 0) {
+    await prisma.podcastFavorite.createMany({
+      data: podcastIds.map((podcastId: string) => ({
+        userId: user.id,
+        podcastId,
+      })),
+      skipDuplicates: true,
+    });
+  }
+
+  return c.json({ data: { count: podcastIds.length } });
+});
+
+/**
+ * POST /favorites/:podcastId — Add a single podcast to favorites.
+ */
+podcasts.post("/favorites/:podcastId", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
+  const podcastId = c.req.param("podcastId");
+
+  await prisma.podcastFavorite.upsert({
+    where: { userId_podcastId: { userId: user.id, podcastId } },
+    create: { userId: user.id, podcastId },
+    update: {},
+  });
+
+  return c.json({ data: { favorited: true } }, 201);
+});
+
+/**
+ * DELETE /favorites/:podcastId — Remove a podcast from favorites.
+ */
+podcasts.delete("/favorites/:podcastId", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
+  const podcastId = c.req.param("podcastId");
+
+  await prisma.podcastFavorite.deleteMany({
+    where: { userId: user.id, podcastId },
+  });
+
+  return c.json({ data: { favorited: false } });
+});
+
+/**
  * POST /request — Submit a podcast request.
  * Body: { feedUrl: string, title?: string }
  */

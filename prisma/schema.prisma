@@ -78,8 +78,24 @@ model User {
   feedItems        FeedItem[]
   briefingRequests BriefingRequest[]
   apiKeys          ApiKey[]
-  podcastRequests  PodcastRequest[]
+  podcastRequests   PodcastRequest[]
   pushSubscriptions PushSubscription[]
+  podcastFavorites  PodcastFavorite[]
+}
+
+// ── Podcast Favorites (interest signals for recommendations) ──
+
+model PodcastFavorite {
+  id        String   @id @default(cuid())
+  userId    String
+  podcastId String
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  podcast Podcast @relation(fields: [podcastId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, podcastId])
+  @@index([userId])
 }
 
 // ── Push Notifications ──
@@ -121,6 +137,7 @@ model Podcast {
   subscriptions Subscription[]
   feedItems     FeedItem[]
   requests      PodcastRequest[]
+  favorites     PodcastFavorite[]
 }
 
 model Episode {
