@@ -136,13 +136,20 @@ export function PlanCards({ currentPlanSlug, onCheckout, compact }: PlanCardsPro
           return (
             <div
               key={plan.id}
-              className={`rounded-xl ${compact ? "p-4" : "p-6"} flex flex-col ${
-                plan.highlighted
-                  ? "bg-zinc-800 border-2 border-zinc-50 ring-1 ring-zinc-50/20"
-                  : "bg-zinc-900 border border-zinc-800"
+              className={`rounded-xl ${compact ? "p-4" : "p-6"} flex flex-col relative ${
+                isCurrent
+                  ? "bg-zinc-800 border-2 border-emerald-500/50 ring-1 ring-emerald-500/20"
+                  : plan.highlighted
+                    ? "bg-zinc-800 border-2 border-zinc-50 ring-1 ring-zinc-50/20"
+                    : "bg-zinc-900 border border-zinc-800"
               }`}
             >
-              {plan.highlighted && (
+              {isCurrent && (
+                <span className="text-xs font-semibold uppercase tracking-wider text-emerald-400 mb-1">
+                  Your Current Plan
+                </span>
+              )}
+              {!isCurrent && plan.highlighted && (
                 <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-1">
                   Most Popular
                 </span>

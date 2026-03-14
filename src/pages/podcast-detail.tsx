@@ -340,6 +340,7 @@ export function PodcastDetail() {
                         selected={null}
                         onSelect={(tier) => handleCreateBriefing(ep.id, tier)}
                         maxDurationMinutes={planUsage.maxDurationMinutes}
+                        onUpgrade={showUpgrade}
                       />
                     </div>
                   ) : (
