@@ -3,6 +3,7 @@ import {
   Brain,
   Clock,
   Flag,
+  Library,
   Mic,
   Sparkles,
   Volume2,
@@ -46,7 +47,7 @@ import type {
 
 // ── Types ──
 
-type CategoryId = "pipeline-controls" | "ai-models" | "duration-tiers" | "feature-flags";
+type CategoryId = "pipeline-controls" | "ai-models" | "duration-tiers" | "feature-flags" | "catalog-episodes";
 
 interface CategoryDef {
   id: CategoryId;
@@ -62,6 +63,7 @@ const CATEGORIES: CategoryDef[] = [
   { id: "ai-models", label: "AI Models", icon: Brain, color: "#8B5CF6" },
   { id: "duration-tiers", label: "Duration Tiers", icon: Clock, color: "#3B82F6" },
   { id: "feature-flags", label: "Feature Flags", icon: Flag, color: "#F97316" },
+  { id: "catalog-episodes", label: "Catalog & Episodes", icon: Library, color: "#14B8A6" },
 ];
 
 const INTERVAL_OPTIONS = [
@@ -716,6 +718,113 @@ function FeatureFlagsPanel({
   );
 }
 
+// ── Catalog & Episodes Panel ──
+
+interface CatalogConfigDef {
+  key: string;
+  label: string;
+  type: "number" | "boolean";
+  description: string;
+  default: number | boolean;
+}
+
+const CATALOG_CONFIGS: CatalogConfigDef[] = [
+  { key: "catalog.seedSize", label: "Catalog Seed Size", type: "number", description: "Podcasts to fetch during catalog-refresh", default: 200 },
+  { key: "catalog.refreshAllPodcasts", label: "Refresh All Podcasts", type: "boolean", description: "Refresh all catalog podcasts (not just subscribed)", default: false },
+  { key: "catalog.requests.enabled", label: "User Requests Enabled", type: "boolean", description: "Allow users to request new podcasts", default: true },
+  { key: "catalog.requests.maxPerUser", label: "Max Requests Per User", type: "number", description: "Maximum pending requests per user", default: 5 },
+  { key: "catalog.cleanup.inactivityThresholdDays", label: "Cleanup Inactivity Threshold", type: "number", description: "Days inactive before suggesting removal", default: 90 },
+  { key: "episodes.aging.enabled", label: "Episode Aging Enabled", type: "boolean", description: "Enable episode aging deletion", default: false },
+  { key: "episodes.aging.maxAgeDays", label: "Episode Max Age", type: "number", description: "Days before episodes are deletion candidates", default: 180 },
+  { key: "BRIEFING_ASSEMBLY_AUDIO_ENABLED", label: "Audio Assembly", type: "boolean", description: "Enable jingle assembly in briefings", default: false },
+];
+
+function CatalogEpisodesPanel({
+  configs,
+  apiFetch,
+  onReload,
+}: {
+  configs: PlatformConfigEntry[];
+  apiFetch: ReturnType<typeof useAdminFetch>;
+  onReload: () => void;
+}) {
+  const [saving, setSaving] = useState<string | null>(null);
+
+  const updateConfig = useCallback(
+    async (key: string, value: unknown) => {
+      setSaving(key);
+      try {
+        await apiFetch(`/config/${key}`, {
+          method: "PATCH",
+          body: JSON.stringify({ value }),
+        });
+        onReload();
+      } catch (e) {
+        console.error("Failed to update config:", e);
+      } finally {
+        setSaving(null);
+      }
+    },
+    [apiFetch, onReload]
+  );
+
+  function getConfigValue(key: string, defaultValue: number | boolean): number | boolean {
+    const entry = configs.find((c) => c.key === key);
+    if (entry?.value == null) return defaultValue;
+    if (typeof defaultValue === "boolean") return entry.value === true || entry.value === "true";
+    return Number(entry.value);
+  }
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h3 className="text-sm font-semibold text-[#F9FAFB]">Catalog & Episodes</h3>
+        <p className="text-[10px] text-[#9CA3AF] mt-0.5">Catalog refresh, user requests, and episode lifecycle settings</p>
+      </div>
+
+      <div className="space-y-2">
+        {CATALOG_CONFIGS.map((cfg) => {
+          const currentValue = getConfigValue(cfg.key, cfg.default);
+          return (
+            <div
+              key={cfg.key}
+              className="bg-[#0F1D32] border border-white/5 rounded-lg p-4 hover:border-white/10 transition-colors"
+            >
+              <div className="flex items-center justify-between">
+                <div className="min-w-0 flex-1 mr-4">
+                  <Label className="text-xs text-[#F9FAFB]">{cfg.label}</Label>
+                  <p className="text-[10px] text-[#9CA3AF] mt-0.5">{cfg.description}</p>
+                </div>
+
+                {cfg.type === "boolean" ? (
+                  <Switch
+                    checked={currentValue as boolean}
+                    onCheckedChange={(v) => updateConfig(cfg.key, v)}
+                    disabled={saving === cfg.key}
+                    className="data-[state=checked]:bg-[#14B8A6]"
+                  />
+                ) : (
+                  <Input
+                    type="number"
+                    min={1}
+                    value={currentValue as number}
+                    onChange={(e) => {
+                      const val = Math.max(1, Number(e.target.value));
+                      updateConfig(cfg.key, val);
+                    }}
+                    disabled={saving === cfg.key}
+                    className="w-24 h-8 text-xs bg-[#1A2942] border-white/10 text-[#F9FAFB] font-mono tabular-nums text-center"
+                  />
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ── Main ──
 
 export default function Configuration() {
@@ -808,6 +917,9 @@ export default function Configuration() {
             )}
             {selectedCategory === "feature-flags" && (
               <FeatureFlagsPanel flags={featureFlags} setDirty={setDirty} />
+            )}
+            {selectedCategory === "catalog-episodes" && (
+              <CatalogEpisodesPanel configs={configs} apiFetch={apiFetch} onReload={load} />
             )}
           </div>
         </ScrollArea>

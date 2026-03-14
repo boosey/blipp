@@ -71,4 +71,10 @@ export type Env = {
   NEON_API_KEY?: string;
   /** Neon project ID for backup verification (optional) */
   NEON_PROJECT_ID?: string;
+  /** VAPID public key for Web Push (optional) */
+  VAPID_PUBLIC_KEY?: string;
+  /** VAPID private key for Web Push (optional) */
+  VAPID_PRIVATE_KEY?: string;
+  /** VAPID subject (mailto: URL) for Web Push (optional) */
+  VAPID_SUBJECT?: string;
 };

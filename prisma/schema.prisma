@@ -79,6 +79,22 @@ model User {
   briefingRequests BriefingRequest[]
   apiKeys          ApiKey[]
   podcastRequests  PodcastRequest[]
+  pushSubscriptions PushSubscription[]
+}
+
+// ── Push Notifications ──
+
+model PushSubscription {
+  id         String   @id @default(cuid())
+  userId     String
+  endpoint   String   @unique
+  p256dh     String                        // Public key
+  auth       String                        // Auth secret
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 // ── Podcast & Episodes ──

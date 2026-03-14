@@ -103,3 +103,67 @@ me.delete("/", async (c) => {
 
   return new Response(null, { status: 204 });
 });
+
+/**
+ * POST /push/subscribe — Register a push notification subscription.
+ * Body: { endpoint, keys: { p256dh, auth } }
+ */
+me.post("/push/subscribe", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
+  const body = await c.req.json<{
+    endpoint: string;
+    keys: { p256dh: string; auth: string };
+  }>();
+
+  if (!body.endpoint || !body.keys?.p256dh || !body.keys?.auth) {
+    return c.json({ error: "endpoint, keys.p256dh, and keys.auth are required" }, 400);
+  }
+
+  const subscription = await prisma.pushSubscription.upsert({
+    where: { endpoint: body.endpoint },
+    create: {
+      userId: user.id,
+      endpoint: body.endpoint,
+      p256dh: body.keys.p256dh,
+      auth: body.keys.auth,
+    },
+    update: {
+      p256dh: body.keys.p256dh,
+      auth: body.keys.auth,
+    },
+  });
+
+  return c.json({ data: { id: subscription.id } }, 201);
+});
+
+/**
+ * DELETE /push/subscribe — Unregister a push subscription.
+ * Body: { endpoint }
+ */
+me.delete("/push/subscribe", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
+  const body = await c.req.json<{ endpoint: string }>();
+
+  if (!body.endpoint) {
+    return c.json({ error: "endpoint is required" }, 400);
+  }
+
+  await prisma.pushSubscription.deleteMany({
+    where: { userId: user.id, endpoint: body.endpoint },
+  });
+
+  return c.json({ data: { deleted: true } });
+});
+
+/**
+ * GET /push/vapid-key — Get the VAPID public key for subscription.
+ */
+me.get("/push/vapid-key", async (c) => {
+  const key = c.env.VAPID_PUBLIC_KEY;
+  if (!key) {
+    return c.json({ error: "Push notifications not configured" }, 503);
+  }
+  return c.json({ data: { publicKey: key } });
+});
