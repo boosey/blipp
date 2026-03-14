@@ -1,44 +1,31 @@
-import type Anthropic from "@anthropic-ai/sdk";
-import { calculateCost, type AiUsage } from "./ai-usage";
+import type { LlmProvider } from "./llm-providers";
+import { calculateTokenCost, type AiUsage, type ModelPricing } from "./ai-usage";
 
 /** Words spoken per minute for podcast-style narration. */
 export const WORDS_PER_MINUTE = 150;
 
 /** A single factual claim extracted from a podcast transcript. */
 export interface Claim {
-  /** The factual assertion itself */
   claim: string;
-  /** Who made the claim in the episode */
   speaker: string;
-  /** 1-10 rating of how important the claim is */
   importance: number;
-  /** 1-10 rating of how novel/surprising the claim is */
   novelty: number;
-  /** Verbatim source passage from the transcript supporting this claim */
   excerpt: string;
 }
 
 /**
  * Pass 1: Extracts all significant claims from a podcast transcript.
- *
- * Sends the full transcript to Claude and asks for structured JSON output
- * with claims including verbatim excerpts, ranked by importance and novelty.
- * Claim count varies based on content density (typically 10-40).
- *
- * @param client - Anthropic SDK client instance
- * @param transcript - Full episode transcript text
- * @returns Array of extracted claims with excerpts, sorted by importance
- * @throws If the Claude API call fails or returns unparseable JSON
  */
 export async function extractClaims(
-  client: Anthropic,
+  llm: LlmProvider,
   transcript: string,
-  model: string = "claude-sonnet-4-20250514"
+  providerModelId: string,
+  maxTokens: number,
+  env: any,
+  pricing: ModelPricing | null = null
 ): Promise<{ claims: Claim[]; usage: AiUsage }> {
-  const response = await client.messages.create({
-    model,
-    max_tokens: 8192,
-    messages: [
+  const result = await llm.complete(
+    [
       {
         role: "user",
         content: `You are a podcast analyst. Extract all significant factual claims, insights, arguments, and notable statements from this transcript.
@@ -63,18 +50,22 @@ TRANSCRIPT:
 ${transcript}`,
       },
     ],
-  });
+    providerModelId,
+    maxTokens,
+    env
+  );
 
-  const raw =
-    response.content[0].type === "text" ? response.content[0].text : "";
-  const text = raw.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
+  const text = result.text
+    .replace(/^```(?:json)?\s*\n?/i, "")
+    .replace(/\n?```\s*$/i, "")
+    .trim();
   const claims: Claim[] = JSON.parse(text);
 
   const usage: AiUsage = {
-    model: response.model,
-    inputTokens: response.usage.input_tokens,
-    outputTokens: response.usage.output_tokens,
-    cost: calculateCost(response.model, response.usage.input_tokens, response.usage.output_tokens),
+    model: result.model,
+    inputTokens: result.inputTokens,
+    outputTokens: result.outputTokens,
+    cost: calculateTokenCost(pricing, result.inputTokens, result.outputTokens),
   };
 
   return { claims, usage };
@@ -82,10 +73,6 @@ ${transcript}`,
 
 /**
  * Selects and prioritizes claims for a target duration tier.
- *
- * Sorts claims by a composite score (70% importance, 30% novelty) and
- * returns the top N claims where N scales with the target duration
- * (~2.5 claims per minute, minimum 3).
  */
 export function selectClaimsForDuration(
   claims: Claim[],
@@ -94,7 +81,7 @@ export function selectClaimsForDuration(
   if (claims.length === 0) return [];
 
   const scored = claims
-    .map(c => ({ ...c, _score: c.importance * 0.7 + c.novelty * 0.3 }))
+    .map((c) => ({ ...c, _score: c.importance * 0.7 + c.novelty * 0.3 }))
     .sort((a, b) => b._score - a._score);
 
   const targetCount = Math.min(
@@ -102,29 +89,20 @@ export function selectClaimsForDuration(
     Math.max(3, Math.ceil(durationMinutes * 2.5))
   );
 
-  // Strip the internal _score field before returning
   return scored.slice(0, targetCount).map(({ _score, ...claim }) => claim);
 }
 
 /**
  * Pass 2: Generates a spoken narrative from extracted claims at a target duration.
- *
- * Calculates a target word count from the desired duration in minutes and
- * instructs Claude to produce a podcast-ready script. When claims include
- * verbatim excerpts, uses an excerpts-aware prompt for higher quality
- * output. Falls back to a simpler prompt for legacy claims without excerpts.
- *
- * @param client - Anthropic SDK client instance
- * @param claims - Array of claims (pre-filtered by selectClaimsForDuration)
- * @param durationMinutes - Target segment length in minutes
- * @returns Narrative text suitable for TTS conversion
- * @throws If the Claude API call fails
  */
 export async function generateNarrative(
-  client: Anthropic,
+  llm: LlmProvider,
   claims: Claim[],
   durationMinutes: number,
-  model: string = "claude-sonnet-4-20250514"
+  providerModelId: string,
+  maxTokens: number,
+  env: any,
+  pricing: ModelPricing | null = null
 ): Promise<{ narrative: string; usage: AiUsage }> {
   const targetWords = Math.round(durationMinutes * WORDS_PER_MINUTE);
   const hasExcerpts = claims.length > 0 && "excerpt" in claims[0];
@@ -160,21 +138,19 @@ Rules:
 CLAIMS:
 ${JSON.stringify(claims, null, 2)}`;
 
-  const response = await client.messages.create({
-    model,
-    max_tokens: 8192,
-    messages: [{ role: "user", content: prompt }],
-  });
-
-  const narrative =
-    response.content[0].type === "text" ? response.content[0].text : "";
+  const result = await llm.complete(
+    [{ role: "user", content: prompt }],
+    providerModelId,
+    maxTokens,
+    env
+  );
 
   const usage: AiUsage = {
-    model: response.model,
-    inputTokens: response.usage.input_tokens,
-    outputTokens: response.usage.output_tokens,
-    cost: calculateCost(response.model, response.usage.input_tokens, response.usage.output_tokens),
+    model: result.model,
+    inputTokens: result.inputTokens,
+    outputTokens: result.outputTokens,
+    cost: calculateTokenCost(pricing, result.inputTokens, result.outputTokens),
   };
 
-  return { narrative, usage };
+  return { narrative: result.text, usage };
 }

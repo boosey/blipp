@@ -29,7 +29,7 @@ describe("getModelConfig", () => {
   });
 
   it("uses correct config key per stage", async () => {
-    (getConfig as any).mockResolvedValue({ provider: "openai", model: "whisper-1" });
+    (getConfig as any).mockResolvedValue({ provider: "cloudflare", model: "whisper-large-v3-turbo" });
     await getModelConfig(mockPrisma, "stt");
     expect(getConfig).toHaveBeenCalledWith(mockPrisma, "ai.stt.model", expect.any(Object));
   });

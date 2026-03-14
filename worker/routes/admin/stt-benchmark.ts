@@ -6,7 +6,6 @@ import {
   paginatedResponse,
 } from "../../lib/admin-helpers";
 import { runNextTask } from "../../lib/stt-benchmark-runner";
-import { STT_PROVIDERS } from "../../lib/stt-providers";
 import { parseVTT, parseSRT } from "../../lib/transcript";
 
 const sttBenchmarkRoutes = new Hono<{ Bindings: Env }>();
@@ -216,7 +215,7 @@ sttBenchmarkRoutes.post("/experiments", async (c) => {
   const prisma = c.get("prisma") as any;
   const body = await c.req.json<{
     name: string;
-    models: string[];
+    models: { modelId: string; provider: string }[];
     speeds: number[];
     episodeIds: string[];
   }>();
@@ -236,12 +235,20 @@ sttBenchmarkRoutes.post("/experiments", async (c) => {
     return c.json({ error: "At least one episode is required" }, 400);
   }
 
-  // Validate model IDs against known providers
-  const validModelIds = new Set(STT_PROVIDERS.map((p) => p.modelId));
-  const invalidModels = models.filter((m) => !validModelIds.has(m));
+  // Validate model+provider combos against DB registry
+  const dbProviders = await prisma.aiModelProvider.findMany({
+    where: { isAvailable: true, model: { stage: "stt", isActive: true } },
+    include: { model: { select: { modelId: true } } },
+  });
+  const validCombos = new Set(
+    dbProviders.map((p: any) => `${p.model.modelId}:${p.provider}`)
+  );
+  const invalidModels = models.filter(
+    (m) => !validCombos.has(`${m.modelId}:${m.provider}`)
+  );
   if (invalidModels.length) {
     return c.json(
-      { error: `Unknown model(s): ${invalidModels.join(", ")}` },
+      { error: `Unknown model/provider combo(s): ${invalidModels.map((m) => `${m.modelId}@${m.provider}`).join(", ")}` },
       400,
     );
   }
@@ -261,16 +268,18 @@ sttBenchmarkRoutes.post("/experiments", async (c) => {
     experimentId: string;
     episodeId: string;
     model: string;
+    provider: string;
     speed: number;
   }[] = [];
 
   for (const episodeId of episodeIds) {
-    for (const model of models) {
+    for (const { modelId, provider } of models) {
       for (const speed of speeds) {
         resultData.push({
           experimentId: experiment.id,
           episodeId,
-          model,
+          model: modelId,
+          provider,
           speed,
         });
       }
@@ -467,6 +476,7 @@ sttBenchmarkRoutes.get("/experiments/:id/results", async (c) => {
     experimentId: r.experimentId,
     episodeId: r.episodeId,
     model: r.model,
+    provider: r.provider ?? undefined,
     speed: r.speed,
     status: r.status,
     costDollars: r.costDollars ?? undefined,
@@ -485,11 +495,12 @@ sttBenchmarkRoutes.get("/experiments/:id/results", async (c) => {
     podcastTitle: r.episode.podcast.title,
   }));
 
-  // Build summary grid: aggregate by (model, speed)
+  // Build summary grid: aggregate by (model, provider, speed)
   const gridMap = new Map<
     string,
     {
       model: string;
+      provider: string;
       speed: number;
       werSum: number;
       costSum: number;
@@ -500,11 +511,13 @@ sttBenchmarkRoutes.get("/experiments/:id/results", async (c) => {
   >();
 
   for (const r of results) {
-    const key = `${r.model}|${r.speed}`;
+    const provider = r.provider ?? "unknown";
+    const key = `${r.model}|${provider}|${r.speed}`;
     let entry = gridMap.get(key);
     if (!entry) {
       entry = {
         model: r.model,
+        provider,
         speed: r.speed,
         werSum: 0,
         costSum: 0,
@@ -527,6 +540,7 @@ sttBenchmarkRoutes.get("/experiments/:id/results", async (c) => {
 
   const grid = Array.from(gridMap.values()).map((e) => ({
     model: e.model,
+    provider: e.provider,
     speed: e.speed,
     avgWer: e.completedCount > 0 ? e.werSum / e.completedCount : 0,
     avgCost: e.completedCount > 0 ? e.costSum / e.completedCount : 0,

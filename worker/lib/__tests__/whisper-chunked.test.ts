@@ -108,19 +108,22 @@ describe("transcribeChunked", () => {
       .mockResolvedValueOnce({ text: "Chunk two." })
       .mockResolvedValueOnce({ text: "Chunk three." });
 
+    const pricing = { pricePerMinute: 0.006 };
     const result = await transcribeChunked(
       mockOpenai,
       "https://example.com/audio.mp3",
       totalSize,
-      "whisper-1"
+      "whisper-large-v3-turbo",
+      pricing
     );
     expect(result.transcript).toBe("Chunk one. Chunk two. Chunk three.");
     const expectedTokens = Math.round(totalSize / 16000);
+    const estimatedSeconds = totalSize / (128 * 1000 / 8);
     expect(result.usage).toEqual({
-      model: "whisper-1",
+      model: "whisper-large-v3-turbo",
       inputTokens: expectedTokens,
       outputTokens: 0,
-      cost: (expectedTokens * 100) / 1_000_000,
+      cost: (estimatedSeconds / 60) * 0.006,
     });
     expect(mockOpenai.audio.transcriptions.create).toHaveBeenCalledTimes(3);
   });
@@ -136,7 +139,7 @@ describe("transcribeChunked", () => {
 
     mockOpenai.audio.transcriptions.create.mockResolvedValue({ text: "text" });
 
-    await transcribeChunked(mockOpenai, "https://example.com/a.mp3", totalSize, "whisper-1");
+    await transcribeChunked(mockOpenai, "https://example.com/a.mp3", totalSize, "whisper-large-v3-turbo");
 
     // First chunk: bytes=0-20971519
     expect(fetch).toHaveBeenCalledWith("https://example.com/a.mp3", {
@@ -163,10 +166,10 @@ describe("transcribeChunked", () => {
 
     mockOpenai.audio.transcriptions.create.mockResolvedValue({ text: "text" });
 
-    await transcribeChunked(mockOpenai, "https://example.com/a.mp3", totalSize, "whisper-1");
+    await transcribeChunked(mockOpenai, "https://example.com/a.mp3", totalSize, "whisper-large-v3-turbo");
 
     for (const call of mockOpenai.audio.transcriptions.create.mock.calls) {
-      expect(call[0].model).toBe("whisper-1");
+      expect(call[0].model).toBe("whisper-large-v3-turbo");
     }
   });
 });

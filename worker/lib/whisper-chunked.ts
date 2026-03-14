@@ -1,5 +1,5 @@
 import type OpenAI from "openai";
-import { calculateCost, type AiUsage } from "./ai-usage";
+import { calculateAudioCost, type AiUsage, type ModelPricing } from "./ai-usage";
 
 /** Whisper API maximum file size: 25MB */
 export const WHISPER_MAX_BYTES = 25 * 1024 * 1024;
@@ -35,12 +35,19 @@ export function isMp3(contentType: string | null, audioUrl: string): boolean {
  * and sending each chunk to Whisper separately. Concatenates results.
  *
  * Only works with MP3 files (frame-based format allows arbitrary byte splits).
+ *
+ * @param client - OpenAI SDK client instance
+ * @param audioUrl - URL of the audio file
+ * @param totalBytes - Total file size in bytes
+ * @param model - Whisper model ID
+ * @param pricing - Pricing from DB for cost calculation
  */
 export async function transcribeChunked(
   client: OpenAI,
   audioUrl: string,
   totalBytes: number,
-  model: string
+  model: string,
+  pricing: ModelPricing | null = null
 ): Promise<{ transcript: string; usage: AiUsage }> {
   const chunks: string[] = [];
   let offset = 0;
@@ -63,12 +70,13 @@ export async function transcribeChunked(
 
   const transcript = chunks.join(" ");
 
-  const inputTokens = Math.round(totalBytes / 16000);
+  // Approximate duration: totalBytes / (128kbps bitrate in bytes/sec)
+  const estimatedSeconds = totalBytes / (128 * 1000 / 8);
   const usage: AiUsage = {
     model,
-    inputTokens,
+    inputTokens: Math.round(totalBytes / 16000),
     outputTokens: 0,
-    cost: calculateCost(model, inputTokens, 0),
+    cost: calculateAudioCost(pricing, estimatedSeconds),
   };
 
   return { transcript, usage };

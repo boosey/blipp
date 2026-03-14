@@ -4,6 +4,12 @@ generator client {
   runtime  = "cloudflare"
 }
 
+generator scripts {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma-node"
+  runtime  = "nodejs"
+}
+
 datasource db {
   provider = "postgresql"
 }
@@ -413,7 +419,7 @@ model SttBenchmarkResult {
   experiment SttExperiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
   episode    Episode       @relation(fields: [episodeId], references: [id], onDelete: Cascade)
 
-  @@unique([experimentId, episodeId, model, speed])
+  @@unique([experimentId, episodeId, model, provider, speed])
   @@index([experimentId])
 }
 
@@ -455,6 +461,7 @@ model AiModelProvider {
   id                   String    @id @default(cuid())
   aiModelId            String
   provider             String    // inference provider: "openai", "cloudflare", "groq", "deepgram", etc.
+  providerModelId      String?   // provider-specific model ID, e.g. "@cf/openai/whisper" for Cloudflare
   providerLabel        String    // display name: "Cloudflare Workers AI"
   pricePerMinute       Float?    // STT / TTS per audio minute
   priceInputPerMToken  Float?    // LLM per 1M input tokens

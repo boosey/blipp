@@ -36,9 +36,13 @@ vi.mock("../../lib/ai-models", () => ({
   getModelConfig: vi.fn().mockResolvedValue({ provider: "anthropic", model: "claude-sonnet-4-20250514" }),
 }));
 
-vi.mock("@anthropic-ai/sdk", () => {
-  return { default: class MockAnthropic {} };
-});
+vi.mock("../../lib/ai-usage", () => ({
+  getModelPricing: vi.fn().mockResolvedValue({ priceInputPerMToken: 3.0, priceOutputPerMToken: 15.0 }),
+}));
+
+vi.mock("../../lib/llm-providers", () => ({
+  getLlmProviderImpl: vi.fn().mockReturnValue({ name: "MockLLM", provider: "anthropic" }),
+}));
 
 import { createPrismaClient } from "../../lib/db";
 import { getConfig } from "../../lib/config";
@@ -63,6 +67,7 @@ beforeEach(() => {
     claims: [{ claim: "Test claim", speaker: "Host", importance: 9, novelty: 7, excerpt: "Verbatim excerpt from the transcript." }],
     usage: { model: "test-model", inputTokens: 100, outputTokens: 50, cost: null },
   });
+  mockPrisma.aiModelProvider.findFirst.mockResolvedValue({ providerModelId: "claude-sonnet-4-20250514" });
   mockLogger.info.mockReset();
   mockLogger.debug.mockReset();
   mockLogger.error.mockReset();
@@ -274,7 +279,7 @@ describe("handleDistillation", () => {
     await handleDistillation(batch, mockEnv, mockCtx);
 
     expect(getModelConfig).toHaveBeenCalledWith(expect.anything(), "distillation");
-    expect(extractClaims).toHaveBeenCalledWith(expect.anything(), "Some transcript", "claude-haiku-4-5-20251001");
+    expect(extractClaims).toHaveBeenCalledWith(expect.anything(), "Some transcript", expect.any(String), 8192, expect.anything(), expect.anything());
   });
 
   describe("stage-enabled check", () => {

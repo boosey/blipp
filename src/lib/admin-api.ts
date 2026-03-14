@@ -36,7 +36,16 @@ export function useAdminFetch() {
   const fetcher = useCallback(
     async function <T>(path: string, options?: RequestInit): Promise<T> {
       const token = await getToken();
-      return adminFetch<T>(path, { ...options, token: token ?? undefined });
+      try {
+        return await adminFetch<T>(path, { ...options, token: token ?? undefined });
+      } catch (err) {
+        // Retry once with a forced token refresh on auth errors
+        if (err instanceof Error && err.message.includes("expired")) {
+          const freshToken = await getToken({ skipCache: true });
+          return adminFetch<T>(path, { ...options, token: freshToken ?? undefined });
+        }
+        throw err;
+      }
     },
     [getToken]
   );

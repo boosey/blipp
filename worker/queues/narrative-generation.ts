@@ -1,9 +1,10 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { createPrismaClient } from "../lib/db";
 import { createPipelineLogger } from "../lib/logger";
 import { checkStageEnabled } from "../lib/queue-helpers";
 import { generateNarrative, selectClaimsForDuration } from "../lib/distillation";
 import { getModelConfig } from "../lib/ai-models";
+import { getModelPricing } from "../lib/ai-usage";
+import { getLlmProviderImpl } from "../lib/llm-providers";
 import { wpKey, putWorkProduct } from "../lib/work-products";
 import { writeEvent } from "../lib/pipeline-events";
 import type { Env } from "../types";
@@ -32,7 +33,6 @@ export async function handleNarrativeGeneration(
   ctx: ExecutionContext
 ): Promise<void> {
   const prisma = createPrismaClient(env.HYPERDRIVE);
-  const anthropic = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
   const log = await createPipelineLogger({ stage: "narrative-generation", prisma });
 
   try {
@@ -124,16 +124,25 @@ export async function handleNarrativeGeneration(
           : allClaims;
 
         // Read model config
-        const { model: narrativeModel } = await getModelConfig(prisma, "narrative");
+        const { provider: narrativeProvider, model: narrativeModel } = await getModelConfig(prisma, "narrative");
+        const narrativePricing = await getModelPricing(prisma, narrativeModel, narrativeProvider);
+        const dbNarrProvider = await prisma.aiModelProvider.findFirst({
+          where: { provider: narrativeProvider, model: { modelId: narrativeModel } },
+        });
+        const narrProviderModelId = dbNarrProvider?.providerModelId ?? narrativeModel;
+        const llm = getLlmProviderImpl(narrativeProvider);
 
         // Generate narrative from claims (Pass 2)
-        await writeEvent(prisma, step.id, "INFO", `Generating ${durationTier}-minute narrative from ${claims.length}/${allClaims.length} claims via ${narrativeModel}`);
+        await writeEvent(prisma, step.id, "INFO", `Generating ${durationTier}-minute narrative from ${claims.length}/${allClaims.length} claims via ${llm.name} (${narrProviderModelId})`);
         const narrativeTimer = log.timer("narrative_generation");
         const { narrative, usage: narrativeUsage } = await generateNarrative(
-          anthropic,
+          llm,
           claims,
           durationTier,
-          narrativeModel
+          narrProviderModelId,
+          8192,
+          env,
+          narrativePricing
         );
         const wordCount = narrative.split(/\s+/).length;
         narrativeTimer();

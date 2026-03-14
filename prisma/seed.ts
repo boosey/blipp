@@ -1,5 +1,5 @@
 import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient } from "../src/generated/prisma";
+import { PrismaClient } from "../src/generated/prisma-node";
 import "dotenv/config";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
@@ -72,6 +72,7 @@ async function main() {
 
   type ProviderSeed = {
     provider: string;
+    providerModelId?: string;
     providerLabel: string;
     isDefault?: boolean;
     pricePerMinute?: number;
@@ -91,11 +92,22 @@ async function main() {
   const MODEL_SEEDS: ModelSeed[] = [
     // ── STT ──
     {
-      stage: "stt", modelId: "whisper-1", label: "Whisper v1", developer: "openai",
+      stage: "stt", modelId: "whisper-1", label: "Whisper 1", developer: "openai",
       providers: [
-        { provider: "openai", providerLabel: "OpenAI", isDefault: true, pricePerMinute: 0.006 },
-        { provider: "cloudflare", providerLabel: "Cloudflare Workers AI", pricePerMinute: 0.0005 },
-        { provider: "groq", providerLabel: "Groq", pricePerMinute: 0.000667 },
+        { provider: "openai", providerModelId: "whisper-1", providerLabel: "OpenAI", isDefault: true, pricePerMinute: 0.006 },
+      ],
+    },
+    {
+      stage: "stt", modelId: "whisper-large-v3-turbo", label: "Whisper Large v3 Turbo", developer: "openai",
+      providers: [
+        { provider: "cloudflare", providerModelId: "@cf/openai/whisper-large-v3-turbo", providerLabel: "Cloudflare Workers AI", isDefault: true, pricePerMinute: 0.0005 },
+        { provider: "groq", providerModelId: "whisper-large-v3-turbo", providerLabel: "Groq", pricePerMinute: 0.000667 },
+      ],
+    },
+    {
+      stage: "stt", modelId: "whisper-large-v3", label: "Whisper Large v3", developer: "openai",
+      providers: [
+        { provider: "groq", providerModelId: "whisper-large-v3", providerLabel: "Groq", isDefault: true, pricePerMinute: 0.000667 },
       ],
     },
     {
@@ -108,7 +120,7 @@ async function main() {
       stage: "stt", modelId: "nova-3", label: "Deepgram Nova-3", developer: "deepgram",
       providers: [
         { provider: "deepgram", providerLabel: "Deepgram", isDefault: true, pricePerMinute: 0.0077 },
-        { provider: "cloudflare", providerLabel: "Cloudflare Workers AI", pricePerMinute: 0.0052 },
+        { provider: "cloudflare", providerModelId: "@cf/deepgram/nova-3", providerLabel: "Cloudflare Workers AI", pricePerMinute: 0.0052 },
       ],
     },
     {
@@ -192,6 +204,7 @@ async function main() {
       await prisma.aiModelProvider.upsert({
         where: { aiModelId_provider: { aiModelId: aiModel.id, provider: p.provider } },
         update: {
+          providerModelId: p.providerModelId ?? null,
           providerLabel: p.providerLabel,
           pricePerMinute: p.pricePerMinute ?? null,
           priceInputPerMToken: p.priceInputPerMToken ?? null,
@@ -202,6 +215,7 @@ async function main() {
         create: {
           aiModelId: aiModel.id,
           provider: p.provider,
+          providerModelId: p.providerModelId ?? null,
           providerLabel: p.providerLabel,
           pricePerMinute: p.pricePerMinute ?? null,
           priceInputPerMToken: p.priceInputPerMToken ?? null,

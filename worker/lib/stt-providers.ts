@@ -2,7 +2,7 @@ import type { Env } from "../types";
 
 export interface SttResult {
   transcript: string;
-  costDollars: number;
+  costDollars: number | null;
   latencyMs: number;
   async?: { jobId: string };
 }
@@ -15,11 +15,14 @@ export interface SttPollResult {
 
 export type AudioInput = { url: string } | { buffer: ArrayBuffer; filename: string };
 
+/**
+ * An STT provider implementation — one per API vendor.
+ * The providerModelId (from DB) tells the implementation which model to request.
+ */
 export interface SttProvider {
   name: string;
-  modelId: string;
   provider: string;
-  transcribe(audio: AudioInput, durationSeconds: number, env: Env): Promise<SttResult>;
+  transcribe(audio: AudioInput, durationSeconds: number, env: Env, providerModelId: string): Promise<SttResult>;
   poll?(jobId: string, env: Env): Promise<SttPollResult>;
 }
 
@@ -27,7 +30,6 @@ export interface SttProvider {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Fetch audio bytes + filename from a URL. */
 async function fetchAudioFromUrl(url: string): Promise<{ blob: Blob; filename: string }> {
   const resp = await fetch(url);
   if (!resp.ok) {
@@ -39,7 +41,6 @@ async function fetchAudioFromUrl(url: string): Promise<{ blob: Blob; filename: s
   return { blob, filename };
 }
 
-/** Resolve AudioInput to a Blob and filename. */
 async function resolveAudioBlob(audio: AudioInput): Promise<{ blob: Blob; filename: string }> {
   if ("url" in audio) {
     return fetchAudioFromUrl(audio.url);
@@ -47,7 +48,6 @@ async function resolveAudioBlob(audio: AudioInput): Promise<{ blob: Blob; filena
   return { blob: new Blob([audio.buffer], { type: "audio/mpeg" }), filename: audio.filename };
 }
 
-/** Resolve AudioInput to an ArrayBuffer. */
 async function resolveAudioBuffer(audio: AudioInput): Promise<ArrayBuffer> {
   if ("buffer" in audio) {
     return audio.buffer;
@@ -60,23 +60,20 @@ async function resolveAudioBuffer(audio: AudioInput): Promise<ArrayBuffer> {
 }
 
 // ---------------------------------------------------------------------------
-// Whisper (OpenAI)
+// OpenAI — serves whisper-1 via their transcriptions API
 // ---------------------------------------------------------------------------
 
-const WhisperProvider: SttProvider = {
-  name: "OpenAI Whisper",
-  modelId: "whisper-1",
+const OpenAIProvider: SttProvider = {
+  name: "OpenAI",
   provider: "openai",
 
-  async transcribe(audio: AudioInput, durationSeconds: number, env: Env): Promise<SttResult> {
+  async transcribe(audio: AudioInput, _durationSeconds: number, env: Env, providerModelId: string): Promise<SttResult> {
     const start = Date.now();
-
     const { blob: audioBlob, filename } = await resolveAudioBlob(audio);
 
-    // Build multipart form data
     const form = new FormData();
     form.append("file", new File([audioBlob], filename, { type: audioBlob.type || "audio/mpeg" }));
-    form.append("model", "whisper-1");
+    form.append("model", providerModelId);
 
     const resp = await fetch("https://api.openai.com/v1/audio/transcriptions", {
       method: "POST",
@@ -86,37 +83,29 @@ const WhisperProvider: SttProvider = {
 
     if (!resp.ok) {
       const body = await resp.text();
-      throw new Error(`Whisper API error ${resp.status}: ${body}`);
+      throw new Error(`OpenAI Whisper API error ${resp.status}: ${body}`);
     }
 
     const data = (await resp.json()) as { text: string };
-    const latencyMs = Date.now() - start;
-    const costDollars = (durationSeconds / 60) * 0.006;
-
-    return { transcript: data.text, costDollars, latencyMs };
+    return { transcript: data.text, costDollars: null, latencyMs: Date.now() - start };
   },
 };
 
 // ---------------------------------------------------------------------------
-// Deepgram Nova-2
+// Deepgram — serves nova-2, nova-3 via their listen API
 // ---------------------------------------------------------------------------
 
 const DeepgramProvider: SttProvider = {
-  name: "Deepgram Nova-2",
-  modelId: "nova-2",
+  name: "Deepgram",
   provider: "deepgram",
 
-  async transcribe(audio: AudioInput, durationSeconds: number, env: Env): Promise<SttResult> {
+  async transcribe(audio: AudioInput, _durationSeconds: number, env: Env, providerModelId: string): Promise<SttResult> {
     const start = Date.now();
-    const keyPresent = !!env.DEEPGRAM_API_KEY;
-    const keyPrefix = env.DEEPGRAM_API_KEY?.slice(0, 8) ?? "MISSING";
-    console.log(`[Deepgram] key present: ${keyPresent}, prefix: ${keyPrefix}..., auth header: "Token ${env.DEEPGRAM_API_KEY}", audio type: ${"url" in audio ? "url" : "buffer"}`);
 
-    // Deepgram accepts either a URL (JSON body) or raw audio bytes
     let resp: Response;
     if ("url" in audio) {
       resp = await fetch(
-        "https://api.deepgram.com/v1/listen?model=nova-2&smart_format=true",
+        `https://api.deepgram.com/v1/listen?model=${providerModelId}&smart_format=true`,
         {
           method: "POST",
           headers: {
@@ -128,7 +117,7 @@ const DeepgramProvider: SttProvider = {
       );
     } else {
       resp = await fetch(
-        "https://api.deepgram.com/v1/listen?model=nova-2&smart_format=true",
+        `https://api.deepgram.com/v1/listen?model=${providerModelId}&smart_format=true`,
         {
           method: "POST",
           headers: {
@@ -150,87 +139,22 @@ const DeepgramProvider: SttProvider = {
       results: { channels: { alternatives: { transcript: string }[] }[] };
     };
 
-    const latencyMs = Date.now() - start;
-    const costDollars = (durationSeconds / 60) * 0.0043;
     const transcript = data.results.channels[0]?.alternatives[0]?.transcript ?? "";
-
-    return { transcript, costDollars, latencyMs };
+    return { transcript, costDollars: null, latencyMs: Date.now() - start };
   },
 };
 
 // ---------------------------------------------------------------------------
-// Deepgram Nova-3
-// ---------------------------------------------------------------------------
-
-const DeepgramNova3Provider: SttProvider = {
-  name: "Deepgram Nova-3",
-  modelId: "nova-3",
-  provider: "deepgram",
-
-  async transcribe(audio: AudioInput, durationSeconds: number, env: Env): Promise<SttResult> {
-    const start = Date.now();
-
-    let resp: Response;
-    if ("url" in audio) {
-      resp = await fetch(
-        "https://api.deepgram.com/v1/listen?model=nova-3&smart_format=true",
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Token ${env.DEEPGRAM_API_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ url: audio.url }),
-        },
-      );
-    } else {
-      resp = await fetch(
-        "https://api.deepgram.com/v1/listen?model=nova-3&smart_format=true",
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Token ${env.DEEPGRAM_API_KEY}`,
-            "Content-Type": "audio/mpeg",
-          },
-          body: audio.buffer,
-        },
-      );
-    }
-
-    if (!resp.ok) {
-      const body = await resp.text();
-      console.error(`[Deepgram Nova-3] ${resp.status}: ${body}`);
-      throw new Error(`Deepgram API error ${resp.status}: ${body}`);
-    }
-
-    const data = (await resp.json()) as {
-      results: { channels: { alternatives: { transcript: string }[] }[] };
-    };
-
-    const latencyMs = Date.now() - start;
-    const costDollars = (durationSeconds / 60) * 0.0043;
-    const transcript = data.results.channels[0]?.alternatives[0]?.transcript ?? "";
-
-    return { transcript, costDollars, latencyMs };
-  },
-};
-
-// ---------------------------------------------------------------------------
-// AssemblyAI
+// AssemblyAI — async provider, requires polling
 // ---------------------------------------------------------------------------
 
 const AssemblyAIProvider: SttProvider = {
-  name: "AssemblyAI Best",
-  modelId: "assemblyai-best",
+  name: "AssemblyAI",
   provider: "assemblyai",
 
-  async transcribe(audio: AudioInput, durationSeconds: number, env: Env): Promise<SttResult> {
+  async transcribe(audio: AudioInput, _durationSeconds: number, env: Env, _providerModelId: string): Promise<SttResult> {
     const start = Date.now();
-    const keyPresent = !!env.ASSEMBLYAI_API_KEY;
-    const keyPrefix = env.ASSEMBLYAI_API_KEY?.slice(0, 8) ?? "MISSING";
-    console.log(`[AssemblyAI] key present: ${keyPresent}, prefix: ${keyPrefix}..., auth header: "${env.ASSEMBLYAI_API_KEY}", audio type: ${"url" in audio ? "url" : "buffer"}`);
 
-    // AssemblyAI requires a URL. If we have a buffer, upload it first.
     let audioUrl: string;
     if ("url" in audio) {
       audioUrl = audio.url;
@@ -245,7 +169,6 @@ const AssemblyAIProvider: SttProvider = {
       });
       if (!uploadResp.ok) {
         const body = await uploadResp.text();
-        console.error(`[AssemblyAI] upload ${uploadResp.status}: ${body}`);
         throw new Error(`AssemblyAI upload error ${uploadResp.status}: ${body}`);
       }
       const uploadData = (await uploadResp.json()) as { upload_url: string };
@@ -267,22 +190,17 @@ const AssemblyAIProvider: SttProvider = {
     }
 
     const data = (await resp.json()) as { id: string; status: string };
-    const latencyMs = Date.now() - start;
-    const costDollars = (durationSeconds / 60) * 0.015;
-
     return {
       transcript: "",
-      costDollars,
-      latencyMs,
+      costDollars: null,
+      latencyMs: Date.now() - start,
       async: { jobId: data.id },
     };
   },
 
   async poll(jobId: string, env: Env): Promise<SttPollResult> {
     const resp = await fetch(`https://api.assemblyai.com/v2/transcript/${jobId}`, {
-      headers: {
-        Authorization: env.ASSEMBLYAI_API_KEY,
-      },
+      headers: { Authorization: env.ASSEMBLYAI_API_KEY },
     });
 
     if (!resp.ok) {
@@ -291,7 +209,6 @@ const AssemblyAIProvider: SttProvider = {
     }
 
     const data = (await resp.json()) as { status: string; text?: string; error?: string };
-    console.log(`[AssemblyAI poll] jobId=${jobId}, status=${data.status}, hasText=${!!data.text}, textLen=${data.text?.length ?? 0}, error=${data.error ?? "none"}`);
 
     if (data.status === "completed") {
       return { done: true, transcript: data.text ?? "" };
@@ -305,18 +222,16 @@ const AssemblyAIProvider: SttProvider = {
 };
 
 // ---------------------------------------------------------------------------
-// Google Cloud STT (Chirp)
+// Google Cloud STT (Chirp) — async provider, requires polling
 // ---------------------------------------------------------------------------
 
 const GoogleSttProvider: SttProvider = {
-  name: "Google Chirp",
-  modelId: "google-chirp",
+  name: "Google Cloud STT",
   provider: "google",
 
-  async transcribe(audio: AudioInput, durationSeconds: number, env: Env): Promise<SttResult> {
+  async transcribe(audio: AudioInput, _durationSeconds: number, env: Env, providerModelId: string): Promise<SttResult> {
     const start = Date.now();
 
-    // Fetch audio and base64-encode it (longrunningrecognize requires GCS URI or inline content)
     const audioBuffer = await resolveAudioBuffer(audio);
     const base64Audio = btoa(
       new Uint8Array(audioBuffer).reduce((acc, byte) => acc + String.fromCharCode(byte), ""),
@@ -332,7 +247,7 @@ const GoogleSttProvider: SttProvider = {
             encoding: "MP3",
             sampleRateHertz: 16000,
             languageCode: "en-US",
-            model: "chirp",
+            model: providerModelId || "chirp",
           },
           audio: { content: base64Audio },
         }),
@@ -345,13 +260,10 @@ const GoogleSttProvider: SttProvider = {
     }
 
     const data = (await resp.json()) as { name: string };
-    const latencyMs = Date.now() - start;
-    const costDollars = (durationSeconds / 60) * 0.024;
-
     return {
       transcript: "",
-      costDollars,
-      latencyMs,
+      costDollars: null,
+      latencyMs: Date.now() - start,
       async: { jobId: data.name },
     };
   },
@@ -386,25 +298,133 @@ const GoogleSttProvider: SttProvider = {
 };
 
 // ---------------------------------------------------------------------------
-// Registry
+// Groq — OpenAI-compatible API, serves whisper models
 // ---------------------------------------------------------------------------
 
-export const STT_PROVIDERS: SttProvider[] = [
-  WhisperProvider,
+const GroqProvider: SttProvider = {
+  name: "Groq",
+  provider: "groq",
+
+  async transcribe(audio: AudioInput, _durationSeconds: number, env: Env, providerModelId: string): Promise<SttResult> {
+    const start = Date.now();
+    const { blob: audioBlob, filename } = await resolveAudioBlob(audio);
+
+    const form = new FormData();
+    form.append("file", new File([audioBlob], filename, { type: audioBlob.type || "audio/mpeg" }));
+    form.append("model", providerModelId);
+
+    const resp = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${env.GROQ_API_KEY}` },
+      body: form,
+    });
+
+    if (!resp.ok) {
+      const body = await resp.text();
+      throw new Error(`Groq API error ${resp.status}: ${body}`);
+    }
+
+    const data = (await resp.json()) as { text: string };
+    return { transcript: data.text, costDollars: null, latencyMs: Date.now() - start };
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Cloudflare Workers AI — serves @cf/* models via AI binding
+// ---------------------------------------------------------------------------
+
+const CloudflareProvider: SttProvider = {
+  name: "Cloudflare Workers AI",
+  provider: "cloudflare",
+
+  async transcribe(audio: AudioInput, _durationSeconds: number, env: Env, providerModelId: string): Promise<SttResult> {
+    const start = Date.now();
+    const audioBuffer = await resolveAudioBuffer(audio);
+    const isDeepgram = providerModelId.includes("deepgram");
+
+    if (isDeepgram) {
+      // Deepgram models expect { audio: { body: ReadableStream, contentType } }
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(new Uint8Array(audioBuffer));
+          controller.close();
+        },
+      });
+      const result = await env.AI.run(providerModelId as any, {
+        audio: { body: stream, contentType: "audio/mpeg" },
+        detect_language: true,
+      } as any);
+
+      // Deepgram response: { transcripts: [{ transcript }] } or { results: { channels: [...] } }
+      const res = result as any;
+      const transcript =
+        res?.transcripts?.[0]?.transcript ??
+        res?.results?.channels?.[0]?.alternatives?.[0]?.transcript ??
+        res?.text ??
+        "";
+      return { transcript, costDollars: null, latencyMs: Date.now() - start };
+    }
+
+    // Whisper models — base64 input, chunked at 5MB
+    const CF_CHUNK_SIZE = 5 * 1024 * 1024;
+    const chunks: string[] = [];
+
+    for (let offset = 0; offset < audioBuffer.byteLength; offset += CF_CHUNK_SIZE) {
+      const slice = audioBuffer.slice(offset, Math.min(offset + CF_CHUNK_SIZE, audioBuffer.byteLength));
+      const bytes = new Uint8Array(slice);
+      let binary = "";
+      for (let i = 0; i < bytes.length; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      const base64 = btoa(binary);
+
+      // Retry once on transient CF errors (1031, 504)
+      let result: any;
+      try {
+        result = await env.AI.run(providerModelId as any, { audio: base64 });
+      } catch (err: any) {
+        const msg = err?.message ?? String(err);
+        if (msg.includes("1031") || msg.includes("504") || msg.includes("timeout")) {
+          await new Promise((r) => setTimeout(r, 2000));
+          result = await env.AI.run(providerModelId as any, { audio: base64 });
+        } else {
+          throw err;
+        }
+      }
+      const text = (result as any)?.text?.trim() ?? "";
+      if (text) chunks.push(text);
+    }
+
+    const transcript = chunks.join(" ");
+    return { transcript, costDollars: null, latencyMs: Date.now() - start };
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Registry — keyed by provider name
+// ---------------------------------------------------------------------------
+
+const PROVIDERS: SttProvider[] = [
+  OpenAIProvider,
   DeepgramProvider,
-  DeepgramNova3Provider,
   AssemblyAIProvider,
   GoogleSttProvider,
+  GroqProvider,
+  CloudflareProvider,
 ];
 
 const providerMap = new Map<string, SttProvider>(
-  STT_PROVIDERS.map((p) => [p.modelId, p]),
+  PROVIDERS.map((p) => [p.provider, p]),
 );
 
-export function getProvider(modelId: string): SttProvider {
-  const provider = providerMap.get(modelId);
-  if (!provider) {
-    throw new Error(`Unknown STT provider for model: ${modelId}`);
+/**
+ * Look up an STT provider implementation by provider name.
+ * The caller should pass the providerModelId from the DB to transcribe().
+ */
+export function getProviderImpl(provider: string): SttProvider {
+  const impl = providerMap.get(provider);
+  if (!impl) {
+    throw new Error(`No STT implementation for provider: ${provider}`);
   }
-  return provider;
+  return impl;
 }

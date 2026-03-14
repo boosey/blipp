@@ -1,6 +1,7 @@
 import type { Env } from "../types";
 import type { AudioInput } from "./stt-providers";
-import { getProvider } from "./stt-providers";
+import { getProviderImpl } from "./stt-providers";
+import { getModelPricing, calculateAudioCost } from "./ai-usage";
 import { parseVTT, parseSRT } from "./transcript";
 import { alignTranscriptWindow, calculateWer, normalizeText, stripInsertionBlocks } from "./wer";
 import { preWerNormalize } from "./transcript-normalizer";
@@ -10,6 +11,20 @@ const BENCHMARK_WINDOW_SECONDS = 900; // 15 minutes
 export interface RunNextResult {
   done: boolean;
   progress: { done: number; total: number; current?: string };
+}
+
+/**
+ * Resolve the provider name for a benchmark result.
+ * New results have provider set at creation; old results need a DB lookup.
+ */
+async function resolveProvider(result: any, prisma: any): Promise<string> {
+  if (result.provider) return result.provider;
+  // Legacy: look up default provider from DB
+  const dbProvider = await prisma.aiModelProvider.findFirst({
+    where: { isDefault: true, model: { modelId: result.model, stage: "stt" } },
+  });
+  if (dbProvider) return dbProvider.provider;
+  throw new Error(`No provider found for model: ${result.model}`);
 }
 
 /**
@@ -75,10 +90,11 @@ export async function runNextTask(
   let currentLabel = "";
 
   if (pollingResult) {
-    const provider = getProvider(pollingResult.model);
-    currentLabel = `polling ${provider.name}`;
+    const providerName = await resolveProvider(pollingResult, prisma);
+    const providerImpl = getProviderImpl(providerName);
+    currentLabel = `polling ${providerImpl.name}`;
     tasks.push(
-      handlePollingTask(pollingResult, provider, experiment, env, prisma).catch(
+      handlePollingTask(pollingResult, providerImpl, experiment, env, prisma).catch(
         async (err: any) => {
           await markFailed(pollingResult, experimentId, err, prisma);
         },
@@ -87,10 +103,11 @@ export async function runNextTask(
   }
 
   if (pendingResult) {
-    const provider = getProvider(pendingResult.model);
-    currentLabel = `${provider.name} @ ${pendingResult.speed}x — ${pendingResult.episode.title}`;
+    const providerName = await resolveProvider(pendingResult, prisma);
+    const providerImpl = getProviderImpl(providerName);
+    currentLabel = `${providerImpl.name} @ ${pendingResult.speed}x — ${pendingResult.episode.title}`;
     tasks.push(
-      handlePendingTask(pendingResult, provider, experiment, env, prisma).catch(
+      handlePendingTask(pendingResult, providerImpl, experiment, env, prisma).catch(
         async (err: any) => {
           await markFailed(pendingResult, experimentId, err, prisma);
         },
@@ -175,7 +192,7 @@ function calculateCleanWer(
 
 async function handlePollingTask(
   result: any,
-  provider: ReturnType<typeof getProvider>,
+  provider: ReturnType<typeof getProviderImpl>,
   experiment: any,
   env: Env,
   prisma: any,
@@ -231,7 +248,7 @@ async function handlePollingTask(
 
 async function handlePendingTask(
   result: any,
-  provider: ReturnType<typeof getProvider>,
+  provider: ReturnType<typeof getProviderImpl>,
   experiment: any,
   env: Env,
   prisma: any,
@@ -248,7 +265,15 @@ async function handlePendingTask(
     ? Math.round(result.episode.durationSeconds / result.speed)
     : 900; // fallback to 15 min
 
-  const sttResult = await provider.transcribe(audio, durationSeconds, env);
+  // Look up providerModelId and pricing from DB
+  const dbProvider = await prisma.aiModelProvider.findFirst({
+    where: { provider: result.provider, model: { modelId: result.model } },
+  });
+  const providerModelId = dbProvider?.providerModelId ?? result.model;
+  const pricing = await getModelPricing(prisma, result.model, provider.provider);
+  const costDollars = calculateAudioCost(pricing, durationSeconds);
+
+  const sttResult = await provider.transcribe(audio, durationSeconds, env, providerModelId);
 
   if (sttResult.async) {
     // Async provider (AssemblyAI, Google) — save job ID and poll later
@@ -257,7 +282,7 @@ async function handlePendingTask(
       data: {
         status: "POLLING",
         pollingId: sttResult.async.jobId,
-        costDollars: sttResult.costDollars,
+        costDollars,
         latencyMs: sttResult.latencyMs,
       },
     });
@@ -284,7 +309,7 @@ async function handlePendingTask(
       status: "COMPLETED",
       completedAt: new Date(),
       provider: provider.provider,
-      costDollars: sttResult.costDollars,
+      costDollars,
       latencyMs: sttResult.latencyMs,
       wer: werResult.wer,
       wordCount: werResult.wordCount,

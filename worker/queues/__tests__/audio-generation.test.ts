@@ -40,9 +40,13 @@ vi.mock("../../lib/ai-models", () => ({
   getModelConfig: vi.fn().mockResolvedValue({ provider: "openai", model: "gpt-4o-mini-tts" }),
 }));
 
-vi.mock("openai", () => {
-  return { default: class MockOpenAI {} };
-});
+vi.mock("../../lib/ai-usage", () => ({
+  getModelPricing: vi.fn().mockResolvedValue({ pricePerMinute: 0.015 }),
+}));
+
+vi.mock("../../lib/tts-providers", () => ({
+  getTtsProviderImpl: vi.fn().mockReturnValue({ name: "MockTTS", provider: "openai" }),
+}));
 
 import { createPrismaClient } from "../../lib/db";
 import { getConfig } from "../../lib/config";
@@ -91,6 +95,7 @@ beforeEach(() => {
     usage: { model: "test-tts-model", inputTokens: 40, outputTokens: 0, cost: null },
   });
   (putClip as any).mockResolvedValue(undefined);
+  mockPrisma.aiModelProvider.findFirst.mockResolvedValue({ providerModelId: "gpt-4o-mini-tts" });
   (putWorkProduct as any).mockResolvedValue(undefined);
   mockPrisma.workProduct.create.mockResolvedValue({ id: "wp-1" });
   mockPrisma.workProduct.findFirst.mockResolvedValue(null);
@@ -210,7 +215,9 @@ describe("handleAudioGeneration", () => {
       expect.anything(),
       "A warm narrative about technology trends.",
       undefined,
-      "gpt-4o-mini-tts"
+      expect.any(String),
+      expect.anything(),
+      expect.anything()
     );
 
     // Stored in R2
@@ -295,7 +302,7 @@ describe("handleAudioGeneration", () => {
     await handleAudioGeneration(mockBatch, mockEnv, mockCtx);
 
     expect(getModelConfig).toHaveBeenCalledWith(expect.anything(), "tts");
-    expect(generateSpeech).toHaveBeenCalledWith(expect.anything(), expect.anything(), undefined, "tts-1-hd");
+    expect(generateSpeech).toHaveBeenCalledWith(expect.anything(), expect.anything(), undefined, expect.any(String), expect.anything(), expect.anything());
   });
 
   describe("stage-enabled check", () => {

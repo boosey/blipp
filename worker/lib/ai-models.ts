@@ -9,7 +9,7 @@ export interface AIModelConfig {
 }
 
 const DEFAULTS: Record<AIStage, AIModelConfig> = {
-  stt: { provider: "openai", model: "whisper-1" },
+  stt: { provider: "cloudflare", model: "whisper-large-v3-turbo" },
   distillation: { provider: "anthropic", model: "claude-sonnet-4-20250514" },
   narrative: { provider: "anthropic", model: "claude-sonnet-4-20250514" },
   tts: { provider: "openai", model: "gpt-4o-mini-tts" },

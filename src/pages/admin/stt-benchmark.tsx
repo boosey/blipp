@@ -56,26 +56,25 @@ import type {
   PaginatedResponse,
 } from "@/types/admin";
 
+// ── Helpers ──
+
+/** Display a model name qualified by provider, e.g. "whisper-large-v3-turbo (Groq)" */
+function qualifiedModel(model: string, provider?: string): string {
+  if (!provider) return model;
+  return `${model} (${provider})`;
+}
+
 // ── Constants ──
 
-// Benchmark-specific pricing ($/min). Keep separate from the model registry
-// since prices are benchmark-relevant metadata, not pipeline config.
-const COST_PER_MINUTE: Record<string, number> = {
-  "whisper-1": 0.006,
-  "nova-2": 0.0043,
-  "nova-3": 0.0077,
-  "assemblyai-best": 0.015,
-  "google-chirp": 0.024,
-};
-
-// Static STT model list for benchmark UI. Will be replaced by DB-backed registry in Task 8/9.
-const STT_MODELS = [
-  { id: "whisper-1", label: "Whisper v1", price: COST_PER_MINUTE["whisper-1"] ?? 0 },
-  { id: "nova-2", label: "Deepgram Nova-2", price: COST_PER_MINUTE["nova-2"] ?? 0 },
-  { id: "nova-3", label: "Deepgram Nova-3", price: COST_PER_MINUTE["nova-3"] ?? 0 },
-  { id: "assemblyai-best", label: "AssemblyAI Best", price: COST_PER_MINUTE["assemblyai-best"] ?? 0 },
-  { id: "google-chirp", label: "Google Chirp", price: COST_PER_MINUTE["google-chirp"] ?? 0 },
-];
+interface SttModelOption {
+  /** Composite key: "modelId:provider" */
+  id: string;
+  modelId: string;
+  provider: string;
+  providerLabel: string;
+  label: string;
+  price: number;
+}
 
 const SPEED_OPTIONS = [1, 1.5, 2] as const;
 
@@ -367,14 +366,17 @@ function ExperimentsList({
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-wrap gap-1">
-                      {exp.config.models.map((m) => (
-                        <Badge
-                          key={m}
-                          className="bg-white/5 text-[#9CA3AF] text-[9px] font-mono"
-                        >
-                          {m}
-                        </Badge>
-                      ))}
+                      {exp.config.models.map((m: any, i: number) => {
+                        const label = typeof m === "string" ? m : `${m.modelId}@${m.provider}`;
+                        return (
+                          <Badge
+                            key={`${label}-${i}`}
+                            className="bg-white/5 text-[#9CA3AF] text-[9px] font-mono"
+                          >
+                            {label}
+                          </Badge>
+                        );
+                      })}
                     </div>
                   </TableCell>
                   <TableCell>
@@ -421,6 +423,10 @@ function ExperimentSetupDialog({
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
+  // STT models from DB
+  const [sttModels, setSttModels] = useState<SttModelOption[]>([]);
+  const [loadingModels, setLoadingModels] = useState(false);
+
   // Episode picker state
   const [episodeSearch, setEpisodeSearch] = useState("");
   const [episodePage, setEpisodePage] = useState(1);
@@ -429,6 +435,39 @@ function ExperimentSetupDialog({
   const [loadingEpisodes, setLoadingEpisodes] = useState(false);
 
   const searchTimeout = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  // Load STT models from registry
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        setLoadingModels(true);
+        const resp = await apiFetch<{ data: any[] }>("/ai-models?stage=stt");
+        if (cancelled) return;
+        // Flatten: one card per model+provider combo
+        const models: SttModelOption[] = [];
+        for (const m of resp.data) {
+          for (const p of m.providers ?? []) {
+            models.push({
+              id: `${m.modelId}:${p.provider}`,
+              modelId: m.modelId,
+              provider: p.provider,
+              providerLabel: p.providerLabel,
+              label: m.label,
+              price: p.pricePerMinute ?? 0,
+            });
+          }
+        }
+        setSttModels(models);
+      } catch {
+        // keep empty
+      } finally {
+        if (!cancelled) setLoadingModels(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [open]);
 
   // Load eligible episodes
   const loadEpisodes = useCallback(
@@ -504,13 +543,16 @@ function ExperimentSetupDialog({
   // Cost estimate
   const totalMinutes =
     selectedEpisodes.length * selectedModels.length * selectedSpeeds.length * 15;
+  const modelPriceMap = new Map(sttModels.map((m) => [m.id, m.price]));
+  const modelLabelMap = new Map(sttModels.map((m) => [m.id, qualifiedModel(m.modelId, m.provider)]));
   const perModelCosts = selectedModels.map((m) => ({
     model: m,
+    label: modelLabelMap.get(m) ?? m,
     cost:
       selectedEpisodes.length *
       selectedSpeeds.length *
       15 *
-      (COST_PER_MINUTE[m] ?? 0),
+      (modelPriceMap.get(m) ?? 0),
   }));
   const totalCost = perModelCosts.reduce((sum, c) => sum + c.cost, 0);
 
@@ -525,13 +567,18 @@ function ExperimentSetupDialog({
     try {
       setCreating(true);
       setCreateError(null);
+      // Map composite IDs back to model+provider pairs
+      const modelProviders = selectedModels.map((id) => {
+        const opt = sttModels.find((m) => m.id === id);
+        return { modelId: opt!.modelId, provider: opt!.provider };
+      });
       const result = await apiFetch<{ data: SttExperiment }>(
         "/stt-benchmark/experiments",
         {
           method: "POST",
           body: JSON.stringify({
             name: name.trim(),
-            models: selectedModels,
+            models: modelProviders,
             speeds: selectedSpeeds,
             episodeIds: selectedEpisodes.map((e) => e.id),
           }),
@@ -568,7 +615,7 @@ function ExperimentSetupDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 pr-4">
+        <div className="flex-1 min-h-0 overflow-y-auto pr-4">
           <div className="space-y-6 pb-4">
             {/* Name */}
             <div className="space-y-2">
@@ -589,7 +636,8 @@ function ExperimentSetupDialog({
                 Models
               </label>
               <div className="grid grid-cols-2 gap-2">
-                {STT_MODELS.map((m) => (
+                {loadingModels && <Skeleton className="h-12 col-span-2" />}
+                {sttModels.map((m) => (
                   <label
                     key={m.id}
                     className={cn(
@@ -605,8 +653,11 @@ function ExperimentSetupDialog({
                     />
                     <div>
                       <div className="text-sm text-[#F9FAFB]">{m.label}</div>
+                      <div className="text-[10px] text-[#9CA3AF]">
+                        {m.providerLabel}
+                      </div>
                       <div className="text-[10px] text-[#9CA3AF] font-mono">
-                        {m.id} &middot; ${m.price}/min
+                        {m.modelId} &middot; ${m.price}/min
                       </div>
                     </div>
                   </label>
@@ -804,7 +855,7 @@ function ExperimentSetupDialog({
                         className="flex items-center justify-between rounded-md bg-white/[0.02] border border-white/5 px-3 py-2"
                       >
                         <span className="text-xs text-[#9CA3AF] font-mono">
-                          {mc.model}
+                          {mc.label}
                         </span>
                         <span className="text-xs text-[#F9FAFB] font-mono tabular-nums">
                           {formatCost(mc.cost)}
@@ -834,7 +885,7 @@ function ExperimentSetupDialog({
               </div>
             )}
           </div>
-        </ScrollArea>
+        </div>
 
         {/* Footer */}
         <div className="flex items-center justify-end gap-2 pt-4 border-t border-white/5">
@@ -969,7 +1020,6 @@ function ResultsDashboard({
     setAudioProgress({ done: 0, total });
 
     try {
-      const token = await getToken();
       let done = 0;
 
       for (const episodeId of episodes) {
@@ -979,13 +1029,17 @@ function ResultsDashboard({
             (r) => r.episodeId === episodeId && r.speed === speed
           );
           if (!matchingResult?.r2AudioKey) {
+            // Get fresh token for each iteration (Clerk JWTs are short-lived)
+            const token = await getToken();
+
             // Fetch audio via worker proxy (avoids CORS, pre-trimmed to 15 min)
             const proxyUrl = `/api/admin/stt-benchmark/episode-audio/${episodeId}`;
 
             // Process audio client-side
-            const blob = await processAudio(proxyUrl, speed, token);
+            const blob = await processAudio(proxyUrl, speed, token!);
 
-            // Upload via multipart form
+            // Upload via multipart form — get another fresh token since processing takes time
+            const uploadToken = await getToken();
             const formData = new FormData();
             formData.append("file", blob, `${episodeId}_${speed}x.mp3`);
             formData.append("experimentId", experiment.id);
@@ -995,7 +1049,7 @@ function ResultsDashboard({
             await fetch("/api/admin/stt-benchmark/upload-audio", {
               method: "POST",
               headers: {
-                Authorization: `Bearer ${token}`,
+                Authorization: `Bearer ${uploadToken}`,
               },
               body: formData,
             });
@@ -1085,7 +1139,11 @@ function ResultsDashboard({
 
   // Get unique speeds from grid for column headers
   const gridSpeeds = [...new Set(grid.map((g) => g.speed))].sort();
-  const gridModels = [...new Set(grid.map((g) => g.model))];
+  const gridModelKeys = [...new Set(grid.map((g) => `${g.model}|${g.provider}`))];
+  const gridModels = gridModelKeys.map((k) => {
+    const [model, provider] = k.split("|");
+    return { model, provider };
+  });
 
   // Find best/worst for coloring
   const gridBySpeed: Record<number, SttResultsGrid[]> = {};
@@ -1237,7 +1295,7 @@ function ResultsDashboard({
                   Lowest WER
                 </div>
                 <div className="text-sm text-[#F9FAFB] font-mono">
-                  {winners.lowestWer.model} @ {winners.lowestWer.speed}x
+                  {qualifiedModel(winners.lowestWer.model, winners.lowestWer.provider)} @ {winners.lowestWer.speed}x
                 </div>
                 <div className="text-xs text-[#9CA3AF] tabular-nums">
                   {formatWer(winners.lowestWer.avgWer)}
@@ -1250,7 +1308,7 @@ function ResultsDashboard({
                   Lowest Cost
                 </div>
                 <div className="text-sm text-[#F9FAFB] font-mono">
-                  {winners.lowestCost.model} @ {winners.lowestCost.speed}x
+                  {qualifiedModel(winners.lowestCost.model, winners.lowestCost.provider)} @ {winners.lowestCost.speed}x
                 </div>
                 <div className="text-xs text-[#9CA3AF] tabular-nums">
                   {formatCost(winners.lowestCost.avgCost)}
@@ -1263,7 +1321,7 @@ function ResultsDashboard({
                   Fastest
                 </div>
                 <div className="text-sm text-[#F9FAFB] font-mono">
-                  {winners.fastest.model} @ {winners.fastest.speed}x
+                  {qualifiedModel(winners.fastest.model, winners.fastest.provider)} @ {winners.fastest.speed}x
                 </div>
                 <div className="text-xs text-[#9CA3AF] tabular-nums">
                   {formatLatency(winners.fastest.avgLatency)}
@@ -1301,14 +1359,14 @@ function ResultsDashboard({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {gridModels.map((model) => (
-                <TableRow key={model} className="border-white/5">
+              {gridModels.map(({ model, provider }) => (
+                <TableRow key={`${model}|${provider}`} className="border-white/5">
                   <TableCell className="text-[#F9FAFB] text-xs font-mono">
-                    {model}
+                    {qualifiedModel(model, provider)}
                   </TableCell>
                   {gridSpeeds.map((speed) => {
                     const cell = grid.find(
-                      (g) => g.model === model && g.speed === speed
+                      (g) => g.model === model && g.provider === provider && g.speed === speed
                     );
                     if (!cell) {
                       return (
@@ -1492,7 +1550,7 @@ function ResultsDashboard({
                             className="border-white/5"
                           >
                             <TableCell className="text-[#F9FAFB] text-xs font-mono">
-                              {r.model}
+                              {qualifiedModel(r.model, r.provider)}
                             </TableCell>
                             <TableCell className="text-[#9CA3AF] text-xs tabular-nums">
                               {r.speed}x
@@ -1529,7 +1587,7 @@ function ResultsDashboard({
                               key={r.id}
                               className="text-[10px] text-[#EF4444] bg-[#EF4444]/5 rounded px-2 py-1"
                             >
-                              <span className="font-mono">{r.model}</span> @{" "}
+                              <span className="font-mono">{qualifiedModel(r.model, r.provider)}</span> @{" "}
                               {r.speed}x: {r.errorMessage}
                             </div>
                           ))}
@@ -1742,7 +1800,7 @@ function EpisodeTranscripts({
           <HypothesisDiffViewer
             key={r.id}
             resultId={r.id}
-            model={r.model}
+            model={qualifiedModel(r.model, r.provider)}
             speed={r.speed}
             refText={refText}
             onNeedRef={loadRef}

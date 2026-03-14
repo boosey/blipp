@@ -83,6 +83,8 @@ export function createMockEnv(): Env {
     DEEPGRAM_API_KEY: "mock-deepgram-key",
     ASSEMBLYAI_API_KEY: "mock-assemblyai-key",
     GOOGLE_STT_API_KEY: "mock-google-stt-key",
+    GROQ_API_KEY: "mock-groq-key",
+    AI: { run: vi.fn() } as unknown as Ai,
   };
 }
 

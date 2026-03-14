@@ -1,48 +1,53 @@
-import type OpenAI from "openai";
-import { calculateCost, type AiUsage } from "./ai-usage";
+import type { TtsProvider } from "./tts-providers";
+import { calculateAudioCost, calculateCharCost, type AiUsage, type ModelPricing } from "./ai-usage";
 
 /** Default TTS voice for briefing narration. */
 export const DEFAULT_VOICE = "coral";
 
-/** OpenAI TTS model optimized for speed. */
-export const TTS_MODEL = "gpt-4o-mini-tts";
+/** Default TTS instructions. */
+export const DEFAULT_INSTRUCTIONS =
+  "Speak in a warm, professional tone suitable for a daily podcast briefing. " +
+  "Maintain a steady, engaging pace. Pause naturally between topics.";
 
 /**
- * Generates spoken audio from text using OpenAI's TTS API.
+ * Generates spoken audio from text using a TTS provider.
  *
- * Uses the gpt-4o-mini-tts model with a warm, professional tone suitable
- * for daily podcast briefings. Returns raw MP3 audio as an ArrayBuffer.
- *
- * @param client - OpenAI SDK client instance
+ * @param tts - TTS provider implementation
  * @param text - Narrative text to convert to speech
- * @param voice - OpenAI voice ID (defaults to "coral")
+ * @param voice - Voice ID (defaults to "coral")
+ * @param providerModelId - Provider-specific model ID from DB
+ * @param env - Worker environment bindings
+ * @param pricing - Pricing from DB for cost calculation
  * @returns MP3 audio data as ArrayBuffer
- * @throws If the OpenAI API call fails
  */
 export async function generateSpeech(
-  client: OpenAI,
+  tts: TtsProvider,
   text: string,
   voice: string = DEFAULT_VOICE,
-  model: string = TTS_MODEL
+  providerModelId: string,
+  env: any,
+  pricing: ModelPricing | null = null
 ): Promise<{ audio: ArrayBuffer; usage: AiUsage }> {
-  const response = await client.audio.speech.create({
-    model,
-    voice: voice as any,
-    input: text,
-    response_format: "mp3",
-    instructions:
-      "Speak in a warm, professional tone suitable for a daily podcast briefing. " +
-      "Maintain a steady, engaging pace. Pause naturally between topics.",
-  });
+  const result = await tts.synthesize(
+    text,
+    voice,
+    providerModelId,
+    DEFAULT_INSTRUCTIONS,
+    env
+  );
 
-  const audio = await response.arrayBuffer();
+  // TTS pricing: try per-minute first (based on output audio), fall back to per-char
+  const estimatedSeconds = result.audio.byteLength / (128 * 1000 / 8);
+  const cost =
+    calculateAudioCost(pricing, estimatedSeconds) ??
+    calculateCharCost(pricing, text.length);
 
   const usage: AiUsage = {
-    model,
+    model: providerModelId,
     inputTokens: text.length,
     outputTokens: 0,
-    cost: calculateCost(model, text.length, 0),
+    cost,
   };
 
-  return { audio, usage };
+  return { audio: result.audio, usage };
 }

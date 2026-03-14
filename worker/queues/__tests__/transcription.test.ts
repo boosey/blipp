@@ -14,7 +14,12 @@ vi.mock("../../lib/config", () => ({
 }));
 
 vi.mock("../../lib/ai-models", () => ({
-  getModelConfig: vi.fn().mockResolvedValue({ provider: "openai", model: "whisper-1" }),
+  getModelConfig: vi.fn().mockResolvedValue({ provider: "cloudflare", model: "whisper-large-v3-turbo" }),
+}));
+
+vi.mock("../../lib/ai-usage", () => ({
+  getModelPricing: vi.fn().mockResolvedValue({ pricePerMinute: 0.0005 }),
+  calculateAudioCost: vi.fn().mockReturnValue(0.001),
 }));
 
 const mockPutWorkProduct = vi.fn().mockResolvedValue(undefined);
@@ -45,34 +50,20 @@ vi.mock("../../lib/logger", () => ({
   createPipelineLogger: vi.fn().mockResolvedValue(mockLogger),
 }));
 
-const mockWhisperCreate = vi.fn();
-vi.mock("openai", () => {
-  return {
-    default: class MockOpenAI {
-      audio = {
-        transcriptions: {
-          create: mockWhisperCreate,
-        },
-      };
-    },
-  };
-});
-
-const mockGetAudioMetadata = vi.fn().mockResolvedValue({ contentLength: 1000, contentType: "audio/mpeg" });
-const mockIsMp3 = vi.fn().mockReturnValue(true);
-const mockTranscribeChunked = vi.fn().mockResolvedValue({ transcript: "Chunked transcript text.", usage: { model: "whisper-1", inputTokens: 3276, outputTokens: 0, cost: null } });
-vi.mock("../../lib/whisper-chunked", () => ({
-  getAudioMetadata: (...args: any[]) => mockGetAudioMetadata(...args),
-  isMp3: (...args: any[]) => mockIsMp3(...args),
-  transcribeChunked: (...args: any[]) => mockTranscribeChunked(...args),
-  WHISPER_MAX_BYTES: 25 * 1024 * 1024,
-  CHUNK_SIZE: 20 * 1024 * 1024,
+const mockTranscribe = vi.fn().mockResolvedValue({ transcript: "Provider transcript text.", costDollars: null, latencyMs: 100 });
+vi.mock("../../lib/stt-providers", () => ({
+  getProviderImpl: vi.fn().mockReturnValue({
+    name: "MockProvider",
+    provider: "cloudflare",
+    transcribe: (...args: any[]) => mockTranscribe(...args),
+  }),
 }));
 
 const { getConfig } = await import("../../lib/config");
 const { getModelConfig } = await import("../../lib/ai-models");
 const { lookupPodcastIndexTranscript } = await import("../../lib/transcript-source");
 const { fetchTranscript } = await import("../../lib/transcript");
+const { getProviderImpl } = await import("../../lib/stt-providers");
 const { handleTranscription } = await import("../transcription");
 
 function createMsg(body: any) {
@@ -136,19 +127,18 @@ describe("handleTranscription", () => {
 
     // Re-set getModelConfig default after clearAllMocks
     (getModelConfig as any).mockReset();
-    (getModelConfig as any).mockResolvedValue({ provider: "openai", model: "whisper-1" });
+    (getModelConfig as any).mockResolvedValue({ provider: "cloudflare", model: "whisper-large-v3-turbo" });
 
     // Default: fetch returns a Response-like object
+    const audioData = new ArrayBuffer(20000);
     vi.stubGlobal("fetch", vi.fn().mockImplementation((url: string) => {
       if (url.match(/\.(mp3|m4a|wav|ogg|webm|flac)(\?|$)/i) || url.includes("audio")) {
-        // Audio URL — return a proper Response-like object for Whisper path
-        const audioBlob = new Blob(["audio-data".repeat(2000)], { type: "audio/mpeg" });
         return Promise.resolve({
           ok: true,
           status: 200,
           headers: new Map([["content-type", "audio/mpeg"]]),
           text: vi.fn().mockResolvedValue(""),
-          blob: vi.fn().mockResolvedValue(audioBlob),
+          arrayBuffer: vi.fn().mockResolvedValue(audioData),
         });
       }
       // Transcript URL — return text
@@ -157,22 +147,18 @@ describe("handleTranscription", () => {
         status: 200,
         headers: new Map([["content-type", "text/plain"]]),
         text: vi.fn().mockResolvedValue("This is a transcript."),
-        blob: vi.fn().mockResolvedValue(new Blob(["This is a transcript."])),
+        arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(0)),
       });
     }));
 
-    mockWhisperCreate.mockReset();
-    mockWhisperCreate.mockResolvedValue({ text: "Whisper transcript text." });
+    mockTranscribe.mockReset();
+    mockTranscribe.mockResolvedValue({ transcript: "Provider transcript text.", costDollars: null, latencyMs: 100 });
 
     mockPutWorkProduct.mockReset();
     mockPutWorkProduct.mockResolvedValue(undefined);
 
-    mockGetAudioMetadata.mockReset();
-    mockGetAudioMetadata.mockResolvedValue({ contentLength: 1000, contentType: "audio/mpeg" });
-    mockIsMp3.mockReset();
-    mockIsMp3.mockReturnValue(true);
-    mockTranscribeChunked.mockReset();
-    mockTranscribeChunked.mockResolvedValue({ transcript: "Chunked transcript text.", usage: { model: "whisper-1", inputTokens: 3276, outputTokens: 0, cost: null } });
+    // Mock providerModelId lookup
+    mockPrisma.aiModelProvider.findFirst.mockResolvedValue({ providerModelId: "@cf/openai/whisper-large-v3-turbo" });
 
     (lookupPodcastIndexTranscript as any).mockReset();
     (lookupPodcastIndexTranscript as any).mockResolvedValue(null);
@@ -292,7 +278,7 @@ describe("handleTranscription", () => {
     expect(msg.ack).toHaveBeenCalled();
   });
 
-  it("Whisper fallback when no transcriptUrl", async () => {
+  it("STT fallback when no transcriptUrl", async () => {
     const episodeNoTranscript = { ...EPISODE, transcriptUrl: null };
     const msg = createMsg({ jobId: "job1", episodeId: "ep1" });
     mockPrisma.pipelineJob.findUnique.mockResolvedValue(JOB);
@@ -305,36 +291,24 @@ describe("handleTranscription", () => {
     mockPrisma.workProduct.create.mockResolvedValue({ id: "wp1" });
     mockPrisma.pipelineStep.update.mockResolvedValue({});
 
-    // Stub File if not available in test env
-    if (typeof globalThis.File === "undefined") {
-      globalThis.File = class File extends Blob {
-        name: string;
-        lastModified: number;
-        constructor(parts: BlobPart[], name: string, opts?: FilePropertyBag) {
-          super(parts, opts);
-          this.name = name;
-          this.lastModified = Date.now();
-        }
-      } as any;
-    }
-
     await handleTranscription(createBatch([msg]), env, ctx);
 
-    // Should fetch audio URL for Whisper
     expect(fetch).toHaveBeenCalledWith("https://example.com/audio.mp3");
-    expect(mockWhisperCreate).toHaveBeenCalledWith({
-      model: "whisper-1",
-      file: expect.any(File),
-    });
+    expect(mockTranscribe).toHaveBeenCalledWith(
+      expect.objectContaining({ buffer: expect.any(ArrayBuffer), filename: expect.any(String) }),
+      expect.any(Number),
+      expect.anything(),
+      "@cf/openai/whisper-large-v3-turbo"
+    );
     expect(mockPrisma.distillation.upsert).toHaveBeenCalledWith({
       where: { episodeId: "ep1" },
-      update: { status: "TRANSCRIPT_READY", transcript: "Whisper transcript text.", errorMessage: null },
-      create: { episodeId: "ep1", status: "TRANSCRIPT_READY", transcript: "Whisper transcript text." },
+      update: { status: "TRANSCRIPT_READY", transcript: "Provider transcript text.", errorMessage: null },
+      create: { episodeId: "ep1", status: "TRANSCRIPT_READY", transcript: "Provider transcript text." },
     });
     expect(msg.ack).toHaveBeenCalled();
   });
 
-  it("reads STT model from config for Whisper path", async () => {
+  it("reads STT model from config and dispatches to provider", async () => {
     const episodeNoTranscript = { ...EPISODE, transcriptUrl: null };
     const msg = createMsg({ jobId: "job1", episodeId: "ep1" });
     mockPrisma.pipelineJob.findUnique.mockResolvedValue(JOB);
@@ -347,25 +321,11 @@ describe("handleTranscription", () => {
     mockPrisma.workProduct.create.mockResolvedValue({ id: "wp1" });
     mockPrisma.pipelineStep.update.mockResolvedValue({});
 
-    if (typeof globalThis.File === "undefined") {
-      globalThis.File = class File extends Blob {
-        name: string;
-        lastModified: number;
-        constructor(parts: BlobPart[], name: string, opts?: FilePropertyBag) {
-          super(parts, opts);
-          this.name = name;
-          this.lastModified = Date.now();
-        }
-      } as any;
-    }
-
     await handleTranscription(createBatch([msg]), env, ctx);
 
     expect(getModelConfig).toHaveBeenCalledWith(expect.anything(), "stt");
-    expect(mockWhisperCreate).toHaveBeenCalledWith({
-      model: "whisper-1",
-      file: expect.any(File),
-    });
+    expect(getProviderImpl).toHaveBeenCalledWith("cloudflare");
+    expect(mockTranscribe).toHaveBeenCalled();
   });
 
   it("reports to orchestrator with jobId", async () => {
@@ -535,7 +495,7 @@ describe("handleTranscription", () => {
 
     expect(lookupPodcastIndexTranscript).toHaveBeenCalled();
     // Should NOT call Whisper
-    expect(mockWhisperCreate).not.toHaveBeenCalled();
+    expect(mockTranscribe).not.toHaveBeenCalled();
     // Should backfill episode.transcriptUrl
     expect(mockPrisma.episode.update).toHaveBeenCalledWith({
       where: { id: "ep1" },
@@ -574,11 +534,11 @@ describe("handleTranscription", () => {
     await handleTranscription(createBatch([msg]), env, ctx);
 
     expect(lookupPodcastIndexTranscript).toHaveBeenCalled();
-    expect(mockWhisperCreate).toHaveBeenCalled();
+    expect(mockTranscribe).toHaveBeenCalled();
     expect(msg.ack).toHaveBeenCalled();
   });
 
-  it("uses chunked transcription when audio exceeds 25MB", async () => {
+  it("delegates to provider for any audio size", async () => {
     const episodeNoTranscript = { ...EPISODE, transcriptUrl: null };
     const msg = createMsg({ jobId: "job1", episodeId: "ep1" });
     mockPrisma.pipelineJob.findUnique.mockResolvedValue(JOB);
@@ -592,18 +552,16 @@ describe("handleTranscription", () => {
     mockPrisma.pipelineStep.update.mockResolvedValue({});
 
     (lookupPodcastIndexTranscript as any).mockResolvedValue(null);
-    mockGetAudioMetadata.mockResolvedValue({ contentLength: 50 * 1024 * 1024, contentType: "audio/mpeg" });
-    mockIsMp3.mockReturnValue(true);
 
     await handleTranscription(createBatch([msg]), env, ctx);
 
-    expect(mockTranscribeChunked).toHaveBeenCalled();
-    expect(mockWhisperCreate).not.toHaveBeenCalled();
+    // Provider handles all audio — no chunking logic in the queue handler
+    expect(mockTranscribe).toHaveBeenCalled();
     expect(msg.ack).toHaveBeenCalled();
   });
 
-  it("fails with clear error for non-MP3 files over 25MB", async () => {
-    const episodeNoTranscript = { ...EPISODE, transcriptUrl: null, audioUrl: "https://example.com/audio.m4a" };
+  it("fails gracefully when audio is too small", async () => {
+    const episodeNoTranscript = { ...EPISODE, transcriptUrl: null };
     const msg = createMsg({ jobId: "job1", episodeId: "ep1" });
     mockPrisma.pipelineJob.findUnique.mockResolvedValue(JOB);
     mockPrisma.pipelineJob.update.mockResolvedValue({});
@@ -614,8 +572,14 @@ describe("handleTranscription", () => {
     mockPrisma.distillation.upsert.mockResolvedValue({});
 
     (lookupPodcastIndexTranscript as any).mockResolvedValue(null);
-    mockGetAudioMetadata.mockResolvedValue({ contentLength: 50 * 1024 * 1024, contentType: "audio/mp4" });
-    mockIsMp3.mockReturnValue(false);
+
+    // Return tiny audio — should fail with "too small" error
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Map([["content-type", "audio/mpeg"]]),
+      arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(100)),
+    }));
 
     await handleTranscription(createBatch([msg]), env, ctx);
 
@@ -623,51 +587,9 @@ describe("handleTranscription", () => {
       where: { jobId: "job1", stage: "TRANSCRIPTION", status: "IN_PROGRESS" },
       data: expect.objectContaining({
         status: "FAILED",
-        errorMessage: expect.stringContaining("too large"),
+        errorMessage: expect.stringContaining("too small"),
       }),
     });
-    expect(env.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith(
-      expect.objectContaining({
-        action: "job-failed",
-        jobId: "job1",
-      }),
-    );
-    expect(msg.ack).toHaveBeenCalled();
-    expect(msg.retry).not.toHaveBeenCalled();
-  });
-
-  it("uses single-file Whisper when audio is under 25MB", async () => {
-    const episodeNoTranscript = { ...EPISODE, transcriptUrl: null };
-    const msg = createMsg({ jobId: "job1", episodeId: "ep1" });
-    mockPrisma.pipelineJob.findUnique.mockResolvedValue(JOB);
-    mockPrisma.pipelineJob.update.mockResolvedValue({});
-    mockPrisma.pipelineStep.create.mockResolvedValue({ id: "step1" });
-    mockPrisma.distillation.findUnique.mockResolvedValue(null);
-    mockPrisma.episode.findUnique.mockResolvedValue(episodeNoTranscript);
-    mockPrisma.podcast.findUnique.mockResolvedValue(PODCAST);
-    mockPrisma.distillation.upsert.mockResolvedValue({ id: "dist1", episodeId: "ep1" });
-    mockPrisma.workProduct.create.mockResolvedValue({ id: "wp1" });
-    mockPrisma.pipelineStep.update.mockResolvedValue({});
-
-    (lookupPodcastIndexTranscript as any).mockResolvedValue(null);
-    mockGetAudioMetadata.mockResolvedValue({ contentLength: 10 * 1024 * 1024, contentType: "audio/mpeg" });
-
-    if (typeof globalThis.File === "undefined") {
-      globalThis.File = class File extends Blob {
-        name: string;
-        lastModified: number;
-        constructor(parts: BlobPart[], name: string, opts?: FilePropertyBag) {
-          super(parts, opts);
-          this.name = name;
-          this.lastModified = Date.now();
-        }
-      } as any;
-    }
-
-    await handleTranscription(createBatch([msg]), env, ctx);
-
-    expect(mockWhisperCreate).toHaveBeenCalled();
-    expect(mockTranscribeChunked).not.toHaveBeenCalled();
     expect(msg.ack).toHaveBeenCalled();
   });
 });

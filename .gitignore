@@ -11,3 +11,4 @@ dist/
 .superpowers/
 
 /src/generated/prisma
+/src/generated/prisma-node

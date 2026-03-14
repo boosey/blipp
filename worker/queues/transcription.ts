@@ -1,4 +1,3 @@
-import OpenAI from "openai";
 import { createPrismaClient } from "../lib/db";
 import { getModelConfig } from "../lib/ai-models";
 import { checkStageEnabled } from "../lib/queue-helpers";
@@ -7,8 +6,8 @@ import { wpKey, putWorkProduct } from "../lib/work-products";
 import { PodcastIndexClient } from "../lib/podcast-index";
 import { lookupPodcastIndexTranscript } from "../lib/transcript-source";
 import { fetchTranscript } from "../lib/transcript";
-import { getAudioMetadata, isMp3, transcribeChunked, WHISPER_MAX_BYTES } from "../lib/whisper-chunked";
-import { calculateCost, type AiUsage } from "../lib/ai-usage";
+import { getProviderImpl } from "../lib/stt-providers";
+import { getModelPricing, calculateAudioCost, type AiUsage } from "../lib/ai-usage";
 import { writeEvent } from "../lib/pipeline-events";
 import type { Env } from "../types";
 
@@ -182,53 +181,50 @@ export async function handleTranscription(
             await writeEvent(prisma, step.id, "DEBUG", "Backfilled episode transcriptUrl from Podcast Index", { source: "podcast-index", bytes: transcript.length });
             log.info("transcript_fetched", { episodeId, bytes: transcript.length, source: "podcast-index" });
           } else {
-            // Tier 3: Whisper STT
-            await writeEvent(prisma, step.id, "WARN", "No transcript in RSS or Podcast Index — falling back to Whisper STT");
-            const { model: sttModel } = await getModelConfig(prisma, "stt");
-            const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
-            const { contentLength, contentType } = await getAudioMetadata(episode.audioUrl);
+            // Tier 3: STT via configured provider
+            await writeEvent(prisma, step.id, "WARN", "No transcript in RSS or Podcast Index — falling back to STT");
+            const { provider: sttProviderName, model: sttModel } = await getModelConfig(prisma, "stt");
+            const sttPricing = await getModelPricing(prisma, sttModel, sttProviderName);
 
-            if (contentLength && contentLength > WHISPER_MAX_BYTES) {
-              // Oversized file — chunked transcription (MP3 only)
-              await writeEvent(prisma, step.id, "INFO", `Audio file oversized (${Math.round(contentLength / 1024 / 1024)}MB) — using chunked Whisper`);
-              if (!isMp3(contentType, episode.audioUrl)) {
-                throw new Error(
-                  `Audio file too large (${Math.round(contentLength / 1024 / 1024)}MB) and not MP3 — cannot chunk non-MP3 formats`
-                );
-              }
-              const chunkedResult = await transcribeChunked(openai, episode.audioUrl, contentLength, sttModel);
-              transcript = chunkedResult.transcript;
-              sttUsage = chunkedResult.usage;
-              await writeEvent(prisma, step.id, "INFO", "Transcript generated via chunked Whisper", { bytes: transcript.length, source: "whisper-chunked" });
-              log.info("transcript_fetched", { episodeId, bytes: transcript.length, source: "whisper-chunked" });
-            } else {
-              // Standard single-file Whisper
-              await writeEvent(prisma, step.id, "INFO", "Transcribing audio via Whisper");
-              const audioResponse = await fetch(episode.audioUrl);
-              if (!audioResponse.ok) {
-                throw new Error(`Audio fetch failed: HTTP ${audioResponse.status} for ${episode.audioUrl.slice(0, 120)}`);
-              }
-              const finalContentType = audioResponse.headers.get("content-type")?.split(";")[0].trim() || null;
-              if (finalContentType && !finalContentType.startsWith("audio/") && finalContentType !== "application/octet-stream") {
-                throw new Error(`Audio URL returned non-audio content (${finalContentType}, ${audioResponse.status}). The episode audio may be unavailable.`);
-              }
-              const audioBlob = await audioResponse.blob();
-              if (audioBlob.size < 10_000) {
-                throw new Error(`Audio file too small (${audioBlob.size} bytes) — likely an error page, not audio`);
-              }
-              const ext = extFromContentType(finalContentType, episode.audioUrl);
-              const mimeType = finalContentType && finalContentType.startsWith("audio/") ? finalContentType : `audio/${ext === "m4a" ? "mp4" : ext}`;
-              const file = new File([audioBlob], `audio.${ext}`, { type: mimeType });
-              const transcription = await openai.audio.transcriptions.create({
-                model: sttModel,
-                file,
-              });
-              transcript = transcription.text;
-              const sttInputTokens = Math.round(audioBlob.size / 16000);
-              sttUsage = { model: sttModel, inputTokens: sttInputTokens, outputTokens: 0, cost: calculateCost(sttModel, sttInputTokens, 0) };
-              await writeEvent(prisma, step.id, "INFO", "Transcript generated via Whisper", { bytes: transcript.length, source: "whisper" });
-              log.info("transcript_fetched", { episodeId, bytes: transcript.length, source: "whisper" });
+            // Look up providerModelId from DB
+            const dbProvider = await prisma.aiModelProvider.findFirst({
+              where: { provider: sttProviderName, model: { modelId: sttModel } },
+            });
+            const providerModelId = dbProvider?.providerModelId ?? sttModel;
+
+            const providerImpl = getProviderImpl(sttProviderName);
+            await writeEvent(prisma, step.id, "INFO", `Transcribing via ${providerImpl.name} (model: ${providerModelId})`);
+
+            // Fetch audio
+            const audioResponse = await fetch(episode.audioUrl);
+            if (!audioResponse.ok) {
+              throw new Error(`Audio fetch failed: HTTP ${audioResponse.status} for ${episode.audioUrl.slice(0, 120)}`);
             }
+            const finalContentType = audioResponse.headers.get("content-type")?.split(";")[0].trim() || null;
+            if (finalContentType && !finalContentType.startsWith("audio/") && finalContentType !== "application/octet-stream") {
+              throw new Error(`Audio URL returned non-audio content (${finalContentType}, ${audioResponse.status}). The episode audio may be unavailable.`);
+            }
+            const audioBuffer = await audioResponse.arrayBuffer();
+            if (audioBuffer.byteLength < 10_000) {
+              throw new Error(`Audio file too small (${audioBuffer.byteLength} bytes) — likely an error page, not audio`);
+            }
+
+            const ext = extFromContentType(finalContentType, episode.audioUrl);
+            const durationSeconds = episode.durationSeconds ?? Math.round(audioBuffer.byteLength / (128 * 1000 / 8));
+
+            const sttResult = await providerImpl.transcribe(
+              { buffer: audioBuffer, filename: `audio.${ext}` },
+              durationSeconds,
+              env,
+              providerModelId
+            );
+
+            transcript = sttResult.transcript;
+            const estimatedSeconds = audioBuffer.byteLength / (128 * 1000 / 8);
+            const sttInputTokens = Math.round(audioBuffer.byteLength / 16000);
+            sttUsage = { model: sttModel, inputTokens: sttInputTokens, outputTokens: 0, cost: calculateAudioCost(sttPricing, estimatedSeconds) };
+            await writeEvent(prisma, step.id, "INFO", `Transcript generated via ${providerImpl.name}`, { bytes: transcript.length, source: sttProviderName });
+            log.info("transcript_fetched", { episodeId, bytes: transcript.length, source: sttProviderName });
           }
         }
 

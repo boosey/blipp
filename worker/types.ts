@@ -9,6 +9,8 @@ export type Env = {
   ENVIRONMENT?: string;
   /** Vite-managed static asset fetcher (Cloudflare Pages integration) */
   ASSETS: Fetcher;
+  /** Cloudflare Workers AI binding for CF-hosted models */
+  AI: Ai;
   /** Cloudflare Hyperdrive connection to Neon PostgreSQL */
   HYPERDRIVE: Hyperdrive;
   /** R2 bucket for cached clips and assembled briefings */
@@ -51,4 +53,6 @@ export type Env = {
   ASSEMBLYAI_API_KEY: string;
   /** Google Cloud STT API key for STT benchmark */
   GOOGLE_STT_API_KEY: string;
+  /** Groq API key for fast STT inference */
+  GROQ_API_KEY: string;
 };

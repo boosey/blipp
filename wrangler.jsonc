@@ -41,6 +41,9 @@
       { "queue": "orchestrator", "max_batch_size": 10, "max_retries": 3 }
     ]
   },
+  "ai": {
+    "binding": "AI"
+  },
   "triggers": {
     "crons": ["*/30 * * * *"]
   }

@@ -1,10 +1,11 @@
-import OpenAI from "openai";
 import { createPrismaClient } from "../lib/db";
 import { createPipelineLogger } from "../lib/logger";
 import { checkStageEnabled } from "../lib/queue-helpers";
 import { generateSpeech } from "../lib/tts";
 import { putClip } from "../lib/clip-cache";
 import { getModelConfig } from "../lib/ai-models";
+import { getModelPricing } from "../lib/ai-usage";
+import { getTtsProviderImpl } from "../lib/tts-providers";
 import { wpKey, putWorkProduct } from "../lib/work-products";
 import { writeEvent } from "../lib/pipeline-events";
 import type { Env } from "../types";
@@ -33,7 +34,6 @@ export async function handleAudioGeneration(
   ctx: ExecutionContext
 ): Promise<void> {
   const prisma = createPrismaClient(env.HYPERDRIVE);
-  const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
   const log = await createPipelineLogger({ stage: "audio-generation", prisma });
 
   try {
@@ -125,12 +125,18 @@ export async function handleAudioGeneration(
         const narrative = existingClip.narrativeText;
 
         // Read model config
-        const { model: ttsModel } = await getModelConfig(prisma, "tts");
+        const { provider: ttsProviderName, model: ttsModel } = await getModelConfig(prisma, "tts");
+        const ttsPricing = await getModelPricing(prisma, ttsModel, ttsProviderName);
+        const dbTtsProvider = await prisma.aiModelProvider.findFirst({
+          where: { provider: ttsProviderName, model: { modelId: ttsModel } },
+        });
+        const ttsProviderModelId = dbTtsProvider?.providerModelId ?? ttsModel;
+        const tts = getTtsProviderImpl(ttsProviderName);
 
         // Generate TTS audio
-        await writeEvent(prisma, step.id, "INFO", `Generating audio via TTS (model: ${ttsModel})`);
+        await writeEvent(prisma, step.id, "INFO", `Generating audio via ${tts.name} (${ttsProviderModelId})`);
         const ttsTimer = log.timer("tts_generation");
-        const { audio, usage: ttsUsage } = await generateSpeech(openai, narrative, undefined, ttsModel);
+        const { audio, usage: ttsUsage } = await generateSpeech(tts, narrative, undefined, ttsProviderModelId, env, ttsPricing);
         ttsTimer();
         await writeEvent(prisma, step.id, "INFO", "Audio generated successfully");
         await writeEvent(prisma, step.id, "DEBUG", `Audio size: ${audio.byteLength} bytes`, { model: ttsUsage.model, sizeBytes: audio.byteLength });

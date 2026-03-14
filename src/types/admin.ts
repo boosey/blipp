@@ -608,6 +608,7 @@ export interface SttBenchmarkResult {
   experimentId: string;
   episodeId: string;
   model: string;
+  provider?: string;
   speed: number;
   status: SttResultStatus;
   costDollars?: number;
@@ -629,6 +630,7 @@ export interface SttBenchmarkResult {
 
 export interface SttResultsGrid {
   model: string;
+  provider: string;
   speed: number;
   avgWer: number;
   avgCost: number;

@@ -33,12 +33,16 @@ vi.mock("../../lib/logger", () => ({
   createPipelineLogger: vi.fn().mockResolvedValue(mockLogger),
 }));
 
-vi.mock("@anthropic-ai/sdk", () => {
-  return { default: class MockAnthropic {} };
-});
-
 vi.mock("../../lib/ai-models", () => ({
   getModelConfig: vi.fn().mockResolvedValue({ provider: "anthropic", model: "claude-sonnet-4-20250514" }),
+}));
+
+vi.mock("../../lib/ai-usage", () => ({
+  getModelPricing: vi.fn().mockResolvedValue({ priceInputPerMToken: 3.0, priceOutputPerMToken: 15.0 }),
+}));
+
+vi.mock("../../lib/llm-providers", () => ({
+  getLlmProviderImpl: vi.fn().mockReturnValue({ name: "MockLLM", provider: "anthropic" }),
 }));
 
 import { createPrismaClient } from "../../lib/db";
@@ -87,6 +91,7 @@ beforeEach(() => {
   (selectClaimsForDuration as any).mockImplementation((claims: any[]) => claims);
   mockPrisma.workProduct.create.mockResolvedValue({ id: "wp-1" });
   mockPrisma.workProduct.findFirst.mockResolvedValue(null);
+  mockPrisma.aiModelProvider.findFirst.mockResolvedValue({ providerModelId: "claude-sonnet-4-20250514" });
   mockLogger.info.mockReset();
   mockLogger.debug.mockReset();
   mockLogger.error.mockReset();
@@ -198,7 +203,10 @@ describe("handleNarrativeGeneration", () => {
       expect.anything(),
       DISTILLATION.claimsJson,
       5,
-      "claude-sonnet-4-20250514"
+      expect.any(String),
+      8192,
+      expect.anything(),
+      expect.anything()
     );
 
     // Clip upserted with narrative but NOT as COMPLETED (audio gen does that)
@@ -295,7 +303,10 @@ describe("handleNarrativeGeneration", () => {
       expect.anything(),
       legacyDistillation.claimsJson,
       5,
-      expect.any(String)
+      expect.any(String),
+      8192,
+      expect.anything(),
+      expect.anything()
     );
   });
 
@@ -311,7 +322,7 @@ describe("handleNarrativeGeneration", () => {
     await handleNarrativeGeneration(mockBatch, mockEnv, mockCtx);
 
     expect(getModelConfig).toHaveBeenCalledWith(expect.anything(), "narrative");
-    expect(generateNarrative).toHaveBeenCalledWith(expect.anything(), expect.anything(), 5, "claude-haiku-4-5-20251001");
+    expect(generateNarrative).toHaveBeenCalledWith(expect.anything(), expect.anything(), 5, expect.any(String), 8192, expect.anything(), expect.anything());
   });
 
   describe("stage-enabled check", () => {

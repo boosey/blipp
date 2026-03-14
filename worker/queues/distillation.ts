@@ -1,9 +1,10 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { createPrismaClient } from "../lib/db";
 import { createPipelineLogger } from "../lib/logger";
 import { checkStageEnabled } from "../lib/queue-helpers";
 import { extractClaims } from "../lib/distillation";
 import { getModelConfig } from "../lib/ai-models";
+import { getModelPricing } from "../lib/ai-usage";
+import { getLlmProviderImpl } from "../lib/llm-providers";
 import { wpKey, putWorkProduct } from "../lib/work-products";
 import { writeEvent } from "../lib/pipeline-events";
 import type { Env } from "../types";
@@ -29,7 +30,6 @@ export async function handleDistillation(
   ctx: ExecutionContext
 ): Promise<void> {
   const prisma = createPrismaClient(env.HYPERDRIVE);
-  const anthropic = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
 
   try {
     const log = await createPipelineLogger({ stage: "distillation", prisma });
@@ -142,11 +142,17 @@ export async function handleDistillation(
           data: { status: "EXTRACTING_CLAIMS", errorMessage: null },
         });
 
-        // Extract claims via Claude (Pass 1)
-        const { model: distillationModel } = await getModelConfig(prisma, "distillation");
-        await writeEvent(prisma, step.id, "INFO", `Sending transcript to ${distillationModel} for claim extraction`);
+        // Extract claims via LLM (Pass 1)
+        const { provider: distillationProvider, model: distillationModel } = await getModelConfig(prisma, "distillation");
+        const distillationPricing = await getModelPricing(prisma, distillationModel, distillationProvider);
+        const dbDistProvider = await prisma.aiModelProvider.findFirst({
+          where: { provider: distillationProvider, model: { modelId: distillationModel } },
+        });
+        const distProviderModelId = dbDistProvider?.providerModelId ?? distillationModel;
+        const llm = getLlmProviderImpl(distillationProvider);
+        await writeEvent(prisma, step.id, "INFO", `Sending transcript to ${llm.name} (${distProviderModelId}) for claim extraction`);
         const elapsed = log.timer("claude_extraction");
-        const { claims, usage: claimsUsage } = await extractClaims(anthropic, existing.transcript, distillationModel);
+        const { claims, usage: claimsUsage } = await extractClaims(llm, existing.transcript, distProviderModelId, 8192, env, distillationPricing);
         elapsed();
         await writeEvent(prisma, step.id, "INFO", `Extracted ${claims.length} claims from transcript`);
         await writeEvent(prisma, step.id, "DEBUG", `Model: ${claimsUsage.model}`, { inputTokens: claimsUsage.inputTokens, outputTokens: claimsUsage.outputTokens, cost: claimsUsage.cost });
