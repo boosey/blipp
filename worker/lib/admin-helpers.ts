@@ -12,13 +12,22 @@ export function parsePagination(c: Context) {
 }
 
 /** Parse sort query param into Prisma orderBy object. */
-export function parseSort(c: Context, defaultField = "createdAt") {
+export function parseSort(
+  c: Context,
+  defaultField = "createdAt",
+  allowedFields?: string[]
+) {
   const sort = c.req.query("sort") ?? `${defaultField}:desc`;
-  const [sortField, sortDir] = sort.split(":");
-  return { [sortField || defaultField]: sortDir || "desc" } as Record<
-    string,
-    string
-  >;
+  const [rawField, rawDir] = sort.split(":");
+  const sortField = rawField || defaultField;
+  const sortDir = rawDir === "asc" ? "asc" : "desc";
+
+  // If an allowlist is provided, validate the field
+  if (allowedFields && !allowedFields.includes(sortField)) {
+    return { [defaultField]: sortDir };
+  }
+
+  return { [sortField]: sortDir } as Record<string, string>;
 }
 
 /** Standard paginated response shape. */

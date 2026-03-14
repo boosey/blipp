@@ -3,7 +3,7 @@ import type { Env } from "../types";
 import { requireAuth } from "../middleware/auth";
 import { getCurrentUser } from "../lib/admin-helpers";
 import { getUserWithPlan, checkDurationLimit, checkWeeklyBriefingLimit } from "../lib/plan-limits";
-import { DURATION_TIERS } from "../lib/time-fitting";
+import { DURATION_TIERS, isValidDurationTier } from "../lib/constants";
 
 /**
  * Briefing routes — on-demand briefing generation only.
@@ -34,7 +34,7 @@ briefings.post("/generate", async (c) => {
     return c.json({ error: "podcastId is required" }, 400);
   }
 
-  if (!body.durationTier || !(DURATION_TIERS as readonly number[]).includes(body.durationTier)) {
+  if (!body.durationTier || !isValidDurationTier(body.durationTier)) {
     return c.json({ error: `durationTier is required and must be one of: ${DURATION_TIERS.join(", ")}` }, 400);
   }
 
@@ -117,4 +117,58 @@ briefings.post("/generate", async (c) => {
   }
 
   return c.json({ feedItem }, 201);
+});
+
+/**
+ * GET /:id/audio — Stream assembled briefing audio from R2.
+ * User-scoped: only the briefing owner can access.
+ * Falls back to raw clip if no assembled audio exists.
+ */
+briefings.get("/:id/audio", async (c) => {
+  const briefingId = c.req.param("id");
+  const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
+
+  const briefing = await prisma.briefing.findFirst({
+    where: { id: briefingId, userId: user.id },
+    include: {
+      clip: { select: { audioKey: true } },
+    },
+  });
+
+  if (!briefing) {
+    return c.json({ error: "Briefing not found" }, 404);
+  }
+
+  // Try assembled audio first
+  const assembledKey = `wp/briefing/${briefingId}.mp3`;
+  const assembledObj = await c.env.R2.get(assembledKey);
+
+  if (assembledObj) {
+    const body = await assembledObj.arrayBuffer();
+    return new Response(body, {
+      headers: {
+        "Content-Type": "audio/mpeg",
+        "Content-Length": String(body.byteLength),
+        "Cache-Control": "public, max-age=86400",
+      },
+    });
+  }
+
+  // Fallback: serve raw clip audio
+  if (briefing.clip?.audioKey) {
+    const clipObj = await c.env.R2.get(briefing.clip.audioKey);
+    if (clipObj) {
+      const body = await clipObj.arrayBuffer();
+      return new Response(body, {
+        headers: {
+          "Content-Type": "audio/mpeg",
+          "Content-Length": String(body.byteLength),
+          "Cache-Control": "public, max-age=86400",
+        },
+      });
+    }
+  }
+
+  return c.json({ error: "Audio not found" }, 404);
 });

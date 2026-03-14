@@ -5,14 +5,49 @@ import {
   parseSort,
   paginatedResponse,
 } from "../../lib/admin-helpers";
+import { writeAuditLog } from "../../lib/audit-log";
+import { getAuth } from "../../middleware/auth";
 
 const plansRoutes = new Hono<{ Bindings: Env }>();
+
+/** Fields allowed in Plan create/update via admin API. */
+const PLAN_WRITABLE_FIELDS = [
+  "name",
+  "slug",
+  "description",
+  "briefingsPerWeek",
+  "maxDurationMinutes",
+  "maxPodcastSubscriptions",
+  "adFree",
+  "priorityProcessing",
+  "earlyAccess",
+  "researchMode",
+  "crossPodcastSynthesis",
+  "priceCentsMonthly",
+  "priceCentsAnnual",
+  "trialDays",
+  "features",
+  "highlighted",
+  "active",
+  "sortOrder",
+  "isDefault",
+] as const;
+
+function pickPlanFields(body: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const field of PLAN_WRITABLE_FIELDS) {
+    if (body[field] !== undefined) {
+      result[field] = body[field];
+    }
+  }
+  return result;
+}
 
 // GET / — List all plans with user counts, paginated/sortable
 plansRoutes.get("/", async (c) => {
   const prisma = c.get("prisma") as any;
   const { page, pageSize, skip } = parsePagination(c);
-  const orderBy = parseSort(c, "sortOrder");
+  const orderBy = parseSort(c, "sortOrder", ["sortOrder", "name", "slug", "priceCentsMonthly", "createdAt", "active"]);
 
   const [plans, total] = await Promise.all([
     prisma.plan.findMany({
@@ -46,19 +81,23 @@ plansRoutes.get("/:id", async (c) => {
 plansRoutes.post("/", async (c) => {
   const prisma = c.get("prisma") as any;
   const body = await c.req.json();
+  const sanitized = pickPlanFields(body);
+
+  // Require at minimum name and slug for creation
+  if (!sanitized.name || !sanitized.slug) {
+    return c.json({ error: "name and slug are required" }, 400);
+  }
 
   // Validate slug uniqueness
-  if (body.slug) {
-    const existing = await prisma.plan.findUnique({
-      where: { slug: body.slug },
-    });
-    if (existing) {
-      return c.json({ error: `Plan with slug "${body.slug}" already exists` }, 409);
-    }
+  const existing = await prisma.plan.findUnique({
+    where: { slug: sanitized.slug as string },
+  });
+  if (existing) {
+    return c.json({ error: `Plan with slug "${sanitized.slug}" already exists` }, 409);
   }
 
   // If isDefault is true, unset on all other plans first
-  if (body.isDefault) {
+  if (sanitized.isDefault) {
     await prisma.plan.updateMany({
       where: { isDefault: true },
       data: { isDefault: false },
@@ -66,9 +105,17 @@ plansRoutes.post("/", async (c) => {
   }
 
   const plan = await prisma.plan.create({
-    data: body,
+    data: sanitized,
     include: { _count: { select: { users: true } } },
   });
+
+  writeAuditLog(prisma, {
+    actorId: getAuth(c)!.userId!,
+    action: "plan.create",
+    entityType: "Plan",
+    entityId: plan.id,
+    after: sanitized,
+  }).catch(() => {});
 
   return c.json({ data: plan }, 201);
 });
@@ -78,22 +125,27 @@ plansRoutes.patch("/:id", async (c) => {
   const prisma = c.get("prisma") as any;
   const id = c.req.param("id");
   const body = await c.req.json();
+  const sanitized = pickPlanFields(body);
+
+  if (Object.keys(sanitized).length === 0) {
+    return c.json({ error: "No valid fields to update" }, 400);
+  }
 
   const existing = await prisma.plan.findUnique({ where: { id } });
   if (!existing) return c.json({ error: "Plan not found" }, 404);
 
   // If slug is being changed, validate uniqueness
-  if (body.slug && body.slug !== existing.slug) {
+  if (sanitized.slug && sanitized.slug !== existing.slug) {
     const slugTaken = await prisma.plan.findUnique({
-      where: { slug: body.slug },
+      where: { slug: sanitized.slug as string },
     });
     if (slugTaken) {
-      return c.json({ error: `Plan with slug "${body.slug}" already exists` }, 409);
+      return c.json({ error: `Plan with slug "${sanitized.slug}" already exists` }, 409);
     }
   }
 
   // If setting isDefault to true, unset on all other plans first
-  if (body.isDefault) {
+  if (sanitized.isDefault) {
     await prisma.plan.updateMany({
       where: { isDefault: true, id: { not: id } },
       data: { isDefault: false },
@@ -102,9 +154,18 @@ plansRoutes.patch("/:id", async (c) => {
 
   const plan = await prisma.plan.update({
     where: { id },
-    data: body,
+    data: sanitized,
     include: { _count: { select: { users: true } } },
   });
+
+  writeAuditLog(prisma, {
+    actorId: getAuth(c)!.userId!,
+    action: "plan.update",
+    entityType: "Plan",
+    entityId: id,
+    before: { name: existing.name, slug: existing.slug },
+    after: sanitized,
+  }).catch(() => {});
 
   return c.json({ data: plan });
 });
@@ -135,6 +196,13 @@ plansRoutes.delete("/:id", async (c) => {
     data: { active: false },
     include: { _count: { select: { users: true } } },
   });
+
+  writeAuditLog(prisma, {
+    actorId: getAuth(c)!.userId!,
+    action: "plan.delete",
+    entityType: "Plan",
+    entityId: id,
+  }).catch(() => {});
 
   return c.json({ data: updated });
 });

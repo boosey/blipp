@@ -10,8 +10,7 @@ import {
   DialogTitle,
 } from "./ui/dialog";
 import { Button } from "./ui/button";
-
-const DURATION_TIERS = [1, 2, 3, 5, 7, 10, 15, 30] as const;
+import { DURATION_TIERS } from "../lib/duration-tiers";
 
 export interface PodcastCardProps {
   id: string;

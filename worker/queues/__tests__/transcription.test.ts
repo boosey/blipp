@@ -227,11 +227,13 @@ describe("handleTranscription", () => {
       where: { id: "job1" },
       data: { distillationId: "dist-cached" },
     });
-    expect(env.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith({
-      requestId: "req1",
-      action: "job-stage-complete",
-      jobId: "job1",
-    });
+    expect(env.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestId: "req1",
+        action: "job-stage-complete",
+        jobId: "job1",
+      })
+    );
     expect(fetch).not.toHaveBeenCalled();
     expect(msg.ack).toHaveBeenCalled();
   });
@@ -341,11 +343,13 @@ describe("handleTranscription", () => {
 
     await handleTranscription(createBatch([msg]), env, ctx);
 
-    expect(env.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith({
-      requestId: "req1",
-      action: "job-stage-complete",
-      jobId: "job1",
-    });
+    expect(env.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestId: "req1",
+        action: "job-stage-complete",
+        jobId: "job1",
+      })
+    );
   });
 
   it("stage gate disabled -> acks all", async () => {
@@ -395,12 +399,14 @@ describe("handleTranscription", () => {
         errorMessage: "Episode not found: ep1",
       }),
     });
-    expect(env.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith({
-      requestId: "req1",
-      action: "job-failed",
-      jobId: "job1",
-      errorMessage: "Episode not found: ep1",
-    });
+    expect(env.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestId: "req1",
+        action: "job-failed",
+        jobId: "job1",
+        errorMessage: "Episode not found: ep1",
+      })
+    );
     expect(msg.ack).toHaveBeenCalled();
     expect(msg.retry).not.toHaveBeenCalled();
   });

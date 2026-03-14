@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { Env } from "../../types";
-import { STAGE_DISPLAY_NAMES } from "../../lib/config";
+import { PIPELINE_STAGE_NAMES } from "../../lib/constants";
 import { parsePagination, paginatedResponse } from "../../lib/admin-helpers";
 
 const STAGE_ICONS: Record<string, string> = {
@@ -55,7 +55,13 @@ pipelineRoutes.get("/jobs", async (c) => {
       }),
       prisma.pipelineJob.count({ where }),
     ]);
-  } catch {
+  } catch (err) {
+    console.error(JSON.stringify({
+      level: "error",
+      action: "admin_pipeline_jobs_query_failed",
+      error: err instanceof Error ? err.message : String(err),
+      ts: new Date().toISOString(),
+    }));
     return c.json({ data: [], total: 0, page, pageSize, totalPages: 0 });
   }
 
@@ -535,7 +541,7 @@ pipelineRoutes.get("/stages", async (c) => {
   } catch {
     const data = PIPELINE_STAGES.map((stage) => ({
       stage,
-      name: STAGE_DISPLAY_NAMES[stage] ?? stage,
+      name: PIPELINE_STAGE_NAMES[stage] ?? stage,
       icon: STAGE_ICONS[stage] ?? "circle",
       activeJobs: 0,
       successRate: 100,
@@ -575,7 +581,7 @@ pipelineRoutes.get("/stages", async (c) => {
     const s = stageData.get(stage) ?? { active: 0, total: 0, completed: 0, avgDuration: 0, todayCost: 0 };
     return {
       stage,
-      name: STAGE_DISPLAY_NAMES[stage] ?? stage,
+      name: PIPELINE_STAGE_NAMES[stage] ?? stage,
       icon: STAGE_ICONS[stage] ?? "circle",
       activeJobs: s.active,
       successRate: s.total > 0 ? Math.round((s.completed / s.total) * 100) : 100,

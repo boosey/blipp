@@ -277,7 +277,7 @@ model PipelineJob {
 enum PipelineStage {
   TRANSCRIPTION
   DISTILLATION
-  CLIP_GENERATION // legacy — kept for backward compat with existing data
+  CLIP_GENERATION // DEPRECATED: legacy value from pre-v2 pipeline. Kept for existing DB rows only.
   NARRATIVE_GENERATION
   AUDIO_GENERATION
   BRIEFING_ASSEMBLY
@@ -390,6 +390,72 @@ model PipelineEvent {
   createdAt DateTime           @default(now())
 
   @@index([stepId, createdAt])
+}
+
+// ── AI Service Error Tracking ──
+
+model AiServiceError {
+  id                String   @id @default(cuid())
+
+  // Identity
+  service           String                      // "stt" | "distillation" | "narrative" | "tts"
+  provider          String                      // "anthropic", "openai", "groq", "deepgram", etc.
+  model             String                      // model ID that was called
+  operation         String                      // "transcribe", "complete", "synthesize"
+
+  // Context
+  correlationId     String                      // traces through the pipeline
+  jobId             String?                     // PipelineJob reference
+  stepId            String?                     // PipelineStep reference
+  episodeId         String?
+
+  // Error details
+  category          String                      // rate_limit, timeout, auth, model_not_found, etc.
+  severity          String                      // "transient" | "permanent"
+  httpStatus        Int?
+  errorMessage      String
+  rawResponse       String?                     // first 2KB of error body (sanitized)
+
+  // Timing
+  requestDurationMs Int
+  timestamp         DateTime @default(now())
+
+  // Retry context
+  retryCount        Int      @default(0)
+  maxRetries        Int      @default(0)
+  willRetry         Boolean  @default(false)
+  resolved          Boolean  @default(false)    // true if a subsequent retry succeeded
+
+  // Rate limit headers (when available)
+  rateLimitRemaining Int?
+  rateLimitResetAt   DateTime?
+
+  createdAt         DateTime @default(now())
+
+  @@index([service, provider, createdAt])
+  @@index([correlationId])
+  @@index([category, createdAt])
+  @@index([episodeId])
+  @@index([resolved, createdAt])
+}
+
+// ── Audit Log ──
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String                        // Clerk userId of the admin
+  actorEmail String?                       // Denormalized for readability
+  action     String                        // "config.update", "user.plan.change", "plan.create"
+  entityType String                        // "PlatformConfig", "User", "Plan", "PipelineJob"
+  entityId   String                        // ID of the affected record
+  before     Json?                         // Snapshot before change
+  after      Json?                         // Snapshot after change
+  metadata   Json?                         // Extra context: { ip, userAgent }
+  createdAt  DateTime @default(now())
+
+  @@index([actorId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
 }
 
 // ── STT Benchmark ──

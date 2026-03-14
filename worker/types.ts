@@ -2,6 +2,7 @@
 declare module "hono" {
   interface ContextVariableMap {
     prisma: any;
+    requestId: string;
   }
 }
 
@@ -62,4 +63,6 @@ export type Env = {
   GOOGLE_STT_API_KEY: string;
   /** Groq API key for fast STT inference */
   GROQ_API_KEY: string;
+  /** Comma-separated list of allowed CORS origins (optional, overrides defaults) */
+  ALLOWED_ORIGINS?: string;
 };

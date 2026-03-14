@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import type { Env } from "../types";
+import { AiProviderError } from "./ai-errors";
 
 /** Provider-agnostic TTS synthesis result. */
 export interface TtsResult {
@@ -31,17 +32,30 @@ const OpenAITtsProvider: TtsProvider = {
   provider: "openai",
 
   async synthesize(text, voice, providerModelId, instructions, env) {
-    const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
-    const response = await client.audio.speech.create({
-      model: providerModelId,
-      voice: voice as any,
-      input: text,
-      response_format: "mp3",
-      ...(instructions ? { instructions } : {}),
-    });
+    const start = Date.now();
+    try {
+      const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+      const response = await client.audio.speech.create({
+        model: providerModelId,
+        voice: voice as any,
+        input: text,
+        response_format: "mp3",
+        ...(instructions ? { instructions } : {}),
+      });
 
-    const audio = await response.arrayBuffer();
-    return { audio };
+      const audio = await response.arrayBuffer();
+      return { audio };
+    } catch (err) {
+      const status = (err as any)?.status ?? (err as any)?.statusCode;
+      throw new AiProviderError({
+        message: `OpenAI TTS error${status ? ` ${status}` : ""}: ${err instanceof Error ? err.message : String(err)}`,
+        provider: "openai",
+        model: providerModelId,
+        httpStatus: typeof status === "number" ? status : undefined,
+        rawResponse: err instanceof Error ? err.message : String(err),
+        requestDurationMs: Date.now() - start,
+      });
+    }
   },
 };
 
@@ -54,6 +68,7 @@ const GroqTtsProvider: TtsProvider = {
   provider: "groq",
 
   async synthesize(text, voice, providerModelId, _instructions, env) {
+    const start = Date.now();
     const resp = await fetch("https://api.groq.com/openai/v1/audio/speech", {
       method: "POST",
       headers: {
@@ -70,7 +85,14 @@ const GroqTtsProvider: TtsProvider = {
 
     if (!resp.ok) {
       const body = await resp.text();
-      throw new Error(`Groq TTS API error ${resp.status}: ${body}`);
+      throw new AiProviderError({
+        message: `Groq TTS API error ${resp.status}: ${body.slice(0, 500)}`,
+        provider: "groq",
+        model: providerModelId,
+        httpStatus: resp.status,
+        rawResponse: body.slice(0, 2048),
+        requestDurationMs: Date.now() - start,
+      });
     }
 
     const audio = await resp.arrayBuffer();
@@ -87,15 +109,26 @@ const CloudflareTtsProvider: TtsProvider = {
   provider: "cloudflare",
 
   async synthesize(text, _voice, providerModelId, _instructions, env) {
-    const result = (await env.AI.run(providerModelId as any, {
-      text,
-    })) as any;
+    const start = Date.now();
+    try {
+      const result = (await env.AI.run(providerModelId as any, {
+        text,
+      })) as any;
 
-    // CF TTS models return audio data directly or in a structured response
-    const audio: ArrayBuffer = result instanceof ArrayBuffer
-      ? result
-      : result?.audio ?? new ArrayBuffer(0);
-    return { audio };
+      // CF TTS models return audio data directly or in a structured response
+      const audio: ArrayBuffer = result instanceof ArrayBuffer
+        ? result
+        : result?.audio ?? new ArrayBuffer(0);
+      return { audio };
+    } catch (err) {
+      throw new AiProviderError({
+        message: `Cloudflare TTS error: ${err instanceof Error ? err.message : String(err)}`,
+        provider: "cloudflare",
+        model: providerModelId,
+        requestDurationMs: Date.now() - start,
+        rawResponse: err instanceof Error ? err.message : String(err),
+      });
+    }
   },
 };
 

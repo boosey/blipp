@@ -23,6 +23,12 @@ vi.mock("../../lib/stripe", () => ({
   })),
 }));
 
+// Mock Clerk webhook verification
+const mockVerifyWebhook = vi.fn();
+vi.mock("@clerk/backend/webhooks", () => ({
+  verifyWebhook: (...args: any[]) => mockVerifyWebhook(...args),
+}));
+
 // Import after mocks
 const { clerkWebhooks } = await import("../webhooks/clerk");
 const { stripeWebhooks } = await import("../webhooks/stripe");
@@ -54,6 +60,17 @@ describe("Clerk Webhooks", () => {
   });
 
   it("should create user on user.created event", async () => {
+    mockVerifyWebhook.mockResolvedValueOnce({
+      type: "user.created",
+      data: {
+        id: "clerk_123",
+        email_addresses: [{ email_address: "test@example.com" }],
+        first_name: "John",
+        last_name: "Doe",
+        image_url: "https://example.com/avatar.jpg",
+      },
+    });
+
     mockPrisma.user.create.mockResolvedValueOnce({ id: "usr_1" });
 
     const res = await app.request(
@@ -61,16 +78,7 @@ describe("Clerk Webhooks", () => {
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: "user.created",
-          data: {
-            id: "clerk_123",
-            email_addresses: [{ email_address: "test@example.com" }],
-            first_name: "John",
-            last_name: "Doe",
-            image_url: "https://example.com/avatar.jpg",
-          },
-        }),
+        body: JSON.stringify({}),
       },
       env,
       mockExCtx
@@ -88,6 +96,17 @@ describe("Clerk Webhooks", () => {
   });
 
   it("should update user on user.updated event", async () => {
+    mockVerifyWebhook.mockResolvedValueOnce({
+      type: "user.updated",
+      data: {
+        id: "clerk_123",
+        email_addresses: [{ email_address: "new@example.com" }],
+        first_name: "Jane",
+        last_name: null,
+        image_url: null,
+      },
+    });
+
     mockPrisma.user.update.mockResolvedValueOnce({ id: "usr_1" });
 
     const res = await app.request(
@@ -95,16 +114,7 @@ describe("Clerk Webhooks", () => {
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: "user.updated",
-          data: {
-            id: "clerk_123",
-            email_addresses: [{ email_address: "new@example.com" }],
-            first_name: "Jane",
-            last_name: null,
-            image_url: null,
-          },
-        }),
+        body: JSON.stringify({}),
       },
       env,
       mockExCtx
@@ -122,6 +132,11 @@ describe("Clerk Webhooks", () => {
   });
 
   it("should delete user on user.deleted event", async () => {
+    mockVerifyWebhook.mockResolvedValueOnce({
+      type: "user.deleted",
+      data: { id: "clerk_123" },
+    });
+
     mockPrisma.user.delete.mockResolvedValueOnce({ id: "usr_1" });
 
     const res = await app.request(
@@ -129,10 +144,7 @@ describe("Clerk Webhooks", () => {
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: "user.deleted",
-          data: { id: "clerk_123" },
-        }),
+        body: JSON.stringify({}),
       },
       env,
       mockExCtx
@@ -144,7 +156,9 @@ describe("Clerk Webhooks", () => {
     });
   });
 
-  it("should return 400 for invalid payload", async () => {
+  it("should return 400 when signature verification fails", async () => {
+    mockVerifyWebhook.mockRejectedValueOnce(new Error("Invalid signature"));
+
     const res = await app.request(
       "/webhooks/clerk",
       {
@@ -157,18 +171,45 @@ describe("Clerk Webhooks", () => {
     );
 
     expect(res.status).toBe(400);
+    const body: any = await res.json();
+    expect(body.error).toBe("Invalid webhook signature");
+  });
+
+  it("should pass raw request and signing secret to verifyWebhook", async () => {
+    mockVerifyWebhook.mockResolvedValueOnce({
+      type: "session.created",
+      data: { id: "sess_123" },
+    });
+
+    await app.request(
+      "/webhooks/clerk",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      },
+      env,
+      mockExCtx
+    );
+
+    expect(mockVerifyWebhook).toHaveBeenCalledTimes(1);
+    const [rawReq, options] = mockVerifyWebhook.mock.calls[0];
+    expect(rawReq).toBeInstanceOf(Request);
+    expect(options).toEqual({ signingSecret: env.CLERK_WEBHOOK_SECRET });
   });
 
   it("should handle unrecognized event types gracefully", async () => {
+    mockVerifyWebhook.mockResolvedValueOnce({
+      type: "session.created",
+      data: { id: "sess_123" },
+    });
+
     const res = await app.request(
       "/webhooks/clerk",
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: "session.created",
-          data: { id: "sess_123" },
-        }),
+        body: JSON.stringify({}),
       },
       env,
       mockExCtx
@@ -241,7 +282,7 @@ describe("Stripe Webhooks", () => {
 
     expect(res.status).toBe(400);
     const body: any = await res.json();
-    expect(body.error).toContain("Invalid signature");
+    expect(body.error).toContain("Invalid webhook signature");
   });
 
   it("should update user planId on checkout.session.completed", async () => {

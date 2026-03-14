@@ -53,8 +53,12 @@ stripeWebhooks.post("/", async (c) => {
       signature,
       c.env.STRIPE_WEBHOOK_SECRET
     );
-  } catch {
-    return c.json({ error: "Invalid signature" }, 400);
+  } catch (err) {
+    console.error(
+      "[SECURITY] Stripe webhook signature verification failed:",
+      err instanceof Error ? err.message : String(err)
+    );
+    return c.json({ error: "Invalid webhook signature" }, 400);
   }
 
   const prisma = c.get("prisma") as any;

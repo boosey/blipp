@@ -689,3 +689,52 @@ export interface AiModelEntry {
   isActive: boolean;
   providers: AiModelProviderEntry[];
 }
+
+// ── AI Service Errors ──
+
+/** AI service error record for the admin dashboard. */
+export interface AdminAiServiceError {
+  id: string;
+  service: "stt" | "distillation" | "narrative" | "tts";
+  provider: string;
+  model: string;
+  operation: string;
+  correlationId: string;
+  jobId?: string;
+  stepId?: string;
+  episodeId?: string;
+  category: string;
+  severity: "transient" | "permanent";
+  httpStatus?: number;
+  errorMessage: string;
+  rawResponse?: string;
+  requestDurationMs: number;
+  timestamp: string;
+  retryCount: number;
+  maxRetries: number;
+  willRetry: boolean;
+  resolved: boolean;
+  rateLimitRemaining?: number;
+  rateLimitResetAt?: string;
+  createdAt: string;
+}
+
+/** Summary of AI errors for the admin dashboard. */
+export interface AiErrorSummary {
+  totalErrors: number;
+  byService: Record<string, number>;
+  byProvider: Record<string, number>;
+  byCategory: Record<string, number>;
+  bySeverity: Record<string, number>;
+  errorRate: {
+    last1h: number;
+    last24h: number;
+    last7d: number;
+  };
+  topErrors: Array<{
+    errorMessage: string;
+    count: number;
+    lastSeen: string;
+  }>;
+  since: string;
+}

@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { Env } from "../../types";
-import { STAGE_DISPLAY_NAMES } from "../../lib/config";
+import { PIPELINE_STAGE_NAMES } from "../../lib/constants";
 import { parsePagination, parseSort, paginatedResponse } from "../../lib/admin-helpers";
 
 const podcastsRoutes = new Hono<{ Bindings: Env }>();
@@ -64,7 +64,7 @@ podcastsRoutes.get("/", async (c) => {
   const search = c.req.query("search");
   const health = c.req.query("health");
   const status = c.req.query("status");
-  const orderBy = parseSort(c);
+  const orderBy = parseSort(c, "createdAt", ["createdAt", "title", "episodeCount", "status", "lastFetchedAt"]);
 
   const where: Record<string, unknown> = {};
   if (search) {
@@ -154,8 +154,13 @@ podcastsRoutes.get("/:id", async (c) => {
         },
       });
     }
-  } catch {
-    // PipelineJob table may not exist
+  } catch (err) {
+    console.error(JSON.stringify({
+      level: "warn",
+      action: "admin_podcast_pipeline_jobs_failed",
+      error: err instanceof Error ? err.message : String(err),
+      ts: new Date().toISOString(),
+    }));
   }
 
   // Aggregate cost per episode
@@ -219,7 +224,7 @@ podcastsRoutes.get("/:id", async (c) => {
     id: job.id,
     timestamp: job.createdAt.toISOString(),
     stage: job.currentStage,
-    stageName: STAGE_DISPLAY_NAMES[job.currentStage] ?? job.currentStage,
+    stageName: PIPELINE_STAGE_NAMES[job.currentStage] ?? job.currentStage,
     status: job.status.toLowerCase().replace("_", "-"),
     type: job.currentStage,
   }));

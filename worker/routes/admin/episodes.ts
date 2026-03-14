@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { Env } from "../../types";
-import { STAGE_DISPLAY_NAMES } from "../../lib/config";
+import { PIPELINE_STAGE_NAMES } from "../../lib/constants";
 import { parsePagination, parseSort, paginatedResponse } from "../../lib/admin-helpers";
 
 const episodesRoutes = new Hono<{ Bindings: Env }>();
@@ -13,7 +13,7 @@ episodesRoutes.get("/", async (c) => {
   const { page, pageSize, skip } = parsePagination(c);
   const podcastId = c.req.query("podcastId");
   const search = c.req.query("search");
-  const orderBy = parseSort(c, "publishedAt");
+  const orderBy = parseSort(c, "publishedAt", ["publishedAt", "title", "createdAt", "durationSeconds"]);
 
   const where: Record<string, unknown> = {};
   if (podcastId) where.podcastId = podcastId;
@@ -133,14 +133,14 @@ episodesRoutes.get("/:id", async (c) => {
     if (!latestStep) {
       return {
         stage,
-        name: STAGE_DISPLAY_NAMES[stage] ?? stage,
+        name: PIPELINE_STAGE_NAMES[stage] ?? stage,
         status: "pending" as const,
       };
     }
 
     return {
       stage,
-      name: STAGE_DISPLAY_NAMES[stage] ?? stage,
+      name: PIPELINE_STAGE_NAMES[stage] ?? stage,
       status: latestStep.status === "COMPLETED" ? "completed" as const
         : latestStep.status === "FAILED" ? "failed" as const
         : latestStep.status === "IN_PROGRESS" ? "in_progress" as const

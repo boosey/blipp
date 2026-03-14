@@ -2,21 +2,14 @@ import { createPrismaClient } from "../lib/db";
 import { createPipelineLogger } from "../lib/logger";
 import { checkStageEnabled } from "../lib/queue-helpers";
 import { generateSpeech } from "../lib/tts";
-import { putClip } from "../lib/clip-cache";
-import { getModelConfig } from "../lib/ai-models";
-import { getModelPricing } from "../lib/ai-usage";
+
+import { resolveStageModel } from "../lib/model-resolution";
 import { getTtsProviderImpl } from "../lib/tts-providers";
 import { wpKey, putWorkProduct } from "../lib/work-products";
 import { writeEvent } from "../lib/pipeline-events";
+import { writeAiError, classifyAiError, AiProviderError } from "../lib/ai-errors";
+import type { AudioGenerationMessage } from "../lib/queue-messages";
 import type { Env } from "../types";
-
-/** Shape of an audio generation queue message body. */
-interface AudioGenerationMessage {
-  jobId: string;
-  episodeId: string;
-  durationTier: number;
-  type?: "manual";
-}
 
 /**
  * Queue consumer for audio generation jobs.
@@ -44,6 +37,7 @@ export async function handleAudioGeneration(
 
     for (const msg of batch.messages) {
       const { jobId, episodeId, durationTier } = msg.body;
+      const correlationId = msg.body.correlationId ?? crypto.randomUUID();
       const startTime = Date.now();
       let requestId: string | undefined;
 
@@ -109,6 +103,7 @@ export async function handleAudioGeneration(
               requestId: job.requestId,
               action: "job-stage-complete",
               jobId,
+              correlationId,
             });
 
             msg.ack();
@@ -125,26 +120,16 @@ export async function handleAudioGeneration(
         const narrative = existingClip.narrativeText;
 
         // Read model config
-        const ttsConfig = await getModelConfig(prisma, "tts");
-        if (!ttsConfig) throw new Error("No AI model configured for TTS stage — configure one in Admin > Configuration");
-        const { provider: ttsProviderName, model: ttsModel } = ttsConfig;
-        const ttsPricing = await getModelPricing(prisma, ttsModel, ttsProviderName);
-        const dbTtsProvider = await prisma.aiModelProvider.findFirst({
-          where: { provider: ttsProviderName, model: { modelId: ttsModel } },
-        });
-        const ttsProviderModelId = dbTtsProvider?.providerModelId ?? ttsModel;
-        const tts = getTtsProviderImpl(ttsProviderName);
+        const resolved = await resolveStageModel(prisma, "tts");
+        const tts = getTtsProviderImpl(resolved.provider);
 
         // Generate TTS audio
-        await writeEvent(prisma, step.id, "INFO", `Generating audio via ${tts.name} (${ttsProviderModelId})`);
+        await writeEvent(prisma, step.id, "INFO", `Generating audio via ${tts.name} (${resolved.providerModelId})`);
         const ttsTimer = log.timer("tts_generation");
-        const { audio, usage: ttsUsage } = await generateSpeech(tts, narrative, undefined, ttsProviderModelId, env, ttsPricing);
+        const { audio, usage: ttsUsage } = await generateSpeech(tts, narrative, undefined, resolved.providerModelId, env, resolved.pricing);
         ttsTimer();
         await writeEvent(prisma, step.id, "INFO", "Audio generated successfully");
         await writeEvent(prisma, step.id, "DEBUG", `Audio size: ${audio.byteLength} bytes`, { model: ttsUsage.model, sizeBytes: audio.byteLength });
-
-        // Store in R2 (legacy path)
-        await putClip(env.R2, episodeId, durationTier, audio);
 
         // Store AUDIO_CLIP WorkProduct in R2
         const audioR2Key = wpKey({ type: "AUDIO_CLIP", episodeId, durationTier, voice: "default" });
@@ -163,7 +148,7 @@ export async function handleAudioGeneration(
         await writeEvent(prisma, step.id, "INFO", "Saved audio clip to R2 and updated clip record", { r2Key: audioR2Key });
 
         // Update Clip record: status COMPLETED, store audioKey
-        const audioKey = `clips/${episodeId}/${durationTier}.mp3`;
+        const audioKey = wpKey({ type: "AUDIO_CLIP", episodeId, durationTier, voice: "default" });
         const clip = await prisma.clip.update({
           where: { episodeId_durationTier: { episodeId, durationTier } },
           data: {
@@ -200,6 +185,7 @@ export async function handleAudioGeneration(
           requestId: job.requestId,
           action: "job-stage-complete",
           jobId,
+          correlationId,
         });
 
         msg.ack();
@@ -220,7 +206,17 @@ export async function handleAudioGeneration(
               durationMs: Date.now() - startTime,
             },
           })
-          .catch(() => {});
+          .catch((dbErr: unknown) => {
+            console.error(JSON.stringify({
+              level: "error",
+              action: "error_path_db_write_failed",
+              stage: "tts",
+              target: "pipelineStep",
+              jobId,
+              error: dbErr instanceof Error ? dbErr.message : String(dbErr),
+              ts: new Date().toISOString(),
+            }));
+          });
 
         // Try to record the error on the clip
         await prisma.clip
@@ -237,7 +233,17 @@ export async function handleAudioGeneration(
               errorMessage,
             },
           })
-          .catch(() => {});
+          .catch((dbErr: unknown) => {
+            console.error(JSON.stringify({
+              level: "error",
+              action: "error_path_db_write_failed",
+              stage: "tts",
+              target: "clip",
+              jobId,
+              error: dbErr instanceof Error ? dbErr.message : String(dbErr),
+              ts: new Date().toISOString(),
+            }));
+          });
 
         // Write error event — step may not exist if creation itself failed
         try {
@@ -252,6 +258,32 @@ export async function handleAudioGeneration(
           // Swallow — event logging must never block error handling
         }
 
+        // Capture AI provider errors
+        if (err instanceof AiProviderError) {
+          const { category, severity } = classifyAiError(err, err.httpStatus, err.rawResponse);
+          writeAiError(prisma, {
+            service: "tts",
+            provider: err.provider,
+            model: err.model,
+            operation: "synthesize",
+            correlationId,
+            jobId,
+            episodeId,
+            category,
+            severity,
+            httpStatus: err.httpStatus,
+            errorMessage: err.message,
+            rawResponse: err.rawResponse,
+            requestDurationMs: err.requestDurationMs,
+            timestamp: new Date(),
+            retryCount: 0,
+            maxRetries: 0,
+            willRetry: false,
+            rateLimitRemaining: err.rateLimitRemaining,
+            rateLimitResetAt: err.rateLimitResetAt,
+          }).catch(() => {}); // Fire-and-forget
+        }
+
         // Notify orchestrator so job is marked FAILED and assembly can proceed
         if (requestId) {
           await env.ORCHESTRATOR_QUEUE.send({
@@ -259,7 +291,17 @@ export async function handleAudioGeneration(
             action: "job-failed",
             jobId,
             errorMessage,
-          }).catch(() => {});
+            correlationId,
+          }).catch((sendErr: unknown) => {
+            console.error(JSON.stringify({
+              level: "error",
+              action: "orchestrator_send_failed",
+              stage: "tts",
+              jobId,
+              error: sendErr instanceof Error ? sendErr.message : String(sendErr),
+              ts: new Date().toISOString(),
+            }));
+          });
         }
 
         msg.ack();

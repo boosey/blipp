@@ -23,7 +23,30 @@ vi.mock("../../lib/config", () => ({
   getConfig: vi.fn(),
 }));
 
+vi.mock("../../lib/audio/assembly", () => ({
+  assembleBriefingAudio: vi.fn().mockResolvedValue({
+    audio: new ArrayBuffer(500),
+    sizeBytes: 500,
+    hasJingles: true,
+    isFallback: false,
+  }),
+}));
+
+vi.mock("../../lib/work-products", () => ({
+  wpKey: vi.fn((params: any) => {
+    if (params.type === "AUDIO_CLIP")
+      return `wp/clip/${params.episodeId}/${params.durationTier}/${params.voice ?? "default"}.mp3`;
+    if (params.type === "BRIEFING_AUDIO")
+      return `wp/briefing/${params.briefingId}.mp3`;
+    return `wp/unknown`;
+  }),
+  getWorkProduct: vi.fn().mockResolvedValue(new ArrayBuffer(100)),
+  putWorkProduct: vi.fn().mockResolvedValue(undefined),
+}));
+
 import { getConfig } from "../../lib/config";
+import { assembleBriefingAudio } from "../../lib/audio/assembly";
+import { getWorkProduct, putWorkProduct } from "../../lib/work-products";
 
 const { handleBriefingAssembly } = await import("../briefing-assembly");
 
@@ -366,6 +389,113 @@ describe("handleBriefingAssembly", () => {
 
       expect(msg1.ack).toHaveBeenCalled();
       expect(msg2.ack).toHaveBeenCalled();
+    });
+  });
+
+  // ── Audio assembly integration ──
+
+  describe("audio assembly", () => {
+    beforeEach(() => {
+      // Set up happy-path defaults for assembly tests
+      mockPrisma.briefingRequest.findUnique.mockResolvedValue(makeRequest());
+      mockPrisma.pipelineJob.findMany.mockResolvedValue([
+        makeCompletedJob({ id: "job-1", episodeId: "ep-1", clipId: "clip-1", durationTier: 5 }),
+      ]);
+      mockPrisma.feedItem.findMany.mockResolvedValue([{ id: "fi-1", userId: "user-1" }]);
+      mockPrisma.briefing.upsert.mockResolvedValue({ id: "briefing-1" });
+      mockPrisma.feedItem.update.mockResolvedValue({});
+      mockPrisma.briefingRequest.update.mockResolvedValue({});
+      mockPrisma.workProduct.create.mockResolvedValue({});
+    });
+
+    it("assembles audio when BRIEFING_ASSEMBLY_AUDIO_ENABLED is true", async () => {
+      (getConfig as any).mockImplementation(async (_p: any, key: string) => {
+        if (key === "BRIEFING_ASSEMBLY_AUDIO_ENABLED") return true;
+        return true; // pipeline stage enabled
+      });
+
+      const msg = createMsg({ requestId: "req-1" });
+      await handleBriefingAssembly(createBatch([msg]), env, ctx);
+
+      // Clip audio fetched from R2
+      expect(getWorkProduct).toHaveBeenCalled();
+
+      // Assembly function called
+      expect(assembleBriefingAudio).toHaveBeenCalled();
+
+      // Assembled audio stored in R2
+      expect(putWorkProduct).toHaveBeenCalled();
+
+      // WorkProduct record created
+      expect(mockPrisma.workProduct.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          type: "BRIEFING_AUDIO",
+          userId: "user-1",
+          sizeBytes: 500,
+          metadata: { hasJingles: true, isFallback: false },
+        }),
+      });
+
+      // FeedItem still updated to READY
+      expect(mockPrisma.feedItem.update).toHaveBeenCalledWith({
+        where: { id: "fi-1" },
+        data: { status: "READY", briefingId: "briefing-1" },
+      });
+
+      expect(msg.ack).toHaveBeenCalled();
+    });
+
+    it("skips audio assembly when config is disabled", async () => {
+      (getConfig as any).mockImplementation(async (_p: any, key: string) => {
+        if (key === "BRIEFING_ASSEMBLY_AUDIO_ENABLED") return false;
+        return true; // pipeline stage enabled
+      });
+
+      const msg = createMsg({ requestId: "req-1" });
+      await handleBriefingAssembly(createBatch([msg]), env, ctx);
+
+      // Assembly not called
+      expect(assembleBriefingAudio).not.toHaveBeenCalled();
+      expect(getWorkProduct).not.toHaveBeenCalled();
+
+      // WorkProduct not created
+      expect(mockPrisma.workProduct.create).not.toHaveBeenCalled();
+
+      // FeedItem still updated to READY
+      expect(mockPrisma.feedItem.update).toHaveBeenCalledWith({
+        where: { id: "fi-1" },
+        data: { status: "READY", briefingId: "briefing-1" },
+      });
+
+      expect(msg.ack).toHaveBeenCalled();
+    });
+
+    it("still marks FeedItem READY when audio assembly fails", async () => {
+      (getConfig as any).mockImplementation(async (_p: any, key: string) => {
+        if (key === "BRIEFING_ASSEMBLY_AUDIO_ENABLED") return true;
+        return true; // pipeline stage enabled
+      });
+
+      // Make getWorkProduct throw to simulate R2 failure
+      (getWorkProduct as any).mockRejectedValueOnce(new Error("R2 timeout"));
+
+      const msg = createMsg({ requestId: "req-1" });
+      await handleBriefingAssembly(createBatch([msg]), env, ctx);
+
+      // Assembly error logged
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        "briefing_audio_error",
+        expect.objectContaining({ briefingId: "briefing-1" }),
+        expect.any(Error)
+      );
+
+      // FeedItem still updated to READY despite assembly failure
+      expect(mockPrisma.feedItem.update).toHaveBeenCalledWith({
+        where: { id: "fi-1" },
+        data: { status: "READY", briefingId: "briefing-1" },
+      });
+
+      expect(msg.ack).toHaveBeenCalled();
     });
   });
 

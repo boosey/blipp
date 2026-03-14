@@ -1,5 +1,20 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { Env } from "../types";
+import { AiProviderError } from "./ai-errors";
+
+function parseIntHeader(value: string | null): number | undefined {
+  if (!value) return undefined;
+  const n = parseInt(value);
+  return isNaN(n) ? undefined : n;
+}
+
+function parseResetHeader(value: string | null): Date | undefined {
+  if (!value) return undefined;
+  const n = Number(value);
+  if (!isNaN(n)) return new Date(n > 1e12 ? n : n * 1000);
+  const d = new Date(value);
+  return isNaN(d.getTime()) ? undefined : d;
+}
 
 /** Provider-agnostic LLM completion result. */
 export interface LlmResult {
@@ -39,22 +54,38 @@ const AnthropicProvider: LlmProvider = {
   provider: "anthropic",
 
   async complete(messages, providerModelId, maxTokens, env) {
-    const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
-    const response = await client.messages.create({
-      model: providerModelId,
-      max_tokens: maxTokens,
-      messages,
-    });
+    const start = Date.now();
+    try {
+      const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
+      const response = await client.messages.create({
+        model: providerModelId,
+        max_tokens: maxTokens,
+        messages,
+      });
 
-    const text =
-      response.content[0].type === "text" ? response.content[0].text : "";
+      const text =
+        response.content[0].type === "text" ? response.content[0].text : "";
 
-    return {
-      text,
-      model: response.model,
-      inputTokens: response.usage.input_tokens,
-      outputTokens: response.usage.output_tokens,
-    };
+      return {
+        text,
+        model: response.model,
+        inputTokens: response.usage.input_tokens,
+        outputTokens: response.usage.output_tokens,
+      };
+    } catch (err) {
+      const durationMs = Date.now() - start;
+      const status = (err as any)?.status ?? (err as any)?.statusCode;
+      const rawBody = (err as any)?.message ?? String(err);
+
+      throw new AiProviderError({
+        message: `Anthropic API error${status ? ` ${status}` : ""}: ${rawBody.slice(0, 500)}`,
+        provider: "anthropic",
+        model: providerModelId,
+        httpStatus: typeof status === "number" ? status : undefined,
+        rawResponse: rawBody.slice(0, 2048),
+        requestDurationMs: durationMs,
+      });
+    }
   },
 };
 
@@ -67,6 +98,7 @@ const GroqLlmProvider: LlmProvider = {
   provider: "groq",
 
   async complete(messages, providerModelId, maxTokens, env) {
+    const start = Date.now();
     const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -82,7 +114,16 @@ const GroqLlmProvider: LlmProvider = {
 
     if (!resp.ok) {
       const body = await resp.text();
-      throw new Error(`Groq LLM API error ${resp.status}: ${body}`);
+      throw new AiProviderError({
+        message: `Groq LLM API error ${resp.status}: ${body.slice(0, 500)}`,
+        provider: "groq",
+        model: providerModelId,
+        httpStatus: resp.status,
+        rawResponse: body.slice(0, 2048),
+        requestDurationMs: Date.now() - start,
+        rateLimitRemaining: parseIntHeader(resp.headers.get("x-ratelimit-remaining-tokens")),
+        rateLimitResetAt: parseResetHeader(resp.headers.get("x-ratelimit-reset-tokens")),
+      });
     }
 
     const data = (await resp.json()) as {
@@ -109,17 +150,28 @@ const CloudflareLlmProvider: LlmProvider = {
   provider: "cloudflare",
 
   async complete(messages, providerModelId, maxTokens, env) {
-    const result = (await env.AI.run(providerModelId as any, {
-      messages,
-      max_tokens: maxTokens,
-    })) as any;
+    const start = Date.now();
+    try {
+      const result = (await env.AI.run(providerModelId as any, {
+        messages,
+        max_tokens: maxTokens,
+      })) as any;
 
-    return {
-      text: result?.response ?? result?.result ?? "",
-      model: providerModelId,
-      inputTokens: result?.usage?.prompt_tokens ?? 0,
-      outputTokens: result?.usage?.completion_tokens ?? 0,
-    };
+      return {
+        text: result?.response ?? result?.result ?? "",
+        model: providerModelId,
+        inputTokens: result?.usage?.prompt_tokens ?? 0,
+        outputTokens: result?.usage?.completion_tokens ?? 0,
+      };
+    } catch (err) {
+      throw new AiProviderError({
+        message: `Cloudflare AI error: ${err instanceof Error ? err.message : String(err)}`,
+        provider: "cloudflare",
+        model: providerModelId,
+        requestDurationMs: Date.now() - start,
+        rawResponse: err instanceof Error ? err.message : String(err),
+      });
+    }
   },
 };
 

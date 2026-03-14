@@ -8,6 +8,15 @@ import { handleOrchestrator } from "./orchestrator";
 import { createPrismaClient } from "../lib/db";
 import { getConfig } from "../lib/config";
 import { createPipelineLogger } from "../lib/logger";
+import type {
+  TranscriptionMessage,
+  DistillationMessage,
+  NarrativeGenerationMessage,
+  AudioGenerationMessage,
+  BriefingAssemblyMessage,
+  OrchestratorMessage,
+  FeedRefreshMessage,
+} from "../lib/queue-messages";
 import type { Env } from "../types";
 
 /**
@@ -24,40 +33,40 @@ export async function handleQueue(
 ) {
   switch (batch.queue) {
     case "feed-refresh":
-      return handleFeedRefresh(batch, env, ctx);
+      return handleFeedRefresh(batch as MessageBatch<FeedRefreshMessage>, env, ctx);
     case "transcription":
       return handleTranscription(
-        batch as MessageBatch<any>,
+        batch as MessageBatch<TranscriptionMessage>,
         env,
         ctx
       );
     case "distillation":
       return handleDistillation(
-        batch as MessageBatch<any>,
+        batch as MessageBatch<DistillationMessage>,
         env,
         ctx
       );
     case "narrative-generation":
       return handleNarrativeGeneration(
-        batch as MessageBatch<any>,
+        batch as MessageBatch<NarrativeGenerationMessage>,
         env,
         ctx
       );
     case "clip-generation":
       return handleAudioGeneration(
-        batch as MessageBatch<any>,
+        batch as MessageBatch<AudioGenerationMessage>,
         env,
         ctx
       );
     case "briefing-assembly":
       return handleBriefingAssembly(
-        batch as MessageBatch<any>,
+        batch as MessageBatch<BriefingAssemblyMessage>,
         env,
         ctx
       );
     case "orchestrator":
       return handleOrchestrator(
-        batch as MessageBatch<any>,
+        batch as MessageBatch<OrchestratorMessage>,
         env,
         ctx
       );

@@ -1,5 +1,5 @@
 import { createPrismaClient } from "../lib/db";
-import { getModelConfig } from "../lib/ai-models";
+import { resolveStageModel } from "../lib/model-resolution";
 import { checkStageEnabled } from "../lib/queue-helpers";
 import { createPipelineLogger } from "../lib/logger";
 import { wpKey, putWorkProduct } from "../lib/work-products";
@@ -7,15 +7,11 @@ import { PodcastIndexClient } from "../lib/podcast-index";
 import { lookupPodcastIndexTranscript } from "../lib/transcript-source";
 import { fetchTranscript } from "../lib/transcript";
 import { getProviderImpl } from "../lib/stt-providers";
-import { getModelPricing, calculateAudioCost, type AiUsage } from "../lib/ai-usage";
+import { calculateAudioCost, type AiUsage } from "../lib/ai-usage";
 import { writeEvent } from "../lib/pipeline-events";
+import { writeAiError, classifyAiError, AiProviderError } from "../lib/ai-errors";
+import type { TranscriptionMessage } from "../lib/queue-messages";
 import type { Env } from "../types";
-
-interface TranscriptionMessage {
-  jobId: string;
-  episodeId: string;
-  type?: "manual";
-}
 
 const CACHE_STATUSES = new Set(["TRANSCRIPT_READY", "EXTRACTING_CLAIMS", "COMPLETED"]);
 
@@ -56,6 +52,7 @@ export async function handleTranscription(
 
     for (const msg of batch.messages) {
       const { jobId, episodeId } = msg.body;
+      const correlationId = msg.body.correlationId ?? crypto.randomUUID();
       const startTime = Date.now();
 
       let stepId: string | null = null;
@@ -136,6 +133,7 @@ export async function handleTranscription(
             requestId: job.requestId,
             action: "job-stage-complete",
             jobId,
+            correlationId,
           });
 
           msg.ack();
@@ -183,18 +181,9 @@ export async function handleTranscription(
           } else {
             // Tier 3: STT via configured provider
             await writeEvent(prisma, step.id, "WARN", "No transcript in RSS or Podcast Index — falling back to STT");
-            const sttConfig = await getModelConfig(prisma, "stt");
-            if (!sttConfig) throw new Error("No AI model configured for STT stage — configure one in Admin > Configuration");
-            const { provider: sttProviderName, model: sttModel } = sttConfig;
-            const sttPricing = await getModelPricing(prisma, sttModel, sttProviderName);
-
-            // Look up providerModelId from DB
-            const dbProvider = await prisma.aiModelProvider.findFirst({
-              where: { provider: sttProviderName, model: { modelId: sttModel } },
-            });
-            const providerModelId = dbProvider?.providerModelId ?? sttModel;
-
-            const providerImpl = getProviderImpl(sttProviderName);
+            const resolved = await resolveStageModel(prisma, "stt");
+            const providerImpl = getProviderImpl(resolved.provider);
+            const providerModelId = resolved.providerModelId;
             await writeEvent(prisma, step.id, "INFO", `Transcribing via ${providerImpl.name} (model: ${providerModelId})`);
 
             // Fetch audio
@@ -224,9 +213,9 @@ export async function handleTranscription(
             transcript = sttResult.transcript;
             const estimatedSeconds = audioBuffer.byteLength / (128 * 1000 / 8);
             const sttInputTokens = Math.round(audioBuffer.byteLength / 16000);
-            sttUsage = { model: sttModel, inputTokens: sttInputTokens, outputTokens: 0, cost: calculateAudioCost(sttPricing, estimatedSeconds) };
-            await writeEvent(prisma, step.id, "INFO", `Transcript generated via ${providerImpl.name}`, { bytes: transcript.length, source: sttProviderName });
-            log.info("transcript_fetched", { episodeId, bytes: transcript.length, source: sttProviderName });
+            sttUsage = { model: resolved.model, inputTokens: sttInputTokens, outputTokens: 0, cost: calculateAudioCost(resolved.pricing, estimatedSeconds) };
+            await writeEvent(prisma, step.id, "INFO", `Transcript generated via ${providerImpl.name}`, { bytes: transcript.length, source: resolved.provider });
+            log.info("transcript_fetched", { episodeId, bytes: transcript.length, source: resolved.provider });
           }
         }
 
@@ -273,6 +262,7 @@ export async function handleTranscription(
           requestId: job.requestId,
           action: "job-stage-complete",
           jobId,
+          correlationId,
         });
 
         msg.ack();
@@ -290,7 +280,17 @@ export async function handleTranscription(
               durationMs: Date.now() - startTime,
             },
           })
-          .catch(() => {});
+          .catch((dbErr: unknown) => {
+            console.error(JSON.stringify({
+              level: "error",
+              action: "error_path_db_write_failed",
+              stage: "transcription",
+              target: "pipelineStep",
+              jobId,
+              error: dbErr instanceof Error ? dbErr.message : String(dbErr),
+              ts: new Date().toISOString(),
+            }));
+          });
 
         // Write error event if step exists
         if (stepId) {
@@ -304,9 +304,45 @@ export async function handleTranscription(
             update: { status: "FAILED", errorMessage },
             create: { episodeId, status: "FAILED", errorMessage },
           })
-          .catch(() => {});
+          .catch((dbErr: unknown) => {
+            console.error(JSON.stringify({
+              level: "error",
+              action: "error_path_db_write_failed",
+              stage: "transcription",
+              target: "distillation",
+              jobId,
+              error: dbErr instanceof Error ? dbErr.message : String(dbErr),
+              ts: new Date().toISOString(),
+            }));
+          });
 
         log.error("episode_error", { episodeId, jobId }, err);
+
+        // Capture AI provider errors
+        if (err instanceof AiProviderError) {
+          const { category, severity } = classifyAiError(err, err.httpStatus, err.rawResponse);
+          writeAiError(prisma, {
+            service: "stt",
+            provider: err.provider,
+            model: err.model,
+            operation: "transcribe",
+            correlationId,
+            jobId,
+            episodeId,
+            category,
+            severity,
+            httpStatus: err.httpStatus,
+            errorMessage: err.message,
+            rawResponse: err.rawResponse,
+            requestDurationMs: err.requestDurationMs,
+            timestamp: new Date(),
+            retryCount: 0,
+            maxRetries: 0,
+            willRetry: false,
+            rateLimitRemaining: err.rateLimitRemaining,
+            rateLimitResetAt: err.rateLimitResetAt,
+          }).catch(() => {}); // Fire-and-forget
+        }
 
         // Notify orchestrator so job is marked FAILED and assembly can proceed
         if (requestId) {
@@ -315,7 +351,17 @@ export async function handleTranscription(
             action: "job-failed",
             jobId,
             errorMessage,
-          }).catch(() => {});
+            correlationId,
+          }).catch((sendErr: unknown) => {
+            console.error(JSON.stringify({
+              level: "error",
+              action: "orchestrator_send_failed",
+              stage: "transcription",
+              jobId,
+              error: sendErr instanceof Error ? sendErr.message : String(sendErr),
+              ts: new Date().toISOString(),
+            }));
+          });
         }
 
         msg.ack();

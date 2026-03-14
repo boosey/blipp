@@ -10,6 +10,7 @@ interface LoggerOptions {
   stage: string;
   requestId?: string;
   jobId?: string;
+  correlationId?: string;
   prisma: { platformConfig: { findUnique: (args: any) => Promise<any> } };
 }
 
@@ -27,6 +28,7 @@ export async function createPipelineLogger(opts: LoggerOptions): Promise<Pipelin
   const base: Record<string, unknown> = { stage: opts.stage };
   if (opts.requestId) base.requestId = opts.requestId;
   if (opts.jobId) base.jobId = opts.jobId;
+  if (opts.correlationId) base.correlationId = opts.correlationId;
 
   function emit(level: string, action: string, data: Record<string, unknown>) {
     const line = JSON.stringify({ level, ...base, action, ...data, ts: new Date().toISOString() });

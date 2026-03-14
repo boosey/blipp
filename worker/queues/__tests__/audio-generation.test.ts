@@ -17,10 +17,6 @@ vi.mock("../../lib/tts", () => ({
   }),
 }));
 
-vi.mock("../../lib/clip-cache", () => ({
-  putClip: vi.fn().mockResolvedValue(undefined),
-}));
-
 vi.mock("../../lib/work-products", () => ({
   wpKey: vi.fn((params: any) => `wp/${params.type.toLowerCase()}/${params.episodeId}/${params.durationTier}${params.voice ? `/${params.voice}` : ""}`),
   putWorkProduct: vi.fn().mockResolvedValue(undefined),
@@ -51,7 +47,6 @@ vi.mock("../../lib/tts-providers", () => ({
 import { createPrismaClient } from "../../lib/db";
 import { getConfig } from "../../lib/config";
 import { generateSpeech } from "../../lib/tts";
-import { putClip } from "../../lib/clip-cache";
 import { putWorkProduct } from "../../lib/work-products";
 import { getModelConfig } from "../../lib/ai-models";
 
@@ -94,7 +89,6 @@ beforeEach(() => {
     audio: new ArrayBuffer(2048),
     usage: { model: "test-tts-model", inputTokens: 40, outputTokens: 0, cost: null },
   });
-  (putClip as any).mockResolvedValue(undefined);
   mockPrisma.aiModelProvider.findFirst.mockResolvedValue({ providerModelId: "gpt-4o-mini-tts" });
   (putWorkProduct as any).mockResolvedValue(undefined);
   mockPrisma.workProduct.create.mockResolvedValue({ id: "wp-1" });
@@ -189,11 +183,13 @@ describe("handleAudioGeneration", () => {
     expect(generateSpeech).not.toHaveBeenCalled();
 
     // Orchestrator notified
-    expect(mockEnv.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith({
-      requestId: "req-1",
-      action: "job-stage-complete",
-      jobId: "job-1",
-    });
+    expect(mockEnv.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestId: "req-1",
+        action: "job-stage-complete",
+        jobId: "job-1",
+      })
+    );
 
     expect(mockMsg.ack).toHaveBeenCalled();
   });
@@ -220,21 +216,13 @@ describe("handleAudioGeneration", () => {
       expect.anything()
     );
 
-    // Stored in R2
-    expect(putClip).toHaveBeenCalledWith(
-      mockEnv.R2,
-      "ep-1",
-      5,
-      expect.any(ArrayBuffer)
-    );
-
-    // Clip updated as COMPLETED with audioKey
+    // Clip updated as COMPLETED with audioKey (now uses wpKey format)
     expect(mockPrisma.clip.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { episodeId_durationTier: { episodeId: "ep-1", durationTier: 5 } },
         data: expect.objectContaining({
           status: "COMPLETED",
-          audioKey: "clips/ep-1/5.mp3",
+          audioKey: "wp/audio_clip/ep-1/5/default",
         }),
       })
     );
@@ -285,11 +273,13 @@ describe("handleAudioGeneration", () => {
     const { mockBatch } = makeBatch(msgBody);
     await handleAudioGeneration(mockBatch, mockEnv, mockCtx);
 
-    expect(mockEnv.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith({
-      requestId: "req-1",
-      action: "job-stage-complete",
-      jobId: "job-1",
-    });
+    expect(mockEnv.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestId: "req-1",
+        action: "job-stage-complete",
+        jobId: "job-1",
+      })
+    );
   });
 
   it("reads TTS model from config", async () => {
@@ -348,12 +338,14 @@ describe("handleAudioGeneration", () => {
         }),
       });
 
-      expect(mockEnv.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith({
-        requestId: "req-1",
-        action: "job-failed",
-        jobId: "job-1",
-        errorMessage: "TTS API error",
-      });
+      expect(mockEnv.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          requestId: "req-1",
+          action: "job-failed",
+          jobId: "job-1",
+          errorMessage: "TTS API error",
+        })
+      );
       expect(mockMsg.ack).toHaveBeenCalled();
       expect(mockMsg.retry).not.toHaveBeenCalled();
     });
@@ -398,7 +390,7 @@ describe("handleAudioGeneration", () => {
       expect(mockLogger.info).toHaveBeenCalledWith("audio_completed", {
         episodeId: "ep-1",
         durationTier: 5,
-        audioKey: "clips/ep-1/5.mp3",
+        audioKey: "wp/audio_clip/ep-1/5/default",
       });
     });
   });

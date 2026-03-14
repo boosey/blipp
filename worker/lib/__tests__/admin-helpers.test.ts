@@ -51,6 +51,26 @@ describe("parseSort", () => {
     const result = parseSort(mockContext({ sort: "name" }));
     expect(result).toEqual({ name: "desc" });
   });
+
+  it("should accept valid field from allowlist", () => {
+    const result = parseSort(mockContext({ sort: "email:asc" }), "createdAt", ["createdAt", "email"]);
+    expect(result).toEqual({ email: "asc" });
+  });
+
+  it("should fall back to default for field not in allowlist", () => {
+    const result = parseSort(mockContext({ sort: "stripeCustomerId:asc" }), "createdAt", ["createdAt", "email"]);
+    expect(result).toEqual({ createdAt: "asc" });
+  });
+
+  it("should allow any field when no allowlist provided", () => {
+    const result = parseSort(mockContext({ sort: "anything:asc" }));
+    expect(result).toEqual({ anything: "asc" });
+  });
+
+  it("should normalize invalid sort direction to desc", () => {
+    const result = parseSort(mockContext({ sort: "name:INVALID" }));
+    expect(result).toEqual({ name: "desc" });
+  });
 });
 
 describe("paginatedResponse", () => {

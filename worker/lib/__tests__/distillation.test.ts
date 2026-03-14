@@ -5,6 +5,7 @@ import {
   selectClaimsForDuration,
   WORDS_PER_MINUTE,
   type Claim,
+  type EpisodeMetadata,
 } from "../distillation";
 import type { LlmProvider, LlmResult } from "../llm-providers";
 
@@ -86,7 +87,34 @@ describe("extractClaims", () => {
 
   it("should throw on invalid JSON response", async () => {
     const llm = createMockLlmProvider("not valid json");
-    await expect(extractClaims(llm, "transcript", "mock-model-1", 8192, mockEnv)).rejects.toThrow();
+    await expect(extractClaims(llm, "transcript", "mock-model-1", 8192, mockEnv)).rejects.toThrow("LLM returned invalid JSON");
+  });
+
+  it("should unwrap object with claims key", async () => {
+    const llm = createMockLlmProvider(JSON.stringify({ claims: sampleClaims }));
+    const result = await extractClaims(llm, "transcript", "mock-model-1", 8192, mockEnv);
+    expect(result.claims).toEqual(sampleClaims);
+  });
+
+  it("should unwrap object with results key", async () => {
+    const llm = createMockLlmProvider(JSON.stringify({ results: sampleClaims }));
+    const result = await extractClaims(llm, "transcript", "mock-model-1", 8192, mockEnv);
+    expect(result.claims).toEqual(sampleClaims);
+  });
+
+  it("should throw on missing required fields", async () => {
+    const llm = createMockLlmProvider(JSON.stringify([{ claim: "x" }]));
+    await expect(extractClaims(llm, "transcript", "mock-model-1", 8192, mockEnv)).rejects.toThrow("LLM output failed schema validation");
+  });
+
+  it("should throw on empty array", async () => {
+    const llm = createMockLlmProvider("[]");
+    await expect(extractClaims(llm, "transcript", "mock-model-1", 8192, mockEnv)).rejects.toThrow("LLM output failed schema validation");
+  });
+
+  it("should throw on importance out of range", async () => {
+    const llm = createMockLlmProvider(JSON.stringify([{ ...sampleClaims[0], importance: 15 }]));
+    await expect(extractClaims(llm, "transcript", "mock-model-1", 8192, mockEnv)).rejects.toThrow("LLM output failed schema validation");
   });
 
   it("should return null cost when no pricing provided", async () => {
@@ -213,5 +241,55 @@ describe("selectClaimsForDuration", () => {
 describe("WORDS_PER_MINUTE", () => {
   it("should be 150", () => {
     expect(WORDS_PER_MINUTE).toBe(150);
+  });
+});
+
+describe("generateNarrative with metadata", () => {
+  const testClaims: Claim[] = [
+    { claim: "Test", speaker: "Host", importance: 7, novelty: 5, excerpt: "Some text" },
+  ];
+
+  it("includes podcast title in prompt when metadata provided", async () => {
+    const llm = createMockLlmProvider("This is a test narrative.");
+    const metadata: EpisodeMetadata = {
+      podcastTitle: "The Daily",
+      episodeTitle: "Election Results",
+      publishedAt: new Date("2026-03-12"),
+      durationSeconds: 2700,
+      briefingMinutes: 5,
+    };
+
+    await generateNarrative(llm, testClaims, 5, "model", 8192, {}, null, metadata);
+
+    const prompt = (llm.complete as any).mock.calls[0][0][0].content;
+    expect(prompt).toContain("The Daily");
+    expect(prompt).toContain("Election Results");
+    expect(prompt).toContain("Originally 45 minutes");
+    expect(prompt).toContain("5 minutes");
+  });
+
+  it("omits metadata block when metadata not provided", async () => {
+    const llm = createMockLlmProvider("This is a test narrative.");
+
+    await generateNarrative(llm, testClaims, 5, "model", 8192, {});
+
+    const prompt = (llm.complete as any).mock.calls[0][0][0].content;
+    expect(prompt).not.toContain("Begin the narrative with a brief spoken introduction");
+  });
+
+  it("handles missing durationSeconds gracefully", async () => {
+    const llm = createMockLlmProvider("This is a test narrative.");
+    const metadata: EpisodeMetadata = {
+      podcastTitle: "Test Pod",
+      episodeTitle: "Test Ep",
+      publishedAt: new Date(),
+      durationSeconds: null,
+      briefingMinutes: 3,
+    };
+
+    await generateNarrative(llm, testClaims, 3, "model", 8192, {}, null, metadata);
+
+    const prompt = (llm.complete as any).mock.calls[0][0][0].content;
+    expect(prompt).toContain("Original length unknown");
   });
 });

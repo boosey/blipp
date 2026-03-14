@@ -159,23 +159,59 @@ describe("Users Routes", () => {
   });
 
   describe("PATCH /users/:id", () => {
-    it("updates planId and isAdmin", async () => {
+    it("should return 403 when isAdmin is in request body", async () => {
+      const res = await app.request("/users/u1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isAdmin: true }),
+      }, env, mockExCtx);
+      expect(res.status).toBe(403);
+      const body: any = await res.json();
+      expect(body.error).toBe("Cannot modify admin privileges via this endpoint");
+    });
+
+    it("should allow planId changes", async () => {
+      mockPrisma.plan.findUnique.mockResolvedValueOnce({
+        id: "plan_proplus", name: "Pro Plus", slug: "pro-plus",
+      });
       mockPrisma.user.update.mockResolvedValueOnce({
         id: "u1",
         plan: { id: "plan_proplus", name: "Pro Plus", slug: "pro-plus" },
-        isAdmin: true,
+        isAdmin: false,
       });
 
       const res = await app.request("/users/u1", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ planId: "plan_proplus", isAdmin: true }),
+        body: JSON.stringify({ planId: "plan_proplus" }),
       }, env, mockExCtx);
       expect(res.status).toBe(200);
       const body: any = await res.json();
       expect(body.data.plan.name).toBe("Pro Plus");
-      expect(body.data.isAdmin).toBe(true);
     });
 
+    it("should return 404 for invalid planId", async () => {
+      mockPrisma.plan.findUnique.mockResolvedValueOnce(null);
+
+      const res = await app.request("/users/u1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ planId: "nonexistent" }),
+      }, env, mockExCtx);
+      expect(res.status).toBe(404);
+      const body: any = await res.json();
+      expect(body.error).toBe("Plan not found");
+    });
+
+    it("should return 400 for empty body", async () => {
+      const res = await app.request("/users/u1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      }, env, mockExCtx);
+      expect(res.status).toBe(400);
+      const body: any = await res.json();
+      expect(body.error).toBe("No valid fields to update");
+    });
   });
 });

@@ -1,9 +1,6 @@
 import type { Context } from "hono";
 import type { Env } from "../types";
 
-// Duration tiers in minutes
-const DURATION_TIERS = [1, 2, 3, 5, 7, 10, 15, 30] as const;
-
 /**
  * Fetches the user with their plan included.
  * Use this instead of raw getCurrentUser when you need plan limit checks.

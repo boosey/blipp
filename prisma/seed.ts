@@ -65,6 +65,21 @@ async function main() {
 
   console.log("Seeded plans.");
 
+  // ── Platform Config ──
+
+  await prisma.platformConfig.upsert({
+    where: { key: "BRIEFING_ASSEMBLY_AUDIO_ENABLED" },
+    create: {
+      key: "BRIEFING_ASSEMBLY_AUDIO_ENABLED",
+      value: false,
+      description:
+        "Enable audio assembly (intro + clip + outro jingles) in Stage 5. Requires jingle assets uploaded to R2.",
+    },
+    update: {},
+  });
+
+  console.log("Seeded platform config.");
+
   // ── AI Model Registry seed ──
 
   type ProviderSeed = {

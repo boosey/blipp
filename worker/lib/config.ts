@@ -31,8 +31,14 @@ export async function getConfig<T>(
     const value = entry ? (entry.value as T) : fallback;
     cache.set(key, { value, expiresAt: now + TTL_MS });
     return value;
-  } catch {
-    // PlatformConfig table may not exist — return fallback
+  } catch (err) {
+    console.error(JSON.stringify({
+      level: "warn",
+      action: "config_read_failed",
+      key,
+      error: err instanceof Error ? err.message : String(err),
+      ts: new Date().toISOString(),
+    }));
     return fallback;
   }
 }
@@ -42,21 +48,3 @@ export function clearConfigCache(): void {
   cache.clear();
 }
 
-/** Pipeline stage → display name (keyed by Prisma PipelineStage enum values) */
-export const STAGE_NAMES: Record<string, string> = {
-  TRANSCRIPTION: "Transcription",
-  DISTILLATION: "Distillation",
-  NARRATIVE_GENERATION: "Narrative Generation",
-  AUDIO_GENERATION: "Audio Generation",
-  BRIEFING_ASSEMBLY: "Briefing Assembly",
-};
-
-/** Pipeline stage string key → display name (used by admin routes) */
-export const STAGE_DISPLAY_NAMES: Record<string, string> = {
-  TRANSCRIPTION: "Transcription",
-  DISTILLATION: "Distillation",
-  CLIP_GENERATION: "Clip Generation", // legacy data display
-  NARRATIVE_GENERATION: "Narrative Generation",
-  AUDIO_GENERATION: "Audio Generation",
-  BRIEFING_ASSEMBLY: "Briefing Assembly",
-};

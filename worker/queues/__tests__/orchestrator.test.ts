@@ -122,14 +122,18 @@ describe("handleOrchestrator", () => {
 
       // Dispatches to TRANSCRIPTION_QUEUE
       expect(env.TRANSCRIPTION_QUEUE.send).toHaveBeenCalledTimes(2);
-      expect(env.TRANSCRIPTION_QUEUE.send).toHaveBeenCalledWith({
-        jobId: "job1",
-        episodeId: "ep1",
-      });
-      expect(env.TRANSCRIPTION_QUEUE.send).toHaveBeenCalledWith({
-        jobId: "job2",
-        episodeId: "ep2",
-      });
+      expect(env.TRANSCRIPTION_QUEUE.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          jobId: "job1",
+          episodeId: "ep1",
+        })
+      );
+      expect(env.TRANSCRIPTION_QUEUE.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          jobId: "job2",
+          episodeId: "ep2",
+        })
+      );
 
       // Sets request to PROCESSING
       expect(mockPrisma.briefingRequest.update).toHaveBeenCalledWith({
@@ -170,10 +174,12 @@ describe("handleOrchestrator", () => {
       });
 
       // Dispatched with resolved episodeId
-      expect(env.TRANSCRIPTION_QUEUE.send).toHaveBeenCalledWith({
-        jobId: "job1",
-        episodeId: "latest-ep1",
-      });
+      expect(env.TRANSCRIPTION_QUEUE.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          jobId: "job1",
+          episodeId: "latest-ep1",
+        })
+      );
     });
 
     it("should skip items where no episode is found for podcast", async () => {
@@ -264,10 +270,12 @@ describe("handleOrchestrator", () => {
         where: { id: "job1" },
         data: { currentStage: "DISTILLATION", status: "IN_PROGRESS" },
       });
-      expect(env.DISTILLATION_QUEUE.send).toHaveBeenCalledWith({
-        jobId: "job1",
-        episodeId: "ep1",
-      });
+      expect(env.DISTILLATION_QUEUE.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          jobId: "job1",
+          episodeId: "ep1",
+        })
+      );
       expect(msg.ack).toHaveBeenCalled();
     });
 
@@ -288,11 +296,13 @@ describe("handleOrchestrator", () => {
         where: { id: "job1" },
         data: { currentStage: "NARRATIVE_GENERATION", status: "IN_PROGRESS" },
       });
-      expect(env.NARRATIVE_GENERATION_QUEUE.send).toHaveBeenCalledWith({
-        jobId: "job1",
-        episodeId: "ep1",
-        durationTier: 3,
-      });
+      expect(env.NARRATIVE_GENERATION_QUEUE.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          jobId: "job1",
+          episodeId: "ep1",
+          durationTier: 3,
+        })
+      );
     });
 
     it("should advance job from NARRATIVE_GENERATION to AUDIO_GENERATION", async () => {
@@ -312,11 +322,13 @@ describe("handleOrchestrator", () => {
         where: { id: "job1" },
         data: { currentStage: "AUDIO_GENERATION", status: "IN_PROGRESS" },
       });
-      expect(env.AUDIO_GENERATION_QUEUE.send).toHaveBeenCalledWith({
-        jobId: "job1",
-        episodeId: "ep1",
-        durationTier: 3,
-      });
+      expect(env.AUDIO_GENERATION_QUEUE.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          jobId: "job1",
+          episodeId: "ep1",
+          durationTier: 3,
+        })
+      );
     });
 
     it("should mark job COMPLETED after AUDIO_GENERATION and dispatch to assembly queue", async () => {
@@ -342,9 +354,11 @@ describe("handleOrchestrator", () => {
         data: { status: "COMPLETED", completedAt: expect.any(Date) },
       });
       // Dispatched to assembly queue
-      expect(env.BRIEFING_ASSEMBLY_QUEUE.send).toHaveBeenCalledWith({
-        requestId: "req1",
-      });
+      expect(env.BRIEFING_ASSEMBLY_QUEUE.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          requestId: "req1",
+        })
+      );
       expect(msg.ack).toHaveBeenCalled();
     });
 
@@ -396,9 +410,11 @@ describe("handleOrchestrator", () => {
 
       await handleOrchestrator(createBatch([msg]), env, ctx);
 
-      expect(env.BRIEFING_ASSEMBLY_QUEUE.send).toHaveBeenCalledWith({
-        requestId: "req1",
-      });
+      expect(env.BRIEFING_ASSEMBLY_QUEUE.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          requestId: "req1",
+        })
+      );
       expect(msg.ack).toHaveBeenCalled();
     });
 
@@ -443,9 +459,11 @@ describe("handleOrchestrator", () => {
       await handleOrchestrator(createBatch([msg]), env, ctx);
 
       // Assembly queue handles partial assembly logic
-      expect(env.BRIEFING_ASSEMBLY_QUEUE.send).toHaveBeenCalledWith({
-        requestId: "req1",
-      });
+      expect(env.BRIEFING_ASSEMBLY_QUEUE.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          requestId: "req1",
+        })
+      );
       expect(msg.ack).toHaveBeenCalled();
     });
   });

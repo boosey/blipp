@@ -76,12 +76,12 @@ describe("handleFeedRefresh", () => {
       title: "Test",
     };
     mockPrisma.podcast.findMany.mockResolvedValue([podcast]);
-    // Return episode with old createdAt (not new)
+    // GUID already exists — not a new episode
+    mockPrisma.episode.findMany.mockResolvedValue([{ guid: "guid-1" }]);
     mockPrisma.episode.upsert.mockResolvedValue({
       id: "ep-1",
       podcastId: "pod-1",
       guid: "guid-1",
-      createdAt: new Date("2026-01-01"),
     });
     mockPrisma.podcast.update.mockResolvedValue(podcast);
 
@@ -93,7 +93,7 @@ describe("handleFeedRefresh", () => {
     const mockBatch = {
       messages: [mockMsg],
       queue: "feed-refresh",
-    } as unknown as MessageBatch;
+    } as unknown as MessageBatch<any>;
 
     await handleFeedRefresh(mockBatch, mockEnv, mockCtx);
 
@@ -132,11 +132,11 @@ describe("handleFeedRefresh", () => {
         text: vi.fn().mockResolvedValue("<rss></rss>"),
       });
 
+    mockPrisma.episode.findMany.mockResolvedValue([{ guid: "guid-1" }]);
     mockPrisma.episode.upsert.mockResolvedValue({
       id: "ep-2",
       podcastId: "pod-2",
       guid: "guid-1",
-      createdAt: new Date("2026-01-01"),
     });
     mockPrisma.podcast.update.mockResolvedValue(podcast2);
 
@@ -148,7 +148,7 @@ describe("handleFeedRefresh", () => {
     const mockBatch = {
       messages: [mockMsg],
       queue: "feed-refresh",
-    } as unknown as MessageBatch;
+    } as unknown as MessageBatch<any>;
 
     await handleFeedRefresh(mockBatch, mockEnv, mockCtx);
 
@@ -164,9 +164,9 @@ describe("handleFeedRefresh", () => {
 
       const podcast = { id: "pod-1", feedUrl: "https://example.com/feed.xml" };
       mockPrisma.podcast.findMany.mockResolvedValue([podcast]);
+      mockPrisma.episode.findMany.mockResolvedValue([{ guid: "guid-1" }]);
       mockPrisma.episode.upsert.mockResolvedValue({
         id: "ep-1",
-        createdAt: new Date("2026-01-01"),
       });
       mockPrisma.podcast.update.mockResolvedValue(podcast);
 
@@ -178,7 +178,7 @@ describe("handleFeedRefresh", () => {
       const mockBatch = {
         messages: [mockMsg],
         queue: "feed-refresh",
-      } as unknown as MessageBatch;
+      } as unknown as MessageBatch<any>;
 
       await handleFeedRefresh(mockBatch, mockEnv, mockCtx);
 
@@ -198,9 +198,9 @@ describe("handleFeedRefresh", () => {
 
       const podcast = { id: "pod-1", feedUrl: "https://example.com/feed.xml" };
       mockPrisma.podcast.findMany.mockResolvedValue([podcast]);
+      mockPrisma.episode.findMany.mockResolvedValue([{ guid: "guid-1" }]);
       mockPrisma.episode.upsert.mockResolvedValue({
         id: "ep-1",
-        createdAt: new Date("2026-01-01"),
       });
       mockPrisma.podcast.update.mockResolvedValue(podcast);
 
@@ -212,7 +212,7 @@ describe("handleFeedRefresh", () => {
       const mockBatch = {
         messages: [mockMsg],
         queue: "feed-refresh",
-      } as unknown as MessageBatch;
+      } as unknown as MessageBatch<any>;
 
       await handleFeedRefresh(mockBatch, mockEnv, mockCtx);
 
@@ -241,7 +241,7 @@ describe("handleFeedRefresh", () => {
       const mockBatch = {
         messages: [mockMsg],
         queue: "feed-refresh",
-      } as unknown as MessageBatch;
+      } as unknown as MessageBatch<any>;
 
       await handleFeedRefresh(mockBatch, mockEnv, mockCtx);
 
@@ -259,12 +259,12 @@ describe("handleFeedRefresh", () => {
       const podcast = { id: "pod-1", feedUrl: "https://example.com/feed.xml" };
       mockPrisma.podcast.findMany.mockResolvedValue([podcast]);
 
-      // Episode is "new" (createdAt within 60 seconds)
+      // No existing episodes — GUID is new
+      mockPrisma.episode.findMany.mockResolvedValue([]);
       mockPrisma.episode.upsert.mockResolvedValue({
         id: "ep-new",
         podcastId: "pod-1",
         guid: "guid-1",
-        createdAt: new Date(), // just created
       });
 
       // Two subscribers at different tiers
@@ -289,7 +289,7 @@ describe("handleFeedRefresh", () => {
       const mockBatch = {
         messages: [mockMsg],
         queue: "feed-refresh",
-      } as unknown as MessageBatch;
+      } as unknown as MessageBatch<any>;
 
       await handleFeedRefresh(mockBatch, mockEnv, mockCtx);
 
@@ -322,12 +322,12 @@ describe("handleFeedRefresh", () => {
       const podcast = { id: "pod-1", feedUrl: "https://example.com/feed.xml" };
       mockPrisma.podcast.findMany.mockResolvedValue([podcast]);
 
-      // Episode already existed (createdAt is old)
+      // GUID already exists — not a new episode
+      mockPrisma.episode.findMany.mockResolvedValue([{ guid: "guid-1" }]);
       mockPrisma.episode.upsert.mockResolvedValue({
         id: "ep-old",
         podcastId: "pod-1",
         guid: "guid-1",
-        createdAt: new Date("2025-01-01"),
       });
       mockPrisma.podcast.update.mockResolvedValue(podcast);
 
@@ -339,7 +339,7 @@ describe("handleFeedRefresh", () => {
       const mockBatch = {
         messages: [mockMsg],
         queue: "feed-refresh",
-      } as unknown as MessageBatch;
+      } as unknown as MessageBatch<any>;
 
       await handleFeedRefresh(mockBatch, mockEnv, mockCtx);
 
@@ -356,11 +356,12 @@ describe("handleFeedRefresh", () => {
       const podcast = { id: "pod-1", feedUrl: "https://example.com/feed.xml" };
       mockPrisma.podcast.findMany.mockResolvedValue([podcast]);
 
+      // No existing episodes — GUID is new
+      mockPrisma.episode.findMany.mockResolvedValue([]);
       mockPrisma.episode.upsert.mockResolvedValue({
         id: "ep-new",
         podcastId: "pod-1",
         guid: "guid-1",
-        createdAt: new Date(),
       });
       mockPrisma.subscription.findMany.mockResolvedValue([]);
       mockPrisma.podcast.update.mockResolvedValue(podcast);
@@ -373,7 +374,7 @@ describe("handleFeedRefresh", () => {
       const mockBatch = {
         messages: [mockMsg],
         queue: "feed-refresh",
-      } as unknown as MessageBatch;
+      } as unknown as MessageBatch<any>;
 
       await handleFeedRefresh(mockBatch, mockEnv, mockCtx);
 
@@ -387,11 +388,12 @@ describe("handleFeedRefresh", () => {
       const podcast = { id: "pod-1", feedUrl: "https://example.com/feed.xml" };
       mockPrisma.podcast.findMany.mockResolvedValue([podcast]);
 
+      // No existing episodes — GUID is new
+      mockPrisma.episode.findMany.mockResolvedValue([]);
       mockPrisma.episode.upsert.mockResolvedValue({
         id: "ep-new",
         podcastId: "pod-1",
         guid: "guid-1",
-        createdAt: new Date(),
       });
 
       // 3 subscribers: 2 at tier 5, 1 at tier 10
@@ -416,7 +418,7 @@ describe("handleFeedRefresh", () => {
       const mockBatch = {
         messages: [mockMsg],
         queue: "feed-refresh",
-      } as unknown as MessageBatch;
+      } as unknown as MessageBatch<any>;
 
       await handleFeedRefresh(mockBatch, mockEnv, mockCtx);
 
@@ -436,6 +438,85 @@ describe("handleFeedRefresh", () => {
     });
   });
 
+  describe("GUID-based new episode detection", () => {
+    it("detects new episodes by GUID not existing in database", async () => {
+      (getConfig as any).mockResolvedValue(true);
+
+      const podcast = { id: "pod-1", feedUrl: "https://example.com/feed.xml" };
+      mockPrisma.podcast.findMany.mockResolvedValue([podcast]);
+
+      // No existing episodes — guid-1 from the feed is new
+      mockPrisma.episode.findMany.mockResolvedValue([]);
+      mockPrisma.episode.upsert.mockResolvedValue({
+        id: "ep-new",
+        podcastId: "pod-1",
+        guid: "guid-1",
+      });
+      mockPrisma.subscription.findMany.mockResolvedValue([
+        { userId: "user-1", podcastId: "pod-1", durationTier: 5 },
+      ]);
+      mockPrisma.feedItem.upsert.mockResolvedValue({});
+      mockPrisma.briefingRequest.create.mockResolvedValue({ id: "req-1" });
+      mockPrisma.feedItem.updateMany.mockResolvedValue({ count: 1 });
+      mockPrisma.podcast.update.mockResolvedValue(podcast);
+
+      const mockMsg = {
+        body: { type: "manual", podcastId: "pod-1" },
+        ack: vi.fn(),
+        retry: vi.fn(),
+      };
+      const mockBatch = {
+        messages: [mockMsg],
+        queue: "feed-refresh",
+      } as unknown as MessageBatch<any>;
+
+      await handleFeedRefresh(mockBatch, mockEnv, mockCtx);
+
+      // Should query existing GUIDs
+      expect(mockPrisma.episode.findMany).toHaveBeenCalledWith({
+        where: { podcastId: "pod-1" },
+        select: { guid: true },
+      });
+
+      // New GUID triggers subscriber pipeline
+      expect(mockPrisma.feedItem.upsert).toHaveBeenCalledTimes(1);
+      expect(mockEnv.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledTimes(1);
+    });
+
+    it("treats episodes with already-known GUIDs as not new", async () => {
+      (getConfig as any).mockResolvedValue(true);
+
+      const podcast = { id: "pod-1", feedUrl: "https://example.com/feed.xml" };
+      mockPrisma.podcast.findMany.mockResolvedValue([podcast]);
+
+      // guid-1 already exists in database
+      mockPrisma.episode.findMany.mockResolvedValue([{ guid: "guid-1" }]);
+      mockPrisma.episode.upsert.mockResolvedValue({
+        id: "ep-1",
+        podcastId: "pod-1",
+        guid: "guid-1",
+      });
+      mockPrisma.podcast.update.mockResolvedValue(podcast);
+
+      const mockMsg = {
+        body: { type: "manual", podcastId: "pod-1" },
+        ack: vi.fn(),
+        retry: vi.fn(),
+      };
+      const mockBatch = {
+        messages: [mockMsg],
+        queue: "feed-refresh",
+      } as unknown as MessageBatch<any>;
+
+      await handleFeedRefresh(mockBatch, mockEnv, mockCtx);
+
+      // Known GUID — no subscriber pipeline triggered
+      expect(mockPrisma.subscription.findMany).not.toHaveBeenCalled();
+      expect(mockPrisma.feedItem.upsert).not.toHaveBeenCalled();
+      expect(mockEnv.ORCHESTRATOR_QUEUE.send).not.toHaveBeenCalled();
+    });
+  });
+
   describe("structured logging", () => {
     it("should log batch_start", async () => {
       mockPrisma.subscription.findMany.mockResolvedValue([]);
@@ -448,7 +529,7 @@ describe("handleFeedRefresh", () => {
       const mockBatch = {
         messages: [mockMsg],
         queue: "feed-refresh",
-      } as unknown as MessageBatch;
+      } as unknown as MessageBatch<any>;
 
       await handleFeedRefresh(mockBatch, mockEnv, mockCtx);
 
@@ -462,9 +543,9 @@ describe("handleFeedRefresh", () => {
         title: "Test",
       };
       mockPrisma.podcast.findMany.mockResolvedValue([podcast]);
+      mockPrisma.episode.findMany.mockResolvedValue([{ guid: "guid-1" }]);
       mockPrisma.episode.upsert.mockResolvedValue({
         id: "ep-1",
-        createdAt: new Date("2026-01-01"),
       });
       mockPrisma.podcast.update.mockResolvedValue(podcast);
 
@@ -476,7 +557,7 @@ describe("handleFeedRefresh", () => {
       const mockBatch = {
         messages: [mockMsg],
         queue: "feed-refresh",
-      } as unknown as MessageBatch;
+      } as unknown as MessageBatch<any>;
 
       await handleFeedRefresh(mockBatch, mockEnv, mockCtx);
 
@@ -503,7 +584,7 @@ describe("handleFeedRefresh", () => {
       const mockBatch = {
         messages: [mockMsg],
         queue: "feed-refresh",
-      } as unknown as MessageBatch;
+      } as unknown as MessageBatch<any>;
 
       await handleFeedRefresh(mockBatch, mockEnv, mockCtx);
 

@@ -1,12 +1,11 @@
+import { assembleBriefingAudio } from "../lib/audio/assembly";
+import { getConfig } from "../lib/config";
 import { createPrismaClient } from "../lib/db";
 import { createPipelineLogger } from "../lib/logger";
 import { checkStageEnabled } from "../lib/queue-helpers";
+import type { BriefingAssemblyMessage } from "../lib/queue-messages";
 import type { Env } from "../types";
-
-interface BriefingAssemblyMessage {
-  requestId: string;
-  type?: "manual";
-}
+import { wpKey, getWorkProduct, putWorkProduct } from "../lib/work-products";
 
 /**
  * Queue consumer for briefing assembly (stage 5).
@@ -93,6 +92,69 @@ export async function handleBriefingAssembly(
                 update: {},
               });
 
+              // Audio assembly (gated by feature toggle)
+              const assemblyEnabled = await getConfig(
+                prisma,
+                "BRIEFING_ASSEMBLY_AUDIO_ENABLED",
+                false
+              );
+
+              if (assemblyEnabled) {
+                try {
+                  const clipR2Key = wpKey({
+                    type: "AUDIO_CLIP",
+                    episodeId: job.episodeId,
+                    durationTier: job.durationTier,
+                    voice: "default",
+                  });
+                  const clipAudio = await getWorkProduct(env.R2, clipR2Key);
+
+                  if (clipAudio) {
+                    const result = await assembleBriefingAudio(clipAudio, env.R2, {
+                      warn: (action, data) => log.info(action, data),
+                    });
+
+                    const briefingR2Key = wpKey({
+                      type: "BRIEFING_AUDIO",
+                      briefingId: briefing.id,
+                    });
+                    await putWorkProduct(env.R2, briefingR2Key, result.audio, {
+                      contentType: "audio/mpeg",
+                    });
+
+                    await prisma.workProduct.create({
+                      data: {
+                        type: "BRIEFING_AUDIO",
+                        userId: fi.userId,
+                        r2Key: briefingR2Key,
+                        sizeBytes: result.sizeBytes,
+                        metadata: {
+                          hasJingles: result.hasJingles,
+                          isFallback: result.isFallback,
+                        },
+                      },
+                    });
+
+                    log.info("briefing_audio_assembled", {
+                      briefingId: briefing.id,
+                      hasJingles: result.hasJingles,
+                      isFallback: result.isFallback,
+                      sizeBytes: result.sizeBytes,
+                    });
+                  } else {
+                    log.info("briefing_audio_skip_no_clip", {
+                      briefingId: briefing.id,
+                      clipR2Key,
+                    });
+                  }
+                } catch (err) {
+                  // Audio assembly failure must not block briefing delivery
+                  log.error("briefing_audio_error", {
+                    briefingId: briefing.id,
+                  }, err);
+                }
+              }
+
               await prisma.feedItem.update({
                 where: { id: fi.id },
                 data: {
@@ -151,7 +213,17 @@ export async function handleBriefingAssembly(
             where: { requestId },
             data: { status: "FAILED", errorMessage },
           })
-          .catch(() => {});
+          .catch((dbErr: unknown) => {
+            console.error(JSON.stringify({
+              level: "error",
+              action: "error_path_db_write_failed",
+              stage: "briefing-assembly",
+              target: "feedItem",
+              requestId,
+              error: dbErr instanceof Error ? dbErr.message : String(dbErr),
+              ts: new Date().toISOString(),
+            }));
+          });
 
         await prisma.briefingRequest
           .updateMany({
@@ -161,7 +233,17 @@ export async function handleBriefingAssembly(
             },
             data: { status: "FAILED", errorMessage },
           })
-          .catch(() => {});
+          .catch((dbErr: unknown) => {
+            console.error(JSON.stringify({
+              level: "error",
+              action: "error_path_db_write_failed",
+              stage: "briefing-assembly",
+              target: "briefingRequest",
+              requestId,
+              error: dbErr instanceof Error ? dbErr.message : String(dbErr),
+              ts: new Date().toISOString(),
+            }));
+          });
 
         msg.retry();
       }

@@ -119,6 +119,133 @@ describe("parseRssFeed", () => {
     expect(feed.episodes).toHaveLength(0);
   });
 
+  it("should skip episodes with missing guid", () => {
+    const xml = `<?xml version="1.0"?>
+    <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+      <channel>
+        <title>Test</title>
+        <description>Test</description>
+        <item>
+          <title>No GUID Episode</title>
+          <enclosure url="https://example.com/ep.mp3" type="audio/mpeg" />
+          <pubDate>Mon, 01 Jan 2024 00:00:00 GMT</pubDate>
+        </item>
+      </channel>
+    </rss>`;
+
+    const feed = parseRssFeed(xml);
+    expect(feed.episodes).toHaveLength(0);
+  });
+
+  it("should skip episodes with missing enclosure", () => {
+    const xml = `<?xml version="1.0"?>
+    <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+      <channel>
+        <title>Test</title>
+        <description>Test</description>
+        <item>
+          <title>No Audio Episode</title>
+          <guid>guid-no-audio</guid>
+          <pubDate>Mon, 01 Jan 2024 00:00:00 GMT</pubDate>
+        </item>
+      </channel>
+    </rss>`;
+
+    const feed = parseRssFeed(xml);
+    expect(feed.episodes).toHaveLength(0);
+  });
+
+  it("should use 'Untitled Episode' fallback for empty title", () => {
+    const xml = `<?xml version="1.0"?>
+    <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+      <channel>
+        <title>Test</title>
+        <description>Test</description>
+        <item>
+          <guid>guid-no-title</guid>
+          <enclosure url="https://example.com/ep.mp3" type="audio/mpeg" />
+          <pubDate>Mon, 01 Jan 2024 00:00:00 GMT</pubDate>
+        </item>
+      </channel>
+    </rss>`;
+
+    const feed = parseRssFeed(xml);
+    expect(feed.episodes).toHaveLength(1);
+    expect(feed.episodes[0].title).toBe("Untitled Episode");
+  });
+
+  it("should fallback to current date for invalid pubDate", () => {
+    const xml = `<?xml version="1.0"?>
+    <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+      <channel>
+        <title>Test</title>
+        <description>Test</description>
+        <item>
+          <title>Bad Date Episode</title>
+          <guid>guid-bad-date</guid>
+          <enclosure url="https://example.com/ep.mp3" type="audio/mpeg" />
+          <pubDate>not-a-real-date</pubDate>
+        </item>
+      </channel>
+    </rss>`;
+
+    const before = new Date();
+    const feed = parseRssFeed(xml);
+    const after = new Date();
+
+    expect(feed.episodes).toHaveLength(1);
+    const parsedDate = new Date(feed.episodes[0].publishedAt);
+    expect(parsedDate.getTime()).toBeGreaterThanOrEqual(before.getTime());
+    expect(parsedDate.getTime()).toBeLessThanOrEqual(after.getTime());
+  });
+
+  it("should pass valid episodes through unchanged", () => {
+    const feed = parseRssFeed(SAMPLE_RSS);
+    expect(feed.episodes).toHaveLength(2);
+    expect(feed.episodes[0].title).toBe("Episode 1");
+    expect(feed.episodes[0].guid).toBe("ep-001");
+    expect(feed.episodes[0].audioUrl).toBe("https://example.com/ep1.mp3");
+  });
+
+  it("should filter out invalid episodes and keep valid ones", () => {
+    const xml = `<?xml version="1.0"?>
+    <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+      <channel>
+        <title>Mixed</title>
+        <description>Mixed episodes</description>
+        <item>
+          <title>Valid Episode</title>
+          <guid>guid-valid</guid>
+          <enclosure url="https://example.com/valid.mp3" type="audio/mpeg" />
+          <pubDate>Mon, 01 Jan 2024 00:00:00 GMT</pubDate>
+        </item>
+        <item>
+          <title>No GUID</title>
+          <enclosure url="https://example.com/noguid.mp3" type="audio/mpeg" />
+          <pubDate>Mon, 01 Jan 2024 00:00:00 GMT</pubDate>
+        </item>
+        <item>
+          <title>No Audio</title>
+          <guid>guid-no-audio</guid>
+          <pubDate>Mon, 01 Jan 2024 00:00:00 GMT</pubDate>
+        </item>
+        <item>
+          <guid>guid-no-title</guid>
+          <enclosure url="https://example.com/notitle.mp3" type="audio/mpeg" />
+          <pubDate>Mon, 01 Jan 2024 00:00:00 GMT</pubDate>
+        </item>
+      </channel>
+    </rss>`;
+
+    const feed = parseRssFeed(xml);
+    // Only 2 valid: "Valid Episode" and the one with guid-no-title (gets "Untitled Episode")
+    expect(feed.episodes).toHaveLength(2);
+    expect(feed.episodes[0].title).toBe("Valid Episode");
+    expect(feed.episodes[0].guid).toBe("guid-valid");
+    expect(feed.episodes[1].title).toBe("Untitled Episode");
+    expect(feed.episodes[1].guid).toBe("guid-no-title");
+  });
+
   it("should handle guid as object with #text", () => {
     const xml = `<?xml version="1.0"?>
     <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">

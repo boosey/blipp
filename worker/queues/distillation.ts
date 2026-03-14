@@ -2,19 +2,13 @@ import { createPrismaClient } from "../lib/db";
 import { createPipelineLogger } from "../lib/logger";
 import { checkStageEnabled } from "../lib/queue-helpers";
 import { extractClaims } from "../lib/distillation";
-import { getModelConfig } from "../lib/ai-models";
-import { getModelPricing } from "../lib/ai-usage";
+import { resolveStageModel } from "../lib/model-resolution";
 import { getLlmProviderImpl } from "../lib/llm-providers";
 import { wpKey, putWorkProduct } from "../lib/work-products";
 import { writeEvent } from "../lib/pipeline-events";
+import { writeAiError, classifyAiError, AiProviderError } from "../lib/ai-errors";
+import type { DistillationMessage } from "../lib/queue-messages";
 import type { Env } from "../types";
-
-/** Shape of a distillation queue message body. */
-interface DistillationMessage {
-  jobId: string;
-  episodeId: string;
-  type?: "manual";
-}
 
 /**
  * Queue consumer for distillation jobs.
@@ -40,6 +34,7 @@ export async function handleDistillation(
 
     for (const msg of batch.messages) {
       const { jobId, episodeId } = msg.body;
+      const correlationId = msg.body.correlationId ?? crypto.randomUUID();
       const startedAt = new Date();
 
       let step: { id: string } | null = null;
@@ -124,6 +119,7 @@ export async function handleDistillation(
             requestId: job.requestId,
             action: "job-stage-complete",
             jobId,
+            correlationId,
           });
 
           msg.ack();
@@ -143,18 +139,11 @@ export async function handleDistillation(
         });
 
         // Extract claims via LLM (Pass 1)
-        const distillationConfig = await getModelConfig(prisma, "distillation");
-        if (!distillationConfig) throw new Error("No AI model configured for Distillation stage — configure one in Admin > Configuration");
-        const { provider: distillationProvider, model: distillationModel } = distillationConfig;
-        const distillationPricing = await getModelPricing(prisma, distillationModel, distillationProvider);
-        const dbDistProvider = await prisma.aiModelProvider.findFirst({
-          where: { provider: distillationProvider, model: { modelId: distillationModel } },
-        });
-        const distProviderModelId = dbDistProvider?.providerModelId ?? distillationModel;
-        const llm = getLlmProviderImpl(distillationProvider);
-        await writeEvent(prisma, step.id, "INFO", `Sending transcript to ${llm.name} (${distProviderModelId}) for claim extraction`);
+        const resolved = await resolveStageModel(prisma, "distillation");
+        const llm = getLlmProviderImpl(resolved.provider);
+        await writeEvent(prisma, step.id, "INFO", `Sending transcript to ${llm.name} (${resolved.providerModelId}) for claim extraction`);
         const elapsed = log.timer("claude_extraction");
-        const { claims, usage: claimsUsage } = await extractClaims(llm, existing.transcript, distProviderModelId, 8192, env, distillationPricing);
+        const { claims, usage: claimsUsage } = await extractClaims(llm, existing.transcript, resolved.providerModelId, 8192, env, resolved.pricing);
         elapsed();
         await writeEvent(prisma, step.id, "INFO", `Extracted ${claims.length} claims from transcript`);
         await writeEvent(prisma, step.id, "DEBUG", `Model: ${claimsUsage.model}`, { inputTokens: claimsUsage.inputTokens, outputTokens: claimsUsage.outputTokens, cost: claimsUsage.cost });
@@ -212,6 +201,7 @@ export async function handleDistillation(
           requestId: job.requestId,
           action: "job-stage-complete",
           jobId,
+          correlationId,
         });
         log.debug("orchestrator_notified", { episodeId, jobId, requestId: job.requestId });
 
@@ -232,7 +222,17 @@ export async function handleDistillation(
                 durationMs: new Date().getTime() - startedAt.getTime(),
               },
             })
-            .catch(() => {});
+            .catch((dbErr: unknown) => {
+              console.error(JSON.stringify({
+                level: "error",
+                action: "error_path_db_write_failed",
+                stage: "distillation",
+                target: "pipelineStep",
+                jobId,
+                error: dbErr instanceof Error ? dbErr.message : String(dbErr),
+                ts: new Date().toISOString(),
+              }));
+            });
         }
 
         // Upsert distillation as FAILED
@@ -242,11 +242,47 @@ export async function handleDistillation(
             update: { status: "FAILED", errorMessage },
             create: { episodeId, status: "FAILED", errorMessage },
           })
-          .catch(() => {});
+          .catch((dbErr: unknown) => {
+            console.error(JSON.stringify({
+              level: "error",
+              action: "error_path_db_write_failed",
+              stage: "distillation",
+              target: "distillation",
+              jobId,
+              error: dbErr instanceof Error ? dbErr.message : String(dbErr),
+              ts: new Date().toISOString(),
+            }));
+          });
 
         if (step) await writeEvent(prisma, step.id, "ERROR", `Distillation failed: ${errorMessage}`);
 
         log.error("episode_error", { episodeId, jobId }, err);
+
+        // Capture AI provider errors
+        if (err instanceof AiProviderError) {
+          const { category, severity } = classifyAiError(err, err.httpStatus, err.rawResponse);
+          writeAiError(prisma, {
+            service: "distillation",
+            provider: err.provider,
+            model: err.model,
+            operation: "complete",
+            correlationId,
+            jobId,
+            episodeId,
+            category,
+            severity,
+            httpStatus: err.httpStatus,
+            errorMessage: err.message,
+            rawResponse: err.rawResponse,
+            requestDurationMs: err.requestDurationMs,
+            timestamp: new Date(),
+            retryCount: 0,
+            maxRetries: 0,
+            willRetry: false,
+            rateLimitRemaining: err.rateLimitRemaining,
+            rateLimitResetAt: err.rateLimitResetAt,
+          }).catch(() => {}); // Fire-and-forget
+        }
 
         // Notify orchestrator so job is marked FAILED and assembly can proceed
         if (requestId) {
@@ -255,7 +291,17 @@ export async function handleDistillation(
             action: "job-failed",
             jobId,
             errorMessage,
-          }).catch(() => {});
+            correlationId,
+          }).catch((sendErr: unknown) => {
+            console.error(JSON.stringify({
+              level: "error",
+              action: "orchestrator_send_failed",
+              stage: "distillation",
+              jobId,
+              error: sendErr instanceof Error ? sendErr.message : String(sendErr),
+              ts: new Date().toISOString(),
+            }));
+          });
         }
 
         msg.ack();

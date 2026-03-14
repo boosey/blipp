@@ -230,11 +230,13 @@ describe("handleDistillation", () => {
     const batch = makeBatch([{ jobId: "job-1", episodeId: "ep-1" }]);
     await handleDistillation(batch, mockEnv, mockCtx);
 
-    expect(mockEnv.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith({
-      requestId: "req-1",
-      action: "job-stage-complete",
-      jobId: "job-1",
-    });
+    expect(mockEnv.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestId: "req-1",
+        action: "job-stage-complete",
+        jobId: "job-1",
+      })
+    );
   });
 
   it("reports to orchestrator on cache hit", async () => {
@@ -255,11 +257,13 @@ describe("handleDistillation", () => {
     const batch = makeBatch([{ jobId: "job-1", episodeId: "ep-1" }]);
     await handleDistillation(batch, mockEnv, mockCtx);
 
-    expect(mockEnv.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith({
-      requestId: "req-1",
-      action: "job-stage-complete",
-      jobId: "job-1",
-    });
+    expect(mockEnv.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestId: "req-1",
+        action: "job-stage-complete",
+        jobId: "job-1",
+      })
+    );
   });
 
   it("reads distillation model from config and passes to extractClaims", async () => {
@@ -361,12 +365,14 @@ describe("handleDistillation", () => {
       });
 
       // Orchestrator notified of failure
-      expect(mockEnv.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith({
-        requestId: "req-1",
-        action: "job-failed",
-        jobId: "job-1",
-        errorMessage: "API error",
-      });
+      expect(mockEnv.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          requestId: "req-1",
+          action: "job-failed",
+          jobId: "job-1",
+          errorMessage: "API error",
+        })
+      );
       expect(batch.messages[0].ack).toHaveBeenCalled();
       expect(batch.messages[0].retry).not.toHaveBeenCalled();
     });

@@ -1,4 +1,5 @@
 import type { Env } from "../types";
+import { AiProviderError } from "./ai-errors";
 
 export interface SttResult {
   transcript: string;
@@ -83,7 +84,14 @@ const OpenAIProvider: SttProvider = {
 
     if (!resp.ok) {
       const body = await resp.text();
-      throw new Error(`OpenAI Whisper API error ${resp.status}: ${body}`);
+      throw new AiProviderError({
+        message: `OpenAI Whisper API error ${resp.status}: ${body.slice(0, 500)}`,
+        provider: "openai",
+        model: providerModelId,
+        httpStatus: resp.status,
+        rawResponse: body.slice(0, 2048),
+        requestDurationMs: Date.now() - start,
+      });
     }
 
     const data = (await resp.json()) as { text: string };
@@ -131,8 +139,14 @@ const DeepgramProvider: SttProvider = {
 
     if (!resp.ok) {
       const body = await resp.text();
-      console.error(`[Deepgram] ${resp.status}: ${body}`);
-      throw new Error(`Deepgram API error ${resp.status}: ${body}`);
+      throw new AiProviderError({
+        message: `Deepgram API error ${resp.status}: ${body.slice(0, 500)}`,
+        provider: "deepgram",
+        model: providerModelId,
+        httpStatus: resp.status,
+        rawResponse: body.slice(0, 2048),
+        requestDurationMs: Date.now() - start,
+      });
     }
 
     const data = (await resp.json()) as {
@@ -169,7 +183,14 @@ const AssemblyAIProvider: SttProvider = {
       });
       if (!uploadResp.ok) {
         const body = await uploadResp.text();
-        throw new Error(`AssemblyAI upload error ${uploadResp.status}: ${body}`);
+        throw new AiProviderError({
+          message: `AssemblyAI upload error ${uploadResp.status}: ${body.slice(0, 500)}`,
+          provider: "assemblyai",
+          model: "universal-3-pro",
+          httpStatus: uploadResp.status,
+          rawResponse: body.slice(0, 2048),
+          requestDurationMs: Date.now() - start,
+        });
       }
       const uploadData = (await uploadResp.json()) as { upload_url: string };
       audioUrl = uploadData.upload_url;
@@ -186,7 +207,14 @@ const AssemblyAIProvider: SttProvider = {
 
     if (!resp.ok) {
       const body = await resp.text();
-      throw new Error(`AssemblyAI API error ${resp.status}: ${body}`);
+      throw new AiProviderError({
+        message: `AssemblyAI API error ${resp.status}: ${body.slice(0, 500)}`,
+        provider: "assemblyai",
+        model: "universal-3-pro",
+        httpStatus: resp.status,
+        rawResponse: body.slice(0, 2048),
+        requestDurationMs: Date.now() - start,
+      });
     }
 
     const data = (await resp.json()) as { id: string; status: string };
@@ -199,13 +227,21 @@ const AssemblyAIProvider: SttProvider = {
   },
 
   async poll(jobId: string, env: Env): Promise<SttPollResult> {
+    const start = Date.now();
     const resp = await fetch(`https://api.assemblyai.com/v2/transcript/${jobId}`, {
       headers: { Authorization: env.ASSEMBLYAI_API_KEY },
     });
 
     if (!resp.ok) {
       const body = await resp.text();
-      throw new Error(`AssemblyAI poll error ${resp.status}: ${body}`);
+      throw new AiProviderError({
+        message: `AssemblyAI poll error ${resp.status}: ${body.slice(0, 500)}`,
+        provider: "assemblyai",
+        model: "universal-3-pro",
+        httpStatus: resp.status,
+        rawResponse: body.slice(0, 2048),
+        requestDurationMs: Date.now() - start,
+      });
     }
 
     const data = (await resp.json()) as { status: string; text?: string; error?: string };
@@ -214,7 +250,13 @@ const AssemblyAIProvider: SttProvider = {
       return { done: true, transcript: data.text ?? "" };
     }
     if (data.status === "error") {
-      throw new Error(`AssemblyAI transcription failed: ${data.error ?? "unknown"}`);
+      throw new AiProviderError({
+        message: `AssemblyAI transcription failed: ${data.error ?? "unknown"}`,
+        provider: "assemblyai",
+        model: "universal-3-pro",
+        rawResponse: data.error,
+        requestDurationMs: Date.now() - start,
+      });
     }
 
     return { done: false };
@@ -256,7 +298,14 @@ const GoogleSttProvider: SttProvider = {
 
     if (!resp.ok) {
       const body = await resp.text();
-      throw new Error(`Google STT API error ${resp.status}: ${body}`);
+      throw new AiProviderError({
+        message: `Google STT API error ${resp.status}: ${body.slice(0, 500)}`,
+        provider: "google",
+        model: providerModelId || "chirp",
+        httpStatus: resp.status,
+        rawResponse: body.slice(0, 2048),
+        requestDurationMs: Date.now() - start,
+      });
     }
 
     const data = (await resp.json()) as { name: string };
@@ -269,13 +318,21 @@ const GoogleSttProvider: SttProvider = {
   },
 
   async poll(jobId: string, env: Env): Promise<SttPollResult> {
+    const start = Date.now();
     const resp = await fetch(
       `https://speech.googleapis.com/v1/operations/${jobId}?key=${env.GOOGLE_STT_API_KEY}`,
     );
 
     if (!resp.ok) {
       const body = await resp.text();
-      throw new Error(`Google STT poll error ${resp.status}: ${body}`);
+      throw new AiProviderError({
+        message: `Google STT poll error ${resp.status}: ${body.slice(0, 500)}`,
+        provider: "google",
+        model: "chirp",
+        httpStatus: resp.status,
+        rawResponse: body.slice(0, 2048),
+        requestDurationMs: Date.now() - start,
+      });
     }
 
     const data = (await resp.json()) as {
@@ -321,7 +378,14 @@ const GroqProvider: SttProvider = {
 
     if (!resp.ok) {
       const body = await resp.text();
-      throw new Error(`Groq API error ${resp.status}: ${body}`);
+      throw new AiProviderError({
+        message: `Groq STT API error ${resp.status}: ${body.slice(0, 500)}`,
+        provider: "groq",
+        model: providerModelId,
+        httpStatus: resp.status,
+        rawResponse: body.slice(0, 2048),
+        requestDurationMs: Date.now() - start,
+      });
     }
 
     const data = (await resp.json()) as { text: string };
@@ -386,9 +450,25 @@ const CloudflareProvider: SttProvider = {
         const msg = err?.message ?? String(err);
         if (msg.includes("1031") || msg.includes("504") || msg.includes("timeout")) {
           await new Promise((r) => setTimeout(r, 2000));
-          result = await env.AI.run(providerModelId as any, { audio: base64 });
+          try {
+            result = await env.AI.run(providerModelId as any, { audio: base64 });
+          } catch (retryErr: any) {
+            throw new AiProviderError({
+              message: `Cloudflare AI STT retry failed: ${retryErr?.message ?? String(retryErr)}`,
+              provider: "cloudflare",
+              model: providerModelId,
+              requestDurationMs: Date.now() - start,
+              rawResponse: retryErr?.message ?? String(retryErr),
+            });
+          }
         } else {
-          throw err;
+          throw new AiProviderError({
+            message: `Cloudflare AI STT error: ${msg}`,
+            provider: "cloudflare",
+            model: providerModelId,
+            requestDurationMs: Date.now() - start,
+            rawResponse: msg,
+          });
         }
       }
       const text = (result as any)?.text?.trim() ?? "";

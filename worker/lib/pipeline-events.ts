@@ -16,6 +16,12 @@ export async function writeEvent(
       data: { stepId, level, message, data },
     });
   } catch (err) {
-    console.error("[pipeline-event] Failed to write event:", err);
+    console.error(JSON.stringify({
+      level: "warn",
+      action: "pipeline_event_write_failed",
+      stepId,
+      error: err instanceof Error ? err.message : String(err),
+      ts: new Date().toISOString(),
+    }));
   }
 }

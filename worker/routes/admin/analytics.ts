@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { Env } from "../../types";
-import { STAGE_DISPLAY_NAMES } from "../../lib/config";
+import { PIPELINE_STAGE_NAMES } from "../../lib/constants";
 
 const analyticsRoutes = new Hono<{ Bindings: Env }>();
 
@@ -166,7 +166,7 @@ analyticsRoutes.get("/costs/by-model", async (c) => {
 
   const byStage = Array.from(stageMap.entries()).map(([stage, agg]) => ({
     stage,
-    stageName: STAGE_DISPLAY_NAMES[stage] ?? stage,
+    stageName: PIPELINE_STAGE_NAMES[stage] ?? stage,
     totalCost: round(agg.totalCost),
     totalInputTokens: agg.totalInputTokens,
     totalOutputTokens: agg.totalOutputTokens,
@@ -361,7 +361,7 @@ analyticsRoutes.get("/pipeline", async (c) => {
         throughput: { episodesPerHour: 0, trend: 0 },
         successRates: (["TRANSCRIPTION", "DISTILLATION", "NARRATIVE_GENERATION", "AUDIO_GENERATION", "BRIEFING_ASSEMBLY"] as const).map((stage) => ({
           stage,
-          name: STAGE_DISPLAY_NAMES[stage] ?? stage,
+          name: PIPELINE_STAGE_NAMES[stage] ?? stage,
           rate: 100,
         })),
         processingSpeed: [],
@@ -380,7 +380,7 @@ analyticsRoutes.get("/pipeline", async (c) => {
     const completed = stageSteps.filter((s) => s.status === "COMPLETED").length;
     return {
       stage,
-      name: STAGE_DISPLAY_NAMES[stage] ?? stage,
+      name: PIPELINE_STAGE_NAMES[stage] ?? stage,
       rate: stageSteps.length > 0 ? Math.round((completed / stageSteps.length) * 100) : 100,
     };
   });
