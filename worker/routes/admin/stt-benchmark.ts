@@ -297,7 +297,7 @@ sttBenchmarkRoutes.post("/experiments", async (c) => {
 sttBenchmarkRoutes.get("/experiments", async (c) => {
   const prisma = c.get("prisma") as any;
   const { page, pageSize, skip } = parsePagination(c);
-  const orderBy = parseSort(c, "createdAt");
+  const orderBy = parseSort(c, "createdAt", ["createdAt", "model", "provider", "status", "wer", "latencyMs", "costDollars"]);
 
   const [experiments, total] = await Promise.all([
     prisma.sttExperiment.findMany({

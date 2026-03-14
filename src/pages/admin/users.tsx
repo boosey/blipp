@@ -12,6 +12,7 @@ import {
   BarChart3,
   Podcast,
   Crown,
+  Heart,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -305,7 +306,7 @@ function OverviewTab({ user }: { user: AdminUserDetail }) {
         <div className="rounded-lg bg-[#1A2942] border border-white/5 p-4 space-y-3">
           <div className="flex items-center gap-2">
             <Podcast className="h-4 w-4 text-[#8B5CF6]" />
-            <span className="text-sm font-semibold text-[#F9FAFB]">Top Podcasts</span>
+            <span className="text-sm font-semibold text-[#F9FAFB]">Subscriptions</span>
             <Badge className="bg-white/5 text-[#9CA3AF] text-[9px] ml-auto">
               {user.subscriptions.length}
             </Badge>
@@ -320,6 +321,38 @@ function OverviewTab({ user }: { user: AdminUserDetail }) {
                 <span className="text-[10px] text-[#9CA3AF] shrink-0 ml-2">
                   since {formatDate(sub.createdAt)}
                 </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Favorites */}
+      {(user as any).favorites?.length > 0 && (
+        <div className="rounded-lg bg-[#1A2942] border border-white/5 p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <Heart className="h-4 w-4 text-[#EF4444]" />
+            <span className="text-sm font-semibold text-[#F9FAFB]">Favorites</span>
+            <Badge className="bg-white/5 text-[#9CA3AF] text-[9px] ml-auto">
+              {(user as any).favorites.length}
+            </Badge>
+          </div>
+          <div className="space-y-1.5">
+            {(user as any).favorites.map((fav: any) => (
+              <div
+                key={fav.podcastId}
+                className="flex items-center gap-2 text-xs px-2 py-1.5 rounded bg-[#0A1628] border border-white/5"
+              >
+                {fav.podcastImageUrl ? (
+                  <img src={fav.podcastImageUrl} alt="" className="w-6 h-6 rounded flex-shrink-0" />
+                ) : (
+                  <div className="w-6 h-6 rounded bg-[#1A2942] flex items-center justify-center flex-shrink-0">
+                    <span className="text-[8px] font-bold text-[#9CA3AF]">
+                      {fav.podcastTitle?.charAt(0)?.toUpperCase()}
+                    </span>
+                  </div>
+                )}
+                <span className="text-[#F9FAFB] truncate">{fav.podcastTitle}</span>
               </div>
             ))}
           </div>
@@ -527,6 +560,27 @@ function BillingTab({
             disabled={saving}
           />
         </div>
+
+        <Separator className="bg-white/5" />
+
+        <Button
+          size="sm"
+          variant="ghost"
+          className="w-full text-[#F59E0B] hover:bg-[#F59E0B]/10 border border-[#F59E0B]/20"
+          disabled={saving}
+          onClick={() => {
+            setSaving(true);
+            apiFetch(`/users/${user.id}`, {
+              method: "PATCH",
+              body: JSON.stringify({ onboardingComplete: false }),
+            })
+              .then(() => onUpdate())
+              .catch(console.error)
+              .finally(() => setSaving(false));
+          }}
+        >
+          Reset Onboarding
+        </Button>
       </div>
 
       {/* Change Plan Modal */}

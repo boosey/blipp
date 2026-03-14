@@ -102,6 +102,14 @@ beforeEach(() => {
   mockPrisma.pipelineJob.update.mockResolvedValue(JOB);
   mockPrisma.pipelineStep.create.mockResolvedValue(STEP);
   mockPrisma.pipelineStep.update.mockResolvedValue(STEP);
+
+  // Episode metadata for narrative intro
+  mockPrisma.episode.findUnique.mockResolvedValue({
+    title: "Test Episode",
+    publishedAt: new Date("2026-03-12"),
+    durationSeconds: 1800,
+    podcast: { title: "Test Podcast" },
+  });
 });
 
 function makeBatch(body: any) {
@@ -171,11 +179,13 @@ describe("handleNarrativeGeneration", () => {
     expect(generateNarrative).not.toHaveBeenCalled();
 
     // Orchestrator notified
-    expect(mockEnv.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith({
-      requestId: "req-1",
-      action: "job-stage-complete",
-      jobId: "job-1",
-    });
+    expect(mockEnv.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestId: "req-1",
+        action: "job-stage-complete",
+        jobId: "job-1",
+      })
+    );
 
     expect(mockMsg.ack).toHaveBeenCalled();
   });
@@ -198,7 +208,7 @@ describe("handleNarrativeGeneration", () => {
       where: { episodeId: "ep-1", status: "COMPLETED" },
     });
 
-    // Narrative generated with model from config
+    // Narrative generated with model from config + episode metadata
     expect(generateNarrative).toHaveBeenCalledWith(
       expect.anything(),
       DISTILLATION.claimsJson,
@@ -206,7 +216,12 @@ describe("handleNarrativeGeneration", () => {
       expect.any(String),
       8192,
       expect.anything(),
-      expect.anything()
+      expect.anything(),
+      expect.objectContaining({
+        podcastTitle: "Test Podcast",
+        episodeTitle: "Test Episode",
+        briefingMinutes: 5,
+      })
     );
 
     // Clip upserted with narrative but NOT as COMPLETED (audio gen does that)
@@ -264,11 +279,13 @@ describe("handleNarrativeGeneration", () => {
     const { mockBatch } = makeBatch(msgBody);
     await handleNarrativeGeneration(mockBatch, mockEnv, mockCtx);
 
-    expect(mockEnv.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith({
-      requestId: "req-1",
-      action: "job-stage-complete",
-      jobId: "job-1",
-    });
+    expect(mockEnv.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestId: "req-1",
+        action: "job-stage-complete",
+        jobId: "job-1",
+      })
+    );
   });
 
   it("calls selectClaimsForDuration before generating narrative", async () => {
@@ -306,6 +323,7 @@ describe("handleNarrativeGeneration", () => {
       expect.any(String),
       8192,
       expect.anything(),
+      expect.anything(),
       expect.anything()
     );
   });
@@ -322,7 +340,7 @@ describe("handleNarrativeGeneration", () => {
     await handleNarrativeGeneration(mockBatch, mockEnv, mockCtx);
 
     expect(getModelConfig).toHaveBeenCalledWith(expect.anything(), "narrative");
-    expect(generateNarrative).toHaveBeenCalledWith(expect.anything(), expect.anything(), 5, expect.any(String), 8192, expect.anything(), expect.anything());
+    expect(generateNarrative).toHaveBeenCalledWith(expect.anything(), expect.anything(), 5, expect.any(String), 8192, expect.anything(), expect.anything(), expect.anything());
   });
 
   describe("stage-enabled check", () => {
@@ -373,12 +391,14 @@ describe("handleNarrativeGeneration", () => {
         }),
       });
 
-      expect(mockEnv.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith({
-        requestId: "req-1",
-        action: "job-failed",
-        jobId: "job-1",
-        errorMessage: "Claude API error",
-      });
+      expect(mockEnv.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          requestId: "req-1",
+          action: "job-failed",
+          jobId: "job-1",
+          errorMessage: "Claude API error",
+        })
+      );
       expect(mockMsg.ack).toHaveBeenCalled();
       expect(mockMsg.retry).not.toHaveBeenCalled();
     });
@@ -398,6 +418,66 @@ describe("handleNarrativeGeneration", () => {
         { episodeId: "ep-1", durationTier: 5 },
         expect.any(Error)
       );
+    });
+  });
+
+  describe("AiProviderError handling", () => {
+    it("captures AI provider error via writeAiError and notifies orchestrator", async () => {
+      const { AiProviderError } = await import("../../lib/ai-errors");
+      mockPrisma.workProduct.findFirst.mockResolvedValue(null);
+      mockPrisma.clip.findUnique.mockResolvedValue(null);
+      mockPrisma.distillation.findFirst.mockResolvedValue(DISTILLATION);
+      mockPrisma.pipelineStep.updateMany.mockResolvedValue({ count: 1 });
+      mockPrisma.pipelineEvent.create.mockResolvedValue({});
+      mockPrisma.aiServiceError.create.mockResolvedValue({});
+
+      (generateNarrative as any).mockRejectedValueOnce(
+        new AiProviderError({
+          message: "Anthropic rate limit exceeded",
+          provider: "anthropic",
+          model: "claude-sonnet-4-20250514",
+          httpStatus: 429,
+          rawResponse: '{"error":"rate_limit_error"}',
+          requestDurationMs: 150,
+        })
+      );
+
+      const { mockMsg, mockBatch } = makeBatch(msgBody);
+      await handleNarrativeGeneration(mockBatch, mockEnv, mockCtx);
+
+      // Step marked FAILED
+      expect(mockPrisma.pipelineStep.updateMany).toHaveBeenCalledWith({
+        where: { jobId: "job-1", stage: "NARRATIVE_GENERATION", status: "IN_PROGRESS" },
+        data: expect.objectContaining({
+          status: "FAILED",
+          errorMessage: "Anthropic rate limit exceeded",
+        }),
+      });
+
+      // AI error captured to DB
+      expect(mockPrisma.aiServiceError.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          service: "narrative",
+          provider: "anthropic",
+          model: "claude-sonnet-4-20250514",
+          category: "rate_limit",
+          severity: "transient",
+          httpStatus: 429,
+        }),
+      });
+
+      // Orchestrator notified with job-failed
+      expect(mockEnv.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          requestId: "req-1",
+          action: "job-failed",
+          jobId: "job-1",
+          errorMessage: "Anthropic rate limit exceeded",
+        })
+      );
+
+      expect(mockMsg.ack).toHaveBeenCalled();
+      expect(mockMsg.retry).not.toHaveBeenCalled();
     });
   });
 

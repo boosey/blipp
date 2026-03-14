@@ -1,7 +1,10 @@
 import { Hono } from "hono";
 import type { Env } from "../../types";
-import { STAGE_DISPLAY_NAMES } from "../../lib/config";
+import { PIPELINE_STAGE_NAMES } from "../../lib/constants";
 import { parsePagination, parseSort, paginatedResponse } from "../../lib/admin-helpers";
+import { getAuth } from "../../middleware/auth";
+import { getCatalogSource } from "../../lib/catalog-sources";
+import { getConfig } from "../../lib/config";
 
 const podcastsRoutes = new Hono<{ Bindings: Env }>();
 
@@ -64,7 +67,7 @@ podcastsRoutes.get("/", async (c) => {
   const search = c.req.query("search");
   const health = c.req.query("health");
   const status = c.req.query("status");
-  const orderBy = parseSort(c);
+  const orderBy = parseSort(c, "createdAt", ["createdAt", "title", "episodeCount", "status", "lastFetchedAt"]);
 
   const where: Record<string, unknown> = {};
   if (search) {
@@ -154,8 +157,13 @@ podcastsRoutes.get("/:id", async (c) => {
         },
       });
     }
-  } catch {
-    // PipelineJob table may not exist
+  } catch (err) {
+    console.error(JSON.stringify({
+      level: "warn",
+      action: "admin_podcast_pipeline_jobs_failed",
+      error: err instanceof Error ? err.message : String(err),
+      ts: new Date().toISOString(),
+    }));
   }
 
   // Aggregate cost per episode
@@ -219,7 +227,7 @@ podcastsRoutes.get("/:id", async (c) => {
     id: job.id,
     timestamp: job.createdAt.toISOString(),
     stage: job.currentStage,
-    stageName: STAGE_DISPLAY_NAMES[job.currentStage] ?? job.currentStage,
+    stageName: PIPELINE_STAGE_NAMES[job.currentStage] ?? job.currentStage,
     status: job.status.toLowerCase().replace("_", "-"),
     type: job.currentStage,
   }));
@@ -247,40 +255,92 @@ podcastsRoutes.get("/:id", async (c) => {
   });
 });
 
-// POST /catalog-refresh - Fetch top 200 trending podcasts + their episodes
+// GET /cleanup-candidates - Podcasts with 0 subscribers and no recent activity
+podcastsRoutes.get("/cleanup-candidates", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const inactivityDays = parseInt(c.req.query("inactivityDays") ?? "90");
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - inactivityDays);
+
+  const candidates = await prisma.podcast.findMany({
+    where: {
+      status: { not: "archived" },
+      subscriptions: { none: {} },
+      episodes: { every: { feedItems: { every: { createdAt: { lt: cutoff } } } } },
+    },
+    select: {
+      id: true,
+      title: true,
+      source: true,
+      lastFetchedAt: true,
+      createdAt: true,
+      _count: { select: { episodes: true, subscriptions: true } },
+    },
+    orderBy: { lastFetchedAt: "asc" },
+    take: 100,
+  });
+
+  const data = candidates.map((p: any) => ({
+    id: p.id,
+    title: p.title,
+    source: p.source,
+    episodeCount: p._count.episodes,
+    subscriberCount: p._count.subscriptions,
+    lastFetchedAt: p.lastFetchedAt?.toISOString(),
+    createdAt: p.createdAt.toISOString(),
+  }));
+
+  return c.json({ data });
+});
+
+// POST /cleanup-execute - Archive selected podcasts
+podcastsRoutes.post("/cleanup-execute", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const { podcastIds } = await c.req.json<{ podcastIds: string[] }>();
+
+  if (!podcastIds?.length) {
+    return c.json({ error: "podcastIds required" }, 400);
+  }
+
+  const result = await prisma.podcast.updateMany({
+    where: { id: { in: podcastIds } },
+    data: { status: "archived" },
+  });
+
+  return c.json({ data: { archived: result.count } });
+});
+
+// POST /catalog-refresh - Fetch trending podcasts + their episodes via configured catalog source
 podcastsRoutes.post("/catalog-refresh", async (c) => {
   const prisma = c.get("prisma") as any;
-  const { PodcastIndexClient } = await import("../../lib/podcast-index");
 
-  const client = new PodcastIndexClient(
-    c.env.PODCAST_INDEX_KEY,
-    c.env.PODCAST_INDEX_SECRET
-  );
-
-  // Fetch top 200 trending podcasts
-  const feeds = await client.trending(200);
+  const sourceId = await getConfig(prisma, "catalog.source", "podcast-index") as string;
+  const seedSize = await getConfig(prisma, "catalog.seedSize", 200) as number;
+  const source = getCatalogSource(sourceId);
+  const discovered = await source.discover(seedSize, c.env);
 
   let created = 0;
   let updated = 0;
   const podcastIds: string[] = [];
 
-  for (const feed of feeds) {
+  for (const feed of discovered) {
     const podcast = await prisma.podcast.upsert({
-      where: { feedUrl: feed.url },
+      where: { feedUrl: feed.feedUrl },
       create: {
-        feedUrl: feed.url,
+        feedUrl: feed.feedUrl,
         title: feed.title,
         description: feed.description ?? null,
-        imageUrl: feed.image ?? null,
-        podcastIndexId: String(feed.id),
+        imageUrl: feed.imageUrl ?? null,
+        podcastIndexId: feed.externalId ?? null,
         author: feed.author ?? null,
+        source: "trending",
       },
       update: {
         title: feed.title,
         description: feed.description ?? undefined,
-        imageUrl: feed.image ?? undefined,
+        imageUrl: feed.imageUrl ?? undefined,
         author: feed.author ?? undefined,
-        podcastIndexId: String(feed.id),
+        podcastIndexId: feed.externalId ?? undefined,
       },
     });
 
@@ -294,17 +354,24 @@ podcastsRoutes.post("/catalog-refresh", async (c) => {
   }
 
   // Fetch last 5 episodes per podcast via Podcast Index API (concurrent batches)
+  // Episode ingestion still uses PodcastIndexClient directly — CatalogSource only covers discovery
+  const { PodcastIndexClient } = await import("../../lib/podcast-index");
+  const client = new PodcastIndexClient(c.env.PODCAST_INDEX_KEY, c.env.PODCAST_INDEX_SECRET);
+
   let episodesCreated = 0;
   let episodeErrors = 0;
   const BATCH_SIZE = 10;
 
-  for (let i = 0; i < feeds.length; i += BATCH_SIZE) {
-    const batch = feeds.slice(i, i + BATCH_SIZE);
+  // Only fetch episodes for podcasts that have externalIds (Podcast Index IDs)
+  const feedsWithIds = discovered.filter((f) => f.externalId);
+
+  for (let i = 0; i < feedsWithIds.length; i += BATCH_SIZE) {
+    const batch = feedsWithIds.slice(i, i + BATCH_SIZE);
     const results = await Promise.allSettled(
       batch.map(async (feed) => {
-        const episodes = await client.episodesByFeedId(feed.id, 5);
+        const episodes = await client.episodesByFeedId(Number(feed.externalId), 5);
         const podcast = await prisma.podcast.findUnique({
-          where: { podcastIndexId: String(feed.id) },
+          where: { podcastIndexId: feed.externalId },
           select: { id: true },
         });
         if (!podcast) return 0;
@@ -345,7 +412,7 @@ podcastsRoutes.post("/catalog-refresh", async (c) => {
 
   return c.json({
     data: {
-      feedsFound: feeds.length,
+      feedsFound: discovered.length,
       created,
       updated,
       episodesCreated,
@@ -441,6 +508,120 @@ podcastsRoutes.post("/:id/refresh", async (c) => {
   } catch {
     return c.json({ error: "Feed refresh queue not available" }, 503);
   }
+});
+
+// GET /requests - Paginated list of all podcast requests
+podcastsRoutes.get("/requests", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const { page, pageSize, skip } = parsePagination(c);
+  const status = c.req.query("status");
+
+  const where: Record<string, unknown> = {};
+  if (status) where.status = status;
+
+  const [requests, total] = await Promise.all([
+    prisma.podcastRequest.findMany({
+      where,
+      skip,
+      take: pageSize,
+      orderBy: { createdAt: "desc" },
+      include: {
+        user: { select: { email: true, name: true } },
+        podcast: { select: { id: true, title: true } },
+      },
+    }),
+    prisma.podcastRequest.count({ where }),
+  ]);
+
+  const data = requests.map((r: any) => ({
+    id: r.id,
+    feedUrl: r.feedUrl,
+    title: r.title,
+    status: r.status,
+    podcastId: r.podcastId,
+    podcastTitle: r.podcast?.title,
+    adminNote: r.adminNote,
+    userEmail: r.user.email,
+    userName: r.user.name,
+    createdAt: r.createdAt.toISOString(),
+  }));
+
+  return c.json(paginatedResponse(data, total, page, pageSize));
+});
+
+// POST /requests/:id/approve - Approve a podcast request
+podcastsRoutes.post("/requests/:id/approve", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const id = c.req.param("id");
+
+  const request = await prisma.podcastRequest.findUnique({ where: { id } });
+  if (!request) return c.json({ error: "Request not found" }, 404);
+  if (request.status !== "PENDING") return c.json({ error: "Request is not pending" }, 409);
+
+  // Upsert podcast from feed URL
+  const { parseRssFeed } = await import("../../lib/rss-parser");
+  let feedData;
+  try {
+    const resp = await fetch(request.feedUrl);
+    const xml = await resp.text();
+    feedData = parseRssFeed(xml);
+  } catch (err) {
+    return c.json({ error: `Failed to fetch feed: ${err instanceof Error ? err.message : String(err)}` }, 422);
+  }
+
+  const podcast = await prisma.podcast.upsert({
+    where: { feedUrl: request.feedUrl },
+    create: {
+      feedUrl: request.feedUrl,
+      title: feedData.title || request.title || "Unknown Podcast",
+      description: feedData.description || "",
+      imageUrl: feedData.imageUrl,
+      author: feedData.author,
+      source: "user_request",
+    },
+    update: {
+      title: feedData.title || undefined,
+      imageUrl: feedData.imageUrl || undefined,
+    },
+  });
+
+  // Update request
+  const auth = getAuth(c);
+  await prisma.podcastRequest.update({
+    where: { id },
+    data: {
+      status: "APPROVED",
+      podcastId: podcast.id,
+      reviewedBy: auth?.userId,
+      reviewedAt: new Date(),
+    },
+  });
+
+  return c.json({ data: { id, status: "APPROVED", podcastId: podcast.id } });
+});
+
+// POST /requests/:id/reject - Reject a podcast request
+podcastsRoutes.post("/requests/:id/reject", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const id = c.req.param("id");
+  const body = await c.req.json<{ adminNote?: string }>().catch(() => ({} as { adminNote?: string }));
+
+  const request = await prisma.podcastRequest.findUnique({ where: { id } });
+  if (!request) return c.json({ error: "Request not found" }, 404);
+  if (request.status !== "PENDING") return c.json({ error: "Request is not pending" }, 409);
+
+  const auth = getAuth(c);
+  await prisma.podcastRequest.update({
+    where: { id },
+    data: {
+      status: "REJECTED",
+      adminNote: body.adminNote,
+      reviewedBy: auth?.userId,
+      reviewedAt: new Date(),
+    },
+  });
+
+  return c.json({ data: { id, status: "REJECTED" } });
 });
 
 export { podcastsRoutes };

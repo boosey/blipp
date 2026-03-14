@@ -1,32 +1,53 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "react-router-dom";
+import { toast } from "sonner";
+import { Heart, Lock } from "lucide-react";
 import { useApiFetch } from "../lib/api";
 import { DURATION_TIERS } from "../lib/duration-tiers";
+import { Skeleton } from "../components/ui/skeleton";
+import { usePlan } from "../contexts/plan-context";
+import { UpgradePrompt, useUpgradeModal } from "../components/upgrade-prompt";
 import type { PodcastDetail as PodcastDetailType, EpisodeSummary } from "../types/user";
 import type { DurationTier } from "../lib/duration-tiers";
 
 function TierPicker({
   selected,
   onSelect,
+  maxDurationMinutes,
+  onUpgrade,
 }: {
   selected: DurationTier | null;
   onSelect: (tier: DurationTier) => void;
+  maxDurationMinutes: number;
+  onUpgrade?: (msg: string) => void;
 }) {
   return (
     <div className="flex flex-wrap gap-1.5">
-      {DURATION_TIERS.map((tier) => (
-        <button
-          key={tier}
-          onClick={() => onSelect(tier)}
-          className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
-            selected === tier
-              ? "bg-white text-zinc-950"
-              : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
-          }`}
-        >
-          {tier}m
-        </button>
-      ))}
+      {DURATION_TIERS.map((tier) => {
+        const locked = tier > maxDurationMinutes;
+        return (
+          <button
+            key={tier}
+            onClick={() => {
+              if (locked) {
+                onUpgrade?.(`Your plan supports briefings up to ${maxDurationMinutes} minutes. Upgrade for longer briefings.`);
+                return;
+              }
+              onSelect(tier);
+            }}
+            className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors flex items-center gap-1 ${
+              locked
+                ? "bg-zinc-900 text-zinc-600 cursor-not-allowed"
+                : selected === tier
+                  ? "bg-white text-zinc-950"
+                  : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
+            }`}
+          >
+            {tier}m
+            {locked && <Lock className="w-2.5 h-2.5" />}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -41,18 +62,23 @@ export function PodcastDetail() {
   const [requestingEpisodeId, setRequestingEpisodeId] = useState<string | null>(null);
   const [showSubscribeTierPicker, setShowSubscribeTierPicker] = useState(false);
   const [briefTierPickerEpisodeId, setBriefTierPickerEpisodeId] = useState<string | null>(null);
+  const [isFavorited, setIsFavorited] = useState(false);
+  const planUsage = usePlan();
+  const { showUpgrade, UpgradeModalElement } = useUpgradeModal();
 
   const fetchData = useCallback(async () => {
     if (!podcastId) return;
     try {
-      const [podData, epData] = await Promise.all([
+      const [podData, epData, favData] = await Promise.all([
         apiFetch<{ podcast: PodcastDetailType }>(`/podcasts/${podcastId}`),
         apiFetch<{ episodes: EpisodeSummary[] }>(`/podcasts/${podcastId}/episodes`),
+        apiFetch<{ data: { id: string }[] }>("/podcasts/favorites").catch(() => ({ data: [] })),
       ]);
       setPodcast(podData.podcast);
       setEpisodes(epData.episodes);
-    } catch {
-      // Handle error
+      setIsFavorited(favData.data.some((f) => f.id === podcastId));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to load podcast");
     } finally {
       setLoading(false);
     }
@@ -79,11 +105,14 @@ export function PodcastDetail() {
           durationTier: tier,
         }),
       });
+      toast.success(`Subscribed to ${podcast.title}`);
       setPodcast((prev) =>
         prev
           ? { ...prev, isSubscribed: true, subscriptionDurationTier: tier }
           : prev
       );
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to subscribe");
     } finally {
       setSubscribing(false);
     }
@@ -94,11 +123,14 @@ export function PodcastDetail() {
     setSubscribing(true);
     try {
       await apiFetch(`/podcasts/subscribe/${podcast.id}`, { method: "DELETE" });
+      toast.success(`Unsubscribed from ${podcast.title}`);
       setPodcast((prev) =>
         prev
           ? { ...prev, isSubscribed: false, subscriptionDurationTier: null }
           : prev
       );
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to unsubscribe");
     } finally {
       setSubscribing(false);
     }
@@ -112,8 +144,28 @@ export function PodcastDetail() {
         method: "POST",
         body: JSON.stringify({ podcastId, episodeId, durationTier: tier }),
       });
+      toast("Briefing requested — usually ready in 2-5 minutes", { duration: 4000 });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to request briefing");
     } finally {
       setRequestingEpisodeId(null);
+    }
+  }
+
+  async function toggleFavorite() {
+    if (!podcast) return;
+    try {
+      if (isFavorited) {
+        await apiFetch(`/podcasts/favorites/${podcast.id}`, { method: "DELETE" });
+        setIsFavorited(false);
+        toast.success(`Removed from favorites`);
+      } else {
+        await apiFetch(`/podcasts/favorites/${podcast.id}`, { method: "POST" });
+        setIsFavorited(true);
+        toast.success(`Added to favorites`);
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to update favorites");
     }
   }
 
@@ -125,8 +177,32 @@ export function PodcastDetail() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <p className="text-zinc-400">Loading...</p>
+      <div className="space-y-6">
+        <div className="flex gap-4">
+          <Skeleton className="w-24 h-24 rounded-lg flex-shrink-0" />
+          <div className="flex-1 space-y-2">
+            <Skeleton className="h-5 w-3/4" />
+            <Skeleton className="h-4 w-1/2" />
+            <Skeleton className="h-3 w-20" />
+            <Skeleton className="h-8 w-24 rounded-full mt-2" />
+          </div>
+        </div>
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-2/3" />
+        <div className="space-y-2">
+          <Skeleton className="h-5 w-20" />
+          {Array.from({ length: 5 }, (_, i) => (
+            <div key={i} className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-4 w-3/4" />
+                  <Skeleton className="h-3 w-1/3" />
+                </div>
+                <Skeleton className="h-7 w-14 rounded" />
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
@@ -141,6 +217,7 @@ export function PodcastDetail() {
 
   return (
     <div className="space-y-6">
+      {UpgradeModalElement}
       {/* Podcast header */}
       <div className="flex gap-4">
         {podcast.imageUrl ? (
@@ -153,7 +230,18 @@ export function PodcastDetail() {
           <div className="w-24 h-24 rounded-lg bg-zinc-800 flex-shrink-0" />
         )}
         <div className="flex-1 min-w-0">
-          <h1 className="text-lg font-bold">{podcast.title}</h1>
+          <div className="flex items-start justify-between gap-2">
+            <h1 className="text-lg font-bold">{podcast.title}</h1>
+            <button
+              onClick={toggleFavorite}
+              className="p-1.5 rounded-full hover:bg-zinc-800 transition-colors flex-shrink-0"
+              title={isFavorited ? "Remove from favorites" : "Add to favorites"}
+            >
+              <Heart
+                className={`w-5 h-5 transition-colors ${isFavorited ? "fill-red-500 text-red-500" : "text-zinc-500"}`}
+              />
+            </button>
+          </div>
           {podcast.author && (
             <p className="text-sm text-zinc-400">{podcast.author}</p>
           )}
@@ -179,12 +267,20 @@ export function PodcastDetail() {
             </div>
           ) : (
             <div className="mt-2">
-              {showSubscribeTierPicker ? (
+              {planUsage.subscriptions.limit !== null &&
+                planUsage.subscriptions.remaining !== null &&
+                planUsage.subscriptions.remaining <= 0 ? (
+                <UpgradePrompt
+                  message={`Your ${planUsage.plan.name} plan allows ${planUsage.subscriptions.limit} subscription${planUsage.subscriptions.limit !== 1 ? "s" : ""}. Upgrade to subscribe to more podcasts.`}
+                />
+              ) : showSubscribeTierPicker ? (
                 <div className="space-y-2">
                   <p className="text-xs text-zinc-400">Briefing length:</p>
                   <TierPicker
                     selected={null}
                     onSelect={handleSubscribeWithTier}
+                    maxDurationMinutes={planUsage.maxDurationMinutes}
+                    onUpgrade={showUpgrade}
                   />
                 </div>
               ) : (
@@ -243,6 +339,8 @@ export function PodcastDetail() {
                       <TierPicker
                         selected={null}
                         onSelect={(tier) => handleCreateBriefing(ep.id, tier)}
+                        maxDurationMinutes={planUsage.maxDurationMinutes}
+                        onUpgrade={showUpgrade}
                       />
                     </div>
                   ) : (

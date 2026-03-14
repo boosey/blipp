@@ -11,7 +11,7 @@ briefingsRoutes.get("/", async (c) => {
   const prisma = c.get("prisma") as any;
   const { page, pageSize, skip } = parsePagination(c);
   const userId = c.req.query("userId");
-  const orderBy = parseSort(c);
+  const orderBy = parseSort(c, "createdAt", ["createdAt"]);
 
   const where: Record<string, unknown> = {};
   if (userId) where.userId = userId;

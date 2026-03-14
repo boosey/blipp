@@ -36,6 +36,13 @@ vi.mock("hono/factory", () => ({
   createMiddleware: vi.fn((fn) => fn),
 }));
 
+// Mock Clerk client for getCurrentUser fallback
+vi.mock("@clerk/backend", () => ({
+  createClerkClient: vi.fn(() => ({
+    users: { getUser: vi.fn() },
+  })),
+}));
+
 // Import after mocks
 const { billing } = await import("../billing");
 
@@ -75,7 +82,7 @@ describe("Billing Routes", () => {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ tier: "PRO" }),
+          body: JSON.stringify({ planId: "plan_pro", interval: "monthly" }),
         },
         env,
         mockExCtx
@@ -83,15 +90,15 @@ describe("Billing Routes", () => {
       expect(res.status).toBe(401);
     });
 
-    it("should return 400 for invalid tier", async () => {
-      mockPrisma.plan.findFirst.mockResolvedValueOnce(null);
+    it("should return 400 for invalid plan", async () => {
+      mockPrisma.plan.findUnique.mockResolvedValueOnce(null);
 
       const res = await app.request(
         "/billing/checkout",
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ tier: "INVALID" }),
+          body: JSON.stringify({ planId: "plan_invalid", interval: "monthly" }),
         },
         env,
         mockExCtx
@@ -109,9 +116,12 @@ describe("Billing Routes", () => {
         stripeCustomerId: null,
       };
 
-      mockPrisma.plan.findFirst.mockResolvedValueOnce({
-        tier: "PRO",
-        stripePriceId: "price_pro_mock",
+      mockPrisma.plan.findUnique.mockResolvedValueOnce({
+        id: "plan_pro",
+        slug: "pro",
+        name: "Pro",
+        stripePriceIdMonthly: "price_pro_monthly",
+        stripePriceIdAnnual: "price_pro_annual",
         active: true,
       });
       mockPrisma.user.findUniqueOrThrow.mockResolvedValueOnce(user);
@@ -125,7 +135,7 @@ describe("Billing Routes", () => {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ tier: "PRO" }),
+          body: JSON.stringify({ planId: "plan_pro", interval: "monthly" }),
         },
         env,
         mockExCtx
@@ -144,9 +154,12 @@ describe("Billing Routes", () => {
         stripeCustomerId: "cus_existing",
       };
 
-      mockPrisma.plan.findFirst.mockResolvedValueOnce({
-        tier: "PRO_PLUS",
-        stripePriceId: "price_proplus_mock",
+      mockPrisma.plan.findUnique.mockResolvedValueOnce({
+        id: "plan_proplus",
+        slug: "pro-plus",
+        name: "Pro Plus",
+        stripePriceIdMonthly: "price_proplus_monthly",
+        stripePriceIdAnnual: "price_proplus_annual",
         active: true,
       });
       mockPrisma.user.findUniqueOrThrow.mockResolvedValueOnce(user);
@@ -160,7 +173,7 @@ describe("Billing Routes", () => {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ tier: "PRO_PLUS" }),
+          body: JSON.stringify({ planId: "plan_proplus", interval: "monthly" }),
         },
         env,
         mockExCtx
@@ -181,9 +194,12 @@ describe("Billing Routes", () => {
         stripeCustomerId: null,
       };
 
-      mockPrisma.plan.findFirst.mockResolvedValueOnce({
-        tier: "PRO",
-        stripePriceId: "price_pro_mock",
+      mockPrisma.plan.findUnique.mockResolvedValueOnce({
+        id: "plan_pro",
+        slug: "pro",
+        name: "Pro",
+        stripePriceIdMonthly: "price_pro_monthly",
+        stripePriceIdAnnual: null,
         active: true,
       });
       mockPrisma.user.findUniqueOrThrow.mockResolvedValueOnce(user);
@@ -197,7 +213,7 @@ describe("Billing Routes", () => {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ tier: "PRO" }),
+          body: JSON.stringify({ planId: "plan_pro", interval: "monthly" }),
         },
         env,
         mockExCtx

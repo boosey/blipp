@@ -41,24 +41,36 @@ Briefing list with filters (user, status, sort). Each briefing card shows user i
 
 ### 5. Users (`/admin/users`)
 
-User management with segments: all, power users, at risk, trial ending, never active. User list with badges. User detail showing subscriptions and recent feed items (activity tab). Admin toggle and tier management.
+User management with segments: all, power users, at risk, trial ending, never active. User list with badges. User detail showing subscriptions and recent feed items (activity tab). Admin toggle and plan management.
 
-### 6. Analytics (`/admin/analytics`)
+### 6. Plans (`/admin/plans`)
+
+Plan CRUD management. List all plans with user counts (paginated/sortable). Create new plans with slug, limits (briefingsPerWeek, maxDurationMinutes, maxPodcastSubscriptions), feature flags (adFree, priorityProcessing, earlyAccess, researchMode, crossPodcastSynthesis), billing (monthly/annual pricing, Stripe price IDs, trial days), and display settings (features list, highlighted, sortOrder, isDefault). Soft delete (deactivate) plans that have no active users.
+
+### 7. Analytics (`/admin/analytics`)
 
 Four analytics views:
 
-- **Costs** — Daily cost chart by stage, period comparison
+- **Costs** — Daily cost chart by stage, period comparison, per-model cost breakdown
 - **Usage** — Feed item/episode/user trends, tier distribution, peak times
 - **Quality** — Time-fitting accuracy, claim coverage, transcription coverage, daily trend
 - **Pipeline** — Throughput, success rates, processing speed, bottlenecks
 
-### 7. Configuration (`/admin/configuration`)
+### 8. Configuration (`/admin/configuration`)
 
 Runtime config editor grouped by prefix. Pipeline controls panel. Duration tier config. Subscription tier management. Feature flags with rollout percentage and tier-based controls.
 
-### 8. Requests (`/admin/requests`)
+### 9. Requests (`/admin/requests`)
 
 BriefingRequest browser with status filter. Request detail with per-job, per-step progress tree including WorkProduct links. Work product preview (text/JSON content, audio metadata). Test briefing creation dialog with episode picker.
+
+### 10. STT Benchmark (`/admin/stt-benchmark`)
+
+STT model benchmarking system. Create experiments comparing multiple STT models/providers across episodes at different playback speeds. Episode picker filters to episodes with official transcripts (for WER comparison ground truth). Experiment runner executes tasks one at a time (frontend-driven polling). Results grid showing WER, cost, and latency per model/provider/speed combination. Winner detection for best WER, cost, and latency. Transcript diff viewer for comparing hypothesis vs reference text. Audio proxy for CORS-free playback. R2 storage for speed-adjusted audio and transcripts. Supports async providers (AssemblyAI, Google) with polling.
+
+### 11. Model Registry (`/admin/model-registry`)
+
+AI model management. Browse all models by stage (stt, distillation, narrative, tts). Add new models with developer and notes. Add/edit/remove providers per model with pricing metadata (per-minute, per-token, per-character). Toggle model active state and provider availability. Set default providers. View pricing update timestamps.
 
 ## API Routes
 
@@ -72,18 +84,21 @@ All routes are mounted at `/api/admin/`. Backend route files live in `worker/rou
 | episodes | `/episodes` | `GET /` (paginated), `GET /:id`, `POST /:id/reprocess` |
 | briefings | `/briefings` | `GET /` (paginated), `GET /:id` |
 | users | `/users` | `GET /segments`, `GET /` (paginated), `GET /:id`, `PATCH /:id` |
-| analytics | `/analytics` | `GET /costs`, `GET /usage`, `GET /quality`, `GET /pipeline` |
+| analytics | `/analytics` | `GET /costs`, `GET /costs/by-model`, `GET /usage`, `GET /quality`, `GET /pipeline` |
 | config | `/config` | `GET /` (all configs), `PATCH /:key`, `GET /tiers/duration`, `PUT /tiers/duration`, `GET /tiers/subscription`, `PUT /tiers/subscription`, `GET /features`, `PUT /features/:id` |
 | requests | `/requests` | `GET /` (paginated), `GET /:id`, `GET /work-product/:id/preview`, `GET /work-product/:id/audio`, `POST /test-briefing` |
+| plans | `/plans` | `GET /` (paginated), `GET /:id`, `POST /` (create), `PATCH /:id` (update), `DELETE /:id` (soft delete) |
+| stt-benchmark | `/stt-benchmark` | `GET /eligible-episodes`, `GET /episode-audio/:id`, `POST /experiments`, `GET /experiments`, `GET /experiments/:id`, `POST /experiments/:id/run`, `POST /experiments/:id/cancel`, `GET /experiments/:id/results`, `DELETE /experiments/:id`, `POST /upload-audio`, `GET /results/:id/transcript`, `GET /results/:id/reference-transcript`, `GET /episodes/:episodeId/reference-transcript` |
+| ai-models | `/ai-models` | `GET /` (list), `POST /` (create), `PATCH /:id`, `POST /:id/providers`, `PATCH /:id/providers/:providerId`, `DELETE /:id/providers/:providerId` |
 
 ## File Map
 
 | Category | Path |
 |----------|------|
-| Pages | `src/pages/admin/*.tsx` (8 files) |
+| Pages | `src/pages/admin/*.tsx` (11 files) |
 | Layout | `src/layouts/admin-layout.tsx` |
 | Guard | `src/components/admin-guard.tsx` |
 | API hook | `src/lib/admin-api.ts` |
 | Types | `src/types/admin.ts` |
-| Backend routes | `worker/routes/admin/*.ts` (9 files) |
+| Backend routes | `worker/routes/admin/*.ts` (12 files) |
 | Admin middleware | `worker/middleware/admin.ts` |

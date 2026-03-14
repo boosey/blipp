@@ -10,7 +10,7 @@ export type WpKeyParams =
   | { type: "CLAIMS"; episodeId: string }
   | { type: "NARRATIVE"; episodeId: string; durationTier: number }
   | { type: "AUDIO_CLIP"; episodeId: string; durationTier: number; voice?: string }
-  | { type: "BRIEFING_AUDIO"; userId: string; date: string };
+  | { type: "BRIEFING_AUDIO"; briefingId: string };
 
 /** Builds an R2 key from a work product type and its parameters. */
 export function wpKey(params: WpKeyParams): string {
@@ -24,7 +24,7 @@ export function wpKey(params: WpKeyParams): string {
     case "AUDIO_CLIP":
       return `wp/clip/${params.episodeId}/${params.durationTier}/${params.voice ?? "default"}.mp3`;
     case "BRIEFING_AUDIO":
-      return `wp/briefing/${params.userId}/${params.date}.mp3`;
+      return `wp/briefing/${params.briefingId}.mp3`;
   }
 }
 
@@ -32,9 +32,12 @@ export function wpKey(params: WpKeyParams): string {
 export async function putWorkProduct(
   r2: R2Bucket,
   key: string,
-  data: ArrayBuffer | string
+  data: ArrayBuffer | string,
+  options?: { contentType?: string }
 ): Promise<void> {
-  await r2.put(key, data);
+  await r2.put(key, data, options?.contentType ? {
+    httpMetadata: { contentType: options.contentType },
+  } : undefined);
 }
 
 /** Reads data from R2 at the given key. Returns null if not found. */

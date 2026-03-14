@@ -3,6 +3,9 @@ import type { Env } from "../types";
 import { requireAuth } from "../middleware/auth";
 import { getCurrentUser } from "../lib/admin-helpers";
 import { getUserWithPlan, checkDurationLimit, checkSubscriptionLimit } from "../lib/plan-limits";
+import { DURATION_TIERS, isValidDurationTier } from "../lib/constants";
+import { getConfig } from "../lib/config";
+import { getCatalogSource } from "../lib/catalog-sources";
 
 /**
  * Podcast discovery and subscription routes.
@@ -50,6 +53,7 @@ podcasts.get("/catalog", async (c) => {
         description: true,
         imageUrl: true,
         feedUrl: true,
+        categories: true,
         _count: { select: { episodes: true } },
       },
     }),
@@ -66,6 +70,40 @@ podcasts.get("/catalog", async (c) => {
     page,
     pageSize,
   });
+});
+
+/**
+ * POST /search-podcasts — Search external podcast directories.
+ * Body: { query: string }
+ * Returns discovered podcasts with inCatalog flag.
+ */
+podcasts.post("/search-podcasts", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const body = await c.req.json<{ query: string }>();
+
+  if (!body.query || body.query.trim().length < 2) {
+    return c.json({ error: "Query must be at least 2 characters" }, 400);
+  }
+
+  const sourceId = await getConfig(prisma, "catalog.source", "podcast-index") as string;
+  const source = getCatalogSource(sourceId);
+  const results = await source.search(body.query.trim(), c.env);
+
+  // Check which results are already in catalog
+  const feedUrls = results.map(r => r.feedUrl);
+  const existing = await prisma.podcast.findMany({
+    where: { feedUrl: { in: feedUrls } },
+    select: { id: true, feedUrl: true },
+  });
+  const catalogMap = new Map(existing.map((p: any) => [p.feedUrl, p.id]));
+
+  const data = results.map(r => ({
+    ...r,
+    inCatalog: catalogMap.has(r.feedUrl),
+    podcastId: catalogMap.get(r.feedUrl) ?? null,
+  }));
+
+  return c.json({ data });
 });
 
 /**
@@ -91,8 +129,8 @@ podcasts.post("/subscribe", async (c) => {
     return c.json({ error: "feedUrl and title are required" }, 400);
   }
 
-  if (!body.durationTier || ![1, 2, 3, 5, 7, 10, 15].includes(body.durationTier)) {
-    return c.json({ error: "durationTier is required and must be 1, 2, 3, 5, 7, 10, or 15" }, 400);
+  if (!body.durationTier || !isValidDurationTier(body.durationTier)) {
+    return c.json({ error: `durationTier is required and must be one of: ${DURATION_TIERS.join(", ")}` }, 400);
   }
 
   const prisma = c.get("prisma") as any;
@@ -218,8 +256,8 @@ podcasts.patch("/subscribe/:podcastId", async (c) => {
   const podcastId = c.req.param("podcastId");
   const body = await c.req.json<{ durationTier: number }>();
 
-  if (!body.durationTier || ![1, 2, 3, 5, 7, 10, 15].includes(body.durationTier)) {
-    return c.json({ error: "durationTier must be 1, 2, 3, 5, 7, 10, or 15" }, 400);
+  if (!body.durationTier || !isValidDurationTier(body.durationTier)) {
+    return c.json({ error: `durationTier must be one of: ${DURATION_TIERS.join(", ")}` }, 400);
   }
 
   const prisma = c.get("prisma") as any;
@@ -292,6 +330,176 @@ podcasts.get("/subscriptions", async (c) => {
   });
 
   return c.json({ subscriptions });
+});
+
+/**
+ * GET /favorites — List the authenticated user's favorited podcasts.
+ */
+podcasts.get("/favorites", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
+
+  const favorites = await prisma.podcastFavorite.findMany({
+    where: { userId: user.id },
+    include: { podcast: { select: { id: true, title: true, imageUrl: true, author: true } } },
+    orderBy: { createdAt: "desc" },
+  });
+
+  return c.json({ data: favorites.map((f: any) => f.podcast) });
+});
+
+/**
+ * POST /favorites — Set the user's podcast favorites (replaces all).
+ * Body: { podcastIds: string[] }
+ */
+podcasts.post("/favorites", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
+  const { podcastIds } = await c.req.json<{ podcastIds: string[] }>();
+
+  if (!Array.isArray(podcastIds)) {
+    return c.json({ error: "podcastIds must be an array" }, 400);
+  }
+
+  // Replace all favorites atomically
+  await prisma.podcastFavorite.deleteMany({ where: { userId: user.id } });
+
+  if (podcastIds.length > 0) {
+    await prisma.podcastFavorite.createMany({
+      data: podcastIds.map((podcastId: string) => ({
+        userId: user.id,
+        podcastId,
+      })),
+      skipDuplicates: true,
+    });
+  }
+
+  return c.json({ data: { count: podcastIds.length } });
+});
+
+/**
+ * POST /favorites/:podcastId — Add a single podcast to favorites.
+ */
+podcasts.post("/favorites/:podcastId", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
+  const podcastId = c.req.param("podcastId");
+
+  await prisma.podcastFavorite.upsert({
+    where: { userId_podcastId: { userId: user.id, podcastId } },
+    create: { userId: user.id, podcastId },
+    update: {},
+  });
+
+  return c.json({ data: { favorited: true } }, 201);
+});
+
+/**
+ * DELETE /favorites/:podcastId — Remove a podcast from favorites.
+ */
+podcasts.delete("/favorites/:podcastId", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
+  const podcastId = c.req.param("podcastId");
+
+  await prisma.podcastFavorite.deleteMany({
+    where: { userId: user.id, podcastId },
+  });
+
+  return c.json({ data: { favorited: false } });
+});
+
+/**
+ * POST /request — Submit a podcast request.
+ * Body: { feedUrl: string, title?: string }
+ */
+podcasts.post("/request", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
+  const body = await c.req.json<{ feedUrl: string; title?: string }>();
+
+  if (!body.feedUrl) return c.json({ error: "feedUrl is required" }, 400);
+
+  const requestsEnabled = await getConfig(prisma, "catalog.requests.enabled", true);
+  if (!requestsEnabled) return c.json({ error: "Podcast requests are currently disabled" }, 403);
+
+  // Check if already in catalog
+  const existing = await prisma.podcast.findFirst({ where: { feedUrl: body.feedUrl } });
+  if (existing) {
+    return c.json({ error: "This podcast is already in our catalog", podcastId: existing.id }, 409);
+  }
+
+  // Check max pending requests
+  const maxPerUser = await getConfig(prisma, "catalog.requests.maxPerUser", 5);
+  const pendingCount = await prisma.podcastRequest.count({
+    where: { userId: user.id, status: "PENDING" },
+  });
+  if (pendingCount >= (maxPerUser as number)) {
+    return c.json({ error: `Maximum ${maxPerUser} pending requests allowed` }, 429);
+  }
+
+  // Check for duplicate request
+  const existingRequest = await prisma.podcastRequest.findUnique({
+    where: { userId_feedUrl: { userId: user.id, feedUrl: body.feedUrl } },
+  });
+  if (existingRequest) {
+    return c.json({ error: "You already have a request for this podcast", requestId: existingRequest.id }, 409);
+  }
+
+  const request = await prisma.podcastRequest.create({
+    data: {
+      userId: user.id,
+      feedUrl: body.feedUrl,
+      title: body.title,
+    },
+  });
+
+  return c.json({ data: { id: request.id, status: request.status } }, 201);
+});
+
+/**
+ * GET /requests — List user's own podcast requests.
+ */
+podcasts.get("/requests", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
+
+  const requests = await prisma.podcastRequest.findMany({
+    where: { userId: user.id },
+    orderBy: { createdAt: "desc" },
+    include: { podcast: { select: { id: true, title: true } } },
+  });
+
+  return c.json({
+    data: requests.map((r: any) => ({
+      id: r.id,
+      feedUrl: r.feedUrl,
+      title: r.title,
+      status: r.status,
+      podcastId: r.podcastId,
+      podcastTitle: r.podcast?.title,
+      adminNote: r.adminNote,
+      createdAt: r.createdAt.toISOString(),
+    })),
+  });
+});
+
+/**
+ * DELETE /request/:id — Cancel a pending request.
+ */
+podcasts.delete("/request/:id", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
+  const id = c.req.param("id");
+
+  const request = await prisma.podcastRequest.findFirst({
+    where: { id, userId: user.id, status: "PENDING" },
+  });
+
+  if (!request) return c.json({ error: "Request not found or not cancellable" }, 404);
+
+  await prisma.podcastRequest.delete({ where: { id } });
+  return c.json({ data: { deleted: true } });
 });
 
 /**

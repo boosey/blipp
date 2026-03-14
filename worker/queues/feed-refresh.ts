@@ -2,6 +2,7 @@ import { createPrismaClient } from "../lib/db";
 import { getConfig } from "../lib/config";
 import { createPipelineLogger } from "../lib/logger";
 import { parseRssFeed, type ParsedEpisode } from "../lib/rss-parser";
+import type { FeedRefreshMessage } from "../lib/queue-messages";
 import type { Env } from "../types";
 
 /**
@@ -29,7 +30,7 @@ function latestEpisodes(episodes: ParsedEpisode[], max: number): ParsedEpisode[]
  * @param ctx - Execution context for background work
  */
 export async function handleFeedRefresh(
-  batch: MessageBatch,
+  batch: MessageBatch<FeedRefreshMessage>,
   env: Env,
   ctx: ExecutionContext
 ): Promise<void> {
@@ -43,8 +44,8 @@ export async function handleFeedRefresh(
     const podcastIds = new Set<string>();
     let fetchAll = false;
     for (const msg of batch.messages) {
-      const body = msg.body as any;
-      if (body?.podcastId) {
+      const body = msg.body;
+      if (body.podcastId) {
         podcastIds.add(body.podcastId);
       } else {
         fetchAll = true;
@@ -53,18 +54,26 @@ export async function handleFeedRefresh(
 
     log.debug("podcast_filter", { fetchAll, podcastIds: [...podcastIds] });
 
-    // Fetch podcasts — only those with subscribers when fetchAll
+    // Fetch podcasts — only those with subscribers when fetchAll (unless config overrides)
     let podcasts;
     if (fetchAll) {
-      // Only refresh podcasts that have at least one subscriber
-      const subscribedPodcastIds = await prisma.subscription.findMany({
-        select: { podcastId: true },
-        distinct: ["podcastId"],
-      });
-      const ids = subscribedPodcastIds.map((s: any) => s.podcastId);
-      podcasts = ids.length > 0
-        ? await prisma.podcast.findMany({ where: { id: { in: ids } } })
-        : [];
+      const refreshAll = await getConfig(prisma, "catalog.refreshAllPodcasts", false);
+      if (refreshAll) {
+        // Refresh all non-archived podcasts
+        podcasts = await prisma.podcast.findMany({
+          where: { status: { not: "archived" } },
+        });
+      } else {
+        // Only refresh podcasts that have at least one subscriber
+        const subscribedPodcastIds = await prisma.subscription.findMany({
+          select: { podcastId: true },
+          distinct: ["podcastId"],
+        });
+        const ids = subscribedPodcastIds.map((s: any) => s.podcastId);
+        podcasts = ids.length > 0
+          ? await prisma.podcast.findMany({ where: { id: { in: ids } } })
+          : [];
+      }
     } else {
       podcasts = await prisma.podcast.findMany({
         where: { id: { in: [...podcastIds] } },
@@ -84,10 +93,17 @@ export async function handleFeedRefresh(
         const recent = latestEpisodes(feed.episodes, maxEpisodes);
         const newEpisodeIds: string[] = [];
 
+        // Collect existing GUIDs for this podcast to detect truly new episodes
+        const existingEpisodes = await prisma.episode.findMany({
+          where: { podcastId: podcast.id },
+          select: { guid: true },
+        });
+        const existingGuids = new Set(existingEpisodes.map((e: any) => e.guid));
+
         for (const ep of recent) {
+          // Belt-and-suspenders: parser already filters these, but guard against malformed input
           if (!ep.guid || !ep.audioUrl) continue;
 
-          // Use upsert — if created (not updated), it's a new episode
           const episode = await prisma.episode.upsert({
             where: {
               podcastId_guid: {
@@ -108,9 +124,8 @@ export async function handleFeedRefresh(
             },
           });
 
-          // Detect new episodes: createdAt within last 60 seconds
-          const isNew = Date.now() - new Date(episode.createdAt).getTime() < 60_000;
-          if (isNew) {
+          // New episode = GUID wasn't in the database before this refresh
+          if (!existingGuids.has(ep.guid)) {
             newEpisodeIds.push(episode.id);
           }
         }

@@ -52,6 +52,7 @@ import type {
   WorkProductType,
   PipelineEventSummary,
 } from "@/types/admin";
+import { DURATION_TIERS } from "@/lib/duration-tiers";
 
 // ── Constants ──
 
@@ -83,8 +84,6 @@ const STEP_STATUS_ICON: Record<
   FAILED: { icon: XCircle, color: "#EF4444", label: "Failed" },
   SKIPPED: { icon: SkipForward, color: "#6B7280", label: "Skipped" },
 };
-
-const DURATION_TIERS = [1, 3, 5, 10, 15];
 
 const PAGE_SIZE = 20;
 

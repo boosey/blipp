@@ -60,7 +60,7 @@ describe("Feed routes", () => {
 
       const res = await app.request("/fi1");
       expect(res.status).toBe(200);
-      const data = await res.json();
+      const data: any = await res.json();
       expect(data).toHaveProperty("item");
       expect(data.item.id).toBe("fi1");
     });

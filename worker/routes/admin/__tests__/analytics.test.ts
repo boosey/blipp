@@ -111,9 +111,15 @@ describe("Analytics Routes", () => {
       mockPrisma.user.findMany.mockResolvedValueOnce([
         { createdAt: now },
       ]);
+      // groupBy now uses planId
       mockPrisma.user.groupBy.mockResolvedValueOnce([
-        { tier: "FREE", _count: 50 },
-        { tier: "PRO", _count: 30 },
+        { planId: "plan_free", _count: 50 },
+        { planId: "plan_pro", _count: 30 },
+      ]);
+      // The usage route looks up plan names after groupBy
+      mockPrisma.plan.findMany.mockResolvedValueOnce([
+        { id: "plan_free", name: "Free" },
+        { id: "plan_pro", name: "Pro" },
       ]);
 
       const res = await app.request("/analytics/usage?from=2026-01-01&to=2026-01-01", {}, env, mockExCtx);
@@ -121,7 +127,7 @@ describe("Analytics Routes", () => {
       const body: any = await res.json();
       expect(body.data).toHaveProperty("metrics");
       expect(body.data).toHaveProperty("trends");
-      expect(body.data).toHaveProperty("byTier");
+      expect(body.data).toHaveProperty("byPlan");
       expect(body.data).toHaveProperty("peakTimes");
       expect(body.data.metrics.feedItems).toBe(1);
     });

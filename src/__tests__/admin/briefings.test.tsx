@@ -83,7 +83,7 @@ describe("BriefingsPage", () => {
             id: "b1",
             userId: "u1",
             userEmail: "user@example.com",
-            userTier: "FREE",
+            userPlan: "FREE",
             clipId: "c1",
             clipStatus: "COMPLETED",
             durationTier: 5,

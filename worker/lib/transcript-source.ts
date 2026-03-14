@@ -23,8 +23,15 @@ export async function lookupPodcastIndexTranscript(
     // Match by GUID (primary)
     const match = episodes.find((ep) => ep.guid === episodeGuid);
     return match?.transcriptUrl ?? null;
-  } catch {
-    // Best-effort: don't fail the pipeline over a PI lookup failure
+  } catch (err) {
+    console.error(JSON.stringify({
+      level: "warn",
+      action: "podcast_index_lookup_failed",
+      podcastIndexId,
+      episodeGuid,
+      error: err instanceof Error ? err.message : String(err),
+      ts: new Date().toISOString(),
+    }));
     return null;
   }
 }

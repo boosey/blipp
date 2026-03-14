@@ -1,81 +1,89 @@
 import { describe, it, expect, vi } from "vitest";
-import { generateSpeech, DEFAULT_VOICE, TTS_MODEL } from "../tts";
+import { generateSpeech, DEFAULT_VOICE, DEFAULT_INSTRUCTIONS } from "../tts";
+import type { TtsProvider, TtsResult } from "../tts-providers";
 
-function createMockOpenAIClient(audioBuffer: ArrayBuffer) {
+function createMockTtsProvider(audioBuffer: ArrayBuffer): TtsProvider {
   return {
-    audio: {
-      speech: {
-        create: vi.fn().mockResolvedValue({
-          arrayBuffer: vi.fn().mockResolvedValue(audioBuffer),
-        }),
-      },
-    },
-  } as any;
+    name: "MockTTS",
+    provider: "mock",
+    synthesize: vi.fn().mockResolvedValue({
+      audio: audioBuffer,
+    } satisfies TtsResult),
+  };
 }
+
+const mockEnv = {} as any;
+const mockPricing = {
+  pricePerKChars: 12,
+};
 
 describe("generateSpeech", () => {
   const fakeAudio = new ArrayBuffer(1024);
 
   it("should return an ArrayBuffer of audio data with usage", async () => {
-    const client = createMockOpenAIClient(fakeAudio);
-    const result = await generateSpeech(client, "Hello world");
+    const tts = createMockTtsProvider(fakeAudio);
+    const result = await generateSpeech(tts, "Hello world", DEFAULT_VOICE, "mock-tts-model", mockEnv, mockPricing);
 
     expect(result.audio).toBeInstanceOf(ArrayBuffer);
     expect(result.audio.byteLength).toBe(1024);
-    expect(result.usage).toEqual({
-      model: "gpt-4o-mini-tts",
-      inputTokens: "Hello world".length,
-      outputTokens: 0,
-      cost: ("Hello world".length * 12) / 1_000_000,
-    });
+    expect(result.usage.model).toBe("mock-tts-model");
+    expect(result.usage.inputTokens).toBe("Hello world".length);
+    expect(result.usage.outputTokens).toBe(0);
   });
 
-  it("should use default TTS model when none specified", async () => {
-    const client = createMockOpenAIClient(fakeAudio);
-    await generateSpeech(client, "Hello world");
+  it("should pass providerModelId to the TTS provider", async () => {
+    const tts = createMockTtsProvider(fakeAudio);
+    await generateSpeech(tts, "Hello world", DEFAULT_VOICE, "custom-tts-model", mockEnv);
 
-    const call = client.audio.speech.create.mock.calls[0][0];
-    expect(call.model).toBe(TTS_MODEL);
-    expect(call.response_format).toBe("mp3");
-  });
-
-  it("should use custom model when specified", async () => {
-    const client = createMockOpenAIClient(fakeAudio);
-    await generateSpeech(client, "Hello world", DEFAULT_VOICE, "tts-1-hd");
-
-    const call = client.audio.speech.create.mock.calls[0][0];
-    expect(call.model).toBe("tts-1-hd");
+    const call = (tts.synthesize as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(call[2]).toBe("custom-tts-model");
   });
 
   it("should use default voice when none specified", async () => {
-    const client = createMockOpenAIClient(fakeAudio);
-    await generateSpeech(client, "Hello world");
+    const tts = createMockTtsProvider(fakeAudio);
+    await generateSpeech(tts, "Hello world", undefined as any, "mock-tts-model", mockEnv);
 
-    const call = client.audio.speech.create.mock.calls[0][0];
-    expect(call.voice).toBe(DEFAULT_VOICE);
+    const call = (tts.synthesize as ReturnType<typeof vi.fn>).mock.calls[0];
+    // Default parameter kicks in — voice becomes DEFAULT_VOICE
+    expect(call[1]).toBe(DEFAULT_VOICE);
   });
 
   it("should use custom voice when specified", async () => {
-    const client = createMockOpenAIClient(fakeAudio);
-    await generateSpeech(client, "Hello world", "alloy");
+    const tts = createMockTtsProvider(fakeAudio);
+    await generateSpeech(tts, "Hello world", "alloy", "mock-tts-model", mockEnv);
 
-    const call = client.audio.speech.create.mock.calls[0][0];
-    expect(call.voice).toBe("alloy");
+    const call = (tts.synthesize as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(call[1]).toBe("alloy");
   });
 
-  it("should pass the input text to OpenAI", async () => {
-    const client = createMockOpenAIClient(fakeAudio);
-    await generateSpeech(client, "Specific text for TTS");
+  it("should pass the input text to the provider", async () => {
+    const tts = createMockTtsProvider(fakeAudio);
+    await generateSpeech(tts, "Specific text for TTS", DEFAULT_VOICE, "mock-tts-model", mockEnv);
 
-    const call = client.audio.speech.create.mock.calls[0][0];
-    expect(call.input).toBe("Specific text for TTS");
+    const call = (tts.synthesize as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(call[0]).toBe("Specific text for TTS");
   });
 
-  it("should include speaking instructions", async () => {
-    const client = createMockOpenAIClient(fakeAudio);
-    await generateSpeech(client, "text");
+  it("should pass speaking instructions to the provider", async () => {
+    const tts = createMockTtsProvider(fakeAudio);
+    await generateSpeech(tts, "text", DEFAULT_VOICE, "mock-tts-model", mockEnv);
 
-    const call = client.audio.speech.create.mock.calls[0][0];
-    expect(call.instructions).toContain("warm, professional tone");
+    const call = (tts.synthesize as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(call[3]).toBe(DEFAULT_INSTRUCTIONS);
+  });
+
+  it("should return null cost when no pricing provided", async () => {
+    const tts = createMockTtsProvider(fakeAudio);
+    const result = await generateSpeech(tts, "Hello world", DEFAULT_VOICE, "mock-tts-model", mockEnv);
+    expect(result.usage.cost).toBeNull();
+  });
+
+  it("should calculate per-char cost when pricing available", async () => {
+    const tts = createMockTtsProvider(fakeAudio);
+    const text = "Hello world";
+    const result = await generateSpeech(tts, text, DEFAULT_VOICE, "mock-tts-model", mockEnv, mockPricing);
+    // calculateCharCost: (charCount / 1000) * pricePerKChars
+    const expected = (text.length / 1000) * 12;
+    expect(result.usage.cost).toBe(expected);
   });
 });

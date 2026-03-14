@@ -230,11 +230,13 @@ describe("handleDistillation", () => {
     const batch = makeBatch([{ jobId: "job-1", episodeId: "ep-1" }]);
     await handleDistillation(batch, mockEnv, mockCtx);
 
-    expect(mockEnv.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith({
-      requestId: "req-1",
-      action: "job-stage-complete",
-      jobId: "job-1",
-    });
+    expect(mockEnv.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestId: "req-1",
+        action: "job-stage-complete",
+        jobId: "job-1",
+      })
+    );
   });
 
   it("reports to orchestrator on cache hit", async () => {
@@ -255,11 +257,13 @@ describe("handleDistillation", () => {
     const batch = makeBatch([{ jobId: "job-1", episodeId: "ep-1" }]);
     await handleDistillation(batch, mockEnv, mockCtx);
 
-    expect(mockEnv.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith({
-      requestId: "req-1",
-      action: "job-stage-complete",
-      jobId: "job-1",
-    });
+    expect(mockEnv.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestId: "req-1",
+        action: "job-stage-complete",
+        jobId: "job-1",
+      })
+    );
   });
 
   it("reads distillation model from config and passes to extractClaims", async () => {
@@ -361,12 +365,14 @@ describe("handleDistillation", () => {
       });
 
       // Orchestrator notified of failure
-      expect(mockEnv.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith({
-        requestId: "req-1",
-        action: "job-failed",
-        jobId: "job-1",
-        errorMessage: "API error",
-      });
+      expect(mockEnv.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          requestId: "req-1",
+          action: "job-failed",
+          jobId: "job-1",
+          errorMessage: "API error",
+        })
+      );
       expect(batch.messages[0].ack).toHaveBeenCalled();
       expect(batch.messages[0].retry).not.toHaveBeenCalled();
     });
@@ -396,6 +402,79 @@ describe("handleDistillation", () => {
           jobId: "job-1",
         }),
       );
+      expect(batch.messages[0].ack).toHaveBeenCalled();
+      expect(batch.messages[0].retry).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("AiProviderError handling", () => {
+    it("captures AI provider error via writeAiError and notifies orchestrator", async () => {
+      const { AiProviderError } = await import("../../lib/ai-errors");
+      mockPrisma.pipelineJob.findUniqueOrThrow.mockResolvedValue({
+        id: "job-1",
+        requestId: "req-1",
+      });
+      mockPrisma.pipelineJob.update.mockResolvedValue({});
+      mockPrisma.pipelineStep.create.mockResolvedValue({ id: "step-1" });
+      mockPrisma.pipelineStep.update.mockResolvedValue({});
+      mockPrisma.distillation.findUnique.mockResolvedValue({
+        id: "dist-1",
+        episodeId: "ep-1",
+        status: "TRANSCRIPT_READY",
+        transcript: "Some transcript",
+      });
+      mockPrisma.distillation.update.mockResolvedValue({});
+      mockPrisma.distillation.upsert.mockResolvedValue({});
+      mockPrisma.pipelineEvent.create.mockResolvedValue({});
+      mockPrisma.aiServiceError.create.mockResolvedValue({});
+
+      (extractClaims as any).mockRejectedValueOnce(
+        new AiProviderError({
+          message: "Claude API server error",
+          provider: "anthropic",
+          model: "claude-sonnet-4-20250514",
+          httpStatus: 500,
+          rawResponse: '{"error":"internal_error"}',
+          requestDurationMs: 2000,
+        })
+      );
+
+      const batch = makeBatch([{ jobId: "job-1", episodeId: "ep-1" }]);
+      await handleDistillation(batch, mockEnv, mockCtx);
+
+      // Step marked FAILED
+      expect(mockPrisma.pipelineStep.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "step-1" },
+          data: expect.objectContaining({
+            status: "FAILED",
+            errorMessage: "Claude API server error",
+          }),
+        })
+      );
+
+      // AI error captured to DB
+      expect(mockPrisma.aiServiceError.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          service: "distillation",
+          provider: "anthropic",
+          model: "claude-sonnet-4-20250514",
+          category: "server_error",
+          severity: "transient",
+          httpStatus: 500,
+        }),
+      });
+
+      // Orchestrator notified with job-failed
+      expect(mockEnv.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          requestId: "req-1",
+          action: "job-failed",
+          jobId: "job-1",
+          errorMessage: "Claude API server error",
+        })
+      );
+
       expect(batch.messages[0].ack).toHaveBeenCalled();
       expect(batch.messages[0].retry).not.toHaveBeenCalled();
     });

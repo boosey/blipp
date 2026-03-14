@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { Env } from "../../types";
-import { STAGE_DISPLAY_NAMES } from "../../lib/config";
+import { PIPELINE_STAGE_NAMES } from "../../lib/constants";
 import { parsePagination, paginatedResponse } from "../../lib/admin-helpers";
 
 const STAGE_ICONS: Record<string, string> = {
@@ -55,7 +55,13 @@ pipelineRoutes.get("/jobs", async (c) => {
       }),
       prisma.pipelineJob.count({ where }),
     ]);
-  } catch {
+  } catch (err) {
+    console.error(JSON.stringify({
+      level: "error",
+      action: "admin_pipeline_jobs_query_failed",
+      error: err instanceof Error ? err.message : String(err),
+      ts: new Date().toISOString(),
+    }));
     return c.json({ data: [], total: 0, page, pageSize, totalPages: 0 });
   }
 
@@ -535,7 +541,7 @@ pipelineRoutes.get("/stages", async (c) => {
   } catch {
     const data = PIPELINE_STAGES.map((stage) => ({
       stage,
-      name: STAGE_DISPLAY_NAMES[stage] ?? stage,
+      name: PIPELINE_STAGE_NAMES[stage] ?? stage,
       icon: STAGE_ICONS[stage] ?? "circle",
       activeJobs: 0,
       successRate: 100,
@@ -575,7 +581,7 @@ pipelineRoutes.get("/stages", async (c) => {
     const s = stageData.get(stage) ?? { active: 0, total: 0, completed: 0, avgDuration: 0, todayCost: 0 };
     return {
       stage,
-      name: STAGE_DISPLAY_NAMES[stage] ?? stage,
+      name: PIPELINE_STAGE_NAMES[stage] ?? stage,
       icon: STAGE_ICONS[stage] ?? "circle",
       activeJobs: s.active,
       successRate: s.total > 0 ? Math.round((s.completed / s.total) * 100) : 100,
@@ -586,6 +592,59 @@ pipelineRoutes.get("/stages", async (c) => {
   });
 
   return c.json({ data });
+});
+
+// GET /dlq - Dead letter queue monitoring
+pipelineRoutes.get("/dlq", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+
+  const [stuckJobs, failedSteps] = await Promise.all([
+    prisma.pipelineJob.findMany({
+      where: {
+        status: "IN_PROGRESS",
+        updatedAt: { lt: oneHourAgo },
+      },
+      select: {
+        id: true,
+        requestId: true,
+        episodeId: true,
+        currentStage: true,
+        updatedAt: true,
+      },
+      take: 50,
+    }),
+    prisma.pipelineStep.findMany({
+      where: {
+        status: "FAILED",
+        retryCount: { gte: 3 },
+      },
+      select: {
+        id: true,
+        jobId: true,
+        stage: true,
+        errorMessage: true,
+        retryCount: true,
+        completedAt: true,
+      },
+      orderBy: { completedAt: "desc" },
+      take: 50,
+    }),
+  ]);
+
+  return c.json({
+    data: {
+      stuckJobs: stuckJobs.map((j: any) => ({
+        ...j,
+        updatedAt: j.updatedAt.toISOString(),
+        stuckMinutes: Math.floor((Date.now() - j.updatedAt.getTime()) / 60000),
+      })),
+      exhaustedRetries: failedSteps.map((s: any) => ({
+        ...s,
+        completedAt: s.completedAt?.toISOString(),
+      })),
+    },
+  });
 });
 
 export { pipelineRoutes };

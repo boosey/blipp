@@ -1,3 +1,13 @@
+// Extend Hono's ContextVariableMap so c.get("prisma") / c.set("prisma", ...) is type-safe.
+declare module "hono" {
+  interface ContextVariableMap {
+    prisma: any;
+    requestId: string;
+    apiKeyScopes: string[];
+    apiKeyUserId: string;
+  }
+}
+
 /**
  * Cloudflare Worker environment bindings for the Blipp API.
  *
@@ -55,4 +65,16 @@ export type Env = {
   GOOGLE_STT_API_KEY: string;
   /** Groq API key for fast STT inference */
   GROQ_API_KEY: string;
+  /** Comma-separated list of allowed CORS origins (optional, overrides defaults) */
+  ALLOWED_ORIGINS?: string;
+  /** Neon API key for backup verification (optional) */
+  NEON_API_KEY?: string;
+  /** Neon project ID for backup verification (optional) */
+  NEON_PROJECT_ID?: string;
+  /** VAPID public key for Web Push (optional) */
+  VAPID_PUBLIC_KEY?: string;
+  /** VAPID private key for Web Push (optional) */
+  VAPID_PRIVATE_KEY?: string;
+  /** VAPID subject (mailto: URL) for Web Push (optional) */
+  VAPID_SUBJECT?: string;
 };

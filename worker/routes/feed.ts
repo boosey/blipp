@@ -39,16 +39,20 @@ feed.get("/", async (c) => {
   const limit = Math.min(parseInt(c.req.query("limit") || "30", 10), 100);
   const offset = parseInt(c.req.query("offset") || "0", 10);
 
+  const sort = c.req.query("sort");
+
   const where: any = { userId: user.id };
   if (status) where.status = status;
   if (listened !== undefined && listened !== "") {
     where.listened = listened === "true";
   }
 
+  const orderBy = sort === "listenedAt" ? { listenedAt: "desc" as const } : { createdAt: "desc" as const };
+
   const [items, total] = await Promise.all([
     prisma.feedItem.findMany({
       where,
-      orderBy: { createdAt: "desc" },
+      orderBy,
       take: limit,
       skip: offset,
       include: {

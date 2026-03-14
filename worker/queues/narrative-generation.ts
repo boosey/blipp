@@ -1,21 +1,15 @@
 import { createPrismaClient } from "../lib/db";
 import { createPipelineLogger } from "../lib/logger";
 import { checkStageEnabled } from "../lib/queue-helpers";
-import { generateNarrative, selectClaimsForDuration } from "../lib/distillation";
-import { getModelConfig } from "../lib/ai-models";
-import { getModelPricing } from "../lib/ai-usage";
+import { generateNarrative, selectClaimsForDuration, type EpisodeMetadata } from "../lib/distillation";
+import { resolveStageModel } from "../lib/model-resolution";
 import { getLlmProviderImpl } from "../lib/llm-providers";
 import { wpKey, putWorkProduct } from "../lib/work-products";
 import { writeEvent } from "../lib/pipeline-events";
+import { writeAiError, classifyAiError, AiProviderError } from "../lib/ai-errors";
+import { recordSuccess, recordFailure } from "../lib/circuit-breaker";
+import type { NarrativeGenerationMessage } from "../lib/queue-messages";
 import type { Env } from "../types";
-
-/** Shape of a narrative generation queue message body. */
-interface NarrativeGenerationMessage {
-  jobId: string;
-  episodeId: string;
-  durationTier: number;
-  type?: "manual";
-}
 
 /**
  * Queue consumer for narrative generation jobs.
@@ -43,6 +37,7 @@ export async function handleNarrativeGeneration(
 
     for (const msg of batch.messages) {
       const { jobId, episodeId, durationTier } = msg.body;
+      const correlationId = msg.body.correlationId ?? crypto.randomUUID();
       const startTime = Date.now();
       let stepId: string | undefined;
       let requestId: string | undefined;
@@ -99,6 +94,7 @@ export async function handleNarrativeGeneration(
             requestId: job.requestId,
             action: "job-stage-complete",
             jobId,
+            correlationId,
           });
 
           msg.ack();
@@ -124,28 +120,44 @@ export async function handleNarrativeGeneration(
           : allClaims;
 
         // Read model config
-        const narrativeConfig = await getModelConfig(prisma, "narrative");
-        if (!narrativeConfig) throw new Error("No AI model configured for Narrative stage — configure one in Admin > Configuration");
-        const { provider: narrativeProvider, model: narrativeModel } = narrativeConfig;
-        const narrativePricing = await getModelPricing(prisma, narrativeModel, narrativeProvider);
-        const dbNarrProvider = await prisma.aiModelProvider.findFirst({
-          where: { provider: narrativeProvider, model: { modelId: narrativeModel } },
+        const resolved = await resolveStageModel(prisma, "narrative");
+        const llm = getLlmProviderImpl(resolved.provider);
+
+        // Load episode metadata for narrative intro
+        const episode = await prisma.episode.findUnique({
+          where: { id: episodeId },
+          select: {
+            title: true,
+            publishedAt: true,
+            durationSeconds: true,
+            podcast: { select: { title: true } },
+          },
         });
-        const narrProviderModelId = dbNarrProvider?.providerModelId ?? narrativeModel;
-        const llm = getLlmProviderImpl(narrativeProvider);
+
+        const episodeMetadata: EpisodeMetadata | undefined = episode
+          ? {
+              podcastTitle: episode.podcast.title,
+              episodeTitle: episode.title,
+              publishedAt: episode.publishedAt,
+              durationSeconds: episode.durationSeconds,
+              briefingMinutes: durationTier,
+            }
+          : undefined;
 
         // Generate narrative from claims (Pass 2)
-        await writeEvent(prisma, step.id, "INFO", `Generating ${durationTier}-minute narrative from ${claims.length}/${allClaims.length} claims via ${llm.name} (${narrProviderModelId})`);
+        await writeEvent(prisma, step.id, "INFO", `Generating ${durationTier}-minute narrative from ${claims.length}/${allClaims.length} claims via ${llm.name} (${resolved.providerModelId})`);
         const narrativeTimer = log.timer("narrative_generation");
         const { narrative, usage: narrativeUsage } = await generateNarrative(
           llm,
           claims,
           durationTier,
-          narrProviderModelId,
+          resolved.providerModelId,
           8192,
           env,
-          narrativePricing
+          resolved.pricing,
+          episodeMetadata
         );
+        recordSuccess(resolved.provider);
         const wordCount = narrative.split(/\s+/).length;
         narrativeTimer();
         await writeEvent(prisma, step.id, "INFO", `Narrative generated: ${wordCount} words`);
@@ -208,6 +220,7 @@ export async function handleNarrativeGeneration(
           requestId: job.requestId,
           action: "job-stage-complete",
           jobId,
+          correlationId,
         });
 
         msg.ack();
@@ -228,9 +241,46 @@ export async function handleNarrativeGeneration(
               durationMs: Date.now() - startTime,
             },
           })
-          .catch(() => {});
+          .catch((dbErr: unknown) => {
+            console.error(JSON.stringify({
+              level: "error",
+              action: "error_path_db_write_failed",
+              stage: "narrative",
+              target: "pipelineStep",
+              jobId,
+              error: dbErr instanceof Error ? dbErr.message : String(dbErr),
+              ts: new Date().toISOString(),
+            }));
+          });
 
         if (stepId) await writeEvent(prisma, stepId, "ERROR", `Narrative generation failed: ${errorMessage}`);
+
+        // Capture AI provider errors
+        if (err instanceof AiProviderError) {
+          recordFailure(err.provider);
+          const { category, severity } = classifyAiError(err, err.httpStatus, err.rawResponse);
+          writeAiError(prisma, {
+            service: "narrative",
+            provider: err.provider,
+            model: err.model,
+            operation: "complete",
+            correlationId,
+            jobId,
+            episodeId,
+            category,
+            severity,
+            httpStatus: err.httpStatus,
+            errorMessage: err.message,
+            rawResponse: err.rawResponse,
+            requestDurationMs: err.requestDurationMs,
+            timestamp: new Date(),
+            retryCount: 0,
+            maxRetries: 0,
+            willRetry: false,
+            rateLimitRemaining: err.rateLimitRemaining,
+            rateLimitResetAt: err.rateLimitResetAt,
+          }).catch(() => {}); // Fire-and-forget
+        }
 
         // Notify orchestrator so job is marked FAILED and assembly can proceed
         if (requestId) {
@@ -239,7 +289,17 @@ export async function handleNarrativeGeneration(
             action: "job-failed",
             jobId,
             errorMessage,
-          }).catch(() => {});
+            correlationId,
+          }).catch((sendErr: unknown) => {
+            console.error(JSON.stringify({
+              level: "error",
+              action: "orchestrator_send_failed",
+              stage: "narrative",
+              jobId,
+              error: sendErr instanceof Error ? sendErr.message : String(sendErr),
+              ts: new Date().toISOString(),
+            }));
+          });
         }
 
         msg.ack();

@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { getAuth } from "../../middleware/auth";
 import type { Env } from "../../types";
+import { writeAuditLog } from "../../lib/audit-log";
 
 const configRoutes = new Hono<{ Bindings: Env }>();
 
@@ -14,8 +15,13 @@ configRoutes.get("/", async (c) => {
     configs = await prisma.platformConfig.findMany({
       orderBy: { key: "asc" },
     });
-  } catch {
-    // PlatformConfig table may not exist
+  } catch (err) {
+    console.error(JSON.stringify({
+      level: "warn",
+      action: "admin_config_read_failed",
+      error: err instanceof Error ? err.message : String(err),
+      ts: new Date().toISOString(),
+    }));
     return c.json({ data: [] });
   }
 
@@ -61,6 +67,14 @@ configRoutes.patch("/:key", async (c) => {
           updatedBy: auth?.userId ?? null,
         },
       });
+      writeAuditLog(prisma, {
+        actorId: auth?.userId ?? "unknown",
+        action: "config.update",
+        entityType: "PlatformConfig",
+        entityId: key,
+        before: { value: existing.value },
+        after: { value: body.value },
+      }).catch(() => {});
       return c.json({ data: { id: updated.id, key: updated.key, value: updated.value } });
     } else {
       const created = await prisma.platformConfig.create({
@@ -71,6 +85,13 @@ configRoutes.patch("/:key", async (c) => {
           updatedBy: auth?.userId ?? null,
         },
       });
+      writeAuditLog(prisma, {
+        actorId: auth?.userId ?? "unknown",
+        action: "config.create",
+        entityType: "PlatformConfig",
+        entityId: key,
+        after: { value: body.value },
+      }).catch(() => {});
       return c.json({ data: { id: created.id, key: created.key, value: created.value } }, 201);
     }
   } catch {
@@ -89,6 +110,7 @@ configRoutes.get("/tiers/duration", async (c) => {
     { minutes: 7, cacheHitRate: 0, clipsGenerated: 0, storageCost: 0, usageFrequency: 0 },
     { minutes: 10, cacheHitRate: 0, clipsGenerated: 0, storageCost: 0, usageFrequency: 0 },
     { minutes: 15, cacheHitRate: 0, clipsGenerated: 0, storageCost: 0, usageFrequency: 0 },
+    { minutes: 30, cacheHitRate: 0, clipsGenerated: 0, storageCost: 0, usageFrequency: 0 },
   ];
 
   try {
@@ -130,6 +152,14 @@ configRoutes.put("/tiers/duration", async (c) => {
         where: { key: "tiers.duration" },
         data: { value: body.tiers as any, updatedBy: auth?.userId ?? null },
       });
+      writeAuditLog(prisma, {
+        actorId: auth?.userId ?? "unknown",
+        action: "config.update",
+        entityType: "PlatformConfig",
+        entityId: "tiers.duration",
+        before: { value: existing.value },
+        after: { value: body.tiers },
+      }).catch(() => {});
     } else {
       await prisma.platformConfig.create({
         data: {
@@ -139,6 +169,13 @@ configRoutes.put("/tiers/duration", async (c) => {
           updatedBy: auth?.userId ?? null,
         },
       });
+      writeAuditLog(prisma, {
+        actorId: auth?.userId ?? "unknown",
+        action: "config.create",
+        entityType: "PlatformConfig",
+        entityId: "tiers.duration",
+        after: { value: body.tiers },
+      }).catch(() => {});
     }
 
     return c.json({ data: { success: true } });
@@ -210,6 +247,15 @@ configRoutes.put("/features/:id", async (c) => {
         updatedBy: auth?.userId ?? null,
       },
     });
+
+    writeAuditLog(prisma, {
+      actorId: auth?.userId ?? "unknown",
+      action: "config.feature.update",
+      entityType: "PlatformConfig",
+      entityId: feature.id,
+      before: { value: currentVal },
+      after: { value: newVal },
+    }).catch(() => {});
 
     return c.json({
       data: {

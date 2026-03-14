@@ -265,7 +265,7 @@ export interface AdminBriefing {
   id: string;
   userId: string;
   userEmail: string;
-  userTier: string;
+  userPlan: string;
   clipId: string;
   durationTier: number;
   clipStatus: string;
@@ -295,7 +295,7 @@ export interface AdminBriefingDetail {
   id: string;
   userId: string;
   userEmail: string;
-  userTier: string;
+  userPlan: string;
   clipId: string;
   adAudioUrl?: string;
   adAudioKey?: string;
@@ -390,7 +390,7 @@ export interface CostBreakdownData {
 export interface UsageTrendsData {
   metrics: { feedItems: number; episodes: number; users: number; avgDuration: number };
   trends: { date: string; feedItems: number; episodes: number; users: number }[];
-  byTier: { tier: string; count: number; percentage: number }[];
+  byPlan: { plan: string; count: number; percentage: number }[];
   peakTimes: { hour: number; count: number }[];
   topPodcasts: { id: string; title: string; listens: number }[];
 }
@@ -631,6 +631,38 @@ export interface SttEligibleEpisode {
   hasDistillationTranscript: boolean;
 }
 
+// ── Plans ──
+
+export interface AdminPlan {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  briefingsPerWeek: number | null;
+  maxDurationMinutes: number;
+  maxPodcastSubscriptions: number | null;
+  adFree: boolean;
+  priorityProcessing: boolean;
+  earlyAccess: boolean;
+  researchMode: boolean;
+  crossPodcastSynthesis: boolean;
+  priceCentsMonthly: number;
+  priceCentsAnnual: number | null;
+  stripePriceIdMonthly: string | null;
+  stripePriceIdAnnual: string | null;
+  stripeProductId: string | null;
+  trialDays: number;
+  features: string[];
+  highlighted: boolean;
+  active: boolean;
+  sortOrder: number;
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+  userCount: number;
+  _count: { users: number };
+}
+
 // ── AI Model Registry ──
 
 export interface AiModelProviderEntry {
@@ -656,4 +688,53 @@ export interface AiModelEntry {
   notes: string | null;
   isActive: boolean;
   providers: AiModelProviderEntry[];
+}
+
+// ── AI Service Errors ──
+
+/** AI service error record for the admin dashboard. */
+export interface AdminAiServiceError {
+  id: string;
+  service: "stt" | "distillation" | "narrative" | "tts";
+  provider: string;
+  model: string;
+  operation: string;
+  correlationId: string;
+  jobId?: string;
+  stepId?: string;
+  episodeId?: string;
+  category: string;
+  severity: "transient" | "permanent";
+  httpStatus?: number;
+  errorMessage: string;
+  rawResponse?: string;
+  requestDurationMs: number;
+  timestamp: string;
+  retryCount: number;
+  maxRetries: number;
+  willRetry: boolean;
+  resolved: boolean;
+  rateLimitRemaining?: number;
+  rateLimitResetAt?: string;
+  createdAt: string;
+}
+
+/** Summary of AI errors for the admin dashboard. */
+export interface AiErrorSummary {
+  totalErrors: number;
+  byService: Record<string, number>;
+  byProvider: Record<string, number>;
+  byCategory: Record<string, number>;
+  bySeverity: Record<string, number>;
+  errorRate: {
+    last1h: number;
+    last24h: number;
+    last7d: number;
+  };
+  topErrors: Array<{
+    errorMessage: string;
+    count: number;
+    lastSeen: string;
+  }>;
+  since: string;
 }

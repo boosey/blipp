@@ -23,6 +23,12 @@ vi.mock("../../lib/stripe", () => ({
   })),
 }));
 
+// Mock Clerk webhook verification
+const mockVerifyWebhook = vi.fn();
+vi.mock("@clerk/backend/webhooks", () => ({
+  verifyWebhook: (...args: any[]) => mockVerifyWebhook(...args),
+}));
+
 // Import after mocks
 const { clerkWebhooks } = await import("../webhooks/clerk");
 const { stripeWebhooks } = await import("../webhooks/stripe");
@@ -54,6 +60,17 @@ describe("Clerk Webhooks", () => {
   });
 
   it("should create user on user.created event", async () => {
+    mockVerifyWebhook.mockResolvedValueOnce({
+      type: "user.created",
+      data: {
+        id: "clerk_123",
+        email_addresses: [{ email_address: "test@example.com" }],
+        first_name: "John",
+        last_name: "Doe",
+        image_url: "https://example.com/avatar.jpg",
+      },
+    });
+
     mockPrisma.user.create.mockResolvedValueOnce({ id: "usr_1" });
 
     const res = await app.request(
@@ -61,16 +78,7 @@ describe("Clerk Webhooks", () => {
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: "user.created",
-          data: {
-            id: "clerk_123",
-            email_addresses: [{ email_address: "test@example.com" }],
-            first_name: "John",
-            last_name: "Doe",
-            image_url: "https://example.com/avatar.jpg",
-          },
-        }),
+        body: JSON.stringify({}),
       },
       env,
       mockExCtx
@@ -88,6 +96,17 @@ describe("Clerk Webhooks", () => {
   });
 
   it("should update user on user.updated event", async () => {
+    mockVerifyWebhook.mockResolvedValueOnce({
+      type: "user.updated",
+      data: {
+        id: "clerk_123",
+        email_addresses: [{ email_address: "new@example.com" }],
+        first_name: "Jane",
+        last_name: null,
+        image_url: null,
+      },
+    });
+
     mockPrisma.user.update.mockResolvedValueOnce({ id: "usr_1" });
 
     const res = await app.request(
@@ -95,16 +114,7 @@ describe("Clerk Webhooks", () => {
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: "user.updated",
-          data: {
-            id: "clerk_123",
-            email_addresses: [{ email_address: "new@example.com" }],
-            first_name: "Jane",
-            last_name: null,
-            image_url: null,
-          },
-        }),
+        body: JSON.stringify({}),
       },
       env,
       mockExCtx
@@ -122,6 +132,11 @@ describe("Clerk Webhooks", () => {
   });
 
   it("should delete user on user.deleted event", async () => {
+    mockVerifyWebhook.mockResolvedValueOnce({
+      type: "user.deleted",
+      data: { id: "clerk_123" },
+    });
+
     mockPrisma.user.delete.mockResolvedValueOnce({ id: "usr_1" });
 
     const res = await app.request(
@@ -129,10 +144,7 @@ describe("Clerk Webhooks", () => {
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: "user.deleted",
-          data: { id: "clerk_123" },
-        }),
+        body: JSON.stringify({}),
       },
       env,
       mockExCtx
@@ -144,7 +156,9 @@ describe("Clerk Webhooks", () => {
     });
   });
 
-  it("should return 400 for invalid payload", async () => {
+  it("should return 400 when signature verification fails", async () => {
+    mockVerifyWebhook.mockRejectedValueOnce(new Error("Invalid signature"));
+
     const res = await app.request(
       "/webhooks/clerk",
       {
@@ -157,18 +171,45 @@ describe("Clerk Webhooks", () => {
     );
 
     expect(res.status).toBe(400);
+    const body: any = await res.json();
+    expect(body.error).toBe("Invalid webhook signature");
+  });
+
+  it("should pass raw request and signing secret to verifyWebhook", async () => {
+    mockVerifyWebhook.mockResolvedValueOnce({
+      type: "session.created",
+      data: { id: "sess_123" },
+    });
+
+    await app.request(
+      "/webhooks/clerk",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      },
+      env,
+      mockExCtx
+    );
+
+    expect(mockVerifyWebhook).toHaveBeenCalledTimes(1);
+    const [rawReq, options] = mockVerifyWebhook.mock.calls[0];
+    expect(rawReq).toBeInstanceOf(Request);
+    expect(options).toEqual({ signingSecret: env.CLERK_WEBHOOK_SECRET });
   });
 
   it("should handle unrecognized event types gracefully", async () => {
+    mockVerifyWebhook.mockResolvedValueOnce({
+      type: "session.created",
+      data: { id: "sess_123" },
+    });
+
     const res = await app.request(
       "/webhooks/clerk",
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: "session.created",
-          data: { id: "sess_123" },
-        }),
+        body: JSON.stringify({}),
       },
       env,
       mockExCtx
@@ -241,28 +282,30 @@ describe("Stripe Webhooks", () => {
 
     expect(res.status).toBe(400);
     const body: any = await res.json();
-    expect(body.error).toContain("Invalid signature");
+    expect(body.error).toContain("Invalid webhook signature");
   });
 
-  it("should update user tier on checkout.session.completed", async () => {
+  it("should update user planId on checkout.session.completed", async () => {
     mockConstructEventAsync.mockResolvedValueOnce({
       type: "checkout.session.completed",
       data: {
         object: {
           customer: "cus_123",
           subscription: "sub_456",
+          metadata: {},
         },
       },
     });
 
     mockSubscriptionsRetrieve.mockResolvedValueOnce({
       items: {
-        data: [{ price: { id: "price_pro_mock" } }],
+        data: [{ price: { id: "price_pro_monthly" } }],
       },
     });
 
-    mockPrisma.plan.findUnique.mockResolvedValueOnce({ tier: "PRO" });
-    mockPrisma.user.update.mockResolvedValueOnce({ id: "usr_1", tier: "PRO" });
+    // planFromPriceId uses findFirst with OR on stripePriceIdMonthly/stripePriceIdAnnual
+    mockPrisma.plan.findFirst.mockResolvedValueOnce({ id: "plan_pro", slug: "pro", name: "Pro" });
+    mockPrisma.user.update.mockResolvedValueOnce({ id: "usr_1", planId: "plan_pro" });
 
     const res = await app.request(
       "/webhooks/stripe",
@@ -281,11 +324,148 @@ describe("Stripe Webhooks", () => {
     expect(res.status).toBe(200);
     expect(mockPrisma.user.update).toHaveBeenCalledWith({
       where: { stripeCustomerId: "cus_123" },
-      data: { tier: "PRO" },
+      data: { planId: "plan_pro" },
     });
   });
 
-  it("should revert to FREE on customer.subscription.deleted", async () => {
+  it("should update planId on customer.subscription.updated with plan change", async () => {
+    mockConstructEventAsync.mockResolvedValueOnce({
+      type: "customer.subscription.updated",
+      data: {
+        object: {
+          customer: "cus_123",
+          cancel_at_period_end: false,
+          items: {
+            data: [{ price: { id: "price_pro_annual" } }],
+          },
+        },
+      },
+    });
+
+    mockPrisma.plan.findFirst.mockResolvedValueOnce({ id: "plan_pro", slug: "pro", name: "Pro" });
+    mockPrisma.user.update.mockResolvedValueOnce({ id: "usr_1", planId: "plan_pro" });
+
+    const res = await app.request(
+      "/webhooks/stripe",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "stripe-signature": "valid_sig",
+        },
+        body: JSON.stringify({}),
+      },
+      env,
+      mockExCtx
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockPrisma.user.update).toHaveBeenCalledWith({
+      where: { stripeCustomerId: "cus_123" },
+      data: { planId: "plan_pro" },
+    });
+  });
+
+  it("should not change plan when subscription cancellation is scheduled", async () => {
+    mockConstructEventAsync.mockResolvedValueOnce({
+      type: "customer.subscription.updated",
+      data: {
+        object: {
+          customer: "cus_123",
+          cancel_at_period_end: true,
+          cancel_at: 1700000000,
+          items: {
+            data: [{ price: { id: "price_pro_monthly" } }],
+          },
+        },
+      },
+    });
+
+    const res = await app.request(
+      "/webhooks/stripe",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "stripe-signature": "valid_sig",
+        },
+        body: JSON.stringify({}),
+      },
+      env,
+      mockExCtx
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockPrisma.user.update).not.toHaveBeenCalled();
+  });
+
+  it("should log but not downgrade on first payment failure", async () => {
+    mockConstructEventAsync.mockResolvedValueOnce({
+      type: "invoice.payment_failed",
+      data: {
+        object: {
+          customer: "cus_123",
+          attempt_count: 1,
+          amount_due: 1999,
+        },
+      },
+    });
+
+    const res = await app.request(
+      "/webhooks/stripe",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "stripe-signature": "valid_sig",
+        },
+        body: JSON.stringify({}),
+      },
+      env,
+      mockExCtx
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockPrisma.user.update).not.toHaveBeenCalled();
+  });
+
+  it("should downgrade to default plan after 3 failed payment attempts", async () => {
+    mockConstructEventAsync.mockResolvedValueOnce({
+      type: "invoice.payment_failed",
+      data: {
+        object: {
+          customer: "cus_123",
+          attempt_count: 3,
+          amount_due: 1999,
+        },
+      },
+    });
+
+    mockPrisma.plan.findFirst.mockResolvedValueOnce({ id: "plan_free", slug: "free", name: "Free" });
+    mockPrisma.user.update.mockResolvedValueOnce({ id: "usr_1", planId: "plan_free" });
+
+    const res = await app.request(
+      "/webhooks/stripe",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "stripe-signature": "valid_sig",
+        },
+        body: JSON.stringify({}),
+      },
+      env,
+      mockExCtx
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockPrisma.user.update).toHaveBeenCalledWith({
+      where: { stripeCustomerId: "cus_123" },
+      data: { planId: "plan_free" },
+    });
+  });
+
+  it("should revert to default plan on customer.subscription.deleted", async () => {
     mockConstructEventAsync.mockResolvedValueOnce({
       type: "customer.subscription.deleted",
       data: {
@@ -295,9 +475,11 @@ describe("Stripe Webhooks", () => {
       },
     });
 
+    // Source looks up default plan with findFirst({ where: { isDefault: true } })
+    mockPrisma.plan.findFirst.mockResolvedValueOnce({ id: "plan_free", slug: "free", name: "Free" });
     mockPrisma.user.update.mockResolvedValueOnce({
       id: "usr_1",
-      tier: "FREE",
+      planId: "plan_free",
     });
 
     const res = await app.request(
@@ -317,7 +499,7 @@ describe("Stripe Webhooks", () => {
     expect(res.status).toBe(200);
     expect(mockPrisma.user.update).toHaveBeenCalledWith({
       where: { stripeCustomerId: "cus_123" },
-      data: { tier: "FREE" },
+      data: { planId: "plan_free" },
     });
   });
 });

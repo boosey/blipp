@@ -1,6 +1,6 @@
 # Blipp Data Model Reference
 
-Generated from `prisma/schema.prisma` on the `feat/subscriptions-feed` branch.
+Generated from `prisma/schema.prisma`. Current as of 2026-03-14.
 
 ## Entity Relationship Diagram
 
@@ -10,7 +10,7 @@ Generated from `prisma/schema.prisma` on the `feat/subscriptions-feed` branch.
                          +----------------+
 
   +------+    +----------+    +----------+    +-------+
-  | Plan |    |   User   |--->| FeedItem |    |Podcast|
+  | Plan |--->|   User   |--->| FeedItem |    |Podcast|
   +------+    +----------+    +----------+    +-------+
                  |   |             |               |
                  |   |        (briefingId)          |
@@ -27,7 +27,7 @@ Generated from `prisma/schema.prisma` on the `feat/subscriptions-feed` branch.
                  |   |      +----------+           |
                  |   |           |                 |
                  |   |      +----------+    +-----------+
-                 |   |      | Pipeline |--->| Pipeline  |
+                 |   |      | Pipeline |--->| Pipeline  |---> PipelineEvent
                  |   |      |   Job    |    |   Step    |
                  |   |      +----------+    +-----------+
                  |   |           |               |
@@ -45,24 +45,41 @@ Generated from `prisma/schema.prisma` on the `feat/subscriptions-feed` branch.
                  |   +---------+  +------+
                  |
                  +---------> Subscription <--------+
+
+  +----------+     +------------------+     +-----------+
+  | AiModel  |---->| AiModelProvider  |     | SttExper- |
+  +----------+     +------------------+     |   iment   |
+                                            +-----------+
+                                                 |
+                                            +----v-------+
+                                            | SttBench-  |
+                                            | markResult |
+                                            +----+-------+
+                                                 |
+                                            Episode (FK)
 ```
 
 ### Key Relationships
 
 ```
+Plan 1---* User
 User 1---* Subscription *---1 Podcast
 User 1---* Briefing *---1 Clip
 User 1---* FeedItem *---1 Episode
 User 1---* BriefingRequest
 BriefingRequest 1---* PipelineJob *---1 Episode
 PipelineJob 1---* PipelineStep *--? WorkProduct
+PipelineStep 1---* PipelineEvent
 Podcast 1---* Episode
 Podcast 1---* FeedItem
 Episode 1--? Distillation 1---* Clip
 Episode 1---* Clip
 Episode 1---* WorkProduct
+Episode 1---* SttBenchmarkResult
 FeedItem *--? Briefing (via briefingId)
 Briefing *---1 Clip (shared content)
+AiModel 1---* AiModelProvider
+SttExperiment 1---* SttBenchmarkResult
 ```
 
 Legend: `1---*` = one-to-many, `1--?` = one-to-zero-or-one, `*---1` = many-to-one
@@ -73,35 +90,50 @@ Legend: `1---*` = one-to-many, `1--?` = one-to-zero-or-one, `*---1` = many-to-on
 
 ### Plan
 
-Defines subscription tiers with pricing and Stripe integration.
+Defines subscription plans with limits, feature flags, and Stripe billing integration. Plans are slug-based and support monthly + annual pricing.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | id | String | `cuid()` | Primary key |
-| tier | UserTier | -- | Subscription tier (unique) |
-| name | String | -- | Display name |
-| priceCents | Int | -- | Price in cents |
-| stripePriceId | String? | -- | Stripe Price ID (unique) |
+| name | String | -- | Display name (e.g. "Free", "Pro Monthly") |
+| slug | String | -- | URL-safe identifier (unique, e.g. "free", "pro-monthly") |
+| description | String? | -- | Marketing copy |
+| briefingsPerWeek | Int? | -- | Weekly briefing limit (null = unlimited) |
+| maxDurationMinutes | Int | `5` | Maximum allowed duration tier in minutes |
+| maxPodcastSubscriptions | Int? | -- | Podcast subscription limit (null = unlimited) |
+| adFree | Boolean | `false` | Whether plan is ad-free |
+| priorityProcessing | Boolean | `false` | Priority pipeline processing |
+| earlyAccess | Boolean | `false` | Early access to new features |
+| researchMode | Boolean | `false` | Research mode access |
+| crossPodcastSynthesis | Boolean | `false` | Cross-podcast synthesis feature |
+| priceCentsMonthly | Int | `0` | Monthly price in cents (0 = free) |
+| stripePriceIdMonthly | String? | -- | Stripe Price ID for monthly billing (unique) |
+| priceCentsAnnual | Int? | -- | Annual price in cents (null = no annual option) |
+| stripePriceIdAnnual | String? | -- | Stripe Price ID for annual billing (unique) |
 | stripeProductId | String? | -- | Stripe Product ID (unique) |
-| features | String[] | -- | Feature list for display |
+| trialDays | Int | `0` | Trial period in days |
+| features | String[] | -- | Marketing bullet points for display |
 | highlighted | Boolean | `false` | Whether to highlight in UI |
 | active | Boolean | `true` | Whether plan is available |
 | sortOrder | Int | `0` | Display ordering |
+| isDefault | Boolean | `false` | Assigned to new users on creation |
 | createdAt | DateTime | `now()` | Record creation timestamp |
 | updatedAt | DateTime | `@updatedAt` | Last update timestamp |
 
-**Relations:** None
+**Relations:**
+- `users` -> User[] (one-to-many)
 
 **Constraints:**
-- `tier` is unique
-- `stripePriceId` is unique
+- `slug` is unique
+- `stripePriceIdMonthly` is unique
+- `stripePriceIdAnnual` is unique
 - `stripeProductId` is unique
 
 ---
 
 ### User
 
-Authenticated user from Clerk with tier info.
+Authenticated user from Clerk with plan and billing info.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -111,12 +143,13 @@ Authenticated user from Clerk with tier info.
 | name | String? | -- | Display name |
 | imageUrl | String? | -- | Profile image URL |
 | stripeCustomerId | String? | -- | Stripe Customer ID (unique) |
-| tier | UserTier | `FREE` | Current subscription tier |
+| planId | String | -- | FK to Plan |
 | isAdmin | Boolean | `false` | Admin access flag |
 | createdAt | DateTime | `now()` | Record creation timestamp |
 | updatedAt | DateTime | `@updatedAt` | Last update timestamp |
 
 **Relations:**
+- `plan` -> Plan (many-to-one)
 - `subscriptions` -> Subscription[] (one-to-many)
 - `briefings` -> Briefing[] (one-to-many)
 - `feedItems` -> FeedItem[] (one-to-many)
@@ -142,12 +175,12 @@ A podcast feed tracked by the platform.
 | imageUrl | String? | -- | Cover art URL |
 | podcastIndexId | String? | -- | PodcastIndex.org ID (unique) |
 | author | String? | -- | Podcast author |
-| categories | String[] | -- | Category tags |
+| categories | String[] | -- | Category tags (PostgreSQL array) |
 | lastFetchedAt | DateTime? | -- | Last successful feed fetch |
-| feedHealth | String? | -- | Feed health status indicator |
+| feedHealth | String? | -- | Feed health status ("excellent"/"good"/"fair"/"poor"/"broken") |
 | feedError | String? | -- | Last feed fetch error |
 | episodeCount | Int | `0` | Cached episode count |
-| status | String | `"active"` | Podcast status |
+| status | String | `"active"` | Podcast status ("active"/"paused"/"archived") |
 | createdAt | DateTime | `now()` | Record creation timestamp |
 | updatedAt | DateTime | `@updatedAt` | Last update timestamp |
 
@@ -187,6 +220,7 @@ A single episode from a podcast feed.
 - `feedItems` -> FeedItem[] (one-to-many)
 - `pipelineJobs` -> PipelineJob[] (one-to-many)
 - `workProducts` -> WorkProduct[] (one-to-many)
+- `benchmarkResults` -> SttBenchmarkResult[] (one-to-many)
 
 **Constraints:**
 - `@@unique([podcastId, guid])` -- compound unique on podcast + GUID
@@ -226,7 +260,7 @@ A generated audio clip for a specific episode at a specific duration tier.
 | id | String | `cuid()` | Primary key |
 | episodeId | String | -- | FK to Episode |
 | distillationId | String | -- | FK to Distillation |
-| durationTier | Int | -- | Target duration in minutes |
+| durationTier | Int | -- | Target duration in minutes (1, 2, 3, 5, 7, 10, or 15) |
 | status | ClipStatus | `PENDING` | Processing status |
 | narrativeText | String? | -- | Generated narrative script |
 | wordCount | Int? | -- | Word count of narrative |
@@ -256,7 +290,7 @@ Join table linking users to their subscribed podcasts, with a per-subscription d
 | id | String | `cuid()` | Primary key |
 | userId | String | -- | FK to User |
 | podcastId | String | -- | FK to Podcast |
-| durationTier | Int | -- | Briefing duration in minutes (1, 2, 3, 5, 7, 10, or 15) |
+| durationTier | Int | -- | Briefing duration in minutes (1, 2, 3, 5, 7, 10, 15, or 30) |
 | createdAt | DateTime | `now()` | Record creation timestamp |
 | updatedAt | DateTime | `@updatedAt` | Last update timestamp |
 
@@ -345,8 +379,6 @@ A request that drives the pipeline. Created by subscriptions (auto), on-demand r
 - `user` -> User (many-to-one, cascade delete)
 - `jobs` -> PipelineJob[] (one-to-many)
 
-**Constraints:** None beyond standard FK
-
 ---
 
 ### PipelineJob
@@ -372,8 +404,6 @@ Tracks one episode + duration tier through the pipeline for a given request.
 - `request` -> BriefingRequest (many-to-one, cascade delete)
 - `episode` -> Episode (many-to-one, cascade delete)
 - `steps` -> PipelineStep[] (one-to-many)
-
-**Constraints:** None beyond standard FK
 
 ---
 
@@ -405,8 +435,28 @@ Audit trail for each stage a PipelineJob passes through.
 **Relations:**
 - `job` -> PipelineJob (many-to-one, cascade delete)
 - `workProduct` -> WorkProduct? (many-to-one)
+- `events` -> PipelineEvent[] (one-to-many)
 
-**Constraints:** None beyond standard FK
+---
+
+### PipelineEvent
+
+Structured event log for pipeline step execution. Provides fine-grained observability into individual step behavior.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| id | String | `cuid()` | Primary key |
+| stepId | String | -- | FK to PipelineStep |
+| level | PipelineEventLevel | -- | Event severity (DEBUG/INFO/WARN/ERROR) |
+| message | String | -- | Human-readable event message |
+| data | Json? | -- | Structured event data |
+| createdAt | DateTime | `now()` | Event timestamp |
+
+**Relations:**
+- `step` -> PipelineStep (many-to-one, cascade delete)
+
+**Constraints:**
+- `@@index([stepId, createdAt])` -- composite index for efficient step event queries
 
 ---
 
@@ -436,6 +486,117 @@ Tracks artifacts stored in R2 (transcripts, audio clips, etc.).
 
 ---
 
+### AiModel
+
+Registry of AI models available for pipeline stages.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| id | String | `cuid()` | Primary key |
+| stage | AiStage | -- | Pipeline stage (stt/distillation/narrative/tts) |
+| modelId | String | -- | Model identifier (e.g. "whisper-1", "claude-sonnet-4-20250514") |
+| label | String | -- | Display name (e.g. "Whisper v1") |
+| developer | String | -- | Model developer (e.g. "openai", "anthropic") |
+| notes | String? | -- | Capabilities, value notes, limitations |
+| isActive | Boolean | `true` | Whether model is available for selection |
+| createdAt | DateTime | `now()` | Record creation timestamp |
+
+**Relations:**
+- `providers` -> AiModelProvider[] (one-to-many)
+
+**Constraints:**
+- `@@unique([stage, modelId])` -- one entry per stage + model combination
+
+---
+
+### AiModelProvider
+
+Provider-specific configuration for an AI model, including pricing and availability.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| id | String | `cuid()` | Primary key |
+| aiModelId | String | -- | FK to AiModel |
+| provider | String | -- | Inference provider (e.g. "openai", "cloudflare", "groq", "deepgram") |
+| providerModelId | String? | -- | Provider-specific model ID (e.g. "@cf/openai/whisper") |
+| providerLabel | String | -- | Display name (e.g. "Cloudflare Workers AI") |
+| pricePerMinute | Float? | -- | STT/TTS per audio minute |
+| priceInputPerMToken | Float? | -- | LLM per 1M input tokens |
+| priceOutputPerMToken | Float? | -- | LLM per 1M output tokens |
+| pricePerKChars | Float? | -- | TTS alt: per 1K characters |
+| isDefault | Boolean | `false` | Whether this is the default provider for the model |
+| isAvailable | Boolean | `true` | Whether provider is currently available |
+| priceUpdatedAt | DateTime? | -- | Last pricing refresh timestamp |
+| createdAt | DateTime | `now()` | Record creation timestamp |
+| updatedAt | DateTime | `@updatedAt` | Last update timestamp |
+
+**Relations:**
+- `model` -> AiModel (many-to-one, cascade delete)
+
+**Constraints:**
+- `@@unique([aiModelId, provider])` -- one provider entry per model
+- `@@index([aiModelId])` -- index for provider lookups
+
+---
+
+### SttExperiment
+
+An STT benchmark experiment comparing models/providers/speeds.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| id | String | `cuid()` | Primary key |
+| name | String | -- | Experiment name |
+| status | SttExperimentStatus | `PENDING` | Experiment lifecycle |
+| config | Json | -- | Configuration: `{ models, speeds, episodeIds }` |
+| totalTasks | Int | `0` | Total benchmark tasks |
+| doneTasks | Int | `0` | Completed tasks count |
+| errorMessage | String? | -- | Error details on failure |
+| createdAt | DateTime | `now()` | Record creation timestamp |
+| updatedAt | DateTime | `@updatedAt` | Last update timestamp |
+| completedAt | DateTime? | -- | Completion timestamp |
+
+**Relations:**
+- `results` -> SttBenchmarkResult[] (one-to-many)
+
+---
+
+### SttBenchmarkResult
+
+Individual benchmark result for a model+provider+speed+episode combination.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| id | String | `cuid()` | Primary key |
+| experimentId | String | -- | FK to SttExperiment |
+| episodeId | String | -- | FK to Episode |
+| model | String | -- | Model ID (e.g. "whisper-1", "nova-3") |
+| provider | String? | -- | Inference provider |
+| speed | Float | -- | Playback speed (1.0, 1.5, 2.0) |
+| status | String | `"PENDING"` | Task status |
+| costDollars | Float? | -- | Transcription cost |
+| latencyMs | Int? | -- | Processing latency |
+| wer | Float? | -- | Word Error Rate |
+| wordCount | Int? | -- | Hypothesis word count |
+| refWordCount | Int? | -- | Reference word count |
+| r2AudioKey | String? | -- | R2 key for speed-adjusted audio |
+| r2TranscriptKey | String? | -- | R2 key for hypothesis transcript |
+| r2RefTranscriptKey | String? | -- | R2 key for reference transcript |
+| pollingId | String? | -- | External async job ID |
+| errorMessage | String? | -- | Error details on failure |
+| createdAt | DateTime | `now()` | Record creation timestamp |
+| completedAt | DateTime? | -- | Completion timestamp |
+
+**Relations:**
+- `experiment` -> SttExperiment (many-to-one, cascade delete)
+- `episode` -> Episode (many-to-one, cascade delete)
+
+**Constraints:**
+- `@@unique([experimentId, episodeId, model, provider, speed])` -- one result per combination
+- `@@index([experimentId])` -- index for experiment result lookups
+
+---
+
 ### PlatformConfig
 
 Key-value runtime configuration for the platform (pipeline toggles, intervals, etc.).
@@ -447,7 +608,7 @@ Key-value runtime configuration for the platform (pipeline toggles, intervals, e
 | value | Json | -- | Config value |
 | description | String? | -- | Human-readable description |
 | updatedAt | DateTime | `@updatedAt` | Last update timestamp |
-| updatedBy | String? | -- | User ID of last editor |
+| updatedBy | String? | -- | Admin clerkId of last editor |
 
 **Relations:** None
 
@@ -458,15 +619,16 @@ Key-value runtime configuration for the platform (pipeline toggles, intervals, e
 
 ## Enums
 
-### UserTier
+### AiStage
 
-Subscription tier levels.
+Pipeline stages for AI model configuration.
 
 | Value | Description |
 |-------|-------------|
-| `FREE` | Free tier with ads and limited briefings |
-| `PRO` | Paid tier with longer briefings, no ads |
-| `PRO_PLUS` | Premium tier with all features |
+| `stt` | Speech-to-text (transcription) |
+| `distillation` | Claim extraction |
+| `narrative` | Narrative generation |
+| `tts` | Text-to-speech |
 
 ### DistillationStatus
 
@@ -530,14 +692,14 @@ The stages of the demand-driven pipeline.
 
 | Value | Description |
 |-------|-------------|
-| `TRANSCRIPTION` | Stage 2: Fetch or generate transcript |
-| `DISTILLATION` | Stage 3: Extract claims from transcript |
-| `NARRATIVE_GENERATION` | Stage 4: Generate narrative text from claims |
-| `AUDIO_GENERATION` | Stage 5: Convert narrative to audio via TTS |
+| `TRANSCRIPTION` | Fetch or generate transcript |
+| `DISTILLATION` | Extract claims from transcript |
+| `NARRATIVE_GENERATION` | Generate narrative text from claims |
+| `AUDIO_GENERATION` | Convert narrative to audio via TTS |
 | `CLIP_GENERATION` | Legacy value (kept for backward compatibility with existing data) |
-| `BRIEFING_ASSEMBLY` | Stage 6: Assemble clips into final briefing |
+| `BRIEFING_ASSEMBLY` | Assemble clips into final briefing |
 
-Note: Stage 1 (Feed Refresh) runs on a cron schedule and is not tracked as a PipelineStage.
+Note: Feed Refresh runs on a cron schedule and is not tracked as a PipelineStage.
 
 ### PipelineJobStatus
 
@@ -562,6 +724,17 @@ Outcome of a single pipeline step within a job.
 | `SKIPPED` | Step was skipped (e.g., cached result used) |
 | `FAILED` | Step failed |
 
+### PipelineEventLevel
+
+Severity levels for pipeline events.
+
+| Value | Description |
+|-------|-------------|
+| `DEBUG` | Detailed debugging information |
+| `INFO` | Normal operational events |
+| `WARN` | Warning conditions |
+| `ERROR` | Error conditions |
+
 ### WorkProductType
 
 Types of artifacts stored in R2.
@@ -574,6 +747,29 @@ Types of artifacts stored in R2.
 | `AUDIO_CLIP` | Generated audio clip for an episode |
 | `BRIEFING_AUDIO` | Final assembled briefing audio |
 
+### SttExperimentStatus
+
+Lifecycle of an STT benchmark experiment.
+
+| Value | Description |
+|-------|-------------|
+| `PENDING` | Experiment created, not yet started |
+| `RUNNING` | Benchmark tasks are executing |
+| `COMPLETED` | All tasks finished |
+| `FAILED` | Experiment failed |
+| `CANCELLED` | Experiment was cancelled |
+
+---
+
+## Prisma Generators
+
+The schema defines two generators:
+
+| Generator | Output | Runtime | Purpose |
+|-----------|--------|---------|---------|
+| `client` | `src/generated/prisma` | `cloudflare` | Worker runtime (CF Workers) |
+| `scripts` | `src/generated/prisma-node` | `nodejs` | CLI scripts (seed, clean, db:check) |
+
 ---
 
 ## Cascade Delete Behavior
@@ -582,11 +778,15 @@ All foreign key relations use `onDelete: Cascade`. Deleting a parent record remo
 
 | Deleted Parent | Cascaded Deletions |
 |----------------|-------------------|
+| Plan | (none -- Users reference Plan but no cascade) |
 | User | Subscriptions, Briefings, FeedItems, BriefingRequests |
 | Podcast | Episodes, Subscriptions, FeedItems |
-| Episode | Distillation, Clips, FeedItems, PipelineJobs, WorkProducts |
+| Episode | Distillation, Clips, FeedItems, PipelineJobs, WorkProducts, SttBenchmarkResults |
 | Distillation | Clips |
 | BriefingRequest | PipelineJobs |
 | PipelineJob | PipelineSteps |
+| PipelineStep | PipelineEvents |
+| AiModel | AiModelProviders |
+| SttExperiment | SttBenchmarkResults |
 
 Note: WorkProduct deletion does NOT cascade to PipelineSteps (the FK is nullable).

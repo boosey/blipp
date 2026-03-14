@@ -8,6 +8,16 @@ import { handleOrchestrator } from "./orchestrator";
 import { createPrismaClient } from "../lib/db";
 import { getConfig } from "../lib/config";
 import { createPipelineLogger } from "../lib/logger";
+import { checkCostThresholds } from "../lib/cost-alerts";
+import type {
+  TranscriptionMessage,
+  DistillationMessage,
+  NarrativeGenerationMessage,
+  AudioGenerationMessage,
+  BriefingAssemblyMessage,
+  OrchestratorMessage,
+  FeedRefreshMessage,
+} from "../lib/queue-messages";
 import type { Env } from "../types";
 
 /**
@@ -24,40 +34,40 @@ export async function handleQueue(
 ) {
   switch (batch.queue) {
     case "feed-refresh":
-      return handleFeedRefresh(batch, env, ctx);
+      return handleFeedRefresh(batch as MessageBatch<FeedRefreshMessage>, env, ctx);
     case "transcription":
       return handleTranscription(
-        batch as MessageBatch<any>,
+        batch as MessageBatch<TranscriptionMessage>,
         env,
         ctx
       );
     case "distillation":
       return handleDistillation(
-        batch as MessageBatch<any>,
+        batch as MessageBatch<DistillationMessage>,
         env,
         ctx
       );
     case "narrative-generation":
       return handleNarrativeGeneration(
-        batch as MessageBatch<any>,
+        batch as MessageBatch<NarrativeGenerationMessage>,
         env,
         ctx
       );
     case "clip-generation":
       return handleAudioGeneration(
-        batch as MessageBatch<any>,
+        batch as MessageBatch<AudioGenerationMessage>,
         env,
         ctx
       );
     case "briefing-assembly":
       return handleBriefingAssembly(
-        batch as MessageBatch<any>,
+        batch as MessageBatch<BriefingAssemblyMessage>,
         env,
         ctx
       );
     case "orchestrator":
       return handleOrchestrator(
-        batch as MessageBatch<any>,
+        batch as MessageBatch<OrchestratorMessage>,
         env,
         ctx
       );
@@ -136,6 +146,127 @@ export async function scheduled(
         update: { value: new Date().toISOString() },
         create: { key: "pricing.lastRefreshedAt", value: new Date().toISOString(), description: "Last pricing refresh timestamp" },
       });
+    }
+
+    // Trial expiration check
+    try {
+      const trialDaysAgo = new Date();
+      trialDaysAgo.setDate(trialDaysAgo.getDate() - 14); // Default 14-day trial
+
+      // Find users on default/free plan created more than trial period ago
+      // who have never upgraded (no stripeCustomerId)
+      const defaultPlan = await prisma.plan.findFirst({ where: { isDefault: true } });
+      if (defaultPlan) {
+        const expiredTrialUsers = await prisma.user.findMany({
+          where: {
+            planId: defaultPlan.id,
+            stripeCustomerId: null,
+            createdAt: { lt: trialDaysAgo },
+          },
+          select: { id: true, email: true, createdAt: true },
+          take: 100, // Process in batches
+        });
+
+        if (expiredTrialUsers.length > 0) {
+          console.log(JSON.stringify({
+            level: "info",
+            action: "trial_expiration_check",
+            expiredCount: expiredTrialUsers.length,
+            ts: new Date().toISOString(),
+          }));
+          // For now, just log. Future: send reminder emails, restrict features
+        }
+      }
+    } catch (err) {
+      console.error(JSON.stringify({
+        level: "error",
+        action: "trial_check_failed",
+        error: err instanceof Error ? err.message : String(err),
+        ts: new Date().toISOString(),
+      }));
+    }
+
+    // Check cost thresholds and persist alerts
+    try {
+      const costAlerts = await checkCostThresholds(prisma);
+      if (costAlerts.length > 0) {
+        await prisma.platformConfig.upsert({
+          where: { key: "cost.alert.active" },
+          update: { value: costAlerts as any },
+          create: { key: "cost.alert.active", value: costAlerts as any, description: "Active cost threshold alerts" },
+        });
+        console.log(JSON.stringify({
+          level: "warn",
+          action: "cost_threshold_exceeded",
+          alerts: costAlerts,
+          ts: new Date().toISOString(),
+        }));
+      }
+    } catch (err) {
+      console.error(JSON.stringify({
+        level: "error",
+        action: "cost_check_failed",
+        error: err instanceof Error ? err.message : String(err),
+        ts: new Date().toISOString(),
+      }));
+    }
+    // Data retention: count aged episodes and stale podcasts
+    try {
+      const agingEnabled = await getConfig(prisma, "episodes.aging.enabled", false);
+      if (agingEnabled) {
+        const maxAgeDays = await getConfig(prisma, "episodes.aging.maxAgeDays", 180);
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() - (maxAgeDays as number));
+
+        const agingCount = await prisma.episode.count({
+          where: {
+            publishedAt: { lt: cutoff },
+            feedItems: { none: { status: { in: ["PENDING", "PROCESSING"] } } },
+          },
+        });
+
+        if (agingCount > 0) {
+          await prisma.platformConfig.upsert({
+            where: { key: "episodes.aging.candidateCount" },
+            update: { value: agingCount },
+            create: { key: "episodes.aging.candidateCount", value: agingCount, description: "Episodes eligible for aging deletion" },
+          });
+        }
+      }
+    } catch (err) {
+      console.error(JSON.stringify({
+        level: "error",
+        action: "aging_check_failed",
+        error: err instanceof Error ? err.message : String(err),
+        ts: new Date().toISOString(),
+      }));
+    }
+    // Catalog cleanup check
+    try {
+      const cleanupEnabled = await getConfig(prisma, "catalog.cleanup.enabled", false);
+      if (cleanupEnabled) {
+        const cleanupCount = await prisma.podcast.count({
+          where: {
+            status: { not: "archived" },
+            subscriptions: { none: {} },
+          },
+        });
+
+        if (cleanupCount > 0) {
+          await prisma.platformConfig.upsert({
+            where: { key: "catalog.cleanup.candidateCount" },
+            update: { value: cleanupCount },
+            create: { key: "catalog.cleanup.candidateCount", value: cleanupCount, description: "Podcasts eligible for cleanup" },
+          });
+        }
+      }
+    } catch (err) {
+      console.error(JSON.stringify({
+        level: "error",
+        action: "cleanup_check_failed",
+        error: err instanceof Error ? err.message : String(err),
+        ts: new Date().toISOString(),
+      }));
     }
   } finally {
     ctx.waitUntil(prisma.$disconnect());

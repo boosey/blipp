@@ -8,6 +8,7 @@ Comprehensive guide for setting up, running, and developing the Blipp project lo
 - **npm** -- always use `--legacy-peer-deps` due to Clerk peer dependency conflicts
 - **Git**
 - Accounts and API keys for: Clerk, Stripe, Neon, Anthropic, OpenAI, Podcast Index
+- Optional for STT benchmarking: Deepgram, AssemblyAI, Google Cloud STT, Groq
 
 ## Initial Setup
 
@@ -46,6 +47,12 @@ OPENAI_API_KEY=sk-...
 PODCAST_INDEX_KEY=...
 PODCAST_INDEX_SECRET=...
 # ^ Quote the secret if it contains special characters (^, $, #)
+
+# Optional — STT benchmark providers
+DEEPGRAM_API_KEY=...
+ASSEMBLYAI_API_KEY=...
+GOOGLE_STT_API_KEY=...
+GROQ_API_KEY=...
 ```
 
 #### `.env` (Vite client vars + Prisma CLI)
@@ -65,13 +72,13 @@ Webhook secrets (`CLERK_WEBHOOK_SECRET`, `STRIPE_WEBHOOK_SECRET`) use placeholde
 ### 3. Set Up the Database
 
 ```bash
-# Generate Prisma client (Cloudflare runtime)
+# Generate Prisma client (Cloudflare runtime + Node.js runtime)
 npx prisma generate
 
 # Push schema to Neon (creates all tables)
 npx prisma db push
 
-# Seed initial data (plans, etc.)
+# Seed initial data (plans, AI model registry, etc.)
 npx prisma db seed
 ```
 
@@ -109,9 +116,11 @@ If you need to create accounts from scratch, here is what each service provides 
 | **Clerk** | Authentication (sign-up, sign-in, sessions) | [dashboard.clerk.com](https://dashboard.clerk.com/sign-up) | Free tier |
 | **Neon** | Serverless PostgreSQL | [neon.tech](https://neon.tech) | Free tier (0.5 GB) |
 | **Stripe** | Payments and subscriptions | [dashboard.stripe.com](https://dashboard.stripe.com/register) | Free sandbox |
-| **Anthropic** | Claude API for distillation | [console.anthropic.com](https://console.anthropic.com/) | $5 min credits |
-| **OpenAI** | TTS audio generation | [platform.openai.com](https://platform.openai.com/) | $5 min credits |
-| **Podcast Index** | Podcast search and discovery | [api.podcastindex.org](https://api.podcastindex.org/signup) | Free |
+| **Anthropic** | Claude API for distillation/narrative | [console.anthropic.com](https://console.anthropic.com/) | $5 min credits |
+| **OpenAI** | TTS audio + Whisper STT | [platform.openai.com](https://platform.openai.com/) | $5 min credits |
+| **Podcast Index** | Podcast catalog data | [api.podcastindex.org](https://api.podcastindex.org/signup) | Free |
+| **Deepgram** | STT benchmarking (Nova models) | [console.deepgram.com](https://console.deepgram.com/signup) | Free credits |
+| **Groq** | Fast STT/LLM/TTS inference | [console.groq.com](https://console.groq.com) | Free tier |
 
 ### Clerk Setup
 
@@ -178,7 +187,7 @@ npm run typecheck
 Test utilities live in `tests/helpers/mocks.ts`:
 
 - `createMockPrisma()` -- Mock Prisma client with all models
-- `createMockEnv()` -- Mock Env bindings (queues, R2, Hyperdrive)
+- `createMockEnv()` -- Mock Env bindings (queues, R2, Hyperdrive, AI)
 - `createMockContext()` -- Mock Hono context with `executionCtx`
 
 ### API Route Tests
@@ -221,6 +230,18 @@ Prisma middleware (`worker/middleware/prisma.ts`) creates a per-request PrismaCl
 
 **Note:** Queue handlers do NOT use Hono context. They still use manual `createPrismaClient(env.HYPERDRIVE)` + try/finally disconnect.
 
+### Plan Limit Enforcement
+
+Route handlers that create subscriptions or briefings enforce plan limits using helpers from `worker/lib/plan-limits.ts`:
+
+```typescript
+import { getUserWithPlan, checkDurationLimit, checkSubscriptionLimit } from "../lib/plan-limits";
+
+const user = await getUserWithPlan(c, prisma);
+const durationError = checkDurationLimit(body.durationTier, user.plan.maxDurationMinutes);
+if (durationError) return c.json({ error: durationError }, 403);
+```
+
 ### Admin Route Helpers
 
 Shared helpers in `worker/lib/admin-helpers.ts` eliminate boilerplate in admin list endpoints:
@@ -240,20 +261,24 @@ routes.get("/", async (c) => {
 });
 ```
 
-- `getCurrentUser(c, prisma)` — resolves Clerk auth to a DB User record
+- `getCurrentUser(c, prisma)` — resolves Clerk auth to a DB User record (auto-creates from Clerk API if missing, assigns default plan)
 
 ### Queue Handler Pattern
 
 Each queue handler follows this structure:
 
 1. Create PrismaClient from env
-2. Check stage gate: `if (!(await checkStageEnabled(prisma, batch, N, log))) return;`
+2. Check stage gate: `if (!(await checkStageEnabled(prisma, batch, "STAGE_NAME", log))) return;`
 3. Iterate over batch messages
 4. Process each message in try/catch
 5. `msg.ack()` on success, `msg.retry()` on failure
 6. Disconnect Prisma in `finally`
 
 The `checkStageEnabled()` helper from `worker/lib/queue-helpers.ts` replaces the manual stage-enabled check pattern. Messages with `type: "manual"` bypass the gate.
+
+### Pipeline Events
+
+Use `writeEvent()` from `worker/lib/pipeline-events.ts` for structured logging within pipeline steps. Events are fire-and-forget (errors are swallowed) so they never break processing.
 
 ### Frontend Data Fetching
 
@@ -277,7 +302,7 @@ For polling or user-triggered fetches (search, form submissions), use `useApiFet
 
 ### Frontend Structure
 
-- **MobileLayout** is the primary layout for user-facing routes (replaces the previous AppLayout)
+- **MobileLayout** is the primary layout for user-facing routes
 - Bottom tab navigation: Home, Discover, Library, Settings
 - Admin routes use a separate AdminLayout
 - Billing functionality lives within the Settings page (no separate billing page)
@@ -293,17 +318,6 @@ The app is configured as a Progressive Web App via `vite-plugin-pwa`:
 
 ---
 
-## Branch Strategy
-
-| Branch | Purpose |
-|--------|---------|
-| `main` | Production baseline |
-| `feat/subscriptions-feed` | Subscriptions, feed, Briefing model, admin UI updates (worktree) |
-
-Feature branches and large redesigns use git worktrees (`.claude/worktrees/`).
-
----
-
 ## Prisma Workflow
 
 ### Schema Changes
@@ -316,13 +330,24 @@ npx prisma generate        # Regenerate client
 
 Use `db push` for prototyping. Switch to `prisma migrate dev` when you need migration history.
 
+### Dual Generators
+
+The schema defines two generators:
+- **`client`** — Cloudflare runtime output at `src/generated/prisma/` (used by the Worker)
+- **`scripts`** — Node.js runtime output at `src/generated/prisma-node/` (used by CLI scripts like seed, clean, db:check)
+
 ### Runtime Configuration
 
 The `PlatformConfig` table stores runtime config as key-value pairs. Access via `getConfig(prisma, key, fallback)` from `worker/lib/config.ts` (caches for 60 seconds).
 
 ### AI Model Configuration
 
-AI models are configurable per pipeline stage via the admin Configuration page. The model registry lives in `worker/lib/ai-models.ts` (backend) and `src/lib/ai-models.ts` (frontend). Each queue handler reads its model from `PlatformConfig` via `getModelConfig(prisma, stage)`. Config keys: `ai.stt.model`, `ai.distillation.model`, `ai.narrative.model`, `ai.tts.model`.
+AI models are managed via the admin Model Registry (`/admin/model-registry`). The model registry lives in the `AiModel` + `AiModelProvider` database tables. Each pipeline stage reads its model+provider config from `PlatformConfig` via `getModelConfig(prisma, stage)`.
+
+Multi-provider implementations:
+- **STT**: `worker/lib/stt-providers.ts` (OpenAI, Deepgram, AssemblyAI, Google, Groq, Cloudflare)
+- **LLM**: `worker/lib/llm-providers.ts` (Anthropic, Groq, Cloudflare)
+- **TTS**: `worker/lib/tts-providers.ts` (OpenAI, Groq, Cloudflare)
 
 ### Cloudflare Runtime
 
@@ -331,15 +356,6 @@ The Prisma schema uses `runtime = "cloudflare"` and the `@prisma/adapter-pg` ada
 ---
 
 ## Deployment
-
-See [environment-setup.md](./environment-setup.md) for full staging and production deployment instructions, including:
-
-- Cloudflare Workers Paid plan setup
-- R2 bucket, Queues, and Hyperdrive creation
-- Stripe products and webhook configuration
-- Clerk production instance
-- Google OAuth custom credentials
-- Custom domain setup
 
 Quick deploy (assuming infrastructure exists):
 
@@ -401,3 +417,7 @@ npx vitest run worker/queues/__tests__/feed-refresh.test.ts
 ### wrangler.jsonc Hyperdrive placeholder
 
 The config contains `<hyperdrive-config-id>` as a placeholder. Replace with a real Hyperdrive config ID for remote deployment. Local dev works without it (uses `localConnectionString` instead).
+
+### Queue naming legacy
+
+The `AUDIO_GENERATION_QUEUE` binding maps to the `clip-generation` queue name in `wrangler.jsonc`. The queue dispatcher routes `clip-generation` messages to the audio generation handler. This is a legacy naming artifact.

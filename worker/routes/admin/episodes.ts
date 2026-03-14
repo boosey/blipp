@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { Env } from "../../types";
-import { STAGE_DISPLAY_NAMES } from "../../lib/config";
+import { PIPELINE_STAGE_NAMES } from "../../lib/constants";
 import { parsePagination, parseSort, paginatedResponse } from "../../lib/admin-helpers";
 
 const episodesRoutes = new Hono<{ Bindings: Env }>();
@@ -13,7 +13,7 @@ episodesRoutes.get("/", async (c) => {
   const { page, pageSize, skip } = parsePagination(c);
   const podcastId = c.req.query("podcastId");
   const search = c.req.query("search");
-  const orderBy = parseSort(c, "publishedAt");
+  const orderBy = parseSort(c, "publishedAt", ["publishedAt", "title", "createdAt", "durationSeconds"]);
 
   const where: Record<string, unknown> = {};
   if (podcastId) where.podcastId = podcastId;
@@ -133,14 +133,14 @@ episodesRoutes.get("/:id", async (c) => {
     if (!latestStep) {
       return {
         stage,
-        name: STAGE_DISPLAY_NAMES[stage] ?? stage,
+        name: PIPELINE_STAGE_NAMES[stage] ?? stage,
         status: "pending" as const,
       };
     }
 
     return {
       stage,
-      name: STAGE_DISPLAY_NAMES[stage] ?? stage,
+      name: PIPELINE_STAGE_NAMES[stage] ?? stage,
       status: latestStep.status === "COMPLETED" ? "completed" as const
         : latestStep.status === "FAILED" ? "failed" as const
         : latestStep.status === "IN_PROGRESS" ? "in_progress" as const
@@ -220,6 +220,92 @@ episodesRoutes.post("/:id/reprocess", async (c) => {
   } catch {
     return c.json({ error: "Transcription queue not available" }, 503);
   }
+});
+
+// GET /aging-candidates - List episodes eligible for deletion
+episodesRoutes.get("/aging-candidates", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const maxAgeDays = parseInt(c.req.query("maxAgeDays") ?? "180");
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - maxAgeDays);
+
+  const candidates = await prisma.episode.findMany({
+    where: {
+      publishedAt: { lt: cutoff },
+      feedItems: { none: { status: { in: ["PENDING", "PROCESSING"] } } },
+    },
+    select: {
+      id: true,
+      title: true,
+      publishedAt: true,
+      durationSeconds: true,
+      podcast: { select: { title: true } },
+      _count: { select: { clips: true, feedItems: true } },
+    },
+    orderBy: { publishedAt: "asc" },
+    take: 100,
+  });
+
+  const data = candidates.map((ep: any) => ({
+    id: ep.id,
+    title: ep.title,
+    podcastTitle: ep.podcast.title,
+    publishedAt: ep.publishedAt.toISOString(),
+    ageDays: Math.floor((Date.now() - ep.publishedAt.getTime()) / (1000 * 60 * 60 * 24)),
+    clipCount: ep._count.clips,
+    feedItemCount: ep._count.feedItems,
+  }));
+
+  return c.json({ data });
+});
+
+// POST /aging-execute - Hard delete selected episodes + R2 cleanup
+episodesRoutes.post("/aging-execute", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const { episodeIds } = await c.req.json<{ episodeIds: string[] }>();
+
+  if (!episodeIds?.length) {
+    return c.json({ error: "episodeIds required" }, 400);
+  }
+
+  // Collect R2 keys before deletion
+  const workProducts = await prisma.workProduct.findMany({
+    where: { episodeId: { in: episodeIds } },
+    select: { r2Key: true },
+  });
+
+  const clips = await prisma.clip.findMany({
+    where: { episodeId: { in: episodeIds } },
+    select: { audioKey: true },
+  });
+
+  const r2Keys = [
+    ...workProducts.map((wp: any) => wp.r2Key).filter(Boolean),
+    ...clips.map((cl: any) => cl.audioKey).filter(Boolean),
+  ];
+
+  // Delete R2 objects
+  let r2Deleted = 0;
+  for (const key of r2Keys) {
+    try {
+      await c.env.R2.delete(key);
+      r2Deleted++;
+    } catch {
+      // Best-effort R2 cleanup
+    }
+  }
+
+  // Delete episodes (Prisma cascades: distillations, clips, feedItems, pipelineJobs, workProducts)
+  const result = await prisma.episode.deleteMany({
+    where: { id: { in: episodeIds } },
+  });
+
+  return c.json({
+    data: {
+      episodesDeleted: result.count,
+      r2ObjectsDeleted: r2Deleted,
+    },
+  });
 });
 
 export { episodesRoutes };

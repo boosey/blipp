@@ -94,10 +94,12 @@ export function parseRssFeed(xml: string): ParsedFeed {
 
   const items: unknown[] = channel.item ?? [];
 
-  const episodes: ParsedEpisode[] = items.map((item: any) => {
+  const episodes: ParsedEpisode[] = [];
+
+  for (const item of items) {
     // Extract transcript URL from podcast:transcript tag
     let transcriptUrl: string | null = null;
-    const transcripts = item["podcast:transcript"];
+    const transcripts = (item as any)["podcast:transcript"];
     if (Array.isArray(transcripts)) {
       // Prefer SRT or VTT formats
       const preferred = transcripts.find((t: any) => {
@@ -108,22 +110,36 @@ export function parseRssFeed(xml: string): ParsedFeed {
     }
 
     // Handle guid as object or string
-    const rawGuid = item.guid;
+    const rawGuid = (item as any).guid;
     const guid =
       typeof rawGuid === "object" ? rawGuid?.["#text"] ?? "" : String(rawGuid ?? "");
 
-    return {
-      title: item.title ?? "",
-      description: item.description ?? item["itunes:summary"] ?? "",
-      audioUrl: item.enclosure?.["@_url"] ?? "",
-      publishedAt: item.pubDate
-        ? new Date(item.pubDate).toISOString()
-        : new Date().toISOString(),
-      durationSeconds: parseDuration(item["itunes:duration"]),
+    const episode: ParsedEpisode = {
+      title: (item as any).title ?? "",
+      description: (item as any).description ?? (item as any)["itunes:summary"] ?? "",
+      audioUrl: (item as any).enclosure?.["@_url"] ?? "",
+      publishedAt: (() => {
+        if (!(item as any).pubDate) return new Date().toISOString();
+        const d = new Date((item as any).pubDate);
+        return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
+      })(),
+      durationSeconds: parseDuration((item as any)["itunes:duration"]),
       guid,
       transcriptUrl,
     };
-  });
+
+    // Validate required fields — skip episodes that are unusable
+    if (!episode.guid) continue;
+    if (!episode.audioUrl) continue;
+    if (!episode.title) episode.title = "Untitled Episode";
+
+    // Validate date
+    if (episode.publishedAt === "Invalid Date" || isNaN(new Date(episode.publishedAt).getTime())) {
+      episode.publishedAt = new Date().toISOString();
+    }
+
+    episodes.push(episode);
+  }
 
   return {
     title: channel.title ?? "",

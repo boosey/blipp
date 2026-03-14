@@ -1,5 +1,5 @@
-import { Link } from "react-router-dom";
 import type { FeedItem } from "../types/feed";
+import { useAudio } from "../contexts/audio-context";
 
 function statusLabel(status: FeedItem["status"]) {
   switch (status) {
@@ -32,6 +32,7 @@ export function FeedItemCard({
   item: FeedItem;
   onPlay?: (id: string) => void;
 }) {
+  const audio = useAudio();
   const isPlayable = item.status === "READY" && item.briefing?.clip;
 
   const card = (
@@ -84,12 +85,15 @@ export function FeedItemCard({
 
   if (isPlayable) {
     return (
-      <Link
-        to={`/play/${item.id}`}
-        onClick={() => onPlay?.(item.id)}
+      <button
+        className="w-full text-left"
+        onClick={() => {
+          audio.play(item);
+          onPlay?.(item.id);
+        }}
       >
         {card}
-      </Link>
+      </button>
     );
   }
 

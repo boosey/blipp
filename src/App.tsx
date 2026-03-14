@@ -25,6 +25,11 @@ const Requests = lazy(() => import("./pages/admin/requests"));
 const Plans = lazy(() => import("./pages/admin/plans"));
 const SttBenchmark = lazy(() => import("./pages/admin/stt-benchmark"));
 const ModelRegistry = lazy(() => import("./pages/admin/model-registry"));
+const AdminApiKeys = lazy(() => import("./pages/admin/api-keys"));
+const AdminAuditLog = lazy(() => import("./pages/admin/audit-log"));
+const AdminAiErrors = lazy(() => import("./pages/admin/ai-errors"));
+const Onboarding = lazy(() => import("./pages/onboarding"));
+const History = lazy(() => import("./pages/history"));
 
 function AdminLoading() {
   return (
@@ -38,7 +43,12 @@ function AdminLoading() {
 export default function App() {
   return (
     <Routes>
-      <Route path="/" element={<Landing />} />
+      <Route path="/" element={
+        <>
+          <SignedIn><Navigate to="/home" replace /></SignedIn>
+          <SignedOut><Landing /></SignedOut>
+        </>
+      } />
       <Route path="/pricing" element={<Pricing />} />
 
       {/* Backwards compat */}
@@ -63,8 +73,10 @@ export default function App() {
         <Route path="/discover/:podcastId" element={<PodcastDetail />} />
         <Route path="/library" element={<LibraryPage />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/history" element={<Suspense fallback={null}><History /></Suspense>} />
         <Route path="/play/:feedItemId" element={<BriefingPlayer />} />
         <Route path="/briefing/:requestId" element={<Navigate to="/home" replace />} />
+        <Route path="/onboarding" element={<Suspense fallback={null}><Onboarding /></Suspense>} />
       </Route>
 
       {/* Admin routes */}
@@ -90,6 +102,9 @@ export default function App() {
         <Route path="requests" element={<Suspense fallback={<AdminLoading />}><Requests /></Suspense>} />
         <Route path="stt-benchmark" element={<Suspense fallback={<AdminLoading />}><SttBenchmark /></Suspense>} />
         <Route path="model-registry" element={<Suspense fallback={<AdminLoading />}><ModelRegistry /></Suspense>} />
+        <Route path="api-keys" element={<Suspense fallback={<AdminLoading />}><AdminApiKeys /></Suspense>} />
+        <Route path="audit-log" element={<Suspense fallback={<AdminLoading />}><AdminAuditLog /></Suspense>} />
+        <Route path="ai-errors" element={<Suspense fallback={<AdminLoading />}><AdminAiErrors /></Suspense>} />
       </Route>
     </Routes>
   );

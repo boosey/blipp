@@ -1,21 +1,17 @@
 import { createPrismaClient } from "../lib/db";
-import { getModelConfig } from "../lib/ai-models";
+import { resolveStageModel } from "../lib/model-resolution";
 import { checkStageEnabled } from "../lib/queue-helpers";
 import { createPipelineLogger } from "../lib/logger";
 import { wpKey, putWorkProduct } from "../lib/work-products";
-import { PodcastIndexClient } from "../lib/podcast-index";
-import { lookupPodcastIndexTranscript } from "../lib/transcript-source";
-import { fetchTranscript } from "../lib/transcript";
+import { getTranscriptSource } from "../lib/transcript-sources";
 import { getProviderImpl } from "../lib/stt-providers";
-import { getModelPricing, calculateAudioCost, type AiUsage } from "../lib/ai-usage";
+import { getConfig } from "../lib/config";
+import { calculateAudioCost, type AiUsage } from "../lib/ai-usage";
 import { writeEvent } from "../lib/pipeline-events";
+import { writeAiError, classifyAiError, AiProviderError } from "../lib/ai-errors";
+import { recordSuccess, recordFailure } from "../lib/circuit-breaker";
+import type { TranscriptionMessage } from "../lib/queue-messages";
 import type { Env } from "../types";
-
-interface TranscriptionMessage {
-  jobId: string;
-  episodeId: string;
-  type?: "manual";
-}
 
 const CACHE_STATUSES = new Set(["TRANSCRIPT_READY", "EXTRACTING_CLAIMS", "COMPLETED"]);
 
@@ -56,6 +52,7 @@ export async function handleTranscription(
 
     for (const msg of batch.messages) {
       const { jobId, episodeId } = msg.body;
+      const correlationId = msg.body.correlationId ?? crypto.randomUUID();
       const startTime = Date.now();
 
       let stepId: string | null = null;
@@ -136,98 +133,86 @@ export async function handleTranscription(
             requestId: job.requestId,
             action: "job-stage-complete",
             jobId,
+            correlationId,
           });
 
           msg.ack();
           continue;
         }
 
-        // Load episode for transcript sources
+        // Load episode + podcast for transcript sources
         const episode = await prisma.episode.findUnique({ where: { id: episodeId } });
         if (!episode) {
           throw new Error(`Episode not found: ${episodeId}`);
         }
+        const podcast = await prisma.podcast.findUnique({ where: { id: episode.podcastId } });
         await writeEvent(prisma, step.id, "DEBUG", `Episode loaded: "${episode.title}"`, { audioUrl: episode.audioUrl?.slice(0, 120) });
 
-        let transcript: string;
+        let transcript: string | null = null;
         let sttUsage: AiUsage | null = null;
 
-        if (episode.transcriptUrl) {
-          // Tier 1: RSS feed transcript URL
-          await writeEvent(prisma, step.id, "INFO", "Fetching transcript from RSS feed URL");
-          const response = await fetch(episode.transcriptUrl);
-          transcript = await response.text();
-          await writeEvent(prisma, step.id, "INFO", "Transcript fetched from RSS feed", { bytes: transcript.length, source: "feed" });
-          log.info("transcript_fetched", { episodeId, bytes: transcript.length, source: "feed" });
-        } else {
-          // Tier 2: Podcast Index lookup
-          const podcast = await prisma.podcast.findUnique({ where: { id: episode.podcastId } });
-          const piClient = new PodcastIndexClient(env.PODCAST_INDEX_KEY, env.PODCAST_INDEX_SECRET);
-          const piTranscriptUrl = await lookupPodcastIndexTranscript(
-            piClient,
-            podcast?.podcastIndexId ?? null,
-            episode.guid,
-            episode.title
+        // Tier 1 & 2: Try configured transcript sources (RSS feed, Podcast Index, etc.)
+        const sourceOrder = await getConfig(prisma, "transcript.sources", ["rss-feed", "podcast-index"]) as string[];
+        const lookupCtx = {
+          episodeGuid: episode.guid,
+          episodeTitle: episode.title,
+          podcastTitle: podcast?.title ?? "",
+          podcastIndexId: podcast?.podcastIndexId ?? null,
+          feedUrl: podcast?.feedUrl ?? "",
+          transcriptUrl: episode.transcriptUrl ?? null,
+        };
+
+        for (const sourceId of sourceOrder) {
+          const source = getTranscriptSource(sourceId);
+          if (!source) continue;
+
+          transcript = await source.lookup(lookupCtx, env);
+          if (transcript) {
+            await writeEvent(prisma, step.id, "INFO", `Transcript found via ${source.name}`, { source: sourceId, bytes: transcript.length });
+            log.info("transcript_fetched", { episodeId, bytes: transcript.length, source: sourceId });
+            break;
+          }
+        }
+
+        if (!transcript) {
+          // Tier 3: STT via configured provider (unchanged)
+          await writeEvent(prisma, step.id, "WARN", "No transcript in RSS or Podcast Index — falling back to STT");
+          const resolved = await resolveStageModel(prisma, "stt");
+          const providerImpl = getProviderImpl(resolved.provider);
+          const providerModelId = resolved.providerModelId;
+          await writeEvent(prisma, step.id, "INFO", `Transcribing via ${providerImpl.name} (model: ${providerModelId})`);
+
+          // Fetch audio
+          const audioResponse = await fetch(episode.audioUrl);
+          if (!audioResponse.ok) {
+            throw new Error(`Audio fetch failed: HTTP ${audioResponse.status} for ${episode.audioUrl.slice(0, 120)}`);
+          }
+          const finalContentType = audioResponse.headers.get("content-type")?.split(";")[0].trim() || null;
+          if (finalContentType && !finalContentType.startsWith("audio/") && finalContentType !== "application/octet-stream") {
+            throw new Error(`Audio URL returned non-audio content (${finalContentType}, ${audioResponse.status}). The episode audio may be unavailable.`);
+          }
+          const audioBuffer = await audioResponse.arrayBuffer();
+          if (audioBuffer.byteLength < 10_000) {
+            throw new Error(`Audio file too small (${audioBuffer.byteLength} bytes) — likely an error page, not audio`);
+          }
+
+          const ext = extFromContentType(finalContentType, episode.audioUrl);
+          const durationSeconds = episode.durationSeconds ?? Math.round(audioBuffer.byteLength / (128 * 1000 / 8));
+
+          const sttResult = await providerImpl.transcribe(
+            { buffer: audioBuffer, filename: `audio.${ext}` },
+            durationSeconds,
+            env,
+            providerModelId
           );
 
-          if (piTranscriptUrl) {
-            // Found via Podcast Index — fetch and parse, backfill episode
-            await writeEvent(prisma, step.id, "INFO", "Found transcript via Podcast Index");
-            transcript = await fetchTranscript(piTranscriptUrl);
-            await prisma.episode.update({
-              where: { id: episodeId },
-              data: { transcriptUrl: piTranscriptUrl },
-            });
-            await writeEvent(prisma, step.id, "DEBUG", "Backfilled episode transcriptUrl from Podcast Index", { source: "podcast-index", bytes: transcript.length });
-            log.info("transcript_fetched", { episodeId, bytes: transcript.length, source: "podcast-index" });
-          } else {
-            // Tier 3: STT via configured provider
-            await writeEvent(prisma, step.id, "WARN", "No transcript in RSS or Podcast Index — falling back to STT");
-            const sttConfig = await getModelConfig(prisma, "stt");
-            if (!sttConfig) throw new Error("No AI model configured for STT stage — configure one in Admin > Configuration");
-            const { provider: sttProviderName, model: sttModel } = sttConfig;
-            const sttPricing = await getModelPricing(prisma, sttModel, sttProviderName);
-
-            // Look up providerModelId from DB
-            const dbProvider = await prisma.aiModelProvider.findFirst({
-              where: { provider: sttProviderName, model: { modelId: sttModel } },
-            });
-            const providerModelId = dbProvider?.providerModelId ?? sttModel;
-
-            const providerImpl = getProviderImpl(sttProviderName);
-            await writeEvent(prisma, step.id, "INFO", `Transcribing via ${providerImpl.name} (model: ${providerModelId})`);
-
-            // Fetch audio
-            const audioResponse = await fetch(episode.audioUrl);
-            if (!audioResponse.ok) {
-              throw new Error(`Audio fetch failed: HTTP ${audioResponse.status} for ${episode.audioUrl.slice(0, 120)}`);
-            }
-            const finalContentType = audioResponse.headers.get("content-type")?.split(";")[0].trim() || null;
-            if (finalContentType && !finalContentType.startsWith("audio/") && finalContentType !== "application/octet-stream") {
-              throw new Error(`Audio URL returned non-audio content (${finalContentType}, ${audioResponse.status}). The episode audio may be unavailable.`);
-            }
-            const audioBuffer = await audioResponse.arrayBuffer();
-            if (audioBuffer.byteLength < 10_000) {
-              throw new Error(`Audio file too small (${audioBuffer.byteLength} bytes) — likely an error page, not audio`);
-            }
-
-            const ext = extFromContentType(finalContentType, episode.audioUrl);
-            const durationSeconds = episode.durationSeconds ?? Math.round(audioBuffer.byteLength / (128 * 1000 / 8));
-
-            const sttResult = await providerImpl.transcribe(
-              { buffer: audioBuffer, filename: `audio.${ext}` },
-              durationSeconds,
-              env,
-              providerModelId
-            );
-
-            transcript = sttResult.transcript;
-            const estimatedSeconds = audioBuffer.byteLength / (128 * 1000 / 8);
-            const sttInputTokens = Math.round(audioBuffer.byteLength / 16000);
-            sttUsage = { model: sttModel, inputTokens: sttInputTokens, outputTokens: 0, cost: calculateAudioCost(sttPricing, estimatedSeconds) };
-            await writeEvent(prisma, step.id, "INFO", `Transcript generated via ${providerImpl.name}`, { bytes: transcript.length, source: sttProviderName });
-            log.info("transcript_fetched", { episodeId, bytes: transcript.length, source: sttProviderName });
-          }
+          transcript = sttResult.transcript;
+          recordSuccess(resolved.provider);
+          const estimatedSeconds = audioBuffer.byteLength / (128 * 1000 / 8);
+          const sttInputTokens = Math.round(audioBuffer.byteLength / 16000);
+          sttUsage = { model: resolved.model, inputTokens: sttInputTokens, outputTokens: 0, cost: calculateAudioCost(resolved.pricing, estimatedSeconds) };
+          await writeEvent(prisma, step.id, "INFO", `Transcript generated via ${providerImpl.name}`, { bytes: transcript.length, source: resolved.provider });
+          log.info("transcript_fetched", { episodeId, bytes: transcript.length, source: resolved.provider });
         }
 
         // Upsert Distillation with transcript
@@ -273,6 +258,7 @@ export async function handleTranscription(
           requestId: job.requestId,
           action: "job-stage-complete",
           jobId,
+          correlationId,
         });
 
         msg.ack();
@@ -290,7 +276,17 @@ export async function handleTranscription(
               durationMs: Date.now() - startTime,
             },
           })
-          .catch(() => {});
+          .catch((dbErr: unknown) => {
+            console.error(JSON.stringify({
+              level: "error",
+              action: "error_path_db_write_failed",
+              stage: "transcription",
+              target: "pipelineStep",
+              jobId,
+              error: dbErr instanceof Error ? dbErr.message : String(dbErr),
+              ts: new Date().toISOString(),
+            }));
+          });
 
         // Write error event if step exists
         if (stepId) {
@@ -304,9 +300,46 @@ export async function handleTranscription(
             update: { status: "FAILED", errorMessage },
             create: { episodeId, status: "FAILED", errorMessage },
           })
-          .catch(() => {});
+          .catch((dbErr: unknown) => {
+            console.error(JSON.stringify({
+              level: "error",
+              action: "error_path_db_write_failed",
+              stage: "transcription",
+              target: "distillation",
+              jobId,
+              error: dbErr instanceof Error ? dbErr.message : String(dbErr),
+              ts: new Date().toISOString(),
+            }));
+          });
 
         log.error("episode_error", { episodeId, jobId }, err);
+
+        // Capture AI provider errors
+        if (err instanceof AiProviderError) {
+          recordFailure(err.provider);
+          const { category, severity } = classifyAiError(err, err.httpStatus, err.rawResponse);
+          writeAiError(prisma, {
+            service: "stt",
+            provider: err.provider,
+            model: err.model,
+            operation: "transcribe",
+            correlationId,
+            jobId,
+            episodeId,
+            category,
+            severity,
+            httpStatus: err.httpStatus,
+            errorMessage: err.message,
+            rawResponse: err.rawResponse,
+            requestDurationMs: err.requestDurationMs,
+            timestamp: new Date(),
+            retryCount: 0,
+            maxRetries: 0,
+            willRetry: false,
+            rateLimitRemaining: err.rateLimitRemaining,
+            rateLimitResetAt: err.rateLimitResetAt,
+          }).catch(() => {}); // Fire-and-forget
+        }
 
         // Notify orchestrator so job is marked FAILED and assembly can proceed
         if (requestId) {
@@ -315,7 +348,17 @@ export async function handleTranscription(
             action: "job-failed",
             jobId,
             errorMessage,
-          }).catch(() => {});
+            correlationId,
+          }).catch((sendErr: unknown) => {
+            console.error(JSON.stringify({
+              level: "error",
+              action: "orchestrator_send_failed",
+              stage: "transcription",
+              jobId,
+              error: sendErr instanceof Error ? sendErr.message : String(sendErr),
+              ts: new Date().toISOString(),
+            }));
+          });
         }
 
         msg.ack();

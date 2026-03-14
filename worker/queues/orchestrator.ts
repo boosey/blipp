@@ -1,20 +1,7 @@
 import { createPrismaClient } from "../lib/db";
 import { createPipelineLogger } from "../lib/logger";
+import type { OrchestratorMessage, BriefingRequestItem } from "../lib/queue-messages";
 import type { Env } from "../types";
-
-interface OrchestratorMessage {
-  requestId: string;
-  action: "evaluate" | "job-stage-complete" | "job-failed";
-  jobId?: string;
-  errorMessage?: string;
-}
-
-interface BriefingRequestItem {
-  podcastId: string;
-  episodeId: string | null;
-  durationTier: number;
-  useLatest: boolean;
-}
 
 const NEXT_STAGE: Record<string, string | null> = {
   TRANSCRIPTION: "DISTILLATION",
@@ -74,7 +61,18 @@ export async function handleOrchestrator(
             where: { id: requestId },
             data: { status: "FAILED", errorMessage },
           })
-          .catch(() => null);
+          .catch((dbErr: unknown) => {
+            console.error(JSON.stringify({
+              level: "error",
+              action: "error_path_db_write_failed",
+              stage: "orchestrator",
+              target: "briefingRequest",
+              requestId,
+              error: dbErr instanceof Error ? dbErr.message : String(dbErr),
+              ts: new Date().toISOString(),
+            }));
+            return null;
+          });
 
         if (!exists) {
           log.info("request_deleted_ack", { requestId });
@@ -162,6 +160,7 @@ async function handleEvaluate(
     await env.TRANSCRIPTION_QUEUE.send({
       jobId: job.id,
       episodeId: resolved.episodeId,
+      correlationId: request.id,
     });
 
     log.info("job_created_and_dispatched", {
@@ -209,7 +208,7 @@ async function handleJobStageComplete(
     });
 
     const queueBinding = STAGE_QUEUE_MAP[nextStage];
-    const message: Record<string, any> = { jobId, episodeId: job.episodeId };
+    const message: Record<string, any> = { jobId, episodeId: job.episodeId, correlationId: msg.body.correlationId };
     if (nextStage === "NARRATIVE_GENERATION" || nextStage === "AUDIO_GENERATION") {
       message.durationTier = job.durationTier;
     }
@@ -236,7 +235,7 @@ async function handleJobStageComplete(
     );
 
     if (pendingOrInProgress.length === 0) {
-      await env.BRIEFING_ASSEMBLY_QUEUE.send({ requestId: request.id });
+      await env.BRIEFING_ASSEMBLY_QUEUE.send({ requestId: request.id, correlationId: msg.body.correlationId });
       log.info("assembly_dispatched", { requestId: request.id });
     }
 
@@ -286,7 +285,7 @@ async function handleJobFailed(
   );
 
   if (pendingOrInProgress.length === 0) {
-    await env.BRIEFING_ASSEMBLY_QUEUE.send({ requestId: request.id });
+    await env.BRIEFING_ASSEMBLY_QUEUE.send({ requestId: request.id, correlationId: msg.body.correlationId });
     log.info("assembly_dispatched_after_failure", { requestId: request.id });
   }
 

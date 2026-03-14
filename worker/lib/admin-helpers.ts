@@ -12,13 +12,22 @@ export function parsePagination(c: Context) {
 }
 
 /** Parse sort query param into Prisma orderBy object. */
-export function parseSort(c: Context, defaultField = "createdAt") {
+export function parseSort(
+  c: Context,
+  defaultField = "createdAt",
+  allowedFields?: string[]
+) {
   const sort = c.req.query("sort") ?? `${defaultField}:desc`;
-  const [sortField, sortDir] = sort.split(":");
-  return { [sortField || defaultField]: sortDir || "desc" } as Record<
-    string,
-    string
-  >;
+  const [rawField, rawDir] = sort.split(":");
+  const sortField = rawField || defaultField;
+  const sortDir = rawDir === "asc" ? "asc" : "desc";
+
+  // If an allowlist is provided, validate the field
+  if (allowedFields && !allowedFields.includes(sortField)) {
+    return { [defaultField]: sortDir };
+  }
+
+  return { [sortField]: sortDir } as Record<string, string>;
 }
 
 /** Standard paginated response shape. */
@@ -42,8 +51,14 @@ export async function getCurrentUser(c: Context<{ Bindings: Env }>, prisma: any)
   const clerkId = getAuth(c)!.userId!;
 
   try {
-    return await prisma.user.findUniqueOrThrow({ where: { clerkId } });
-  } catch {
+    const user = await prisma.user.findUniqueOrThrow({ where: { clerkId } });
+    if (user.status === "suspended" || user.status === "banned") {
+      throw new Error("Account suspended");
+    }
+    return user;
+  } catch (err: any) {
+    // Re-throw suspension errors — don't fall through to user creation
+    if (err?.message === "Account suspended") throw err;
     // User missing from DB — fetch from Clerk and create
     const clerk = createClerkClient({ secretKey: c.env.CLERK_SECRET_KEY });
     const clerkUser = await clerk.users.getUser(clerkId);

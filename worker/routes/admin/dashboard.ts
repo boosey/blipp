@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { Env } from "../../types";
-import { STAGE_DISPLAY_NAMES } from "../../lib/config";
+import { PIPELINE_STAGE_NAMES } from "../../lib/constants";
 
 const dashboardRoutes = new Hono<{ Bindings: Env }>();
 
@@ -53,7 +53,7 @@ dashboardRoutes.get("/", async (c) => {
     }
     return {
       stage,
-      name: STAGE_DISPLAY_NAMES[stage] ?? stage,
+      name: PIPELINE_STAGE_NAMES[stage] ?? stage,
       completionRate,
       activeJobs: s.active,
       status,
@@ -119,7 +119,7 @@ dashboardRoutes.get("/activity", async (c) => {
     id: job.id,
     timestamp: job.createdAt.toISOString(),
     stage: job.currentStage,
-    stageName: STAGE_DISPLAY_NAMES[job.currentStage] ?? job.currentStage,
+    stageName: PIPELINE_STAGE_NAMES[job.currentStage] ?? job.currentStage,
     episodeTitle: job.episode?.title,
     podcastName: job.episode?.podcast?.title,
     status: job.status.toLowerCase().replace("_", "-") as string,
@@ -214,14 +214,6 @@ function humanizeError(raw: string | null | undefined): { description: string; r
   return { description: str };
 }
 
-const STAGE_LABELS: Record<string, string> = {
-  TRANSCRIPTION: "Transcription",
-  DISTILLATION: "Distillation",
-  NARRATIVE_GENERATION: "Narrative generation",
-  AUDIO_GENERATION: "Audio generation",
-  CLIP_GENERATION: "Clip generation", // legacy
-  BRIEFING_ASSEMBLY: "Briefing assembly",
-};
 
 // GET /issues - Active issues
 dashboardRoutes.get("/issues", async (c) => {
@@ -248,7 +240,7 @@ dashboardRoutes.get("/issues", async (c) => {
 
   const issues = [
     ...failedJobs.map((job: any) => {
-      const label = STAGE_LABELS[job.currentStage] ?? job.currentStage;
+      const label = PIPELINE_STAGE_NAMES[job.currentStage] ?? job.currentStage;
       const { description, rawError } = humanizeError(job.errorMessage);
       return {
         id: job.id,

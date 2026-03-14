@@ -158,7 +158,7 @@ describe("Config Routes", () => {
       const res = await app.request("/config/tiers/duration", {}, env, mockExCtx);
       expect(res.status).toBe(200);
       const body: any = await res.json();
-      expect(body.data).toHaveLength(7);
+      expect(body.data).toHaveLength(8);
     });
   });
 
@@ -184,67 +184,6 @@ describe("Config Routes", () => {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tiers: [] }),
-      }, env, mockExCtx);
-      expect(res.status).toBe(503);
-    });
-  });
-
-  describe("GET /config/tiers/subscription", () => {
-    it("returns plans with user counts", async () => {
-      mockPrisma.plan.findMany.mockResolvedValueOnce([
-        { tier: "FREE", name: "Free", priceCents: 0, active: true, features: [], highlighted: false, stripePriceId: null },
-        { tier: "PRO", name: "Pro", priceCents: 999, active: true, features: ["priority"], highlighted: true, stripePriceId: "price_123" },
-      ]);
-      mockPrisma.user.groupBy.mockResolvedValueOnce([
-        { tier: "FREE", _count: 80 },
-        { tier: "PRO", _count: 20 },
-      ]);
-
-      const res = await app.request("/config/tiers/subscription", {}, env, mockExCtx);
-      expect(res.status).toBe(200);
-      const body: any = await res.json();
-      expect(body.data).toHaveLength(2);
-      expect(body.data[0].userCount).toBe(80);
-    });
-
-    it("returns empty when table missing", async () => {
-      mockPrisma.plan.findMany.mockRejectedValueOnce(new Error("table missing"));
-
-      const res = await app.request("/config/tiers/subscription", {}, env, mockExCtx);
-      expect(res.status).toBe(200);
-      const body: any = await res.json();
-      expect(body.data).toEqual([]);
-    });
-  });
-
-  describe("PUT /config/tiers/subscription", () => {
-    it("updates a plan", async () => {
-      mockPrisma.plan.update.mockResolvedValueOnce({ tier: "PRO", name: "Pro Plus", priceCents: 1499 });
-
-      const res = await app.request("/config/tiers/subscription", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tier: "PRO", name: "Pro Plus", priceCents: 1499 }),
-      }, env, mockExCtx);
-      expect(res.status).toBe(200);
-    });
-
-    it("returns 400 when tier missing", async () => {
-      const res = await app.request("/config/tiers/subscription", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "No Tier" }),
-      }, env, mockExCtx);
-      expect(res.status).toBe(400);
-    });
-
-    it("returns 503 when table missing", async () => {
-      mockPrisma.plan.update.mockRejectedValueOnce(new Error("table missing"));
-
-      const res = await app.request("/config/tiers/subscription", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tier: "PRO" }),
       }, env, mockExCtx);
       expect(res.status).toBe(503);
     });

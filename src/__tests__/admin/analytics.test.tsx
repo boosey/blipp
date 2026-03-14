@@ -79,7 +79,7 @@ describe("Analytics", () => {
       }
       if (url.includes("/analytics/usage")) {
         return Promise.resolve(mockJsonResponse({
-          data: { trends: [], metrics: { feedItems: 0, episodes: 0, users: 0, avgDuration: 0 }, byTier: [], peakTimes: [], topPodcasts: [] },
+          data: { trends: [], metrics: { feedItems: 0, episodes: 0, users: 0, avgDuration: 0 }, byPlan: [], peakTimes: [], topPodcasts: [] },
         }));
       }
       if (url.includes("/analytics/quality")) {
@@ -148,7 +148,7 @@ describe("Analytics", () => {
           data: {
             trends: [{ date: "2026-03-01", feedItems: 10, episodes: 20, users: 5 }],
             metrics: { feedItems: 100, episodes: 200, users: 50, avgDuration: 300 },
-            byTier: [{ tier: "FREE", count: 30, percentage: 60 }],
+            byPlan: [{ plan: "FREE", count: 30, percentage: 60 }],
             peakTimes: [{ hour: 8, count: 15 }],
             topPodcasts: [],
           },

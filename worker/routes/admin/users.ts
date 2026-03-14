@@ -1,6 +1,8 @@
 import { Hono } from "hono";
 import type { Env } from "../../types";
 import { parsePagination, parseSort, paginatedResponse } from "../../lib/admin-helpers";
+import { writeAuditLog } from "../../lib/audit-log";
+import { getAuth } from "../../middleware/auth";
 
 const usersRoutes = new Hono<{ Bindings: Env }>();
 
@@ -61,7 +63,7 @@ usersRoutes.get("/", async (c) => {
   const planId = c.req.query("planId");
   const search = c.req.query("search");
   const segment = c.req.query("segment");
-  const orderBy = parseSort(c);
+  const orderBy = parseSort(c, "createdAt", ["createdAt", "email", "name", "isAdmin"]);
 
   const where: Record<string, unknown> = {};
   if (planId) where.planId = planId;
@@ -109,7 +111,7 @@ usersRoutes.get("/", async (c) => {
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
   const data = users.map((u: any) => {
-    const lastActive = lastActivityMap.get(u.id);
+    const lastActive = lastActivityMap.get(u.id) as Date | undefined;
     let status: "active" | "inactive" | "churned" = "inactive";
     if (lastActive) {
       if (lastActive >= sevenDaysAgo) status = "active";
@@ -162,6 +164,10 @@ usersRoutes.get("/:id", async (c) => {
         },
       },
       _count: { select: { subscriptions: true, feedItems: true, briefings: true } },
+      podcastFavorites: {
+        include: { podcast: { select: { id: true, title: true, imageUrl: true } } },
+        orderBy: { createdAt: "desc" },
+      },
     },
   });
 
@@ -218,6 +224,13 @@ usersRoutes.get("/:id", async (c) => {
         episodeTitle: fi.episode?.title,
         createdAt: fi.createdAt.toISOString(),
       })),
+      favorites: user.podcastFavorites.map((f: any) => ({
+        podcastId: f.podcast.id,
+        podcastTitle: f.podcast.title,
+        podcastImageUrl: f.podcast.imageUrl,
+        favoritedAt: f.createdAt.toISOString(),
+      })),
+      onboardingComplete: user.onboardingComplete,
     },
   });
 });
@@ -225,19 +238,76 @@ usersRoutes.get("/:id", async (c) => {
 // PATCH /:id - Update user
 usersRoutes.patch("/:id", async (c) => {
   const prisma = c.get("prisma") as any;
-  const body = await c.req.json<{ planId?: string; isAdmin?: boolean }>();
+  const body = await c.req.json<{ planId?: string; isAdmin?: boolean; status?: string; onboardingComplete?: boolean }>();
+
+  // Block isAdmin changes via this endpoint — requires dedicated super-admin flow
+  if (body.isAdmin !== undefined) {
+    console.warn(
+      `[SECURITY] Admin privilege change attempted via PATCH /admin/users/${c.req.param("id")} — blocked. ` +
+      `Requested isAdmin=${body.isAdmin}`
+    );
+    return c.json(
+      { error: "Cannot modify admin privileges via this endpoint" },
+      403
+    );
+  }
+
+  const data: Record<string, unknown> = {};
+  if (body.planId !== undefined) {
+    // Validate that the plan exists
+    const plan = await prisma.plan.findUnique({ where: { id: body.planId } });
+    if (!plan) {
+      return c.json({ error: "Plan not found" }, 404);
+    }
+    data.planId = body.planId;
+  }
+
+  if (body.status !== undefined) {
+    if (!["active", "suspended", "banned"].includes(body.status)) {
+      return c.json({ error: "Invalid status. Must be: active, suspended, or banned" }, 400);
+    }
+    data.status = body.status;
+  }
+
+  if (body.onboardingComplete !== undefined) {
+    data.onboardingComplete = !!body.onboardingComplete;
+  }
+
+  if (Object.keys(data).length === 0) {
+    return c.json({ error: "No valid fields to update" }, 400);
+  }
+
+  // Capture old values before update for audit log
+  const existingUser = await prisma.user.findUnique({
+    where: { id: c.req.param("id") },
+    select: { planId: true, status: true, onboardingComplete: true },
+  });
 
   const updated = await prisma.user.update({
     where: { id: c.req.param("id") },
-    data: {
-      ...(body.planId !== undefined && { planId: body.planId }),
-      ...(body.isAdmin !== undefined && { isAdmin: body.isAdmin }),
-    },
+    data,
     include: { plan: { select: { id: true, name: true, slug: true } } },
   });
 
+  const auth = getAuth(c);
+  const auditAction = body.onboardingComplete !== undefined ? "user.onboarding.reset"
+    : body.status !== undefined ? "user.status.change" : "user.plan.change";
+  writeAuditLog(prisma, {
+    actorId: auth!.userId!,
+    action: auditAction,
+    entityType: "User",
+    entityId: c.req.param("id"),
+    before: { planId: existingUser?.planId, status: existingUser?.status },
+    after: { planId: body.planId, status: body.status },
+  }).catch(() => {});
+
   return c.json({
-    data: { id: updated.id, plan: { id: updated.plan.id, name: updated.plan.name, slug: updated.plan.slug }, isAdmin: updated.isAdmin },
+    data: {
+      id: updated.id,
+      plan: { id: updated.plan.id, name: updated.plan.name, slug: updated.plan.slug },
+      isAdmin: updated.isAdmin,
+      status: updated.status,
+    },
   });
 });
 

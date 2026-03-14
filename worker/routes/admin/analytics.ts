@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { Env } from "../../types";
-import { STAGE_DISPLAY_NAMES } from "../../lib/config";
+import { PIPELINE_STAGE_NAMES } from "../../lib/constants";
 
 const analyticsRoutes = new Hono<{ Bindings: Env }>();
 
@@ -166,7 +166,7 @@ analyticsRoutes.get("/costs/by-model", async (c) => {
 
   const byStage = Array.from(stageMap.entries()).map(([stage, agg]) => ({
     stage,
-    stageName: STAGE_DISPLAY_NAMES[stage] ?? stage,
+    stageName: PIPELINE_STAGE_NAMES[stage] ?? stage,
     totalCost: round(agg.totalCost),
     totalInputTokens: agg.totalInputTokens,
     totalOutputTokens: agg.totalOutputTokens,
@@ -361,7 +361,7 @@ analyticsRoutes.get("/pipeline", async (c) => {
         throughput: { episodesPerHour: 0, trend: 0 },
         successRates: (["TRANSCRIPTION", "DISTILLATION", "NARRATIVE_GENERATION", "AUDIO_GENERATION", "BRIEFING_ASSEMBLY"] as const).map((stage) => ({
           stage,
-          name: STAGE_DISPLAY_NAMES[stage] ?? stage,
+          name: PIPELINE_STAGE_NAMES[stage] ?? stage,
           rate: 100,
         })),
         processingSpeed: [],
@@ -380,7 +380,7 @@ analyticsRoutes.get("/pipeline", async (c) => {
     const completed = stageSteps.filter((s) => s.status === "COMPLETED").length;
     return {
       stage,
-      name: STAGE_DISPLAY_NAMES[stage] ?? stage,
+      name: PIPELINE_STAGE_NAMES[stage] ?? stage,
       rate: stageSteps.length > 0 ? Math.round((completed / stageSteps.length) * 100) : 100,
     };
   });
@@ -422,6 +422,58 @@ analyticsRoutes.get("/pipeline", async (c) => {
       successRates,
       processingSpeed,
       bottlenecks,
+    },
+  });
+});
+
+// GET /revenue - Revenue metrics (MRR, user counts by plan, churn indicators)
+analyticsRoutes.get("/revenue", async (c) => {
+  const prisma = c.get("prisma") as any;
+
+  const [totalUsers, usersByPlan, plans, recentChurn] = await Promise.all([
+    prisma.user.count(),
+    prisma.user.groupBy({
+      by: ["planId"],
+      _count: true,
+    }),
+    prisma.plan.findMany({
+      select: { id: true, name: true, slug: true, priceCentsMonthly: true, priceCentsAnnual: true },
+    }) as Promise<{ id: string; name: string; slug: string; priceCentsMonthly: number; priceCentsAnnual: number | null }[]>,
+    // Users who downgraded to default plan in last 30 days (proxy for churn)
+    prisma.user.count({
+      where: {
+        plan: { isDefault: true },
+        updatedAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
+      },
+    }),
+  ]);
+
+  const planMap = new Map(plans.map((p: any) => [p.id, p]));
+
+  let mrr = 0;
+  const byPlan = usersByPlan.map((group: any) => {
+    const plan = planMap.get(group.planId);
+    const monthlyPrice = plan?.priceCentsMonthly ?? 0;
+    const planMrr = (monthlyPrice * group._count) / 100;
+    mrr += planMrr;
+
+    return {
+      planId: group.planId,
+      planName: plan?.name ?? "Unknown",
+      planSlug: plan?.slug ?? "unknown",
+      userCount: group._count,
+      mrr: Math.round(planMrr * 100) / 100,
+    };
+  });
+
+  return c.json({
+    data: {
+      totalUsers,
+      mrr: Math.round(mrr * 100) / 100,
+      arr: Math.round(mrr * 12 * 100) / 100,
+      byPlan,
+      churn30d: recentChurn,
+      arpu: totalUsers > 0 ? Math.round((mrr / totalUsers) * 100) / 100 : 0,
     },
   });
 });
