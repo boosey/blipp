@@ -23,12 +23,12 @@ aiModelsRoutes.get("/", async (c) => {
 aiModelsRoutes.post("/", async (c) => {
   const prisma = c.get("prisma") as any;
   const body = await c.req.json();
-  const { stage, modelId, label, developer } = body;
+  const { stage, modelId, label, developer, notes } = body;
   if (!stage || !modelId || !label || !developer) {
     return c.json({ error: "stage, modelId, label, and developer are required" }, 400);
   }
   const data = await prisma.aiModel.create({
-    data: { stage, modelId, label, developer },
+    data: { stage, modelId, label, developer, notes: notes ?? null },
     include: { providers: true },
   });
   return c.json({ data }, 201);
@@ -64,7 +64,10 @@ aiModelsRoutes.patch("/:id", async (c) => {
   const body = await c.req.json();
   const data = await prisma.aiModel.update({
     where: { id },
-    data: { ...("isActive" in body && { isActive: body.isActive }) },
+    data: {
+      ...("isActive" in body && { isActive: body.isActive }),
+      ...("notes" in body && { notes: body.notes }),
+    },
     include: { providers: true },
   });
   return c.json({ data });

@@ -124,7 +124,9 @@ export async function handleNarrativeGeneration(
           : allClaims;
 
         // Read model config
-        const { provider: narrativeProvider, model: narrativeModel } = await getModelConfig(prisma, "narrative");
+        const narrativeConfig = await getModelConfig(prisma, "narrative");
+        if (!narrativeConfig) throw new Error("No AI model configured for Narrative stage — configure one in Admin > Configuration");
+        const { provider: narrativeProvider, model: narrativeModel } = narrativeConfig;
         const narrativePricing = await getModelPricing(prisma, narrativeModel, narrativeProvider);
         const dbNarrProvider = await prisma.aiModelProvider.findFirst({
           where: { provider: narrativeProvider, model: { modelId: narrativeModel } },
