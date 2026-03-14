@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
-import { Search, X } from "lucide-react";
+import { Search, X, Plus } from "lucide-react";
 import { Link } from "react-router-dom";
+import { toast } from "sonner";
 import { useApiFetch } from "../lib/api";
 import { useFetch } from "../lib/use-fetch";
 import { PodcastCard } from "../components/podcast-card";
@@ -31,6 +32,14 @@ export function Discover() {
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
+
+  // Podcast request form
+  const [showRequestForm, setShowRequestForm] = useState(false);
+  const [requestUrl, setRequestUrl] = useState("");
+  const [requestLoading, setRequestLoading] = useState(false);
+  const [myRequests, setMyRequests] = useState<
+    { id: string; feedUrl: string; title?: string; status: string; podcastId?: string }[]
+  >([]);
 
   const { data: subsData, refetch: refetchSubscriptions } = useFetch<{
     subscriptions: { podcastId: string }[];
@@ -86,6 +95,41 @@ export function Discover() {
     setSearchError(null);
   }
 
+  // Fetch user's podcast requests
+  useEffect(() => {
+    apiFetch<{ data: typeof myRequests }>("/podcasts/requests")
+      .then((data) => setMyRequests(data.data || []))
+      .catch(() => {});
+  }, [apiFetch]);
+
+  async function handlePodcastRequest() {
+    if (!requestUrl.trim()) return;
+    setRequestLoading(true);
+    try {
+      await apiFetch("/podcasts/request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ feedUrl: requestUrl.trim() }),
+      });
+      toast.success("Podcast request submitted! We'll review it soon.");
+      setRequestUrl("");
+      setShowRequestForm(false);
+      // Refresh requests list
+      apiFetch<{ data: typeof myRequests }>("/podcasts/requests")
+        .then((data) => setMyRequests(data.data || []))
+        .catch(() => {});
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to submit request";
+      if (message.includes("already")) {
+        toast("This podcast is already in our catalog! You can subscribe directly.");
+      } else {
+        toast.error(message);
+      }
+    } finally {
+      setRequestLoading(false);
+    }
+  }
+
   const isSearching = searchInput.trim().length > 0;
 
   // Trending: top 10 by episode count
@@ -128,6 +172,84 @@ export function Discover() {
           </button>
         )}
       </div>
+
+      {/* Request a Podcast */}
+      {!isSearching && (
+        <div className="mt-3">
+          {!showRequestForm ? (
+            <button
+              onClick={() => setShowRequestForm(true)}
+              className="flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Can't find a podcast? Request it
+            </button>
+          ) : (
+            <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 space-y-2">
+              <p className="text-xs text-zinc-400">Paste the podcast's RSS feed URL:</p>
+              <div className="flex gap-2">
+                <input
+                  value={requestUrl}
+                  onChange={(e) => setRequestUrl(e.target.value)}
+                  placeholder="https://example.com/feed.xml"
+                  className="flex-1 px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-sm"
+                />
+                <button
+                  onClick={handlePodcastRequest}
+                  disabled={requestLoading || !requestUrl.trim()}
+                  className="px-3 py-1.5 bg-white text-zinc-950 text-sm font-medium rounded disabled:opacity-50"
+                >
+                  {requestLoading ? "..." : "Submit"}
+                </button>
+              </div>
+              <button
+                onClick={() => { setShowRequestForm(false); setRequestUrl(""); }}
+                className="text-xs text-zinc-500 hover:text-zinc-300"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* My Requests */}
+      {myRequests.length > 0 && !isSearching && (
+        <div className="mt-4">
+          <h3 className="text-sm font-medium text-zinc-400 mb-2">My Requests</h3>
+          <div className="space-y-1.5">
+            {myRequests.map((req) => (
+              <div key={req.id} className="flex items-center justify-between bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2">
+                <div className="min-w-0">
+                  <p className="text-sm truncate">{req.title || req.feedUrl}</p>
+                  <p className="text-xs text-zinc-500">{req.status.toLowerCase()}</p>
+                </div>
+                {req.status === "PENDING" && (
+                  <button
+                    onClick={async () => {
+                      try {
+                        await apiFetch(`/podcasts/request/${req.id}`, { method: "DELETE" });
+                        setMyRequests((prev) => prev.filter((r) => r.id !== req.id));
+                        toast.success("Request cancelled");
+                      } catch {
+                        toast.error("Failed to cancel request");
+                      }
+                    }}
+                    className="text-xs text-zinc-500 hover:text-red-400 ml-2"
+                  >
+                    Cancel
+                  </button>
+                )}
+                {req.status === "APPROVED" && req.podcastId && (
+                  <Link to={`/discover/${req.podcastId}`} className="text-xs text-white ml-2">
+                    Subscribe &rarr;
+                  </Link>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {isSearching ? (
         /* Search results mode */

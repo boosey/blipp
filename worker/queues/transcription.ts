@@ -3,10 +3,9 @@ import { resolveStageModel } from "../lib/model-resolution";
 import { checkStageEnabled } from "../lib/queue-helpers";
 import { createPipelineLogger } from "../lib/logger";
 import { wpKey, putWorkProduct } from "../lib/work-products";
-import { PodcastIndexClient } from "../lib/podcast-index";
-import { lookupPodcastIndexTranscript } from "../lib/transcript-source";
-import { fetchTranscript } from "../lib/transcript";
+import { getTranscriptSource } from "../lib/transcript-sources";
 import { getProviderImpl } from "../lib/stt-providers";
+import { getConfig } from "../lib/config";
 import { calculateAudioCost, type AiUsage } from "../lib/ai-usage";
 import { writeEvent } from "../lib/pipeline-events";
 import { writeAiError, classifyAiError, AiProviderError } from "../lib/ai-errors";
@@ -141,84 +140,79 @@ export async function handleTranscription(
           continue;
         }
 
-        // Load episode for transcript sources
+        // Load episode + podcast for transcript sources
         const episode = await prisma.episode.findUnique({ where: { id: episodeId } });
         if (!episode) {
           throw new Error(`Episode not found: ${episodeId}`);
         }
+        const podcast = await prisma.podcast.findUnique({ where: { id: episode.podcastId } });
         await writeEvent(prisma, step.id, "DEBUG", `Episode loaded: "${episode.title}"`, { audioUrl: episode.audioUrl?.slice(0, 120) });
 
-        let transcript: string;
+        let transcript: string | null = null;
         let sttUsage: AiUsage | null = null;
 
-        if (episode.transcriptUrl) {
-          // Tier 1: RSS feed transcript URL
-          await writeEvent(prisma, step.id, "INFO", "Fetching transcript from RSS feed URL");
-          const response = await fetch(episode.transcriptUrl);
-          transcript = await response.text();
-          await writeEvent(prisma, step.id, "INFO", "Transcript fetched from RSS feed", { bytes: transcript.length, source: "feed" });
-          log.info("transcript_fetched", { episodeId, bytes: transcript.length, source: "feed" });
-        } else {
-          // Tier 2: Podcast Index lookup
-          const podcast = await prisma.podcast.findUnique({ where: { id: episode.podcastId } });
-          const piClient = new PodcastIndexClient(env.PODCAST_INDEX_KEY, env.PODCAST_INDEX_SECRET);
-          const piTranscriptUrl = await lookupPodcastIndexTranscript(
-            piClient,
-            podcast?.podcastIndexId ?? null,
-            episode.guid,
-            episode.title
+        // Tier 1 & 2: Try configured transcript sources (RSS feed, Podcast Index, etc.)
+        const sourceOrder = await getConfig(prisma, "transcript.sources", ["rss-feed", "podcast-index"]) as string[];
+        const lookupCtx = {
+          episodeGuid: episode.guid,
+          episodeTitle: episode.title,
+          podcastTitle: podcast?.title ?? "",
+          podcastIndexId: podcast?.podcastIndexId ?? null,
+          feedUrl: podcast?.feedUrl ?? "",
+          transcriptUrl: episode.transcriptUrl ?? null,
+        };
+
+        for (const sourceId of sourceOrder) {
+          const source = getTranscriptSource(sourceId);
+          if (!source) continue;
+
+          transcript = await source.lookup(lookupCtx, env);
+          if (transcript) {
+            await writeEvent(prisma, step.id, "INFO", `Transcript found via ${source.name}`, { source: sourceId, bytes: transcript.length });
+            log.info("transcript_fetched", { episodeId, bytes: transcript.length, source: sourceId });
+            break;
+          }
+        }
+
+        if (!transcript) {
+          // Tier 3: STT via configured provider (unchanged)
+          await writeEvent(prisma, step.id, "WARN", "No transcript in RSS or Podcast Index — falling back to STT");
+          const resolved = await resolveStageModel(prisma, "stt");
+          const providerImpl = getProviderImpl(resolved.provider);
+          const providerModelId = resolved.providerModelId;
+          await writeEvent(prisma, step.id, "INFO", `Transcribing via ${providerImpl.name} (model: ${providerModelId})`);
+
+          // Fetch audio
+          const audioResponse = await fetch(episode.audioUrl);
+          if (!audioResponse.ok) {
+            throw new Error(`Audio fetch failed: HTTP ${audioResponse.status} for ${episode.audioUrl.slice(0, 120)}`);
+          }
+          const finalContentType = audioResponse.headers.get("content-type")?.split(";")[0].trim() || null;
+          if (finalContentType && !finalContentType.startsWith("audio/") && finalContentType !== "application/octet-stream") {
+            throw new Error(`Audio URL returned non-audio content (${finalContentType}, ${audioResponse.status}). The episode audio may be unavailable.`);
+          }
+          const audioBuffer = await audioResponse.arrayBuffer();
+          if (audioBuffer.byteLength < 10_000) {
+            throw new Error(`Audio file too small (${audioBuffer.byteLength} bytes) — likely an error page, not audio`);
+          }
+
+          const ext = extFromContentType(finalContentType, episode.audioUrl);
+          const durationSeconds = episode.durationSeconds ?? Math.round(audioBuffer.byteLength / (128 * 1000 / 8));
+
+          const sttResult = await providerImpl.transcribe(
+            { buffer: audioBuffer, filename: `audio.${ext}` },
+            durationSeconds,
+            env,
+            providerModelId
           );
 
-          if (piTranscriptUrl) {
-            // Found via Podcast Index — fetch and parse, backfill episode
-            await writeEvent(prisma, step.id, "INFO", "Found transcript via Podcast Index");
-            transcript = await fetchTranscript(piTranscriptUrl);
-            await prisma.episode.update({
-              where: { id: episodeId },
-              data: { transcriptUrl: piTranscriptUrl },
-            });
-            await writeEvent(prisma, step.id, "DEBUG", "Backfilled episode transcriptUrl from Podcast Index", { source: "podcast-index", bytes: transcript.length });
-            log.info("transcript_fetched", { episodeId, bytes: transcript.length, source: "podcast-index" });
-          } else {
-            // Tier 3: STT via configured provider
-            await writeEvent(prisma, step.id, "WARN", "No transcript in RSS or Podcast Index — falling back to STT");
-            const resolved = await resolveStageModel(prisma, "stt");
-            const providerImpl = getProviderImpl(resolved.provider);
-            const providerModelId = resolved.providerModelId;
-            await writeEvent(prisma, step.id, "INFO", `Transcribing via ${providerImpl.name} (model: ${providerModelId})`);
-
-            // Fetch audio
-            const audioResponse = await fetch(episode.audioUrl);
-            if (!audioResponse.ok) {
-              throw new Error(`Audio fetch failed: HTTP ${audioResponse.status} for ${episode.audioUrl.slice(0, 120)}`);
-            }
-            const finalContentType = audioResponse.headers.get("content-type")?.split(";")[0].trim() || null;
-            if (finalContentType && !finalContentType.startsWith("audio/") && finalContentType !== "application/octet-stream") {
-              throw new Error(`Audio URL returned non-audio content (${finalContentType}, ${audioResponse.status}). The episode audio may be unavailable.`);
-            }
-            const audioBuffer = await audioResponse.arrayBuffer();
-            if (audioBuffer.byteLength < 10_000) {
-              throw new Error(`Audio file too small (${audioBuffer.byteLength} bytes) — likely an error page, not audio`);
-            }
-
-            const ext = extFromContentType(finalContentType, episode.audioUrl);
-            const durationSeconds = episode.durationSeconds ?? Math.round(audioBuffer.byteLength / (128 * 1000 / 8));
-
-            const sttResult = await providerImpl.transcribe(
-              { buffer: audioBuffer, filename: `audio.${ext}` },
-              durationSeconds,
-              env,
-              providerModelId
-            );
-
-            transcript = sttResult.transcript;
-            recordSuccess(resolved.provider);
-            const estimatedSeconds = audioBuffer.byteLength / (128 * 1000 / 8);
-            const sttInputTokens = Math.round(audioBuffer.byteLength / 16000);
-            sttUsage = { model: resolved.model, inputTokens: sttInputTokens, outputTokens: 0, cost: calculateAudioCost(resolved.pricing, estimatedSeconds) };
-            await writeEvent(prisma, step.id, "INFO", `Transcript generated via ${providerImpl.name}`, { bytes: transcript.length, source: resolved.provider });
-            log.info("transcript_fetched", { episodeId, bytes: transcript.length, source: resolved.provider });
-          }
+          transcript = sttResult.transcript;
+          recordSuccess(resolved.provider);
+          const estimatedSeconds = audioBuffer.byteLength / (128 * 1000 / 8);
+          const sttInputTokens = Math.round(audioBuffer.byteLength / 16000);
+          sttUsage = { model: resolved.model, inputTokens: sttInputTokens, outputTokens: 0, cost: calculateAudioCost(resolved.pricing, estimatedSeconds) };
+          await writeEvent(prisma, step.id, "INFO", `Transcript generated via ${providerImpl.name}`, { bytes: transcript.length, source: resolved.provider });
+          log.info("transcript_fetched", { episodeId, bytes: transcript.length, source: resolved.provider });
         }
 
         // Upsert Distillation with transcript

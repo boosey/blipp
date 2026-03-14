@@ -3,6 +3,8 @@ import type { Env } from "../../types";
 import { PIPELINE_STAGE_NAMES } from "../../lib/constants";
 import { parsePagination, parseSort, paginatedResponse } from "../../lib/admin-helpers";
 import { getAuth } from "../../middleware/auth";
+import { getCatalogSource } from "../../lib/catalog-sources";
+import { getConfig } from "../../lib/config";
 
 const podcastsRoutes = new Hono<{ Bindings: Env }>();
 
@@ -308,41 +310,37 @@ podcastsRoutes.post("/cleanup-execute", async (c) => {
   return c.json({ data: { archived: result.count } });
 });
 
-// POST /catalog-refresh - Fetch top 200 trending podcasts + their episodes
+// POST /catalog-refresh - Fetch trending podcasts + their episodes via configured catalog source
 podcastsRoutes.post("/catalog-refresh", async (c) => {
   const prisma = c.get("prisma") as any;
-  const { PodcastIndexClient } = await import("../../lib/podcast-index");
 
-  const client = new PodcastIndexClient(
-    c.env.PODCAST_INDEX_KEY,
-    c.env.PODCAST_INDEX_SECRET
-  );
-
-  // Fetch top 200 trending podcasts
-  const feeds = await client.trending(200);
+  const sourceId = await getConfig(prisma, "catalog.source", "podcast-index") as string;
+  const seedSize = await getConfig(prisma, "catalog.seedSize", 200) as number;
+  const source = getCatalogSource(sourceId);
+  const discovered = await source.discover(seedSize, c.env);
 
   let created = 0;
   let updated = 0;
   const podcastIds: string[] = [];
 
-  for (const feed of feeds) {
+  for (const feed of discovered) {
     const podcast = await prisma.podcast.upsert({
-      where: { feedUrl: feed.url },
+      where: { feedUrl: feed.feedUrl },
       create: {
-        feedUrl: feed.url,
+        feedUrl: feed.feedUrl,
         title: feed.title,
         description: feed.description ?? null,
-        imageUrl: feed.image ?? null,
-        podcastIndexId: String(feed.id),
+        imageUrl: feed.imageUrl ?? null,
+        podcastIndexId: feed.externalId ?? null,
         author: feed.author ?? null,
         source: "trending",
       },
       update: {
         title: feed.title,
         description: feed.description ?? undefined,
-        imageUrl: feed.image ?? undefined,
+        imageUrl: feed.imageUrl ?? undefined,
         author: feed.author ?? undefined,
-        podcastIndexId: String(feed.id),
+        podcastIndexId: feed.externalId ?? undefined,
       },
     });
 
@@ -356,17 +354,24 @@ podcastsRoutes.post("/catalog-refresh", async (c) => {
   }
 
   // Fetch last 5 episodes per podcast via Podcast Index API (concurrent batches)
+  // Episode ingestion still uses PodcastIndexClient directly — CatalogSource only covers discovery
+  const { PodcastIndexClient } = await import("../../lib/podcast-index");
+  const client = new PodcastIndexClient(c.env.PODCAST_INDEX_KEY, c.env.PODCAST_INDEX_SECRET);
+
   let episodesCreated = 0;
   let episodeErrors = 0;
   const BATCH_SIZE = 10;
 
-  for (let i = 0; i < feeds.length; i += BATCH_SIZE) {
-    const batch = feeds.slice(i, i + BATCH_SIZE);
+  // Only fetch episodes for podcasts that have externalIds (Podcast Index IDs)
+  const feedsWithIds = discovered.filter((f) => f.externalId);
+
+  for (let i = 0; i < feedsWithIds.length; i += BATCH_SIZE) {
+    const batch = feedsWithIds.slice(i, i + BATCH_SIZE);
     const results = await Promise.allSettled(
       batch.map(async (feed) => {
-        const episodes = await client.episodesByFeedId(feed.id, 5);
+        const episodes = await client.episodesByFeedId(Number(feed.externalId), 5);
         const podcast = await prisma.podcast.findUnique({
-          where: { podcastIndexId: String(feed.id) },
+          where: { podcastIndexId: feed.externalId },
           select: { id: true },
         });
         if (!podcast) return 0;
@@ -407,7 +412,7 @@ podcastsRoutes.post("/catalog-refresh", async (c) => {
 
   return c.json({
     data: {
-      feedsFound: feeds.length,
+      feedsFound: discovered.length,
       created,
       updated,
       episodesCreated,

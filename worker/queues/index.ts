@@ -241,6 +241,33 @@ export async function scheduled(
         ts: new Date().toISOString(),
       }));
     }
+    // Catalog cleanup check
+    try {
+      const cleanupEnabled = await getConfig(prisma, "catalog.cleanup.enabled", false);
+      if (cleanupEnabled) {
+        const cleanupCount = await prisma.podcast.count({
+          where: {
+            status: { not: "archived" },
+            subscriptions: { none: {} },
+          },
+        });
+
+        if (cleanupCount > 0) {
+          await prisma.platformConfig.upsert({
+            where: { key: "catalog.cleanup.candidateCount" },
+            update: { value: cleanupCount },
+            create: { key: "catalog.cleanup.candidateCount", value: cleanupCount, description: "Podcasts eligible for cleanup" },
+          });
+        }
+      }
+    } catch (err) {
+      console.error(JSON.stringify({
+        level: "error",
+        action: "cleanup_check_failed",
+        error: err instanceof Error ? err.message : String(err),
+        ts: new Date().toISOString(),
+      }));
+    }
   } finally {
     ctx.waitUntil(prisma.$disconnect());
   }

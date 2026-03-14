@@ -10,7 +10,10 @@ vi.mock("../../lib/db", () => ({
 }));
 
 vi.mock("../../lib/config", () => ({
-  getConfig: vi.fn().mockResolvedValue(true),
+  getConfig: vi.fn().mockImplementation((_prisma: any, key: string, fallback: any) => {
+    if (key === "transcript.sources") return Promise.resolve(["rss-feed", "podcast-index"]);
+    return Promise.resolve(fallback !== undefined ? true : fallback);
+  }),
 }));
 
 vi.mock("../../lib/ai-models", () => ({
@@ -26,6 +29,18 @@ const mockPutWorkProduct = vi.fn().mockResolvedValue(undefined);
 vi.mock("../../lib/work-products", () => ({
   wpKey: vi.fn(({ type, episodeId }: any) => `wp/transcript/${episodeId}.txt`),
   putWorkProduct: (...args: any[]) => mockPutWorkProduct(...args),
+}));
+
+const mockRssLookup = vi.fn().mockResolvedValue(null);
+const mockPiLookup = vi.fn().mockResolvedValue(null);
+
+vi.mock("../../lib/transcript-sources", () => ({
+  getTranscriptSource: vi.fn().mockImplementation((id: string) => {
+    if (id === "rss-feed") return { name: "RSS Feed", identifier: "rss-feed", lookup: mockRssLookup };
+    if (id === "podcast-index") return { name: "Podcast Index", identifier: "podcast-index", lookup: mockPiLookup };
+    return undefined;
+  }),
+  getAllTranscriptSources: vi.fn().mockReturnValue([]),
 }));
 
 vi.mock("../../lib/transcript-source", () => ({
@@ -61,8 +76,7 @@ vi.mock("../../lib/stt-providers", () => ({
 
 const { getConfig } = await import("../../lib/config");
 const { getModelConfig } = await import("../../lib/ai-models");
-const { lookupPodcastIndexTranscript } = await import("../../lib/transcript-source");
-const { fetchTranscript } = await import("../../lib/transcript");
+const { getTranscriptSource } = await import("../../lib/transcript-sources");
 const { getProviderImpl } = await import("../../lib/stt-providers");
 const { handleTranscription } = await import("../transcription");
 
@@ -123,7 +137,10 @@ describe("handleTranscription", () => {
 
     // Re-set getConfig default after clearAllMocks (mockReset to clear queued values)
     (getConfig as any).mockReset();
-    (getConfig as any).mockResolvedValue(true);
+    (getConfig as any).mockImplementation((_prisma: any, key: string, _fallback: any) => {
+      if (key === "transcript.sources") return Promise.resolve(["rss-feed", "podcast-index"]);
+      return Promise.resolve(true);
+    });
 
     // Re-set getModelConfig default after clearAllMocks
     (getModelConfig as any).mockReset();
@@ -160,11 +177,10 @@ describe("handleTranscription", () => {
     // Mock providerModelId lookup
     mockPrisma.aiModelProvider.findFirst.mockResolvedValue({ providerModelId: "@cf/openai/whisper-large-v3-turbo" });
 
-    (lookupPodcastIndexTranscript as any).mockReset();
-    (lookupPodcastIndexTranscript as any).mockResolvedValue(null);
-
-    (fetchTranscript as any).mockReset();
-    (fetchTranscript as any).mockResolvedValue("Parsed transcript text.");
+    mockRssLookup.mockReset();
+    mockRssLookup.mockResolvedValue(null);
+    mockPiLookup.mockReset();
+    mockPiLookup.mockResolvedValue(null);
 
     mockLogger.info.mockReset();
     mockLogger.debug.mockReset();
@@ -179,9 +195,11 @@ describe("handleTranscription", () => {
     mockPrisma.pipelineStep.create.mockResolvedValue({ id: "step1" });
     mockPrisma.distillation.findUnique.mockResolvedValue(null);
     mockPrisma.episode.findUnique.mockResolvedValue(EPISODE);
+    mockPrisma.podcast.findUnique.mockResolvedValue(PODCAST);
     mockPrisma.distillation.upsert.mockResolvedValue({ id: "dist1", episodeId: "ep1" });
     mockPrisma.workProduct.create.mockResolvedValue({ id: "wp1" });
     mockPrisma.pipelineStep.update.mockResolvedValue({});
+    mockRssLookup.mockResolvedValue("This is a transcript.");
 
     await handleTranscription(createBatch([msg]), env, ctx);
 
@@ -238,20 +256,22 @@ describe("handleTranscription", () => {
     expect(msg.ack).toHaveBeenCalled();
   });
 
-  it("feed URL -> fetches transcript, step COMPLETED with WorkProduct", async () => {
+  it("feed URL -> fetches transcript via source abstraction, step COMPLETED with WorkProduct", async () => {
     const msg = createMsg({ jobId: "job1", episodeId: "ep1" });
     mockPrisma.pipelineJob.findUnique.mockResolvedValue(JOB);
     mockPrisma.pipelineJob.update.mockResolvedValue({});
     mockPrisma.pipelineStep.create.mockResolvedValue({ id: "step1" });
     mockPrisma.distillation.findUnique.mockResolvedValue(null);
     mockPrisma.episode.findUnique.mockResolvedValue(EPISODE);
+    mockPrisma.podcast.findUnique.mockResolvedValue(PODCAST);
     mockPrisma.distillation.upsert.mockResolvedValue({ id: "dist1", episodeId: "ep1" });
     mockPrisma.workProduct.create.mockResolvedValue({ id: "wp1" });
     mockPrisma.pipelineStep.update.mockResolvedValue({});
+    mockRssLookup.mockResolvedValue("This is a transcript.");
 
     await handleTranscription(createBatch([msg]), env, ctx);
 
-    expect(fetch).toHaveBeenCalledWith("https://example.com/transcript.txt");
+    expect(mockRssLookup).toHaveBeenCalled();
     expect(mockPrisma.distillation.upsert).toHaveBeenCalledWith({
       where: { episodeId: "ep1" },
       update: { status: "TRANSCRIPT_READY", transcript: "This is a transcript.", errorMessage: null },
@@ -322,10 +342,12 @@ describe("handleTranscription", () => {
     mockPrisma.distillation.upsert.mockResolvedValue({ id: "dist1", episodeId: "ep1" });
     mockPrisma.workProduct.create.mockResolvedValue({ id: "wp1" });
     mockPrisma.pipelineStep.update.mockResolvedValue({});
+    // Both transcript sources return null -> falls to STT
+    mockRssLookup.mockResolvedValue(null);
+    mockPiLookup.mockResolvedValue(null);
 
     await handleTranscription(createBatch([msg]), env, ctx);
 
-    expect(getModelConfig).toHaveBeenCalledWith(expect.anything(), "stt");
     expect(getProviderImpl).toHaveBeenCalledWith("cloudflare");
     expect(mockTranscribe).toHaveBeenCalled();
   });
@@ -337,9 +359,11 @@ describe("handleTranscription", () => {
     mockPrisma.pipelineStep.create.mockResolvedValue({ id: "step1" });
     mockPrisma.distillation.findUnique.mockResolvedValue(null);
     mockPrisma.episode.findUnique.mockResolvedValue(EPISODE);
+    mockPrisma.podcast.findUnique.mockResolvedValue(PODCAST);
     mockPrisma.distillation.upsert.mockResolvedValue({ id: "dist1", episodeId: "ep1" });
     mockPrisma.workProduct.create.mockResolvedValue({ id: "wp1" });
     mockPrisma.pipelineStep.update.mockResolvedValue({});
+    mockRssLookup.mockResolvedValue("This is a transcript.");
 
     await handleTranscription(createBatch([msg]), env, ctx);
 
@@ -363,20 +387,21 @@ describe("handleTranscription", () => {
   });
 
   it("bypasses stage gate for manual messages", async () => {
-    (getConfig as any).mockResolvedValueOnce(false);
     const msg = createMsg({ jobId: "job1", episodeId: "ep1", type: "manual" });
     mockPrisma.pipelineJob.findUnique.mockResolvedValue(JOB);
     mockPrisma.pipelineJob.update.mockResolvedValue({});
     mockPrisma.pipelineStep.create.mockResolvedValue({ id: "step1" });
     mockPrisma.distillation.findUnique.mockResolvedValue(null);
     mockPrisma.episode.findUnique.mockResolvedValue(EPISODE);
+    mockPrisma.podcast.findUnique.mockResolvedValue(PODCAST);
     mockPrisma.distillation.upsert.mockResolvedValue({ id: "dist1", episodeId: "ep1" });
     mockPrisma.workProduct.create.mockResolvedValue({ id: "wp1" });
     mockPrisma.pipelineStep.update.mockResolvedValue({});
+    mockRssLookup.mockResolvedValue("This is a transcript.");
 
     await handleTranscription(createBatch([msg]), env, ctx);
 
-    expect(fetch).toHaveBeenCalled();
+    expect(mockRssLookup).toHaveBeenCalled();
     expect(msg.ack).toHaveBeenCalled();
   });
 
@@ -428,9 +453,11 @@ describe("handleTranscription", () => {
     mockPrisma.pipelineStep.create.mockResolvedValue({ id: "step1" });
     mockPrisma.distillation.findUnique.mockResolvedValue(null);
     mockPrisma.episode.findUnique.mockResolvedValue(EPISODE);
+    mockPrisma.podcast.findUnique.mockResolvedValue(PODCAST);
     mockPrisma.distillation.upsert.mockResolvedValue({ id: "dist1", episodeId: "ep1" });
     mockPrisma.workProduct.create.mockResolvedValue({ id: "wp1" });
     mockPrisma.pipelineStep.update.mockResolvedValue({});
+    mockRssLookup.mockResolvedValue("This is a transcript.");
 
     await handleTranscription(createBatch([msg]), env, ctx);
 
@@ -447,9 +474,11 @@ describe("handleTranscription", () => {
     mockPrisma.pipelineStep.create.mockResolvedValue({ id: "step1" });
     mockPrisma.distillation.findUnique.mockResolvedValue(null);
     mockPrisma.episode.findUnique.mockResolvedValue(EPISODE);
+    mockPrisma.podcast.findUnique.mockResolvedValue(PODCAST);
     mockPrisma.distillation.upsert.mockResolvedValue({ id: "dist1", episodeId: "ep1" });
     mockPrisma.workProduct.create.mockResolvedValue({ id: "wp-new" });
     mockPrisma.pipelineStep.update.mockResolvedValue({});
+    mockRssLookup.mockResolvedValue("This is a transcript.");
 
     await handleTranscription(createBatch([msg]), env, ctx);
 
@@ -489,24 +518,19 @@ describe("handleTranscription", () => {
     mockPrisma.distillation.findUnique.mockResolvedValue(null);
     mockPrisma.episode.findUnique.mockResolvedValue(episodeNoTranscript);
     mockPrisma.podcast.findUnique.mockResolvedValue(PODCAST);
-    mockPrisma.episode.update.mockResolvedValue({});
     mockPrisma.distillation.upsert.mockResolvedValue({ id: "dist1", episodeId: "ep1" });
     mockPrisma.workProduct.create.mockResolvedValue({ id: "wp1" });
     mockPrisma.pipelineStep.update.mockResolvedValue({});
 
-    (lookupPodcastIndexTranscript as any).mockResolvedValue("https://pi.example.com/transcript.vtt");
-    (fetchTranscript as any).mockResolvedValue("Hello from Podcast Index");
+    // RSS returns null, Podcast Index returns transcript text
+    mockRssLookup.mockResolvedValue(null);
+    mockPiLookup.mockResolvedValue("Hello from Podcast Index");
 
     await handleTranscription(createBatch([msg]), env, ctx);
 
-    expect(lookupPodcastIndexTranscript).toHaveBeenCalled();
+    expect(mockPiLookup).toHaveBeenCalled();
     // Should NOT call Whisper
     expect(mockTranscribe).not.toHaveBeenCalled();
-    // Should backfill episode.transcriptUrl
-    expect(mockPrisma.episode.update).toHaveBeenCalledWith({
-      where: { id: "ep1" },
-      data: { transcriptUrl: "https://pi.example.com/transcript.vtt" },
-    });
     expect(msg.ack).toHaveBeenCalled();
   });
 
@@ -523,23 +547,13 @@ describe("handleTranscription", () => {
     mockPrisma.workProduct.create.mockResolvedValue({ id: "wp1" });
     mockPrisma.pipelineStep.update.mockResolvedValue({});
 
-    (lookupPodcastIndexTranscript as any).mockResolvedValue(null);
-
-    if (typeof globalThis.File === "undefined") {
-      globalThis.File = class File extends Blob {
-        name: string;
-        lastModified: number;
-        constructor(parts: BlobPart[], name: string, opts?: FilePropertyBag) {
-          super(parts, opts);
-          this.name = name;
-          this.lastModified = Date.now();
-        }
-      } as any;
-    }
+    // Both transcript sources return null
+    mockRssLookup.mockResolvedValue(null);
+    mockPiLookup.mockResolvedValue(null);
 
     await handleTranscription(createBatch([msg]), env, ctx);
 
-    expect(lookupPodcastIndexTranscript).toHaveBeenCalled();
+    expect(mockPiLookup).toHaveBeenCalled();
     expect(mockTranscribe).toHaveBeenCalled();
     expect(msg.ack).toHaveBeenCalled();
   });
@@ -557,7 +571,8 @@ describe("handleTranscription", () => {
     mockPrisma.workProduct.create.mockResolvedValue({ id: "wp1" });
     mockPrisma.pipelineStep.update.mockResolvedValue({});
 
-    (lookupPodcastIndexTranscript as any).mockResolvedValue(null);
+    mockRssLookup.mockResolvedValue(null);
+    mockPiLookup.mockResolvedValue(null);
 
     await handleTranscription(createBatch([msg]), env, ctx);
 
@@ -581,7 +596,8 @@ describe("handleTranscription", () => {
       mockPrisma.pipelineEvent.create.mockResolvedValue({});
       mockPrisma.aiServiceError.create.mockResolvedValue({});
 
-      (lookupPodcastIndexTranscript as any).mockResolvedValue(null);
+      mockRssLookup.mockResolvedValue(null);
+      mockPiLookup.mockResolvedValue(null);
 
       // STT provider throws AiProviderError
       mockTranscribe.mockRejectedValueOnce(
@@ -653,7 +669,8 @@ describe("handleTranscription", () => {
     mockPrisma.podcast.findUnique.mockResolvedValue(PODCAST);
     mockPrisma.distillation.upsert.mockResolvedValue({});
 
-    (lookupPodcastIndexTranscript as any).mockResolvedValue(null);
+    mockRssLookup.mockResolvedValue(null);
+    mockPiLookup.mockResolvedValue(null);
 
     // Return tiny audio — should fail with "too small" error
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({

@@ -36,13 +36,16 @@ const PodcastIndexTranscriptSource: TranscriptSource = {
   async lookup(ctx, env) {
     const { PodcastIndexClient } = await import("./podcast-index");
     const { lookupPodcastIndexTranscript } = await import("./transcript-source");
+    const { fetchTranscript } = await import("./transcript");
     const client = new PodcastIndexClient(env.PODCAST_INDEX_KEY, env.PODCAST_INDEX_SECRET);
-    return lookupPodcastIndexTranscript(
+    const url = await lookupPodcastIndexTranscript(
       client,
       ctx.podcastIndexId,
       ctx.episodeGuid,
       ctx.episodeTitle
     );
+    if (!url) return null;
+    return fetchTranscript(url);
   },
 };
 

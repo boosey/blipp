@@ -5,6 +5,7 @@ import { getCurrentUser } from "../lib/admin-helpers";
 import { getUserWithPlan, checkDurationLimit, checkSubscriptionLimit } from "../lib/plan-limits";
 import { DURATION_TIERS, isValidDurationTier } from "../lib/constants";
 import { getConfig } from "../lib/config";
+import { getCatalogSource } from "../lib/catalog-sources";
 
 /**
  * Podcast discovery and subscription routes.
@@ -69,6 +70,40 @@ podcasts.get("/catalog", async (c) => {
     page,
     pageSize,
   });
+});
+
+/**
+ * POST /search-podcasts — Search external podcast directories.
+ * Body: { query: string }
+ * Returns discovered podcasts with inCatalog flag.
+ */
+podcasts.post("/search-podcasts", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const body = await c.req.json<{ query: string }>();
+
+  if (!body.query || body.query.trim().length < 2) {
+    return c.json({ error: "Query must be at least 2 characters" }, 400);
+  }
+
+  const sourceId = await getConfig(prisma, "catalog.source", "podcast-index") as string;
+  const source = getCatalogSource(sourceId);
+  const results = await source.search(body.query.trim(), c.env);
+
+  // Check which results are already in catalog
+  const feedUrls = results.map(r => r.feedUrl);
+  const existing = await prisma.podcast.findMany({
+    where: { feedUrl: { in: feedUrls } },
+    select: { id: true, feedUrl: true },
+  });
+  const catalogMap = new Map(existing.map((p: any) => [p.feedUrl, p.id]));
+
+  const data = results.map(r => ({
+    ...r,
+    inCatalog: catalogMap.has(r.feedUrl),
+    podcastId: catalogMap.get(r.feedUrl) ?? null,
+  }));
+
+  return c.json({ data });
 });
 
 /**
