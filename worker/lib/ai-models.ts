@@ -8,18 +8,11 @@ export interface AIModelConfig {
   model: string;
 }
 
-const DEFAULTS: Record<AIStage, AIModelConfig> = {
-  stt: { provider: "cloudflare", model: "whisper-large-v3-turbo" },
-  distillation: { provider: "anthropic", model: "claude-sonnet-4-20250514" },
-  narrative: { provider: "anthropic", model: "claude-sonnet-4-20250514" },
-  tts: { provider: "openai", model: "gpt-4o-mini-tts" },
-};
-
 export async function getModelConfig(
   prisma: any,
   stage: AIStage
-): Promise<AIModelConfig> {
-  return getConfig(prisma, `ai.${stage}.model`, DEFAULTS[stage]);
+): Promise<AIModelConfig | null> {
+  return getConfig<AIModelConfig | null>(prisma, `ai.${stage}.model`, null);
 }
 
 export async function getModelRegistry(

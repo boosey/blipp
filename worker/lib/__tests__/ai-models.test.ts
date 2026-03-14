@@ -18,20 +18,19 @@ describe("getModelConfig", () => {
     (getConfig as any).mockResolvedValue({ provider: "anthropic", model: "claude-haiku-4-5-20251001" });
     const result = await getModelConfig(mockPrisma, "distillation");
     expect(result).toEqual({ provider: "anthropic", model: "claude-haiku-4-5-20251001" });
-    expect(getConfig).toHaveBeenCalledWith(mockPrisma, "ai.distillation.model", expect.any(Object));
+    expect(getConfig).toHaveBeenCalledWith(mockPrisma, "ai.distillation.model", null);
   });
 
-  it("returns fallback default when config is not set", async () => {
-    (getConfig as any).mockResolvedValue({ provider: "anthropic", model: "claude-sonnet-4-20250514" });
+  it("returns null when no config is set", async () => {
+    (getConfig as any).mockResolvedValue(null);
     const result = await getModelConfig(mockPrisma, "distillation");
-    expect(result.provider).toBe("anthropic");
-    expect(result.model).toBe("claude-sonnet-4-20250514");
+    expect(result).toBeNull();
   });
 
   it("uses correct config key per stage", async () => {
     (getConfig as any).mockResolvedValue({ provider: "cloudflare", model: "whisper-large-v3-turbo" });
     await getModelConfig(mockPrisma, "stt");
-    expect(getConfig).toHaveBeenCalledWith(mockPrisma, "ai.stt.model", expect.any(Object));
+    expect(getConfig).toHaveBeenCalledWith(mockPrisma, "ai.stt.model", null);
   });
 });
 

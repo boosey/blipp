@@ -46,10 +46,64 @@ const OpenAITtsProvider: TtsProvider = {
 };
 
 // ---------------------------------------------------------------------------
+// Groq — OpenAI-compatible TTS API (Orpheus models, returns WAV)
+// ---------------------------------------------------------------------------
+
+const GroqTtsProvider: TtsProvider = {
+  name: "Groq",
+  provider: "groq",
+
+  async synthesize(text, voice, providerModelId, _instructions, env) {
+    const resp = await fetch("https://api.groq.com/openai/v1/audio/speech", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env.GROQ_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: providerModelId,
+        input: text,
+        voice: voice || "austin",
+        response_format: "mp3",
+      }),
+    });
+
+    if (!resp.ok) {
+      const body = await resp.text();
+      throw new Error(`Groq TTS API error ${resp.status}: ${body}`);
+    }
+
+    const audio = await resp.arrayBuffer();
+    return { audio };
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Cloudflare Workers AI — @cf/* TTS models via AI binding
+// ---------------------------------------------------------------------------
+
+const CloudflareTtsProvider: TtsProvider = {
+  name: "Cloudflare Workers AI",
+  provider: "cloudflare",
+
+  async synthesize(text, _voice, providerModelId, _instructions, env) {
+    const result = (await env.AI.run(providerModelId as any, {
+      text,
+    })) as any;
+
+    // CF TTS models return audio data directly or in a structured response
+    const audio: ArrayBuffer = result instanceof ArrayBuffer
+      ? result
+      : result?.audio ?? new ArrayBuffer(0);
+    return { audio };
+  },
+};
+
+// ---------------------------------------------------------------------------
 // Registry — keyed by provider name
 // ---------------------------------------------------------------------------
 
-const PROVIDERS: TtsProvider[] = [OpenAITtsProvider];
+const PROVIDERS: TtsProvider[] = [OpenAITtsProvider, GroqTtsProvider, CloudflareTtsProvider];
 
 const providerMap = new Map<string, TtsProvider>(
   PROVIDERS.map((p) => [p.provider, p])

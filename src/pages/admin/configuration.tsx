@@ -2,10 +2,12 @@ import { useState, useEffect, useCallback } from "react";
 import {
   Brain,
   Clock,
+  CreditCard,
   Flag,
   Mic,
   Sparkles,
   Volume2,
+  Scissors,
   Save,
   Plus,
   Check,
@@ -40,14 +42,16 @@ import type { AiModelEntry } from "@/types/admin";
 import type {
   PlatformConfigEntry,
   DurationTier,
+  SubscriptionTierConfig,
   FeatureFlag,
+  UserTier,
   PipelineConfig,
   PipelineTriggerResult,
 } from "@/types/admin";
 
 // ── Types ──
 
-type CategoryId = "pipeline-controls" | "ai-models" | "duration-tiers" | "feature-flags";
+type CategoryId = "pipeline-controls" | "ai-models" | "duration-tiers" | "subscription-tiers" | "feature-flags";
 
 interface CategoryDef {
   id: CategoryId;
@@ -62,6 +66,7 @@ const CATEGORIES: CategoryDef[] = [
   { id: "pipeline-controls", label: "Pipeline Controls", icon: Zap, color: "#EF4444" },
   { id: "ai-models", label: "AI Models", icon: Brain, color: "#8B5CF6" },
   { id: "duration-tiers", label: "Duration Tiers", icon: Clock, color: "#3B82F6" },
+  { id: "subscription-tiers", label: "Subscription Tiers", icon: CreditCard, color: "#10B981" },
   { id: "feature-flags", label: "Feature Flags", icon: Flag, color: "#F97316" },
 ];
 
@@ -81,10 +86,10 @@ const MODEL_TYPES = [
   { key: "tts" as AIStage, label: STAGE_LABELS.tts, icon: Volume2, color: "#10B981" },
 ];
 
-const PLAN_COLORS: Record<string, string> = {
-  free: "#9CA3AF",
-  pro: "#3B82F6",
-  "pro-plus": "#8B5CF6",
+const TIER_COLORS: Record<string, string> = {
+  FREE: "#9CA3AF",
+  PRO: "#3B82F6",
+  PRO_PLUS: "#8B5CF6",
 };
 
 // ── Helpers ──
@@ -92,6 +97,10 @@ const PLAN_COLORS: Record<string, string> = {
 function formatCost(n: number | undefined): string {
   if (n == null) return "-";
   return `$${n.toFixed(2)}`;
+}
+
+function formatCents(cents: number): string {
+  return `$${(cents / 100).toFixed(2)}`;
 }
 
 // ── Loading Skeleton ──
@@ -365,35 +374,49 @@ function AIModelsPanel({
   function getStageModels(stage: string) {
     return modelRegistry
       .filter((m) => m.stage === stage)
-      .map((m) => ({ provider: m.providers[0]?.provider ?? m.developer, model: m.modelId, label: m.label }));
+      .flatMap((m) =>
+        m.providers.length > 0
+          ? m.providers.map((p) => ({
+              provider: p.provider,
+              providerLabel: p.providerLabel,
+              model: m.modelId,
+              label: m.label,
+            }))
+          : [{ provider: m.developer, providerLabel: m.developer, model: m.modelId, label: m.label }]
+      );
   }
 
-  function getModelConfig(prefix: string): { provider: string; model: string } {
+  function getModelConfig(prefix: string): { provider: string; model: string } | null {
     const entry = configs.find((c) => c.key === `ai.${prefix}.model`);
     const val = entry?.value as { provider?: string; model?: string } | null;
-    return {
-      provider: val?.provider ?? "Unknown",
-      model: val?.model ?? "Unknown",
-    };
+    if (!val?.provider || !val?.model) return null;
+    return { provider: val.provider, model: val.model };
   }
 
-  function getModelLabel(stageKey: string, modelId: string): string {
+  function getStageWarning(stageKey: string): string | null {
+    const cfg = getModelConfig(stageKey);
+    if (!cfg) return "No model configured — this stage will fail at runtime";
+    const entries = getStageModels(stageKey);
+    const exists = entries.some((m) => m.model === cfg.model && m.provider === cfg.provider);
+    if (!exists) return `Configured model "${cfg.model}" from "${cfg.provider}" not found in registry`;
+    return null;
+  }
+
+  function getModelLabel(stageKey: string, modelId: string, provider: string): string {
     const entries = getStageModels(stageKey);
     if (!entries) return modelId;
-    const found = entries.find((m) => m.model === modelId);
-    return found?.label ?? modelId;
+    const found = entries.find((m) => m.model === modelId && m.provider === provider);
+    return found ? `${found.label} (${found.providerLabel})` : modelId;
   }
 
-  const handleModelChange = async (stageKey: string, modelId: string) => {
-    const entries = getStageModels(stageKey);
-    if (!entries) return;
-    const entry = entries.find((m) => m.model === modelId);
-    if (!entry) return;
+  const handleModelChange = async (stageKey: string, compositeKey: string) => {
+    const [provider, ...rest] = compositeKey.split("::");
+    const modelId = rest.join("::");
     setSaving(stageKey);
     try {
       await apiFetch(`/config/ai.${stageKey}.model`, {
         method: "PATCH",
-        body: JSON.stringify({ value: { provider: entry.provider, model: entry.model } }),
+        body: JSON.stringify({ value: { provider, model: modelId } }),
       });
       onReload();
       setEditing(null);
@@ -416,6 +439,7 @@ function AIModelsPanel({
       <div className="grid grid-cols-2 gap-3">
         {MODEL_TYPES.map((mt) => {
           const cfg = getModelConfig(mt.key);
+          const warning = modelRegistry.length > 0 ? getStageWarning(mt.key) : null;
           const Icon = mt.icon;
           const isEditing = editing === mt.key;
           const isSaving = saving === mt.key;
@@ -423,7 +447,10 @@ function AIModelsPanel({
           return (
             <div
               key={mt.key}
-              className="bg-[#0F1D32] border border-white/5 rounded-lg p-4 hover:border-white/10 transition-colors"
+              className={cn(
+                "bg-[#0F1D32] border rounded-lg p-4 transition-colors",
+                warning ? "border-amber-500/40" : "border-white/5 hover:border-white/10"
+              )}
             >
               <div className="flex items-center gap-2.5 mb-3">
                 <div
@@ -438,37 +465,48 @@ function AIModelsPanel({
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-[#9CA3AF]">Provider</span>
-                  <span className="font-medium text-[#F9FAFB]">{cfg.provider}</span>
+              {warning && (
+                <div className="flex items-start gap-1.5 mb-3 p-2 rounded bg-amber-500/10 border border-amber-500/20">
+                  <AlertTriangle className="h-3.5 w-3.5 text-amber-400 shrink-0 mt-0.5" />
+                  <span className="text-[10px] text-amber-300 leading-tight">{warning}</span>
                 </div>
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-[#9CA3AF]">Model</span>
-                  <span className="font-mono text-[10px] text-[#F9FAFB]">
-                    {getModelLabel(mt.key, cfg.model)}
-                  </span>
+              )}
+
+              {cfg ? (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-[#9CA3AF]">Provider</span>
+                    <span className="font-medium text-[#F9FAFB]">{cfg.provider}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-[#9CA3AF]">Model</span>
+                    <span className="font-mono text-[10px] text-[#F9FAFB]">
+                      {getModelLabel(mt.key, cfg.model, cfg.provider)}
+                    </span>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="text-xs text-[#9CA3AF] italic">Not configured</div>
+              )}
 
               {isEditing ? (
                 <div className="flex items-center gap-1.5 mt-3">
                   <Select
-                    value={cfg.model}
+                    value={cfg ? `${cfg.provider}::${cfg.model}` : undefined}
                     onValueChange={(v) => handleModelChange(mt.key, v)}
                     disabled={isSaving}
                   >
                     <SelectTrigger className="flex-1 h-8 text-xs bg-[#1A2942] border-white/10 text-[#F9FAFB]">
-                      <SelectValue />
+                      <SelectValue placeholder="Select a model..." />
                     </SelectTrigger>
                     <SelectContent className="bg-[#1A2942] border-white/10 text-[#F9FAFB]">
                       {stageModels.map((m) => (
                         <SelectItem
-                          key={m.model}
-                          value={m.model}
+                          key={`${m.provider}::${m.model}`}
+                          value={`${m.provider}::${m.model}`}
                           className="text-xs"
                         >
-                          {m.label}
+                          {m.label} ({m.providerLabel})
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -488,10 +526,15 @@ function AIModelsPanel({
                   variant="outline"
                   size="sm"
                   onClick={() => setEditing(mt.key)}
-                  className="w-full mt-3 border-white/10 text-[#9CA3AF] hover:text-[#F9FAFB] hover:bg-white/5 text-xs"
+                  className={cn(
+                    "w-full mt-3 text-xs",
+                    warning
+                      ? "border-amber-500/30 text-amber-300 hover:text-amber-200 hover:bg-amber-500/10"
+                      : "border-white/10 text-[#9CA3AF] hover:text-[#F9FAFB] hover:bg-white/5"
+                  )}
                 >
                   <Settings className="h-3 w-3" />
-                  Change
+                  {cfg ? "Change" : "Configure"}
                 </Button>
               )}
             </div>
@@ -591,6 +634,167 @@ function DurationTiersPanel({
   );
 }
 
+// ── Subscription Tiers Panel ──
+
+function SubscriptionTiersPanel({
+  tiers,
+  setDirty,
+}: {
+  tiers: SubscriptionTierConfig[];
+  setDirty: (v: boolean) => void;
+}) {
+  const [editingTier, setEditingTier] = useState<UserTier | null>(null);
+  const [editPrice, setEditPrice] = useState("");
+
+  function startEditing(tier: SubscriptionTierConfig) {
+    setEditingTier(tier.tier);
+    setEditPrice((tier.priceCents / 100).toFixed(2));
+  }
+
+  function cancelEditing() {
+    setEditingTier(null);
+    setEditPrice("");
+  }
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h3 className="text-sm font-semibold text-[#F9FAFB]">Subscription Tiers</h3>
+        <p className="text-[10px] text-[#9CA3AF] mt-0.5">Manage pricing, limits, and features for each plan</p>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3">
+        {tiers.map((tier) => {
+          const color = TIER_COLORS[tier.tier] ?? "#9CA3AF";
+          const isEditing = editingTier === tier.tier;
+
+          return (
+            <div
+              key={tier.tier}
+              className="bg-[#0F1D32] border border-white/5 rounded-lg p-4 hover:border-white/10 transition-colors"
+            >
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex items-center gap-2.5">
+                  <div
+                    className="flex items-center justify-center h-8 w-8 rounded-lg"
+                    style={{ backgroundColor: `${color}15` }}
+                  >
+                    <CreditCard className="h-4 w-4" style={{ color }} />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold text-[#F9FAFB]">{tier.name}</span>
+                      <Badge
+                        className="text-[10px]"
+                        style={{ backgroundColor: `${color}15`, color }}
+                      >
+                        {tier.tier}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      {isEditing ? (
+                        <div className="flex items-center gap-1">
+                          <span className="text-xs text-[#9CA3AF]">$</span>
+                          <Input
+                            value={editPrice}
+                            onChange={(e) => {
+                              setEditPrice(e.target.value);
+                              setDirty(true);
+                            }}
+                            className="h-6 w-20 text-xs bg-[#1A2942] border-white/10 text-[#F9FAFB] font-mono"
+                          />
+                          <span className="text-[10px] text-[#9CA3AF]">/mo</span>
+                          <Button
+                            size="icon-xs"
+                            variant="ghost"
+                            onClick={cancelEditing}
+                            className="text-[#9CA3AF] hover:text-[#F9FAFB]"
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => startEditing(tier)}
+                          className="text-sm font-mono tabular-nums text-[#F9FAFB] hover:text-[#3B82F6] transition-colors"
+                        >
+                          {formatCents(tier.priceCents)}/mo
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <Badge className="bg-white/5 text-[#9CA3AF] text-[10px]">
+                    {tier.userCount.toLocaleString()} users
+                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <Label className="text-[10px] text-[#9CA3AF]">Active</Label>
+                    <Switch
+                      checked={tier.active}
+                      onCheckedChange={() => setDirty(true)}
+                      className="data-[state=checked]:bg-[#10B981]"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Info */}
+              <div className="grid grid-cols-3 gap-3 mb-3">
+                <div className="rounded-md bg-[#1A2942] p-2">
+                  <span className="text-[10px] text-[#9CA3AF] uppercase tracking-wider block mb-0.5">Price</span>
+                  <span className="text-xs font-mono tabular-nums text-[#F9FAFB]">
+                    {formatCents(tier.priceCents)}/mo
+                  </span>
+                </div>
+                <div className="rounded-md bg-[#1A2942] p-2">
+                  <span className="text-[10px] text-[#9CA3AF] uppercase tracking-wider block mb-0.5">Users</span>
+                  <span className="text-xs font-mono tabular-nums text-[#F9FAFB]">
+                    {tier.userCount.toLocaleString()}
+                  </span>
+                </div>
+                <div className="rounded-md bg-[#1A2942] p-2">
+                  <span className="text-[10px] text-[#9CA3AF] uppercase tracking-wider block mb-0.5">Highlighted</span>
+                  <span className="text-xs font-mono tabular-nums text-[#F9FAFB]">
+                    {tier.highlighted ? "Yes" : "No"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Features */}
+              <div>
+                <span className="text-[10px] text-[#9CA3AF] uppercase tracking-wider mb-1.5 block">Features</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {tier.features.map((feature, i) => (
+                    <Badge
+                      key={i}
+                      className="bg-white/5 text-[#F9FAFB]/80 text-[10px] font-normal"
+                    >
+                      <Check className="h-2.5 w-2.5 text-[#10B981] mr-0.5" />
+                      {feature}
+                    </Badge>
+                  ))}
+                  {tier.features.length === 0 && (
+                    <span className="text-[10px] text-[#9CA3AF]">No features configured</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+
+        {tiers.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-12 text-[#9CA3AF]">
+            <CreditCard className="h-8 w-8 mb-2 opacity-40" />
+            <span className="text-xs">No subscription tiers configured</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Feature Flags Panel ──
 
 function FeatureFlagsPanel({
@@ -619,7 +823,7 @@ function FeatureFlagsPanel({
           <span>Flag</span>
           <span>Status</span>
           <span>Rollout</span>
-          <span>Plans</span>
+          <span>Tiers</span>
           <span className="text-right">Toggle</span>
         </div>
 
@@ -667,21 +871,21 @@ function FeatureFlagsPanel({
                 </span>
               </div>
 
-              {/* Plan availability */}
+              {/* Tier availability */}
               <div className="flex gap-1 flex-wrap">
-                {flag.planAvailability.map((plan) => (
+                {flag.tierAvailability.map((tier) => (
                   <Badge
-                    key={plan}
+                    key={tier}
                     className="text-[9px] px-1.5"
                     style={{
-                      backgroundColor: `${PLAN_COLORS[plan] ?? "#9CA3AF"}15`,
-                      color: PLAN_COLORS[plan] ?? "#9CA3AF",
+                      backgroundColor: `${TIER_COLORS[tier] ?? "#9CA3AF"}15`,
+                      color: TIER_COLORS[tier] ?? "#9CA3AF",
                     }}
                   >
-                    {plan}
+                    {tier}
                   </Badge>
                 ))}
-                {flag.planAvailability.length === 0 && (
+                {flag.tierAvailability.length === 0 && (
                   <span className="text-[10px] text-[#9CA3AF]">All</span>
                 )}
               </div>
@@ -717,6 +921,7 @@ export default function Configuration() {
   const [selectedCategory, setSelectedCategory] = useState<CategoryId>("pipeline-controls");
   const [configs, setConfigs] = useState<PlatformConfigEntry[]>([]);
   const [durationTiers, setDurationTiers] = useState<DurationTier[]>([]);
+  const [subscriptionTiers, setSubscriptionTiers] = useState<SubscriptionTierConfig[]>([]);
   const [featureFlags, setFeatureFlags] = useState<FeatureFlag[]>([]);
   const [loading, setLoading] = useState(true);
   const [dirty, setDirty] = useState(false);
@@ -733,6 +938,9 @@ export default function Configuration() {
         .catch(console.error),
       apiFetch<{ data: DurationTier[] }>("/config/tiers/duration")
         .then((r) => setDurationTiers(r.data))
+        .catch(console.error),
+      apiFetch<{ data: SubscriptionTierConfig[] }>("/config/tiers/subscription")
+        .then((r) => setSubscriptionTiers(r.data))
         .catch(console.error),
       apiFetch<{ data: FeatureFlag[] }>("/config/features")
         .then((r) => setFeatureFlags(r.data))
@@ -798,6 +1006,9 @@ export default function Configuration() {
             )}
             {selectedCategory === "duration-tiers" && (
               <DurationTiersPanel tiers={durationTiers} setDirty={setDirty} />
+            )}
+            {selectedCategory === "subscription-tiers" && (
+              <SubscriptionTiersPanel tiers={subscriptionTiers} setDirty={setDirty} />
             )}
             {selectedCategory === "feature-flags" && (
               <FeatureFlagsPanel flags={featureFlags} setDirty={setDirty} />

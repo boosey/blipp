@@ -125,7 +125,9 @@ export async function handleAudioGeneration(
         const narrative = existingClip.narrativeText;
 
         // Read model config
-        const { provider: ttsProviderName, model: ttsModel } = await getModelConfig(prisma, "tts");
+        const ttsConfig = await getModelConfig(prisma, "tts");
+        if (!ttsConfig) throw new Error("No AI model configured for TTS stage — configure one in Admin > Configuration");
+        const { provider: ttsProviderName, model: ttsModel } = ttsConfig;
         const ttsPricing = await getModelPricing(prisma, ttsModel, ttsProviderName);
         const dbTtsProvider = await prisma.aiModelProvider.findFirst({
           where: { provider: ttsProviderName, model: { modelId: ttsModel } },

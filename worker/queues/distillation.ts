@@ -143,7 +143,9 @@ export async function handleDistillation(
         });
 
         // Extract claims via LLM (Pass 1)
-        const { provider: distillationProvider, model: distillationModel } = await getModelConfig(prisma, "distillation");
+        const distillationConfig = await getModelConfig(prisma, "distillation");
+        if (!distillationConfig) throw new Error("No AI model configured for Distillation stage — configure one in Admin > Configuration");
+        const { provider: distillationProvider, model: distillationModel } = distillationConfig;
         const distillationPricing = await getModelPricing(prisma, distillationModel, distillationProvider);
         const dbDistProvider = await prisma.aiModelProvider.findFirst({
           where: { provider: distillationProvider, model: { modelId: distillationModel } },

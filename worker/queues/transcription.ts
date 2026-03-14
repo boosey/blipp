@@ -183,7 +183,9 @@ export async function handleTranscription(
           } else {
             // Tier 3: STT via configured provider
             await writeEvent(prisma, step.id, "WARN", "No transcript in RSS or Podcast Index — falling back to STT");
-            const { provider: sttProviderName, model: sttModel } = await getModelConfig(prisma, "stt");
+            const sttConfig = await getModelConfig(prisma, "stt");
+            if (!sttConfig) throw new Error("No AI model configured for STT stage — configure one in Admin > Configuration");
+            const { provider: sttProviderName, model: sttModel } = sttConfig;
             const sttPricing = await getModelPricing(prisma, sttModel, sttProviderName);
 
             // Look up providerModelId from DB
