@@ -43,7 +43,12 @@ function AdminLoading() {
 export default function App() {
   return (
     <Routes>
-      <Route path="/" element={<Landing />} />
+      <Route path="/" element={
+        <>
+          <SignedIn><Navigate to="/home" replace /></SignedIn>
+          <SignedOut><Landing /></SignedOut>
+        </>
+      } />
       <Route path="/pricing" element={<Pricing />} />
 
       {/* Backwards compat */}
