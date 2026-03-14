@@ -58,7 +58,12 @@ beforeEach(() => {
   mockCtx = { waitUntil: vi.fn() } as unknown as ExecutionContext;
   (createPrismaClient as any).mockReturnValue(mockPrisma);
   // Re-set getConfig default after clearAllMocks (vitest v4 resets mock implementations)
-  (getConfig as any).mockResolvedValue(true);
+  // Return sensible defaults per key; pipeline stages enabled, catalog.refreshAllPodcasts disabled
+  (getConfig as any).mockImplementation(async (_p: any, key: string, fallback: any) => {
+    if (key === "catalog.refreshAllPodcasts") return false;
+    if (key === "pipeline.feedRefresh.maxEpisodesPerPodcast") return 5;
+    return fallback !== undefined ? true : true;
+  });
   mockFetch.mockResolvedValue({
     text: vi.fn().mockResolvedValue("<rss></rss>"),
   });
@@ -189,7 +194,11 @@ describe("handleFeedRefresh", () => {
     });
 
     it("fetches only subscribed podcasts when fetchAll (cron)", async () => {
-      (getConfig as any).mockResolvedValue(true);
+      // refreshAllPodcasts=false so it uses subscription-based filtering
+      (getConfig as any).mockImplementation(async (_p: any, key: string) => {
+        if (key === "catalog.refreshAllPodcasts") return false;
+        return true;
+      });
 
       // Subscription query returns one subscribed podcast
       mockPrisma.subscription.findMany.mockResolvedValue([
@@ -229,7 +238,10 @@ describe("handleFeedRefresh", () => {
     });
 
     it("skips podcast fetch when no subscriptions exist (cron)", async () => {
-      (getConfig as any).mockResolvedValue(true);
+      (getConfig as any).mockImplementation(async (_p: any, key: string) => {
+        if (key === "catalog.refreshAllPodcasts") return false;
+        return true;
+      });
 
       mockPrisma.subscription.findMany.mockResolvedValue([]);
 

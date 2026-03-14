@@ -7,6 +7,7 @@ import { getLlmProviderImpl } from "../lib/llm-providers";
 import { wpKey, putWorkProduct } from "../lib/work-products";
 import { writeEvent } from "../lib/pipeline-events";
 import { writeAiError, classifyAiError, AiProviderError } from "../lib/ai-errors";
+import { recordSuccess, recordFailure } from "../lib/circuit-breaker";
 import type { DistillationMessage } from "../lib/queue-messages";
 import type { Env } from "../types";
 
@@ -144,6 +145,7 @@ export async function handleDistillation(
         await writeEvent(prisma, step.id, "INFO", `Sending transcript to ${llm.name} (${resolved.providerModelId}) for claim extraction`);
         const elapsed = log.timer("claude_extraction");
         const { claims, usage: claimsUsage } = await extractClaims(llm, existing.transcript, resolved.providerModelId, 8192, env, resolved.pricing);
+        recordSuccess(resolved.provider);
         elapsed();
         await writeEvent(prisma, step.id, "INFO", `Extracted ${claims.length} claims from transcript`);
         await writeEvent(prisma, step.id, "DEBUG", `Model: ${claimsUsage.model}`, { inputTokens: claimsUsage.inputTokens, outputTokens: claimsUsage.outputTokens, cost: claimsUsage.cost });
@@ -260,6 +262,7 @@ export async function handleDistillation(
 
         // Capture AI provider errors
         if (err instanceof AiProviderError) {
+          recordFailure(err.provider);
           const { category, severity } = classifyAiError(err, err.httpStatus, err.rawResponse);
           writeAiError(prisma, {
             service: "distillation",

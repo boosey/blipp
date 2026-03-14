@@ -8,6 +8,7 @@ import { getTtsProviderImpl } from "../lib/tts-providers";
 import { wpKey, putWorkProduct } from "../lib/work-products";
 import { writeEvent } from "../lib/pipeline-events";
 import { writeAiError, classifyAiError, AiProviderError } from "../lib/ai-errors";
+import { recordSuccess, recordFailure } from "../lib/circuit-breaker";
 import type { AudioGenerationMessage } from "../lib/queue-messages";
 import type { Env } from "../types";
 
@@ -127,6 +128,7 @@ export async function handleAudioGeneration(
         await writeEvent(prisma, step.id, "INFO", `Generating audio via ${tts.name} (${resolved.providerModelId})`);
         const ttsTimer = log.timer("tts_generation");
         const { audio, usage: ttsUsage } = await generateSpeech(tts, narrative, undefined, resolved.providerModelId, env, resolved.pricing);
+        recordSuccess(resolved.provider);
         ttsTimer();
         await writeEvent(prisma, step.id, "INFO", "Audio generated successfully");
         await writeEvent(prisma, step.id, "DEBUG", `Audio size: ${audio.byteLength} bytes`, { model: ttsUsage.model, sizeBytes: audio.byteLength });
@@ -260,6 +262,7 @@ export async function handleAudioGeneration(
 
         // Capture AI provider errors
         if (err instanceof AiProviderError) {
+          recordFailure(err.provider);
           const { category, severity } = classifyAiError(err, err.httpStatus, err.rawResponse);
           writeAiError(prisma, {
             service: "tts",

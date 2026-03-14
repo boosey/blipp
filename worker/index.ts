@@ -17,6 +17,7 @@ import { routes } from "./routes/index";
 import { handleQueue, scheduled } from "./queues/index";
 import { shimQueuesForLocalDev } from "./lib/local-queue";
 import { rateLimit } from "./middleware/rate-limit";
+import { securityHeaders } from "./middleware/security-headers";
 import { deepHealthCheck } from "./lib/health";
 import type { Env } from "./types";
 
@@ -111,6 +112,9 @@ app.use("/api/*", rateLimit({
   keyPrefix: "rl:api",
   skipPaths: ["/api/webhooks/", "/api/health"],
 }));
+
+// Security headers — CSP, X-Frame-Options, etc. for all responses
+app.use("/*", securityHeaders);
 
 // Mount all API routes under /api
 app.route("/api", routes);

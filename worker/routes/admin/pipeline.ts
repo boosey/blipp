@@ -594,4 +594,57 @@ pipelineRoutes.get("/stages", async (c) => {
   return c.json({ data });
 });
 
+// GET /dlq - Dead letter queue monitoring
+pipelineRoutes.get("/dlq", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+
+  const [stuckJobs, failedSteps] = await Promise.all([
+    prisma.pipelineJob.findMany({
+      where: {
+        status: "IN_PROGRESS",
+        updatedAt: { lt: oneHourAgo },
+      },
+      select: {
+        id: true,
+        requestId: true,
+        episodeId: true,
+        currentStage: true,
+        updatedAt: true,
+      },
+      take: 50,
+    }),
+    prisma.pipelineStep.findMany({
+      where: {
+        status: "FAILED",
+        retryCount: { gte: 3 },
+      },
+      select: {
+        id: true,
+        jobId: true,
+        stage: true,
+        errorMessage: true,
+        retryCount: true,
+        completedAt: true,
+      },
+      orderBy: { completedAt: "desc" },
+      take: 50,
+    }),
+  ]);
+
+  return c.json({
+    data: {
+      stuckJobs: stuckJobs.map((j: any) => ({
+        ...j,
+        updatedAt: j.updatedAt.toISOString(),
+        stuckMinutes: Math.floor((Date.now() - j.updatedAt.getTime()) / 60000),
+      })),
+      exhaustedRetries: failedSteps.map((s: any) => ({
+        ...s,
+        completedAt: s.completedAt?.toISOString(),
+      })),
+    },
+  });
+});
+
 export { pipelineRoutes };

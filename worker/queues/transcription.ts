@@ -10,6 +10,7 @@ import { getProviderImpl } from "../lib/stt-providers";
 import { calculateAudioCost, type AiUsage } from "../lib/ai-usage";
 import { writeEvent } from "../lib/pipeline-events";
 import { writeAiError, classifyAiError, AiProviderError } from "../lib/ai-errors";
+import { recordSuccess, recordFailure } from "../lib/circuit-breaker";
 import type { TranscriptionMessage } from "../lib/queue-messages";
 import type { Env } from "../types";
 
@@ -211,6 +212,7 @@ export async function handleTranscription(
             );
 
             transcript = sttResult.transcript;
+            recordSuccess(resolved.provider);
             const estimatedSeconds = audioBuffer.byteLength / (128 * 1000 / 8);
             const sttInputTokens = Math.round(audioBuffer.byteLength / 16000);
             sttUsage = { model: resolved.model, inputTokens: sttInputTokens, outputTokens: 0, cost: calculateAudioCost(resolved.pricing, estimatedSeconds) };
@@ -320,6 +322,7 @@ export async function handleTranscription(
 
         // Capture AI provider errors
         if (err instanceof AiProviderError) {
+          recordFailure(err.provider);
           const { category, severity } = classifyAiError(err, err.httpStatus, err.rawResponse);
           writeAiError(prisma, {
             service: "stt",

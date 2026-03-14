@@ -68,6 +68,7 @@ model User {
   stripeCustomerId      String?  @unique
   planId                String
   isAdmin               Boolean  @default(false)
+  status                String   @default("active")  // "active" | "suspended" | "banned"
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
@@ -77,6 +78,7 @@ model User {
   feedItems        FeedItem[]
   briefingRequests BriefingRequest[]
   apiKeys          ApiKey[]
+  podcastRequests  PodcastRequest[]
 }
 
 // ── Podcast & Episodes ──
@@ -95,12 +97,14 @@ model Podcast {
   feedError      String?
   episodeCount   Int       @default(0)
   status         String    @default("active") // "active" | "paused" | "archived"
+  source         String?   // "trending" | "user_request" | "manual"
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
   episodes      Episode[]
   subscriptions Subscription[]
   feedItems     FeedItem[]
+  requests      PodcastRequest[]
 }
 
 model Episode {
@@ -125,6 +129,7 @@ model Episode {
   benchmarkResults SttBenchmarkResult[]
 
   @@unique([podcastId, guid])
+  @@index([podcastId, publishedAt])
 }
 
 // ── Distillation & Clips ──
@@ -214,6 +219,7 @@ model Subscription {
   podcast Podcast @relation(fields: [podcastId], references: [id], onDelete: Cascade)
 
   @@unique([userId, podcastId])
+  @@index([userId])
 }
 
 // ── Feed Items ──
@@ -240,6 +246,8 @@ model FeedItem {
   briefing Briefing? @relation(fields: [briefingId], references: [id])
 
   @@unique([userId, episodeId, durationTier])
+  @@index([userId, status, createdAt])
+  @@index([userId, listened, createdAt])
 }
 
 enum FeedItemSource {
@@ -273,6 +281,8 @@ model PipelineJob {
   request  BriefingRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
   episode  Episode         @relation(fields: [episodeId], references: [id], onDelete: Cascade)
   steps    PipelineStep[]
+
+  @@index([requestId, status])
 }
 
 enum PipelineStage {
@@ -526,6 +536,29 @@ model SttBenchmarkResult {
 
   @@unique([experimentId, episodeId, model, provider, speed])
   @@index([experimentId])
+}
+
+// ── Podcast Requests (User-Submitted) ──
+
+model PodcastRequest {
+  id          String    @id @default(cuid())
+  userId      String
+  feedUrl     String
+  title       String?
+  imageUrl    String?
+  status      String    @default("PENDING")  // PENDING, APPROVED, REJECTED, DUPLICATE
+  podcastId   String?
+  adminNote   String?
+  reviewedBy  String?
+  reviewedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  podcast Podcast? @relation(fields: [podcastId], references: [id])
+
+  @@unique([userId, feedUrl])
+  @@index([status])
 }
 
 // ── Admin: Runtime Configuration ──

@@ -98,6 +98,77 @@ stripeWebhooks.post("/", async (c) => {
       break;
     }
 
+    case "customer.subscription.updated": {
+      const subscription = event.data.object;
+      const stripeCustomerId = subscription.customer as string;
+      const priceId = subscription.items.data[0]?.price.id;
+
+      if (!priceId) break;
+
+      // Check if subscription is being cancelled (cancel_at_period_end)
+      if (subscription.cancel_at_period_end) {
+        console.log(JSON.stringify({
+          level: "info",
+          action: "subscription_cancellation_scheduled",
+          stripeCustomerId,
+          cancelAt: subscription.cancel_at,
+          ts: new Date().toISOString(),
+        }));
+        // Don't downgrade yet — they paid through the period
+        break;
+      }
+
+      // Plan change — update to new plan
+      const plan = await planFromPriceId(priceId, prisma);
+      if (plan) {
+        await prisma.user.update({
+          where: { stripeCustomerId },
+          data: { planId: plan.id },
+        });
+        console.log(JSON.stringify({
+          level: "info",
+          action: "subscription_plan_changed",
+          stripeCustomerId,
+          newPlanId: plan.id,
+          ts: new Date().toISOString(),
+        }));
+      }
+      break;
+    }
+
+    case "invoice.payment_failed": {
+      const invoice = event.data.object;
+      const stripeCustomerId = invoice.customer as string;
+      const attemptCount = invoice.attempt_count;
+
+      console.error(JSON.stringify({
+        level: "error",
+        action: "payment_failed",
+        stripeCustomerId,
+        attemptCount,
+        amountDue: invoice.amount_due,
+        ts: new Date().toISOString(),
+      }));
+
+      // After 3 failed attempts, downgrade to free plan
+      if (attemptCount >= 3) {
+        const defaultPlan = await prisma.plan.findFirst({ where: { isDefault: true } });
+        if (defaultPlan) {
+          await prisma.user.update({
+            where: { stripeCustomerId },
+            data: { planId: defaultPlan.id },
+          });
+          console.log(JSON.stringify({
+            level: "warn",
+            action: "user_downgraded_payment_failure",
+            stripeCustomerId,
+            ts: new Date().toISOString(),
+          }));
+        }
+      }
+      break;
+    }
+
     case "customer.subscription.deleted": {
       const subscription = event.data.object;
       const stripeCustomerId = subscription.customer as string;

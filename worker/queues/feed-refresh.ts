@@ -54,18 +54,26 @@ export async function handleFeedRefresh(
 
     log.debug("podcast_filter", { fetchAll, podcastIds: [...podcastIds] });
 
-    // Fetch podcasts — only those with subscribers when fetchAll
+    // Fetch podcasts — only those with subscribers when fetchAll (unless config overrides)
     let podcasts;
     if (fetchAll) {
-      // Only refresh podcasts that have at least one subscriber
-      const subscribedPodcastIds = await prisma.subscription.findMany({
-        select: { podcastId: true },
-        distinct: ["podcastId"],
-      });
-      const ids = subscribedPodcastIds.map((s: any) => s.podcastId);
-      podcasts = ids.length > 0
-        ? await prisma.podcast.findMany({ where: { id: { in: ids } } })
-        : [];
+      const refreshAll = await getConfig(prisma, "catalog.refreshAllPodcasts", false);
+      if (refreshAll) {
+        // Refresh all non-archived podcasts
+        podcasts = await prisma.podcast.findMany({
+          where: { status: { not: "archived" } },
+        });
+      } else {
+        // Only refresh podcasts that have at least one subscriber
+        const subscribedPodcastIds = await prisma.subscription.findMany({
+          select: { podcastId: true },
+          distinct: ["podcastId"],
+        });
+        const ids = subscribedPodcastIds.map((s: any) => s.podcastId);
+        podcasts = ids.length > 0
+          ? await prisma.podcast.findMany({ where: { id: { in: ids } } })
+          : [];
+      }
     } else {
       podcasts = await prisma.podcast.findMany({
         where: { id: { in: [...podcastIds] } },

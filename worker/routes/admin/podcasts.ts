@@ -252,6 +252,61 @@ podcastsRoutes.get("/:id", async (c) => {
   });
 });
 
+// GET /cleanup-candidates - Podcasts with 0 subscribers and no recent activity
+podcastsRoutes.get("/cleanup-candidates", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const inactivityDays = parseInt(c.req.query("inactivityDays") ?? "90");
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - inactivityDays);
+
+  const candidates = await prisma.podcast.findMany({
+    where: {
+      status: { not: "archived" },
+      subscriptions: { none: {} },
+      episodes: { every: { feedItems: { every: { createdAt: { lt: cutoff } } } } },
+    },
+    select: {
+      id: true,
+      title: true,
+      source: true,
+      lastFetchedAt: true,
+      createdAt: true,
+      _count: { select: { episodes: true, subscriptions: true } },
+    },
+    orderBy: { lastFetchedAt: "asc" },
+    take: 100,
+  });
+
+  const data = candidates.map((p: any) => ({
+    id: p.id,
+    title: p.title,
+    source: p.source,
+    episodeCount: p._count.episodes,
+    subscriberCount: p._count.subscriptions,
+    lastFetchedAt: p.lastFetchedAt?.toISOString(),
+    createdAt: p.createdAt.toISOString(),
+  }));
+
+  return c.json({ data });
+});
+
+// POST /cleanup-execute - Archive selected podcasts
+podcastsRoutes.post("/cleanup-execute", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const { podcastIds } = await c.req.json<{ podcastIds: string[] }>();
+
+  if (!podcastIds?.length) {
+    return c.json({ error: "podcastIds required" }, 400);
+  }
+
+  const result = await prisma.podcast.updateMany({
+    where: { id: { in: podcastIds } },
+    data: { status: "archived" },
+  });
+
+  return c.json({ data: { archived: result.count } });
+});
+
 // POST /catalog-refresh - Fetch top 200 trending podcasts + their episodes
 podcastsRoutes.post("/catalog-refresh", async (c) => {
   const prisma = c.get("prisma") as any;

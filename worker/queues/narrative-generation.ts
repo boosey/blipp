@@ -7,6 +7,7 @@ import { getLlmProviderImpl } from "../lib/llm-providers";
 import { wpKey, putWorkProduct } from "../lib/work-products";
 import { writeEvent } from "../lib/pipeline-events";
 import { writeAiError, classifyAiError, AiProviderError } from "../lib/ai-errors";
+import { recordSuccess, recordFailure } from "../lib/circuit-breaker";
 import type { NarrativeGenerationMessage } from "../lib/queue-messages";
 import type { Env } from "../types";
 
@@ -156,6 +157,7 @@ export async function handleNarrativeGeneration(
           resolved.pricing,
           episodeMetadata
         );
+        recordSuccess(resolved.provider);
         const wordCount = narrative.split(/\s+/).length;
         narrativeTimer();
         await writeEvent(prisma, step.id, "INFO", `Narrative generated: ${wordCount} words`);
@@ -255,6 +257,7 @@ export async function handleNarrativeGeneration(
 
         // Capture AI provider errors
         if (err instanceof AiProviderError) {
+          recordFailure(err.provider);
           const { category, severity } = classifyAiError(err, err.httpStatus, err.rawResponse);
           writeAiError(prisma, {
             service: "narrative",
