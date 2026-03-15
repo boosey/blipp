@@ -33,6 +33,10 @@ export function PlayerSheet({
     resume,
     seek,
     setRate,
+    adState,
+    adProgress,
+    adDuration,
+    adCurrentTime,
   } = useAudio();
 
   const cycleRate = useCallback(() => {
@@ -42,6 +46,8 @@ export function PlayerSheet({
   }, [playbackRate, setRate]);
 
   if (!currentItem) return null;
+
+  const inAd = adState === "preroll" || adState === "postroll";
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -55,15 +61,24 @@ export function PlayerSheet({
 
         {/* Accessibility — visually hidden */}
         <SheetTitle className="sr-only">
-          {currentItem.episode.title}
+          {inAd ? "Advertisement" : currentItem.episode.title}
         </SheetTitle>
         <SheetDescription className="sr-only">
-          Audio player for {currentItem.podcast.title}
+          {inAd
+            ? `${adState === "preroll" ? "Pre-roll" : "Post-roll"} advertisement`
+            : `Audio player for ${currentItem.podcast.title}`}
         </SheetDescription>
 
         {/* Artwork */}
         <div className="flex-1 flex items-center justify-center w-full max-w-sm">
-          {currentItem.podcast.imageUrl ? (
+          {inAd ? (
+            <div className="w-full max-w-[320px] aspect-square rounded-2xl bg-zinc-900 flex flex-col items-center justify-center gap-3 border border-[#F97316]/20">
+              <span className="text-2xl font-bold text-[#F97316]">Advertisement</span>
+              <span className="text-sm text-zinc-400">
+                {adState === "preroll" ? "Pre-roll" : "Post-roll"}
+              </span>
+            </div>
+          ) : currentItem.podcast.imageUrl ? (
             <img
               src={currentItem.podcast.imageUrl}
               alt=""
@@ -76,76 +91,135 @@ export function PlayerSheet({
 
         {/* Info */}
         <div className="w-full max-w-sm mt-6 text-center">
-          <h2 className="text-lg font-bold truncate">
-            {currentItem.episode.title}
-          </h2>
-          <p className="text-sm text-zinc-400 mt-1 truncate">
-            {currentItem.podcast.title}
-          </p>
-          <p className="text-xs text-zinc-500 mt-1">
-            {currentItem.durationTier}m briefing
-          </p>
+          {inAd ? (
+            <>
+              <h2 className="text-lg font-bold text-[#F97316]">Advertisement</h2>
+              <p className="text-sm text-zinc-400 mt-1">
+                {adState === "preroll" ? "Pre-roll" : "Post-roll"} — {formatTime(adCurrentTime)} / {formatTime(adDuration)}
+              </p>
+            </>
+          ) : (
+            <>
+              <h2 className="text-lg font-bold truncate">
+                {currentItem.episode.title}
+              </h2>
+              <p className="text-sm text-zinc-400 mt-1 truncate">
+                {currentItem.podcast.title}
+              </p>
+              <p className="text-xs text-zinc-500 mt-1">
+                {currentItem.durationTier}m briefing
+              </p>
+            </>
+          )}
         </div>
 
-        {/* Seek bar */}
-        <SeekBar
-          currentTime={currentTime}
-          duration={duration}
-          onSeek={seek}
-        />
+        {/* Seek bar or ad progress */}
+        {inAd ? (
+          <AdProgressBar progress={adProgress} />
+        ) : (
+          <SeekBar
+            currentTime={currentTime}
+            duration={duration}
+            onSeek={seek}
+          />
+        )}
 
         {/* Controls */}
         <div className="flex items-center justify-center gap-8 mt-6 w-full max-w-sm">
-          {/* Playback rate */}
-          <button
-            onClick={cycleRate}
-            className="text-xs font-medium text-zinc-400 bg-zinc-800 px-2.5 py-1 rounded-full min-w-[3rem]"
-          >
-            {playbackRate}x
-          </button>
+          {inAd ? (
+            /* Ad controls: only play/pause, no skip, no rate */
+            <>
+              <div className="min-w-[3rem]" />
+              <div className="w-6 h-6" />
+              <button
+                onClick={isPlaying ? pause : resume}
+                className="w-16 h-16 flex items-center justify-center bg-[#F97316] text-white rounded-full"
+                aria-label={isPlaying ? "Pause" : "Play"}
+              >
+                {isPlaying ? (
+                  <Pause className="w-7 h-7" />
+                ) : (
+                  <Play className="w-7 h-7 ml-0.5" />
+                )}
+              </button>
+              <div className="w-6 h-6" />
+              <div className="min-w-[3rem]" />
+            </>
+          ) : (
+            /* Content controls: full set */
+            <>
+              {/* Playback rate */}
+              <button
+                onClick={cycleRate}
+                className="text-xs font-medium text-zinc-400 bg-zinc-800 px-2.5 py-1 rounded-full min-w-[3rem]"
+              >
+                {playbackRate}x
+              </button>
 
-          {/* Skip back 15s */}
-          <button
-            onClick={() => seek(Math.max(0, currentTime - 15))}
-            className="relative p-2 text-zinc-300"
-            aria-label="Skip back 15 seconds"
-          >
-            <SkipBack className="w-6 h-6" />
-            <span className="absolute text-[10px] font-medium top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
-              15
-            </span>
-          </button>
+              {/* Skip back 15s */}
+              <button
+                onClick={() => seek(Math.max(0, currentTime - 15))}
+                className="relative p-2 text-zinc-300"
+                aria-label="Skip back 15 seconds"
+              >
+                <SkipBack className="w-6 h-6" />
+                <span className="absolute text-[10px] font-medium top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
+                  15
+                </span>
+              </button>
 
-          {/* Play/Pause */}
-          <button
-            onClick={isPlaying ? pause : resume}
-            className="w-16 h-16 flex items-center justify-center bg-white text-zinc-950 rounded-full"
-            aria-label={isPlaying ? "Pause" : "Play"}
-          >
-            {isPlaying ? (
-              <Pause className="w-7 h-7" />
-            ) : (
-              <Play className="w-7 h-7 ml-0.5" />
-            )}
-          </button>
+              {/* Play/Pause */}
+              <button
+                onClick={isPlaying ? pause : resume}
+                className="w-16 h-16 flex items-center justify-center bg-white text-zinc-950 rounded-full"
+                aria-label={isPlaying ? "Pause" : "Play"}
+              >
+                {isPlaying ? (
+                  <Pause className="w-7 h-7" />
+                ) : (
+                  <Play className="w-7 h-7 ml-0.5" />
+                )}
+              </button>
 
-          {/* Skip forward 30s */}
-          <button
-            onClick={() => seek(Math.min(duration, currentTime + 30))}
-            className="relative p-2 text-zinc-300"
-            aria-label="Skip forward 30 seconds"
-          >
-            <SkipForward className="w-6 h-6" />
-            <span className="absolute text-[10px] font-medium top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
-              30
-            </span>
-          </button>
+              {/* Skip forward 30s */}
+              <button
+                onClick={() => seek(Math.min(duration, currentTime + 30))}
+                className="relative p-2 text-zinc-300"
+                aria-label="Skip forward 30 seconds"
+              >
+                <SkipForward className="w-6 h-6" />
+                <span className="absolute text-[10px] font-medium top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
+                  30
+                </span>
+              </button>
 
-          {/* Spacer to balance rate button */}
-          <div className="min-w-[3rem]" />
+              {/* Spacer to balance rate button */}
+              <div className="min-w-[3rem]" />
+            </>
+          )}
         </div>
       </SheetContent>
     </Sheet>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  AdProgressBar — non-interactive progress indicator for ads         */
+/* ------------------------------------------------------------------ */
+
+function AdProgressBar({ progress }: { progress: number }) {
+  return (
+    <div className="w-full max-w-sm mt-6">
+      <div className="relative w-full h-6 flex items-center">
+        {/* Track background */}
+        <div className="absolute w-full h-0.5 bg-zinc-700 rounded-full" />
+        {/* Progress */}
+        <div
+          className="absolute h-0.5 bg-[#F97316] rounded-full transition-all duration-200"
+          style={{ width: `${progress * 100}%` }}
+        />
+      </div>
+    </div>
   );
 }
 

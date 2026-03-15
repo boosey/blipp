@@ -31,6 +31,7 @@ const ModelRegistry = lazy(() => import("./pages/admin/model-registry"));
 const AdminApiKeys = lazy(() => import("./pages/admin/api-keys"));
 const AdminAuditLog = lazy(() => import("./pages/admin/audit-log"));
 const AdminAiErrors = lazy(() => import("./pages/admin/ai-errors"));
+const AdminAds = lazy(() => import("./pages/admin/ads"));
 const Onboarding = lazy(() => import("./pages/onboarding"));
 const History = lazy(() => import("./pages/history"));
 
@@ -112,6 +113,7 @@ export default function App() {
         <Route path="api-keys" element={<Suspense fallback={<AdminLoading />}><AdminApiKeys /></Suspense>} />
         <Route path="audit-log" element={<Suspense fallback={<AdminLoading />}><AdminAuditLog /></Suspense>} />
         <Route path="ai-errors" element={<Suspense fallback={<AdminLoading />}><AdminAiErrors /></Suspense>} />
+        <Route path="ads" element={<Suspense fallback={<AdminLoading />}><AdminAds /></Suspense>} />
       </Route>
     </Routes>
   );

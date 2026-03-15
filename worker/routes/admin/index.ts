@@ -16,6 +16,7 @@ import { plansRoutes } from "./plans";
 import { aiErrorsRoutes } from "./ai-errors";
 import { auditLogRoutes } from "./audit-log";
 import { apiKeysRoutes } from "./api-keys";
+import { adsRoutes } from "./ads";
 
 /**
  * Admin route tree. All routes require admin authentication.
@@ -41,5 +42,6 @@ adminRoutes.route("/plans", plansRoutes);
 adminRoutes.route("/ai-errors", aiErrorsRoutes);
 adminRoutes.route("/audit-log", auditLogRoutes);
 adminRoutes.route("/api-keys", apiKeysRoutes);
+adminRoutes.route("/ads", adsRoutes);
 
 export { adminRoutes };

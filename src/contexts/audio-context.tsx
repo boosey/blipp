@@ -7,7 +7,9 @@ import {
   useState,
 } from "react";
 import type { FeedItem } from "../types/feed";
+import type { AdConfig, AdState } from "../types/ads";
 import { useApiFetch } from "../lib/api";
+import { useImaAds } from "../hooks/use-ima-ads";
 
 interface AudioState {
   currentItem: FeedItem | null;
@@ -17,6 +19,12 @@ interface AudioState {
   playbackRate: number;
   isLoading: boolean;
   error: string | null;
+  // Ad state
+  adState: AdState;
+  isAdPlaying: boolean;
+  adProgress: number;
+  adDuration: number;
+  adCurrentTime: number;
 }
 
 interface AudioActions {
@@ -52,48 +60,18 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const pause = useCallback(() => {
-    audioRef.current?.pause();
-    setIsPlaying(false);
-  }, []);
+  // Ad state
+  const [adState, setAdState] = useState<AdState>("none");
+  const adConfigRef = useRef<AdConfig | null>(null);
+  const pendingItemRef = useRef<FeedItem | null>(null);
 
-  const resume = useCallback(() => {
-    audioRef.current?.play();
-    setIsPlaying(true);
-  }, []);
-
-  const seek = useCallback((time: number) => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    audio.currentTime = time;
-    setCurrentTime(time);
-  }, []);
-
-  const setRate = useCallback((rate: number) => {
-    setPlaybackRate(rate);
-    if (audioRef.current) {
-      audioRef.current.playbackRate = rate;
-    }
-  }, []);
-
-  const stop = useCallback(() => {
-    const audio = audioRef.current;
-    if (audio) {
-      audio.pause();
-      audio.src = "";
-    }
-    setCurrentItem(null);
-    setIsPlaying(false);
-    setCurrentTime(0);
-    setDuration(0);
-    setError(null);
-  }, []);
-
-  const play = useCallback(
+  // Start content playback (called after preroll or when no ads)
+  const startContentPlayback = useCallback(
     (item: FeedItem) => {
       const audio = audioRef.current;
       if (!audio || !item.briefing) return;
 
+      setAdState("content");
       setCurrentItem(item);
       setError(null);
       setIsLoading(true);
@@ -129,20 +107,170 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
               ]
             : [],
         });
-        navigator.mediaSession.setActionHandler("play", () => resume());
-        navigator.mediaSession.setActionHandler("pause", () => pause());
-        navigator.mediaSession.setActionHandler("seekbackward", () => {
-          const audio = audioRef.current;
-          if (audio) seek(Math.max(0, audio.currentTime - 15));
-        });
-        navigator.mediaSession.setActionHandler("seekforward", () => {
-          const audio = audioRef.current;
-          if (audio) seek(Math.min(audio.duration || 0, audio.currentTime + 30));
-        });
       }
     },
-    [apiFetch, pause, playbackRate, resume, seek]
+    [apiFetch, playbackRate]
   );
+
+  // IMA ads hook callbacks
+  const onPrerollComplete = useCallback(() => {
+    const item = pendingItemRef.current;
+    if (item) {
+      startContentPlayback(item);
+    }
+  }, [startContentPlayback]);
+
+  const onPostrollComplete = useCallback(() => {
+    setAdState("none");
+    setIsPlaying(false);
+  }, []);
+
+  // Track which ad flow we're in
+  const adFlowRef = useRef<"preroll" | "postroll" | null>(null);
+
+  const handleAdStart = useCallback(() => {
+    // Ad has started playing
+  }, []);
+
+  const handleAdComplete = useCallback(() => {
+    if (adFlowRef.current === "preroll") {
+      adFlowRef.current = null;
+      onPrerollComplete();
+    } else if (adFlowRef.current === "postroll") {
+      adFlowRef.current = null;
+      onPostrollComplete();
+    }
+  }, [onPrerollComplete, onPostrollComplete]);
+
+  const handleAdError = useCallback(() => {
+    // Errors are handled in useImaAds — it calls onAdComplete after error
+  }, []);
+
+  const ima = useImaAds({
+    onAdStart: handleAdStart,
+    onAdComplete: handleAdComplete,
+    onAdError: handleAdError,
+  });
+
+  const pause = useCallback(() => {
+    if (ima.isAdPlaying) {
+      ima.pauseAd();
+      setIsPlaying(false);
+      return;
+    }
+    audioRef.current?.pause();
+    setIsPlaying(false);
+  }, [ima]);
+
+  const resume = useCallback(() => {
+    if (ima.isAdPlaying) {
+      ima.resumeAd();
+      setIsPlaying(true);
+      return;
+    }
+    audioRef.current?.play();
+    setIsPlaying(true);
+  }, [ima]);
+
+  const seek = useCallback((time: number) => {
+    if (adState !== "content" && adState !== "none") return; // No-op during ads
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.currentTime = time;
+    setCurrentTime(time);
+  }, [adState]);
+
+  const setRate = useCallback((rate: number) => {
+    setPlaybackRate(rate);
+    if (audioRef.current) {
+      audioRef.current.playbackRate = rate;
+    }
+  }, []);
+
+  const stop = useCallback(() => {
+    const audio = audioRef.current;
+    if (audio) {
+      audio.pause();
+      audio.src = "";
+    }
+    ima.destroy();
+    setCurrentItem(null);
+    setIsPlaying(false);
+    setCurrentTime(0);
+    setDuration(0);
+    setError(null);
+    setAdState("none");
+    adConfigRef.current = null;
+    pendingItemRef.current = null;
+    adFlowRef.current = null;
+  }, [ima]);
+
+  const play = useCallback(
+    async (item: FeedItem) => {
+      const audio = audioRef.current;
+      if (!audio || !item.briefing) return;
+
+      // Store the item for after preroll
+      pendingItemRef.current = item;
+      setCurrentItem(item);
+      setError(null);
+      setIsLoading(true);
+      setAdState("loading-ad-config");
+
+      // Fetch ad config
+      try {
+        const params = new URLSearchParams({
+          briefingId: item.briefing.id,
+          durationTier: String(item.durationTier),
+        });
+        const config = await apiFetch<AdConfig>(
+          `/ads/config?${params.toString()}`
+        );
+        adConfigRef.current = config;
+      } catch {
+        // Ad config fetch failed — play content without ads
+        adConfigRef.current = null;
+      }
+
+      const config = adConfigRef.current;
+
+      // Check if preroll should play
+      if (
+        config?.adsEnabled &&
+        config.preroll.enabled &&
+        config.preroll.vastTagUrl
+      ) {
+        setAdState("preroll");
+        setIsLoading(false);
+        setIsPlaying(true);
+        adFlowRef.current = "preroll";
+        ima.requestAds(config.preroll.vastTagUrl);
+        return;
+      }
+
+      // No preroll — start content directly
+      startContentPlayback(item);
+    },
+    [apiFetch, ima, startContentPlayback]
+  );
+
+  // Handle content ended — check for postroll
+  const handleEnded = useCallback(() => {
+    const config = adConfigRef.current;
+    if (
+      config?.adsEnabled &&
+      config.postroll.enabled &&
+      config.postroll.vastTagUrl
+    ) {
+      setAdState("postroll");
+      setIsPlaying(true);
+      adFlowRef.current = "postroll";
+      ima.requestAds(config.postroll.vastTagUrl);
+      return;
+    }
+    setAdState("none");
+    setIsPlaying(false);
+  }, [ima]);
 
   // Audio element event handlers
   const handleTimeUpdate = useCallback(() => {
@@ -156,10 +284,6 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       setDuration(audioRef.current.duration);
       setIsLoading(false);
     }
-  }, []);
-
-  const handleEnded = useCallback(() => {
-    setIsPlaying(false);
   }, []);
 
   const handlePlay = useCallback(() => {
@@ -181,6 +305,30 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     setIsLoading(false);
   }, []);
 
+  // Media Session handlers — disable seek during ads
+  useEffect(() => {
+    if (!("mediaSession" in navigator)) return;
+
+    const isInAd = adState === "preroll" || adState === "postroll";
+
+    navigator.mediaSession.setActionHandler("play", () => resume());
+    navigator.mediaSession.setActionHandler("pause", () => pause());
+
+    if (isInAd) {
+      navigator.mediaSession.setActionHandler("seekbackward", null);
+      navigator.mediaSession.setActionHandler("seekforward", null);
+    } else {
+      navigator.mediaSession.setActionHandler("seekbackward", () => {
+        const audio = audioRef.current;
+        if (audio) seek(Math.max(0, audio.currentTime - 15));
+      });
+      navigator.mediaSession.setActionHandler("seekforward", () => {
+        const audio = audioRef.current;
+        if (audio) seek(Math.min(audio.duration || 0, audio.currentTime + 30));
+      });
+    }
+  }, [adState, pause, resume, seek]);
+
   // Sync mediaSession position state
   useEffect(() => {
     if ("mediaSession" in navigator && duration > 0) {
@@ -200,6 +348,13 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     playbackRate,
     isLoading,
     error,
+    // Ad state
+    adState,
+    isAdPlaying: ima.isAdPlaying,
+    adProgress: ima.adProgress,
+    adDuration: ima.adDuration,
+    adCurrentTime: ima.adCurrentTime,
+    // Actions
     play,
     pause,
     resume,
