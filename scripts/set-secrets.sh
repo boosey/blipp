@@ -27,6 +27,9 @@ if [ ! -f "$SECRETS_FILE" ]; then
   exit 1
 fi
 
+# Strip Windows \r line endings
+sed -i 's/\r$//' "$SECRETS_FILE" 2>/dev/null || true
+
 echo "Setting Cloudflare Worker secrets from $SECRETS_FILE..."
 echo ""
 

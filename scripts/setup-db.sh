@@ -57,6 +57,9 @@ if [ ! -f "$CONFIG_FILE" ]; then
   exit 1
 fi
 
+# Strip Windows \r line endings before sourcing
+sed -i 's/\r$//' "$CONFIG_FILE" 2>/dev/null || true
+
 source "$CONFIG_FILE"
 
 if [ -z "${STAGING_DATABASE_URL:-}" ] || [ -z "${PRODUCTION_DATABASE_URL:-}" ]; then

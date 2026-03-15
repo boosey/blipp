@@ -51,6 +51,9 @@ if [ ! -f "$CONFIG_FILE" ]; then
   exit 1
 fi
 
+# Strip Windows \r line endings before sourcing
+sed -i 's/\r$//' "$CONFIG_FILE" 2>/dev/null || true
+
 # Load config
 source "$CONFIG_FILE"
 

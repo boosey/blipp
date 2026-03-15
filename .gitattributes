@@ -1,2 +1,3 @@
-# Force LF line endings for shell scripts (required for bash on all platforms)
+# Force LF line endings for files sourced by bash
 *.sh text eol=lf
+*.env.template text eol=lf
