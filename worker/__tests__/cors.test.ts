@@ -19,8 +19,8 @@ function createCorsApp(envOverrides: Partial<Env> = {}) {
         : [
             "http://localhost:8787",
             "http://localhost:5173",
-            "https://blipp.app",
-            "https://www.blipp.app",
+            "https://podblipp.com",
+            "https://www.podblipp.com",
           ];
       return allowedOrigins.includes(origin) ? origin : "";
     },
