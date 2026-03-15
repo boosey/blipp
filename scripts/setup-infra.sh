@@ -148,7 +148,7 @@ create_hyperdrive() {
   if [ -n "$existing" ]; then
     success "Hyperdrive '$name' already exists"
     local extracted_id
-    extracted_id=$(echo "$existing" | grep -oP '[a-f0-9-]{36}' | head -1 || true)
+    extracted_id=$(echo "$existing" | grep -oP '[a-f0-9]{32}' | head -1 || true)
     eval "$id_var=\"$extracted_id\""
   else
     info "Creating Hyperdrive '$name'..."
@@ -156,7 +156,7 @@ create_hyperdrive() {
     output=$($WRANGLER hyperdrive create "$name" --connection-string="$conn_string" 2>&1)
     success "Hyperdrive '$name' created"
     local extracted_id
-    extracted_id=$(echo "$output" | grep -oP '[a-f0-9-]{36}' | head -1 || true)
+    extracted_id=$(echo "$output" | grep -oP '[a-f0-9]{32}' | head -1 || true)
     eval "$id_var=\"$extracted_id\""
   fi
 }
