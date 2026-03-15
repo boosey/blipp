@@ -52,7 +52,7 @@ billing.post("/checkout", async (c) => {
 
   const stripe = createStripeClient(c.env.STRIPE_SECRET_KEY);
 
-  const origin = c.req.header("origin") ?? "https://blipp.app";
+  const origin = c.req.header("origin") ?? (c.env.APP_ORIGIN || "https://podblipp.com");
 
   const sessionParams: Record<string, unknown> = {
     mode: "subscription" as const,
@@ -101,7 +101,7 @@ billing.post("/portal", async (c) => {
   }
 
   const stripe = createStripeClient(c.env.STRIPE_SECRET_KEY);
-  const origin = c.req.header("origin") ?? "https://blipp.app";
+  const origin = c.req.header("origin") ?? (c.env.APP_ORIGIN || "https://podblipp.com");
 
   const session = await stripe.billingPortal.sessions.create({
     customer: user.stripeCustomerId,
