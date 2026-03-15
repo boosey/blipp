@@ -12,4 +12,4 @@ export interface AdEventPayload {
   metadata?: Record<string, unknown>;
 }
 
-export type AdState = "none" | "loading-ad-config" | "preroll" | "content" | "postroll";
+export type AdState = "none" | "loading-ad-config" | "preroll" | "intro-jingle" | "content" | "outro-jingle" | "postroll";

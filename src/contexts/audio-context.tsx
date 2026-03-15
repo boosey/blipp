@@ -10,6 +10,7 @@ import type { FeedItem } from "../types/feed";
 import type { AdConfig, AdState } from "../types/ads";
 import { useApiFetch } from "../lib/api";
 import { useImaAds } from "../hooks/use-ima-ads";
+import { getJingleUrl } from "../lib/jingle-cache";
 
 interface AudioState {
   currentItem: FeedItem | null;
@@ -65,8 +66,8 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   const adConfigRef = useRef<AdConfig | null>(null);
   const pendingItemRef = useRef<FeedItem | null>(null);
 
-  // Start content playback (called after preroll or when no ads)
-  const startContentPlayback = useCallback(
+  // Begin content playback — sets src to briefing audio, fires listened PATCH
+  const beginContent = useCallback(
     (item: FeedItem) => {
       const audio = audioRef.current;
       if (!audio || !item.briefing) return;
@@ -110,6 +111,36 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       }
     },
     [apiFetch, playbackRate]
+  );
+
+  // Start content playback — plays intro jingle first if available
+  const startContentPlayback = useCallback(
+    async (item: FeedItem) => {
+      const audio = audioRef.current;
+      if (!audio || !item.briefing) return;
+
+      setCurrentItem(item);
+      setError(null);
+
+      const introUrl = await getJingleUrl("intro");
+      if (introUrl) {
+        setAdState("intro-jingle");
+        setIsPlaying(true);
+        setIsLoading(false);
+        setCurrentTime(0);
+        setDuration(0);
+
+        audio.playbackRate = 1;
+        audio.src = introUrl;
+        audio.play().catch(() => {
+          beginContent(item);
+        });
+        return;
+      }
+
+      beginContent(item);
+    },
+    [beginContent]
   );
 
   // IMA ads hook callbacks
@@ -182,10 +213,10 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
 
   const setRate = useCallback((rate: number) => {
     setPlaybackRate(rate);
-    if (audioRef.current) {
+    if (audioRef.current && adState !== "intro-jingle" && adState !== "outro-jingle") {
       audioRef.current.playbackRate = rate;
     }
-  }, []);
+  }, [adState]);
 
   const stop = useCallback(() => {
     const audio = audioRef.current;
@@ -254,8 +285,8 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     [apiFetch, ima, startContentPlayback]
   );
 
-  // Handle content ended — check for postroll
-  const handleEnded = useCallback(() => {
+  // Check for postroll ad or end playback
+  const handlePostrollOrEnd = useCallback(() => {
     const config = adConfigRef.current;
     if (
       config?.adsEnabled &&
@@ -272,19 +303,55 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     setIsPlaying(false);
   }, [ima]);
 
+  // Handle audio ended — sequence: intro-jingle → content → outro-jingle → postroll
+  const handleEnded = useCallback(async () => {
+    const audio = audioRef.current;
+
+    if (adState === "intro-jingle") {
+      const item = pendingItemRef.current ?? currentItem;
+      if (item) {
+        beginContent(item);
+      }
+      return;
+    }
+
+    if (adState === "content") {
+      const outroUrl = await getJingleUrl("outro");
+      if (outroUrl && audio) {
+        setAdState("outro-jingle");
+        audio.playbackRate = 1;
+        audio.src = outroUrl;
+        audio.play().catch(() => {
+          handlePostrollOrEnd();
+        });
+        return;
+      }
+
+      handlePostrollOrEnd();
+      return;
+    }
+
+    if (adState === "outro-jingle") {
+      handlePostrollOrEnd();
+      return;
+    }
+  }, [adState, beginContent, currentItem, handlePostrollOrEnd]);
+
   // Audio element event handlers
   const handleTimeUpdate = useCallback(() => {
+    if (adState === "intro-jingle" || adState === "outro-jingle") return;
     if (audioRef.current) {
       setCurrentTime(audioRef.current.currentTime);
     }
-  }, []);
+  }, [adState]);
 
   const handleLoadedMetadata = useCallback(() => {
+    if (adState === "intro-jingle" || adState === "outro-jingle") return;
     if (audioRef.current) {
       setDuration(audioRef.current.duration);
       setIsLoading(false);
     }
-  }, []);
+  }, [adState]);
 
   const handlePlay = useCallback(() => {
     setIsPlaying(true);
@@ -292,10 +359,22 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const handleError = useCallback(() => {
+    if (adState === "intro-jingle") {
+      const item = pendingItemRef.current ?? currentItem;
+      if (item) {
+        beginContent(item);
+      }
+      return;
+    }
+    if (adState === "outro-jingle") {
+      handlePostrollOrEnd();
+      return;
+    }
+
     setIsPlaying(false);
     setIsLoading(false);
     setError("Failed to load audio");
-  }, []);
+  }, [adState, beginContent, currentItem, handlePostrollOrEnd]);
 
   const handleWaiting = useCallback(() => {
     setIsLoading(true);
@@ -309,7 +388,8 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!("mediaSession" in navigator)) return;
 
-    const isInAd = adState === "preroll" || adState === "postroll";
+    const isInAd = adState === "preroll" || adState === "postroll"
+      || adState === "intro-jingle" || adState === "outro-jingle";
 
     navigator.mediaSession.setActionHandler("play", () => resume());
     navigator.mediaSession.setActionHandler("pause", () => pause());
