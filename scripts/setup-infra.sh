@@ -51,13 +51,23 @@ if [ ! -f "$CONFIG_FILE" ]; then
   exit 1
 fi
 
-# Strip Windows \r line endings before sourcing
+# Strip Windows \r line endings
 sed -i 's/\r$//' "$CONFIG_FILE" 2>/dev/null || true
 
-# Load config
-source "$CONFIG_FILE"
+# Load config (parse key=value, handling & and special chars in values)
+STAGING_DATABASE_URL=""
+PRODUCTION_DATABASE_URL=""
+while IFS= read -r line; do
+  [[ -z "$line" || "$line" == \#* ]] && continue
+  key="${line%%=*}"
+  value="${line#*=}"
+  case "$key" in
+    STAGING_DATABASE_URL) STAGING_DATABASE_URL="$value" ;;
+    PRODUCTION_DATABASE_URL) PRODUCTION_DATABASE_URL="$value" ;;
+  esac
+done < "$CONFIG_FILE"
 
-if [ -z "${STAGING_DATABASE_URL:-}" ] || [ -z "${PRODUCTION_DATABASE_URL:-}" ]; then
+if [ -z "$STAGING_DATABASE_URL" ] || [ -z "$PRODUCTION_DATABASE_URL" ]; then
   error "Both STAGING_DATABASE_URL and PRODUCTION_DATABASE_URL must be set in $CONFIG_FILE"
   exit 1
 fi
