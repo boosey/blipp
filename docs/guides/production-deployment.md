@@ -108,21 +108,21 @@ npx wrangler queues create orchestrator
 
 ### 2.4 Create Hyperdrive Configurations (2 configs)
 
-Best done via CLI (the dashboard path is under **Storage & Databases > Hyperdrive**, but CLI is more reliable):
+**Requires Neon connection strings from Phase 3.** Complete Phase 3 first, then come back here.
 
-**Staging:**
+**AUTOMATABLE:** Run `bash scripts/setup-infra.sh neon-config.env` to create R2 buckets, queues, Hyperdrive configs, and patch `wrangler.jsonc` automatically. See [Automation Scripts](#automation-scripts) for details.
+
+**Manual alternative** (CLI):
+
 ```bash
+# Staging (use pooled connection string from Phase 3)
 npx wrangler hyperdrive create blipp-db-staging \
-  --connection-string="postgres://USER:PASSWORD@HOSTNAME:5432/blipp_staging?sslmode=require"
-```
+  --connection-string="postgres://USER:PASSWORD@ep-XXXX-pooler.REGION.aws.neon.tech:5432/staging?sslmode=require"
 
-**Production:**
-```bash
+# Production
 npx wrangler hyperdrive create blipp-db \
-  --connection-string="postgres://USER:PASSWORD@HOSTNAME:5432/neondb?sslmode=require"
+  --connection-string="postgres://USER:PASSWORD@ep-XXXX-pooler.REGION.aws.neon.tech:5432/neondb?sslmode=require"
 ```
-
-Use your Neon **pooled** connection strings from Phase 3. Each command outputs a Hyperdrive config ID.
 
 - [ ] Staging Hyperdrive config created
 - [ ] Production Hyperdrive config created
@@ -498,14 +498,34 @@ Shared between staging and production.
 
 ---
 
-## Phase 8: Google Ad Manager (IMA)
+## Phase 8: Google AdSense / Ad Manager (IMA)
 
 This is for client-side ad insertion via Google IMA SDK. Ads are optional — the app works without them (controlled by `ads.enabled` PlatformConfig flag, defaults to disabled).
 
 ### If you want ads:
 
-- [ ] Sign up for **Google Ad Manager** (https://admanager.google.com/)
-- [ ] Create an Ad Manager network
+#### 8.1 Sign Up for Google AdSense
+
+Google Ad Manager redirects new accounts to **Google AdSense** for initial approval.
+
+- [ ] Sign up at https://www.google.com/adsense/ (or follow redirect from Ad Manager)
+- [ ] AdSense requires **site verification** before approval. Add the verification meta tag to `index.html`:
+
+```html
+<!-- Add inside <head>, before <title> -->
+<meta name="google-adsense-account" content="ca-pub-XXXXXXXXXXXXXXXX" />
+```
+
+Replace `ca-pub-XXXXXXXXXXXXXXXX` with your actual AdSense publisher ID (shown during signup).
+
+- [ ] Deploy the app with the meta tag so Google can verify your site
+- [ ] Wait for AdSense approval (can take days to weeks)
+
+#### 8.2 Set Up Ad Manager (After AdSense Approval)
+
+Once approved, you can access **Google Ad Manager** (https://admanager.google.com/):
+
+- [ ] Create an Ad Manager network (may be auto-created with AdSense)
 - [ ] Create **ad units** for:
   - [ ] Preroll (audio ad before briefing)
   - [ ] Postroll (audio ad after briefing)
@@ -520,6 +540,7 @@ This is for client-side ad insertion via Google IMA SDK. Ads are optional — th
 
 - [ ] No action needed — ads are disabled by default
 - [ ] Enable later via admin UI: set `ads.enabled` to `true` in Platform Config
+- [ ] You can add the AdSense meta tag now to start the approval process even if you're not ready to serve ads
 
 ---
 
@@ -580,17 +601,27 @@ Two CI/CD workflows:
 
 Only **production** gets a custom domain. Staging uses the `workers.dev` URL.
 
-### 11.1 Register/Transfer Domain
+Domain `podblipp.com` was purchased through Cloudflare, so DNS is already managed by Cloudflare.
 
-- [ ] Ensure you own `podblipp.com`
-- [ ] Transfer DNS to Cloudflare (recommended) or use external DNS with CNAME
+### 11.1 Add Custom Domain to Production Worker
 
-### 11.2 Add Custom Domain to Production Worker
+Since the domain is on Cloudflare, this can be done via wrangler or the dashboard:
 
+**Via CLI (add to wrangler.jsonc):**
+
+Add a `routes` array inside `env.production`:
+```jsonc
+"routes": [
+  { "pattern": "podblipp.com", "custom_domain": true },
+  { "pattern": "www.podblipp.com", "custom_domain": true }
+]
+```
+
+**Via dashboard:**
 - [ ] Go to **Workers & Pages > blipp > Settings > Domains & Routes**
 - [ ] **Add custom domain**: `podblipp.com`
 - [ ] Add `www.podblipp.com` if desired (and set up redirect)
-- [ ] Cloudflare auto-provisions SSL
+- [ ] Cloudflare auto-provisions SSL (immediate since DNS is on CF)
 
 ### 11.3 CORS Origins
 
@@ -945,62 +976,48 @@ For each environment:
 
 ---
 
-## Automation Script
+## Automation Scripts
 
-### Batch-Set Cloudflare Secrets
+All infrastructure setup is automated via scripts in `scripts/`. Template files for input are in `scripts/templates/`.
 
-Create `secrets-staging.env` and `secrets-production.env` files (ADD TO .gitignore FIRST), then run this script to set all secrets at once:
+### Setup Order
 
-```bash
-#!/bin/bash
-# scripts/set-secrets.sh
-# Usage: bash scripts/set-secrets.sh <secrets-file> [--env production]
-
-if [ -z "$1" ]; then
-  echo "Usage: $0 <secrets-file> [--env production]"
-  exit 1
-fi
-
-ENV_FLAG="${2:-}"
-
-while IFS='=' read -r key value; do
-  # Skip empty lines and comments
-  [[ -z "$key" || "$key" == \#* ]] && continue
-  echo "Setting $key..."
-  echo "$value" | npx wrangler secret put "$key" $ENV_FLAG
-done < "$1"
-
-echo "Done. Delete the secrets file now!"
+```
+1. Create Neon project + staging database (manual — console.neon.com)
+2. bash scripts/setup-db.sh neon-config.env          # Push schema + seed both DBs
+3. bash scripts/setup-infra.sh neon-config.env        # R2 + queues + Hyperdrive + patch wrangler.jsonc
+4. bash scripts/set-secrets.sh secrets-staging.env     # Staging secrets
+5. bash scripts/set-secrets.sh secrets-production.env --env production  # Production secrets
+6. rm neon-config.env secrets-staging.env secrets-production.env  # DELETE credential files!
 ```
 
-**Usage:**
-```bash
-# Staging
-bash scripts/set-secrets.sh secrets-staging.env
+### Template Files
 
-# Production
-bash scripts/set-secrets.sh secrets-production.env --env production
-```
-
-- [ ] Create `secrets-staging.env` and `secrets-production.env` with all values
-- [ ] Run the script for each environment
-- [ ] **DELETE both files immediately after**
-- [ ] Verify they are in `.gitignore`
-
-### Queue Creation (if not auto-created)
+Copy templates and fill in your values:
 
 ```bash
-#!/bin/bash
-# scripts/create-queues.sh
-queues=("feed-refresh" "distillation" "narrative-generation" "clip-generation" "briefing-assembly" "transcription" "orchestrator")
-
-for q in "${queues[@]}"; do
-  echo "Creating staging queue: ${q}-staging"
-  npx wrangler queues create "${q}-staging"
-  echo "Creating production queue: ${q}"
-  npx wrangler queues create "${q}"
-done
+cp scripts/templates/neon-config.env.template neon-config.env
+cp scripts/templates/secrets-staging.env.template secrets-staging.env
+cp scripts/templates/secrets-production.env.template secrets-production.env
 ```
+
+### Script Reference
+
+| Script | What It Does |
+|--------|-------------|
+| `scripts/setup-db.sh <config>` | Pushes Prisma schema + seeds both staging and production databases |
+| `scripts/setup-infra.sh <config>` | Creates 2 R2 buckets, 14 queues, 2 Hyperdrive configs, patches wrangler.jsonc |
+| `scripts/set-secrets.sh <file> [--env production]` | Batch-sets Cloudflare Worker secrets from an env file |
+
+### Checklist
+
+- [ ] Copy all 3 templates and fill in values
+- [ ] Run `setup-db.sh`
+- [ ] Run `setup-infra.sh`
+- [ ] Run `set-secrets.sh` for staging
+- [ ] Run `set-secrets.sh --env production` for production
+- [ ] **DELETE all credential files immediately after**
+- [ ] All credential files are covered by `.gitignore` (`.env*` pattern)
 
 ---
 
