@@ -32,6 +32,15 @@ warn()    { echo -e "${YELLOW}[WARN]${NC} $1"; }
 error()   { echo -e "${RED}[ERROR]${NC} $1"; }
 header()  { echo -e "\n${BOLD}${CYAN}══  $1  ══${NC}\n"; }
 
+# ── Resolve wrangler command ──
+# Use global wrangler if available (avoids WSL/cross-platform npx issues),
+# fall back to npx wrangler.
+if command -v wrangler > /dev/null 2>&1; then
+  WRANGLER="wrangler"
+else
+  WRANGLER="npx wrangler"
+fi
+
 # ── Parse input ──
 
 if [ -z "${1:-}" ]; then
@@ -74,8 +83,8 @@ fi
 
 # ── Verify wrangler auth ──
 
-info "Verifying wrangler access..."
-npx wrangler whoami || { error "wrangler not authenticated. Run: npx wrangler login"; exit 1; }
+info "Verifying wrangler access (using: $WRANGLER)..."
+$WRANGLER whoami || { error "wrangler not authenticated. Run: wrangler login"; exit 1; }
 success "wrangler authenticated"
 
 # ── R2 Buckets ──
@@ -84,11 +93,11 @@ header "R2 Buckets"
 
 create_bucket() {
   local name="$1"
-  if npx wrangler r2 bucket list 2>/dev/null | grep -q "$name"; then
+  if $WRANGLER r2 bucket list 2>/dev/null | grep -q "$name"; then
     success "R2 bucket '$name' already exists"
   else
     info "Creating R2 bucket '$name'..."
-    npx wrangler r2 bucket create "$name"
+    $WRANGLER r2 bucket create "$name"
     success "R2 bucket '$name' created"
   fi
 }
@@ -104,11 +113,11 @@ QUEUE_NAMES=("feed-refresh" "distillation" "narrative-generation" "clip-generati
 
 create_queue() {
   local name="$1"
-  if npx wrangler queues list 2>/dev/null | grep -q "$name"; then
+  if $WRANGLER queues list 2>/dev/null | grep -q "$name"; then
     success "Queue '$name' already exists"
   else
     info "Creating queue '$name'..."
-    npx wrangler queues create "$name"
+    $WRANGLER queues create "$name"
     success "Queue '$name' created"
   fi
 }
@@ -134,7 +143,7 @@ create_hyperdrive() {
   local id_var="$3"
 
   local existing
-  existing=$(npx wrangler hyperdrive list 2>/dev/null | grep "$name" || true)
+  existing=$($WRANGLER hyperdrive list 2>/dev/null | grep "$name" || true)
 
   if [ -n "$existing" ]; then
     success "Hyperdrive '$name' already exists"
@@ -144,7 +153,7 @@ create_hyperdrive() {
   else
     info "Creating Hyperdrive '$name'..."
     local output
-    output=$(npx wrangler hyperdrive create "$name" --connection-string="$conn_string" 2>&1)
+    output=$($WRANGLER hyperdrive create "$name" --connection-string="$conn_string" 2>&1)
     success "Hyperdrive '$name' created"
     local extracted_id
     extracted_id=$(echo "$output" | grep -oP '[a-f0-9-]{36}' | head -1 || true)

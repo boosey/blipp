@@ -10,6 +10,13 @@
 
 set -euo pipefail
 
+# Use global wrangler if available (avoids WSL/cross-platform npx issues)
+if command -v wrangler > /dev/null 2>&1; then
+  WRANGLER="wrangler"
+else
+  WRANGLER="npx wrangler"
+fi
+
 if [ -z "${1:-}" ]; then
   echo "Usage: $0 <secrets-file> [--env <environment>]"
   echo ""
@@ -46,7 +53,7 @@ while IFS= read -r line; do
   [[ "$key" == "$line" ]] && continue
 
   echo "  Setting: $key"
-  echo "$value" | npx wrangler secret put "$key" $ENV_FLAG 2>&1 | grep -v "^$" || true
+  echo "$value" | $WRANGLER secret put "$key" $ENV_FLAG 2>&1 | grep -v "^$" || true
   count=$((count + 1))
 done < "$SECRETS_FILE"
 
