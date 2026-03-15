@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useApiFetch } from "../lib/api";
 import { useFetch } from "../lib/use-fetch";
-import { useOnboarding } from "../hooks/use-onboarding";
+import { useOnboarding } from "../contexts/onboarding-context";
 import { Check, ChevronRight, Headphones } from "lucide-react";
 
 interface CatalogPodcast {

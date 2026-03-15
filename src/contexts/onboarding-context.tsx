@@ -1,7 +1,20 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { createContext, useContext, useState, useEffect, useRef, useCallback } from "react";
+import type { ReactNode } from "react";
 import { useApiFetch } from "../lib/api";
 
-export function useOnboarding() {
+interface OnboardingContextValue {
+  needsOnboarding: boolean;
+  isChecking: boolean;
+  markComplete: () => void;
+}
+
+const OnboardingContext = createContext<OnboardingContextValue>({
+  needsOnboarding: false,
+  isChecking: true,
+  markComplete: () => {},
+});
+
+export function OnboardingProvider({ children }: { children: ReactNode }) {
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [isChecking, setIsChecking] = useState(true);
   const apiFetch = useApiFetch();
@@ -31,10 +44,17 @@ export function useOnboarding() {
     check();
   }, [apiFetch]);
 
-  /** Call after completing onboarding to prevent redirect loop. */
   const markComplete = useCallback(() => {
     setNeedsOnboarding(false);
   }, []);
 
-  return { needsOnboarding, isChecking, markComplete };
+  return (
+    <OnboardingContext.Provider value={{ needsOnboarding, isChecking, markComplete }}>
+      {children}
+    </OnboardingContext.Provider>
+  );
+}
+
+export function useOnboarding() {
+  return useContext(OnboardingContext);
 }

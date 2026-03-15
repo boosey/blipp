@@ -4,7 +4,7 @@ import { BottomNav } from "../components/bottom-nav";
 import { AudioProvider, useAudio } from "../contexts/audio-context";
 import { PlanProvider } from "../contexts/plan-context";
 import { MiniPlayer } from "../components/mini-player";
-import { useOnboarding } from "../hooks/use-onboarding";
+import { OnboardingProvider, useOnboarding } from "../contexts/onboarding-context";
 
 function MobileLayoutInner() {
   const { currentItem } = useAudio();
@@ -50,7 +50,9 @@ export function MobileLayout() {
   return (
     <AudioProvider>
       <PlanProvider>
-        <MobileLayoutInner />
+        <OnboardingProvider>
+          <MobileLayoutInner />
+        </OnboardingProvider>
       </PlanProvider>
     </AudioProvider>
   );
