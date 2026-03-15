@@ -83,7 +83,7 @@ fi
 header "Staging Database"
 
 info "Pushing Prisma schema to staging..."
-DATABASE_URL="$STAGING_DATABASE_URL" npx prisma db push --skip-generate
+DATABASE_URL="$STAGING_DATABASE_URL" npx prisma db push
 success "Schema pushed to staging"
 
 info "Seeding staging database..."
@@ -95,7 +95,7 @@ success "Staging database seeded"
 header "Production Database"
 
 info "Pushing Prisma schema to production..."
-DATABASE_URL="$PRODUCTION_DATABASE_URL" npx prisma db push --skip-generate
+DATABASE_URL="$PRODUCTION_DATABASE_URL" npx prisma db push
 success "Schema pushed to production"
 
 info "Seeding production database..."
