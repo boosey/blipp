@@ -64,32 +64,42 @@ Create accounts on all services. Collect credentials into a password manager as 
 
 Neon console is at **https://console.neon.com** (not neon.tech).
 
-Both staging and production databases live in the same Neon project, sharing compute.
+Neon organizes data as **projects → branches**. Each branch has its own compute endpoint and connection string. The `main` branch is production. A `staging` branch provides an isolated staging environment.
 
-### 2.1 Create Project & Databases
+### 2.1 Create Project
 
 - [ ] Log into https://console.neon.com
 - [ ] Create a new project named `blipp`
 - [ ] Region: closest to your Cloudflare Worker (e.g., `us-east-1`)
-- [ ] The default database `neondb` is your **production** database
-- [ ] Create a second database: sidebar → **Databases** → **New Database** → name it `staging`
+- [ ] The project creates a `main` branch with database `neondb` — this is your **production** database
 
-### 2.2 Copy Connection Strings
+### 2.2 Create Staging Branch
 
-In the **Connection Details** widget (pooled toggle should be ON by default):
+- [ ] Sidebar → **Branches** → **Create branch**
+- [ ] Name: `staging`
+- [ ] Parent branch: `main`
+- [ ] This creates an isolated branch with its own compute endpoint and connection string
 
-- [ ] Copy the **production** pooled connection string — switch database dropdown to `neondb`
+### 2.3 Copy Connection Strings
+
+Each branch has its own connection string with a different endpoint. In the **Connection Details** widget, select the branch and ensure the pooled toggle is ON (hostname contains `-pooler`):
+
+- [ ] Select **main** branch → copy pooled connection string → save as production
   - Format: `postgresql://neondb_owner:PASSWORD@ep-XXXX-pooler.REGION.aws.neon.tech:5432/neondb?sslmode=require`
-- [ ] Copy the **staging** pooled connection string — switch database dropdown to `staging`
-  - Format: `postgresql://neondb_owner:PASSWORD@ep-XXXX-pooler.REGION.aws.neon.tech:5432/staging?sslmode=require`
-- [ ] Save both strings to your password manager — you'll need them in Phase 3 and Phase 4
+- [ ] Select **staging** branch → copy pooled connection string → save as staging
+  - Format: `postgresql://neondb_owner:PASSWORD@ep-YYYY-pooler.REGION.aws.neon.tech:5432/neondb?sslmode=require`
+  - Note: different endpoint (`ep-YYYY`) but same database name (`neondb`) — the branch provides isolation
+- [ ] Save both strings to your password manager — needed in Phase 3 and Phase 4
 
-### 2.3 Configure Production Settings
+### 2.4 Configure Settings
 
+- [ ] Connection pooling is **on by default** — verify the `-pooler` hostname is shown
 - [ ] **Settings > Compute**: set min compute to 0.25 CU+ to reduce cold starts
-- [ ] Configure **point-in-time restore** window (default 1 day, increase up to 30)
 - [ ] Consider **protecting your main branch** to prevent accidental schema changes
-- [ ] Enable **IP allow list** if available
+
+**Requires Scale or Business plan:**
+- [ ] Point-in-time restore (default 1 day, increase up to 30)
+- [ ] IP allow list — restrict to Cloudflare IPs
 
 ### 2.4 Create Config File for Scripts
 
