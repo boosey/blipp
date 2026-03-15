@@ -74,7 +74,8 @@ fi
 
 # ── Verify wrangler auth ──
 
-if ! npx wrangler whoami &>/dev/null 2>&1; then
+info "Checking wrangler authentication..."
+if ! npx wrangler whoami > /dev/null 2>&1; then
   error "wrangler not authenticated. Run: npx wrangler login"
   exit 1
 fi
