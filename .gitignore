@@ -3,6 +3,8 @@ dist/
 .dev.vars
 .wrangler/
 .env*
+neon-config.env
+secrets-*.env
 *.log
 .claude/
 .firecrawl/

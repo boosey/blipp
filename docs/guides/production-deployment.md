@@ -1,6 +1,6 @@
 # Blipp Deployment Checklist & Runbook
 
-Print this out. Work through it top to bottom. Check each box as you go.
+Print this out. Work through it top to bottom. Every step has its prerequisites met by prior steps — no jumping around.
 
 This guide covers both **staging** and **production** environments. Staging deploys as `blipp-staging` to a `workers.dev` URL. Production deploys as `blipp` to `podblipp.com`.
 
@@ -8,80 +8,127 @@ This guide covers both **staging** and **production** environments. Staging depl
 
 ## Table of Contents
 
-1. [Phase 1: Accounts & API Keys](#phase-1-accounts--api-keys)
-2. [Phase 2: Cloudflare Infrastructure](#phase-2-cloudflare-infrastructure)
-3. [Phase 3: Database (Neon)](#phase-3-database-neon)
-4. [Phase 4: Clerk (Auth)](#phase-4-clerk-auth)
-5. [Phase 5: Stripe (Billing)](#phase-5-stripe-billing)
-6. [Phase 6: AI Services](#phase-6-ai-services)
-7. [Phase 7: Podcast Index](#phase-7-podcast-index)
-8. [Phase 8: Google Ad Manager (IMA)](#phase-8-google-ad-manager-ima)
-9. [Phase 9: Web Push (VAPID)](#phase-9-web-push-vapid)
+1. [Phase 1: Accounts](#phase-1-accounts)
+2. [Phase 2: Neon Database](#phase-2-neon-database)
+3. [Phase 3: Cloudflare Infrastructure](#phase-3-cloudflare-infrastructure)
+4. [Phase 4: Push Schema & Seed](#phase-4-push-schema--seed)
+5. [Phase 5: Clerk Auth](#phase-5-clerk-auth)
+6. [Phase 6: Stripe Billing](#phase-6-stripe-billing)
+7. [Phase 7: AI & Podcast Services](#phase-7-ai--podcast-services)
+8. [Phase 8: Web Push VAPID Keys](#phase-8-web-push-vapid-keys)
+9. [Phase 9: Google AdSense (Optional)](#phase-9-google-adsense-optional)
 10. [Phase 10: GitHub CI/CD](#phase-10-github-cicd)
 11. [Phase 11: Domain & DNS](#phase-11-domain--dns)
-12. [Phase 12: Deploy Secrets to Cloudflare](#phase-12-deploy-secrets-to-cloudflare)
-13. [Phase 13: First Deploy](#phase-13-first-deploy)
+12. [Phase 12: Set Cloudflare Secrets](#phase-12-set-cloudflare-secrets)
+13. [Phase 13: First Deploy & Webhooks](#phase-13-first-deploy--webhooks)
 14. [Phase 14: Post-Deploy Verification](#phase-14-post-deploy-verification)
 15. [Operational Runbook](#operational-runbook)
-16. [Automation Script](#automation-script)
+16. [Automation Scripts](#automation-scripts)
 
 ---
 
-## Phase 1: Accounts & API Keys
+## Phase 1: Accounts
 
-Create accounts on all services. Collect credentials into a secure password manager (1Password, Bitwarden, etc.) as you go. **Never store production secrets in plaintext files.**
+Create accounts on all services. Collect credentials into a password manager as you go. The same accounts serve both environments.
 
-The same accounts serve both staging and production environments — you create separate instances/keys within each service, not separate accounts.
+### Required
 
-### Required Accounts
-
-| # | Service | Sign Up URL | What You Need |
-|---|---------|-------------|---------------|
-| 1 | Cloudflare | https://dash.cloudflare.com/sign-up | Workers Paid plan ($5/mo) |
-| 2 | Neon | https://console.neon.com/signup | Scale or Business plan recommended for production |
-| 3 | Clerk | https://dashboard.clerk.com/sign-up | Dev instance (staging) + Production instance |
-| 4 | Stripe | https://dashboard.stripe.com/register | Sandbox (staging) + Live mode (production, requires business verification) |
-| 5 | Anthropic | https://console.anthropic.com/ | API credits ($25+ recommended) |
-| 6 | OpenAI | https://platform.openai.com/ | API credits ($25+ recommended) |
+| # | Service | Sign Up | What You Need |
+|---|---------|---------|---------------|
+| 1 | Cloudflare | https://dash.cloudflare.com/sign-up | Workers Paid ($5/mo) |
+| 2 | Neon | https://console.neon.com/signup | Scale plan recommended |
+| 3 | Clerk | https://dashboard.clerk.com/sign-up | Dev + Production instances |
+| 4 | Stripe | https://dashboard.stripe.com/register | Sandbox + Live mode |
+| 5 | Anthropic | https://console.anthropic.com/ | API credits ($25+) |
+| 6 | OpenAI | https://platform.openai.com/ | API credits ($25+) |
 | 7 | Podcast Index | https://api.podcastindex.org/signup | Free |
-| 8 | GitHub | (you have this) | Actions enabled on repo |
+| 8 | GitHub | (you have this) | Actions enabled |
 
-### Optional Accounts (Multi-Provider AI)
+### Optional
 
-| # | Service | Sign Up URL | Purpose |
-|---|---------|-------------|---------|
-| 9 | Groq | https://console.groq.com | Fast STT/LLM inference, Orpheus TTS |
-| 10 | Deepgram | https://console.deepgram.com/signup | Nova STT models |
-| 11 | AssemblyAI | https://www.assemblyai.com/app/signup | STT benchmarking |
-| 12 | Google Cloud | https://console.cloud.google.com | Chirp STT (if needed) |
+| # | Service | Sign Up | Purpose |
+|---|---------|---------|---------|
+| 9 | Groq | https://console.groq.com | Fast STT/LLM/TTS |
+| 10 | Deepgram | https://console.deepgram.com/signup | Nova STT |
+| 11 | Google Cloud | https://console.cloud.google.com | Google OAuth for Clerk prod SSO |
+
+### Cloudflare: Upgrade to Workers Paid
+
+- [ ] Log into https://dash.cloudflare.com
+- [ ] Sidebar → **Workers & Pages** → upgrade to **Workers Paid** ($5/mo)
+- [ ] This is required for Queues, Cron Triggers, and higher limits
 
 ---
 
-## Phase 2: Cloudflare Infrastructure
+## Phase 2: Neon Database
 
-### 2.1 Upgrade to Workers Paid Plan
+Neon console is at **https://console.neon.com** (not neon.tech).
 
-- [ ] Log into Cloudflare dashboard (https://dash.cloudflare.com)
-- [ ] In the sidebar, go to **Workers & Pages**
-- [ ] Find the plan/pricing section and upgrade to **Workers Paid** ($5/mo) — required for Queues, Cron Triggers, and higher limits
+Both staging and production databases live in the same Neon project, sharing compute.
 
-### 2.2 Create R2 Buckets (2 buckets)
+### 2.1 Create Project & Databases
 
-- [ ] In the sidebar, go to **R2** (under Storage & Databases section)
-- [ ] Click **Create bucket**
-  - Bucket name: `blipp-audio-staging`
-  - Region: Auto (or choose closest to your users)
-- [ ] Click **Create bucket** again
-  - Bucket name: `blipp-audio`
-  - Region: same as staging
-- [ ] Both bucket names must match `wrangler.jsonc` (`blipp-audio-staging` for default, `blipp-audio` for production env)
+- [ ] Log into https://console.neon.com
+- [ ] Create a new project named `blipp`
+- [ ] Region: closest to your Cloudflare Worker (e.g., `us-east-1`)
+- [ ] The default database `neondb` is your **production** database
+- [ ] Create a second database: sidebar → **Databases** → **New Database** → name it `staging`
 
-### 2.3 Create Queues (14 queues — 7 staging + 7 production)
+### 2.2 Copy Connection Strings
 
-Best done via CLI. Run each command:
+In the **Connection Details** widget (pooled toggle should be ON by default):
 
-**Staging queues (with `-staging` suffix):**
+- [ ] Copy the **production** pooled connection string — switch database dropdown to `neondb`
+  - Format: `postgresql://neondb_owner:PASSWORD@ep-XXXX-pooler.REGION.aws.neon.tech:5432/neondb?sslmode=require`
+- [ ] Copy the **staging** pooled connection string — switch database dropdown to `staging`
+  - Format: `postgresql://neondb_owner:PASSWORD@ep-XXXX-pooler.REGION.aws.neon.tech:5432/staging?sslmode=require`
+- [ ] Save both strings to your password manager — you'll need them in Phase 3 and Phase 4
+
+### 2.3 Configure Production Settings
+
+- [ ] **Settings > Compute**: set min compute to 0.25 CU+ to reduce cold starts
+- [ ] Configure **point-in-time restore** window (default 1 day, increase up to 30)
+- [ ] Consider **protecting your main branch** to prevent accidental schema changes
+- [ ] Enable **IP allow list** if available
+
+### 2.4 Create Config File for Scripts
+
 ```bash
+cp scripts/templates/neon-config.env.template neon-config.env
+```
+
+- [ ] Edit `neon-config.env` — paste both connection strings from step 2.2
+
+---
+
+## Phase 3: Cloudflare Infrastructure
+
+**Requires:** Neon connection strings from Phase 2.
+
+### Automated (Recommended)
+
+Run the setup script — it creates R2 buckets, 14 queues, 2 Hyperdrive configs, and patches `wrangler.jsonc` with the Hyperdrive IDs:
+
+```bash
+bash scripts/setup-infra.sh neon-config.env
+```
+
+- [ ] Script completed successfully
+- [ ] Verify `wrangler.jsonc` has real Hyperdrive IDs (not placeholders)
+
+### Manual Alternative
+
+If the script fails or you prefer manual setup:
+
+#### 3.1 Create R2 Buckets
+
+- [ ] Sidebar → **R2** → **Create bucket** → `blipp-audio-staging`
+- [ ] **Create bucket** again → `blipp-audio`
+
+#### 3.2 Create Queues (14 total)
+
+```bash
+# Staging (7 queues)
 npx wrangler queues create feed-refresh-staging
 npx wrangler queues create distillation-staging
 npx wrangler queues create narrative-generation-staging
@@ -89,10 +136,8 @@ npx wrangler queues create clip-generation-staging
 npx wrangler queues create briefing-assembly-staging
 npx wrangler queues create transcription-staging
 npx wrangler queues create orchestrator-staging
-```
 
-**Production queues:**
-```bash
+# Production (7 queues)
 npx wrangler queues create feed-refresh
 npx wrangler queues create distillation
 npx wrangler queues create narrative-generation
@@ -102,514 +147,348 @@ npx wrangler queues create transcription
 npx wrangler queues create orchestrator
 ```
 
-- [ ] All 14 queues created (7 staging + 7 production)
+Queues are also auto-created by `wrangler deploy` — you can skip this and let the first deploy handle it.
 
-**AUTOMATABLE:** Queues are also auto-created by `wrangler deploy` if they don't exist. You can skip manual creation and let the first deploy handle it. A script is provided at the bottom of this doc.
+#### 3.3 Create Hyperdrive Configs
 
-### 2.4 Create Hyperdrive Configurations (2 configs)
-
-**Requires Neon connection strings from Phase 3.** Complete Phase 3 first, then come back here.
-
-**AUTOMATABLE:** Run `bash scripts/setup-infra.sh neon-config.env` to create R2 buckets, queues, Hyperdrive configs, and patch `wrangler.jsonc` automatically. See [Automation Scripts](#automation-scripts) for details.
-
-**Manual alternative** (CLI):
+Use the connection strings from Phase 2:
 
 ```bash
-# Staging (use pooled connection string from Phase 3)
 npx wrangler hyperdrive create blipp-db-staging \
-  --connection-string="postgres://USER:PASSWORD@ep-XXXX-pooler.REGION.aws.neon.tech:5432/staging?sslmode=require"
+  --connection-string="YOUR_STAGING_CONNECTION_STRING"
+
+npx wrangler hyperdrive create blipp-db \
+  --connection-string="YOUR_PRODUCTION_CONNECTION_STRING"
+```
+
+Each command outputs a config ID. Paste them into `wrangler.jsonc`:
+- Replace `<staging-hyperdrive-id>` with the staging ID
+- Replace `<production-hyperdrive-id>` with the production ID
+
+### 3.4 Create API Token (for CI/CD)
+
+- [ ] **My Profile > API Tokens > Create Token**
+- [ ] Template: **Edit Cloudflare Workers**
+- [ ] Scope: your account
+- [ ] **Save the token** — needed for GitHub in Phase 10
+
+---
+
+## Phase 4: Push Schema & Seed
+
+**Requires:** Neon connection strings from Phase 2, `neon-config.env` created in Phase 2.4.
+
+### Automated
+
+```bash
+bash scripts/setup-db.sh neon-config.env
+```
+
+- [ ] Schema pushed to both databases
+- [ ] Both databases seeded (Plans, AI Model Registry, PlatformConfig)
+
+### Manual Alternative
+
+```bash
+# Staging
+DATABASE_URL="YOUR_STAGING_CONNECTION_STRING" npx prisma db push
+DATABASE_URL="YOUR_STAGING_CONNECTION_STRING" npx prisma db seed
 
 # Production
-npx wrangler hyperdrive create blipp-db \
-  --connection-string="postgres://USER:PASSWORD@ep-XXXX-pooler.REGION.aws.neon.tech:5432/neondb?sslmode=require"
+DATABASE_URL="YOUR_PRODUCTION_CONNECTION_STRING" npx prisma db push
+DATABASE_URL="YOUR_PRODUCTION_CONNECTION_STRING" npx prisma db seed
 ```
 
-- [ ] Staging Hyperdrive config created
-- [ ] Production Hyperdrive config created
-- [ ] **Copy both config IDs** from the CLI output (UUIDs)
-- [ ] Update `wrangler.jsonc`:
-  - Replace `<staging-hyperdrive-id>` with the staging config ID
-  - Replace `<production-hyperdrive-id>` with the production config ID
+### Verify (either method)
 
-### 2.5 Create API Token (for CI/CD)
+- [ ] Plans seeded: Free, Pro, Pro+
+- [ ] AI Model Registry populated
+- [ ] PlatformConfig defaults set
 
-- [ ] Go to **My Profile > API Tokens > Create Token**
-- [ ] Use template: **Edit Cloudflare Workers**
-- [ ] Scope: your account, all zones (or specific zone if you have podblipp.com on CF)
-- [ ] **Save the token** — you'll add this as `CLOUDFLARE_API_TOKEN` in GitHub secrets
+You can verify with `npx prisma studio` (set DATABASE_URL first).
 
 ---
 
-## Phase 3: Database (Neon)
+## Phase 5: Clerk Auth
 
-> **Note:** Neon console is at `console.neon.com`.
+### 5a: Staging (Development Instance)
 
-### 3.1 Create Databases
+Your Clerk dev instance is created automatically with your account.
 
-Both staging and production databases live in the same Neon project.
+- [ ] Log into https://dashboard.clerk.com
+- [ ] In the dev instance, enable **Email address** sign-in
+- [ ] Enable **Google** social sign-in (dev uses Clerk's shared Google credentials — no setup needed)
 
-- [ ] Log into Neon console at https://console.neon.com
-- [ ] Create a new **project** named `blipp`
-- [ ] The default database `neondb` will be used for **production**
-- [ ] Create a second database named `blipp_staging` in the same project
-  - Go to **Databases** in the sidebar
-  - Click **New Database**, name it `blipp_staging`
-- [ ] Region: closest to your Cloudflare Worker (e.g., `us-east-1`)
-- [ ] **Copy both pooled connection strings** — pooled connections are now the default in the Connection Details widget (hostname contains `-pooler`, port 5432)
-  - Production: `postgresql://neondb_owner:PASSWORD@ep-xxxx-pooler.REGION.aws.neon.tech/neondb?sslmode=require`
-  - Staging: `postgresql://neondb_owner:PASSWORD@ep-xxxx-pooler.REGION.aws.neon.tech/blipp_staging?sslmode=require`
+**Collect keys:**
+- [ ] Go to the **API Keys** page
+- [ ] Copy **Publishable Key** (`pk_test_...`) → save as `CLERK_PUBLISHABLE_KEY_STAGING`
+- [ ] Copy **Secret Key** (`sk_test_...`) → save as `CLERK_SECRET_KEY_STAGING`
 
-### 3.2 Configure Settings
+**Webhook setup is deferred to Phase 13** (needs the `workers.dev` URL from first deploy).
 
-- [ ] Connection pooling is **on by default** — verify in the Connection Details widget (the `-pooler` hostname is shown)
-- [ ] Set autoscaling: go to **Settings > Compute** in your Project Dashboard, set min compute to 0.25 CU or higher to avoid cold starts
-- [ ] Configure **point-in-time restore** window (default 1 day on paid plans, increase up to 30 days)
-- [ ] Enable **IP allow list** if available — restrict to Cloudflare IPs
-- [ ] Consider **protecting your main branch** to prevent accidental schema changes
+### 5b: Production (Production Instance)
 
-### 3.3 Push Schema & Seed Data (Both Databases)
+- [ ] At the top of the dashboard, click the **Development** button → dropdown → **Create production instance**
+- [ ] Choose to **clone development settings** or start fresh
+- [ ] **Important:** SSO connections do NOT copy over — reconfigure below
 
-Run for **each** database:
-
-```bash
-# ── Staging ──
-export DATABASE_URL="postgresql://neondb_owner:PASSWORD@ep-xxxx-pooler.REGION.aws.neon.tech/blipp_staging?sslmode=require"
-
-npx prisma db push
-npx prisma db seed
-
-# ── Production ──
-export DATABASE_URL="postgresql://neondb_owner:PASSWORD@ep-xxxx-pooler.REGION.aws.neon.tech/neondb?sslmode=require"
-
-npx prisma db push
-npx prisma db seed
-
-# Remove the export (don't leave URLs in your shell history)
-unset DATABASE_URL
-```
-
-For each database, verify:
-- [ ] Schema pushed successfully
-- [ ] Plans seeded (Free, Pro, Pro+)
-- [ ] AI Model Registry seeded
-- [ ] PlatformConfig defaults seeded
-
-### 3.4 Mark Your Admin User
-
-After you sign up through each app, mark yourself as admin:
-
-```sql
-UPDATE "User" SET "isAdmin" = true WHERE email = 'your@email.com';
-```
-
-Run this via the Neon SQL Editor (in the console sidebar) or `prisma studio` after your first login. You'll need to do this for both staging and production databases.
-
----
-
-## Phase 4: Clerk (Auth)
-
-### Phase 4a: Staging (Development Instance)
-
-Staging uses Clerk's **development instance**. The webhook endpoint can only be created AFTER the first deploy (you need the `workers.dev` URL).
-
-#### 4a.1 Configure Development Instance
-
-- [ ] Log into Clerk dashboard (https://dashboard.clerk.com)
-- [ ] Your development instance is created by default — use it for staging
+**Configure Google SSO (production requires custom OAuth):**
+- [ ] Go to https://console.cloud.google.com → **APIs & Services > Credentials**
+- [ ] **Create Credentials > OAuth client ID** → **Web application**
+- [ ] Add the authorized redirect URI shown on Clerk's **SSO connections** page
+- [ ] Copy **Client ID** and **Client Secret**
+- [ ] In Clerk Dashboard (production) → **SSO connections** → paste Google credentials
 - [ ] Enable **Email address** sign-in
-- [ ] Enable **Google** social sign-in (dev instances use Clerk's shared Google credentials — no custom OAuth client needed)
 
-#### 4a.2 Collect Keys
+**Configure domain:**
+- [ ] Go to the **Domains** page in Clerk Dashboard
+- [ ] Add DNS records shown to your DNS provider (Cloudflare in this case)
+- [ ] Wait for propagation (can take up to 48 hours)
+- [ ] When ready, click the **Deploy certificates** button on the Dashboard homepage
 
-- [ ] Go to the **API Keys** page in the Clerk Dashboard
-- [ ] **Publishable Key** (`pk_test_...`) — copy it
-- [ ] **Secret Key** (`sk_test_...`) — copy it
+**Collect keys:**
+- [ ] Go to the **API Keys** page (production instance)
+- [ ] Copy **Publishable Key** (`pk_live_...`) → save as `CLERK_PUBLISHABLE_KEY_PRODUCTION`
+- [ ] Copy **Secret Key** (`sk_live_...`) → save as `CLERK_SECRET_KEY_PRODUCTION`
 
-#### 4a.3 Create Webhook Endpoint (AFTER Phase 13 — First Deploy)
-
-You must deploy staging first to get your `workers.dev` URL, then come back here.
-
-- [ ] In the Clerk Dashboard, go to the **Webhooks** page
-- [ ] Click **Add Endpoint**
-- [ ] In the **Endpoint URL** field, enter: `https://blipp-staging.YOUR-SUBDOMAIN.workers.dev/api/webhooks/clerk`
-- [ ] In **Subscribe to events**, select:
-  - [ ] `user.created`
-  - [ ] `user.updated`
-  - [ ] `user.deleted`
-- [ ] Click **Create**
-- [ ] Reveal the **Signing Secret** and copy it
-- [ ] Set this as `CLERK_WEBHOOK_SECRET` in staging secrets (Phase 12)
-
-### Phase 4b: Production (Production Instance)
-
-#### 4b.1 Create Production Instance
-
-- [ ] In the Clerk Dashboard, click the **Development** button at the top to reveal the instance dropdown
-- [ ] Select **Create production instance**
-- [ ] Choose whether to **clone your development instance settings** or start fresh with Clerk defaults
-- [ ] **Important:** SSO connections, integrations, and custom paths do NOT copy over for security reasons — you must reconfigure these
-
-#### 4b.2 Configure Authentication Methods
-
-- [ ] In the production instance, enable **Email address** sign-in
-- [ ] Enable **Google** social sign-in
-- [ ] For Google SSO in production: you need a **custom Google OAuth client** (dev uses Clerk's shared credentials)
-  - [ ] Go to Google Cloud Console (https://console.cloud.google.com) > **APIs & Services > Credentials**
-  - [ ] Click **Create Credentials > OAuth client ID**
-  - [ ] Application type: **Web application**
-  - [ ] Add authorized redirect URI from the Clerk Dashboard (shown on the SSO connections page)
-  - [ ] Copy the **Client ID** and **Client Secret**
-  - [ ] In the Clerk Dashboard, go to the **SSO connections** page and paste the Google credentials
-
-#### 4b.3 Configure Domain & DNS
-
-- [ ] In the Clerk Dashboard, go to the **Domains** page
-- [ ] View the required DNS records and add them to your DNS provider
-- [ ] DNS propagation can take up to 48 hours
-- [ ] Once all requirements are met, a **Deploy certificates** button appears on the Dashboard homepage — click it to finalize
-
-#### 4b.4 Create Webhook Endpoint
-
-- [ ] In the Clerk Dashboard (production instance), go to the **Webhooks** page
-- [ ] Click **Add Endpoint**
-- [ ] In the **Endpoint URL** field, enter: `https://podblipp.com/api/webhooks/clerk`
-- [ ] In **Subscribe to events**, select:
-  - [ ] `user.created`
-  - [ ] `user.updated`
-  - [ ] `user.deleted`
-- [ ] Click **Create**
-- [ ] Reveal the **Signing Secret** and copy it
-
-#### 4b.5 Collect Keys
-
-- [ ] Go to the **API Keys** page in the Clerk Dashboard (production instance)
-- [ ] **Publishable Key** (`pk_live_...`) — copy it
-- [ ] **Secret Key** (`sk_live_...`) — copy it
-- [ ] **Webhook Signing Secret** — from the webhook endpoint settings (step 4b.4 above)
+**Webhook setup is deferred to Phase 13** (needs the deployed URL).
 
 ---
 
-## Phase 5: Stripe (Billing)
+## Phase 6: Stripe Billing
 
-> **Note:** Stripe now uses **Sandboxes** (not "Test mode") as the default testing environment.
+**Requires:** Databases seeded from Phase 4 (Plan records must exist before updating with Stripe IDs).
 
-### Phase 5a: Staging (Sandbox)
+> Stripe now uses **Sandboxes** (not "Test mode"). Sandboxes are accessed via the **account picker** (top-left of dashboard).
 
-Staging uses a Stripe **Sandbox**. The webhook endpoint can only be created AFTER the first deploy (you need the `workers.dev` URL).
+### 6a: Staging (Sandbox)
 
-#### 5a.1 Create or Use a Sandbox
+- [ ] Log into https://dashboard.stripe.com
+- [ ] Use the **account picker** to select or create a sandbox
 
-- [ ] Log into Stripe dashboard (https://dashboard.stripe.com)
-- [ ] Use the **account picker** (top-left of dashboard) to select or create a sandbox
-- [ ] Sandboxes have their own API keys, products, and webhooks — fully isolated from live mode
+**Create test products (inside sandbox):**
 
-#### 5a.2 Create Test Products & Prices
+- [ ] **Product catalog** → **Add product** → Name: `Pro`
+  - Monthly: $9.99/month (recurring), Annual: $99.99/year (recurring)
+  - Copy Product ID (`prod_...`) and both Price IDs (`price_...`)
+- [ ] **Add product** → Name: `Pro+`
+  - Monthly: $19.99/month (recurring), Annual: $179.99/year (recurring)
+  - Copy Product ID and both Price IDs
 
-Inside the sandbox:
-
-**Product 1: Pro**
-- [ ] Go to **Product catalog** in the dashboard
-- [ ] Click **Add product**
-- [ ] Name: `Pro`
-- [ ] Add a monthly price: $9.99/month (recurring)
-- [ ] Add an annual price: $99.99/year (recurring)
-- [ ] **Copy the Product ID** (`prod_...`) and **both Price IDs** (`price_...`)
-
-**Product 2: Pro+**
-- [ ] Click **Add product** again
-- [ ] Name: `Pro+`
-- [ ] Monthly price: $19.99/month (recurring)
-- [ ] Annual price: $179.99/year (recurring)
-- [ ] **Copy the Product ID** (`prod_...`) and **both Price IDs** (`price_...`)
-
-#### 5a.3 Update Staging Database
-
-Update the seeded plans in the **staging** database with sandbox Stripe IDs:
+**Update staging database with Stripe IDs:**
 
 ```sql
--- Pro plan
+-- Run against STAGING database (via Neon SQL Editor or prisma studio)
 UPDATE "Plan" SET
-  "stripePriceIdMonthly" = 'price_MONTHLY_ID_HERE',
-  "stripePriceIdAnnual" = 'price_ANNUAL_ID_HERE',
-  "stripeProductId" = 'prod_PRODUCT_ID_HERE'
+  "stripePriceIdMonthly" = 'price_STAGING_MONTHLY',
+  "stripePriceIdAnnual" = 'price_STAGING_ANNUAL',
+  "stripeProductId" = 'prod_STAGING_PRO'
 WHERE slug = 'pro';
 
--- Pro+ plan
 UPDATE "Plan" SET
-  "stripePriceIdMonthly" = 'price_MONTHLY_ID_HERE',
-  "stripePriceIdAnnual" = 'price_ANNUAL_ID_HERE',
-  "stripeProductId" = 'prod_PRODUCT_ID_HERE'
+  "stripePriceIdMonthly" = 'price_STAGING_MONTHLY',
+  "stripePriceIdAnnual" = 'price_STAGING_ANNUAL',
+  "stripeProductId" = 'prod_STAGING_PROPLUS'
 WHERE slug = 'pro-plus';
 ```
 
-#### 5a.4 Collect Sandbox Keys
+**Collect keys:**
+- [ ] **Developers Dashboard > API keys** tab → Copy **Secret Key** (`sk_test_...`)
+- [ ] Save as `STRIPE_SECRET_KEY_STAGING`
 
-- [ ] In the sandbox, go to **Developers Dashboard > API keys** tab
-- [ ] **Secret Key** (`sk_test_...`) — copy it
+**Webhook setup is deferred to Phase 13.**
 
-#### 5a.5 Create Webhook Endpoint (AFTER Phase 13 — First Deploy)
-
-You must deploy staging first to get your `workers.dev` URL, then come back here.
-
-- [ ] In the sandbox dashboard, go to the **Webhooks** page
-- [ ] Click **Create an event destination**
-- [ ] Select destination type: **Webhook endpoint**
-- [ ] Enter URL: `https://blipp-staging.YOUR-SUBDOMAIN.workers.dev/api/webhooks/stripe`
-- [ ] Select events to listen for:
-  - [ ] `checkout.session.completed`
-  - [ ] `customer.subscription.updated`
-  - [ ] `customer.subscription.deleted`
-  - [ ] `invoice.payment_failed`
-- [ ] Click **Add endpoint**
-- [ ] Expand **Signing secret** to reveal and copy it (`whsec_...`)
-- [ ] Set this as `STRIPE_WEBHOOK_SECRET` in staging secrets (Phase 12)
-
-### Phase 5b: Production (Live Mode)
-
-#### 5b.1 Activate Live Mode
+### 6b: Production (Live Mode)
 
 - [ ] Go to https://dashboard.stripe.com/account/onboarding
-- [ ] Complete the **account application** — Stripe requires business details (name, address, website URL, bank account) for KYC compliance
-- [ ] Once approved, exit the sandbox using the **account picker** (top-left of dashboard) to access live mode
-- [ ] **Note:** You cannot change the account's country after activation
+- [ ] Complete the **account application** (business details, bank account — KYC compliance)
+- [ ] Once approved, use the **account picker** to exit sandbox into live mode
+- [ ] **Note:** Account country cannot be changed after activation
 
-#### 5b.2 Create Products & Prices
+**Create live products (in live mode):**
 
-Make sure you are in **live mode** (not a sandbox) when creating products.
+Same products as sandbox. Or use **Copy to live mode** on the Product catalog page if you created them in sandbox first.
 
-**Product 1: Pro**
-- [ ] Go to **Product catalog** in the dashboard
-- [ ] Click **Add product**
-- [ ] Name: `Pro`
-- [ ] Add a monthly price: $9.99/month (recurring)
-- [ ] Add an annual price: $99.99/year (recurring)
-- [ ] **Copy the Product ID** (`prod_...`) and **both Price IDs** (`price_...`)
+- [ ] Pro: Monthly $9.99, Annual $99.99 — copy Product ID + Price IDs
+- [ ] Pro+: Monthly $19.99, Annual $179.99 — copy Product ID + Price IDs
 
-**Product 2: Pro+**
-- [ ] Click **Add product** again
-- [ ] Name: `Pro+`
-- [ ] Monthly price: $19.99/month (recurring)
-- [ ] Annual price: $179.99/year (recurring)
-- [ ] **Copy the Product ID** (`prod_...`) and **both Price IDs** (`price_...`)
-
-**Tip:** If you already created products in a sandbox, you can use **Copy to live mode** on the Product catalog page.
-
-#### 5b.3 Update Production Database
-
-Update the seeded plans in the **production** database with live Stripe IDs:
+**Update production database with live Stripe IDs:**
 
 ```sql
--- Pro plan
+-- Run against PRODUCTION database
 UPDATE "Plan" SET
-  "stripePriceIdMonthly" = 'price_MONTHLY_ID_HERE',
-  "stripePriceIdAnnual" = 'price_ANNUAL_ID_HERE',
-  "stripeProductId" = 'prod_PRODUCT_ID_HERE'
+  "stripePriceIdMonthly" = 'price_LIVE_MONTHLY',
+  "stripePriceIdAnnual" = 'price_LIVE_ANNUAL',
+  "stripeProductId" = 'prod_LIVE_PRO'
 WHERE slug = 'pro';
 
--- Pro+ plan
 UPDATE "Plan" SET
-  "stripePriceIdMonthly" = 'price_MONTHLY_ID_HERE',
-  "stripePriceIdAnnual" = 'price_ANNUAL_ID_HERE',
-  "stripeProductId" = 'prod_PRODUCT_ID_HERE'
+  "stripePriceIdMonthly" = 'price_LIVE_MONTHLY',
+  "stripePriceIdAnnual" = 'price_LIVE_ANNUAL',
+  "stripeProductId" = 'prod_LIVE_PROPLUS'
 WHERE slug = 'pro-plus';
 ```
 
-#### 5b.4 Configure Customer Portal
+**Configure customer portal:**
+- [ ] **Settings > Billing > Portal** (URL: `dashboard.stripe.com/settings/billing/portal`)
+- [ ] Allow: cancellations, plan switching, payment method updates
+- [ ] Customize branding in **Settings > Branding**
 
-- [ ] Go to **Settings > Billing > Portal** (direct URL: `dashboard.stripe.com/settings/billing/portal`)
-- [ ] Configure subscription management: allow cancellations, plan switching
-- [ ] Configure payment method updates
-- [ ] Customize portal branding (via **Settings > Branding**)
+**Collect keys:**
+- [ ] In live mode, **Developers Dashboard > API keys** tab → Copy **Secret Key** (`sk_live_...`)
+- [ ] Save as `STRIPE_SECRET_KEY_PRODUCTION`
 
-#### 5b.5 Create Webhook Endpoint
-
-- [ ] In the live mode dashboard, go to the **Webhooks** page (via **Developers** menu at bottom-left, or search)
-- [ ] Click **Create an event destination**
-- [ ] Select destination type: **Webhook endpoint**
-- [ ] Enter URL: `https://podblipp.com/api/webhooks/stripe`
-- [ ] Select events to listen for:
-  - [ ] `checkout.session.completed`
-  - [ ] `customer.subscription.updated`
-  - [ ] `customer.subscription.deleted`
-  - [ ] `invoice.payment_failed`
-- [ ] Click **Add endpoint**
-- [ ] Expand **Signing secret** to reveal and copy it (`whsec_...`)
-
-#### 5b.6 Collect Keys
-
-- [ ] **Live Secret Key** (`sk_live_...`) — from the **Developers Dashboard > API keys** tab (make sure you're in live mode, not a sandbox)
-- [ ] **Webhook Signing Secret** (`whsec_...`) — from the webhook endpoint's signing secret section
+**Webhook setup is deferred to Phase 13.**
 
 ---
 
-## Phase 6: AI Services
+## Phase 7: AI & Podcast Services
 
-These keys are shared between staging and production (same API accounts, same keys). You may choose to create separate keys per environment for cost tracking.
+Same keys for both environments. Staging uses cheap models via PlatformConfig — same keys, different model selection.
 
-### 6.1 Anthropic (Claude — Distillation & Narrative)
+### 7.1 Anthropic
 
-- [ ] Log into https://console.anthropic.com/
-- [ ] Go to **Settings > Keys** (direct URL: https://console.anthropic.com/settings/keys)
-- [ ] Click **Create Key**
-- [ ] Name: `blipp-prod` (or create separate `blipp-staging` / `blipp-prod` keys)
-- [ ] **Copy the key** (`sk-ant-...`)
-- [ ] Add credits: $25+ recommended for initial testing
-- [ ] Set usage limits/alerts in Settings if desired
+- [ ] https://console.anthropic.com/ → **Settings > Keys** → **Create Key**
+- [ ] Name: `blipp`
+- [ ] Copy key (`sk-ant-...`) → save as `ANTHROPIC_API_KEY`
+- [ ] Add $25+ credits
 
-### 6.2 OpenAI (TTS + Whisper STT)
+### 7.2 OpenAI
 
-- [ ] Log into https://platform.openai.com/
-- [ ] Go to **Dashboard > API keys** (direct URL: https://platform.openai.com/api-keys)
-- [ ] Click **Create new secret key**
-- [ ] Name: `blipp-prod` (or create separate keys per environment)
-- [ ] **Copy the key** (`sk-...`)
-- [ ] Add credits: $25+ recommended
-- [ ] Set monthly spend limit in **Settings > Limits**
+- [ ] https://platform.openai.com/ → **Dashboard > API keys** → **Create new secret key**
+- [ ] Name: `blipp`
+- [ ] Copy key (`sk-...`) → save as `OPENAI_API_KEY`
+- [ ] Add $25+ credits, set spend limit in **Settings > Limits**
 
-### 6.3 Groq (Optional — Fast STT/LLM/TTS)
+### 7.3 Groq (Optional)
 
-- [ ] Log into https://console.groq.com
-- [ ] Go to **API Keys > Create API Key**
-- [ ] **Copy the key** (`gsk_...`)
-- [ ] Note: Groq has generous free tier, but set up billing for production volume
+- [ ] https://console.groq.com → **API Keys** → **Create API Key**
+- [ ] Copy key (`gsk_...`) → save as `GROQ_API_KEY`
 
-### 6.4 Deepgram (Optional — Nova STT)
+### 7.4 Deepgram (Optional)
 
-- [ ] Log into https://console.deepgram.com
-- [ ] Go to **API Keys > Create Key**
-- [ ] **Copy the key**
-- [ ] Add credits if needed (has free tier)
+- [ ] https://console.deepgram.com → **API Keys** → **Create Key**
+- [ ] Copy key → save as `DEEPGRAM_API_KEY`
 
-### 6.5 Cloudflare Workers AI (Included)
+### 7.5 Podcast Index
 
-- [ ] No additional setup needed — the `AI` binding in `wrangler.jsonc` handles this
-- [ ] Workers AI is included with Workers Paid plan
-- [ ] Models like `@cf/openai/whisper-large-v3-turbo` are available automatically
+- [ ] https://api.podcastindex.org (or check signup email)
+- [ ] Copy **API Key** → save as `PODCAST_INDEX_KEY`
+- [ ] Copy **API Secret** → save as `PODCAST_INDEX_SECRET`
+- [ ] If the secret contains special characters (`^`, `$`, `#`), quote it when pasting
+
+### 7.6 Cloudflare Workers AI
+
+- [ ] No setup needed — included with Workers Paid plan via `AI` binding
 
 ---
 
-## Phase 7: Podcast Index
+## Phase 8: Web Push VAPID Keys
 
-Shared between staging and production.
-
-- [ ] Log into https://api.podcastindex.org (or check email from signup)
-- [ ] **Copy API Key** and **API Secret**
-- [ ] Note: if the secret contains special characters (`^`, `$`, `#`), it needs quoting in some contexts
-
----
-
-## Phase 8: Google AdSense / Ad Manager (IMA)
-
-This is for client-side ad insertion via Google IMA SDK. Ads are optional — the app works without them (controlled by `ads.enabled` PlatformConfig flag, defaults to disabled).
-
-### If you want ads:
-
-#### 8.1 Sign Up for Google AdSense
-
-Google Ad Manager redirects new accounts to **Google AdSense** for initial approval.
-
-- [ ] Sign up at https://www.google.com/adsense/ (or follow redirect from Ad Manager)
-- [ ] AdSense requires **site verification** before approval. Add the verification meta tag to `index.html`:
-
-```html
-<!-- Add inside <head>, before <title> -->
-<meta name="google-adsense-account" content="ca-pub-XXXXXXXXXXXXXXXX" />
-```
-
-Replace `ca-pub-XXXXXXXXXXXXXXXX` with your actual AdSense publisher ID (shown during signup).
-
-- [ ] Deploy the app with the meta tag so Google can verify your site
-- [ ] Wait for AdSense approval (can take days to weeks)
-
-#### 8.2 Set Up Ad Manager (After AdSense Approval)
-
-Once approved, you can access **Google Ad Manager** (https://admanager.google.com/):
-
-- [ ] Create an Ad Manager network (may be auto-created with AdSense)
-- [ ] Create **ad units** for:
-  - [ ] Preroll (audio ad before briefing)
-  - [ ] Postroll (audio ad after briefing)
-- [ ] Create **line items** and **creatives** with VAST tags
-- [ ] Get your **VAST tag URLs** — these go into `PlatformConfig` via admin UI:
-  - Key: `ads.preroll.vastTagUrl`
-  - Key: `ads.postroll.vastTagUrl`
-- [ ] The IMA SDK loads from `https://imasdk.googleapis.com/js/sdkloader/ima3.js` (already in `index.html`)
-- [ ] VAST tag macros supported: `[CACHE_BUSTER]`, `[CONTENT_ID]`, `[CONTENT_CATEGORY]`, `[DURATION_TIER]`
-
-### If you want to skip ads for now:
-
-- [ ] No action needed — ads are disabled by default
-- [ ] Enable later via admin UI: set `ads.enabled` to `true` in Platform Config
-- [ ] You can add the AdSense meta tag now to start the approval process even if you're not ready to serve ads
-
----
-
-## Phase 9: Web Push (VAPID)
-
-VAPID keys are needed for browser push notifications. Optional but recommended. Shared between staging and production, or generate separate pairs.
-
-### 9.1 Generate VAPID Keys
+Optional but recommended. Shared between environments.
 
 ```bash
-# Using web-push npm package (install temporarily)
 npx web-push generate-vapid-keys
 ```
 
-This outputs:
-```
-Public Key: BLxxxxxx...
-Private Key: xxxxxxxx...
+- [ ] Copy **Public Key** → save as `VAPID_PUBLIC_KEY`
+- [ ] Copy **Private Key** → save as `VAPID_PRIVATE_KEY`
+- [ ] Set `VAPID_SUBJECT` to `mailto:your@email.com`
+
+---
+
+## Phase 9: Google AdSense (Optional)
+
+Ads are disabled by default (`ads.enabled` = false in PlatformConfig). You can skip this entirely and enable later. The IMA SDK is already loaded in `index.html`.
+
+**Background:** Google Ad Manager requires an AdSense account to sign up. AdSense requires site verification before approval. You don't need AdSense to use VAST tags from other ad servers — only if you want Google's ad network.
+
+### If you want Google ads:
+
+#### 9.1 Sign Up & Verify
+
+- [ ] Sign up at https://www.google.com/adsense/
+- [ ] Google gives you a publisher ID (`ca-pub-XXXXXXXXXXXXXXXX`)
+- [ ] Choose a verification method:
+
+**Option A — AdSense code snippet** (add to `index.html` `<head>`):
+```html
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-XXXXXXXXXXXXXXXX" crossorigin="anonymous"></script>
 ```
 
-- [ ] **Copy Public Key** -> `VAPID_PUBLIC_KEY`
-- [ ] **Copy Private Key** -> `VAPID_PRIVATE_KEY`
-- [ ] Set `VAPID_SUBJECT` to `mailto:your@email.com`
+**Option B — Meta tag** (add to `index.html` `<head>`, lighter — no ads load):
+```html
+<meta name="google-adsense-account" content="ca-pub-XXXXXXXXXXXXXXXX" />
+```
+
+**Option C — ads.txt file** (add to `public/ads.txt`):
+```
+google.com, pub-XXXXXXXXXXXXXXXX, DIRECT, f08c47fec0942fa0
+```
+
+- [ ] Deploy the app with your chosen verification method
+- [ ] In AdSense dashboard, click **Request review**
+- [ ] Wait for approval (days to weeks)
+
+#### 9.2 Set Up Ad Manager (After Approval)
+
+Once approved:
+- [ ] Go to https://admanager.google.com/
+- [ ] Create audio ad units (Preroll + Postroll, master size: **Audio**)
+- [ ] Create line items with **Video and audio** ad type, **Audio** expected creative size
+- [ ] Generate VAST tag URLs: **Inventory > Ad units > [your unit] > Tags**
+  - VAST tags must include: `ad_type=audio`, `env=instream`, `vpmute=0`
+- [ ] Configure in admin UI: set `ads.preroll.vastTagUrl` and `ads.postroll.vastTagUrl` in PlatformConfig
+- [ ] Enable ads: set `ads.enabled` to `true` in PlatformConfig
+
+### If you want to skip ads:
+
+- [ ] No action needed — ads are disabled by default
 
 ---
 
 ## Phase 10: GitHub CI/CD
 
+**Requires:** API token from Phase 3.4, Clerk publishable keys from Phase 5.
+
 ### 10.1 Add Repository Secrets
 
-- [ ] Go to your repo: https://github.com/boosey/blipp
-- [ ] **Settings > Secrets and variables > Actions > New repository secret**
-- [ ] Add secrets:
-  - `CLOUDFLARE_API_TOKEN` — the API token from Phase 2.5
-  - `VITE_CLERK_PUBLISHABLE_KEY_STAGING` — the Clerk dev instance publishable key (`pk_test_...`)
-  - `VITE_CLERK_PUBLISHABLE_KEY_PRODUCTION` — the Clerk production instance publishable key (`pk_live_...`)
+Go to https://github.com/boosey/blipp → **Settings > Secrets and variables > Actions > New repository secret**
+
+- [ ] `CLOUDFLARE_API_TOKEN` — from Phase 3.4
+- [ ] `VITE_CLERK_PUBLISHABLE_KEY_STAGING` — `pk_test_...` from Phase 5a
+- [ ] `VITE_CLERK_PUBLISHABLE_KEY_PRODUCTION` — `pk_live_...` from Phase 5b
 
 ### 10.2 Add Repository Variable
 
-- [ ] **Settings > Secrets and variables > Actions > Variables > New repository variable**
-  - `STAGING_URL` — the `workers.dev` URL from your first staging deploy (set after Phase 13)
+**Settings > Secrets and variables > Actions > Variables > New repository variable**
 
-### 10.3 Verify Workflows
+- [ ] `STAGING_URL` — set to `placeholder` for now. Update after first deploy in Phase 13 when you learn the `workers.dev` URL.
 
-Two CI/CD workflows:
+### 10.3 Verify Workflows Exist
 
-- [ ] `.github/workflows/deploy-staging.yml` — triggers automatically on push to `main`
-  - Checkout -> install -> prisma generate -> typecheck -> test -> `npx wrangler deploy`
-  - Uses `VITE_CLERK_PUBLISHABLE_KEY_STAGING` for the frontend build
-
-- [ ] `.github/workflows/deploy-production.yml` — **manual trigger only** (workflow_dispatch)
-  - Same steps but runs `npx wrangler deploy --env production`
-  - Uses `VITE_CLERK_PUBLISHABLE_KEY_PRODUCTION` for the frontend build
+- [ ] `.github/workflows/deploy-staging.yml` — auto-deploys staging on push to `main`
+- [ ] `.github/workflows/deploy-production.yml` — manual trigger (workflow_dispatch)
 
 ---
 
 ## Phase 11: Domain & DNS
 
-Only **production** gets a custom domain. Staging uses the `workers.dev` URL.
+Only production gets a custom domain. Staging uses the `workers.dev` URL.
 
-Domain `podblipp.com` was purchased through Cloudflare, so DNS is already managed by Cloudflare.
+`podblipp.com` was purchased through Cloudflare, so DNS is already on Cloudflare.
 
 ### 11.1 Add Custom Domain to Production Worker
 
-Since the domain is on Cloudflare, this can be done via wrangler or the dashboard:
+After the first production deploy (Phase 13), add the custom domain:
 
-**Via CLI (add to wrangler.jsonc):**
+**Via dashboard:**
+- [ ] **Workers & Pages > blipp > Settings > Domains & Routes**
+- [ ] **Add custom domain**: `podblipp.com`
+- [ ] Add `www.podblipp.com` if desired
+- [ ] SSL is provisioned immediately (DNS is on Cloudflare)
 
-Add a `routes` array inside `env.production`:
+**Or via wrangler.jsonc** — add `routes` inside `env.production`:
 ```jsonc
 "routes": [
   { "pattern": "podblipp.com", "custom_domain": true },
@@ -617,180 +496,102 @@ Add a `routes` array inside `env.production`:
 ]
 ```
 
-**Via dashboard:**
-- [ ] Go to **Workers & Pages > blipp > Settings > Domains & Routes**
-- [ ] **Add custom domain**: `podblipp.com`
-- [ ] Add `www.podblipp.com` if desired (and set up redirect)
-- [ ] Cloudflare auto-provisions SSL (immediate since DNS is on CF)
-
-### 11.3 CORS Origins
-
-Origins are configured as Wrangler vars in `wrangler.jsonc` (not secrets):
-
-- **Staging** (`APP_ORIGIN` / `ALLOWED_ORIGINS`): `https://staging.podblipp.com` (or the `workers.dev` URL)
-- **Production** (`APP_ORIGIN` / `ALLOWED_ORIGINS`): `https://podblipp.com,https://www.podblipp.com`
-- Dev origins (`http://localhost:8787`, `http://localhost:5173`) are hardcoded for local development
-
-If you need to change these, update the `vars` section in `wrangler.jsonc` directly.
-
 ---
 
-## Phase 12: Deploy Secrets to Cloudflare
+## Phase 12: Set Cloudflare Secrets
 
-Secrets must be set separately for each environment. Staging secrets use no flag. Production secrets use `--env production`.
+**Requires:** All keys from Phases 5-8.
 
-### 12.1 Staging Secrets
+Secrets are set separately per environment. Webhook signing secrets are NOT available yet — they come from Phase 13 after creating webhook endpoints. Use `placeholder` for now.
+
+### Automated
 
 ```bash
-# Auth (Clerk dev instance)
-npx wrangler secret put CLERK_SECRET_KEY
-npx wrangler secret put CLERK_PUBLISHABLE_KEY
-npx wrangler secret put CLERK_WEBHOOK_SECRET
+# 1. Copy templates
+cp scripts/templates/secrets-staging.env.template secrets-staging.env
+cp scripts/templates/secrets-production.env.template secrets-production.env
 
-# Billing (Stripe sandbox)
-npx wrangler secret put STRIPE_SECRET_KEY
-npx wrangler secret put STRIPE_WEBHOOK_SECRET
+# 2. Edit both files — fill in all keys from Phases 5-8
+#    Set CLERK_WEBHOOK_SECRET=placeholder and STRIPE_WEBHOOK_SECRET=placeholder
+#    (you'll update these after Phase 13)
 
-# AI - Required
-npx wrangler secret put ANTHROPIC_API_KEY
-npx wrangler secret put OPENAI_API_KEY
+# 3. Push secrets
+bash scripts/set-secrets.sh secrets-staging.env
+bash scripts/set-secrets.sh secrets-production.env --env production
 
-# Podcast data
+# 4. DELETE THE FILES
+rm secrets-staging.env secrets-production.env
+```
+
+### Manual Alternative
+
+```bash
+# ── Staging (no flag) ──
+npx wrangler secret put CLERK_SECRET_KEY           # sk_test_...
+npx wrangler secret put CLERK_PUBLISHABLE_KEY      # pk_test_...
+npx wrangler secret put CLERK_WEBHOOK_SECRET       # placeholder (updated in Phase 13)
+npx wrangler secret put STRIPE_SECRET_KEY          # sk_test_...
+npx wrangler secret put STRIPE_WEBHOOK_SECRET      # placeholder (updated in Phase 13)
+npx wrangler secret put ANTHROPIC_API_KEY          # sk-ant-...
+npx wrangler secret put OPENAI_API_KEY             # sk-...
 npx wrangler secret put PODCAST_INDEX_KEY
 npx wrangler secret put PODCAST_INDEX_SECRET
-```
 
-**Optional staging secrets:**
-```bash
-npx wrangler secret put GROQ_API_KEY
-npx wrangler secret put DEEPGRAM_API_KEY
-npx wrangler secret put ASSEMBLYAI_API_KEY
-npx wrangler secret put GOOGLE_STT_API_KEY
-npx wrangler secret put VAPID_PUBLIC_KEY
-npx wrangler secret put VAPID_PRIVATE_KEY
-npx wrangler secret put VAPID_SUBJECT
-npx wrangler secret put NEON_API_KEY
-npx wrangler secret put NEON_PROJECT_ID
-```
-
-### 12.2 Production Secrets
-
-```bash
-# Auth (Clerk production instance)
-npx wrangler secret put CLERK_SECRET_KEY --env production
-npx wrangler secret put CLERK_PUBLISHABLE_KEY --env production
-npx wrangler secret put CLERK_WEBHOOK_SECRET --env production
-
-# Billing (Stripe live mode)
-npx wrangler secret put STRIPE_SECRET_KEY --env production
-npx wrangler secret put STRIPE_WEBHOOK_SECRET --env production
-
-# AI - Required
+# ── Production (--env production) ──
+npx wrangler secret put CLERK_SECRET_KEY --env production           # sk_live_...
+npx wrangler secret put CLERK_PUBLISHABLE_KEY --env production      # pk_live_...
+npx wrangler secret put CLERK_WEBHOOK_SECRET --env production       # placeholder (updated in Phase 13)
+npx wrangler secret put STRIPE_SECRET_KEY --env production          # sk_live_...
+npx wrangler secret put STRIPE_WEBHOOK_SECRET --env production      # placeholder (updated in Phase 13)
 npx wrangler secret put ANTHROPIC_API_KEY --env production
 npx wrangler secret put OPENAI_API_KEY --env production
-
-# Podcast data
 npx wrangler secret put PODCAST_INDEX_KEY --env production
 npx wrangler secret put PODCAST_INDEX_SECRET --env production
 ```
 
-**Optional production secrets:**
+**Optional secrets (both environments):**
 ```bash
+npx wrangler secret put GROQ_API_KEY
 npx wrangler secret put GROQ_API_KEY --env production
+npx wrangler secret put DEEPGRAM_API_KEY
 npx wrangler secret put DEEPGRAM_API_KEY --env production
-npx wrangler secret put ASSEMBLYAI_API_KEY --env production
-npx wrangler secret put GOOGLE_STT_API_KEY --env production
+npx wrangler secret put VAPID_PUBLIC_KEY
 npx wrangler secret put VAPID_PUBLIC_KEY --env production
+npx wrangler secret put VAPID_PRIVATE_KEY
 npx wrangler secret put VAPID_PRIVATE_KEY --env production
+npx wrangler secret put VAPID_SUBJECT
 npx wrangler secret put VAPID_SUBJECT --env production
-npx wrangler secret put NEON_API_KEY --env production
-npx wrangler secret put NEON_PROJECT_ID --env production
 ```
 
-### 12.3 Wrangler Vars (not secrets)
+### Wrangler Vars (NOT secrets)
 
-`APP_ORIGIN` and `ALLOWED_ORIGINS` are set in `wrangler.jsonc` as `vars`, not as Wrangler secrets. They are baked into the worker at deploy time. To change them, edit `wrangler.jsonc` and redeploy.
-
-### 12.4 Secrets File Templates
-
-Create template files for batch-setting secrets (see [Automation Script](#automation-script)):
-
-**`secrets-staging.env`:**
-```env
-CLERK_SECRET_KEY=sk_test_...
-CLERK_PUBLISHABLE_KEY=pk_test_...
-CLERK_WEBHOOK_SECRET=whsec_...
-STRIPE_SECRET_KEY=sk_test_...
-STRIPE_WEBHOOK_SECRET=whsec_...
-ANTHROPIC_API_KEY=sk-ant-...
-OPENAI_API_KEY=sk-...
-PODCAST_INDEX_KEY=...
-PODCAST_INDEX_SECRET=...
-GROQ_API_KEY=gsk_...
-DEEPGRAM_API_KEY=...
-VAPID_PUBLIC_KEY=...
-VAPID_PRIVATE_KEY=...
-VAPID_SUBJECT=mailto:you@example.com
-```
-
-**`secrets-production.env`:**
-```env
-CLERK_SECRET_KEY=sk_live_...
-CLERK_PUBLISHABLE_KEY=pk_live_...
-CLERK_WEBHOOK_SECRET=whsec_...
-STRIPE_SECRET_KEY=sk_live_...
-STRIPE_WEBHOOK_SECRET=whsec_...
-ANTHROPIC_API_KEY=sk-ant-...
-OPENAI_API_KEY=sk-...
-PODCAST_INDEX_KEY=...
-PODCAST_INDEX_SECRET=...
-GROQ_API_KEY=gsk_...
-DEEPGRAM_API_KEY=...
-VAPID_PUBLIC_KEY=...
-VAPID_PRIVATE_KEY=...
-VAPID_SUBJECT=mailto:you@example.com
-```
-
-**DELETE these files immediately after use. Ensure they are in `.gitignore`.**
+`APP_ORIGIN`, `ALLOWED_ORIGINS`, and `ENVIRONMENT` are set in `wrangler.jsonc` as `vars` — not as Wrangler secrets. They are baked in at deploy time. To change them, edit `wrangler.jsonc` and redeploy.
 
 ### Checklist
 
 **Staging:**
 - [ ] `CLERK_SECRET_KEY` — set
 - [ ] `CLERK_PUBLISHABLE_KEY` — set
-- [ ] `CLERK_WEBHOOK_SECRET` — set (after first deploy)
+- [ ] `CLERK_WEBHOOK_SECRET` — placeholder (update in Phase 13)
 - [ ] `STRIPE_SECRET_KEY` — set
-- [ ] `STRIPE_WEBHOOK_SECRET` — set (after first deploy)
+- [ ] `STRIPE_WEBHOOK_SECRET` — placeholder (update in Phase 13)
 - [ ] `ANTHROPIC_API_KEY` — set
 - [ ] `OPENAI_API_KEY` — set
 - [ ] `PODCAST_INDEX_KEY` — set
 - [ ] `PODCAST_INDEX_SECRET` — set
 
 **Production:**
-- [ ] `CLERK_SECRET_KEY` — set
-- [ ] `CLERK_PUBLISHABLE_KEY` — set
-- [ ] `CLERK_WEBHOOK_SECRET` — set
-- [ ] `STRIPE_SECRET_KEY` — set
-- [ ] `STRIPE_WEBHOOK_SECRET` — set
-- [ ] `ANTHROPIC_API_KEY` — set
-- [ ] `OPENAI_API_KEY` — set
-- [ ] `PODCAST_INDEX_KEY` — set
-- [ ] `PODCAST_INDEX_SECRET` — set
-
-**AUTOMATABLE:** See [Automation Script](#automation-script) at the bottom to batch-set secrets from a file.
+- [ ] Same 9 secrets with `--env production`
 
 ---
 
-## Phase 13: First Deploy
+## Phase 13: First Deploy & Webhooks
 
-### 13.1 Update wrangler.jsonc
+**Requires:** All prior phases complete. Secrets set (with placeholder webhook secrets).
 
-- [ ] Replace `<staging-hyperdrive-id>` with real staging Hyperdrive config ID from Phase 2.4
-- [ ] Replace `<production-hyperdrive-id>` with real production Hyperdrive config ID from Phase 2.4
+This phase has a specific order: deploy → get URL → create webhooks → update secrets.
 
-### 13.2 Deploy Staging First
-
-Deploy staging to get the `workers.dev` URL:
+### 13.1 Deploy Staging
 
 ```bash
 npx prisma generate
@@ -800,23 +601,49 @@ npx wrangler deploy
 ```
 
 - [ ] Deploy succeeded
-- [ ] **Note the `workers.dev` URL** (e.g., `https://blipp-staging.YOUR-SUBDOMAIN.workers.dev`)
-- [ ] Set this as the `STAGING_URL` GitHub variable (Phase 10.2)
+- [ ] **Write down the `workers.dev` URL** (e.g., `https://blipp-staging.XXXXXX.workers.dev`)
+- [ ] Update the `STAGING_URL` GitHub variable (Phase 10.2) with this URL
 
-### 13.3 Create Webhook Endpoints (Staging)
+### 13.2 Create Staging Webhook Endpoints
 
-Now that you have the `workers.dev` URL, go back and create:
+Now that you have the `workers.dev` URL:
 
-- [ ] **Clerk staging webhook** (Phase 4a.3) pointing to `https://blipp-staging.YOUR-SUBDOMAIN.workers.dev/api/webhooks/clerk`
-- [ ] **Stripe staging webhook** (Phase 5a.5) pointing to `https://blipp-staging.YOUR-SUBDOMAIN.workers.dev/api/webhooks/stripe`
-- [ ] Set the webhook signing secrets via `npx wrangler secret put CLERK_WEBHOOK_SECRET` and `npx wrangler secret put STRIPE_WEBHOOK_SECRET`
+**Clerk (Development instance):**
+- [ ] Dashboard → **Webhooks** → **Add Endpoint**
+- [ ] URL: `https://blipp-staging.XXXXXX.workers.dev/api/webhooks/clerk`
+- [ ] Events: `user.created`, `user.updated`, `user.deleted` → **Create**
+- [ ] Copy the **Signing Secret** (click eye icon)
 
-### 13.4 Verify Staging Works
+**Stripe (Sandbox):**
+- [ ] Dashboard (in sandbox) → **Webhooks** → **Create an event destination**
+- [ ] Type: **Webhook endpoint**
+- [ ] URL: `https://blipp-staging.XXXXXX.workers.dev/api/webhooks/stripe`
+- [ ] Events: `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_failed` → **Add endpoint**
+- [ ] Expand **Signing secret** → copy it
 
-- [ ] Homepage loads (SPA renders)
+### 13.3 Update Staging Webhook Secrets
+
+Replace the placeholders with real signing secrets:
+
+```bash
+npx wrangler secret put CLERK_WEBHOOK_SECRET       # paste Clerk signing secret
+npx wrangler secret put STRIPE_WEBHOOK_SECRET      # paste Stripe signing secret
+```
+
+No redeploy needed — secrets take effect immediately.
+
+### 13.4 Verify Staging
+
+- [ ] Homepage loads at the `workers.dev` URL
 - [ ] Sign up / sign in works (Clerk dev instance)
-- [ ] `/api/me` returns your user data
-- [ ] Mark yourself as admin in the staging database
+- [ ] `/api/me` returns user data
+- [ ] Sign up creates a user via webhook (check Clerk dashboard → Webhooks → delivery attempts)
+
+**Mark yourself as admin in staging database:**
+```sql
+UPDATE "User" SET "isAdmin" = true WHERE email = 'your@email.com';
+```
+
 - [ ] Admin panel accessible at `/admin`
 
 ### 13.5 Deploy Production
@@ -826,17 +653,51 @@ npx wrangler deploy --env production
 ```
 
 - [ ] Deploy succeeded
-- [ ] Worker is running at `podblipp.com` (after custom domain setup in Phase 11)
+- [ ] Set up custom domain (Phase 11) if not already done
 
-### 13.6 Post-Deploy Database Setup
+### 13.6 Create Production Webhook Endpoints
 
-For each environment:
-- [ ] Sign up through the app (creates your User record via Clerk webhook or auto-create)
-- [ ] Mark yourself as admin:
-  ```sql
-  UPDATE "User" SET "isAdmin" = true WHERE email = 'your@email.com';
-  ```
-- [ ] Verify admin access at `/admin`
+**Clerk (Production instance):**
+- [ ] Dashboard (switch to production instance) → **Webhooks** → **Add Endpoint**
+- [ ] URL: `https://podblipp.com/api/webhooks/clerk`
+- [ ] Events: `user.created`, `user.updated`, `user.deleted` → **Create**
+- [ ] Copy the **Signing Secret**
+
+**Stripe (Live mode):**
+- [ ] Dashboard (switch to live mode via account picker) → **Webhooks** → **Create an event destination**
+- [ ] Type: **Webhook endpoint**
+- [ ] URL: `https://podblipp.com/api/webhooks/stripe`
+- [ ] Events: `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_failed` → **Add endpoint**
+- [ ] Expand **Signing secret** → copy it
+
+### 13.7 Update Production Webhook Secrets
+
+```bash
+npx wrangler secret put CLERK_WEBHOOK_SECRET --env production    # paste Clerk signing secret
+npx wrangler secret put STRIPE_WEBHOOK_SECRET --env production   # paste Stripe signing secret
+```
+
+### 13.8 Verify Production
+
+- [ ] Homepage loads at `podblipp.com`
+- [ ] Sign up / sign in works (Clerk production instance)
+- [ ] `/api/me` returns user data
+
+**Mark yourself as admin in production database:**
+```sql
+UPDATE "User" SET "isAdmin" = true WHERE email = 'your@email.com';
+```
+
+- [ ] Admin panel accessible at `/admin`
+
+### 13.9 Configure Staging PlatformConfig
+
+Set staging to use cheapest AI models (via admin UI at `workers.dev` URL → `/admin`):
+
+- [ ] STT model → Whisper Large v3 Turbo on Cloudflare
+- [ ] Distillation model → Haiku 4.5 on Anthropic
+- [ ] Narrative model → Haiku 4.5 on Anthropic
+- [ ] TTS model → MeloTTS on Cloudflare
 
 ---
 
@@ -844,216 +705,184 @@ For each environment:
 
 ### Staging Smoke Tests
 
-- [ ] Homepage loads (SPA renders)
-- [ ] Sign up / sign in works (Clerk dev instance)
-- [ ] Admin panel accessible at `/admin`
-- [ ] `/api/me` returns your user data
+- [ ] Homepage loads
+- [ ] Sign up / sign in works
+- [ ] Admin panel accessible
 - [ ] Podcast catalog visible in Discover
 - [ ] Can subscribe to a podcast
-- [ ] Pipeline runs (request a briefing, watch it progress in admin)
+- [ ] Pipeline runs (request a briefing → watch in admin)
 - [ ] Audio plays in feed
 - [ ] Billing checkout redirects to Stripe sandbox
 
 ### Production Smoke Tests
 
-- [ ] Homepage loads (SPA renders)
-- [ ] Sign up / sign in works (Clerk production instance)
-- [ ] Admin panel accessible at `/admin`
-- [ ] `/api/me` returns your user data
-- [ ] Podcast catalog visible in Discover
-- [ ] Can subscribe to a podcast
-- [ ] Pipeline runs (request a briefing, watch it progress in admin)
-- [ ] Audio plays in feed
-- [ ] Billing checkout redirects to Stripe (test with a $0 coupon or cancel before paying)
+- [ ] Homepage loads at `podblipp.com`
+- [ ] Sign up / sign in works
+- [ ] Admin panel accessible
+- [ ] Podcast catalog visible
+- [ ] Pipeline runs end-to-end
+- [ ] Audio plays
+- [ ] Billing checkout redirects to Stripe live
 
 ### Webhook Tests
 
-- [ ] **Clerk**: Update your profile name in Clerk dashboard -> verify it updates in your DB (test both environments)
-- [ ] **Stripe**: Use Stripe CLI or dashboard to send a test webhook -> verify it's received
+- [ ] **Clerk**: Change profile name in dashboard → verify DB updates (both environments)
+- [ ] **Stripe**: Send test webhook via CLI:
   ```bash
-  # Production
-  stripe trigger checkout.session.completed --api-key sk_live_...
-  # Sandbox
   stripe trigger checkout.session.completed --api-key sk_test_...
   ```
 
-### Cron Verification (Production Only)
+### Cron (Production Only)
 
-- [ ] Check **Workers & Pages > blipp > Triggers > Cron** shows `*/30 * * * *`
-- [ ] Wait for a cron tick or trigger manually via admin -> verify feed refresh runs
-- [ ] Staging does NOT have cron triggers — trigger pipeline manually via admin UI
-
-### R2 Verification
-
-- [ ] After a briefing completes, check both R2 buckets for audio files
-- [ ] Verify public access works (audio URLs in briefings should be playable)
+- [ ] **Workers & Pages > blipp > Triggers > Cron** shows `*/30 * * * *`
+- [ ] Staging has NO cron — trigger pipeline manually via admin
 
 ---
 
 ## Operational Runbook
 
-### Daily Tasks (Production)
+### Daily (Production)
 
-| Task | How | Notes |
-|------|-----|-------|
-| Check pipeline health | Admin UI -> Pipeline page | Look for stuck jobs (IN_PROGRESS > 1hr) |
-| Check error rates | Admin UI -> AI Errors page | Spikes in errors = API issues or rate limits |
-| Monitor AI spend | Anthropic/OpenAI dashboards | Compare daily cost to expected baseline |
-| Verify cron ran | Admin UI -> Platform Config -> `pipeline.lastAutoRunAt` | Should update every 30-60 min |
+| Task | How |
+|------|-----|
+| Pipeline health | Admin UI → Pipeline — stuck jobs (IN_PROGRESS > 1hr) |
+| Error rates | Admin UI → AI Errors — spikes = API issues |
+| AI spend | Anthropic/OpenAI dashboards |
+| Cron ran | Admin UI → Platform Config → `pipeline.lastAutoRunAt` |
 
-### Weekly Tasks (Production)
+### Weekly
 
-| Task | How | Notes |
-|------|-----|-------|
-| Review Stripe dashboard | https://dashboard.stripe.com | Check for failed payments, disputes |
-| Check Neon database size | Neon console (console.neon.com) -> Project overview | Usage-based on paid plans — monitor storage growth |
-| Review R2 storage usage | Cloudflare dashboard -> R2 | Audio files accumulate — plan for cleanup |
-| Check Clerk active users | Clerk dashboard -> Users | Track growth, watch for abuse |
-| Review GitHub Actions | Repo -> Actions tab | Check for flaky tests or deploy failures |
-| Catalog refresh | Admin UI -> Podcasts -> Catalog Refresh | Manually trigger if trending list seems stale |
-| Check queue depth | Cloudflare dashboard -> Queues | Messages piling up = worker can't keep up |
+| Task | How |
+|------|-----|
+| Stripe | dashboard.stripe.com — failed payments, disputes |
+| Neon DB size | console.neon.com → Project overview |
+| R2 storage | Cloudflare dashboard → R2 |
+| Clerk users | Clerk dashboard → Users |
+| GitHub Actions | Repo → Actions tab |
+| Queue depth | Cloudflare dashboard → Queues |
 
-### Monthly Tasks (Production)
+### Monthly
 
-| Task | How | Notes |
-|------|-----|-------|
-| Rotate API keys | All AI providers + Stripe | Create new key, update secret, delete old |
-| Review AI model costs | Admin UI -> Model Registry | Prices change — compare actual vs registry |
-| Database maintenance | Neon console (console.neon.com) | Check connection counts, query performance |
-| Dependency updates | `npm outdated`, `npm update` | Especially security patches |
-| Clean old pipeline data | `npm run clean:pipeline` | Remove completed jobs older than 30 days |
-| Clean orphaned R2 objects | Manual or script | Clips for deleted episodes |
-| Review audit log | Prisma Studio -> AuditLog | Spot unexpected admin actions |
-| Backup verification | Neon console -> Restore | Verify point-in-time restore works (paid plans: 1-30 day window) |
+| Task | How |
+|------|-----|
+| Rotate API keys | Create new → update secret → delete old |
+| AI model costs | Admin UI → Model Registry |
+| Dependencies | `npm outdated` + `npm update` |
+| Clean pipeline data | `npm run clean:pipeline` |
+| Backup verification | Neon console → Restore |
 
-### Staging-Specific Tasks
+### Staging-Specific
 
-| Task | When | How |
-|------|------|-----|
-| Reset staging DB | After major schema changes | `npx prisma db push` + `npx prisma db seed` with staging DATABASE_URL |
-| Re-seed after schema changes | After `prisma db push` | Run seed against staging database |
-| Trigger pipeline manually | As needed for testing | Admin UI -> Pipeline (no cron in staging) |
-| Review staging AI costs | Monthly | Should be minimal — flag if unexpectedly high |
-
-### As-Needed Tasks
-
-| Task | When | How |
-|------|------|-----|
-| Scale up Neon compute | High traffic / cold starts | Neon console -> Settings > Compute -> increase min CU |
-| Add new podcast source | Users request niche podcasts | Admin UI -> approve PodcastRequests |
-| Update AI model config | New models released | Admin UI -> Model Registry |
-| Handle Stripe dispute | Email notification | Stripe dashboard -> Disputes |
-| Re-seed plan data | Plan pricing changes | Update DB directly or re-run seed |
-| Debug failed briefing | User reports | Admin UI -> Pipeline -> find job -> check steps/events |
-| Worker rollback | Bad deploy | `npx wrangler rollback` or revert commit + push |
+| Task | When |
+|------|------|
+| Reset staging DB | After schema changes: `prisma db push` + `prisma db seed` with staging URL |
+| Trigger pipeline | Manually via admin UI (no cron) |
+| Check AI costs | Monthly — should be minimal (cheapest models) |
 
 ### Incident Response
 
-**Pipeline stuck (jobs not completing):**
-1. Check Admin UI -> Pipeline for error messages
-2. Check AI service dashboards for outages (status.anthropic.com, status.openai.com)
-3. Check Cloudflare Queues for DLQ messages
-4. Check Worker logs: `npx wrangler tail` (staging) or `npx wrangler tail --env production`
-5. If rate-limited: reduce batch sizes or pause pipeline via admin config
+**Pipeline stuck:**
+1. Admin UI → Pipeline → check error messages
+2. AI service status pages (status.anthropic.com, status.openai.com)
+3. Worker logs: `npx wrangler tail` (staging) or `npx wrangler tail --env production`
+4. Cloudflare Queues for dead letters
+5. Rate-limited → pause pipeline via admin config
 
-**Auth not working:**
-1. Check Clerk status page
-2. Verify webhook endpoint is responding: Clerk dashboard -> Webhooks -> check delivery attempts
-3. Check Worker logs for auth middleware errors
-4. Verify `CLERK_SECRET_KEY` and `CLERK_PUBLISHABLE_KEY` are correct for the environment
+**Auth broken:** Check Clerk status → Webhooks delivery → Worker logs → verify keys match environment
 
-**Billing issues:**
-1. Check Stripe dashboard for webhook delivery failures
-2. Verify Stripe webhook secret matches
-3. Check Worker logs for Stripe-related errors
-4. Users stuck on wrong plan: manually update in Prisma Studio
+**Billing broken:** Stripe webhook delivery → verify webhook secret → Worker logs → manually fix plans in Prisma Studio
 
-**Database connection errors:**
-1. Check Neon status page (https://neonstatus.com)
-2. Verify Hyperdrive config is correct (`npx wrangler hyperdrive list`)
-3. Check connection pool limits (PgBouncer supports up to 10,000 concurrent connections)
-4. `npm run db:check` from local with the appropriate DATABASE_URL
+**DB connection errors:** Neon status (neonstatus.com) → `npx wrangler hyperdrive list` → connection pool limits → `npm run db:check`
 
 ---
 
 ## Automation Scripts
 
-All infrastructure setup is automated via scripts in `scripts/`. Template files for input are in `scripts/templates/`.
+### Scripts
 
-### Setup Order
+| Script | Purpose | Input |
+|--------|---------|-------|
+| `scripts/setup-db.sh` | Push schema + seed both databases | `neon-config.env` |
+| `scripts/setup-infra.sh` | Create R2, queues, Hyperdrive, patch wrangler.jsonc | `neon-config.env` |
+| `scripts/set-secrets.sh` | Batch-set Cloudflare Worker secrets | `secrets-*.env [--env production]` |
 
-```
-1. Create Neon project + staging database (manual — console.neon.com)
-2. bash scripts/setup-db.sh neon-config.env          # Push schema + seed both DBs
-3. bash scripts/setup-infra.sh neon-config.env        # R2 + queues + Hyperdrive + patch wrangler.jsonc
-4. bash scripts/set-secrets.sh secrets-staging.env     # Staging secrets
-5. bash scripts/set-secrets.sh secrets-production.env --env production  # Production secrets
-6. rm neon-config.env secrets-staging.env secrets-production.env  # DELETE credential files!
-```
+### Templates
 
-### Template Files
+| Template | Copy To | Purpose |
+|----------|---------|---------|
+| `scripts/templates/neon-config.env.template` | `neon-config.env` | Neon connection strings |
+| `scripts/templates/secrets-staging.env.template` | `secrets-staging.env` | Staging Cloudflare secrets |
+| `scripts/templates/secrets-production.env.template` | `secrets-production.env` | Production Cloudflare secrets |
 
-Copy templates and fill in your values:
+### Full Setup Sequence
 
 ```bash
+# 1. Database (after creating Neon project + staging DB manually)
 cp scripts/templates/neon-config.env.template neon-config.env
+# Edit neon-config.env with connection strings
+bash scripts/setup-db.sh neon-config.env
+
+# 2. Cloudflare infra
+bash scripts/setup-infra.sh neon-config.env
+
+# 3. Secrets
 cp scripts/templates/secrets-staging.env.template secrets-staging.env
 cp scripts/templates/secrets-production.env.template secrets-production.env
+# Edit both with keys from Phases 5-8
+bash scripts/set-secrets.sh secrets-staging.env
+bash scripts/set-secrets.sh secrets-production.env --env production
+
+# 4. Clean up credential files
+rm neon-config.env secrets-staging.env secrets-production.env
 ```
-
-### Script Reference
-
-| Script | What It Does |
-|--------|-------------|
-| `scripts/setup-db.sh <config>` | Pushes Prisma schema + seeds both staging and production databases |
-| `scripts/setup-infra.sh <config>` | Creates 2 R2 buckets, 14 queues, 2 Hyperdrive configs, patches wrangler.jsonc |
-| `scripts/set-secrets.sh <file> [--env production]` | Batch-sets Cloudflare Worker secrets from an env file |
-
-### Checklist
-
-- [ ] Copy all 3 templates and fill in values
-- [ ] Run `setup-db.sh`
-- [ ] Run `setup-infra.sh`
-- [ ] Run `set-secrets.sh` for staging
-- [ ] Run `set-secrets.sh --env production` for production
-- [ ] **DELETE all credential files immediately after**
-- [ ] All credential files are covered by `.gitignore` (`.env*` pattern)
 
 ---
 
-## Quick Reference: All Secrets Summary
+## Quick Reference
 
-| Secret | Source | Required | Per-Env |
-|--------|--------|----------|---------|
-| `CLERK_SECRET_KEY` | Clerk Dashboard -> API Keys page | Yes | Yes (different per env) |
-| `CLERK_PUBLISHABLE_KEY` | Clerk Dashboard -> API Keys page | Yes | Yes (different per env) |
-| `CLERK_WEBHOOK_SECRET` | Clerk Dashboard -> Webhooks page -> endpoint -> Signing Secret | Yes | Yes (different per env) |
-| `STRIPE_SECRET_KEY` | Stripe Developers Dashboard -> API keys tab | Yes | Yes (sandbox vs live) |
-| `STRIPE_WEBHOOK_SECRET` | Stripe Webhooks page -> endpoint -> Signing secret | Yes | Yes (different per env) |
-| `ANTHROPIC_API_KEY` | Anthropic console -> Settings -> Keys | Yes | Optional (can share) |
-| `OPENAI_API_KEY` | OpenAI platform -> Dashboard -> API keys | Yes | Optional (can share) |
-| `PODCAST_INDEX_KEY` | Podcast Index signup email | Yes | No (shared) |
-| `PODCAST_INDEX_SECRET` | Podcast Index signup email | Yes | No (shared) |
-| `GROQ_API_KEY` | Groq console -> API Keys | No | Optional (can share) |
-| `DEEPGRAM_API_KEY` | Deepgram console -> API Keys | No | Optional (can share) |
-| `ASSEMBLYAI_API_KEY` | AssemblyAI dashboard | No | Optional (can share) |
-| `GOOGLE_STT_API_KEY` | Google Cloud console | No | Optional (can share) |
-| `VAPID_PUBLIC_KEY` | Generated locally | No | Optional (can share) |
-| `VAPID_PRIVATE_KEY` | Generated locally | No | Optional (can share) |
-| `VAPID_SUBJECT` | Your email (mailto: format) | No | No (shared) |
-| `NEON_API_KEY` | Neon console (console.neon.com) -> Account Settings -> API Keys | No | No (shared) |
-| `NEON_PROJECT_ID` | Neon console -> Project Settings | No | No (shared) |
-| `CLOUDFLARE_API_TOKEN` | Cloudflare -> API Tokens (GitHub secret, not Worker secret) | Yes | No (shared) |
+### All Secrets
 
-| Wrangler Var (in wrangler.jsonc, not secret) | Staging | Production |
-|----------------------------------------------|---------|------------|
+| Secret | Staging Value | Production Value | Source |
+|--------|--------------|-----------------|--------|
+| `CLERK_SECRET_KEY` | `sk_test_...` | `sk_live_...` | Clerk API Keys page |
+| `CLERK_PUBLISHABLE_KEY` | `pk_test_...` | `pk_live_...` | Clerk API Keys page |
+| `CLERK_WEBHOOK_SECRET` | Signing secret | Signing secret | Clerk Webhooks → endpoint |
+| `STRIPE_SECRET_KEY` | `sk_test_...` | `sk_live_...` | Stripe Developers → API keys |
+| `STRIPE_WEBHOOK_SECRET` | Signing secret | Signing secret | Stripe Webhooks → endpoint |
+| `ANTHROPIC_API_KEY` | shared | shared | Anthropic Settings → Keys |
+| `OPENAI_API_KEY` | shared | shared | OpenAI Dashboard → API keys |
+| `PODCAST_INDEX_KEY` | shared | shared | Signup email |
+| `PODCAST_INDEX_SECRET` | shared | shared | Signup email |
+| `GROQ_API_KEY` | shared (optional) | shared (optional) | Groq console |
+| `DEEPGRAM_API_KEY` | shared (optional) | shared (optional) | Deepgram console |
+| `VAPID_PUBLIC_KEY` | shared (optional) | shared (optional) | Generated locally |
+| `VAPID_PRIVATE_KEY` | shared (optional) | shared (optional) | Generated locally |
+| `VAPID_SUBJECT` | shared (optional) | shared (optional) | `mailto:you@example.com` |
+
+### Wrangler Vars (in wrangler.jsonc)
+
+| Var | Staging | Production |
+|-----|---------|------------|
 | `ENVIRONMENT` | `staging` | `production` |
-| `APP_ORIGIN` | `https://staging.podblipp.com` | `https://podblipp.com` |
-| `ALLOWED_ORIGINS` | `https://staging.podblipp.com` | `https://podblipp.com,https://www.podblipp.com` |
+| `APP_ORIGIN` | `workers.dev` URL | `https://podblipp.com` |
+| `ALLOWED_ORIGINS` | `workers.dev` URL | `https://podblipp.com,https://www.podblipp.com` |
 
-| GitHub Secret / Variable | Value |
-|--------------------------|-------|
-| `CLOUDFLARE_API_TOKEN` | Cloudflare API token (secret) |
-| `VITE_CLERK_PUBLISHABLE_KEY_STAGING` | Clerk dev publishable key (secret) |
-| `VITE_CLERK_PUBLISHABLE_KEY_PRODUCTION` | Clerk prod publishable key (secret) |
-| `STAGING_URL` | `workers.dev` URL from first staging deploy (variable) |
+### GitHub Secrets & Variables
+
+| Name | Type | Value |
+|------|------|-------|
+| `CLOUDFLARE_API_TOKEN` | Secret | Cloudflare API token |
+| `VITE_CLERK_PUBLISHABLE_KEY_STAGING` | Secret | `pk_test_...` |
+| `VITE_CLERK_PUBLISHABLE_KEY_PRODUCTION` | Secret | `pk_live_...` |
+| `STAGING_URL` | Variable | `workers.dev` URL (set after first deploy) |
+
+### Deploy Commands
+
+```bash
+npx wrangler deploy                  # Deploy to staging
+npx wrangler deploy --env production # Deploy to production
+npx wrangler tail                    # Stream staging logs
+npx wrangler tail --env production   # Stream production logs
+npx wrangler secret list             # List staging secrets
+npx wrangler secret list --env production  # List production secrets
+```
