@@ -112,6 +112,18 @@ describe("extractClaims", () => {
     await expect(extractClaims(llm, "transcript", "mock-model-1", 8192, mockEnv)).rejects.toThrow("LLM output failed schema validation");
   });
 
+  it("should instruct LLM to exclude advertisements from claims", async () => {
+    const llm = createMockLlmProvider(JSON.stringify(sampleClaims));
+    await extractClaims(llm, "My transcript", "mock-model-1", 8192, mockEnv);
+
+    const call = (llm.complete as ReturnType<typeof vi.fn>).mock.calls[0];
+    const prompt = call[0][0].content;
+    expect(prompt).toContain("EXCLUDE ALL ADVERTISEMENTS");
+    expect(prompt).toContain("sponsored segments");
+    expect(prompt).toContain("ad reads");
+    expect(prompt).toContain("discount codes");
+  });
+
   it("should throw on importance out of range", async () => {
     const llm = createMockLlmProvider(JSON.stringify([{ ...sampleClaims[0], importance: 15 }]));
     await expect(extractClaims(llm, "transcript", "mock-model-1", 8192, mockEnv)).rejects.toThrow("LLM output failed schema validation");

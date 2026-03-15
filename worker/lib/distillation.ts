@@ -60,7 +60,8 @@ For each claim, include:
 Guidelines:
 - Extract every claim worth preserving — do NOT limit to a fixed number
 - A dense 3-hour episode may yield 30-40 claims; a light 20-minute episode may yield 8-12
-- Skip filler, repetition, ads, and off-topic tangents
+- EXCLUDE ALL ADVERTISEMENTS: Skip any sponsored segments, ad reads, product promotions, discount codes, affiliate pitches, or endorsements of sponsors. If a host says "this episode is brought to you by..." or promotes a product/service as part of a sponsorship, exclude ALL claims from that segment. Do not extract claims about sponsor products, services, or offers even if they sound factual.
+- Skip filler, repetition, and off-topic tangents
 - Excerpts must be VERBATIM from the transcript, not paraphrased
 - Sort by importance descending
 
