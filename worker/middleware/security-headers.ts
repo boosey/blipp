@@ -12,13 +12,13 @@ export const securityHeaders = createMiddleware<{ Bindings: Env }>(
     // Content Security Policy
     c.header("Content-Security-Policy", [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' https://cdn.clerk.dev https://*.clerk.accounts.dev",
+      "script-src 'self' 'unsafe-inline' https://cdn.clerk.dev https://*.clerk.accounts.dev https://imasdk.googleapis.com",
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com",
       "img-src 'self' data: https: blob:",
-      "connect-src 'self' https://*.clerk.dev https://*.clerk.accounts.dev https://api.clerk.dev https://*.neon.tech https://api.stripe.com",
+      "connect-src 'self' https://*.clerk.dev https://*.clerk.accounts.dev https://api.clerk.dev https://*.neon.tech https://api.stripe.com https://*.googlesyndication.com https://*.doubleclick.net https://imasdk.googleapis.com",
       "frame-src 'self' https://*.clerk.dev https://*.stripe.com",
-      "media-src 'self' blob:",
+      "media-src 'self' blob: https://*.googlesyndication.com https://*.doubleclick.net",
     ].join("; "));
 
     // Other security headers
