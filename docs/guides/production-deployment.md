@@ -36,7 +36,7 @@ Create accounts on all services. Collect credentials into a password manager as 
 | # | Service | Sign Up | What You Need |
 |---|---------|---------|---------------|
 | 1 | Cloudflare | https://dash.cloudflare.com/sign-up | Workers Paid ($5/mo) |
-| 2 | Neon | https://console.neon.com/signup | Scale plan recommended |
+| 2 | Neon | https://console.neon.com/signup | Launch plan minimum; Scale for IP allow list |
 | 3 | Clerk | https://dashboard.clerk.com/sign-up | Dev + Production instances |
 | 4 | Stripe | https://dashboard.stripe.com/register | Sandbox + Live mode |
 | 5 | Anthropic | https://console.anthropic.com/ | API credits ($25+) |
@@ -95,11 +95,15 @@ Each branch has its own connection string with a different endpoint. In the **Co
 
 - [ ] Connection pooling is **on by default** — verify the `-pooler` hostname is shown
 - [ ] **Settings > Compute**: set min compute to 0.25 CU+ to reduce cold starts
-- [ ] Consider **protecting your main branch** to prevent accidental schema changes
 
-**Requires Scale or Business plan:**
-- [ ] Point-in-time restore (default 1 day, increase up to 30)
-- [ ] IP allow list — restrict to Cloudflare IPs
+**All plans** (Free / Launch / Scale):
+- [ ] Point-in-time restore — Free: 6-hour window; Launch: up to 7 days; Scale: up to 30 days
+
+**Launch plan or higher:**
+- [ ] Protect your main branch to prevent accidental schema changes
+
+**Scale plan only:**
+- [ ] IP allow list — restrict database access to Cloudflare IPs
 
 ### 2.4 Create Config File for Scripts
 
