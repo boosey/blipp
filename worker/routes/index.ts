@@ -11,6 +11,7 @@ import { ads } from "./ads";
 import { clerkWebhooks } from "./webhooks/clerk";
 import { stripeWebhooks } from "./webhooks/stripe";
 import { adminRoutes } from "./admin/index";
+import { assetsRoutes } from "./assets";
 
 /**
  * Combined route tree for the Blipp API.
@@ -29,5 +30,6 @@ routes.route("/ads", ads);
 routes.route("/webhooks/clerk", clerkWebhooks);
 routes.route("/webhooks/stripe", stripeWebhooks);
 routes.route("/admin", adminRoutes);
+routes.route("/assets", assetsRoutes);
 
 export { routes };
