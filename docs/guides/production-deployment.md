@@ -105,19 +105,20 @@ Each branch has its own connection string with a different endpoint. In the **Co
 **Scale plan only:**
 - [ ] IP allow list — restrict database access to Cloudflare IPs
 
-### 2.4 Create Config File for Scripts
+### 2.5 Create Config File for Scripts
 
 ```bash
 cp scripts/templates/neon-config.env.template neon-config.env
 ```
 
-- [ ] Edit `neon-config.env` — paste both connection strings from step 2.2
+- [ ] Edit `neon-config.env` — paste both connection strings from step 2.3
+- [ ] Keep this file — it's used by both `setup-db.sh` (Phase 4) and `setup-infra.sh` (Phase 3). Delete it after both are done.
 
 ---
 
 ## Phase 3: Cloudflare Infrastructure
 
-**Requires:** Neon connection strings from Phase 2.
+**Requires:** `neon-config.env` from Phase 2.5.
 
 ### Automated (Recommended)
 
