@@ -745,7 +745,7 @@ Types of artifacts stored in R2.
 | `CLAIMS` | Extracted claims JSON |
 | `NARRATIVE` | Generated narrative script |
 | `AUDIO_CLIP` | Generated audio clip for an episode |
-| `BRIEFING_AUDIO` | Final assembled briefing audio |
+| `BRIEFING_AUDIO` | _(Deprecated, unused)_ Was used for server-side assembled briefing audio |
 
 ### SttExperimentStatus
 

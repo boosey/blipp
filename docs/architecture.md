@@ -140,8 +140,9 @@ The orchestrator queue is the pipeline brain. It uses a **push-based** model:
 - When a user requests a briefing, a `BriefingRequest` is created and dispatched to the orchestrator.
 - The orchestrator evaluates which episodes need processing and creates `PipelineJob` records (one per episode + duration tier).
 - Each stage reports completion back to `ORCHESTRATOR_QUEUE`, which advances the job to the next stage.
-- When all jobs for a request complete, assembly is triggered.
-- Partial assembly is supported: if some jobs fail, the briefing is assembled from successful ones.
+- When all jobs for a request complete, briefing assembly is triggered — this links completed Clips to Briefing records and marks FeedItems as READY.
+- Partial completion is supported: if some jobs fail, briefings are created from the successful ones.
+- Intro/outro jingles are played client-side via audio element sequencing with Cache API caching (not server-side concatenation). See `docs/decisions/2026-03-15-client-side-jingles.md`.
 
 ### Runtime Configuration
 

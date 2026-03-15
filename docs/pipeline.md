@@ -329,7 +329,6 @@ Work product keys are built via `wpKey()` from `worker/lib/work-products.ts`:
 | Claims | `wp/claims/{episodeId}.json` |
 | Narrative | `wp/narrative/{episodeId}/{durationTier}.txt` |
 | Audio Clip | `wp/clip/{episodeId}/{durationTier}/{voice}.mp3` |
-| Briefing | `wp/briefing/{userId}/{date}.mp3` |
 
 Legacy clip audio also exists at `clips/{episodeId}/{durationTier}.mp3` (served by `/api/clips/` route).
 
