@@ -13,6 +13,8 @@ npx prisma db push       # Push schema to database
 npx prisma db seed       # Seed plans data
 npm run clean:pipeline   # Clean all user/pipeline data (feed, briefings, subscriptions, pipeline)
 npm run db:check         # Database health check
+npx wrangler deploy                 # Deploy to staging
+npx wrangler deploy --env production # Deploy to production
 ```
 
 ### Install
@@ -32,7 +34,7 @@ NODE_OPTIONS="--max-old-space-size=4096" npx vitest run worker/  # Worker tests 
 - **DB**: PostgreSQL (Neon) via Prisma 7 + `@prisma/adapter-pg` + Hyperdrive
 - **Auth**: Clerk (`clerkMiddleware()` applied globally to `/api/*`)
 - **Frontend**: React 19 + Vite 7 + Tailwind v4 + shadcn/ui
-- **Queues**: 6 Cloudflare Queues for pipeline processing
+- **Queues**: 7 Cloudflare Queues for pipeline processing
 - **Storage**: R2 for audio clips, briefings, work products
 
 ## Key Conventions
@@ -73,7 +75,7 @@ worker/           — Backend (Hono API + queue handlers)
   index.ts        — Entry point
   types.ts        — Env type
   routes/         — API routes (public + admin/ + feed)
-  queues/         — 6 queue consumers + orchestrator
+  queues/         — 7 queue consumers (includes orchestrator)
   middleware/     — auth.ts, admin.ts, prisma.ts
   lib/            — Shared utilities (db, config, admin-helpers, queue-helpers, tts, etc.)
 src/              — Frontend (React SPA)
