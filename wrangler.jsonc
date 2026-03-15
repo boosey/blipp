@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "blipp",
+  "name": "blipp-staging",
   "compatibility_date": "2026-02-26",
   "compatibility_flags": ["nodejs_compat"],
   "main": "./worker/index.ts",
@@ -8,44 +8,93 @@
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*"]
   },
+  "vars": {
+    "ENVIRONMENT": "staging",
+    "APP_ORIGIN": "https://staging.podblipp.com",
+    "ALLOWED_ORIGINS": "https://staging.podblipp.com"
+  },
   "hyperdrive": [
     {
       "binding": "HYPERDRIVE",
-      "id": "<hyperdrive-config-id>",
-      // Real connection string goes in .dev.vars as CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE
-"localConnectionString": ""
+      "id": "<staging-hyperdrive-id>",
+      "localConnectionString": ""
     }
   ],
   "r2_buckets": [
     {
       "binding": "R2",
-      "bucket_name": "blipp-audio"
+      "bucket_name": "blipp-audio-staging"
     }
   ],
   "queues": {
     "producers": [
-      { "binding": "FEED_REFRESH_QUEUE", "queue": "feed-refresh" },
-      { "binding": "DISTILLATION_QUEUE", "queue": "distillation" },
-      { "binding": "NARRATIVE_GENERATION_QUEUE", "queue": "narrative-generation" },
-      { "binding": "AUDIO_GENERATION_QUEUE", "queue": "clip-generation" },
-      { "binding": "BRIEFING_ASSEMBLY_QUEUE", "queue": "briefing-assembly" },
-      { "binding": "TRANSCRIPTION_QUEUE", "queue": "transcription" },
-      { "binding": "ORCHESTRATOR_QUEUE", "queue": "orchestrator" }
+      { "binding": "FEED_REFRESH_QUEUE", "queue": "feed-refresh-staging" },
+      { "binding": "DISTILLATION_QUEUE", "queue": "distillation-staging" },
+      { "binding": "NARRATIVE_GENERATION_QUEUE", "queue": "narrative-generation-staging" },
+      { "binding": "AUDIO_GENERATION_QUEUE", "queue": "clip-generation-staging" },
+      { "binding": "BRIEFING_ASSEMBLY_QUEUE", "queue": "briefing-assembly-staging" },
+      { "binding": "TRANSCRIPTION_QUEUE", "queue": "transcription-staging" },
+      { "binding": "ORCHESTRATOR_QUEUE", "queue": "orchestrator-staging" }
     ],
     "consumers": [
-      { "queue": "feed-refresh", "max_batch_size": 10, "max_retries": 3 },
-      { "queue": "distillation", "max_batch_size": 5, "max_retries": 3 },
-      { "queue": "narrative-generation", "max_batch_size": 5, "max_retries": 3 },
-      { "queue": "clip-generation", "max_batch_size": 3, "max_retries": 3 },
-      { "queue": "briefing-assembly", "max_batch_size": 5, "max_retries": 3 },
-      { "queue": "transcription", "max_batch_size": 5, "max_retries": 3 },
-      { "queue": "orchestrator", "max_batch_size": 10, "max_retries": 3 }
+      { "queue": "feed-refresh-staging", "max_batch_size": 10, "max_retries": 3 },
+      { "queue": "distillation-staging", "max_batch_size": 5, "max_retries": 3 },
+      { "queue": "narrative-generation-staging", "max_batch_size": 5, "max_retries": 3 },
+      { "queue": "clip-generation-staging", "max_batch_size": 3, "max_retries": 3 },
+      { "queue": "briefing-assembly-staging", "max_batch_size": 5, "max_retries": 3 },
+      { "queue": "transcription-staging", "max_batch_size": 5, "max_retries": 3 },
+      { "queue": "orchestrator-staging", "max_batch_size": 10, "max_retries": 3 }
     ]
   },
   "ai": {
     "binding": "AI"
   },
-  "triggers": {
-    "crons": ["*/30 * * * *"]
+
+  // ── Production environment ──
+  "env": {
+    "production": {
+      "name": "blipp",
+      "vars": {
+        "ENVIRONMENT": "production",
+        "APP_ORIGIN": "https://podblipp.com",
+        "ALLOWED_ORIGINS": "https://podblipp.com,https://www.podblipp.com"
+      },
+      "hyperdrive": [
+        {
+          "binding": "HYPERDRIVE",
+          "id": "<production-hyperdrive-id>",
+          "localConnectionString": ""
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "R2",
+          "bucket_name": "blipp-audio"
+        }
+      ],
+      "queues": {
+        "producers": [
+          { "binding": "FEED_REFRESH_QUEUE", "queue": "feed-refresh" },
+          { "binding": "DISTILLATION_QUEUE", "queue": "distillation" },
+          { "binding": "NARRATIVE_GENERATION_QUEUE", "queue": "narrative-generation" },
+          { "binding": "AUDIO_GENERATION_QUEUE", "queue": "clip-generation" },
+          { "binding": "BRIEFING_ASSEMBLY_QUEUE", "queue": "briefing-assembly" },
+          { "binding": "TRANSCRIPTION_QUEUE", "queue": "transcription" },
+          { "binding": "ORCHESTRATOR_QUEUE", "queue": "orchestrator" }
+        ],
+        "consumers": [
+          { "queue": "feed-refresh", "max_batch_size": 10, "max_retries": 3 },
+          { "queue": "distillation", "max_batch_size": 5, "max_retries": 3 },
+          { "queue": "narrative-generation", "max_batch_size": 5, "max_retries": 3 },
+          { "queue": "clip-generation", "max_batch_size": 3, "max_retries": 3 },
+          { "queue": "briefing-assembly", "max_batch_size": 5, "max_retries": 3 },
+          { "queue": "transcription", "max_batch_size": 5, "max_retries": 3 },
+          { "queue": "orchestrator", "max_batch_size": 10, "max_retries": 3 }
+        ]
+      },
+      "triggers": {
+        "crons": ["*/30 * * * *"]
+      }
+    }
   }
 }
