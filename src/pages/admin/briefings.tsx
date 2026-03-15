@@ -152,7 +152,7 @@ function BriefingCard({
 function BriefingSkeleton() {
   return (
     <div className="flex gap-4 h-full">
-      <div className="w-80 shrink-0 space-y-3">
+      <div className="w-1/2 shrink-0 space-y-3">
         {Array.from({ length: 6 }).map((_, i) => (
           <Skeleton key={i} className="h-24 bg-white/5 rounded-lg" />
         ))}
@@ -253,7 +253,7 @@ export default function BriefingsPage() {
   return (
     <div className="flex gap-4 h-[calc(100vh-7rem)]">
       {/* ── LEFT: Briefing List ── */}
-      <div className="w-80 shrink-0 flex flex-col gap-3 min-h-0">
+      <div className="w-1/2 shrink-0 flex flex-col gap-3 min-h-0">
         {/* Filters */}
         <div className="flex gap-2">
           <Select value={statusFilter} onValueChange={setStatusFilter}>

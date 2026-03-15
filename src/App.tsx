@@ -20,7 +20,10 @@ const Catalog = lazy(() => import("./pages/admin/catalog"));
 const Briefings = lazy(() => import("./pages/admin/briefings"));
 const AdminUsers = lazy(() => import("./pages/admin/users"));
 const Analytics = lazy(() => import("./pages/admin/analytics"));
-const Configuration = lazy(() => import("./pages/admin/configuration"));
+const PipelineControls = lazy(() => import("./pages/admin/pipeline-controls"));
+const StageModels = lazy(() => import("./pages/admin/stage-models"));
+const FeatureFlags = lazy(() => import("./pages/admin/feature-flags"));
+const PodcastSettings = lazy(() => import("./pages/admin/podcast-settings"));
 const Requests = lazy(() => import("./pages/admin/requests"));
 const Plans = lazy(() => import("./pages/admin/plans"));
 const SttBenchmark = lazy(() => import("./pages/admin/stt-benchmark"));
@@ -98,7 +101,11 @@ export default function App() {
         <Route path="users" element={<Suspense fallback={<AdminLoading />}><AdminUsers /></Suspense>} />
         <Route path="plans" element={<Suspense fallback={<AdminLoading />}><Plans /></Suspense>} />
         <Route path="analytics" element={<Suspense fallback={<AdminLoading />}><Analytics /></Suspense>} />
-        <Route path="configuration" element={<Suspense fallback={<AdminLoading />}><Configuration /></Suspense>} />
+        <Route path="pipeline-controls" element={<Suspense fallback={<AdminLoading />}><PipelineControls /></Suspense>} />
+        <Route path="stage-models" element={<Suspense fallback={<AdminLoading />}><StageModels /></Suspense>} />
+        <Route path="feature-flags" element={<Suspense fallback={<AdminLoading />}><FeatureFlags /></Suspense>} />
+        <Route path="podcast-settings" element={<Suspense fallback={<AdminLoading />}><PodcastSettings /></Suspense>} />
+        <Route path="configuration" element={<Navigate to="pipeline-controls" replace />} />
         <Route path="requests" element={<Suspense fallback={<AdminLoading />}><Requests /></Suspense>} />
         <Route path="stt-benchmark" element={<Suspense fallback={<AdminLoading />}><SttBenchmark /></Suspense>} />
         <Route path="model-registry" element={<Suspense fallback={<AdminLoading />}><ModelRegistry /></Suspense>} />
