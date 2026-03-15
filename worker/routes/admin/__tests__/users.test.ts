@@ -126,6 +126,7 @@ describe("Users Routes", () => {
         imageUrl: null, isAdmin: false,
         plan: { id: "plan_pro", name: "Pro", slug: "pro" },
         stripeCustomerId: "cus_123",
+        onboardingComplete: true,
         createdAt: now, updatedAt: now,
         _count: { subscriptions: 2, feedItems: 10, briefings: 5 },
         subscriptions: [
@@ -140,6 +141,7 @@ describe("Users Routes", () => {
             createdAt: now,
           },
         ],
+        podcastFavorites: [],
       });
 
       const res = await app.request("/users/u1", {}, env, mockExCtx);

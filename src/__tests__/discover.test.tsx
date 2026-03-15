@@ -5,6 +5,18 @@ import { Discover } from "../pages/discover";
 
 const stableGetToken = vi.fn().mockResolvedValue("test-token");
 
+// Mock plan context — PodcastCard uses usePlan() for subscription limits
+vi.mock("../contexts/plan-context", () => ({
+  usePlan: () => ({
+    plan: { name: "Free", slug: "free" },
+    briefings: { used: 0, limit: null, remaining: null },
+    subscriptions: { used: 0, limit: 10, remaining: 10 },
+    maxDurationMinutes: 15,
+    loading: false,
+    refetch: vi.fn(),
+  }),
+}));
+
 vi.mock("@clerk/clerk-react", () => ({
   useUser: vi.fn(() => ({ user: { publicMetadata: { tier: "FREE" } } })),
   useAuth: vi.fn(() => ({ getToken: stableGetToken })),

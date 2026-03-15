@@ -9,6 +9,18 @@ vi.mock("../lib/api", () => ({
   useApiFetch: () => mockApiFetch,
 }));
 
+// Mock plan context — PodcastCard uses usePlan() for subscription limits
+vi.mock("../contexts/plan-context", () => ({
+  usePlan: () => ({
+    plan: { name: "Free", slug: "free" },
+    briefings: { used: 0, limit: null, remaining: null },
+    subscriptions: { used: 0, limit: 10, remaining: 10 },
+    maxDurationMinutes: 15,
+    loading: false,
+    refetch: vi.fn(),
+  }),
+}));
+
 const defaultProps = {
   id: "p1",
   title: "Tech Today",
