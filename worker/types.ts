@@ -67,6 +67,8 @@ export type Env = {
   GROQ_API_KEY: string;
   /** Comma-separated list of allowed CORS origins (optional, overrides defaults) */
   ALLOWED_ORIGINS?: string;
+  /** Base URL for this environment (e.g., https://podblipp.com) — used for Stripe redirect fallbacks */
+  APP_ORIGIN?: string;
   /** Neon API key for backup verification (optional) */
   NEON_API_KEY?: string;
   /** Neon project ID for backup verification (optional) */
