@@ -1,4 +1,4 @@
-import { Outlet, NavLink, useLocation } from "react-router-dom";
+import { Outlet, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { UserButton } from "@clerk/clerk-react";
 import {
   LayoutDashboard,
@@ -19,8 +19,12 @@ import {
   Key,
   ScrollText,
   AlertTriangle,
+  Brain,
+  Zap,
+  Sparkles,
+  Flag,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -33,30 +37,270 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-const navItems = [
-  { path: "command-center", label: "Command Center", icon: LayoutDashboard, shortcut: "H" },
-  { path: "pipeline", label: "Pipeline", icon: GitBranch, shortcut: "P" },
-  { path: "requests", label: "Requests", icon: ClipboardList, shortcut: "R" },
-  { path: "catalog", label: "Catalog", icon: Library, shortcut: "C" },
-  { path: "briefings", label: "Briefings", icon: Radio, shortcut: "B" },
-  { path: "users", label: "Users", icon: Users, shortcut: "U" },
-  { path: "plans", label: "Plans", icon: CreditCard, shortcut: "L" },
-  { path: "analytics", label: "Analytics", icon: BarChart3, shortcut: "A" },
-  { path: "configuration", label: "Configuration", icon: Settings, shortcut: "," },
-  { path: "stt-benchmark", label: "STT Benchmark", icon: FlaskConical, shortcut: "T" },
-  { path: "model-registry", label: "Model Registry", icon: Boxes, shortcut: "M" },
-  { path: "api-keys", label: "API Keys", icon: Key, shortcut: "K" },
-  { path: "audit-log", label: "Audit Log", icon: ScrollText, shortcut: "G" },
-  { path: "ai-errors", label: "AI Errors", icon: AlertTriangle, shortcut: "E" },
+// ---------------------------------------------------------------------------
+// Sidebar data
+// ---------------------------------------------------------------------------
+
+type SidebarEntry =
+  | { type: "item"; path: string; label: string; icon: React.ElementType }
+  | {
+      type: "group";
+      id: string;
+      label: string;
+      icon: React.ElementType;
+      children: { path: string; label: string; icon: React.ElementType }[];
+    };
+
+const sidebarEntries: SidebarEntry[] = [
+  { type: "item", path: "command-center", label: "Command Center", icon: LayoutDashboard },
+
+  {
+    type: "group",
+    id: "podcasts",
+    label: "Podcasts",
+    icon: Library,
+    children: [
+      { path: "catalog", label: "Catalog", icon: Library },
+      { path: "podcast-settings", label: "Settings", icon: Settings },
+    ],
+  },
+
+  {
+    type: "group",
+    id: "pipeline",
+    label: "Pipeline",
+    icon: GitBranch,
+    children: [
+      { path: "pipeline", label: "Monitor", icon: GitBranch },
+      { path: "requests", label: "Requests", icon: ClipboardList },
+      { path: "briefings", label: "Briefings", icon: Radio },
+      { path: "pipeline-controls", label: "Controls", icon: Zap },
+    ],
+  },
+
+  {
+    type: "group",
+    id: "ai",
+    label: "AI",
+    icon: Brain,
+    children: [
+      { path: "model-registry", label: "Model Registry", icon: Boxes },
+      { path: "stage-models", label: "Stage Models", icon: Sparkles },
+      { path: "stt-benchmark", label: "STT Benchmark", icon: FlaskConical },
+      { path: "ai-errors", label: "Errors", icon: AlertTriangle },
+    ],
+  },
+
+  {
+    type: "group",
+    id: "users",
+    label: "Users",
+    icon: Users,
+    children: [
+      { path: "users", label: "Management", icon: Users },
+      { path: "plans", label: "Plans", icon: CreditCard },
+    ],
+  },
+
+  {
+    type: "group",
+    id: "system",
+    label: "System",
+    icon: Settings,
+    children: [
+      { path: "analytics", label: "Analytics", icon: BarChart3 },
+      { path: "feature-flags", label: "Feature Flags", icon: Flag },
+      { path: "api-keys", label: "API Keys", icon: Key },
+      { path: "audit-log", label: "Audit Log", icon: ScrollText },
+    ],
+  },
 ];
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+const STORAGE_KEY = "admin-sidebar-groups";
+
+function loadOpenGroups(): Set<string> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) return new Set(JSON.parse(raw) as string[]);
+  } catch {
+    // ignore
+  }
+  return new Set<string>();
+}
+
+function saveOpenGroups(groups: Set<string>) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify([...groups]));
+}
+
+/** Find the group that owns the current path (if any). */
+function groupForPath(pathname: string): string | null {
+  for (const entry of sidebarEntries) {
+    if (entry.type === "group") {
+      for (const child of entry.children) {
+        if (pathname.includes(child.path)) return entry.id;
+      }
+    }
+  }
+  return null;
+}
+
+/** Resolve the current page label for the top bar. */
+function resolveCurrentPage(pathname: string): string {
+  // Check standalone items first
+  for (const entry of sidebarEntries) {
+    if (entry.type === "item" && pathname.includes(entry.path)) {
+      return entry.label;
+    }
+  }
+  // Check group children
+  for (const entry of sidebarEntries) {
+    if (entry.type === "group") {
+      for (const child of entry.children) {
+        if (pathname.includes(child.path)) return child.label;
+      }
+    }
+  }
+  return "Admin";
+}
+
+// ---------------------------------------------------------------------------
+// Components
+// ---------------------------------------------------------------------------
+
+function SidebarGroup({
+  entry,
+  collapsed,
+  isOpen,
+  onToggle,
+}: {
+  entry: Extract<SidebarEntry, { type: "group" }>;
+  collapsed: boolean;
+  isOpen: boolean;
+  onToggle: () => void;
+}) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const Icon = entry.icon;
+
+  // -- Collapsed mode: icon only, click navigates to first child -----------
+  if (collapsed) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            onClick={() => navigate(`/admin/${entry.children[0].path}`)}
+            className={cn(
+              "flex items-center justify-center w-full rounded-md py-2 text-sm transition-colors",
+              entry.children.some((ch) => location.pathname.includes(ch.path))
+                ? "bg-[#3B82F6]/10 text-[#3B82F6]"
+                : "text-[#9CA3AF] hover:bg-white/5 hover:text-[#F9FAFB]"
+            )}
+          >
+            <Icon className="h-4 w-4 shrink-0" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="right" className="bg-[#1A2942] text-[#F9FAFB] border-white/10">
+          {entry.label}
+        </TooltipContent>
+      </Tooltip>
+    );
+  }
+
+  // -- Expanded mode: clickable header + animated children -----------------
+  return (
+    <div>
+      {/* Group header */}
+      <button
+        onClick={onToggle}
+        className="flex items-center w-full gap-3 rounded-md py-2 px-3 text-sm text-[#9CA3AF] hover:bg-white/5 hover:text-[#F9FAFB] transition-colors"
+      >
+        <Icon className="h-4 w-4 shrink-0" />
+        <span className="truncate">{entry.label}</span>
+        <ChevronRight
+          className={cn(
+            "ml-auto h-3.5 w-3.5 shrink-0 transition-transform duration-200",
+            isOpen && "rotate-90"
+          )}
+        />
+      </button>
+
+      {/* Animated children container */}
+      <div
+        className={cn(
+          "grid transition-[grid-template-rows] duration-200",
+          isOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+        )}
+      >
+        <div className="overflow-hidden">
+          {entry.children.map((child) => {
+            const ChildIcon = child.icon;
+            const isActive = location.pathname.includes(child.path);
+            return (
+              <NavLink
+                key={child.path}
+                to={`/admin/${child.path}`}
+                className={cn(
+                  "flex items-center gap-3 rounded-md py-1.5 pl-10 pr-3 text-sm transition-colors",
+                  isActive
+                    ? "bg-[#3B82F6]/10 text-[#3B82F6]"
+                    : "text-[#9CA3AF] hover:bg-white/5 hover:text-[#F9FAFB]"
+                )}
+              >
+                <ChildIcon className="h-4 w-4 shrink-0" />
+                <span className="truncate">{child.label}</span>
+              </NavLink>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Layout
+// ---------------------------------------------------------------------------
 
 export function AdminLayout() {
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
 
-  const currentPage = navItems.find((item) =>
-    location.pathname.includes(item.path)
-  );
+  // Open groups state — seeded from localStorage, auto-expands active group
+  const [openGroups, setOpenGroups] = useState<Set<string>>(() => {
+    const stored = loadOpenGroups();
+    const active = groupForPath(location.pathname);
+    if (active) stored.add(active);
+    return stored;
+  });
+
+  // Auto-expand group on route change
+  useEffect(() => {
+    const active = groupForPath(location.pathname);
+    if (active && !openGroups.has(active)) {
+      setOpenGroups((prev) => {
+        const next = new Set(prev);
+        next.add(active);
+        saveOpenGroups(next);
+        return next;
+      });
+    }
+  }, [location.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const toggleGroup = useCallback((id: string) => {
+    setOpenGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      saveOpenGroups(next);
+      return next;
+    });
+  }, []);
+
+  const currentPageLabel = resolveCurrentPage(location.pathname);
 
   return (
     <TooltipProvider delayDuration={0}>
@@ -81,45 +325,53 @@ export function AdminLayout() {
             )}
           </div>
 
-          {/* Nav Items */}
-          <nav className="flex-1 flex flex-col gap-0.5 py-3 px-2 overflow-y-auto">
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = location.pathname.includes(item.path);
-              const linkClasses = cn(
-                "flex items-center w-full rounded-md py-2 text-sm transition-colors",
-                collapsed ? "justify-center" : "gap-3 px-3",
-                isActive
-                  ? "bg-[#3B82F6]/10 text-[#3B82F6]"
-                  : "text-[#9CA3AF] hover:bg-white/5 hover:text-[#F9FAFB]"
-              );
-              const link = (
-                <NavLink
-                  key={item.path}
-                  to={`/admin/${item.path}`}
-                  className={linkClasses}
-                >
-                  <Icon className="h-4 w-4 shrink-0" />
-                  {!collapsed && <span className="truncate">{item.label}</span>}
-                  {!collapsed && (
-                    <kbd className="ml-auto text-[10px] text-[#9CA3AF]/50 font-mono shrink-0">
-                      {item.shortcut}
-                    </kbd>
-                  )}
-                </NavLink>
-              );
-
-              if (collapsed) {
-                return (
-                  <Tooltip key={item.path}>
-                    <TooltipTrigger asChild>{link}</TooltipTrigger>
-                    <TooltipContent side="right" className="bg-[#1A2942] text-[#F9FAFB] border-white/10">
-                      {item.label}
-                    </TooltipContent>
-                  </Tooltip>
+          {/* Nav */}
+          <nav className="flex-1 flex flex-col gap-1 py-3 px-2 overflow-y-auto">
+            {sidebarEntries.map((entry) => {
+              if (entry.type === "item") {
+                const Icon = entry.icon;
+                const isActive = location.pathname.includes(entry.path);
+                const linkClasses = cn(
+                  "flex items-center w-full rounded-md py-2 text-sm transition-colors",
+                  collapsed ? "justify-center" : "gap-3 px-3",
+                  isActive
+                    ? "bg-[#3B82F6]/10 text-[#3B82F6]"
+                    : "text-[#9CA3AF] hover:bg-white/5 hover:text-[#F9FAFB]"
                 );
+                const link = (
+                  <NavLink
+                    key={entry.path}
+                    to={`/admin/${entry.path}`}
+                    className={linkClasses}
+                  >
+                    <Icon className="h-4 w-4 shrink-0" />
+                    {!collapsed && <span className="truncate">{entry.label}</span>}
+                  </NavLink>
+                );
+
+                if (collapsed) {
+                  return (
+                    <Tooltip key={entry.path}>
+                      <TooltipTrigger asChild>{link}</TooltipTrigger>
+                      <TooltipContent side="right" className="bg-[#1A2942] text-[#F9FAFB] border-white/10">
+                        {entry.label}
+                      </TooltipContent>
+                    </Tooltip>
+                  );
+                }
+                return link;
               }
-              return link;
+
+              // Group entry
+              return (
+                <SidebarGroup
+                  key={entry.id}
+                  entry={entry}
+                  collapsed={collapsed}
+                  isOpen={openGroups.has(entry.id)}
+                  onToggle={() => toggleGroup(entry.id)}
+                />
+              );
             })}
           </nav>
 
@@ -142,7 +394,7 @@ export function AdminLayout() {
           <header className="flex h-16 items-center justify-between border-b border-white/5 bg-[#0F1D32] px-6">
             <div className="flex items-center gap-4">
               <h1 className="text-lg font-semibold">
-                {currentPage?.label ?? "Admin"}
+                {currentPageLabel}
               </h1>
             </div>
 
