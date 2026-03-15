@@ -109,31 +109,17 @@ export async function deleteUserAccount(
   userId: string,
   clerkId: string
 ): Promise<{ r2Deleted: number }> {
-  // 1. Fetch user info and briefing R2 keys before deletion
+  // 1. Fetch user info before deletion
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: {
       stripeCustomerId: true,
-      briefings: {
-        select: { id: true },
-      },
     },
   });
 
-  // 2. Delete R2 briefing audio (keyed by briefingId, not userId)
   let r2Deleted = 0;
-  if (user?.briefings?.length) {
-    for (const b of user.briefings) {
-      try {
-        await env.R2.delete(`wp/briefing/${b.id}.mp3`);
-        r2Deleted++;
-      } catch {
-        // Best-effort: log but continue
-      }
-    }
-  }
 
-  // 3. Delete Stripe customer (best-effort)
+  // 2. Delete Stripe customer (best-effort)
   if (user?.stripeCustomerId) {
     try {
       const { createStripeClient } = await import("./stripe");

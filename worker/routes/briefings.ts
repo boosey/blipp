@@ -120,9 +120,8 @@ briefings.post("/generate", async (c) => {
 });
 
 /**
- * GET /:id/audio — Stream assembled briefing audio from R2.
+ * GET /:id/audio — Stream raw clip audio from R2.
  * User-scoped: only the briefing owner can access.
- * Falls back to raw clip if no assembled audio exists.
  */
 briefings.get("/:id/audio", async (c) => {
   const briefingId = c.req.param("id");
@@ -140,35 +139,21 @@ briefings.get("/:id/audio", async (c) => {
     return c.json({ error: "Briefing not found" }, 404);
   }
 
-  // Try assembled audio first
-  const assembledKey = `wp/briefing/${briefingId}.mp3`;
-  const assembledObj = await c.env.R2.get(assembledKey);
-
-  if (assembledObj) {
-    const body = await assembledObj.arrayBuffer();
-    return new Response(body, {
-      headers: {
-        "Content-Type": "audio/mpeg",
-        "Content-Length": String(body.byteLength),
-        "Cache-Control": "public, max-age=86400",
-      },
-    });
+  if (!briefing.clip?.audioKey) {
+    return c.json({ error: "Audio not found" }, 404);
   }
 
-  // Fallback: serve raw clip audio
-  if (briefing.clip?.audioKey) {
-    const clipObj = await c.env.R2.get(briefing.clip.audioKey);
-    if (clipObj) {
-      const body = await clipObj.arrayBuffer();
-      return new Response(body, {
-        headers: {
-          "Content-Type": "audio/mpeg",
-          "Content-Length": String(body.byteLength),
-          "Cache-Control": "public, max-age=86400",
-        },
-      });
-    }
+  const clipObj = await c.env.R2.get(briefing.clip.audioKey);
+  if (!clipObj) {
+    return c.json({ error: "Audio not found" }, 404);
   }
 
-  return c.json({ error: "Audio not found" }, 404);
+  const body = await clipObj.arrayBuffer();
+  return new Response(body, {
+    headers: {
+      "Content-Type": "audio/mpeg",
+      "Content-Length": String(body.byteLength),
+      "Cache-Control": "public, max-age=86400",
+    },
+  });
 });

@@ -22,7 +22,6 @@ const CATALOG_CONFIGS: CatalogConfigDef[] = [
   { key: "catalog.cleanup.inactivityThresholdDays", label: "Cleanup Inactivity Threshold", type: "number", description: "Days inactive before suggesting removal", default: 90 },
   { key: "episodes.aging.enabled", label: "Episode Aging Enabled", type: "boolean", description: "Enable episode aging deletion", default: false },
   { key: "episodes.aging.maxAgeDays", label: "Episode Max Age", type: "number", description: "Days before episodes are deletion candidates", default: 180 },
-  { key: "BRIEFING_ASSEMBLY_AUDIO_ENABLED", label: "Audio Assembly", type: "boolean", description: "Enable jingle assembly in briefings", default: false },
 ];
 
 function PodcastSettingsSkeleton() {
