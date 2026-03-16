@@ -18,7 +18,7 @@ export function PodcastCard({
 }: PodcastCardProps) {
   return (
     <Link to={`/discover/${id}`}>
-      <div className="flex gap-3 bg-zinc-900 border border-zinc-800 rounded-lg p-3">
+      <div className="flex gap-3 bg-zinc-900 border border-zinc-800 rounded-lg p-3 active:scale-[0.98] transition-transform duration-75">
         {imageUrl ? (
           <img
             src={imageUrl}

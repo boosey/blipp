@@ -151,7 +151,7 @@ export function PlayerSheet({
               {/* Playback rate */}
               <button
                 onClick={cycleRate}
-                className="text-xs font-medium text-zinc-400 bg-zinc-800 px-2.5 py-1 rounded-full min-w-[3rem]"
+                className="text-xs font-medium text-zinc-400 bg-zinc-800 px-2.5 py-1 rounded-full min-w-[3rem] active:scale-[0.95] transition-transform duration-75"
               >
                 {playbackRate}x
               </button>
@@ -159,7 +159,7 @@ export function PlayerSheet({
               {/* Skip back 15s */}
               <button
                 onClick={() => seek(Math.max(0, currentTime - 15))}
-                className="relative p-2 text-zinc-300"
+                className="relative p-2 text-zinc-300 active:scale-[0.90] transition-transform duration-75"
                 aria-label="Skip back 15 seconds"
               >
                 <SkipBack className="w-6 h-6" />
@@ -171,7 +171,7 @@ export function PlayerSheet({
               {/* Play/Pause */}
               <button
                 onClick={isPlaying ? pause : resume}
-                className="w-16 h-16 flex items-center justify-center bg-white text-zinc-950 rounded-full"
+                className="w-16 h-16 flex items-center justify-center bg-white text-zinc-950 rounded-full active:scale-[0.95] transition-transform duration-75"
                 aria-label={isPlaying ? "Pause" : "Play"}
               >
                 {isPlaying ? (
@@ -184,7 +184,7 @@ export function PlayerSheet({
               {/* Skip forward 30s */}
               <button
                 onClick={() => seek(Math.min(duration, currentTime + 30))}
-                className="relative p-2 text-zinc-300"
+                className="relative p-2 text-zinc-300 active:scale-[0.90] transition-transform duration-75"
                 aria-label="Skip forward 30 seconds"
               >
                 <SkipForward className="w-6 h-6" />

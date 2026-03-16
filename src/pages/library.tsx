@@ -56,7 +56,7 @@ function SubscriptionsGrid({ onRefetchRef }: { onRefetchRef?: React.MutableRefOb
         <Link
           key={sub.id}
           to={`/discover/${sub.podcast.id}`}
-          className="flex flex-col items-center gap-2"
+          className="flex flex-col items-center gap-2 active:scale-[0.98] transition-transform duration-75"
         >
           <div className="relative w-full">
             {sub.podcast.imageUrl ? (
@@ -125,7 +125,7 @@ function FavoritesGrid({ onRefetchRef }: { onRefetchRef?: React.MutableRefObject
         <div key={podcast.id} className="relative group">
           <Link
             to={`/discover/${podcast.id}`}
-            className="flex flex-col items-center gap-2"
+            className="flex flex-col items-center gap-2 active:scale-[0.98] transition-transform duration-75"
           >
             {podcast.imageUrl ? (
               <img

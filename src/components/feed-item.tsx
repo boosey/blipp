@@ -117,7 +117,7 @@ export function FeedItemCard({
   if (isPlayable) {
     return (
       <button
-        className="w-full text-left"
+        className="w-full text-left active:scale-[0.98] transition-transform duration-75"
         onClick={() => {
           audio.play(item);
           onPlay?.(item.id);
