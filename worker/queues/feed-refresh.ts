@@ -90,6 +90,14 @@ export async function handleFeedRefresh(
         const xml = await response.text();
         const feed = parseRssFeed(xml);
 
+        // Write the RSS language tag to the podcast record
+        if (feed.language) {
+          await prisma.podcast.update({
+            where: { id: podcast.id },
+            data: { language: feed.language },
+          });
+        }
+
         const recent = latestEpisodes(feed.episodes, maxEpisodes);
         const newEpisodeIds: string[] = [];
 

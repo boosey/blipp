@@ -68,3 +68,8 @@ export interface FeedRefreshMessage {
   podcastId?: string;
   type?: "manual" | "cron";
 }
+
+/** Catalog refresh queue. */
+export interface CatalogRefreshMessage {
+  action: "seed" | "refresh";
+}

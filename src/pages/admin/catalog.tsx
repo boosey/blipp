@@ -56,6 +56,7 @@ import {
 } from "@/components/ui/select";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { useAdminFetch } from "@/lib/admin-api";
+import { useFetch } from "@/lib/use-fetch";
 import { FeedRefreshCard } from "@/components/admin/feed-refresh-card";
 import type {
   AdminPodcast,
@@ -84,6 +85,7 @@ const STATUS_LABELS: Record<PodcastStatus, string> = {
   active: "Active",
   paused: "Paused",
   archived: "Archived",
+  pending_deletion: "Pending Deletion",
 };
 
 // ── Helpers ──
@@ -114,7 +116,7 @@ function HealthBadge({ health }: { health: FeedHealth | undefined }) {
 }
 
 function StatusBadge({ status }: { status: PodcastStatus }) {
-  const color = status === "active" ? "#10B981" : status === "paused" ? "#F59E0B" : "#9CA3AF";
+  const color = status === "active" ? "#10B981" : status === "paused" ? "#F59E0B" : status === "pending_deletion" ? "#F59E0B" : "#9CA3AF";
   return (
     <span
       className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium"
@@ -133,12 +135,16 @@ function FilterSidebar({
   onFilterChange,
   collapsed,
   onToggle,
+  languages,
+  categories,
 }: {
   filters: CatalogFilters;
   stats: CatalogStats | null;
   onFilterChange: (f: CatalogFilters) => void;
   collapsed: boolean;
   onToggle: () => void;
+  languages: string[];
+  categories: { id: string; name: string; podcastCount: number }[];
 }) {
   const activeFilters = Object.entries(filters).filter(([_, v]) => v != null && v !== "" && (!Array.isArray(v) || v.length > 0));
 
@@ -245,7 +251,7 @@ function FilterSidebar({
               <div>
                 <span className="text-[10px] uppercase tracking-wider text-[#9CA3AF] font-medium">Status</span>
                 <div className="mt-2 space-y-1">
-                  {(["active", "paused", "archived"] as PodcastStatus[]).map((s) => (
+                  {(["active", "paused", "archived", "pending_deletion"] as PodcastStatus[]).map((s) => (
                     <button
                       key={s}
                       onClick={() => {
@@ -315,6 +321,53 @@ function FilterSidebar({
                   }}
                 />
               </div>
+
+              <Separator className="bg-white/5" />
+
+              {/* Language */}
+              <div>
+                <label className="text-xs font-medium text-zinc-400 mb-1 block">Language</label>
+                <select
+                  value={filters.language ?? ""}
+                  onChange={(e) => onFilterChange({ ...filters, language: e.target.value || undefined })}
+                  className="w-full px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded text-sm text-zinc-200"
+                >
+                  <option value="">All Languages</option>
+                  {languages.map((lang) => (
+                    <option key={lang} value={lang}>{lang}</option>
+                  ))}
+                </select>
+              </div>
+
+              <Separator className="bg-white/5" />
+
+              {/* Categories */}
+              {categories.length > 0 && (
+                <div>
+                  <label className="text-xs font-medium text-zinc-400 mb-1 block">Categories</label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {categories.map((cat) => (
+                      <button
+                        key={cat.id}
+                        onClick={() => {
+                          const current = filters.categories ?? [];
+                          const next = current.includes(cat.name)
+                            ? current.filter((c) => c !== cat.name)
+                            : [...current, cat.name];
+                          onFilterChange({ ...filters, categories: next.length > 0 ? next : undefined });
+                        }}
+                        className={`px-2 py-1 rounded-full text-xs transition-colors ${
+                          filters.categories?.includes(cat.name)
+                            ? "bg-white text-zinc-950"
+                            : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
+                        }`}
+                      >
+                        {cat.name} ({cat.podcastCount})
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </ScrollArea>
         </>
@@ -331,12 +384,16 @@ function PodcastCard({
   onClick,
   onToggleStatus,
   togglingId,
+  isChecked,
+  onCheckToggle,
 }: {
   podcast: AdminPodcast;
   selected: boolean;
   onClick: () => void;
   onToggleStatus: (id: string, currentStatus: PodcastStatus) => void;
   togglingId: string | null;
+  isChecked: boolean;
+  onCheckToggle: (id: string) => void;
 }) {
   return (
     <button
@@ -347,6 +404,17 @@ function PodcastCard({
       )}
     >
       <div className="flex items-start gap-3">
+        <span
+          className="mt-1 shrink-0"
+          onClick={(e) => { e.stopPropagation(); onCheckToggle(podcast.id); }}
+        >
+          <span className={cn(
+            "h-3.5 w-3.5 rounded border flex items-center justify-center",
+            isChecked ? "border-[#3B82F6] bg-[#3B82F6]" : "border-white/20"
+          )}>
+            {isChecked && <CheckCircle2 className="h-2.5 w-2.5 text-white" />}
+          </span>
+        </span>
         {podcast.imageUrl ? (
           <img src={podcast.imageUrl} alt="" className="h-12 w-12 rounded-lg object-cover shrink-0" />
         ) : (
@@ -358,6 +426,11 @@ function PodcastCard({
           <div className="flex items-start justify-between gap-1">
             <span className="text-xs font-medium truncate">{podcast.title}</span>
             <div className="flex items-center gap-1.5 shrink-0">
+              {podcast.language && podcast.language !== "en" && (
+                <span className="px-1.5 py-0.5 bg-zinc-800 text-zinc-400 text-[10px] rounded">
+                  {podcast.language}
+                </span>
+              )}
               <HealthBadge health={podcast.feedHealth} />
               <Switch
                 checked={podcast.status === "active"}
@@ -373,6 +446,16 @@ function PodcastCard({
           {podcast.author && (
             <span className="text-[10px] text-[#9CA3AF] block truncate mt-0.5">{podcast.author}</span>
           )}
+          <div className="flex gap-1 mt-1">
+            {podcast.categories?.slice(0, 3).map((cat) => (
+              <span key={cat} className="px-1.5 py-0.5 bg-zinc-800 text-zinc-500 text-[10px] rounded">
+                {cat}
+              </span>
+            ))}
+            {(podcast.categories?.length ?? 0) > 3 && (
+              <span className="text-[10px] text-zinc-600">+{podcast.categories!.length - 3}</span>
+            )}
+          </div>
           <div className="flex items-center gap-3 mt-2 text-[10px] text-[#9CA3AF]">
             <span className="font-mono tabular-nums">{podcast.episodeCount} eps</span>
             <span className="font-mono tabular-nums">{podcast.subscriberCount} subs</span>
@@ -392,12 +475,16 @@ function PodcastRow({
   onClick,
   onToggleStatus,
   togglingId,
+  isChecked,
+  onCheckToggle,
 }: {
   podcast: AdminPodcast;
   selected: boolean;
   onClick: () => void;
   onToggleStatus: (id: string, currentStatus: PodcastStatus) => void;
   togglingId: string | null;
+  isChecked: boolean;
+  onCheckToggle: (id: string) => void;
 }) {
   return (
     <button
@@ -407,6 +494,17 @@ function PodcastRow({
         selected ? "bg-[#3B82F6]/5" : "hover:bg-white/[0.03] even:bg-[#1A2942]"
       )}
     >
+      <span
+        className="shrink-0"
+        onClick={(e) => { e.stopPropagation(); onCheckToggle(podcast.id); }}
+      >
+        <span className={cn(
+          "h-3.5 w-3.5 rounded border flex items-center justify-center",
+          isChecked ? "border-[#3B82F6] bg-[#3B82F6]" : "border-white/20"
+        )}>
+          {isChecked && <CheckCircle2 className="h-2.5 w-2.5 text-white" />}
+        </span>
+      </span>
       {podcast.imageUrl ? (
         <img src={podcast.imageUrl} alt="" className="h-7 w-7 rounded object-cover shrink-0" />
       ) : (
@@ -416,6 +514,11 @@ function PodcastRow({
       )}
       <span className="flex-1 min-w-0 truncate font-medium">{podcast.title}</span>
       <span className="w-24 text-[#9CA3AF] truncate hidden lg:block">{podcast.author ?? "-"}</span>
+      {podcast.language && podcast.language !== "en" && (
+        <span className="px-1.5 py-0.5 bg-zinc-800 text-zinc-400 text-[10px] rounded shrink-0">
+          {podcast.language}
+        </span>
+      )}
       <span className="w-14 text-right font-mono tabular-nums text-[#9CA3AF]">{podcast.episodeCount}</span>
       <span className="w-12 text-right font-mono tabular-nums text-[#9CA3AF]">{podcast.subscriberCount}</span>
       <span className="w-20 text-center"><HealthBadge health={podcast.feedHealth} /></span>
@@ -991,7 +1094,13 @@ export default function Catalog() {
   const [pageSize, setPageSize] = useState(50);
   const [totalResults, setTotalResults] = useState(0);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [selectedPodcasts, setSelectedPodcasts] = useState<string[]>([]);
+  const [showSeedConfirm, setShowSeedConfirm] = useState(false);
   const totalPages = Math.ceil(totalResults / pageSize);
+
+  // Fetch language + category filter options
+  const { data: languageData } = useFetch<{ languages: string[] }>("/admin/podcasts/languages");
+  const { data: categoryData } = useFetch<{ categories: { id: string; name: string; podcastCount: number }[] }>("/admin/podcasts/categories");
 
   const load = useCallback(() => {
     setLoading(true);
@@ -1000,6 +1109,8 @@ export default function Catalog() {
     if (filters.health?.length) params.set("health", filters.health.join(","));
     if (filters.status?.length) params.set("status", filters.status.join(","));
     if (filters.activity) params.set("activity", filters.activity);
+    if (filters.language) params.set("language", filters.language);
+    if (filters.categories?.length) params.set("categories", filters.categories.join(","));
     params.set("sort", sort);
     params.set("page", String(page));
     params.set("pageSize", String(pageSize));
@@ -1032,6 +1143,27 @@ export default function Catalog() {
     [apiFetch, load],
   );
 
+  const handleCheckToggle = useCallback((id: string) => {
+    setSelectedPodcasts((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  }, []);
+
+  async function handleBulkStatus(status: "active" | "archived") {
+    if (selectedPodcasts.length === 0) return;
+    try {
+      await apiFetch("/podcasts/bulk-status", {
+        method: "POST",
+        body: JSON.stringify({ podcastIds: selectedPodcasts, status }),
+      });
+      toast.success(`${selectedPodcasts.length} podcasts ${status === "active" ? "restored" : "archived"}`);
+      setSelectedPodcasts([]);
+      load();
+    } catch {
+      toast.error("Failed to update podcasts");
+    }
+  }
+
   useEffect(() => { load(); }, [load]);
 
   if (loading && podcasts.length === 0) return <CatalogSkeleton />;
@@ -1045,6 +1177,8 @@ export default function Catalog() {
         onFilterChange={(f) => { setFilters(f); setPage(1); }}
         collapsed={filterCollapsed}
         onToggle={() => setFilterCollapsed(!filterCollapsed)}
+        languages={languageData?.languages ?? []}
+        categories={categoryData?.categories ?? []}
       />
 
       {/* Main Content */}
@@ -1064,6 +1198,35 @@ export default function Catalog() {
         {/* Feed Refresh Status Bar */}
         <div className="mb-3">
           <FeedRefreshCard compact onRefresh={load} />
+          <div className="flex items-center gap-2 mt-2">
+            <button onClick={() => setShowSeedConfirm(true)} className="text-xs text-red-400 hover:text-red-300">
+              Seed (Reset)
+            </button>
+          </div>
+          {showSeedConfirm && (
+            <div className="bg-red-950/50 border border-red-800 rounded-lg p-3 mt-2">
+              <p className="text-xs text-red-300 mb-2">This will delete all existing catalog data including subscriptions, feed items, and briefings. Continue?</p>
+              <div className="flex gap-2">
+                <button onClick={async () => {
+                  try {
+                    await apiFetch("/podcasts/catalog-seed", {
+                      method: "POST",
+                      body: JSON.stringify({ confirm: true }),
+                    });
+                    toast.success("Catalog seed started");
+                    setShowSeedConfirm(false);
+                  } catch {
+                    toast.error("Failed to start seed");
+                  }
+                }} className="px-3 py-1 bg-red-600 hover:bg-red-500 text-white text-xs rounded">
+                  Yes, Reset Catalog
+                </button>
+                <button onClick={() => setShowSeedConfirm(false)} className="px-3 py-1 bg-zinc-800 text-zinc-300 text-xs rounded">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Toolbar */}
@@ -1111,6 +1274,42 @@ export default function Catalog() {
               </SelectContent>
             </Select>
             <span className="text-[10px] text-[#9CA3AF] font-mono">{totalResults} total</span>
+
+            {/* Pending deletion quick-filter */}
+            {stats && (stats.byStatus.pending_deletion ?? 0) > 0 && (
+              <button
+                onClick={() => setFilters((prev) => ({ ...prev, status: ["pending_deletion"] }))}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-400 text-xs font-medium"
+              >
+                {stats.byStatus.pending_deletion} pending deletion
+              </button>
+            )}
+
+            {/* Bulk actions for selected podcasts */}
+            {selectedPodcasts.length > 0 && (
+              <>
+                <Separator orientation="vertical" className="h-4 bg-white/10" />
+                <span className="text-[10px] text-[#3B82F6] font-medium">{selectedPodcasts.length} selected</span>
+                <button
+                  onClick={() => handleBulkStatus("active")}
+                  className="px-3 py-1.5 bg-green-600 hover:bg-green-500 text-white text-xs font-medium rounded"
+                >
+                  Restore Selected
+                </button>
+                <button
+                  onClick={() => handleBulkStatus("archived")}
+                  className="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-medium rounded"
+                >
+                  Archive Selected
+                </button>
+                <button
+                  onClick={() => setSelectedPodcasts([])}
+                  className="text-[10px] text-[#9CA3AF] hover:text-[#F9FAFB]"
+                >
+                  Clear
+                </button>
+              </>
+            )}
           </div>
           <Button
             size="sm"
@@ -1134,6 +1333,8 @@ export default function Catalog() {
                   onClick={() => setSelectedId(selectedId === p.id ? null : p.id)}
                   onToggleStatus={handleToggleStatus}
                   togglingId={togglingId}
+                  isChecked={selectedPodcasts.includes(p.id)}
+                  onCheckToggle={handleCheckToggle}
                 />
               ))}
             </div>
@@ -1141,6 +1342,7 @@ export default function Catalog() {
             <div className="rounded-lg bg-[#1A2942] border border-white/5 overflow-hidden">
               {/* Table header */}
               <div className="flex items-center h-8 px-3 gap-3 border-b border-white/5 bg-white/[0.02] text-[10px] text-[#9CA3AF] uppercase tracking-wider font-medium">
+                <span className="w-3.5" />
                 <span className="w-7" />
                 <span className="flex-1">Title</span>
                 <span className="w-24 hidden lg:block">Author</span>
@@ -1159,6 +1361,8 @@ export default function Catalog() {
                   onClick={() => setSelectedId(selectedId === p.id ? null : p.id)}
                   onToggleStatus={handleToggleStatus}
                   togglingId={togglingId}
+                  isChecked={selectedPodcasts.includes(p.id)}
+                  onCheckToggle={handleCheckToggle}
                 />
               ))}
             </div>

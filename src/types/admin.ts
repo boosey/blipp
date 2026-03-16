@@ -159,7 +159,34 @@ export interface PipelineJobFilters {
 // ── Catalog / Podcasts ──
 
 export type FeedHealth = "excellent" | "good" | "fair" | "poor" | "broken";
-export type PodcastStatus = "active" | "paused" | "archived";
+export type PodcastStatus = "active" | "paused" | "archived" | "pending_deletion";
+
+export interface AppleMetadata {
+  collectionId: number;
+  collectionName: string;
+  artistName: string;
+  artworkUrl30?: string;
+  artworkUrl60?: string;
+  artworkUrl100?: string;
+  artworkUrl600?: string;
+  feedUrl: string;
+  releaseDate?: string;
+  collectionExplicitness?: string;
+  trackExplicitness?: string;
+  trackCount?: number;
+  country?: string;
+  primaryGenreName?: string;
+  genreIds?: string[];
+  genres?: string[];
+  contentAdvisoryRating?: string;
+}
+
+export interface AdminCategory {
+  id: string;
+  name: string;
+  appleGenreId: string;
+  podcastCount: number;
+}
 
 export interface AdminPodcast {
   id: string;
@@ -175,6 +202,9 @@ export interface AdminPodcast {
   episodeCount: number;
   status: PodcastStatus;
   subscriberCount: number;
+  appleId?: string;
+  language?: string;
+  appleMetadata?: AppleMetadata;
   createdAt: string;
   updatedAt: string;
 }
@@ -190,6 +220,7 @@ export interface CatalogFilters {
   transcriptAvailability?: "has_transcript" | "needs_transcription" | "mixed";
   activity?: "today" | "this_week" | "stale" | "inactive";
   categories?: string[];
+  language?: string;
   search?: string;
 }
 

@@ -5,6 +5,7 @@ import { handleNarrativeGeneration } from "./narrative-generation";
 import { handleAudioGeneration } from "./audio-generation";
 import { handleBriefingAssembly } from "./briefing-assembly";
 import { handleOrchestrator } from "./orchestrator";
+import { handleCatalogRefresh } from "./catalog-refresh";
 import { createPrismaClient } from "../lib/db";
 import { getConfig } from "../lib/config";
 import { createPipelineLogger } from "../lib/logger";
@@ -17,6 +18,7 @@ import type {
   BriefingAssemblyMessage,
   OrchestratorMessage,
   FeedRefreshMessage,
+  CatalogRefreshMessage,
 } from "../lib/queue-messages";
 import type { Env } from "../types";
 
@@ -81,6 +83,12 @@ export async function handleQueue(
     case "orchestrator":
       return handleOrchestrator(
         batch as MessageBatch<OrchestratorMessage>,
+        env,
+        ctx
+      );
+    case "catalog-refresh":
+      return handleCatalogRefresh(
+        batch as MessageBatch<CatalogRefreshMessage>,
         env,
         ctx
       );

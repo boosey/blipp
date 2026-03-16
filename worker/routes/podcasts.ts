@@ -503,6 +503,37 @@ podcasts.delete("/request/:id", async (c) => {
 });
 
 /**
+ * GET /categories — List all categories with podcast counts.
+ * Returns categories filtered to active English-language podcasts.
+ */
+podcasts.get("/categories", async (c) => {
+  const prisma = c.get("prisma") as any;
+
+  const categories = await prisma.category.findMany({
+    orderBy: { name: "asc" },
+  });
+
+  const counts = await prisma.podcastCategory.groupBy({
+    by: ["categoryId"],
+    where: {
+      podcast: { status: "active", language: "en" },
+    },
+    _count: true,
+  });
+
+  const countMap = new Map(counts.map((row: any) => [row.categoryId, row._count]));
+
+  return c.json({
+    categories: categories.map((cat: any) => ({
+      id: cat.id,
+      name: cat.name,
+      appleGenreId: cat.appleGenreId,
+      podcastCount: countMap.get(cat.id) ?? 0,
+    })),
+  });
+});
+
+/**
  * GET /:id — Get podcast detail with subscription status.
  *
  * @param id - The podcast's database ID

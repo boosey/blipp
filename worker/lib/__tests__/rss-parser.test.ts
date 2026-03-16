@@ -264,4 +264,37 @@ describe("parseRssFeed", () => {
     const feed = parseRssFeed(xml);
     expect(feed.episodes[0].guid).toBe("unique-guid-123");
   });
+
+  it("extracts language from <language> tag", () => {
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+      <rss version="2.0">
+        <channel>
+          <title>Test Podcast</title>
+          <language>en-us</language>
+          <item>
+            <title>Ep 1</title>
+            <guid>ep-1</guid>
+            <enclosure url="https://example.com/ep1.mp3" type="audio/mpeg" />
+          </item>
+        </channel>
+      </rss>`;
+    const feed = parseRssFeed(xml);
+    expect(feed.language).toBe("en-us");
+  });
+
+  it("returns undefined when no language tag", () => {
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+      <rss version="2.0">
+        <channel>
+          <title>Test Podcast</title>
+          <item>
+            <title>Ep 1</title>
+            <guid>ep-1</guid>
+            <enclosure url="https://example.com/ep1.mp3" type="audio/mpeg" />
+          </item>
+        </channel>
+      </rss>`;
+    const feed = parseRssFeed(xml);
+    expect(feed.language).toBeUndefined();
+  });
 });

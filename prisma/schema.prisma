@@ -123,8 +123,11 @@ model Podcast {
   feedUrl        String    @unique
   imageUrl       String?
   podcastIndexId String?   @unique
+  appleId        String?   @unique
   author         String?
+  language       String?
   categories     String[] // PostgreSQL array
+  appleMetadata  Json?
   lastFetchedAt  DateTime?
   feedHealth     String?   // "excellent" | "good" | "fair" | "poor" | "broken"
   feedError      String?
@@ -134,11 +137,12 @@ model Podcast {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  episodes      Episode[]
-  subscriptions Subscription[]
-  feedItems     FeedItem[]
-  requests      PodcastRequest[]
-  favorites     PodcastFavorite[]
+  episodes          Episode[]
+  subscriptions     Subscription[]
+  feedItems         FeedItem[]
+  requests          PodcastRequest[]
+  favorites         PodcastFavorite[]
+  podcastCategories PodcastCategory[]
 }
 
 model Episode {
@@ -650,4 +654,24 @@ model AiModelProvider {
 
   @@unique([aiModelId, provider])
   @@index([aiModelId])
+}
+
+// ── Podcast Categories (Apple genre taxonomy) ──
+
+model Category {
+  id           String            @id @default(cuid())
+  appleGenreId String            @unique
+  name         String
+  podcasts     PodcastCategory[]
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+}
+
+model PodcastCategory {
+  podcastId  String
+  categoryId String
+  podcast    Podcast  @relation(fields: [podcastId], references: [id], onDelete: Cascade)
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@id([podcastId, categoryId])
 }

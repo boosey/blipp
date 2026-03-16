@@ -64,6 +64,10 @@
 			{
 				"binding": "ORCHESTRATOR_QUEUE",
 				"queue": "orchestrator-staging"
+			},
+			{
+				"binding": "CATALOG_REFRESH_QUEUE",
+				"queue": "catalog-refresh-staging"
 			}
 		],
 		"consumers": [
@@ -101,6 +105,12 @@
 				"queue": "orchestrator-staging",
 				"max_batch_size": 10,
 				"max_retries": 3
+			},
+			{
+				"queue": "catalog-refresh-staging",
+				"max_batch_size": 1,
+				"max_retries": 1,
+				"dead_letter_queue": "dead-letter-staging"
 			}
 		]
 	},
@@ -161,6 +171,10 @@
 					{
 						"binding": "ORCHESTRATOR_QUEUE",
 						"queue": "orchestrator"
+					},
+					{
+						"binding": "CATALOG_REFRESH_QUEUE",
+						"queue": "catalog-refresh"
 					}
 				],
 				"consumers": [
@@ -198,6 +212,12 @@
 						"queue": "orchestrator",
 						"max_batch_size": 10,
 						"max_retries": 3
+					},
+					{
+						"queue": "catalog-refresh",
+						"max_batch_size": 1,
+						"max_retries": 1,
+						"dead_letter_queue": "dead-letter"
 					}
 				]
 			},

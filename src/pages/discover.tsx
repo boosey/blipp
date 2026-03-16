@@ -20,11 +20,6 @@ interface CatalogPodcast {
   categories: string[];
 }
 
-const CATEGORIES = [
-  "All", "News", "Technology", "Business", "Comedy",
-  "Science", "Sports", "Culture", "Health", "Education", "True Crime",
-] as const;
-
 export function Discover() {
   const apiFetch = useApiFetch();
   const { open: openPodcast } = usePodcastSheet();
@@ -34,6 +29,23 @@ export function Discover() {
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
+
+  // Dynamic category pills from API
+  const { data: categoryData } = useFetch<{
+    categories: { id: string; name: string; podcastCount: number }[];
+  }>("/podcasts/categories");
+
+  const categoryNames = useMemo(() => {
+    if (!categoryData?.categories) return ["All"];
+    return ["All", ...categoryData.categories.map((c) => c.name)];
+  }, [categoryData?.categories]);
+
+  // Reset selection if selected category disappears from the list
+  useEffect(() => {
+    if (selectedCategory !== "All" && !categoryNames.includes(selectedCategory)) {
+      setSelectedCategory("All");
+    }
+  }, [categoryNames, selectedCategory]);
 
   // Podcast request form
   const [showRequestForm, setShowRequestForm] = useState(false);
@@ -210,7 +222,7 @@ export function Discover() {
         <>
           {/* Category pills */}
           <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-hide mt-4 snap-x-mandatory">
-            {CATEGORIES.map((cat) => (
+            {categoryNames.map((cat) => (
               <button
                 key={cat}
                 onClick={() => setSelectedCategory(cat)}
