@@ -1,6 +1,21 @@
 import type { FeedItem } from "../types/feed";
 import { useAudio } from "../contexts/audio-context";
 
+/** Map raw pipeline error to a short user-facing message. */
+function friendlyError(raw: string | null): string {
+  if (!raw) return "Something went wrong";
+  const l = raw.toLowerCase();
+  if (l.includes("audio fetch failed") || l.includes("audio url") || l.includes("non-audio content") || l.includes("too small"))
+    return "Episode audio unavailable";
+  if (l.includes("no transcript") || l.includes("transcription")
+    || l.includes("no narrative") || l.includes("narrative")
+    || l.includes("no completed") || l.includes("no clips"))
+    return "Blipp creation failed";
+  if (l.includes("episode not found"))
+    return "Episode no longer available";
+  return "Something went wrong";
+}
+
 function statusLabel(status: FeedItem["status"]) {
   switch (status) {
     case "PENDING":
@@ -9,7 +24,7 @@ function statusLabel(status: FeedItem["status"]) {
     case "READY":
       return "Ready";
     case "FAILED":
-      return "Error";
+      return "Failed";
   }
 }
 
@@ -72,6 +87,11 @@ export function FeedItemCard({
             {item.source === "SUBSCRIPTION" ? "Sub" : "On-demand"}
           </span>
         </div>
+        {item.status === "FAILED" && (
+          <p className="text-[10px] text-red-400/80 mt-1 truncate">
+            {friendlyError(item.errorMessage)}
+          </p>
+        )}
       </div>
 
       {/* Status */}
