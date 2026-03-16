@@ -1,5 +1,6 @@
-import { Link, useLocation } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import { Home, Search, Library, Settings } from "lucide-react";
+import { useViewTransitionNavigate } from "../hooks/use-view-transition";
 
 const tabs = [
   { to: "/home", label: "Home", icon: Home },
@@ -10,6 +11,7 @@ const tabs = [
 
 export function BottomNav() {
   const { pathname } = useLocation();
+  const navigateWithTransition = useViewTransitionNavigate();
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 bg-zinc-950 border-t border-zinc-800 px-2 pb-[env(safe-area-inset-bottom)]">
@@ -17,16 +19,16 @@ export function BottomNav() {
         {tabs.map(({ to, label, icon: Icon }) => {
           const active = pathname === to || pathname.startsWith(to + "/");
           return (
-            <Link
+            <button
               key={to}
-              to={to}
-              className={`flex flex-col items-center gap-1 py-2 px-3 text-xs transition-colors ${
+              onClick={() => navigateWithTransition(to)}
+              className={`flex flex-col items-center gap-1 py-2 px-3 text-xs transition-colors active:scale-[0.98] transition-transform duration-75 ${
                 active ? "text-white" : "text-zinc-500"
               }`}
             >
               <Icon className="w-5 h-5" />
               <span>{label}</span>
-            </Link>
+            </button>
           );
         })}
       </div>
