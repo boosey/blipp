@@ -380,8 +380,8 @@ cp scripts/templates/secrets-production.env.template secrets-production.env
 #    (you'll update these after Phase 13)
 
 # 3. Push secrets
-bash scripts/set-secrets.sh secrets-staging.env
-bash scripts/set-secrets.sh secrets-production.env --env production
+bash scripts/set-secrets.sh secrets-staging.env staging
+bash scripts/set-secrets.sh secrets-production.env production
 
 # 4. DELETE THE FILES
 rm secrets-staging.env secrets-production.env
@@ -756,7 +756,7 @@ Once approved:
 | `scripts/setup-db.sh` | Push schema + seed both databases | `neon-config.env` |
 | `scripts/setup-infra.sh` | Create R2, queues, Hyperdrive, patch wrangler.jsonc | `neon-config.env` |
 | `scripts/setup-stripe.ts` | Create Stripe products/prices, update Plan records | `DATABASE_URL` + `STRIPE_SECRET_KEY` env vars |
-| `scripts/set-secrets.sh` | Batch-set Cloudflare Worker secrets | `secrets-*.env [--env production]` |
+| `scripts/set-secrets.sh` | Batch-set Cloudflare Worker secrets | `secrets-*.env staging\|production` |
 
 ### Templates
 
@@ -781,8 +781,8 @@ bash scripts/setup-infra.sh neon-config.env
 cp scripts/templates/secrets-staging.env.template secrets-staging.env
 cp scripts/templates/secrets-production.env.template secrets-production.env
 # Edit both with keys from Phases 5-8
-bash scripts/set-secrets.sh secrets-staging.env
-bash scripts/set-secrets.sh secrets-production.env --env production
+bash scripts/set-secrets.sh secrets-staging.env staging
+bash scripts/set-secrets.sh secrets-production.env production
 
 # 4. Clean up credential files
 rm neon-config.env secrets-staging.env secrets-production.env

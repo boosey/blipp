@@ -1,6 +1,12 @@
 #!/bin/bash
 # Batch-set Cloudflare Worker secrets from an env file.
-# Usage: bash scripts/set-secrets.sh secrets.env [--env staging|production]
+#
+# Usage:
+#   bash scripts/set-secrets.sh secrets-staging.env staging
+#   bash scripts/set-secrets.sh secrets-production.env production
+#
+# The second argument (staging|production) is REQUIRED to avoid
+# wrangler warnings about ambiguous environment targeting.
 #
 # File format (one per line):
 #   KEY=value
@@ -17,17 +23,34 @@ else
   WRANGLER="npx wrangler"
 fi
 
-if [ -z "${1:-}" ]; then
-  echo "Usage: $0 <secrets-file> [--env <environment>]"
+if [ -z "${1:-}" ] || [ -z "${2:-}" ]; then
+  echo "Usage: $0 <secrets-file> <environment>"
   echo ""
-  echo "Example: $0 secrets.env"
-  echo "         $0 secrets.env --env production"
+  echo "Examples:"
+  echo "  $0 secrets-staging.env staging"
+  echo "  $0 secrets-production.env production"
+  echo ""
+  echo "Environment must be 'staging' or 'production'."
   exit 1
 fi
 
 SECRETS_FILE="$1"
-shift
-ENV_FLAG="${*:-}"
+ENV_NAME="$2"
+
+case "$ENV_NAME" in
+  staging)
+    ENV_FLAG='--env=""'
+    DISPLAY_ENV="staging (top-level)"
+    ;;
+  production)
+    ENV_FLAG="--env=production"
+    DISPLAY_ENV="production"
+    ;;
+  *)
+    echo "Error: Environment must be 'staging' or 'production', got '$ENV_NAME'"
+    exit 1
+    ;;
+esac
 
 if [ ! -f "$SECRETS_FILE" ]; then
   echo "Error: File '$SECRETS_FILE' not found"
@@ -37,7 +60,7 @@ fi
 # Strip Windows \r line endings
 sed -i 's/\r$//' "$SECRETS_FILE" 2>/dev/null || true
 
-echo "Setting Cloudflare Worker secrets from $SECRETS_FILE..."
+echo "Setting Cloudflare Worker secrets from $SECRETS_FILE ($DISPLAY_ENV)..."
 echo ""
 
 count=0
