@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import { toast } from "sonner";
-import { Heart, Lock } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { ArrowLeft, Heart, Lock } from "lucide-react";
 import { useApiFetch } from "../lib/api";
 import { DURATION_TIERS } from "../lib/duration-tiers";
 import { Skeleton } from "../components/ui/skeleton";
@@ -54,6 +55,7 @@ function TierPicker({
 
 export function PodcastDetail() {
   const { podcastId } = useParams<{ podcastId: string }>();
+  const navigate = useNavigate();
   const apiFetch = useApiFetch();
   const [podcast, setPodcast] = useState<PodcastDetailType | null>(null);
   const [episodes, setEpisodes] = useState<EpisodeSummary[]>([]);
@@ -218,6 +220,14 @@ export function PodcastDetail() {
   return (
     <div className="space-y-6">
       {UpgradeModalElement}
+      {/* Back button */}
+      <button
+        onClick={() => navigate(-1)}
+        className="flex items-center gap-1 text-sm text-zinc-400 hover:text-zinc-200 transition-colors -mb-3"
+      >
+        <ArrowLeft className="w-4 h-4" />
+        Back
+      </button>
       {/* Podcast header */}
       <div className="flex gap-4">
         {podcast.imageUrl ? (
