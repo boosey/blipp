@@ -115,6 +115,9 @@
 				"APP_ORIGIN": "https://podblipp.com",
 				"ALLOWED_ORIGINS": "https://podblipp.com,https://www.podblipp.com"
 			},
+			"ai": {
+				"binding": "AI"
+			},
 			"hyperdrive": [
 				{
 					"binding": "HYPERDRIVE",
