@@ -348,7 +348,7 @@ export function PodcastDetail() {
                       onClick={() => setBriefTierPickerEpisodeId(ep.id)}
                       className="px-3 py-1.5 bg-white text-zinc-950 rounded text-xs font-medium hover:bg-zinc-200 transition-colors flex-shrink-0"
                     >
-                      Brief
+                      Blipp
                     </button>
                   )}
                 </div>

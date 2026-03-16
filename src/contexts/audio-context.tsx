@@ -12,6 +12,13 @@ import { useApiFetch } from "../lib/api";
 import { useImaAds } from "../hooks/use-ima-ads";
 import { getJingleUrl } from "../lib/jingle-cache";
 
+// Minimal silent WAV (22050Hz, 16-bit mono, 2 samples) used to "unlock"
+// the HTMLAudioElement on mobile within the user-gesture context.  Mobile
+// browsers block audio.play() after any `await`, so we play this silence
+// synchronously before fetching ad config.
+const UNLOCK_AUDIO =
+  "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YQQAAAAAAAAA";
+
 interface AudioState {
   currentItem: FeedItem | null;
   isPlaying: boolean;
@@ -65,6 +72,8 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   const [adState, setAdState] = useState<AdState>("none");
   const adConfigRef = useRef<AdConfig | null>(null);
   const pendingItemRef = useRef<FeedItem | null>(null);
+  // Guards against audio element events fired by the silent unlock WAV
+  const unlockingRef = useRef(false);
 
   // Begin content playback — sets src to briefing audio, fires listened PATCH
   const beginContent = useCallback(
@@ -248,6 +257,14 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       setIsLoading(true);
       setAdState("loading-ad-config");
 
+      // Mobile browsers require audio.play() within the synchronous
+      // user-gesture context.  The ad-config fetch below is async and
+      // breaks that context, so we play a tiny silent WAV first to
+      // "unlock" the audio element for all subsequent plays.
+      unlockingRef.current = true;
+      audio.src = UNLOCK_AUDIO;
+      audio.play().catch(() => {});
+
       // Fetch ad config
       try {
         const params = new URLSearchParams({
@@ -264,6 +281,9 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       }
 
       const config = adConfigRef.current;
+
+      // Unlock phase complete — real playback starts now
+      unlockingRef.current = false;
 
       // Check if preroll should play
       if (
@@ -305,6 +325,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
 
   // Handle audio ended — sequence: intro-jingle → content → outro-jingle → postroll
   const handleEnded = useCallback(async () => {
+    if (unlockingRef.current) return; // Ignore ended event from silent unlock WAV
     const audio = audioRef.current;
 
     if (adState === "intro-jingle") {
@@ -346,6 +367,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   }, [adState]);
 
   const handleLoadedMetadata = useCallback(() => {
+    if (unlockingRef.current) return;
     if (adState === "intro-jingle" || adState === "outro-jingle") return;
     if (audioRef.current) {
       setDuration(audioRef.current.duration);
@@ -354,11 +376,13 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   }, [adState]);
 
   const handlePlay = useCallback(() => {
+    if (unlockingRef.current) return;
     setIsPlaying(true);
     setIsLoading(false);
   }, []);
 
   const handleError = useCallback(() => {
+    if (unlockingRef.current) return;
     if (adState === "intro-jingle") {
       const item = pendingItemRef.current ?? currentItem;
       if (item) {
