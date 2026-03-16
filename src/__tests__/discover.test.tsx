@@ -54,6 +54,14 @@ describe("Discover", () => {
     vi.clearAllMocks();
     stableGetToken.mockResolvedValue("test-token");
     mockFetch.mockImplementation((url: string) => {
+      if (url.includes("/podcasts/categories")) {
+        return Promise.resolve(mockJsonResponse({
+          categories: [
+            { id: "c1", name: "News", podcastCount: 10 },
+            { id: "c2", name: "Technology", podcastCount: 5 },
+          ],
+        }));
+      }
       if (url.includes("/podcasts/catalog")) {
         return Promise.resolve(mockJsonResponse({ podcasts: [] }));
       }
