@@ -14,7 +14,7 @@ export interface SttPollResult {
   costDollars?: number;
 }
 
-export type AudioInput = { url: string } | { buffer: ArrayBuffer; filename: string };
+export type AudioInput = { url: string } | { buffer: ArrayBuffer; filename: string; sourceUrl?: string };
 
 /**
  * An STT provider implementation — one per API vendor.
@@ -64,40 +64,66 @@ async function resolveAudioBuffer(audio: AudioInput): Promise<ArrayBuffer> {
 // OpenAI — serves whisper-1 via their transcriptions API
 // ---------------------------------------------------------------------------
 
+/** OpenAI/Groq upload limit: 25MB; chunk at 15MB to leave safe margin */
+const WHISPER_CHUNK_SIZE = 15 * 1024 * 1024;
+
 const OpenAIProvider: SttProvider = {
   name: "OpenAI",
   provider: "openai",
 
   async transcribe(audio: AudioInput, _durationSeconds: number, env: Env, providerModelId: string): Promise<SttResult> {
     const start = Date.now();
-    const { blob: audioBlob, filename } = await resolveAudioBlob(audio);
+    const audioBuffer = await resolveAudioBuffer(audio);
+    const filename = "buffer" in audio ? audio.filename : "audio.mp3";
 
-    const form = new FormData();
-    form.append("file", new File([audioBlob], filename, { type: audioBlob.type || "audio/mpeg" }));
-    form.append("model", providerModelId);
-
-    const resp = await fetch("https://api.openai.com/v1/audio/transcriptions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${env.OPENAI_API_KEY}` },
-      body: form,
-    });
-
-    if (!resp.ok) {
-      const body = await resp.text();
-      throw new AiProviderError({
-        message: `OpenAI Whisper API error ${resp.status}: ${body.slice(0, 500)}`,
-        provider: "openai",
-        model: providerModelId,
-        httpStatus: resp.status,
-        rawResponse: body.slice(0, 2048),
-        requestDurationMs: Date.now() - start,
-      });
+    if (audioBuffer.byteLength <= WHISPER_CHUNK_SIZE) {
+      return openaiSingleRequest(audioBuffer, filename, env, providerModelId, start);
     }
 
-    const data = (await resp.json()) as { text: string };
-    return { transcript: data.text, costDollars: null, latencyMs: Date.now() - start };
+    const chunks: string[] = [];
+    for (let offset = 0; offset < audioBuffer.byteLength; offset += WHISPER_CHUNK_SIZE) {
+      const slice = audioBuffer.slice(offset, Math.min(offset + WHISPER_CHUNK_SIZE, audioBuffer.byteLength));
+      const result = await openaiSingleRequest(slice, "chunk.mp3", env, providerModelId, start);
+      if (result.transcript) chunks.push(result.transcript);
+    }
+
+    return { transcript: chunks.join(" "), costDollars: null, latencyMs: Date.now() - start };
   },
 };
+
+async function openaiSingleRequest(
+  buffer: ArrayBuffer,
+  filename: string,
+  env: Env,
+  providerModelId: string,
+  start: number,
+): Promise<SttResult> {
+  const blob = new Blob([buffer], { type: "audio/mpeg" });
+  const form = new FormData();
+  form.append("file", new File([blob], filename, { type: "audio/mpeg" }));
+  form.append("model", providerModelId);
+
+  const resp = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${env.OPENAI_API_KEY}` },
+    body: form,
+  });
+
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new AiProviderError({
+      message: `OpenAI Whisper API error ${resp.status}: ${body.slice(0, 500)}`,
+      provider: "openai",
+      model: providerModelId,
+      httpStatus: resp.status,
+      rawResponse: body.slice(0, 2048),
+      requestDurationMs: Date.now() - start,
+    });
+  }
+
+  const data = (await resp.json()) as { text: string };
+  return { transcript: data.text, costDollars: null, latencyMs: Date.now() - start };
+}
 
 // ---------------------------------------------------------------------------
 // Deepgram — serves nova-2, nova-3 via their listen API
@@ -364,34 +390,107 @@ const GroqProvider: SttProvider = {
 
   async transcribe(audio: AudioInput, _durationSeconds: number, env: Env, providerModelId: string): Promise<SttResult> {
     const start = Date.now();
-    const { blob: audioBlob, filename } = await resolveAudioBlob(audio);
 
-    const form = new FormData();
-    form.append("file", new File([audioBlob], filename, { type: audioBlob.type || "audio/mpeg" }));
-    form.append("model", providerModelId);
-
-    const resp = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${env.GROQ_API_KEY}` },
-      body: form,
-    });
-
-    if (!resp.ok) {
-      const body = await resp.text();
-      throw new AiProviderError({
-        message: `Groq STT API error ${resp.status}: ${body.slice(0, 500)}`,
-        provider: "groq",
-        model: providerModelId,
-        httpStatus: resp.status,
-        rawResponse: body.slice(0, 2048),
-        requestDurationMs: Date.now() - start,
-      });
+    // Prefer URL-based transcription — avoids file upload size limits entirely
+    const sourceUrl = "url" in audio ? audio.url : audio.sourceUrl;
+    if (sourceUrl) {
+      try {
+        return await groqUrlRequest(sourceUrl, env, providerModelId, start);
+      } catch (urlErr) {
+        // URL-based failed (CDN block, geo-restriction, etc.) — fall back to chunked upload
+        console.log(JSON.stringify({
+          level: "warn", stage: "transcription", provider: "groq",
+          action: "url_transcription_failed_falling_back",
+          error: urlErr instanceof Error ? urlErr.message : String(urlErr),
+          ts: new Date().toISOString(),
+        }));
+      }
     }
 
-    const data = (await resp.json()) as { text: string };
-    return { transcript: data.text, costDollars: null, latencyMs: Date.now() - start };
+    // Fallback: chunked file upload
+    const audioBuffer = await resolveAudioBuffer(audio);
+    const filename = "buffer" in audio ? audio.filename : "audio.mp3";
+
+    if (audioBuffer.byteLength <= WHISPER_CHUNK_SIZE) {
+      return groqSingleRequest(audioBuffer, filename, env, providerModelId, start);
+    }
+
+    const chunks: string[] = [];
+    for (let offset = 0; offset < audioBuffer.byteLength; offset += WHISPER_CHUNK_SIZE) {
+      const slice = audioBuffer.slice(offset, Math.min(offset + WHISPER_CHUNK_SIZE, audioBuffer.byteLength));
+      const result = await groqSingleRequest(slice, `chunk.mp3`, env, providerModelId, start);
+      if (result.transcript) chunks.push(result.transcript);
+    }
+
+    return { transcript: chunks.join(" "), costDollars: null, latencyMs: Date.now() - start };
   },
 };
+
+async function groqUrlRequest(
+  url: string,
+  env: Env,
+  providerModelId: string,
+  start: number,
+): Promise<SttResult> {
+  const form = new FormData();
+  form.append("url", url);
+  form.append("model", providerModelId);
+
+  const resp = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${env.GROQ_API_KEY}` },
+    body: form,
+  });
+
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new AiProviderError({
+      message: `Groq STT URL-based API error ${resp.status}: ${body.slice(0, 500)}`,
+      provider: "groq",
+      model: providerModelId,
+      httpStatus: resp.status,
+      rawResponse: body.slice(0, 2048),
+      requestDurationMs: Date.now() - start,
+    });
+  }
+
+  const data = (await resp.json()) as { text: string };
+  return { transcript: data.text, costDollars: null, latencyMs: Date.now() - start };
+}
+
+async function groqSingleRequest(
+  buffer: ArrayBuffer,
+  filename: string,
+  env: Env,
+  providerModelId: string,
+  start: number,
+): Promise<SttResult> {
+  const blob = new Blob([buffer], { type: "audio/mpeg" });
+  const form = new FormData();
+  form.append("file", new File([blob], filename, { type: "audio/mpeg" }));
+  form.append("model", providerModelId);
+
+  const resp = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${env.GROQ_API_KEY}` },
+    body: form,
+  });
+
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new AiProviderError({
+      message: `Groq STT API error ${resp.status}: ${body.slice(0, 500)}`,
+      provider: "groq",
+      model: providerModelId,
+      httpStatus: resp.status,
+      rawResponse: body.slice(0, 2048),
+      requestDurationMs: Date.now() - start,
+    });
+  }
+
+  const data = (await resp.json()) as { text: string };
+  return { transcript: data.text, costDollars: null, latencyMs: Date.now() - start };
+}
 
 // ---------------------------------------------------------------------------
 // Cloudflare Workers AI — serves @cf/* models via AI binding

@@ -196,7 +196,7 @@ export async function handleTranscription(
           const durationSeconds = episode.durationSeconds ?? Math.round(audioBuffer.byteLength / (128 * 1000 / 8));
 
           const sttResult = await providerImpl.transcribe(
-            { buffer: audioBuffer, filename: `audio.${ext}` },
+            { buffer: audioBuffer, filename: `audio.${ext}`, sourceUrl: episode.audioUrl },
             durationSeconds,
             env,
             providerModelId
