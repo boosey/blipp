@@ -14,13 +14,13 @@
 	},
 	"vars": {
 		"ENVIRONMENT": "staging",
-		"APP_ORIGIN": "https://staging.podblipp.com",
-		"ALLOWED_ORIGINS": "https://staging.podblipp.com"
+		"APP_ORIGIN": "https://blipp-staging.boosey-boudreaux.workers.dev",
+		"ALLOWED_ORIGINS": "http://localhost:8787,http://localhost:5173,https://blipp-staging.boosey-boudreaux.workers.dev"
 	},
 	"hyperdrive": [
 		{
 			"binding": "HYPERDRIVE",
-			"id": " blipp-db-staging",
+			"id": "a9159ac537a146888ac842448c752e38",
 			"localConnectionString": ""
 		}
 	],
@@ -121,7 +121,7 @@
 			"hyperdrive": [
 				{
 					"binding": "HYPERDRIVE",
-					"id": "blipp-db",
+					"id": "54bb39c4e0df42549c3522999853e127",
 					"localConnectionString": ""
 				}
 			],
