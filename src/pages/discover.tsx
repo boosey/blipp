@@ -286,12 +286,12 @@ export function Discover() {
         /* Browse mode */
         <>
           {/* Category pills */}
-          <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-hide mt-4">
+          <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-hide mt-4 snap-x-mandatory">
             {CATEGORIES.map((cat) => (
               <button
                 key={cat}
                 onClick={() => setSelectedCategory(cat)}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
+                className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors snap-start ${
                   selectedCategory === cat
                     ? "bg-white text-zinc-950"
                     : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
@@ -306,12 +306,12 @@ export function Discover() {
           {trendingPodcasts.length > 0 && (
             <section className="mt-6">
               <h2 className="text-lg font-semibold mb-3">Trending Now</h2>
-              <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-hide">
+              <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-hide snap-x-mandatory">
                 {trendingPodcasts.map((podcast) => (
                   <Link
                     to={`/discover/${podcast.id}`}
                     key={podcast.id}
-                    className="flex-shrink-0 w-28"
+                    className="flex-shrink-0 w-28 snap-start"
                   >
                     {podcast.imageUrl ? (
                       <img
