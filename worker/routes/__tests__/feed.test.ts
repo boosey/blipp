@@ -101,4 +101,40 @@ describe("Feed routes", () => {
       expect(data).toHaveProperty("pending");
     });
   });
+
+  describe("DELETE /:id", () => {
+    it("deletes a feed item and returns success", async () => {
+      mockPrisma.feedItem.deleteMany.mockResolvedValue({ count: 1 });
+
+      const res = await app.request("/fi1", { method: "DELETE" });
+      expect(res.status).toBe(200);
+      const data: any = await res.json();
+      expect(data.success).toBe(true);
+
+      expect(mockPrisma.feedItem.deleteMany).toHaveBeenCalledWith({
+        where: { id: "fi1", userId: "user1" },
+      });
+    });
+
+    it("returns 404 when no item found", async () => {
+      mockPrisma.feedItem.deleteMany.mockResolvedValue({ count: 0 });
+
+      const res = await app.request("/nonexistent", { method: "DELETE" });
+      expect(res.status).toBe(404);
+      const data: any = await res.json();
+      expect(data.error).toBe("Feed item not found");
+    });
+
+    it("scopes delete to the authenticated user", async () => {
+      mockPrisma.feedItem.deleteMany.mockResolvedValue({ count: 1 });
+
+      await app.request("/fi1", { method: "DELETE" });
+
+      expect(mockPrisma.feedItem.deleteMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ userId: "user1" }),
+        })
+      );
+    });
+  });
 });

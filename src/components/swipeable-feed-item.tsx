@@ -4,8 +4,8 @@ import { FeedItemCard } from "./feed-item";
 import type { FeedItem } from "../types/feed";
 
 const SWIPE_THRESHOLD = 10; // px to distinguish swipe from tap
-const LISTENED_THRESHOLD = 0.3; // 30% of card width
-const REMOVE_THRESHOLD = 0.6; // 60% of card width
+const LISTENED_THRESHOLD = 0.3; // 30% of card width (right swipe)
+const REMOVE_THRESHOLD = 0.8; // 80% of card width (left swipe)
 
 interface SwipeableFeedItemProps {
   item: FeedItem;
@@ -43,15 +43,8 @@ export function SwipeableFeedItem({
       return;
     }
 
-    // Only swipe left (negative deltaX)
-    if (deltaX > 0) {
-      setOffset(0);
-      return;
-    }
-
     if (Math.abs(deltaX) > SWIPE_THRESHOLD) {
       swipingRef.current = true;
-      // Prevent vertical scroll while swiping
       e.preventDefault();
       setOffset(deltaX);
     }
@@ -67,12 +60,12 @@ export function SwipeableFeedItem({
     const cardWidth = containerRef.current.offsetWidth;
     const swipeRatio = Math.abs(offset) / cardWidth;
 
-    if (swipeRatio >= REMOVE_THRESHOLD) {
-      // Long swipe — remove
+    if (offset < 0 && swipeRatio >= REMOVE_THRESHOLD) {
+      // Left swipe past 80% — remove
       setRemoving(true);
       onRemove(item.id);
-    } else if (swipeRatio >= LISTENED_THRESHOLD) {
-      // Short swipe — toggle listened
+    } else if (offset > 0 && swipeRatio >= LISTENED_THRESHOLD) {
+      // Right swipe past 30% — toggle listened
       onToggleListened(item.id, !item.listened);
     }
 
@@ -92,8 +85,11 @@ export function SwipeableFeedItem({
 
   const cardWidth = containerRef.current?.offsetWidth ?? 300;
   const swipeRatio = Math.abs(offset) / cardWidth;
-  const isRemoveZone = swipeRatio >= REMOVE_THRESHOLD;
-  const isListenedZone = swipeRatio >= LISTENED_THRESHOLD;
+
+  // Left swipe: delete zone
+  const isRemoveZone = offset < 0 && swipeRatio >= REMOVE_THRESHOLD;
+  // Right swipe: listened zone
+  const isListenedZone = offset > 0 && swipeRatio >= LISTENED_THRESHOLD;
 
   return (
     <div
@@ -103,28 +99,40 @@ export function SwipeableFeedItem({
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
     >
-      {/* Action zones (behind card) */}
+      {/* Left swipe action zone — delete (right side, behind card) */}
       {offset < 0 && (
         <div className="absolute inset-0 flex items-center justify-end">
           <div
             className={`h-full flex items-center justify-center px-6 transition-colors ${
               isRemoveZone
                 ? "bg-red-500/30 text-red-400"
-                : isListenedZone
-                  ? "bg-blue-500/30 text-blue-400"
-                  : "bg-zinc-800 text-zinc-500"
+                : "bg-zinc-800 text-zinc-500"
             }`}
             style={{ width: Math.abs(offset) }}
           >
-            {isRemoveZone ? (
-              <Trash2 className="w-5 h-5" />
-            ) : isListenedZone ? (
+            {isRemoveZone && <Trash2 className="w-5 h-5" />}
+          </div>
+        </div>
+      )}
+
+      {/* Right swipe action zone — listened toggle (left side, behind card) */}
+      {offset > 0 && (
+        <div className="absolute inset-0 flex items-center justify-start">
+          <div
+            className={`h-full flex items-center justify-center px-6 transition-colors ${
+              isListenedZone
+                ? "bg-blue-500/30 text-blue-400"
+                : "bg-zinc-800 text-zinc-500"
+            }`}
+            style={{ width: offset }}
+          >
+            {isListenedZone && (
               item.listened ? (
                 <Check className="w-5 h-5" />
               ) : (
                 <CheckCheck className="w-5 h-5" />
               )
-            ) : null}
+            )}
           </div>
         </div>
       )}
@@ -133,8 +141,7 @@ export function SwipeableFeedItem({
       <div
         className="relative transition-transform duration-75"
         style={{
-          transform: offset < 0 ? `translateX(${offset}px)` : undefined,
-          // Suppress pointer events during swipe to prevent tap
+          transform: offset !== 0 ? `translateX(${offset}px)` : undefined,
           pointerEvents: offset !== 0 ? "none" : undefined,
         }}
       >

@@ -1,13 +1,12 @@
 import { useEffect, useState, useCallback } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Heart, Lock } from "lucide-react";
 import { useApiFetch } from "../lib/api";
 import { DURATION_TIERS } from "../lib/duration-tiers";
 import { Skeleton } from "../components/ui/skeleton";
 import { usePlan } from "../contexts/plan-context";
-import { UpgradePrompt, useUpgradeModal } from "../components/upgrade-prompt";
+import { useUpgradeModal } from "../components/upgrade-prompt";
 import type { PodcastDetail as PodcastDetailType, EpisodeSummary } from "../types/user";
 import type { DurationTier } from "../lib/duration-tiers";
 
@@ -65,6 +64,7 @@ export function PodcastDetail() {
   const [showSubscribeTierPicker, setShowSubscribeTierPicker] = useState(false);
   const [briefTierPickerEpisodeId, setBriefTierPickerEpisodeId] = useState<string | null>(null);
   const [isFavorited, setIsFavorited] = useState(false);
+  const [expandedEpisodeId, setExpandedEpisodeId] = useState<string | null>(null);
   const planUsage = usePlan();
   const { showUpgrade, UpgradeModalElement } = useUpgradeModal();
 
@@ -180,6 +180,13 @@ export function PodcastDetail() {
   if (loading) {
     return (
       <div className="space-y-6">
+        <button
+          onClick={() => navigate(-1)}
+          className="flex items-center gap-1 text-sm text-zinc-400 hover:text-zinc-200 transition-colors -mb-3"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back
+        </button>
         <div className="flex gap-4">
           <Skeleton className="w-24 h-24 rounded-lg flex-shrink-0" />
           <div className="flex-1 space-y-2">
@@ -280,9 +287,12 @@ export function PodcastDetail() {
               {planUsage.subscriptions.limit !== null &&
                 planUsage.subscriptions.remaining !== null &&
                 planUsage.subscriptions.remaining <= 0 ? (
-                <UpgradePrompt
-                  message={`Your ${planUsage.plan.name} plan allows ${planUsage.subscriptions.limit} subscription${planUsage.subscriptions.limit !== 1 ? "s" : ""}. Upgrade to subscribe to more podcasts.`}
-                />
+                <button
+                  onClick={() => navigate("/settings")}
+                  className="px-4 py-1.5 rounded-full text-xs font-medium bg-white text-zinc-950 hover:bg-zinc-200 transition-colors"
+                >
+                  Upgrade to Subscribe
+                </button>
               ) : showSubscribeTierPicker ? (
                 <div className="space-y-2">
                   <p className="text-xs text-zinc-400">Briefing length:</p>
@@ -329,7 +339,12 @@ export function PodcastDetail() {
                 className="bg-zinc-900 border border-zinc-800 rounded-lg p-3"
               >
                 <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0 flex-1">
+                  <button
+                    className="min-w-0 flex-1 text-left"
+                    onClick={() => setExpandedEpisodeId(
+                      expandedEpisodeId === ep.id ? null : ep.id
+                    )}
+                  >
                     <p className="font-medium text-sm">{ep.title}</p>
                     <div className="flex gap-2 text-xs text-zinc-500 mt-1">
                       <span>
@@ -339,7 +354,14 @@ export function PodcastDetail() {
                         <span>{formatDuration(ep.durationSeconds)}</span>
                       )}
                     </div>
-                  </div>
+                    {ep.description && (
+                      <p className={`text-xs text-zinc-500 mt-2 ${
+                        expandedEpisodeId === ep.id ? "" : "line-clamp-2"
+                      }`}>
+                        {ep.description}
+                      </p>
+                    )}
+                  </button>
                   {requestingEpisodeId === ep.id ? (
                     <span className="text-xs text-zinc-500 px-3 py-1.5">
                       ...

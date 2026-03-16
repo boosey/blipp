@@ -162,3 +162,22 @@ feed.patch("/:id/listened", async (c) => {
 
   return c.json({ success: true });
 });
+
+/**
+ * DELETE /:id — Remove a feed item.
+ */
+feed.delete("/:id", async (c) => {
+  const feedItemId = c.req.param("id");
+  const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
+
+  const result = await prisma.feedItem.deleteMany({
+    where: { id: feedItemId, userId: user.id },
+  });
+
+  if (result.count === 0) {
+    return c.json({ error: "Feed item not found" }, 404);
+  }
+
+  return c.json({ success: true });
+});

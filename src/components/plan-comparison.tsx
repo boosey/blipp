@@ -1,0 +1,138 @@
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
+import { useApiFetch } from "../lib/api";
+import { Skeleton } from "./ui/skeleton";
+
+export interface PlanDetail {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  priceCentsMonthly: number;
+  priceCentsAnnual: number | null;
+  features: string[];
+  highlighted: boolean;
+  briefingsPerWeek: number | null;
+  maxDurationMinutes: number;
+  maxPodcastSubscriptions: number | null;
+  adFree: boolean;
+  priorityProcessing: boolean;
+  earlyAccess: boolean;
+}
+
+export function PlanComparison({
+  currentPlanSlug,
+  onUpgrade,
+  onManage,
+  actionLoading,
+}: {
+  currentPlanSlug: string | null;
+  onUpgrade: (plan: PlanDetail) => void;
+  onManage: () => void;
+  actionLoading: string | null;
+}) {
+  const apiFetch = useApiFetch();
+  const [plans, setPlans] = useState<PlanDetail[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    apiFetch<PlanDetail[]>("/plans")
+      .then(setPlans)
+      .catch(() => toast.error("Failed to load plans"))
+      .finally(() => setLoading(false));
+  }, [apiFetch]);
+
+  if (loading) {
+    return (
+      <div className="space-y-3">
+        {Array.from({ length: 2 }, (_, i) => (
+          <Skeleton key={i} className="h-32 w-full rounded-xl" />
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {plans.map((p) => {
+        const isCurrent = currentPlanSlug === p.slug;
+        return (
+          <div
+            key={p.id}
+            className={`bg-zinc-900 border rounded-xl p-4 space-y-3 ${
+              isCurrent
+                ? "border-white"
+                : p.highlighted
+                  ? "border-zinc-600"
+                  : "border-zinc-800"
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-semibold">{p.name}</h3>
+                {p.description && (
+                  <p className="text-xs text-zinc-500 mt-0.5">
+                    {p.description}
+                  </p>
+                )}
+              </div>
+              <div className="text-right">
+                {p.priceCentsMonthly === 0 ? (
+                  <span className="text-sm font-medium">Free</span>
+                ) : (
+                  <span className="text-sm font-medium">
+                    ${(p.priceCentsMonthly / 100).toFixed(2)}/mo
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-xs text-zinc-400">
+              <span>
+                Briefings: {p.briefingsPerWeek ?? "Unlimited"}/week
+              </span>
+              <span>Max duration: {p.maxDurationMinutes}min</span>
+              <span>
+                Subscriptions: {p.maxPodcastSubscriptions ?? "Unlimited"}
+              </span>
+              {p.adFree && (
+                <span className="text-green-400">Ad-free</span>
+              )}
+              {p.priorityProcessing && (
+                <span className="text-green-400">Priority processing</span>
+              )}
+              {p.earlyAccess && (
+                <span className="text-green-400">Early access</span>
+              )}
+            </div>
+            {isCurrent ? (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-zinc-500 bg-zinc-800 px-2.5 py-1 rounded-full">
+                  Current Plan
+                </span>
+                {p.priceCentsMonthly > 0 && (
+                  <button
+                    onClick={onManage}
+                    disabled={actionLoading === "manage"}
+                    className="text-xs text-zinc-400 hover:text-zinc-200"
+                  >
+                    {actionLoading === "manage" ? "..." : "Manage"}
+                  </button>
+                )}
+              </div>
+            ) : p.priceCentsMonthly > 0 ? (
+              <button
+                onClick={() => onUpgrade(p)}
+                disabled={actionLoading === p.id}
+                className="w-full py-2 bg-white text-zinc-950 text-xs font-medium rounded-lg hover:bg-zinc-200 transition-colors disabled:opacity-50"
+              >
+                {actionLoading === p.id
+                  ? "Redirecting..."
+                  : `Upgrade to ${p.name}`}
+              </button>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
