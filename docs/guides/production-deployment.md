@@ -272,7 +272,7 @@ Your Clerk dev instance is created automatically with your account.
 
 ## Phase 6: Stripe Billing
 
-**Requires:** Databases seeded from Phase 4 (Plan records must exist before updating with Stripe IDs).
+**Requires:** Databases seeded from Phase 4 (Plan records must exist — the script reads them to create matching Stripe products).
 
 > Stripe now uses **Sandboxes** (not "Test mode"). Sandboxes are accessed via the **account picker** (top-left of dashboard).
 
@@ -281,35 +281,22 @@ Your Clerk dev instance is created automatically with your account.
 - [ ] Log into https://dashboard.stripe.com
 - [ ] Use the **account picker** to select or create a sandbox
 
-**Create test products (inside sandbox):**
-
-- [ ] **Product catalog** → **Add product** → Name: `Pro`
-  - Monthly: $9.99/month (recurring), Annual: $99.99/year (recurring)
-  - Copy Product ID (`prod_...`) and both Price IDs (`price_...`)
-- [ ] **Add product** → Name: `Pro+`
-  - Monthly: $19.99/month (recurring), Annual: $179.99/year (recurring)
-  - Copy Product ID and both Price IDs
-
-**Update staging database with Stripe IDs:**
-
-```sql
--- Run against STAGING database (via Neon SQL Editor or prisma studio)
-UPDATE "Plan" SET
-  "stripePriceIdMonthly" = 'price_STAGING_MONTHLY',
-  "stripePriceIdAnnual" = 'price_STAGING_ANNUAL',
-  "stripeProductId" = 'prod_STAGING_PRO'
-WHERE slug = 'pro';
-
-UPDATE "Plan" SET
-  "stripePriceIdMonthly" = 'price_STAGING_MONTHLY',
-  "stripePriceIdAnnual" = 'price_STAGING_ANNUAL',
-  "stripeProductId" = 'prod_STAGING_PROPLUS'
-WHERE slug = 'pro-plus';
-```
-
-**Collect keys:**
+**Collect sandbox key:**
 - [ ] **Developers Dashboard > API keys** tab → Copy **Secret Key** (`sk_test_...`)
 - [ ] Save as `STRIPE_SECRET_KEY_STAGING`
+
+**Create products and update database (automated):**
+
+The script reads paid Plan records from the database, creates matching Stripe products and prices, and updates the Plan records with the Stripe-generated IDs:
+
+```bash
+DATABASE_URL="YOUR_STAGING_CONNECTION_STRING" \
+STRIPE_SECRET_KEY="sk_test_..." \
+npx tsx scripts/setup-stripe.ts
+```
+
+- [ ] Products created in Stripe sandbox (Pro, Pro+)
+- [ ] Plan records updated with `stripeProductId`, `stripePriceIdMonthly`, `stripePriceIdAnnual`
 
 **Webhook setup is deferred to Phase 13.**
 
@@ -320,38 +307,27 @@ WHERE slug = 'pro-plus';
 - [ ] Once approved, use the **account picker** to exit sandbox into live mode
 - [ ] **Note:** Account country cannot be changed after activation
 
-**Create live products (in live mode):**
+**Collect live key:**
+- [ ] In live mode, **Developers Dashboard > API keys** tab → Copy **Secret Key** (`sk_live_...`)
+- [ ] Save as `STRIPE_SECRET_KEY_PRODUCTION`
 
-Same products as sandbox. Or use **Copy to live mode** on the Product catalog page if you created them in sandbox first.
+**Create products and update database (automated):**
 
-- [ ] Pro: Monthly $9.99, Annual $99.99 — copy Product ID + Price IDs
-- [ ] Pro+: Monthly $19.99, Annual $179.99 — copy Product ID + Price IDs
+Same script, different keys:
 
-**Update production database with live Stripe IDs:**
-
-```sql
--- Run against PRODUCTION database
-UPDATE "Plan" SET
-  "stripePriceIdMonthly" = 'price_LIVE_MONTHLY',
-  "stripePriceIdAnnual" = 'price_LIVE_ANNUAL',
-  "stripeProductId" = 'prod_LIVE_PRO'
-WHERE slug = 'pro';
-
-UPDATE "Plan" SET
-  "stripePriceIdMonthly" = 'price_LIVE_MONTHLY',
-  "stripePriceIdAnnual" = 'price_LIVE_ANNUAL',
-  "stripeProductId" = 'prod_LIVE_PROPLUS'
-WHERE slug = 'pro-plus';
+```bash
+DATABASE_URL="YOUR_PRODUCTION_CONNECTION_STRING" \
+STRIPE_SECRET_KEY="sk_live_..." \
+npx tsx scripts/setup-stripe.ts
 ```
+
+- [ ] Products created in Stripe live mode
+- [ ] Production Plan records updated with live Stripe IDs
 
 **Configure customer portal:**
 - [ ] **Settings > Billing > Portal** (URL: `dashboard.stripe.com/settings/billing/portal`)
 - [ ] Allow: cancellations, plan switching, payment method updates
 - [ ] Customize branding in **Settings > Branding**
-
-**Collect keys:**
-- [ ] In live mode, **Developers Dashboard > API keys** tab → Copy **Secret Key** (`sk_live_...`)
-- [ ] Save as `STRIPE_SECRET_KEY_PRODUCTION`
 
 **Webhook setup is deferred to Phase 13.**
 
@@ -819,6 +795,7 @@ Set staging to use cheapest AI models (via admin UI at `workers.dev` URL → `/a
 |--------|---------|-------|
 | `scripts/setup-db.sh` | Push schema + seed both databases | `neon-config.env` |
 | `scripts/setup-infra.sh` | Create R2, queues, Hyperdrive, patch wrangler.jsonc | `neon-config.env` |
+| `scripts/setup-stripe.ts` | Create Stripe products/prices, update Plan records | `DATABASE_URL` + `STRIPE_SECRET_KEY` env vars |
 | `scripts/set-secrets.sh` | Batch-set Cloudflare Worker secrets | `secrets-*.env [--env production]` |
 
 ### Templates
