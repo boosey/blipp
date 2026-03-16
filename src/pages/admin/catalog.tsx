@@ -84,6 +84,7 @@ const STATUS_LABELS: Record<PodcastStatus, string> = {
   active: "Active",
   paused: "Paused",
   archived: "Archived",
+  pending_deletion: "Pending Deletion",
 };
 
 // ── Helpers ──

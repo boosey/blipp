@@ -3,8 +3,6 @@ import type { Env } from "../../types";
 import { PIPELINE_STAGE_NAMES } from "../../lib/constants";
 import { parsePagination, parseSort, paginatedResponse } from "../../lib/admin-helpers";
 import { getAuth } from "../../middleware/auth";
-import { getCatalogSource } from "../../lib/catalog-sources";
-import { getConfig } from "../../lib/config";
 
 const podcastsRoutes = new Hono<{ Bindings: Env }>();
 
@@ -48,7 +46,7 @@ podcastsRoutes.get("/stats", async (c) => {
     if (row.feedHealth) healthMap[row.feedHealth] = row._count;
   }
 
-  const statusMap: Record<string, number> = { active: 0, paused: 0, archived: 0 };
+  const statusMap: Record<string, number> = { active: 0, paused: 0, archived: 0, pending_deletion: 0 };
   for (const row of byStatus) {
     statusMap[row.status] = row._count;
   }
@@ -67,6 +65,7 @@ podcastsRoutes.get("/", async (c) => {
   const search = c.req.query("search");
   const health = c.req.query("health");
   const status = c.req.query("status");
+  const language = c.req.query("language");
   const orderBy = parseSort(c, "createdAt", ["createdAt", "title", "episodeCount", "status", "lastFetchedAt"]);
 
   const where: Record<string, unknown> = {};
@@ -79,6 +78,7 @@ podcastsRoutes.get("/", async (c) => {
   }
   if (health) where.feedHealth = health;
   if (status) where.status = status;
+  if (language) where.language = language;
 
   const [podcasts, total] = await Promise.all([
     prisma.podcast.findMany({
@@ -112,6 +112,81 @@ podcastsRoutes.get("/", async (c) => {
   }));
 
   return c.json(paginatedResponse(data, total, page, pageSize));
+});
+
+// POST /catalog-seed - Wipe and reseed the catalog
+podcastsRoutes.post("/catalog-seed", async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+
+  if (!body.confirm) {
+    return c.json({ error: "Confirmation required. Send { confirm: true } to wipe and reseed." }, 400);
+  }
+
+  await c.env.CATALOG_REFRESH_QUEUE.send({ action: "seed" });
+  return c.json({ status: "queued", message: "Catalog seed started. Poll /catalog-refresh/status for progress." });
+});
+
+// GET /catalog-refresh/status - Poll catalog refresh progress
+podcastsRoutes.get("/catalog-refresh/status", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const config = await prisma.platformConfig.findUnique({
+    where: { key: "catalogRefresh.status" },
+  });
+  const status = config ? config.value : "idle";
+  return c.json({ status });
+});
+
+// POST /bulk-status - Bulk update podcast status
+podcastsRoutes.post("/bulk-status", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const { podcastIds, status } = await c.req.json();
+
+  if (!podcastIds?.length || !["active", "archived"].includes(status)) {
+    return c.json({ error: "podcastIds (string[]) and status ('active' | 'archived') required" }, 400);
+  }
+
+  const result = await prisma.podcast.updateMany({
+    where: { id: { in: podcastIds } },
+    data: { status },
+  });
+
+  return c.json({ updated: result.count });
+});
+
+// GET /languages - Distinct podcast languages
+podcastsRoutes.get("/languages", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const results = await prisma.podcast.findMany({
+    where: { language: { not: null } },
+    select: { language: true },
+    distinct: ["language"],
+    orderBy: { language: "asc" },
+  });
+  return c.json({ languages: results.map((r: any) => r.language) });
+});
+
+// GET /categories - All categories with podcast counts
+podcastsRoutes.get("/categories", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const categories = await prisma.category.findMany({
+    orderBy: { name: "asc" },
+  });
+
+  const counts = await prisma.podcastCategory.groupBy({
+    by: ["categoryId"],
+    _count: true,
+  });
+
+  const countMap = new Map(counts.map((row: any) => [row.categoryId, row._count]));
+
+  return c.json({
+    categories: categories.map((cat: any) => ({
+      id: cat.id,
+      name: cat.name,
+      appleGenreId: cat.appleGenreId,
+      podcastCount: countMap.get(cat.id) ?? 0,
+    })),
+  });
 });
 
 // GET /:id - Podcast detail
@@ -310,115 +385,10 @@ podcastsRoutes.post("/cleanup-execute", async (c) => {
   return c.json({ data: { archived: result.count } });
 });
 
-// POST /catalog-refresh - Fetch trending podcasts + their episodes via configured catalog source
+// POST /catalog-refresh - Enqueue catalog refresh to background queue
 podcastsRoutes.post("/catalog-refresh", async (c) => {
-  const prisma = c.get("prisma") as any;
-
-  const sourceId = await getConfig(prisma, "catalog.source", "podcast-index") as string;
-  const seedSize = await getConfig(prisma, "catalog.seedSize", 200) as number;
-  const source = getCatalogSource(sourceId);
-  const discovered = await source.discover(seedSize, c.env);
-
-  let created = 0;
-  let updated = 0;
-  const podcastIds: string[] = [];
-
-  for (const feed of discovered) {
-    const podcast = await prisma.podcast.upsert({
-      where: { feedUrl: feed.feedUrl },
-      create: {
-        feedUrl: feed.feedUrl,
-        title: feed.title,
-        description: feed.description ?? null,
-        imageUrl: feed.imageUrl ?? null,
-        podcastIndexId: feed.podcastIndexId ?? null,
-        author: feed.author ?? null,
-        source: "trending",
-      },
-      update: {
-        title: feed.title,
-        description: feed.description ?? undefined,
-        imageUrl: feed.imageUrl ?? undefined,
-        author: feed.author ?? undefined,
-        podcastIndexId: feed.podcastIndexId ?? undefined,
-      },
-    });
-
-    podcastIds.push(podcast.id);
-    // Detect if newly created (within last 5s)
-    if (Date.now() - new Date(podcast.createdAt).getTime() < 5000) {
-      created++;
-    } else {
-      updated++;
-    }
-  }
-
-  // Fetch last 5 episodes per podcast via Podcast Index API (concurrent batches)
-  // Episode ingestion still uses PodcastIndexClient directly — CatalogSource only covers discovery
-  const { PodcastIndexClient } = await import("../../lib/podcast-index");
-  const client = new PodcastIndexClient(c.env.PODCAST_INDEX_KEY, c.env.PODCAST_INDEX_SECRET);
-
-  let episodesCreated = 0;
-  let episodeErrors = 0;
-  const BATCH_SIZE = 10;
-
-  // Only fetch episodes for podcasts that have podcastIndexIds (Podcast Index IDs)
-  const feedsWithIds = discovered.filter((f) => f.podcastIndexId);
-
-  for (let i = 0; i < feedsWithIds.length; i += BATCH_SIZE) {
-    const batch = feedsWithIds.slice(i, i + BATCH_SIZE);
-    const results = await Promise.allSettled(
-      batch.map(async (feed) => {
-        const episodes = await client.episodesByFeedId(Number(feed.podcastIndexId), 5);
-        const podcast = await prisma.podcast.findUnique({
-          where: { podcastIndexId: feed.podcastIndexId },
-          select: { id: true },
-        });
-        if (!podcast) return 0;
-
-        let count = 0;
-        for (const ep of episodes) {
-          if (!ep.guid || !ep.enclosureUrl) continue;
-          await prisma.episode.upsert({
-            where: { podcastId_guid: { podcastId: podcast.id, guid: ep.guid } },
-            create: {
-              podcastId: podcast.id,
-              title: ep.title,
-              description: ep.description ?? null,
-              audioUrl: ep.enclosureUrl,
-              publishedAt: new Date(ep.datePublished * 1000),
-              durationSeconds: ep.duration || null,
-              guid: ep.guid,
-              transcriptUrl: ep.transcriptUrl ?? null,
-            },
-            update: {},
-          });
-          count++;
-        }
-
-        await prisma.podcast.update({
-          where: { id: podcast.id },
-          data: { lastFetchedAt: new Date() },
-        });
-        return count;
-      })
-    );
-
-    for (const r of results) {
-      if (r.status === "fulfilled") episodesCreated += r.value;
-      else episodeErrors++;
-    }
-  }
-
-  return c.json({
-    data: {
-      feedsFound: discovered.length,
-      created,
-      updated,
-      episodesCreated,
-      episodeErrors,
-    },
-  });
+  await c.env.CATALOG_REFRESH_QUEUE.send({ action: "refresh" });
+  return c.json({ status: "queued", message: "Catalog refresh started. Poll /catalog-refresh/status for progress." });
 });
 
 // POST / - Create podcast
