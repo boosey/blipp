@@ -5,6 +5,7 @@ import { AudioProvider, useAudio } from "../contexts/audio-context";
 import { PlanProvider } from "../contexts/plan-context";
 import { MiniPlayer } from "../components/mini-player";
 import { OnboardingProvider, useOnboarding } from "../contexts/onboarding-context";
+import { OfflineIndicator } from "../components/offline-indicator";
 
 function MobileLayoutInner() {
   const { currentItem } = useAudio();
@@ -24,6 +25,7 @@ function MobileLayoutInner() {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-50 flex flex-col">
+      <OfflineIndicator />
       {/* Header */}
       <header className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
         <span className="text-lg font-bold">Blipp</span>
