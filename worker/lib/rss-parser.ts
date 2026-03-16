@@ -32,6 +32,8 @@ export interface ParsedFeed {
   imageUrl: string | null;
   /** Podcast author */
   author: string | null;
+  /** Podcast language (e.g., "en-us") from RSS <language> tag */
+  language?: string;
   /** Parsed episodes */
   episodes: ParsedEpisode[];
 }
@@ -149,6 +151,7 @@ export function parseRssFeed(xml: string): ParsedFeed {
       channel.image?.url ??
       null,
     author: channel["itunes:author"] ?? channel.author ?? null,
+    language: channel.language || undefined,
     episodes,
   };
 }
