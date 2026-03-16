@@ -2,10 +2,11 @@ import { useEffect, useState, useCallback } from "react";
 import { Headphones } from "lucide-react";
 import { toast } from "sonner";
 import { useApiFetch } from "../lib/api";
-import { FeedItemCard } from "../components/feed-item";
+import { SwipeableFeedItem } from "../components/swipeable-feed-item";
 import { FeedSkeleton } from "../components/skeletons/feed-skeleton";
 import { EmptyState } from "../components/empty-state";
 import type { FeedItem } from "../types/feed";
+import { usePullToRefresh } from "../hooks/use-pull-to-refresh";
 
 export function Home() {
   const apiFetch = useApiFetch();
@@ -22,6 +23,10 @@ export function Home() {
       setLoading(false);
     }
   }, [apiFetch]);
+
+  const { indicator: pullIndicator, bind: pullBind } = usePullToRefresh({
+    onRefresh: fetchFeed,
+  });
 
   useEffect(() => {
     fetchFeed();
@@ -51,6 +56,51 @@ export function Home() {
     );
   }
 
+  function handleToggleListened(feedItemId: string, listened: boolean) {
+    // Optimistic update
+    setItems((prev) =>
+      prev.map((i) => (i.id === feedItemId ? { ...i, listened } : i))
+    );
+    apiFetch(`/feed/${feedItemId}/listened`, { method: "PATCH" }).catch(() => {
+      // Revert on failure
+      setItems((prev) =>
+        prev.map((i) => (i.id === feedItemId ? { ...i, listened: !listened } : i))
+      );
+      toast.error("Failed to update");
+    });
+  }
+
+  function handleRemove(feedItemId: string) {
+    const removedItem = items.find((i) => i.id === feedItemId);
+    if (!removedItem) return;
+
+    // Optimistic removal
+    setItems((prev) => prev.filter((i) => i.id !== feedItemId));
+
+    const timeoutId = setTimeout(() => {
+      apiFetch(`/feed/${feedItemId}`, { method: "DELETE" }).catch(() => {
+        // Restore on failure
+        setItems((prev) => [...prev, removedItem].sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        ));
+        toast.error("Failed to remove item");
+      });
+    }, 5000);
+
+    toast("Item removed", {
+      action: {
+        label: "Undo",
+        onClick: () => {
+          clearTimeout(timeoutId);
+          setItems((prev) => [...prev, removedItem].sort(
+            (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          ));
+        },
+      },
+      duration: 5000,
+    });
+  }
+
   if (loading) {
     return <FeedSkeleton />;
   }
@@ -67,11 +117,18 @@ export function Home() {
   }
 
   return (
-    <div>
+    <div {...pullBind}>
+      {pullIndicator}
       <h1 className="text-xl font-bold mb-4">Your Feed</h1>
       <div className="space-y-2">
         {items.map((item) => (
-          <FeedItemCard key={item.id} item={item} onPlay={handlePlay} />
+          <SwipeableFeedItem
+            key={item.id}
+            item={item}
+            onPlay={handlePlay}
+            onToggleListened={handleToggleListened}
+            onRemove={handleRemove}
+          />
         ))}
       </div>
     </div>
