@@ -47,10 +47,27 @@ export async function handleBriefingAssembly(
           where: { requestId },
         });
 
-        const completedJobs = jobs.filter(
-          (j: any) => j.status === "COMPLETED" && j.clipId
-        );
-        const failedJobs = jobs.filter((j: any) => j.status === "FAILED");
+        // Resolve clipId for completed jobs — fall back to direct Clip lookup
+        // if Hyperdrive cache returns stale null clipId
+        const completedJobs = [];
+        const failedJobs = [];
+        for (const job of jobs) {
+          if (job.status === "FAILED") {
+            failedJobs.push(job);
+            continue;
+          }
+          let clipId = job.clipId;
+          if (job.status === "COMPLETED" && !clipId) {
+            const clip = await prisma.clip.findUnique({
+              where: { episodeId_durationTier: { episodeId: job.episodeId, durationTier: job.durationTier } },
+              select: { id: true },
+            });
+            clipId = clip?.id ?? null;
+          }
+          if (clipId) {
+            completedJobs.push({ ...job, clipId });
+          }
+        }
 
         log.info("jobs_loaded", {
           requestId,

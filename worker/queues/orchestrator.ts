@@ -198,14 +198,36 @@ async function handleJobStageComplete(
     return;
   }
 
-  const nextStage = NEXT_STAGE[job.currentStage];
+  // Use completedStage from message (authoritative) rather than job.currentStage
+  // (which may be stale due to Hyperdrive read caching).
+  const STAGE_ORDER = ["TRANSCRIPTION", "DISTILLATION", "NARRATIVE_GENERATION", "AUDIO_GENERATION"];
+  const completedStage = msg.body.completedStage ?? job.currentStage;
+  const completedIdx = STAGE_ORDER.indexOf(completedStage);
+  const currentIdx = STAGE_ORDER.indexOf(job.currentStage);
+
+  // Drop if the job has already advanced past the reported stage
+  if (completedIdx >= 0 && currentIdx >= 0 && completedIdx < currentIdx) {
+    log.info("stage_already_advanced", { jobId, completedStage, currentStage: job.currentStage });
+    msg.ack();
+    return;
+  }
+
+  const nextStage = NEXT_STAGE[completedStage];
 
   if (nextStage) {
-    // Advance to next stage
-    await prisma.pipelineJob.update({
-      where: { id: jobId },
+    // Atomic CAS: advance from completedStage → nextStage.
+    // Uses completedStage (from message) as the CAS condition, not the potentially
+    // stale job.currentStage from Hyperdrive. Only one concurrent handler wins.
+    const advanced = await prisma.pipelineJob.updateMany({
+      where: { id: jobId, currentStage: completedStage },
       data: { currentStage: nextStage, status: "IN_PROGRESS" },
     });
+
+    if (advanced.count === 0) {
+      log.info("cas_failed_already_advanced", { jobId, from: completedStage, to: nextStage });
+      msg.ack();
+      return;
+    }
 
     const queueBinding = STAGE_QUEUE_MAP[nextStage];
     const message: Record<string, any> = { jobId, episodeId: job.episodeId, correlationId: msg.body.correlationId };
@@ -215,14 +237,20 @@ async function handleJobStageComplete(
 
     await env[queueBinding].send(message);
 
-    log.info("job_stage_advanced", { jobId, from: job.currentStage, to: nextStage });
+    log.info("job_stage_advanced", { jobId, from: completedStage, to: nextStage });
     msg.ack();
   } else {
-    // Terminal stage (clip gen done) - mark job completed
-    await prisma.pipelineJob.update({
-      where: { id: jobId },
+    // Terminal stage — atomic CAS to prevent duplicate assembly dispatches
+    const completed = await prisma.pipelineJob.updateMany({
+      where: { id: jobId, status: { not: "COMPLETED" } },
       data: { status: "COMPLETED", completedAt: new Date() },
     });
+
+    if (completed.count === 0) {
+      log.info("job_already_completed", { jobId });
+      msg.ack();
+      return;
+    }
 
     log.info("job_completed", { jobId });
 

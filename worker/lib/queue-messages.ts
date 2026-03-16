@@ -8,6 +8,8 @@ export interface OrchestratorMessage {
   requestId: string;
   action: "evaluate" | "job-stage-complete" | "job-failed";
   jobId?: string;
+  /** The stage that just completed — used for idempotency in job-stage-complete */
+  completedStage?: string;
   correlationId?: string;
   errorMessage?: string;
 }

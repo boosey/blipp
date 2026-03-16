@@ -4,7 +4,7 @@ import { checkStageEnabled } from "../lib/queue-helpers";
 import { generateNarrative, selectClaimsForDuration, type EpisodeMetadata } from "../lib/distillation";
 import { resolveStageModel } from "../lib/model-resolution";
 import { getLlmProviderImpl } from "../lib/llm-providers";
-import { wpKey, putWorkProduct } from "../lib/work-products";
+import { wpKey, putWorkProduct, getWorkProduct } from "../lib/work-products";
 import { writeEvent } from "../lib/pipeline-events";
 import { writeAiError, classifyAiError, AiProviderError } from "../lib/ai-errors";
 import { recordSuccess, recordFailure } from "../lib/circuit-breaker";
@@ -68,14 +68,20 @@ export async function handleNarrativeGeneration(
 
         await writeEvent(prisma, step.id, "INFO", "Checking cache for existing narrative");
 
-        // Cache check: if NARRATIVE WorkProduct already exists for (episodeId, durationTier), mark SKIPPED
-        const existingNarrativeWp = await prisma.workProduct.findFirst({
-          where: { type: "NARRATIVE", episodeId, durationTier },
-        });
+        // Cache check: narrative already exists in R2
+        const narrativeCacheKey = wpKey({ type: "NARRATIVE", episodeId, durationTier });
+        const existingNarrative = await env.R2.head(narrativeCacheKey);
 
-        if (existingNarrativeWp) {
-          await writeEvent(prisma, step.id, "INFO", "Cache hit — narrative work product exists, skipping");
+        if (existingNarrative) {
+          await writeEvent(prisma, step.id, "INFO", "Cache hit — narrative exists in R2, skipping");
           log.debug("cache_hit", { episodeId, durationTier });
+
+          // Ensure WorkProduct index row exists for UI
+          await prisma.workProduct.upsert({
+            where: { r2Key: narrativeCacheKey },
+            update: {},
+            create: { type: "NARRATIVE", episodeId, durationTier, r2Key: narrativeCacheKey, sizeBytes: existingNarrative.size },
+          });
 
           // Mark step SKIPPED (cached)
           await prisma.pipelineStep.update({
@@ -85,7 +91,6 @@ export async function handleNarrativeGeneration(
               cached: true,
               completedAt: new Date(),
               durationMs: Date.now() - startTime,
-              workProductId: existingNarrativeWp.id,
             },
           });
 
@@ -94,6 +99,7 @@ export async function handleNarrativeGeneration(
             requestId: job.requestId,
             action: "job-stage-complete",
             jobId,
+            completedStage: "NARRATIVE_GENERATION",
             correlationId,
           });
 
@@ -101,17 +107,15 @@ export async function handleNarrativeGeneration(
           continue;
         }
 
-        // Load distillation claims from DB
-        const distillation = await prisma.distillation.findFirst({
-          where: { episodeId, status: "COMPLETED" },
-        });
-
-        if (!distillation?.claimsJson) {
-          await writeEvent(prisma, step.id, "ERROR", "No completed distillation with claims found");
+        // Load claims from R2 (written by distillation stage)
+        const claimsR2Key = wpKey({ type: "CLAIMS", episodeId });
+        const claimsData = await getWorkProduct(env.R2, claimsR2Key);
+        if (!claimsData) {
+          await writeEvent(prisma, step.id, "ERROR", "No claims in R2 — distillation stage must run first");
           throw new Error("No completed distillation with claims found");
         }
-
-        const allClaims = distillation.claimsJson as any[];
+        const allClaims = JSON.parse(new TextDecoder().decode(claimsData)) as any[];
+        await writeEvent(prisma, step.id, "INFO", `Loaded ${allClaims.length} claims from R2`);
 
         // Select claims for this duration tier (filters by importance/novelty composite score)
         const hasExcerpts = allClaims.length > 0 && "excerpt" in allClaims[0];
@@ -164,36 +168,30 @@ export async function handleNarrativeGeneration(
         await writeEvent(prisma, step.id, "DEBUG", `Model: ${narrativeUsage.model}`, { inputTokens: narrativeUsage.inputTokens, outputTokens: narrativeUsage.outputTokens, cost: narrativeUsage.cost });
         log.info("narrative_generated", { episodeId, wordCount });
 
-        // Store narrative WorkProduct in R2
+        // Write narrative to R2 + index in DB
         const narrativeR2Key = wpKey({ type: "NARRATIVE", episodeId, durationTier });
         await putWorkProduct(env.R2, narrativeR2Key, narrative);
-        const narrativeWp = await prisma.workProduct.create({
-          data: {
-            type: "NARRATIVE",
-            episodeId,
-            durationTier,
-            r2Key: narrativeR2Key,
-            sizeBytes: new TextEncoder().encode(narrative).byteLength,
-            metadata: { wordCount },
-          },
+        const sizeBytes = new TextEncoder().encode(narrative).byteLength;
+        await prisma.workProduct.upsert({
+          where: { r2Key: narrativeR2Key },
+          update: { sizeBytes, metadata: { wordCount } },
+          create: { type: "NARRATIVE", episodeId, durationTier, r2Key: narrativeR2Key, sizeBytes, metadata: { wordCount } },
         });
+        await writeEvent(prisma, step.id, "INFO", "Saved narrative to R2", { r2Key: narrativeR2Key, wordCount });
 
-        await writeEvent(prisma, step.id, "INFO", "Saved narrative work product to R2", { r2Key: narrativeR2Key, wordCount });
-
-        // Upsert Clip record with narrative text (status stays partial — audio gen completes it)
+        // Upsert Clip record (narrative content lives in R2 only)
+        const distillation = await prisma.distillation.findUnique({ where: { episodeId } });
         await prisma.clip.upsert({
           where: { episodeId_durationTier: { episodeId, durationTier } },
           update: {
-            narrativeText: narrative,
             wordCount,
-            distillationId: distillation.id,
+            ...(distillation ? { distillationId: distillation.id } : {}),
           },
           create: {
             episodeId,
-            distillationId: distillation.id,
+            distillationId: distillation?.id ?? "unknown",
             durationTier,
             status: "PENDING",
-            narrativeText: narrative,
             wordCount,
           },
         });
@@ -205,7 +203,6 @@ export async function handleNarrativeGeneration(
             status: "COMPLETED",
             completedAt: new Date(),
             durationMs: Date.now() - startTime,
-            workProductId: narrativeWp.id,
             model: narrativeUsage.model,
             inputTokens: narrativeUsage.inputTokens,
             outputTokens: narrativeUsage.outputTokens,
@@ -220,6 +217,7 @@ export async function handleNarrativeGeneration(
           requestId: job.requestId,
           action: "job-stage-complete",
           jobId,
+          completedStage: "NARRATIVE_GENERATION",
           correlationId,
         });
 

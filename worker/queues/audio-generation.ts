@@ -5,7 +5,7 @@ import { generateSpeech } from "../lib/tts";
 
 import { resolveStageModel } from "../lib/model-resolution";
 import { getTtsProviderImpl } from "../lib/tts-providers";
-import { wpKey, putWorkProduct } from "../lib/work-products";
+import { wpKey, putWorkProduct, getWorkProduct } from "../lib/work-products";
 import { writeEvent } from "../lib/pipeline-events";
 import { writeAiError, classifyAiError, AiProviderError } from "../lib/ai-errors";
 import { recordSuccess, recordFailure } from "../lib/circuit-breaker";
@@ -67,58 +67,60 @@ export async function handleAudioGeneration(
 
         await writeEvent(prisma, step.id, "INFO", "Checking cache for completed audio clip");
 
-        // Cache check: if Clip already COMPLETED and AUDIO_CLIP WorkProduct exists, mark SKIPPED
+        // Cache check: audio clip already exists in R2
+        const cachedAudioR2Key = wpKey({ type: "AUDIO_CLIP", episodeId, durationTier, voice: "default" });
+        const existingAudio = await env.R2.head(cachedAudioR2Key);
         const existingClip = await prisma.clip.findUnique({
           where: { episodeId_durationTier: { episodeId, durationTier } },
         });
 
-        if (existingClip?.status === "COMPLETED") {
-          const existingAudioWp = await prisma.workProduct.findFirst({
-            where: { type: "AUDIO_CLIP", episodeId, durationTier },
+        if (existingAudio && existingClip?.status === "COMPLETED") {
+          log.debug("cache_hit", { episodeId, durationTier });
+          await writeEvent(prisma, step.id, "INFO", "Cache hit — audio clip exists in R2, skipping");
+
+          // Ensure WorkProduct index row exists for UI
+          await prisma.workProduct.upsert({
+            where: { r2Key: cachedAudioR2Key },
+            update: {},
+            create: { type: "AUDIO_CLIP", episodeId, durationTier, voice: "default", r2Key: cachedAudioR2Key, sizeBytes: existingAudio.size },
           });
 
-          if (existingAudioWp) {
-            log.debug("cache_hit", { episodeId, durationTier });
-            await writeEvent(prisma, step.id, "INFO", "Cache hit — completed audio clip exists, skipping");
+          await prisma.pipelineStep.update({
+            where: { id: step.id },
+            data: {
+              status: "SKIPPED",
+              cached: true,
+              completedAt: new Date(),
+              durationMs: Date.now() - startTime,
+            },
+          });
 
-            // Mark step SKIPPED (cached)
-            await prisma.pipelineStep.update({
-              where: { id: step.id },
-              data: {
-                status: "SKIPPED",
-                cached: true,
-                completedAt: new Date(),
-                durationMs: Date.now() - startTime,
-                workProductId: existingAudioWp.id,
-              },
-            });
+          await prisma.pipelineJob.update({
+            where: { id: jobId },
+            data: { clipId: existingClip.id },
+          });
 
-            // Update job with cached clipId
-            await prisma.pipelineJob.update({
-              where: { id: jobId },
-              data: { clipId: existingClip.id },
-            });
+          await env.ORCHESTRATOR_QUEUE.send({
+            requestId: job.requestId,
+            action: "job-stage-complete",
+            jobId,
+            completedStage: "AUDIO_GENERATION",
+            correlationId,
+          });
 
-            // Report to orchestrator
-            await env.ORCHESTRATOR_QUEUE.send({
-              requestId: job.requestId,
-              action: "job-stage-complete",
-              jobId,
-              correlationId,
-            });
-
-            msg.ack();
-            continue;
-          }
+          msg.ack();
+          continue;
         }
 
-        // Load narrative text from Clip record (set by narrative stage)
-        if (!existingClip?.narrativeText) {
-          await writeEvent(prisma, step.id, "ERROR", "No clip with narrative text found — narrative stage must run first");
-          throw new Error("No clip with narrative text found — narrative stage must run first");
+        // Load narrative from R2 (written by narrative stage)
+        const narrativeR2Key = wpKey({ type: "NARRATIVE", episodeId, durationTier });
+        const narrativeData = await getWorkProduct(env.R2, narrativeR2Key);
+        if (!narrativeData) {
+          await writeEvent(prisma, step.id, "ERROR", "No narrative in R2 — narrative stage must run first");
+          throw new Error("No narrative found — narrative stage must run first");
         }
-
-        const narrative = existingClip.narrativeText;
+        const narrative = new TextDecoder().decode(narrativeData);
+        await writeEvent(prisma, step.id, "INFO", `Loaded narrative from R2 (${narrative.length} bytes)`);
 
         // Read model config
         const resolved = await resolveStageModel(prisma, "tts");
@@ -133,21 +135,15 @@ export async function handleAudioGeneration(
         await writeEvent(prisma, step.id, "INFO", "Audio generated successfully");
         await writeEvent(prisma, step.id, "DEBUG", `Audio size: ${audio.byteLength} bytes`, { model: ttsUsage.model, sizeBytes: audio.byteLength });
 
-        // Store AUDIO_CLIP WorkProduct in R2
+        // Write audio to R2 + index in DB
         const audioR2Key = wpKey({ type: "AUDIO_CLIP", episodeId, durationTier, voice: "default" });
         await putWorkProduct(env.R2, audioR2Key, audio);
-        const audioWp = await prisma.workProduct.create({
-          data: {
-            type: "AUDIO_CLIP",
-            episodeId,
-            durationTier,
-            voice: "default",
-            r2Key: audioR2Key,
-            sizeBytes: audio.byteLength,
-          },
+        await prisma.workProduct.upsert({
+          where: { r2Key: audioR2Key },
+          update: { sizeBytes: audio.byteLength },
+          create: { type: "AUDIO_CLIP", episodeId, durationTier, voice: "default", r2Key: audioR2Key, sizeBytes: audio.byteLength },
         });
-
-        await writeEvent(prisma, step.id, "INFO", "Saved audio clip to R2 and updated clip record", { r2Key: audioR2Key });
+        await writeEvent(prisma, step.id, "INFO", "Saved audio clip to R2", { r2Key: audioR2Key });
 
         // Update Clip record: status COMPLETED, store audioKey
         const audioKey = wpKey({ type: "AUDIO_CLIP", episodeId, durationTier, voice: "default" });
@@ -166,7 +162,6 @@ export async function handleAudioGeneration(
             status: "COMPLETED",
             completedAt: new Date(),
             durationMs: Date.now() - startTime,
-            workProductId: audioWp.id,
             model: ttsUsage.model,
             inputTokens: ttsUsage.inputTokens,
             outputTokens: ttsUsage.outputTokens,
@@ -187,6 +182,7 @@ export async function handleAudioGeneration(
           requestId: job.requestId,
           action: "job-stage-complete",
           jobId,
+          completedStage: "AUDIO_GENERATION",
           correlationId,
         });
 

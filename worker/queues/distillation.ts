@@ -4,7 +4,7 @@ import { checkStageEnabled } from "../lib/queue-helpers";
 import { extractClaims } from "../lib/distillation";
 import { resolveStageModel } from "../lib/model-resolution";
 import { getLlmProviderImpl } from "../lib/llm-providers";
-import { wpKey, putWorkProduct } from "../lib/work-products";
+import { wpKey, putWorkProduct, getWorkProduct } from "../lib/work-products";
 import { writeEvent } from "../lib/pipeline-events";
 import { writeAiError, classifyAiError, AiProviderError } from "../lib/ai-errors";
 import { recordSuccess, recordFailure } from "../lib/circuit-breaker";
@@ -67,59 +67,43 @@ export async function handleDistillation(
 
         await writeEvent(prisma, step.id, "INFO", "Checking cache for completed distillation");
 
-        // Cache check: is there a completed distillation for this episode?
-        const existing = await prisma.distillation.findUnique({
-          where: { episodeId },
-        });
+        // Cache check: claims WorkProduct already exists in R2
+        const claimsR2Key = wpKey({ type: "CLAIMS", episodeId });
+        const existingClaims = await env.R2.head(claimsR2Key);
+        if (existingClaims) {
+          await writeEvent(prisma, step.id, "INFO", "Cache hit — claims exist in R2, skipping");
+          log.debug("cache_hit", { episodeId, jobId });
 
-        if (existing?.status === "COMPLETED") {
-          await writeEvent(prisma, step.id, "INFO", "Cache hit — completed distillation found, skipping");
-          // Cache hit — skip processing, backfill WorkProduct if needed
-          let existingWp = await prisma.workProduct.findFirst({
-            where: { type: "CLAIMS", episodeId },
+          // Ensure WorkProduct index row exists for UI
+          await prisma.workProduct.upsert({
+            where: { r2Key: claimsR2Key },
+            update: {},
+            create: { type: "CLAIMS", episodeId, r2Key: claimsR2Key, sizeBytes: existingClaims.size },
           });
 
-          if (!existingWp && existing.claimsJson) {
-            const claimsStr = JSON.stringify(existing.claimsJson);
-            const r2Key = wpKey({ type: "CLAIMS", episodeId });
-            await putWorkProduct(env.R2, r2Key, claimsStr);
-            existingWp = await prisma.workProduct.create({
-              data: {
-                type: "CLAIMS",
-                episodeId,
-                r2Key,
-                sizeBytes: new TextEncoder().encode(claimsStr).byteLength,
-                metadata: {
-                  claimCount: Array.isArray(existing.claimsJson) ? (existing.claimsJson as any[]).length : 0,
-                  hasExcerpts: Array.isArray(existing.claimsJson) && (existing.claimsJson as any[]).length > 0 && "excerpt" in (existing.claimsJson as any[])[0],
-                },
-              },
+          const existing = await prisma.distillation.findUnique({ where: { episodeId } });
+          if (existing) {
+            await prisma.pipelineJob.update({
+              where: { id: jobId },
+              data: { distillationId: existing.id },
             });
           }
 
-          const completedAt = new Date();
           await prisma.pipelineStep.update({
             where: { id: step.id },
             data: {
               status: "SKIPPED",
               cached: true,
-              completedAt,
-              durationMs: completedAt.getTime() - startedAt.getTime(),
-              ...(existingWp ? { workProductId: existingWp.id } : {}),
+              completedAt: new Date(),
+              durationMs: new Date().getTime() - startedAt.getTime(),
             },
           });
-
-          await prisma.pipelineJob.update({
-            where: { id: jobId },
-            data: { distillationId: existing.id },
-          });
-
-          log.debug("cache_hit", { episodeId, jobId });
 
           await env.ORCHESTRATOR_QUEUE.send({
             requestId: job.requestId,
             action: "job-stage-complete",
             jobId,
+            completedStage: "DISTILLATION",
             correlationId,
           });
 
@@ -127,16 +111,21 @@ export async function handleDistillation(
           continue;
         }
 
-        // Transcript must already be present (fetched by transcription stage)
-        if (!existing?.transcript) {
-          await writeEvent(prisma, step.id, "ERROR", "No transcript available — transcription stage must run first");
+        // Load transcript from R2 (written by transcription stage)
+        const transcriptR2Key = wpKey({ type: "TRANSCRIPT", episodeId });
+        const transcriptData = await getWorkProduct(env.R2, transcriptR2Key);
+        if (!transcriptData) {
+          await writeEvent(prisma, step.id, "ERROR", "No transcript in R2 — transcription stage must run first");
           throw new Error("No transcript available — run transcription first");
         }
+        const transcript = new TextDecoder().decode(transcriptData);
+        await writeEvent(prisma, step.id, "INFO", `Loaded transcript from R2 (${transcript.length} bytes)`);
 
-        // Update status to EXTRACTING_CLAIMS
-        await prisma.distillation.update({
-          where: { id: existing.id },
-          data: { status: "EXTRACTING_CLAIMS", errorMessage: null },
+        // Ensure Distillation record exists, update status
+        const existing = await prisma.distillation.upsert({
+          where: { episodeId },
+          update: { status: "EXTRACTING_CLAIMS", errorMessage: null },
+          create: { episodeId, status: "EXTRACTING_CLAIMS" },
         });
 
         // Extract claims via LLM (Pass 1)
@@ -144,37 +133,30 @@ export async function handleDistillation(
         const llm = getLlmProviderImpl(resolved.provider);
         await writeEvent(prisma, step.id, "INFO", `Sending transcript to ${llm.name} (${resolved.providerModelId}) for claim extraction`);
         const elapsed = log.timer("claude_extraction");
-        const { claims, usage: claimsUsage } = await extractClaims(llm, existing.transcript, resolved.providerModelId, 8192, env, resolved.pricing);
+        const { claims, usage: claimsUsage } = await extractClaims(llm, transcript, resolved.providerModelId, 8192, env, resolved.pricing);
         recordSuccess(resolved.provider);
         elapsed();
         await writeEvent(prisma, step.id, "INFO", `Extracted ${claims.length} claims from transcript`);
         await writeEvent(prisma, step.id, "DEBUG", `Model: ${claimsUsage.model}`, { inputTokens: claimsUsage.inputTokens, outputTokens: claimsUsage.outputTokens, cost: claimsUsage.cost });
         log.info("claims_extracted", { episodeId, claimCount: claims.length });
 
-        // Mark distillation as completed with claims
+        // Mark distillation as completed (claims content lives in R2 only)
         await prisma.distillation.update({
           where: { id: existing.id },
-          data: { status: "COMPLETED", claimsJson: claims as any },
+          data: { status: "COMPLETED" },
         });
 
-        // Dual-write WorkProduct: store claims in R2 and register in DB
-        const claimsJson = JSON.stringify(claims);
+        // Write claims to R2 + index in DB
+        const claimsStr = JSON.stringify(claims);
         const r2Key = wpKey({ type: "CLAIMS", episodeId });
-        await putWorkProduct(env.R2, r2Key, claimsJson);
-        const wp = await prisma.workProduct.create({
-          data: {
-            type: "CLAIMS",
-            episodeId,
-            r2Key,
-            sizeBytes: new TextEncoder().encode(claimsJson).byteLength,
-            metadata: {
-              claimCount: claims.length,
-              hasExcerpts: claims.length > 0 && "excerpt" in claims[0],
-            },
-          },
+        await putWorkProduct(env.R2, r2Key, claimsStr);
+        const sizeBytes = new TextEncoder().encode(claimsStr).byteLength;
+        await prisma.workProduct.upsert({
+          where: { r2Key },
+          update: { sizeBytes, metadata: { claimCount: claims.length } },
+          create: { type: "CLAIMS", episodeId, r2Key, sizeBytes, metadata: { claimCount: claims.length } },
         });
-
-        await writeEvent(prisma, step.id, "INFO", "Saved claims work product to R2", { r2Key, sizeBytes: new TextEncoder().encode(claimsJson).byteLength, claimCount: claims.length });
+        await writeEvent(prisma, step.id, "INFO", "Saved claims to R2", { r2Key, claimCount: claims.length });
 
         // Mark step COMPLETED
         const completedAt = new Date();
@@ -184,7 +166,6 @@ export async function handleDistillation(
             status: "COMPLETED",
             completedAt,
             durationMs: completedAt.getTime() - startedAt.getTime(),
-            workProductId: wp.id,
             model: claimsUsage.model,
             inputTokens: claimsUsage.inputTokens,
             outputTokens: claimsUsage.outputTokens,
@@ -203,6 +184,7 @@ export async function handleDistillation(
           requestId: job.requestId,
           action: "job-stage-complete",
           jobId,
+          completedStage: "DISTILLATION",
           correlationId,
         });
         log.debug("orchestrator_notified", { episodeId, jobId, requestId: job.requestId });

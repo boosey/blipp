@@ -32,7 +32,20 @@ export async function handleQueue(
   env: Env,
   ctx: ExecutionContext
 ) {
-  switch (batch.queue) {
+  // Strip environment suffix (e.g. "orchestrator-staging" → "orchestrator")
+  const queue = batch.queue.replace(/-(staging|production)$/, "");
+
+  console.log(JSON.stringify({
+    level: "info",
+    action: "queue_dispatch",
+    rawQueue: batch.queue,
+    normalizedQueue: queue,
+    messageCount: batch.messages.length,
+    ts: new Date().toISOString(),
+  }));
+
+  try {
+  switch (queue) {
     case "feed-refresh":
       return handleFeedRefresh(batch as MessageBatch<FeedRefreshMessage>, env, ctx);
     case "transcription":
@@ -71,6 +84,27 @@ export async function handleQueue(
         env,
         ctx
       );
+    default:
+      console.error(JSON.stringify({
+        level: "error",
+        action: "unknown_queue",
+        queue: batch.queue,
+        normalized: queue,
+        messageCount: batch.messages.length,
+        ts: new Date().toISOString(),
+      }));
+  }
+  } catch (err) {
+    console.error(JSON.stringify({
+      level: "error",
+      action: "queue_handler_error",
+      rawQueue: batch.queue,
+      normalizedQueue: queue,
+      error: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+      ts: new Date().toISOString(),
+    }));
+    throw err; // re-throw so CF retries the batch
   }
 }
 

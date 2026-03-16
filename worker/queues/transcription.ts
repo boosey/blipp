@@ -88,30 +88,26 @@ export async function handleTranscription(
 
         await writeEvent(prisma, step.id, "INFO", "Checking cache for existing transcript");
 
-        // Cache check: existing Distillation with transcript
-        const cached = await prisma.distillation.findUnique({ where: { episodeId } });
-        if (cached && cached.transcript && CACHE_STATUSES.has(cached.status)) {
-          log.debug("cache_hit", { episodeId, existingStatus: cached.status });
-          await writeEvent(prisma, step.id, "INFO", "Cache hit — existing transcript found, skipping");
-          await writeEvent(prisma, step.id, "DEBUG", `Existing distillation status: ${cached.status}`, { distillationId: cached.id });
+        // Cache check: transcript WorkProduct already exists in R2
+        const transcriptR2Key = wpKey({ type: "TRANSCRIPT", episodeId });
+        const existingTranscript = await env.R2.head(transcriptR2Key);
+        if (existingTranscript) {
+          log.debug("cache_hit", { episodeId });
+          await writeEvent(prisma, step.id, "INFO", "Cache hit — transcript exists in R2, skipping");
 
-          let existingWp = await prisma.workProduct.findFirst({
-            where: { type: "TRANSCRIPT", episodeId },
+          // Ensure WorkProduct index row exists for UI
+          await prisma.workProduct.upsert({
+            where: { r2Key: transcriptR2Key },
+            update: {},
+            create: { type: "TRANSCRIPT", episodeId, r2Key: transcriptR2Key, sizeBytes: existingTranscript.size },
           });
 
-          // Backfill: create WorkProduct from cached inline data if none exists
-          if (!existingWp && cached.transcript) {
-            const r2Key = wpKey({ type: "TRANSCRIPT", episodeId });
-            await putWorkProduct(env.R2, r2Key, cached.transcript);
-            existingWp = await prisma.workProduct.create({
-              data: {
-                type: "TRANSCRIPT",
-                episodeId,
-                r2Key,
-                sizeBytes: new TextEncoder().encode(cached.transcript).byteLength,
-              },
-            });
-          }
+          // Ensure Distillation record exists for downstream stages
+          const distillation = await prisma.distillation.upsert({
+            where: { episodeId },
+            update: { status: "TRANSCRIPT_READY", errorMessage: null },
+            create: { episodeId, status: "TRANSCRIPT_READY" },
+          });
 
           await prisma.pipelineStep.update({
             where: { id: step.id },
@@ -120,19 +116,19 @@ export async function handleTranscription(
               cached: true,
               completedAt: new Date(),
               durationMs: Date.now() - startTime,
-              ...(existingWp ? { workProductId: existingWp.id } : {}),
             },
           });
 
           await prisma.pipelineJob.update({
             where: { id: jobId },
-            data: { distillationId: cached.id },
+            data: { distillationId: distillation.id },
           });
 
           await env.ORCHESTRATOR_QUEUE.send({
             requestId: job.requestId,
             action: "job-stage-complete",
             jobId,
+            completedStage: "TRANSCRIPTION",
             correlationId,
           });
 
@@ -215,25 +211,23 @@ export async function handleTranscription(
           log.info("transcript_fetched", { episodeId, bytes: transcript.length, source: resolved.provider });
         }
 
-        // Upsert Distillation with transcript
-        const distillation = await prisma.distillation.upsert({
-          where: { episodeId },
-          update: { status: "TRANSCRIPT_READY", transcript, errorMessage: null },
-          create: { episodeId, status: "TRANSCRIPT_READY", transcript },
-        });
-
-        // Write WorkProduct to R2 and create DB row
+        // Write transcript to R2 + index in DB
         const r2Key = wpKey({ type: "TRANSCRIPT", episodeId });
         await putWorkProduct(env.R2, r2Key, transcript);
-        const wp = await prisma.workProduct.create({
-          data: {
-            type: "TRANSCRIPT",
-            episodeId,
-            r2Key,
-            sizeBytes: new TextEncoder().encode(transcript).byteLength,
-          },
+        const sizeBytes = new TextEncoder().encode(transcript).byteLength;
+        await prisma.workProduct.upsert({
+          where: { r2Key },
+          update: { sizeBytes },
+          create: { type: "TRANSCRIPT", episodeId, r2Key, sizeBytes },
         });
-        await writeEvent(prisma, step.id, "INFO", "Saved transcript work product to R2", { r2Key, sizeBytes: new TextEncoder().encode(transcript).byteLength });
+        await writeEvent(prisma, step.id, "INFO", "Saved transcript to R2", { r2Key, sizeBytes });
+
+        // Upsert Distillation status (transcript content lives in R2 only)
+        const distillation = await prisma.distillation.upsert({
+          where: { episodeId },
+          update: { status: "TRANSCRIPT_READY", errorMessage: null },
+          create: { episodeId, status: "TRANSCRIPT_READY" },
+        });
 
         // Mark step COMPLETED
         await prisma.pipelineStep.update({
@@ -242,7 +236,6 @@ export async function handleTranscription(
             status: "COMPLETED",
             completedAt: new Date(),
             durationMs: Date.now() - startTime,
-            workProductId: wp.id,
             ...(sttUsage ? { model: sttUsage.model, inputTokens: sttUsage.inputTokens, outputTokens: sttUsage.outputTokens, cost: sttUsage.cost } : {}),
           },
         });
@@ -258,6 +251,7 @@ export async function handleTranscription(
           requestId: job.requestId,
           action: "job-stage-complete",
           jobId,
+          completedStage: "TRANSCRIPTION",
           correlationId,
         });
 

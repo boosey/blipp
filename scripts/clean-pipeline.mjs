@@ -1,80 +1,112 @@
 #!/usr/bin/env node
 /**
- * Cleans all user-generated and pipeline data: feed items, briefings,
- * subscriptions, requests, jobs, steps, work products, clips,
- * distillations, and their R2 objects.
+ * Cleans all pipeline data from DB and R2.
  *
- * Uses raw `pg` (not Prisma) to avoid runtime/adapter issues.
- * Uses `wrangler r2 object delete` for R2 cleanup.
+ * DB: cleaned directly via pg.
+ * R2: cleaned via the worker's internal API using CLERK_SECRET_KEY as auth.
  *
- * Usage:  node scripts/clean-pipeline.mjs [--dry-run]
- * Env:    DATABASE_URL from .dev.vars
+ * Usage:
+ *   npm run clean:pipeline:staging
+ *   npm run clean:pipeline:staging:dry
+ *   npm run clean:pipeline:staging -- --db-only
  */
 import { readFileSync } from "node:fs";
-import { execFileSync } from "node:child_process";
 import pg from "pg";
 
 // ── Config ──
 
 const dryRun = process.argv.includes("--dry-run");
-const BUCKET = "blipp-audio";
-const R2_PREFIXES = ["wp/", "clips/", "briefings/"];
+const staging = process.argv.includes("--staging");
+const dbOnly = process.argv.includes("--db-only");
 
-// ── DB connection ──
+const APP_ORIGINS = {
+  staging: "https://blipp-staging.boosey-boudreaux.workers.dev",
+  local: "http://localhost:8787",
+};
+
+// ── Helpers ──
+
+function readEnvVar(file, key) {
+  try {
+    const content = readFileSync(file, "utf8");
+    const match = content.match(new RegExp(`^${key}=(.+)$`, "m"));
+    if (match) return match[1].trim().replace(/^["']|["']$/g, "");
+  } catch {}
+  return null;
+}
 
 function getDatabaseUrl() {
-  try {
-    const devvars = readFileSync(".dev.vars", "utf8");
-    const match = devvars.match(/^DATABASE_URL=(.+)$/m);
-    if (match) return match[1].trim();
-  } catch {}
-  if (process.env.DATABASE_URL) return process.env.DATABASE_URL;
+  if (staging) {
+    const url =
+      readEnvVar("neon-config.env", "STAGING_DATABASE_URL") ||
+      process.env.DATABASE_URL;
+    if (url) return url;
+    console.error("ERROR: No STAGING_DATABASE_URL in neon-config.env or DATABASE_URL in environment");
+    process.exit(1);
+  }
+  const url =
+    readEnvVar(".dev.vars", "DATABASE_URL") ||
+    process.env.DATABASE_URL;
+  if (url) return url;
   console.error("ERROR: No DATABASE_URL found in .dev.vars or environment");
   process.exit(1);
 }
 
-// ── R2 cleanup ──
-
-function listR2Objects(prefix) {
-  try {
-    const output = execFileSync(
-      "npx",
-      ["wrangler", "r2", "object", "list", BUCKET, `--prefix=${prefix}`],
-      { encoding: "utf8", stdio: ["pipe", "pipe", "pipe"], shell: true }
-    );
-    const parsed = JSON.parse(output);
-    return parsed.map((obj) => obj.key);
-  } catch {
-    return [];
-  }
-}
-
-function deleteR2Object(key) {
-  try {
-    execFileSync(
-      "npx",
-      ["wrangler", "r2", "object", "delete", `${BUCKET}/${key}`],
-      { stdio: ["pipe", "pipe", "pipe"], shell: true }
-    );
-    return true;
-  } catch {
-    return false;
-  }
+function getClerkSecretKey() {
+  return (
+    readEnvVar("secrets-staging.env", "CLERK_SECRET_KEY") ||
+    readEnvVar(".dev.vars", "CLERK_SECRET_KEY") ||
+    process.env.CLERK_SECRET_KEY
+  );
 }
 
 // ── Main ──
 
 async function main() {
-  console.log(dryRun ? "\n=== DRY RUN ===" : "\n=== CLEANING PIPELINE DATA ===");
+  const env = staging ? "STAGING" : "LOCAL";
+  const label = dryRun ? `DRY RUN (${env})` : `CLEANING PIPELINE DATA (${env})`;
+  console.log(`\n=== ${label} ===\n`);
 
-  // ── 1. Database cleanup ──
+  // ── 1. R2 cleanup (no token expiry — uses server secret) ──
+
+  if (dbOnly) {
+    console.log("  Skipping R2 cleanup (--db-only)\n");
+  } else {
+    const origin = staging ? APP_ORIGINS.staging : APP_ORIGINS.local;
+    const endpoint = `${origin}/api/internal/clean/work-products`;
+    const secret = getClerkSecretKey();
+
+    if (!secret) {
+      console.log("  WARN: No CLERK_SECRET_KEY found — skipping R2 cleanup");
+    } else if (dryRun) {
+      console.log(`  [dry-run] Would call DELETE ${endpoint}`);
+    } else {
+      console.log("  Cleaning R2 work products...");
+      try {
+        const res = await fetch(endpoint, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${secret}` },
+        });
+        if (!res.ok) {
+          const body = await res.text();
+          console.log(`  WARN: R2 cleanup failed (${res.status}): ${body}`);
+        } else {
+          const data = await res.json();
+          console.log(`  R2 cleanup done: ${data.data.deleted} objects deleted`);
+        }
+      } catch (err) {
+        console.log(`  WARN: R2 cleanup failed: ${err.message}`);
+      }
+    }
+  }
+
+  // ── 2. Database cleanup ──
 
   const url = getDatabaseUrl();
   const client = new pg.Client({ connectionString: url });
   await client.connect();
-  console.log("Connected to database\n");
+  console.log("\n  Connected to database\n");
 
-  // Delete order respects FK constraints (children first)
   const tables = [
     ["FeedItem", '"FeedItem"'],
     ["Briefing", '"Briefing"'],
@@ -86,12 +118,12 @@ async function main() {
     ["Clip", '"Clip"'],
     ["Distillation", '"Distillation"'],
     ["Subscription", '"Subscription"'],
+    ["AiServiceError", '"AiServiceError"'],
   ];
 
   for (const [label, table] of tables) {
     const countResult = await client.query(`SELECT COUNT(*) as count FROM ${table}`);
     const count = parseInt(countResult.rows[0].count);
-
     if (dryRun) {
       console.log(`  [dry-run] Would delete ${count} rows from ${label}`);
     } else {
@@ -101,39 +133,8 @@ async function main() {
   }
 
   await client.end();
-  console.log("\nDatabase cleanup done\n");
+  console.log("\n  Database cleanup done");
 
-  // ── 2. R2 cleanup ──
-
-  console.log("Scanning R2 objects...");
-  let totalR2 = 0;
-  let deletedR2 = 0;
-
-  for (const prefix of R2_PREFIXES) {
-    const keys = listR2Objects(prefix);
-    totalR2 += keys.length;
-
-    if (keys.length === 0) {
-      console.log(`  ${prefix}* — no objects`);
-      continue;
-    }
-
-    if (dryRun) {
-      console.log(`  [dry-run] Would delete ${keys.length} objects under ${prefix}*`);
-      continue;
-    }
-
-    console.log(`  Deleting ${keys.length} objects under ${prefix}*`);
-    for (const key of keys) {
-      if (deleteR2Object(key)) {
-        deletedR2++;
-      } else {
-        console.log(`    WARN: failed to delete ${key}`);
-      }
-    }
-  }
-
-  console.log(`\nR2 cleanup done (${dryRun ? `${totalR2} would be deleted` : `${deletedR2}/${totalR2} deleted`})`);
   console.log("\n=== DONE ===\n");
 }
 

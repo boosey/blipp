@@ -33,11 +33,13 @@ me.get("/", async (c) => {
       email: fullUser.email,
       name: fullUser.name,
       imageUrl: fullUser.imageUrl,
-      plan: {
-        id: fullUser.plan.id,
-        name: fullUser.plan.name,
-        slug: fullUser.plan.slug,
-      },
+      plan: fullUser.plan
+        ? {
+            id: fullUser.plan.id,
+            name: fullUser.plan.name,
+            slug: fullUser.plan.slug,
+          }
+        : null,
       isAdmin: fullUser.isAdmin,
       onboardingComplete: fullUser.onboardingComplete,
       featureFlags: flags,

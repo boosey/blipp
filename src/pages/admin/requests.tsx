@@ -1331,7 +1331,10 @@ export default function Requests() {
     load();
   }, [load]);
 
-  // Auto-refresh every 10 seconds, including expanded row detail
+  // Adaptive polling: 2s when a request is actively processing, 10s otherwise
+  const hasActiveRequest = requests.some((r) => r.status === "PROCESSING");
+  const pollInterval = hasActiveRequest || expandedId ? 2_000 : 10_000;
+
   useEffect(() => {
     autoRefreshRef.current = setInterval(() => {
       load(true);
@@ -1340,11 +1343,11 @@ export default function Requests() {
           .then((r) => setDetailCache((prev) => ({ ...prev, [expandedId]: r.data })))
           .catch(console.error);
       }
-    }, 10_000);
+    }, pollInterval);
     return () => {
       if (autoRefreshRef.current) clearInterval(autoRefreshRef.current);
     };
-  }, [load, expandedId, apiFetch]);
+  }, [load, expandedId, apiFetch, pollInterval]);
 
   const toggleRow = useCallback(
     (id: string) => {
