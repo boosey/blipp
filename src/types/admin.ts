@@ -220,6 +220,7 @@ export interface CatalogFilters {
   transcriptAvailability?: "has_transcript" | "needs_transcription" | "mixed";
   activity?: "today" | "this_week" | "stale" | "inactive";
   categories?: string[];
+  language?: string;
   search?: string;
 }
 
