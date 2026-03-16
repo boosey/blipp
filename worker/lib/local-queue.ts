@@ -12,6 +12,7 @@ const QUEUE_BINDINGS: Record<string, string> = {
   AUDIO_GENERATION_QUEUE: "clip-generation",
   BRIEFING_ASSEMBLY_QUEUE: "briefing-assembly",
   ORCHESTRATOR_QUEUE: "orchestrator",
+  CATALOG_REFRESH_QUEUE: "catalog-refresh",
 };
 
 /**
@@ -58,39 +59,46 @@ export function shimQueuesForLocalDev(env: Env, ctx: ExecutionContext): Env {
   const shimmed = { ...env };
 
   for (const [binding, queueName] of Object.entries(QUEUE_BINDINGS)) {
-    (shimmed as any)[binding] = {
-      send: async (body: unknown, options?: { delaySeconds?: number }) => {
-        if (options?.delaySeconds) {
-          console.log(
-            JSON.stringify({
-              level: "info",
-              stage: "local-queue-shim",
-              action: "delayed_send_skipped",
-              queue: queueName,
-              delaySeconds: options.delaySeconds,
-              ts: new Date().toISOString(),
-            })
-          );
-          return;
-        }
-
+    const sendOne = async (body: unknown, options?: { delaySeconds?: number }) => {
+      if (options?.delaySeconds) {
         console.log(
           JSON.stringify({
-            level: "debug",
+            level: "info",
             stage: "local-queue-shim",
-            action: "direct_dispatch",
+            action: "delayed_send_skipped",
             queue: queueName,
+            delaySeconds: options.delaySeconds,
             ts: new Date().toISOString(),
           })
         );
+        return;
+      }
 
-        // Fire-and-forget via waitUntil so .send() returns immediately
-        // (matches production behavior where queue.send() is non-blocking)
-        const work = import("../queues/index").then(({ handleQueue }) => {
-          const batch = createFakeBatch(queueName, body);
-          return handleQueue(batch, shimmed, ctx);
-        });
-        ctx.waitUntil(work);
+      console.log(
+        JSON.stringify({
+          level: "debug",
+          stage: "local-queue-shim",
+          action: "direct_dispatch",
+          queue: queueName,
+          ts: new Date().toISOString(),
+        })
+      );
+
+      // Fire-and-forget via waitUntil so .send() returns immediately
+      // (matches production behavior where queue.send() is non-blocking)
+      const work = import("../queues/index").then(({ handleQueue }) => {
+        const batch = createFakeBatch(queueName, body);
+        return handleQueue(batch, shimmed, ctx);
+      });
+      ctx.waitUntil(work);
+    };
+
+    (shimmed as any)[binding] = {
+      send: sendOne,
+      sendBatch: async (messages: { body: unknown; delaySeconds?: number }[]) => {
+        for (const msg of messages) {
+          await sendOne(msg.body, msg.delaySeconds ? { delaySeconds: msg.delaySeconds } : undefined);
+        }
       },
     };
   }

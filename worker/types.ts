@@ -8,6 +8,8 @@ declare module "hono" {
   }
 }
 
+import type { FeedRefreshMessage, CatalogRefreshMessage } from "./lib/queue-messages";
+
 /**
  * Cloudflare Worker environment bindings for the Blipp API.
  *
@@ -44,7 +46,9 @@ export type Env = {
   /** Podcast Index API secret */
   PODCAST_INDEX_SECRET: string;
   /** Queue: triggers RSS feed polling for new episodes */
-  FEED_REFRESH_QUEUE: Queue;
+  FEED_REFRESH_QUEUE: Queue<FeedRefreshMessage>;
+  /** Queue: seeds or refreshes the podcast catalog from Podcast Index */
+  CATALOG_REFRESH_QUEUE: Queue<CatalogRefreshMessage>;
   /** Queue: fetches transcripts and extracts claims via Claude */
   DISTILLATION_QUEUE: Queue;
   /** Queue: generates spoken narrative from distillation claims (Claude LLM) */
