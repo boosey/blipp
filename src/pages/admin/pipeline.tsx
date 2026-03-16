@@ -701,9 +701,9 @@ export default function Pipeline() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Auto-refresh every 10 seconds
+  // Auto-refresh every 2 seconds
   useEffect(() => {
-    autoRefreshRef.current = setInterval(() => load(true), 10_000);
+    autoRefreshRef.current = setInterval(() => load(true), 2_000);
     return () => {
       if (autoRefreshRef.current) clearInterval(autoRefreshRef.current);
     };

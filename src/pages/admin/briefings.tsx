@@ -237,6 +237,12 @@ export default function BriefingsPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Auto-refresh every 2 seconds
+  useEffect(() => {
+    const interval = setInterval(() => load(), 2_000);
+    return () => clearInterval(interval);
+  }, [load]);
+
   const selectBriefing = useCallback(
     (id: string) => {
       setDetailLoading(true);
