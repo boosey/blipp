@@ -239,13 +239,15 @@ Your Clerk dev instance is created automatically with your account.
 - [ ] In the dev instance, enable **Email address** sign-in
 - [ ] Enable **Google** social sign-in (dev uses Clerk's shared Google credentials — no setup needed)
 
-**Collect keys:**
+**Collect keys** (the same publishable key is used in two places with different names):
 - [ ] Go to the **API Keys** page
-- [ ] Copy **Publishable Key** (`pk_test_...`) → paste into `secrets-staging.env` as `CLERK_PUBLISHABLE_KEY`
+- [ ] Copy **Publishable Key** (`pk_test_...`):
+  - Paste into `secrets-staging.env` as `CLERK_PUBLISHABLE_KEY` (Cloudflare Worker secret — used server-side)
+  - Also note it for Phase 8: you'll add it as GitHub secret `VITE_CLERK_PUBLISHABLE_KEY_STAGING` (used by Vite to build the frontend)
+  - **Same value, two different names** — the Worker needs it as `CLERK_PUBLISHABLE_KEY`, the frontend build needs it as `VITE_CLERK_PUBLISHABLE_KEY`
 - [ ] Copy **Secret Key** (`sk_test_...`) → paste into `secrets-staging.env` as `CLERK_SECRET_KEY`
-- [ ] Also save the publishable key separately — it's needed as a GitHub secret in Phase 8 (`VITE_CLERK_PUBLISHABLE_KEY_STAGING`)
 
-**Webhook setup is deferred to Phase 13** (needs the `workers.dev` URL from first deploy).
+**Webhook setup happens in Phase 10** (needs the `workers.dev` URL from first deploy).
 
 ### 5b: Production (Production Instance)
 
@@ -267,13 +269,14 @@ Your Clerk dev instance is created automatically with your account.
 - [ ] Wait for propagation (can take up to 48 hours)
 - [ ] When ready, click the **Deploy certificates** button on the Dashboard homepage
 
-**Collect keys:**
+**Collect keys** (same pattern as staging — publishable key used in two places):
 - [ ] Go to the **API Keys** page (production instance)
-- [ ] Copy **Publishable Key** (`pk_live_...`) → paste into `secrets-production.env` as `CLERK_PUBLISHABLE_KEY`
+- [ ] Copy **Publishable Key** (`pk_live_...`):
+  - Paste into `secrets-production.env` as `CLERK_PUBLISHABLE_KEY`
+  - Also note it for Phase 8: GitHub secret `VITE_CLERK_PUBLISHABLE_KEY_PRODUCTION`
 - [ ] Copy **Secret Key** (`sk_live_...`) → paste into `secrets-production.env` as `CLERK_SECRET_KEY`
-- [ ] Also save the publishable key separately — it's needed as a GitHub secret in Phase 8 (`VITE_CLERK_PUBLISHABLE_KEY_PRODUCTION`)
 
-**Webhook setup is deferred to Phase 13** (needs the deployed URL).
+**Webhook setup happens in Phase 10** (needs the deployed URL).
 
 ---
 
@@ -340,15 +343,15 @@ npx web-push generate-vapid-keys
 
 Go to https://github.com/boosey/blipp → **Settings > Secrets and variables > Actions > New repository secret**
 
-- [ ] `CLOUDFLARE_API_TOKEN` — from Phase 3.4
-- [ ] `VITE_CLERK_PUBLISHABLE_KEY_STAGING` — `pk_test_...` from Phase 5a
-- [ ] `VITE_CLERK_PUBLISHABLE_KEY_PRODUCTION` — `pk_live_...` from Phase 5b
+- [ ] `CLOUDFLARE_API_TOKEN` — the Cloudflare API token from Phase 3.4
+- [ ] `VITE_CLERK_PUBLISHABLE_KEY_STAGING` — the **same `pk_test_...` value** you pasted into `secrets-staging.env` as `CLERK_PUBLISHABLE_KEY` in Phase 5a
+- [ ] `VITE_CLERK_PUBLISHABLE_KEY_PRODUCTION` — the **same `pk_live_...` value** you pasted into `secrets-production.env` as `CLERK_PUBLISHABLE_KEY` in Phase 5b
 
 ### 8.2 Add Repository Variable
 
 **Settings > Secrets and variables > Actions > Variables > New repository variable**
 
-- [ ] `STAGING_URL` — set to `placeholder` for now. Update after first deploy in Phase 13 when you learn the `workers.dev` URL.
+- [ ] `STAGING_URL` — set to `placeholder` for now. Update after first deploy in Phase 10.1 when you learn the `workers.dev` URL.
 
 ### 8.3 Verify Workflows Exist
 
