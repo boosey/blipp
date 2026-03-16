@@ -15,7 +15,7 @@ export function DiscoverSkeleton() {
             <Skeleton className="h-3 w-1/2" />
             <Skeleton className="h-3 w-full" />
           </div>
-          <Skeleton className="h-8 w-20 rounded self-center" />
+          <Skeleton className="w-4 h-4 rounded self-center" />
         </div>
       ))}
     </div>
