@@ -41,11 +41,6 @@ export function Discover() {
     { id: string; feedUrl: string; title?: string; status: string; podcastId?: string }[]
   >([]);
 
-  const { data: subsData, refetch: refetchSubscriptions } = useFetch<{
-    subscriptions: { podcastId: string }[];
-  }>("/podcasts/subscriptions");
-  const subscribedIds = new Set(subsData?.subscriptions.map((s) => s.podcastId) ?? []);
-
   const { data: catalogData, error: catalogError } = useFetch<{
     podcasts: CatalogPodcast[];
   }>("/podcasts/catalog");
@@ -276,9 +271,6 @@ export function Discover() {
                   author={podcast.author || ""}
                   description={podcast.description || ""}
                   imageUrl={podcast.imageUrl || ""}
-                  feedUrl={podcast.feedUrl}
-                  isSubscribed={subscribedIds.has(podcast.id)}
-                  onToggle={refetchSubscriptions}
                 />
               ))}
             </div>
@@ -354,9 +346,6 @@ export function Discover() {
                     author={podcast.author || ""}
                     description={podcast.description || ""}
                     imageUrl={podcast.imageUrl || ""}
-                    feedUrl={podcast.feedUrl}
-                    isSubscribed={subscribedIds.has(podcast.id)}
-                    onToggle={refetchSubscriptions}
                   />
                 ))}
               </div>

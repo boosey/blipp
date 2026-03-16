@@ -1,25 +1,6 @@
-import { render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { PodcastCard } from "../components/podcast-card";
-
-// Mock useApiFetch — the component now uses it instead of bare fetch
-const mockApiFetch = vi.fn();
-vi.mock("../lib/api", () => ({
-  useApiFetch: () => mockApiFetch,
-}));
-
-// Mock plan context — PodcastCard uses usePlan() for subscription limits
-vi.mock("../contexts/plan-context", () => ({
-  usePlan: () => ({
-    plan: { name: "Free", slug: "free" },
-    briefings: { used: 0, limit: null, remaining: null },
-    subscriptions: { used: 0, limit: 10, remaining: 10 },
-    maxDurationMinutes: 15,
-    loading: false,
-    refetch: vi.fn(),
-  }),
-}));
 
 const defaultProps = {
   id: "p1",
@@ -27,17 +8,10 @@ const defaultProps = {
   author: "Jane Doe",
   description: "Daily tech news and analysis.",
   imageUrl: "https://example.com/image.jpg",
-  isSubscribed: false,
-  onToggle: vi.fn(),
 };
 
 describe("PodcastCard", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockApiFetch.mockResolvedValue({});
-  });
-
-  it("renders title and author", () => {
+  it("renders title, author, and description", () => {
     render(
       <MemoryRouter>
         <PodcastCard {...defaultProps} />
@@ -45,58 +19,37 @@ describe("PodcastCard", () => {
     );
     expect(screen.getByText("Tech Today")).toBeInTheDocument();
     expect(screen.getByText("Jane Doe")).toBeInTheDocument();
+    expect(screen.getByText("Daily tech news and analysis.")).toBeInTheDocument();
   });
 
-  it("shows Subscribe button when not subscribed", () => {
+  it("links to podcast detail page", () => {
     render(
       <MemoryRouter>
-        <PodcastCard {...defaultProps} isSubscribed={false} />
+        <PodcastCard {...defaultProps} />
       </MemoryRouter>
     );
-    expect(screen.getByText("Subscribe")).toBeInTheDocument();
+    const link = screen.getByRole("link");
+    expect(link).toHaveAttribute("href", "/discover/p1");
   });
 
-  it("shows Subscribed button when subscribed", () => {
+  it("renders chevron icon", () => {
     render(
       <MemoryRouter>
-        <PodcastCard {...defaultProps} isSubscribed={true} />
+        <PodcastCard {...defaultProps} />
       </MemoryRouter>
     );
-    expect(screen.getByText("Subscribed")).toBeInTheDocument();
+    // ChevronRight renders as an SVG inside the link
+    const link = screen.getByRole("link");
+    const svg = link.querySelector("svg");
+    expect(svg).toBeInTheDocument();
   });
 
-  it("calls API on subscribe click", async () => {
-    const user = userEvent.setup();
-    const onToggle = vi.fn();
-
+  it("shows initial letter when no imageUrl", () => {
     render(
       <MemoryRouter>
-        <PodcastCard {...defaultProps} onToggle={onToggle} />
+        <PodcastCard {...defaultProps} imageUrl="" />
       </MemoryRouter>
     );
-
-    // First click opens the duration tier dialog
-    await user.click(screen.getByText("Subscribe"));
-
-    // Wait for the dialog to appear, then click the Subscribe button inside it
-    await waitFor(() => {
-      expect(screen.getByText("Briefing Length")).toBeInTheDocument();
-    });
-
-    // The dialog has its own Subscribe button; click it (default tier is 5)
-    const dialogButtons = screen.getAllByText("Subscribe");
-    const dialogSubscribeBtn = dialogButtons[dialogButtons.length - 1];
-    await user.click(dialogSubscribeBtn);
-
-    await waitFor(() => {
-      expect(mockApiFetch).toHaveBeenCalledWith(
-        "/podcasts/subscribe",
-        expect.objectContaining({
-          method: "POST",
-          body: expect.stringContaining('"durationTier":5'),
-        })
-      );
-    });
-    expect(onToggle).toHaveBeenCalled();
+    expect(screen.getByText("T")).toBeInTheDocument();
   });
 });

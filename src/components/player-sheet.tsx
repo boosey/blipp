@@ -54,7 +54,7 @@ export function PlayerSheet({
       <SheetContent
         side="bottom"
         showCloseButton={false}
-        className="h-[95vh] rounded-t-2xl bg-zinc-950 border-zinc-800 flex flex-col items-center px-6 pt-3 pb-8"
+        className="h-[95vh] rounded-t-2xl bg-zinc-950 border-zinc-800 flex flex-col items-center px-6 pt-3 pb-[max(2rem,env(safe-area-inset-bottom))] overflow-y-auto"
       >
         {/* Drag handle */}
         <div className="w-10 h-1 rounded-full bg-zinc-700 mb-6 flex-shrink-0" />
@@ -70,9 +70,9 @@ export function PlayerSheet({
         </SheetDescription>
 
         {/* Artwork */}
-        <div className="flex-1 flex items-center justify-center w-full max-w-sm">
+        <div className="flex items-center justify-center w-full max-w-sm">
           {inAd ? (
-            <div className="w-full max-w-[320px] aspect-square rounded-2xl bg-zinc-900 flex flex-col items-center justify-center gap-3 border border-[#F97316]/20">
+            <div className="w-full max-w-[280px] aspect-square max-h-[35vh] rounded-2xl bg-zinc-900 flex flex-col items-center justify-center gap-3 border border-[#F97316]/20">
               <span className="text-2xl font-bold text-[#F97316]">Advertisement</span>
               <span className="text-sm text-zinc-400">
                 {adState === "preroll" ? "Pre-roll" : "Post-roll"}
@@ -82,10 +82,10 @@ export function PlayerSheet({
             <img
               src={currentItem.podcast.imageUrl}
               alt=""
-              className="w-full max-w-[320px] aspect-square rounded-2xl object-cover shadow-lg"
+              className="w-full max-w-[280px] aspect-square max-h-[35vh] rounded-2xl object-cover shadow-lg"
             />
           ) : (
-            <div className="w-full max-w-[320px] aspect-square rounded-2xl bg-zinc-800" />
+            <div className="w-full max-w-[280px] aspect-square max-h-[35vh] rounded-2xl bg-zinc-800" />
           )}
         </div>
 
