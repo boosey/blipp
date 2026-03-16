@@ -15,7 +15,7 @@ This guide covers both **staging** and **production** environments. Staging depl
 5. [Phase 5: Clerk Auth](#phase-5-clerk-auth)
 6. [Phase 6: AI & Podcast Services](#phase-6-ai--podcast-services)
 7. [Phase 7: Web Push VAPID Keys](#phase-7-web-push-vapid-keys)
-8. [Phase 8: Google AdSense (Optional)](#phase-8-google-adsense-optional)
+8. [Phase 8: Google AdSense (Optional — after deploy)](#phase-8-google-adsense-optional)
 9. [Phase 9: GitHub CI/CD](#phase-9-github-cicd)
 10. [Phase 10: Domain & DNS](#phase-10-domain--dns)
 11. [Phase 11: Set Cloudflare Secrets](#phase-11-set-cloudflare-secrets)
@@ -335,13 +335,13 @@ npx web-push generate-vapid-keys
 
 ## Phase 8: Google AdSense (Optional)
 
-Ads are disabled by default (`ads.enabled` = false in PlatformConfig). You can skip this entirely and enable later. The IMA SDK is already loaded in `index.html`.
+**Skip this phase during initial setup.** AdSense requires a live, publicly accessible website for verification. Come back here after Phase 12 (deploy) is complete.
 
-**Background:** Google Ad Manager requires an AdSense account to sign up. AdSense requires site verification before approval. You don't need AdSense to use VAST tags from other ad servers — only if you want Google's ad network.
+Ads are disabled by default (`ads.enabled` = false in PlatformConfig). The IMA SDK is already loaded in `index.html`. You don't need AdSense to use VAST tags from other ad servers — only if you want Google's ad network.
 
-### If you want Google ads:
+### If you want Google ads (after deploy):
 
-#### 9.1 Sign Up & Verify
+#### 8.1 Sign Up & Verify
 
 - [ ] Sign up at https://www.google.com/adsense/
 - [ ] Google gives you a publisher ID (`ca-pub-XXXXXXXXXXXXXXXX`)
@@ -366,7 +366,7 @@ google.com, pub-XXXXXXXXXXXXXXXX, DIRECT, f08c47fec0942fa0
 - [ ] In AdSense dashboard, click **Request review**
 - [ ] Wait for approval (days to weeks)
 
-#### 9.2 Set Up Ad Manager (After Approval)
+#### 8.2 Set Up Ad Manager (After Approval)
 
 Once approved:
 - [ ] Go to https://admanager.google.com/
