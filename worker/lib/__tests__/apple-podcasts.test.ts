@@ -80,7 +80,7 @@ describe("Apple Podcasts Client", () => {
       expect(result[1].name).toBe("Podcast B");
 
       const url = mockFetch.mock.calls[0][0];
-      expect(url).toContain("/us/podcasts/top/200/genre=1301/podcasts.json");
+      expect(url).toContain("/us/podcasts/top/200/podcasts.json?genre=1301");
     });
 
     it("should use custom limit and country", async () => {
@@ -91,7 +91,7 @@ describe("Apple Podcasts Client", () => {
       await promise;
 
       const url = mockFetch.mock.calls[0][0];
-      expect(url).toContain("/gb/podcasts/top/50/genre=1303/podcasts.json");
+      expect(url).toContain("/gb/podcasts/top/50/podcasts.json?genre=1303");
     });
 
     it("should return empty array on fetch failure", async () => {
