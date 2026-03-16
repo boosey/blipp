@@ -149,7 +149,7 @@ function FavoritesGrid() {
 }
 
 export function LibraryPage() {
-  const [tab, setTab] = useState<"subscriptions" | "favorites" | "history">("subscriptions");
+  const [tab, setTab] = useState<"favorites" | "subscriptions" | "history">("favorites");
 
   return (
     <div>
@@ -157,16 +157,16 @@ export function LibraryPage() {
 
       <div className="flex gap-4 mb-4 border-b border-zinc-800">
         <button
-          onClick={() => setTab("subscriptions")}
-          className={`pb-2 text-sm font-medium ${tab === "subscriptions" ? "text-white border-b-2 border-white" : "text-zinc-500"}`}
-        >
-          Subscriptions
-        </button>
-        <button
           onClick={() => setTab("favorites")}
           className={`pb-2 text-sm font-medium ${tab === "favorites" ? "text-white border-b-2 border-white" : "text-zinc-500"}`}
         >
           Favorites
+        </button>
+        <button
+          onClick={() => setTab("subscriptions")}
+          className={`pb-2 text-sm font-medium ${tab === "subscriptions" ? "text-white border-b-2 border-white" : "text-zinc-500"}`}
+        >
+          Subscriptions
         </button>
         <button
           onClick={() => setTab("history")}
@@ -176,8 +176,8 @@ export function LibraryPage() {
         </button>
       </div>
 
-      {tab === "subscriptions" && <SubscriptionsGrid />}
       {tab === "favorites" && <FavoritesGrid />}
+      {tab === "subscriptions" && <SubscriptionsGrid />}
       {tab === "history" && (
         <Suspense fallback={<LibrarySkeleton />}>
           <History />
