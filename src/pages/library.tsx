@@ -1,4 +1,4 @@
-import { useState, lazy, Suspense } from "react";
+import { useState, lazy, Suspense, useRef, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Library, Heart, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -6,6 +6,7 @@ import { useFetch } from "../lib/use-fetch";
 import { useApiFetch } from "../lib/api";
 import { LibrarySkeleton } from "../components/skeletons/library-skeleton";
 import { EmptyState } from "../components/empty-state";
+import { usePullToRefresh } from "../hooks/use-pull-to-refresh";
 
 const History = lazy(() => import("./history"));
 
@@ -28,8 +29,12 @@ interface FavoritePodcast {
   author: string | null;
 }
 
-function SubscriptionsGrid() {
-  const { data, loading } = useFetch<{ subscriptions: SubscribedPodcast[] }>("/podcasts/subscriptions");
+function SubscriptionsGrid({ onRefetchRef }: { onRefetchRef?: React.MutableRefObject<(() => void) | null> }) {
+  const { data, loading, refetch } = useFetch<{ subscriptions: SubscribedPodcast[] }>("/podcasts/subscriptions");
+
+  useEffect(() => {
+    if (onRefetchRef) onRefetchRef.current = refetch;
+  }, [onRefetchRef, refetch]);
   const subscriptions = data?.subscriptions ?? [];
 
   if (loading) return <LibrarySkeleton />;
@@ -82,9 +87,13 @@ function SubscriptionsGrid() {
   );
 }
 
-function FavoritesGrid() {
+function FavoritesGrid({ onRefetchRef }: { onRefetchRef?: React.MutableRefObject<(() => void) | null> }) {
   const apiFetch = useApiFetch();
   const { data, loading, refetch } = useFetch<{ data: FavoritePodcast[] }>("/podcasts/favorites");
+
+  useEffect(() => {
+    if (onRefetchRef) onRefetchRef.current = refetch;
+  }, [onRefetchRef, refetch]);
   const favorites = data?.data ?? [];
 
   if (loading) return <LibrarySkeleton />;
@@ -150,9 +159,15 @@ function FavoritesGrid() {
 
 export function LibraryPage() {
   const [tab, setTab] = useState<"favorites" | "subscriptions" | "history">("favorites");
+  const refetchRef = useRef<(() => void) | null>(null);
+
+  const { indicator: pullIndicator, bind: pullBind } = usePullToRefresh({
+    onRefresh: async () => { refetchRef.current?.(); },
+  });
 
   return (
-    <div>
+    <div {...pullBind}>
+      {pullIndicator}
       <h1 className="text-xl font-bold mb-4">Library</h1>
 
       <div className="flex gap-4 mb-4 border-b border-zinc-800">
@@ -176,8 +191,8 @@ export function LibraryPage() {
         </button>
       </div>
 
-      {tab === "favorites" && <FavoritesGrid />}
-      {tab === "subscriptions" && <SubscriptionsGrid />}
+      {tab === "favorites" && <FavoritesGrid onRefetchRef={refetchRef} />}
+      {tab === "subscriptions" && <SubscriptionsGrid onRefetchRef={refetchRef} />}
       {tab === "history" && (
         <Suspense fallback={<LibrarySkeleton />}>
           <History />

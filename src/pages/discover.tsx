@@ -7,6 +7,7 @@ import { useFetch } from "../lib/use-fetch";
 import { PodcastCard } from "../components/podcast-card";
 import { DiscoverSkeleton } from "../components/skeletons/discover-skeleton";
 import { EmptyState } from "../components/empty-state";
+import { usePullToRefresh } from "../hooks/use-pull-to-refresh";
 
 interface CatalogPodcast {
   id: string;
@@ -41,9 +42,13 @@ export function Discover() {
     { id: string; feedUrl: string; title?: string; status: string; podcastId?: string }[]
   >([]);
 
-  const { data: catalogData, error: catalogError } = useFetch<{
+  const { data: catalogData, error: catalogError, refetch: refetchCatalog } = useFetch<{
     podcasts: CatalogPodcast[];
   }>("/podcasts/catalog");
+
+  const { indicator: pullIndicator, bind: pullBind } = usePullToRefresh({
+    onRefresh: async () => { await refetchCatalog(); },
+  });
 
   // Debounce search input
   useEffect(() => {
@@ -147,7 +152,8 @@ export function Discover() {
   }, [catalogData?.podcasts, selectedCategory]);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" {...pullBind}>
+      {pullIndicator}
       {/* Search bar */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
