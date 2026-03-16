@@ -117,7 +117,7 @@ export default function Onboarding() {
               What podcasts are you into?
             </h1>
             <p className="text-zinc-400 text-sm mt-1">
-              Pick a few so we can tailor your experience. You can skip this.
+              Pick a few so we can tailor your experience.
             </p>
           </div>
 
