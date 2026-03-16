@@ -226,6 +226,13 @@ You can verify with `npx prisma studio` (set DATABASE_URL first).
 
 ## Phase 5: Clerk Auth
 
+**Before starting:** Create the secrets files you'll fill in during Phases 5-8:
+
+```bash
+cp scripts/templates/secrets-staging.env.template secrets-staging.env
+cp scripts/templates/secrets-production.env.template secrets-production.env
+```
+
 ### 5a: Staging (Development Instance)
 
 Your Clerk dev instance is created automatically with your account.
@@ -236,8 +243,9 @@ Your Clerk dev instance is created automatically with your account.
 
 **Collect keys:**
 - [ ] Go to the **API Keys** page
-- [ ] Copy **Publishable Key** (`pk_test_...`) → save as `CLERK_PUBLISHABLE_KEY_STAGING`
-- [ ] Copy **Secret Key** (`sk_test_...`) → save as `CLERK_SECRET_KEY_STAGING`
+- [ ] Copy **Publishable Key** (`pk_test_...`) → paste into `secrets-staging.env` as `CLERK_PUBLISHABLE_KEY`
+- [ ] Copy **Secret Key** (`sk_test_...`) → paste into `secrets-staging.env` as `CLERK_SECRET_KEY`
+- [ ] Also save the publishable key separately — it's needed as a GitHub secret in Phase 10 (`VITE_CLERK_PUBLISHABLE_KEY_STAGING`)
 
 **Webhook setup is deferred to Phase 13** (needs the `workers.dev` URL from first deploy).
 
@@ -263,8 +271,9 @@ Your Clerk dev instance is created automatically with your account.
 
 **Collect keys:**
 - [ ] Go to the **API Keys** page (production instance)
-- [ ] Copy **Publishable Key** (`pk_live_...`) → save as `CLERK_PUBLISHABLE_KEY_PRODUCTION`
-- [ ] Copy **Secret Key** (`sk_live_...`) → save as `CLERK_SECRET_KEY_PRODUCTION`
+- [ ] Copy **Publishable Key** (`pk_live_...`) → paste into `secrets-production.env` as `CLERK_PUBLISHABLE_KEY`
+- [ ] Copy **Secret Key** (`sk_live_...`) → paste into `secrets-production.env` as `CLERK_SECRET_KEY`
+- [ ] Also save the publishable key separately — it's needed as a GitHub secret in Phase 10 (`VITE_CLERK_PUBLISHABLE_KEY_PRODUCTION`)
 
 **Webhook setup is deferred to Phase 13** (needs the deployed URL).
 
@@ -283,7 +292,7 @@ Your Clerk dev instance is created automatically with your account.
 
 **Collect sandbox key:**
 - [ ] **Developers Dashboard > API keys** tab → Copy **Secret Key** (`sk_test_...`)
-- [ ] Save as `STRIPE_SECRET_KEY_STAGING`
+- [ ] Paste into `secrets-staging.env` as `STRIPE_SECRET_KEY` (create from template if not done yet: `cp scripts/templates/secrets-staging.env.template secrets-staging.env`)
 
 **Create products and update database (automated):**
 
@@ -309,7 +318,7 @@ npx tsx scripts/setup-stripe.ts
 
 **Collect live key:**
 - [ ] In live mode, **Developers Dashboard > API keys** tab → Copy **Secret Key** (`sk_live_...`)
-- [ ] Save as `STRIPE_SECRET_KEY_PRODUCTION`
+- [ ] Paste into `secrets-production.env` as `STRIPE_SECRET_KEY` (create from template if not done yet: `cp scripts/templates/secrets-production.env.template secrets-production.env`)
 
 **Create products and update database (automated):**
 
@@ -341,31 +350,31 @@ Same keys for both environments. Staging uses cheap models via PlatformConfig �
 
 - [ ] https://console.anthropic.com/ → **Settings > Keys** → **Create Key**
 - [ ] Name: `blipp`
-- [ ] Copy key (`sk-ant-...`) → save as `ANTHROPIC_API_KEY`
+- [ ] Copy key (`sk-ant-...`) → paste into both `secrets-staging.env` and `secrets-production.env` as `ANTHROPIC_API_KEY`
 - [ ] Add $25+ credits
 
 ### 7.2 OpenAI
 
 - [ ] https://platform.openai.com/ → **Dashboard > API keys** → **Create new secret key**
 - [ ] Name: `blipp`
-- [ ] Copy key (`sk-...`) → save as `OPENAI_API_KEY`
+- [ ] Copy key (`sk-...`) → paste into both `secrets-staging.env` and `secrets-production.env` as `OPENAI_API_KEY`
 - [ ] Add $25+ credits, set spend limit in **Settings > Limits**
 
 ### 7.3 Groq (Optional)
 
 - [ ] https://console.groq.com → **API Keys** → **Create API Key**
-- [ ] Copy key (`gsk_...`) → save as `GROQ_API_KEY`
+- [ ] Copy key (`gsk_...`) → paste into both secrets env files as `GROQ_API_KEY`
 
 ### 7.4 Deepgram (Optional)
 
 - [ ] https://console.deepgram.com → **API Keys** → **Create Key**
-- [ ] Copy key → save as `DEEPGRAM_API_KEY`
+- [ ] Copy key → paste into both secrets env files as `DEEPGRAM_API_KEY`
 
 ### 7.5 Podcast Index
 
 - [ ] https://api.podcastindex.org (or check signup email)
-- [ ] Copy **API Key** → save as `PODCAST_INDEX_KEY`
-- [ ] Copy **API Secret** → save as `PODCAST_INDEX_SECRET`
+- [ ] Copy **API Key** → paste into both secrets env files as `PODCAST_INDEX_KEY`
+- [ ] Copy **API Secret** → paste into both secrets env files as `PODCAST_INDEX_SECRET`
 - [ ] If the secret contains special characters (`^`, `$`, `#`), quote it when pasting
 
 ### 7.6 Cloudflare Workers AI
