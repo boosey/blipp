@@ -15,11 +15,11 @@ This guide covers both **staging** and **production** environments. Staging depl
 5. [Phase 5: Clerk Auth](#phase-5-clerk-auth)
 6. [Phase 6: AI & Podcast Services](#phase-6-ai--podcast-services)
 7. [Phase 7: Web Push VAPID Keys](#phase-7-web-push-vapid-keys)
-8. [Phase 8: Google AdSense (Optional — after deploy)](#phase-8-google-adsense-optional)
-9. [Phase 9: GitHub CI/CD](#phase-9-github-cicd)
-10. [Phase 10: Domain & DNS](#phase-10-domain--dns)
-11. [Phase 11: Set Cloudflare Secrets](#phase-11-set-cloudflare-secrets)
-12. [Phase 12: Deploy, Stripe & Webhooks](#phase-12-first-deploy--webhooks)
+8. [Phase 8: GitHub CI/CD](#phase-8-github-cicd)
+9. [Phase 9: Domain & DNS](#phase-9-domain--dns)
+10. [Phase 10: Set Cloudflare Secrets](#phase-10-set-cloudflare-secrets)
+11. [Phase 11: Deploy, Stripe & Webhooks](#phase-11-deploy-stripe--webhooks)
+12. [Phase 12: Google AdSense (Optional)](#phase-12-google-adsense-optional)
 13. [Phase 13: Post-Deploy Verification](#phase-13-post-deploy-verification)
 14. [Operational Runbook](#operational-runbook)
 15. [Automation Scripts](#automation-scripts)
@@ -184,7 +184,7 @@ Each command outputs a config ID. Paste them into `wrangler.jsonc`:
 - [ ] **My Profile > API Tokens > Create Token**
 - [ ] Template: **Edit Cloudflare Workers**
 - [ ] Scope: your account
-- [ ] **Save the token** — needed for GitHub in Phase 10
+- [ ] **Save the token** — needed for GitHub in Phase 8
 
 ---
 
@@ -244,7 +244,7 @@ Your Clerk dev instance is created automatically with your account.
 - [ ] Go to the **API Keys** page
 - [ ] Copy **Publishable Key** (`pk_test_...`) → paste into `secrets-staging.env` as `CLERK_PUBLISHABLE_KEY`
 - [ ] Copy **Secret Key** (`sk_test_...`) → paste into `secrets-staging.env` as `CLERK_SECRET_KEY`
-- [ ] Also save the publishable key separately — it's needed as a GitHub secret in Phase 10 (`VITE_CLERK_PUBLISHABLE_KEY_STAGING`)
+- [ ] Also save the publishable key separately — it's needed as a GitHub secret in Phase 8 (`VITE_CLERK_PUBLISHABLE_KEY_STAGING`)
 
 **Webhook setup is deferred to Phase 13** (needs the `workers.dev` URL from first deploy).
 
@@ -272,7 +272,7 @@ Your Clerk dev instance is created automatically with your account.
 - [ ] Go to the **API Keys** page (production instance)
 - [ ] Copy **Publishable Key** (`pk_live_...`) → paste into `secrets-production.env` as `CLERK_PUBLISHABLE_KEY`
 - [ ] Copy **Secret Key** (`sk_live_...`) → paste into `secrets-production.env` as `CLERK_SECRET_KEY`
-- [ ] Also save the publishable key separately — it's needed as a GitHub secret in Phase 10 (`VITE_CLERK_PUBLISHABLE_KEY_PRODUCTION`)
+- [ ] Also save the publishable key separately — it's needed as a GitHub secret in Phase 8 (`VITE_CLERK_PUBLISHABLE_KEY_PRODUCTION`)
 
 **Webhook setup is deferred to Phase 13** (needs the deployed URL).
 
@@ -333,61 +333,11 @@ npx web-push generate-vapid-keys
 
 ---
 
-## Phase 8: Google AdSense (Optional)
-
-**Skip this phase during initial setup.** AdSense requires a live, publicly accessible website for verification. Come back here after Phase 12 (deploy) is complete.
-
-Ads are disabled by default (`ads.enabled` = false in PlatformConfig). The IMA SDK is already loaded in `index.html`. You don't need AdSense to use VAST tags from other ad servers — only if you want Google's ad network.
-
-### If you want Google ads (after deploy):
-
-#### 8.1 Sign Up & Verify
-
-- [ ] Sign up at https://www.google.com/adsense/
-- [ ] Google gives you a publisher ID (`ca-pub-XXXXXXXXXXXXXXXX`)
-- [ ] Choose a verification method:
-
-**Option A — AdSense code snippet** (add to `index.html` `<head>`):
-```html
-<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-XXXXXXXXXXXXXXXX" crossorigin="anonymous"></script>
-```
-
-**Option B — Meta tag** (add to `index.html` `<head>`, lighter — no ads load):
-```html
-<meta name="google-adsense-account" content="ca-pub-XXXXXXXXXXXXXXXX" />
-```
-
-**Option C — ads.txt file** (add to `public/ads.txt`):
-```
-google.com, pub-XXXXXXXXXXXXXXXX, DIRECT, f08c47fec0942fa0
-```
-
-- [ ] Deploy the app with your chosen verification method
-- [ ] In AdSense dashboard, click **Request review**
-- [ ] Wait for approval (days to weeks)
-
-#### 8.2 Set Up Ad Manager (After Approval)
-
-Once approved:
-- [ ] Go to https://admanager.google.com/
-- [ ] Create audio ad units (Preroll + Postroll, master size: **Audio**)
-- [ ] Create line items with **Video and audio** ad type, **Audio** expected creative size
-- [ ] Generate VAST tag URLs: **Inventory > Ad units > [your unit] > Tags**
-  - VAST tags must include: `ad_type=audio`, `env=instream`, `vpmute=0`
-- [ ] Configure in admin UI: set `ads.preroll.vastTagUrl` and `ads.postroll.vastTagUrl` in PlatformConfig
-- [ ] Enable ads: set `ads.enabled` to `true` in PlatformConfig
-
-### If you want to skip ads:
-
-- [ ] No action needed — ads are disabled by default
-
----
-
-## Phase 9: GitHub CI/CD
+## Phase 8: GitHub CI/CD
 
 **Requires:** API token from Phase 3.4, Clerk publishable keys from Phase 5.
 
-### 10.1 Add Repository Secrets
+### 8.1 Add Repository Secrets
 
 Go to https://github.com/boosey/blipp → **Settings > Secrets and variables > Actions > New repository secret**
 
@@ -395,20 +345,20 @@ Go to https://github.com/boosey/blipp → **Settings > Secrets and variables > A
 - [ ] `VITE_CLERK_PUBLISHABLE_KEY_STAGING` — `pk_test_...` from Phase 5a
 - [ ] `VITE_CLERK_PUBLISHABLE_KEY_PRODUCTION` — `pk_live_...` from Phase 5b
 
-### 10.2 Add Repository Variable
+### 8.2 Add Repository Variable
 
 **Settings > Secrets and variables > Actions > Variables > New repository variable**
 
 - [ ] `STAGING_URL` — set to `placeholder` for now. Update after first deploy in Phase 13 when you learn the `workers.dev` URL.
 
-### 10.3 Verify Workflows Exist
+### 8.3 Verify Workflows Exist
 
 - [ ] `.github/workflows/deploy-staging.yml` — auto-deploys staging on push to `main`
 - [ ] `.github/workflows/deploy-production.yml` — manual trigger (workflow_dispatch)
 
 ---
 
-## Phase 10: Domain & DNS
+## Phase 9: Domain & DNS
 
 Only production gets a custom domain. Staging uses the `workers.dev` URL.
 
@@ -434,7 +384,7 @@ After the first production deploy (Phase 13), add the custom domain:
 
 ---
 
-## Phase 11: Set Cloudflare Secrets
+## Phase 10: Set Cloudflare Secrets
 
 **Requires:** All keys from Phases 5-8.
 
@@ -523,13 +473,13 @@ npx wrangler secret put VAPID_SUBJECT --env production
 
 ---
 
-## Phase 12: First Deploy & Webhooks
+## Phase 11: Deploy, Stripe & Webhooks
 
 **Requires:** All prior phases complete. Secrets set (with placeholder webhook secrets).
 
 This phase has a specific order: deploy → get URL → create webhooks → update secrets.
 
-### 12.1 Deploy Staging
+### 11.1 Deploy Staging
 
 ```bash
 npx prisma generate
@@ -540,9 +490,9 @@ npx wrangler deploy
 
 - [ ] Deploy succeeded
 - [ ] **Write down the `workers.dev` URL** (e.g., `https://blipp-staging.XXXXXX.workers.dev`)
-- [ ] Update the `STAGING_URL` GitHub variable (Phase 10.2) with this URL
+- [ ] Update the `STAGING_URL` GitHub variable (Phase 8.2) with this URL
 
-### 12.2 Create Staging Webhook Endpoints
+### 11.2 Create Staging Webhook Endpoints
 
 Now that you have the `workers.dev` URL:
 
@@ -559,7 +509,7 @@ Now that you have the `workers.dev` URL:
 - [ ] Events: `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_failed` → **Add endpoint**
 - [ ] Expand **Signing secret** → copy it
 
-### 12.3 Update Staging Webhook Secrets
+### 11.3 Update Staging Webhook Secrets
 
 Replace the placeholders with real signing secrets:
 
@@ -570,7 +520,7 @@ npx wrangler secret put STRIPE_WEBHOOK_SECRET      # paste Stripe signing secret
 
 No redeploy needed — secrets take effect immediately.
 
-### 12.4 Verify Staging
+### 11.4 Verify Staging
 
 - [ ] Homepage loads at the `workers.dev` URL
 - [ ] Sign up / sign in works (Clerk dev instance)
@@ -584,16 +534,16 @@ UPDATE "User" SET "isAdmin" = true WHERE email = 'your@email.com';
 
 - [ ] Admin panel accessible at `/admin`
 
-### 12.5 Deploy Production
+### 11.5 Deploy Production
 
 ```bash
 npx wrangler deploy --env production
 ```
 
 - [ ] Deploy succeeded
-- [ ] Set up custom domain (Phase 10) if not already done
+- [ ] Set up custom domain (Phase 9) if not already done
 
-### 12.6 Stripe Setup
+### 11.6 Stripe Setup
 
 Now that both environments are deployed, set up Stripe billing.
 
@@ -632,7 +582,7 @@ Now that both environments are deployed, set up Stripe billing.
 - [ ] Allow: cancellations, plan switching, payment method updates
 - [ ] Customize branding in **Settings > Branding**
 
-### 12.7 Create Production Webhook Endpoints
+### 11.7 Create Production Webhook Endpoints
 
 **Clerk (Production instance):**
 - [ ] Dashboard (switch to production instance) → **Webhooks** → **Add Endpoint**
@@ -647,14 +597,14 @@ Now that both environments are deployed, set up Stripe billing.
 - [ ] Events: `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_failed` → **Add endpoint**
 - [ ] Expand **Signing secret** → copy it
 
-### 12.8 Update Production Webhook Secrets
+### 11.8 Update Production Webhook Secrets
 
 ```bash
 npx wrangler secret put CLERK_WEBHOOK_SECRET --env production    # paste Clerk signing secret
 npx wrangler secret put STRIPE_WEBHOOK_SECRET --env production   # paste Stripe signing secret
 ```
 
-### 12.9 Verify Production
+### 11.9 Verify Production
 
 - [ ] Homepage loads at `podblipp.com`
 - [ ] Sign up / sign in works (Clerk production instance)
@@ -667,7 +617,7 @@ UPDATE "User" SET "isAdmin" = true WHERE email = 'your@email.com';
 
 - [ ] Admin panel accessible at `/admin`
 
-### 12.10 Configure Staging PlatformConfig
+### 11.10 Configure Staging PlatformConfig
 
 Set staging to use cheapest AI models (via admin UI at `workers.dev` URL → `/admin`):
 
@@ -675,6 +625,54 @@ Set staging to use cheapest AI models (via admin UI at `workers.dev` URL → `/a
 - [ ] Distillation model → Haiku 4.5 on Anthropic
 - [ ] Narrative model → Haiku 4.5 on Anthropic
 - [ ] TTS model → MeloTTS on Cloudflare
+
+---
+
+## Phase 12: Google AdSense (Optional)
+
+Ads are disabled by default (`ads.enabled` = false in PlatformConfig). The IMA SDK is already loaded in `index.html`. You don't need AdSense to use VAST tags from other ad servers — only if you want Google's ad network.
+
+### If you want Google ads:
+
+#### 12.1 Sign Up & Verify
+
+- [ ] Sign up at https://www.google.com/adsense/
+- [ ] Google gives you a publisher ID (`ca-pub-XXXXXXXXXXXXXXXX`)
+- [ ] Choose a verification method:
+
+**Option A — AdSense code snippet** (add to `index.html` `<head>`):
+```html
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-XXXXXXXXXXXXXXXX" crossorigin="anonymous"></script>
+```
+
+**Option B — Meta tag** (add to `index.html` `<head>`, lighter — no ads load):
+```html
+<meta name="google-adsense-account" content="ca-pub-XXXXXXXXXXXXXXXX" />
+```
+
+**Option C — ads.txt file** (add to `public/ads.txt`):
+```
+google.com, pub-XXXXXXXXXXXXXXXX, DIRECT, f08c47fec0942fa0
+```
+
+- [ ] Redeploy with your chosen verification method
+- [ ] In AdSense dashboard, click **Request review**
+- [ ] Wait for approval (days to weeks)
+
+#### 12.2 Set Up Ad Manager (After Approval)
+
+Once approved:
+- [ ] Go to https://admanager.google.com/
+- [ ] Create audio ad units (Preroll + Postroll, master size: **Audio**)
+- [ ] Create line items with **Video and audio** ad type, **Audio** expected creative size
+- [ ] Generate VAST tag URLs: **Inventory > Ad units > [your unit] > Tags**
+  - VAST tags must include: `ad_type=audio`, `env=instream`, `vpmute=0`
+- [ ] Configure in admin UI: set `ads.preroll.vastTagUrl` and `ads.postroll.vastTagUrl` in PlatformConfig
+- [ ] Enable ads: set `ads.enabled` to `true` in PlatformConfig
+
+### If you want to skip ads:
+
+- [ ] No action needed — ads are disabled by default
 
 ---
 
