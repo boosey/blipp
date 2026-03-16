@@ -1,5 +1,5 @@
-import { Link } from "react-router-dom";
 import { ChevronRight } from "lucide-react";
+import { usePodcastSheet } from "../contexts/podcast-sheet-context";
 
 export interface PodcastCardProps {
   id: string;
@@ -16,8 +16,10 @@ export function PodcastCard({
   description,
   imageUrl,
 }: PodcastCardProps) {
+  const { open } = usePodcastSheet();
+
   return (
-    <Link to={`/discover/${id}`}>
+    <button onClick={() => open(id)} className="w-full text-left">
       <div className="flex gap-3 bg-zinc-900 border border-zinc-800 rounded-lg p-3 active:scale-[0.98] transition-transform duration-75">
         {imageUrl ? (
           <img
@@ -41,6 +43,6 @@ export function PodcastCard({
         </div>
         <ChevronRight className="w-4 h-4 text-zinc-600 self-center flex-shrink-0" />
       </div>
-    </Link>
+    </button>
   );
 }

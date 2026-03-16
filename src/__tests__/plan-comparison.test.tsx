@@ -201,17 +201,15 @@ describe("PlanComparison", () => {
     );
 
     await waitFor(() => {
-      // Free plan details
-      expect(screen.getByText("Briefings: 5/week")).toBeInTheDocument();
-      expect(screen.getByText("Max duration: 3min")).toBeInTheDocument();
-      expect(screen.getByText("Subscriptions: 3")).toBeInTheDocument();
+      // Free plan details (bullet format)
+      expect(screen.getByText("· 5 briefings/week")).toBeInTheDocument();
+      expect(screen.getByText("· Up to 3min per briefing")).toBeInTheDocument();
+      expect(screen.getByText("· 3 subscriptions")).toBeInTheDocument();
 
       // Pro plan details
-      expect(screen.getByText("Briefings: Unlimited/week")).toBeInTheDocument();
-      expect(screen.getByText("Max duration: 15min")).toBeInTheDocument();
-      expect(
-        screen.getByText("Subscriptions: Unlimited")
-      ).toBeInTheDocument();
+      expect(screen.getByText("· Unlimited briefings/week")).toBeInTheDocument();
+      expect(screen.getByText("· Up to 15min per briefing")).toBeInTheDocument();
+      expect(screen.getByText("· Unlimited subscriptions")).toBeInTheDocument();
     });
   });
 
@@ -226,9 +224,9 @@ describe("PlanComparison", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText("Ad-free")).toBeInTheDocument();
-      expect(screen.getByText("Priority processing")).toBeInTheDocument();
-      expect(screen.getByText("Early access")).toBeInTheDocument();
+      expect(screen.getByText("· Ad-free")).toBeInTheDocument();
+      expect(screen.getByText("· Priority processing")).toBeInTheDocument();
+      expect(screen.getByText("· Early access")).toBeInTheDocument();
     });
   });
 

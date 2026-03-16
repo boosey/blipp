@@ -86,24 +86,14 @@ export function PlanComparison({
                 )}
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-2 text-xs text-zinc-400">
-              <span>
-                Briefings: {p.briefingsPerWeek ?? "Unlimited"}/week
-              </span>
-              <span>Max duration: {p.maxDurationMinutes}min</span>
-              <span>
-                Subscriptions: {p.maxPodcastSubscriptions ?? "Unlimited"}
-              </span>
-              {p.adFree && (
-                <span className="text-green-400">Ad-free</span>
-              )}
-              {p.priorityProcessing && (
-                <span className="text-green-400">Priority processing</span>
-              )}
-              {p.earlyAccess && (
-                <span className="text-green-400">Early access</span>
-              )}
-            </div>
+            <ul className="text-xs text-zinc-400 space-y-1">
+              <li>· {p.briefingsPerWeek ?? "Unlimited"} briefings/week</li>
+              <li>· Up to {p.maxDurationMinutes}min per briefing</li>
+              <li>· {p.maxPodcastSubscriptions ?? "Unlimited"} subscriptions</li>
+              {p.adFree && <li className="text-green-400">· Ad-free</li>}
+              {p.priorityProcessing && <li className="text-green-400">· Priority processing</li>}
+              {p.earlyAccess && <li className="text-green-400">· Early access</li>}
+            </ul>
             {isCurrent ? (
               <div className="flex items-center gap-2">
                 <span className="text-xs text-zinc-500 bg-zinc-800 px-2.5 py-1 rounded-full">

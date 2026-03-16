@@ -5,6 +5,10 @@ import { Discover } from "../pages/discover";
 
 const stableGetToken = vi.fn().mockResolvedValue("test-token");
 
+vi.mock("../contexts/podcast-sheet-context", () => ({
+  usePodcastSheet: () => ({ podcastId: null, open: vi.fn(), close: vi.fn() }),
+}));
+
 vi.mock("@clerk/clerk-react", () => ({
   useUser: vi.fn(() => ({ user: { publicMetadata: { tier: "FREE" } } })),
   useAuth: vi.fn(() => ({ getToken: stableGetToken })),

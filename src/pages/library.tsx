@@ -1,5 +1,4 @@
 import { useState, lazy, Suspense, useRef, useEffect } from "react";
-import { Link } from "react-router-dom";
 import { Library, Heart, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useFetch } from "../lib/use-fetch";
@@ -7,6 +6,7 @@ import { useApiFetch } from "../lib/api";
 import { LibrarySkeleton } from "../components/skeletons/library-skeleton";
 import { EmptyState } from "../components/empty-state";
 import { usePullToRefresh } from "../hooks/use-pull-to-refresh";
+import { usePodcastSheet } from "../contexts/podcast-sheet-context";
 
 const History = lazy(() => import("./history"));
 
@@ -30,6 +30,7 @@ interface FavoritePodcast {
 }
 
 function SubscriptionsGrid({ onRefetchRef }: { onRefetchRef?: React.MutableRefObject<(() => void) | null> }) {
+  const { open: openPodcast } = usePodcastSheet();
   const { data, loading, refetch } = useFetch<{ subscriptions: SubscribedPodcast[] }>("/podcasts/subscriptions");
 
   useEffect(() => {
@@ -53,9 +54,9 @@ function SubscriptionsGrid({ onRefetchRef }: { onRefetchRef?: React.MutableRefOb
   return (
     <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3">
       {subscriptions.map((sub) => (
-        <Link
+        <button
           key={sub.id}
-          to={`/discover/${sub.podcast.id}`}
+          onClick={() => openPodcast(sub.podcast.id)}
           className="flex flex-col items-center gap-2 active:scale-[0.98] transition-transform duration-75"
         >
           <div className="relative w-full">
@@ -81,13 +82,14 @@ function SubscriptionsGrid({ onRefetchRef }: { onRefetchRef?: React.MutableRefOb
           <p className="text-xs text-center font-medium truncate w-full">
             {sub.podcast.title}
           </p>
-        </Link>
+        </button>
       ))}
     </div>
   );
 }
 
 function FavoritesGrid({ onRefetchRef }: { onRefetchRef?: React.MutableRefObject<(() => void) | null> }) {
+  const { open: openPodcast } = usePodcastSheet();
   const apiFetch = useApiFetch();
   const { data, loading, refetch } = useFetch<{ data: FavoritePodcast[] }>("/podcasts/favorites");
 
@@ -123,9 +125,9 @@ function FavoritesGrid({ onRefetchRef }: { onRefetchRef?: React.MutableRefObject
     <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3">
       {favorites.map((podcast) => (
         <div key={podcast.id} className="relative group">
-          <Link
-            to={`/discover/${podcast.id}`}
-            className="flex flex-col items-center gap-2 active:scale-[0.98] transition-transform duration-75"
+          <button
+            onClick={() => openPodcast(podcast.id)}
+            className="flex flex-col items-center gap-2 active:scale-[0.98] transition-transform duration-75 w-full"
           >
             {podcast.imageUrl ? (
               <img
@@ -143,7 +145,7 @@ function FavoritesGrid({ onRefetchRef }: { onRefetchRef?: React.MutableRefObject
             <p className="text-xs text-center font-medium truncate w-full">
               {podcast.title}
             </p>
-          </Link>
+          </button>
           <button
             onClick={() => removeFavorite(podcast.id)}
             className="absolute top-1 right-1 p-1.5 rounded-full bg-zinc-950/70 text-zinc-400 opacity-0 group-hover:opacity-100 transition-opacity hover:text-red-400"

@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
 import { Search, X, Plus } from "lucide-react";
-import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { useApiFetch } from "../lib/api";
 import { useFetch } from "../lib/use-fetch";
@@ -8,6 +7,7 @@ import { PodcastCard } from "../components/podcast-card";
 import { DiscoverSkeleton } from "../components/skeletons/discover-skeleton";
 import { EmptyState } from "../components/empty-state";
 import { usePullToRefresh } from "../hooks/use-pull-to-refresh";
+import { usePodcastSheet } from "../contexts/podcast-sheet-context";
 
 interface CatalogPodcast {
   id: string;
@@ -27,6 +27,7 @@ const CATEGORIES = [
 
 export function Discover() {
   const apiFetch = useApiFetch();
+  const { open: openPodcast } = usePodcastSheet();
   const [searchInput, setSearchInput] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [searchResults, setSearchResults] = useState<CatalogPodcast[] | null>(null);
@@ -230,10 +231,10 @@ export function Discover() {
               <h2 className="text-lg font-semibold mb-3">Trending Now</h2>
               <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-hide snap-x-mandatory">
                 {trendingPodcasts.map((podcast) => (
-                  <Link
-                    to={`/discover/${podcast.id}`}
+                  <button
                     key={podcast.id}
-                    className="flex-shrink-0 w-28 snap-start"
+                    onClick={() => openPodcast(podcast.id)}
+                    className="flex-shrink-0 w-28 snap-start text-left"
                   >
                     {podcast.imageUrl ? (
                       <img
@@ -251,7 +252,7 @@ export function Discover() {
                     <p className="text-xs font-medium mt-1.5 truncate">
                       {podcast.title}
                     </p>
-                  </Link>
+                  </button>
                 ))}
               </div>
             </section>
@@ -353,9 +354,9 @@ export function Discover() {
                       </button>
                     )}
                     {req.status === "APPROVED" && req.podcastId && (
-                      <Link to={`/discover/${req.podcastId}`} className="text-xs text-white ml-2">
+                      <button onClick={() => openPodcast(req.podcastId!)} className="text-xs text-white ml-2">
                         Subscribe &rarr;
-                      </Link>
+                      </button>
                     )}
                   </div>
                 ))}

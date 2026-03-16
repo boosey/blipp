@@ -1,6 +1,11 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { PodcastCard } from "../components/podcast-card";
+
+const mockOpen = vi.fn();
+vi.mock("../contexts/podcast-sheet-context", () => ({
+  usePodcastSheet: () => ({ podcastId: null, open: mockOpen, close: vi.fn() }),
+}));
 
 const defaultProps = {
   id: "p1",
@@ -11,6 +16,10 @@ const defaultProps = {
 };
 
 describe("PodcastCard", () => {
+  beforeEach(() => {
+    mockOpen.mockClear();
+  });
+
   it("renders title, author, and description", () => {
     render(
       <MemoryRouter>
@@ -22,14 +31,14 @@ describe("PodcastCard", () => {
     expect(screen.getByText("Daily tech news and analysis.")).toBeInTheDocument();
   });
 
-  it("links to podcast detail page", () => {
+  it("opens podcast sheet on click", () => {
     render(
       <MemoryRouter>
         <PodcastCard {...defaultProps} />
       </MemoryRouter>
     );
-    const link = screen.getByRole("link");
-    expect(link).toHaveAttribute("href", "/discover/p1");
+    fireEvent.click(screen.getByRole("button"));
+    expect(mockOpen).toHaveBeenCalledWith("p1");
   });
 
   it("renders chevron icon", () => {
@@ -38,9 +47,8 @@ describe("PodcastCard", () => {
         <PodcastCard {...defaultProps} />
       </MemoryRouter>
     );
-    // ChevronRight renders as an SVG inside the link
-    const link = screen.getByRole("link");
-    const svg = link.querySelector("svg");
+    const button = screen.getByRole("button");
+    const svg = button.querySelector("svg");
     expect(svg).toBeInTheDocument();
   });
 
