@@ -331,7 +331,7 @@ podcastsRoutes.post("/catalog-refresh", async (c) => {
         title: feed.title,
         description: feed.description ?? null,
         imageUrl: feed.imageUrl ?? null,
-        podcastIndexId: feed.externalId ?? null,
+        podcastIndexId: feed.podcastIndexId ?? null,
         author: feed.author ?? null,
         source: "trending",
       },
@@ -340,7 +340,7 @@ podcastsRoutes.post("/catalog-refresh", async (c) => {
         description: feed.description ?? undefined,
         imageUrl: feed.imageUrl ?? undefined,
         author: feed.author ?? undefined,
-        podcastIndexId: feed.externalId ?? undefined,
+        podcastIndexId: feed.podcastIndexId ?? undefined,
       },
     });
 
@@ -362,16 +362,16 @@ podcastsRoutes.post("/catalog-refresh", async (c) => {
   let episodeErrors = 0;
   const BATCH_SIZE = 10;
 
-  // Only fetch episodes for podcasts that have externalIds (Podcast Index IDs)
-  const feedsWithIds = discovered.filter((f) => f.externalId);
+  // Only fetch episodes for podcasts that have podcastIndexIds (Podcast Index IDs)
+  const feedsWithIds = discovered.filter((f) => f.podcastIndexId);
 
   for (let i = 0; i < feedsWithIds.length; i += BATCH_SIZE) {
     const batch = feedsWithIds.slice(i, i + BATCH_SIZE);
     const results = await Promise.allSettled(
       batch.map(async (feed) => {
-        const episodes = await client.episodesByFeedId(Number(feed.externalId), 5);
+        const episodes = await client.episodesByFeedId(Number(feed.podcastIndexId), 5);
         const podcast = await prisma.podcast.findUnique({
-          where: { podcastIndexId: feed.externalId },
+          where: { podcastIndexId: feed.podcastIndexId },
           select: { id: true },
         });
         if (!podcast) return 0;

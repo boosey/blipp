@@ -6,7 +6,10 @@ export interface DiscoveredPodcast {
   description?: string;
   imageUrl?: string;
   author?: string;
-  externalId?: string;
+  appleId?: string;
+  podcastIndexId?: string;
+  categories?: { genreId: string; name: string }[];
+  appleMetadata?: Record<string, unknown>;
 }
 
 export interface CatalogSource {
@@ -31,7 +34,7 @@ const PodcastIndexSource: CatalogSource = {
       description: p.description,
       imageUrl: p.image,
       author: p.author,
-      externalId: String(p.id),
+      podcastIndexId: String(p.id),
     }));
   },
 
@@ -45,13 +48,75 @@ const PodcastIndexSource: CatalogSource = {
       description: p.description,
       imageUrl: p.image,
       author: p.author,
-      externalId: String(p.id),
+      podcastIndexId: String(p.id),
+    }));
+  },
+};
+
+// Apple Podcasts implementation
+const ApplePodcastsSource: CatalogSource = {
+  name: "Apple Podcasts",
+  identifier: "apple",
+
+  async discover(count, env) {
+    const { ApplePodcastsClient } = await import("./apple-podcasts");
+    const client = new ApplePodcastsClient();
+
+    const chartEntries = await client.topAllGenres(count, "us");
+    if (chartEntries.length === 0) return [];
+
+    const appleIds = chartEntries.map((e) => Number(e.id));
+    const lookupResults = await client.lookupBatch(appleIds);
+
+    const lookupMap = new Map(
+      lookupResults.map((r) => [String(r.collectionId), r])
+    );
+
+    const discovered: DiscoveredPodcast[] = [];
+    for (const entry of chartEntries) {
+      const lookup = lookupMap.get(entry.id);
+      if (!lookup?.feedUrl) continue;
+
+      discovered.push({
+        feedUrl: lookup.feedUrl,
+        title: lookup.collectionName || entry.name,
+        imageUrl: lookup.artworkUrl600 || entry.artworkUrl100,
+        author: lookup.artistName || entry.artistName,
+        appleId: entry.id,
+        categories: entry.genres.map((g) => ({
+          genreId: g.genreId,
+          name: g.name,
+        })),
+        appleMetadata: lookup as unknown as Record<string, unknown>,
+      });
+    }
+
+    return discovered;
+  },
+
+  async search(query, env) {
+    const { ApplePodcastsClient } = await import("./apple-podcasts");
+    const client = new ApplePodcastsClient();
+    const results = await client.search(query);
+    return results.map((r) => ({
+      feedUrl: r.feedUrl,
+      title: r.collectionName,
+      imageUrl: r.artworkUrl600,
+      author: r.artistName,
+      appleId: String(r.collectionId),
+      categories: (r.genreIds ?? [])
+        .filter((id) => id !== "26")
+        .map((id) => ({
+          genreId: id,
+          name: r.genres?.[r.genreIds?.indexOf(id) ?? -1] ?? "",
+        })),
     }));
   },
 };
 
 const sources = new Map<string, CatalogSource>([
   ["podcast-index", PodcastIndexSource],
+  ["apple", ApplePodcastsSource],
 ]);
 
 export function getCatalogSource(identifier: string): CatalogSource {
