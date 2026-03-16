@@ -39,11 +39,13 @@ ENV_NAME="$2"
 
 case "$ENV_NAME" in
   staging)
-    ENV_FLAG='--env=""'
+    # Top-level config — no --env flag. Wrangler shows a warning about
+    # multiple environments but uploads correctly to the staging worker.
+    ENV_FLAG=""
     DISPLAY_ENV="staging (top-level)"
     ;;
   production)
-    ENV_FLAG="--env=production"
+    ENV_FLAG="--env production"
     DISPLAY_ENV="production"
     ;;
   *)
