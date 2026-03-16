@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { useAuth } from "@clerk/clerk-react";
+import { getApiBase } from "./api-base";
 
 /**
  * Fetches from the admin API with JSON content type and Clerk auth.
@@ -16,7 +17,7 @@ async function adminFetch<T>(
   if (options?.token) {
     headers["Authorization"] = `Bearer ${options.token}`;
   }
-  const res = await fetch(`/api/admin${path}`, {
+  const res = await fetch(`${getApiBase()}/api/admin${path}`, {
     ...options,
     headers,
   });

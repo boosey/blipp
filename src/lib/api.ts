@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { useAuth } from "@clerk/clerk-react";
+import { getApiBase } from "./api-base";
 
 /** Fetches from the Blipp API with JSON content type and Clerk auth. Throws on non-OK responses. */
 export async function apiFetch<T>(
@@ -13,7 +14,7 @@ export async function apiFetch<T>(
   if (options?.token) {
     headers["Authorization"] = `Bearer ${options.token}`;
   }
-  const res = await fetch(`/api${path}`, {
+  const res = await fetch(`${getApiBase()}/api${path}`, {
     ...options,
     headers,
   });

@@ -47,6 +47,7 @@ import {
 import { Card } from "@/components/ui/card";
 import { useAuth } from "@clerk/clerk-react";
 import { useAdminFetch } from "@/lib/admin-api";
+import { getApiBase } from "@/lib/api-base";
 import type {
   SttExperiment,
   SttExperimentStatus,
@@ -1046,7 +1047,7 @@ function ResultsDashboard({
             formData.append("episodeId", episodeId);
             formData.append("speed", String(speed));
 
-            await fetch("/api/admin/stt-benchmark/upload-audio", {
+            await fetch(`${getApiBase()}/api/admin/stt-benchmark/upload-audio`, {
               method: "POST",
               headers: {
                 Authorization: `Bearer ${uploadToken}`,

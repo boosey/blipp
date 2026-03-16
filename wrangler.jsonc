@@ -16,7 +16,7 @@
 	"vars": {
 		"ENVIRONMENT": "staging",
 		"APP_ORIGIN": "https://blipp-staging.boosey-boudreaux.workers.dev",
-		"ALLOWED_ORIGINS": "http://localhost:8787,http://localhost:5173,https://blipp-staging.boosey-boudreaux.workers.dev"
+		"ALLOWED_ORIGINS": "http://localhost:8787,http://localhost:5173,https://blipp-staging.boosey-boudreaux.workers.dev,capacitor://localhost,ionic://localhost"
 	},
 	"hyperdrive": [
 		{
@@ -153,7 +153,7 @@
 			"vars": {
 				"ENVIRONMENT": "production",
 				"APP_ORIGIN": "https://podblipp.com",
-				"ALLOWED_ORIGINS": "https://podblipp.com,https://www.podblipp.com"
+				"ALLOWED_ORIGINS": "https://podblipp.com,https://www.podblipp.com,capacitor://localhost,ionic://localhost"
 			},
 			"ai": {
 				"binding": "AI"

@@ -39,6 +39,7 @@ import {
 } from "@/components/ui/dialog";
 import { useAuth } from "@clerk/clerk-react";
 import { useAdminFetch } from "@/lib/admin-api";
+import { getApiBase } from "@/lib/api-base";
 import type {
   BriefingRequest,
   BriefingRequestItem,
@@ -196,7 +197,7 @@ function AudioPlayer({ wpId, sizeBytes }: { wpId: string; sizeBytes?: number }) 
     setLoadError(null);
     try {
       const token = await getToken();
-      const res = await fetch(`/api/admin/requests/work-product/${wpId}/audio`, {
+      const res = await fetch(`${getApiBase()}/api/admin/requests/work-product/${wpId}/audio`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (!res.ok) throw new Error(res.statusText);
