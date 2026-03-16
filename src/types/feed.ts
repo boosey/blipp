@@ -2,6 +2,7 @@ export interface FeedItem {
   id: string;
   source: "SUBSCRIPTION" | "ON_DEMAND";
   status: "PENDING" | "PROCESSING" | "READY" | "FAILED";
+  errorMessage: string | null;
   listened: boolean;
   listenedAt: string | null;
   durationTier: number;
