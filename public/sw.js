@@ -1,4 +1,6 @@
 const CACHE_NAME = 'blipp-v1';
+const AUDIO_CACHE_NAME = 'briefing-audio-v1';
+const MAX_AUDIO_CACHE_SIZE = 50;
 const SHELL_ASSETS = [
   '/',
   '/home',
@@ -6,6 +8,15 @@ const SHELL_ASSETS = [
   '/library',
   '/settings',
 ];
+
+async function trimCache(cacheName, maxItems) {
+  const cache = await caches.open(cacheName);
+  const keys = await cache.keys();
+  if (keys.length > maxItems) {
+    const toDelete = keys.slice(0, keys.length - maxItems);
+    await Promise.all(toDelete.map(key => cache.delete(key)));
+  }
+}
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -22,7 +33,7 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then(keys => {
       return Promise.all(
-        keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key))
+        keys.filter(key => key !== CACHE_NAME && key !== AUDIO_CACHE_NAME).map(key => caches.delete(key))
       );
     }).then(() => self.clients.claim())
   );
@@ -36,6 +47,26 @@ self.addEventListener('fetch', (event) => {
 
   // API requests: network-first with cache fallback
   if (url.pathname.startsWith('/api/')) {
+    // Briefing audio: cache-first (for offline playback)
+    if (url.pathname.match(/^\/api\/briefings\/[^/]+\/audio$/)) {
+      event.respondWith(
+        caches.match(event.request).then(cached => {
+          if (cached) return cached;
+          return fetch(event.request).then(response => {
+            if (response.ok) {
+              const clone = response.clone();
+              caches.open(AUDIO_CACHE_NAME).then(cache => {
+                cache.put(event.request, clone);
+                trimCache(AUDIO_CACHE_NAME, MAX_AUDIO_CACHE_SIZE);
+              });
+            }
+            return response;
+          });
+        })
+      );
+      return;
+    }
+
     event.respondWith(
       fetch(event.request)
         .then(response => {
