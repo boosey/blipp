@@ -309,20 +309,23 @@ npx tsx scripts/setup-stripe.ts
 
 **Webhook setup is deferred to Phase 13.**
 
-### 6b: Production (Live Mode)
+### 6b: Production (Live Mode) — DEFERRED
+
+Stripe live mode activation requires a reachable website for KYC verification. Your site isn't deployed yet. **Come back here after Phase 13.5** (production deploy).
+
+When you return:
 
 - [ ] Go to https://dashboard.stripe.com/account/onboarding
-- [ ] Complete the **account application** (business details, bank account — KYC compliance)
+- [ ] Complete the **account application** (business details, bank account, website URL `https://podblipp.com`)
 - [ ] Once approved, use the **account picker** to exit sandbox into live mode
 - [ ] **Note:** Account country cannot be changed after activation
 
 **Collect live key:**
 - [ ] In live mode, **Developers Dashboard > API keys** tab → Copy **Secret Key** (`sk_live_...`)
-- [ ] Paste into `secrets-production.env` as `STRIPE_SECRET_KEY` (create from template if not done yet: `cp scripts/templates/secrets-production.env.template secrets-production.env`)
+- [ ] Paste into `secrets-production.env` as `STRIPE_SECRET_KEY`
+- [ ] Update the production secret: `npx wrangler secret put STRIPE_SECRET_KEY --env production`
 
 **Create products and update database (automated):**
-
-Same script, different keys:
 
 ```bash
 DATABASE_URL="YOUR_PRODUCTION_CONNECTION_STRING" \
@@ -338,7 +341,7 @@ npx tsx scripts/setup-stripe.ts
 - [ ] Allow: cancellations, plan switching, payment method updates
 - [ ] Customize branding in **Settings > Branding**
 
-**Webhook setup is deferred to Phase 13.**
+**Webhook setup is in Phase 13.6.**
 
 ---
 
@@ -502,7 +505,9 @@ After the first production deploy (Phase 13), add the custom domain:
 
 **Requires:** All keys from Phases 5-8.
 
-Secrets are set separately per environment. Webhook signing secrets are NOT available yet — they come from Phase 13 after creating webhook endpoints. Use `placeholder` for now.
+Secrets are set separately per environment. Two types of secrets use `placeholder` initially:
+- **Webhook signing secrets** (`CLERK_WEBHOOK_SECRET`, `STRIPE_WEBHOOK_SECRET`) — updated in Phase 13 after creating webhook endpoints
+- **Production `STRIPE_SECRET_KEY`** — Stripe live mode isn't activated yet (requires deployed site). Updated in Phase 6b after production deploy.
 
 ### Automated
 
@@ -654,6 +659,7 @@ npx wrangler deploy --env production
 
 - [ ] Deploy succeeded
 - [ ] Set up custom domain (Phase 11) if not already done
+- [ ] **Now complete Phase 6b** — Stripe live mode activation (requires reachable site). Go back to Phase 6b, activate live mode, collect the live key, create products, update the production secret.
 
 ### 13.6 Create Production Webhook Endpoints
 
