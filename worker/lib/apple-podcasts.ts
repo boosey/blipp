@@ -156,7 +156,7 @@ export class ApplePodcastsClient {
     limit: number = 200,
     country: string = "us"
   ): Promise<AppleChartEntry[]> {
-    const url = `${CHARTS_BASE}/${country}/podcasts/top/${limit}/genre=${genreId}/podcasts.json`;
+    const url = `${CHARTS_BASE}/${country}/podcasts/top/${limit}/podcasts.json?genre=${genreId}`;
     try {
       const res = await fetchWithRetry(url);
       const data = (await res.json()) as ChartsResponse;
