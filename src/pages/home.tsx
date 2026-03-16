@@ -7,6 +7,7 @@ import { FeedSkeleton } from "../components/skeletons/feed-skeleton";
 import { EmptyState } from "../components/empty-state";
 import type { FeedItem } from "../types/feed";
 import { usePullToRefresh } from "../hooks/use-pull-to-refresh";
+import { InstallPrompt } from "../components/install-prompt";
 
 export function Home() {
   const apiFetch = useApiFetch();
@@ -120,6 +121,7 @@ export function Home() {
     <div {...pullBind}>
       {pullIndicator}
       <h1 className="text-xl font-bold mb-4">Your Feed</h1>
+      <InstallPrompt />
       <div className="space-y-2">
         {items.map((item) => (
           <SwipeableFeedItem
