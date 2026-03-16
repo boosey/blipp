@@ -13,17 +13,16 @@ This guide covers both **staging** and **production** environments. Staging depl
 3. [Phase 3: Cloudflare Infrastructure](#phase-3-cloudflare-infrastructure)
 4. [Phase 4: Push Schema & Seed](#phase-4-push-schema--seed)
 5. [Phase 5: Clerk Auth](#phase-5-clerk-auth)
-6. [Phase 6: Stripe Billing](#phase-6-stripe-billing)
-7. [Phase 7: AI & Podcast Services](#phase-7-ai--podcast-services)
-8. [Phase 8: Web Push VAPID Keys](#phase-8-web-push-vapid-keys)
-9. [Phase 9: Google AdSense (Optional)](#phase-9-google-adsense-optional)
-10. [Phase 10: GitHub CI/CD](#phase-10-github-cicd)
-11. [Phase 11: Domain & DNS](#phase-11-domain--dns)
-12. [Phase 12: Set Cloudflare Secrets](#phase-12-set-cloudflare-secrets)
-13. [Phase 13: First Deploy & Webhooks](#phase-13-first-deploy--webhooks)
-14. [Phase 14: Post-Deploy Verification](#phase-14-post-deploy-verification)
-15. [Operational Runbook](#operational-runbook)
-16. [Automation Scripts](#automation-scripts)
+6. [Phase 6: AI & Podcast Services](#phase-6-ai--podcast-services)
+7. [Phase 7: Web Push VAPID Keys](#phase-7-web-push-vapid-keys)
+8. [Phase 8: Google AdSense (Optional)](#phase-8-google-adsense-optional)
+9. [Phase 9: GitHub CI/CD](#phase-9-github-cicd)
+10. [Phase 10: Domain & DNS](#phase-10-domain--dns)
+11. [Phase 11: Set Cloudflare Secrets](#phase-11-set-cloudflare-secrets)
+12. [Phase 12: Deploy, Stripe & Webhooks](#phase-12-first-deploy--webhooks)
+13. [Phase 13: Post-Deploy Verification](#phase-13-post-deploy-verification)
+14. [Operational Runbook](#operational-runbook)
+15. [Automation Scripts](#automation-scripts)
 
 ---
 
@@ -279,114 +278,48 @@ Your Clerk dev instance is created automatically with your account.
 
 ---
 
-## Phase 6: Stripe Billing
-
-**Requires:** Databases seeded from Phase 4 (Plan records must exist — the script reads them to create matching Stripe products).
-
-> Stripe now uses **Sandboxes** (not "Test mode"). Sandboxes are accessed via the **account picker** (top-left of dashboard).
-
-### 6a: Staging (Sandbox)
-
-- [ ] Log into https://dashboard.stripe.com
-- [ ] Use the **account picker** to select or create a sandbox
-
-**Collect sandbox key:**
-- [ ] **Developers Dashboard > API keys** tab → Copy **Secret Key** (`sk_test_...`)
-- [ ] Paste into `secrets-staging.env` as `STRIPE_SECRET_KEY` (create from template if not done yet: `cp scripts/templates/secrets-staging.env.template secrets-staging.env`)
-
-**Create products and update database (automated):**
-
-The script reads paid Plan records from the database, creates matching Stripe products and prices, and updates the Plan records with the Stripe-generated IDs:
-
-```bash
-DATABASE_URL="YOUR_STAGING_CONNECTION_STRING" \
-STRIPE_SECRET_KEY="sk_test_..." \
-npx tsx scripts/setup-stripe.ts
-```
-
-- [ ] Products created in Stripe sandbox (Pro, Pro+)
-- [ ] Plan records updated with `stripeProductId`, `stripePriceIdMonthly`, `stripePriceIdAnnual`
-
-**Webhook setup is deferred to Phase 13.**
-
-### 6b: Production (Live Mode) — DEFERRED
-
-Stripe live mode activation requires a reachable website for KYC verification. Your site isn't deployed yet. **Come back here after Phase 13.5** (production deploy).
-
-When you return:
-
-- [ ] Go to https://dashboard.stripe.com/account/onboarding
-- [ ] Complete the **account application** (business details, bank account, website URL `https://podblipp.com`)
-- [ ] Once approved, use the **account picker** to exit sandbox into live mode
-- [ ] **Note:** Account country cannot be changed after activation
-
-**Collect live key:**
-- [ ] In live mode, **Developers Dashboard > API keys** tab → Copy **Secret Key** (`sk_live_...`)
-- [ ] Paste into `secrets-production.env` as `STRIPE_SECRET_KEY`
-- [ ] Update the production secret: `npx wrangler secret put STRIPE_SECRET_KEY --env production`
-
-**Create products and update database (automated):**
-
-```bash
-DATABASE_URL="YOUR_PRODUCTION_CONNECTION_STRING" \
-STRIPE_SECRET_KEY="sk_live_..." \
-npx tsx scripts/setup-stripe.ts
-```
-
-- [ ] Products created in Stripe live mode
-- [ ] Production Plan records updated with live Stripe IDs
-
-**Configure customer portal:**
-- [ ] **Settings > Billing > Portal** (URL: `dashboard.stripe.com/settings/billing/portal`)
-- [ ] Allow: cancellations, plan switching, payment method updates
-- [ ] Customize branding in **Settings > Branding**
-
-**Webhook setup is in Phase 13.6.**
-
----
-
-## Phase 7: AI & Podcast Services
+## Phase 6: AI & Podcast Services
 
 Same keys for both environments. Staging uses cheap models via PlatformConfig — same keys, different model selection.
 
-### 7.1 Anthropic
+### 6.1 Anthropic
 
 - [ ] https://console.anthropic.com/ → **Settings > Keys** → **Create Key**
 - [ ] Name: `blipp`
 - [ ] Copy key (`sk-ant-...`) → paste into both `secrets-staging.env` and `secrets-production.env` as `ANTHROPIC_API_KEY`
 - [ ] Add $25+ credits
 
-### 7.2 OpenAI
+### 6.2 OpenAI
 
 - [ ] https://platform.openai.com/ → **Dashboard > API keys** → **Create new secret key**
 - [ ] Name: `blipp`
 - [ ] Copy key (`sk-...`) → paste into both `secrets-staging.env` and `secrets-production.env` as `OPENAI_API_KEY`
 - [ ] Add $25+ credits, set spend limit in **Settings > Limits**
 
-### 7.3 Groq (Optional)
+### 6.3 Groq (Optional)
 
 - [ ] https://console.groq.com → **API Keys** → **Create API Key**
 - [ ] Copy key (`gsk_...`) → paste into both secrets env files as `GROQ_API_KEY`
 
-### 7.4 Deepgram (Optional)
+### 6.4 Deepgram (Optional)
 
 - [ ] https://console.deepgram.com → **API Keys** → **Create Key**
 - [ ] Copy key → paste into both secrets env files as `DEEPGRAM_API_KEY`
 
-### 7.5 Podcast Index
+### 6.5 Podcast Index
 
 - [ ] https://api.podcastindex.org (or check signup email)
 - [ ] Copy **API Key** → paste into both secrets env files as `PODCAST_INDEX_KEY`
 - [ ] Copy **API Secret** → paste into both secrets env files as `PODCAST_INDEX_SECRET`
 - [ ] If the secret contains special characters (`^`, `$`, `#`), quote it when pasting
 
-### 7.6 Cloudflare Workers AI
+### 6.6 Cloudflare Workers AI
 
 - [ ] No setup needed — included with Workers Paid plan via `AI` binding
 
 ---
 
-## Phase 8: Web Push VAPID Keys
+## Phase 7: Web Push VAPID Keys
 
 Optional but recommended. Shared between environments.
 
@@ -400,7 +333,7 @@ npx web-push generate-vapid-keys
 
 ---
 
-## Phase 9: Google AdSense (Optional)
+## Phase 8: Google AdSense (Optional)
 
 Ads are disabled by default (`ads.enabled` = false in PlatformConfig). You can skip this entirely and enable later. The IMA SDK is already loaded in `index.html`.
 
@@ -450,7 +383,7 @@ Once approved:
 
 ---
 
-## Phase 10: GitHub CI/CD
+## Phase 9: GitHub CI/CD
 
 **Requires:** API token from Phase 3.4, Clerk publishable keys from Phase 5.
 
@@ -475,7 +408,7 @@ Go to https://github.com/boosey/blipp → **Settings > Secrets and variables > A
 
 ---
 
-## Phase 11: Domain & DNS
+## Phase 10: Domain & DNS
 
 Only production gets a custom domain. Staging uses the `workers.dev` URL.
 
@@ -501,13 +434,13 @@ After the first production deploy (Phase 13), add the custom domain:
 
 ---
 
-## Phase 12: Set Cloudflare Secrets
+## Phase 11: Set Cloudflare Secrets
 
 **Requires:** All keys from Phases 5-8.
 
-Secrets are set separately per environment. Two types of secrets use `placeholder` initially:
-- **Webhook signing secrets** (`CLERK_WEBHOOK_SECRET`, `STRIPE_WEBHOOK_SECRET`) — updated in Phase 13 after creating webhook endpoints
-- **Production `STRIPE_SECRET_KEY`** — Stripe live mode isn't activated yet (requires deployed site). Updated in Phase 6b after production deploy.
+Secrets are set separately per environment. Some secrets use `placeholder` initially:
+- **Webhook signing secrets** (`CLERK_WEBHOOK_SECRET`, `STRIPE_WEBHOOK_SECRET`) — updated in Phase 12 after creating webhook endpoints
+- **Stripe secret keys** (`STRIPE_SECRET_KEY`) — set in Phase 12.6 after both environments are deployed. Use `placeholder` for now.
 
 ### Automated
 
@@ -590,13 +523,13 @@ npx wrangler secret put VAPID_SUBJECT --env production
 
 ---
 
-## Phase 13: First Deploy & Webhooks
+## Phase 12: First Deploy & Webhooks
 
 **Requires:** All prior phases complete. Secrets set (with placeholder webhook secrets).
 
 This phase has a specific order: deploy → get URL → create webhooks → update secrets.
 
-### 13.1 Deploy Staging
+### 12.1 Deploy Staging
 
 ```bash
 npx prisma generate
@@ -609,7 +542,7 @@ npx wrangler deploy
 - [ ] **Write down the `workers.dev` URL** (e.g., `https://blipp-staging.XXXXXX.workers.dev`)
 - [ ] Update the `STAGING_URL` GitHub variable (Phase 10.2) with this URL
 
-### 13.2 Create Staging Webhook Endpoints
+### 12.2 Create Staging Webhook Endpoints
 
 Now that you have the `workers.dev` URL:
 
@@ -626,7 +559,7 @@ Now that you have the `workers.dev` URL:
 - [ ] Events: `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_failed` → **Add endpoint**
 - [ ] Expand **Signing secret** → copy it
 
-### 13.3 Update Staging Webhook Secrets
+### 12.3 Update Staging Webhook Secrets
 
 Replace the placeholders with real signing secrets:
 
@@ -637,7 +570,7 @@ npx wrangler secret put STRIPE_WEBHOOK_SECRET      # paste Stripe signing secret
 
 No redeploy needed — secrets take effect immediately.
 
-### 13.4 Verify Staging
+### 12.4 Verify Staging
 
 - [ ] Homepage loads at the `workers.dev` URL
 - [ ] Sign up / sign in works (Clerk dev instance)
@@ -651,17 +584,55 @@ UPDATE "User" SET "isAdmin" = true WHERE email = 'your@email.com';
 
 - [ ] Admin panel accessible at `/admin`
 
-### 13.5 Deploy Production
+### 12.5 Deploy Production
 
 ```bash
 npx wrangler deploy --env production
 ```
 
 - [ ] Deploy succeeded
-- [ ] Set up custom domain (Phase 11) if not already done
-- [ ] **Now complete Phase 6b** — Stripe live mode activation (requires reachable site). Go back to Phase 6b, activate live mode, collect the live key, create products, update the production secret.
+- [ ] Set up custom domain (Phase 10) if not already done
 
-### 13.6 Create Production Webhook Endpoints
+### 12.6 Stripe Setup
+
+Now that both environments are deployed, set up Stripe billing.
+
+> Stripe uses **Sandboxes** (not "Test mode"). Access via the **account picker** (top-left of dashboard).
+
+**Staging (Sandbox):**
+- [ ] Log into https://dashboard.stripe.com
+- [ ] Use the **account picker** to select or create a sandbox
+- [ ] **Developers Dashboard > API keys** tab → Copy **Secret Key** (`sk_test_...`)
+- [ ] Set the secret: `npx wrangler secret put STRIPE_SECRET_KEY` → paste the key
+- [ ] Create products:
+  ```bash
+  DATABASE_URL="YOUR_STAGING_CONNECTION_STRING" \
+  STRIPE_SECRET_KEY="sk_test_..." \
+  npx tsx scripts/setup-stripe.ts
+  ```
+- [ ] Products created in sandbox, staging Plan records updated
+
+**Production (Live Mode):**
+- [ ] Go to https://dashboard.stripe.com/account/onboarding
+- [ ] Complete the **account application** (business details, bank account, website URL `https://podblipp.com`)
+- [ ] Once approved, use the **account picker** to exit sandbox into live mode
+- [ ] **Note:** Account country cannot be changed after activation
+- [ ] **Developers Dashboard > API keys** tab (in live mode) → Copy **Secret Key** (`sk_live_...`)
+- [ ] Set the secret: `npx wrangler secret put STRIPE_SECRET_KEY --env production` → paste the key
+- [ ] Create products:
+  ```bash
+  DATABASE_URL="YOUR_PRODUCTION_CONNECTION_STRING" \
+  STRIPE_SECRET_KEY="sk_live_..." \
+  npx tsx scripts/setup-stripe.ts
+  ```
+- [ ] Products created in live mode, production Plan records updated
+
+**Configure customer portal (live mode):**
+- [ ] **Settings > Billing > Portal** (URL: `dashboard.stripe.com/settings/billing/portal`)
+- [ ] Allow: cancellations, plan switching, payment method updates
+- [ ] Customize branding in **Settings > Branding**
+
+### 12.7 Create Production Webhook Endpoints
 
 **Clerk (Production instance):**
 - [ ] Dashboard (switch to production instance) → **Webhooks** → **Add Endpoint**
@@ -676,14 +647,14 @@ npx wrangler deploy --env production
 - [ ] Events: `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_failed` → **Add endpoint**
 - [ ] Expand **Signing secret** → copy it
 
-### 13.7 Update Production Webhook Secrets
+### 12.8 Update Production Webhook Secrets
 
 ```bash
 npx wrangler secret put CLERK_WEBHOOK_SECRET --env production    # paste Clerk signing secret
 npx wrangler secret put STRIPE_WEBHOOK_SECRET --env production   # paste Stripe signing secret
 ```
 
-### 13.8 Verify Production
+### 12.9 Verify Production
 
 - [ ] Homepage loads at `podblipp.com`
 - [ ] Sign up / sign in works (Clerk production instance)
@@ -696,7 +667,7 @@ UPDATE "User" SET "isAdmin" = true WHERE email = 'your@email.com';
 
 - [ ] Admin panel accessible at `/admin`
 
-### 13.9 Configure Staging PlatformConfig
+### 12.10 Configure Staging PlatformConfig
 
 Set staging to use cheapest AI models (via admin UI at `workers.dev` URL → `/admin`):
 
@@ -707,7 +678,7 @@ Set staging to use cheapest AI models (via admin UI at `workers.dev` URL → `/a
 
 ---
 
-## Phase 14: Post-Deploy Verification
+## Phase 13: Post-Deploy Verification
 
 ### Staging Smoke Tests
 
