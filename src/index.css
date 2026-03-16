@@ -146,3 +146,49 @@
   font-display: swap;
   src: url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 }
+
+/* View transition animations — forward = slide left, back = slide right */
+@keyframes slide-forward-old {
+  to { transform: translateX(-30%); opacity: 0; }
+}
+@keyframes slide-forward-new {
+  from { transform: translateX(100%); }
+}
+@keyframes slide-back-old {
+  to { transform: translateX(30%); opacity: 0; }
+}
+@keyframes slide-back-new {
+  from { transform: translateX(-100%); }
+}
+
+/* Apply direction-based animations to view transition pseudo-elements */
+[data-direction="forward"]::view-transition-old(page) {
+  animation: slide-forward-old 0.25s ease-in both;
+}
+[data-direction="forward"]::view-transition-new(page) {
+  animation: slide-forward-new 0.25s ease-out both;
+}
+[data-direction="back"]::view-transition-old(page) {
+  animation: slide-back-old 0.25s ease-in both;
+}
+[data-direction="back"]::view-transition-new(page) {
+  animation: slide-back-new 0.25s ease-out both;
+}
+
+/* Scroll-snap container + item utilities */
+.snap-x-mandatory {
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+}
+.snap-start {
+  scroll-snap-align: start;
+}
+
+/* Hide scrollbar cross-browser (used on horizontal lists) */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
