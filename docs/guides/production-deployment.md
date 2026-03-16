@@ -16,13 +16,12 @@ This guide covers both **staging** and **production** environments. Staging depl
 6. [Phase 6: AI & Podcast Services](#phase-6-ai--podcast-services)
 7. [Phase 7: Web Push VAPID Keys](#phase-7-web-push-vapid-keys)
 8. [Phase 8: GitHub CI/CD](#phase-8-github-cicd)
-9. [Phase 9: Domain & DNS](#phase-9-domain--dns)
-10. [Phase 10: Set Cloudflare Secrets](#phase-10-set-cloudflare-secrets)
-11. [Phase 11: Deploy, Stripe & Webhooks](#phase-11-deploy-stripe--webhooks)
-12. [Phase 12: Google AdSense (Optional)](#phase-12-google-adsense-optional)
-13. [Phase 13: Post-Deploy Verification](#phase-13-post-deploy-verification)
-14. [Operational Runbook](#operational-runbook)
-15. [Automation Scripts](#automation-scripts)
+9. [Phase 9: Set Cloudflare Secrets](#phase-9-set-cloudflare-secrets)
+10. [Phase 10: Deploy, Stripe & Webhooks](#phase-10-deploy-stripe--webhooks)
+11. [Phase 11: Google AdSense (Optional)](#phase-11-google-adsense-optional)
+12. [Phase 12: Post-Deploy Verification](#phase-12-post-deploy-verification)
+13. [Operational Runbook](#operational-runbook)
+14. [Automation Scripts](#automation-scripts)
 
 ---
 
@@ -358,33 +357,7 @@ Go to https://github.com/boosey/blipp → **Settings > Secrets and variables > A
 
 ---
 
-## Phase 9: Domain & DNS
-
-Only production gets a custom domain. Staging uses the `workers.dev` URL.
-
-`podblipp.com` was purchased through Cloudflare, so DNS is already on Cloudflare.
-
-### 11.1 Add Custom Domain to Production Worker
-
-After the first production deploy (Phase 13), add the custom domain:
-
-**Via dashboard:**
-- [ ] **Workers & Pages > blipp > Settings > Domains & Routes**
-- [ ] **Add custom domain**: `podblipp.com`
-- [ ] Add `www.podblipp.com` if desired
-- [ ] SSL is provisioned immediately (DNS is on Cloudflare)
-
-**Or via wrangler.jsonc** — add `routes` inside `env.production`:
-```jsonc
-"routes": [
-  { "pattern": "podblipp.com", "custom_domain": true },
-  { "pattern": "www.podblipp.com", "custom_domain": true }
-]
-```
-
----
-
-## Phase 10: Set Cloudflare Secrets
+## Phase 9: Set Cloudflare Secrets
 
 **Requires:** All keys from Phases 5-8.
 
@@ -473,13 +446,13 @@ npx wrangler secret put VAPID_SUBJECT --env production
 
 ---
 
-## Phase 11: Deploy, Stripe & Webhooks
+## Phase 10: Deploy, Stripe & Webhooks
 
 **Requires:** All prior phases complete. Secrets set (with placeholder webhook secrets).
 
 This phase has a specific order: deploy → get URL → create webhooks → update secrets.
 
-### 11.1 Deploy Staging
+### 10.1 Deploy Staging
 
 ```bash
 npx prisma generate
@@ -492,7 +465,7 @@ npx wrangler deploy
 - [ ] **Write down the `workers.dev` URL** (e.g., `https://blipp-staging.XXXXXX.workers.dev`)
 - [ ] Update the `STAGING_URL` GitHub variable (Phase 8.2) with this URL
 
-### 11.2 Create Staging Webhook Endpoints
+### 10.2 Create Staging Webhook Endpoints
 
 Now that you have the `workers.dev` URL:
 
@@ -509,7 +482,7 @@ Now that you have the `workers.dev` URL:
 - [ ] Events: `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_failed` → **Add endpoint**
 - [ ] Expand **Signing secret** → copy it
 
-### 11.3 Update Staging Webhook Secrets
+### 10.3 Update Staging Webhook Secrets
 
 Replace the placeholders with real signing secrets:
 
@@ -520,7 +493,7 @@ npx wrangler secret put STRIPE_WEBHOOK_SECRET      # paste Stripe signing secret
 
 No redeploy needed — secrets take effect immediately.
 
-### 11.4 Verify Staging
+### 10.4 Verify Staging
 
 - [ ] Homepage loads at the `workers.dev` URL
 - [ ] Sign up / sign in works (Clerk dev instance)
@@ -534,16 +507,16 @@ UPDATE "User" SET "isAdmin" = true WHERE email = 'your@email.com';
 
 - [ ] Admin panel accessible at `/admin`
 
-### 11.5 Deploy Production
+### 10.5 Deploy Production
 
 ```bash
 npx wrangler deploy --env production
 ```
 
 - [ ] Deploy succeeded
-- [ ] Set up custom domain (Phase 9) if not already done
+- [ ] Custom domain `podblipp.com` is configured automatically via `routes` in `wrangler.jsonc`
 
-### 11.6 Stripe Setup
+### 10.6 Stripe Setup
 
 Now that both environments are deployed, set up Stripe billing.
 
@@ -582,7 +555,7 @@ Now that both environments are deployed, set up Stripe billing.
 - [ ] Allow: cancellations, plan switching, payment method updates
 - [ ] Customize branding in **Settings > Branding**
 
-### 11.7 Create Production Webhook Endpoints
+### 10.7 Create Production Webhook Endpoints
 
 **Clerk (Production instance):**
 - [ ] Dashboard (switch to production instance) → **Webhooks** → **Add Endpoint**
@@ -597,14 +570,14 @@ Now that both environments are deployed, set up Stripe billing.
 - [ ] Events: `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_failed` → **Add endpoint**
 - [ ] Expand **Signing secret** → copy it
 
-### 11.8 Update Production Webhook Secrets
+### 10.8 Update Production Webhook Secrets
 
 ```bash
 npx wrangler secret put CLERK_WEBHOOK_SECRET --env production    # paste Clerk signing secret
 npx wrangler secret put STRIPE_WEBHOOK_SECRET --env production   # paste Stripe signing secret
 ```
 
-### 11.9 Verify Production
+### 10.9 Verify Production
 
 - [ ] Homepage loads at `podblipp.com`
 - [ ] Sign up / sign in works (Clerk production instance)
@@ -617,7 +590,7 @@ UPDATE "User" SET "isAdmin" = true WHERE email = 'your@email.com';
 
 - [ ] Admin panel accessible at `/admin`
 
-### 11.10 Configure Staging PlatformConfig
+### 10.10 Configure Staging PlatformConfig
 
 Set staging to use cheapest AI models (via admin UI at `workers.dev` URL → `/admin`):
 
@@ -628,13 +601,13 @@ Set staging to use cheapest AI models (via admin UI at `workers.dev` URL → `/a
 
 ---
 
-## Phase 12: Google AdSense (Optional)
+## Phase 11: Google AdSense (Optional)
 
 Ads are disabled by default (`ads.enabled` = false in PlatformConfig). The IMA SDK is already loaded in `index.html`. You don't need AdSense to use VAST tags from other ad servers — only if you want Google's ad network.
 
 ### If you want Google ads:
 
-#### 12.1 Sign Up & Verify
+#### 11.1 Sign Up & Verify
 
 - [ ] Sign up at https://www.google.com/adsense/
 - [ ] Google gives you a publisher ID (`ca-pub-XXXXXXXXXXXXXXXX`)
@@ -659,7 +632,7 @@ google.com, pub-XXXXXXXXXXXXXXXX, DIRECT, f08c47fec0942fa0
 - [ ] In AdSense dashboard, click **Request review**
 - [ ] Wait for approval (days to weeks)
 
-#### 12.2 Set Up Ad Manager (After Approval)
+#### 11.2 Set Up Ad Manager (After Approval)
 
 Once approved:
 - [ ] Go to https://admanager.google.com/
@@ -676,7 +649,7 @@ Once approved:
 
 ---
 
-## Phase 13: Post-Deploy Verification
+## Phase 12: Post-Deploy Verification
 
 ### Staging Smoke Tests
 
