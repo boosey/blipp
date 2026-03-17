@@ -23,6 +23,10 @@ vi.mock("../../lib/config", () => ({
   getConfig: vi.fn(),
 }));
 
+vi.mock("../../lib/pipeline-events", () => ({
+  writeEvent: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock("../../lib/work-products", () => ({
   wpKey: vi.fn((params: any) => {
     if (params.type === "AUDIO_CLIP")
@@ -87,6 +91,12 @@ describe("handleBriefingAssembly", () => {
       }
     });
     mockPrisma.$disconnect.mockResolvedValue(undefined);
+
+    // Assembly step lifecycle defaults
+    mockPrisma.pipelineJob.update.mockResolvedValue({});
+    mockPrisma.pipelineStep.create.mockResolvedValue({ id: "step-1" });
+    mockPrisma.pipelineStep.update.mockResolvedValue({});
+    mockPrisma.pipelineStep.updateMany.mockResolvedValue({ count: 1 });
 
     // Defaults
     (getConfig as any).mockResolvedValue(true);

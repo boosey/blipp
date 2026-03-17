@@ -65,6 +65,12 @@ describe("Discover", () => {
       if (url.includes("/podcasts/catalog")) {
         return Promise.resolve(mockJsonResponse({ podcasts: [] }));
       }
+      if (url.includes("/recommendations")) {
+        return Promise.resolve(mockJsonResponse({ recommendations: [], source: "popular" }));
+      }
+      if (url.includes("/podcasts/requests")) {
+        return Promise.resolve(mockJsonResponse({ data: [] }));
+      }
       return Promise.resolve(mockJsonResponse({}));
     });
   });
@@ -90,6 +96,12 @@ describe("Discover", () => {
       if (url.includes("/podcasts/catalog")) {
         return Promise.resolve(mockJsonResponse({ podcasts: [mockPodcast] }));
       }
+      if (url.includes("/recommendations")) {
+        return Promise.resolve(mockJsonResponse({ recommendations: [], source: "popular" }));
+      }
+      if (url.includes("/podcasts/requests")) {
+        return Promise.resolve(mockJsonResponse({ data: [] }));
+      }
       return Promise.resolve(mockJsonResponse({}));
     });
 
@@ -109,6 +121,12 @@ describe("Discover", () => {
     mockFetch.mockImplementation((url: string) => {
       if (url.includes("/podcasts/catalog")) {
         return Promise.resolve(mockJsonResponse({ podcasts: [mockPodcast] }));
+      }
+      if (url.includes("/recommendations")) {
+        return Promise.resolve(mockJsonResponse({ recommendations: [], source: "popular" }));
+      }
+      if (url.includes("/podcasts/requests")) {
+        return Promise.resolve(mockJsonResponse({ data: [] }));
       }
       return Promise.resolve(mockJsonResponse({}));
     });

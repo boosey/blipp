@@ -5,26 +5,28 @@ vi.mock("../../lib/db", () => ({
   createPrismaClient: vi.fn(),
 }));
 
-vi.mock("../../lib/config", () => ({
-  getConfig: vi.fn(),
+const mockRunJob = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+vi.mock("../../lib/cron/runner", () => ({
+  runJob: mockRunJob,
 }));
 
-const mockLogger = vi.hoisted(() => ({
-  info: vi.fn(),
-  debug: vi.fn(),
-  error: vi.fn(),
-  timer: vi.fn(() => vi.fn()),
+vi.mock("../../lib/cron/pipeline-trigger", () => ({
+  runPipelineTriggerJob: vi.fn(),
 }));
-vi.mock("../../lib/logger", () => ({
-  createPipelineLogger: vi.fn().mockResolvedValue(mockLogger),
+vi.mock("../../lib/cron/monitoring", () => ({
+  runMonitoringJob: vi.fn(),
 }));
-
-vi.mock("../../lib/pricing-updater", () => ({
-  refreshPricing: vi.fn().mockResolvedValue({ updated: 0 }),
+vi.mock("../../lib/cron/user-lifecycle", () => ({
+  runUserLifecycleJob: vi.fn(),
+}));
+vi.mock("../../lib/cron/data-retention", () => ({
+  runDataRetentionJob: vi.fn(),
+}));
+vi.mock("../../lib/cron/recommendations", () => ({
+  runRecommendationsJob: vi.fn(),
 }));
 
 import { createPrismaClient } from "../../lib/db";
-import { getConfig } from "../../lib/config";
 import { scheduled } from "../index";
 
 let mockPrisma: ReturnType<typeof createMockPrisma>;
@@ -37,132 +39,79 @@ beforeEach(() => {
   mockPrisma = createMockPrisma();
   mockEnv = createMockEnv();
   mockCtx = { waitUntil: vi.fn() } as unknown as ExecutionContext;
-  mockEvent = { scheduledTime: Date.now(), cron: "*/30 * * * *" } as ScheduledEvent;
+  mockEvent = { scheduledTime: Date.now(), cron: "*/5 * * * *" } as ScheduledEvent;
   (createPrismaClient as any).mockReturnValue(mockPrisma);
-  mockLogger.info.mockReset();
-  mockLogger.debug.mockReset();
-  mockLogger.error.mockReset();
-  mockLogger.timer.mockReset().mockReturnValue(vi.fn());
+  mockRunJob.mockResolvedValue(undefined);
+  // Migration calls platformConfig.findUnique — return null to skip by default
+  mockPrisma.platformConfig.findUnique.mockResolvedValue(null);
 });
 
 describe("scheduled", () => {
-  it("enqueues feed refresh when pipeline enabled and interval elapsed", async () => {
-    (getConfig as any)
-      .mockResolvedValueOnce(true)    // pipeline.enabled
-      .mockResolvedValueOnce(60)      // pipeline.minIntervalMinutes
-      .mockResolvedValueOnce(null)    // pipeline.lastAutoRunAt (never run)
-      .mockResolvedValueOnce(new Date().toISOString()); // pricing.lastRefreshedAt (recent, skip)
-
-    mockPrisma.platformConfig.upsert.mockResolvedValue({});
-
+  it("dispatches all 5 cron jobs via runJob", async () => {
     await scheduled(mockEvent, mockEnv, mockCtx);
 
-    expect(mockEnv.FEED_REFRESH_QUEUE.send).toHaveBeenCalledWith({ type: "cron" });
-    expect(mockPrisma.platformConfig.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { key: "pipeline.lastAutoRunAt" },
-      })
-    );
+    expect(mockRunJob).toHaveBeenCalledTimes(5);
+    const jobKeys = mockRunJob.mock.calls.map((c: any) => c[0].jobKey);
+    expect(jobKeys).toContain("pipeline-trigger");
+    expect(jobKeys).toContain("monitoring");
+    expect(jobKeys).toContain("user-lifecycle");
+    expect(jobKeys).toContain("data-retention");
+    expect(jobKeys).toContain("recommendations");
   });
 
-  it("does NOT enqueue when pipeline.enabled is false", async () => {
-    (getConfig as any).mockResolvedValueOnce(false); // pipeline.enabled
-
+  it("passes prisma to each runJob call", async () => {
     await scheduled(mockEvent, mockEnv, mockCtx);
 
-    expect(mockEnv.FEED_REFRESH_QUEUE.send).not.toHaveBeenCalled();
-    expect(mockPrisma.platformConfig.upsert).not.toHaveBeenCalled();
+    for (const call of mockRunJob.mock.calls) {
+      expect(call[0].prisma).toBe(mockPrisma);
+    }
   });
 
-  it("does NOT enqueue when interval has not elapsed", async () => {
-    const fiveMinutesAgo = new Date(Date.now() - 5 * 60_000).toISOString();
-    (getConfig as any)
-      .mockResolvedValueOnce(true)             // pipeline.enabled
-      .mockResolvedValueOnce(60)               // pipeline.minIntervalMinutes
-      .mockResolvedValueOnce(fiveMinutesAgo);  // pipeline.lastAutoRunAt (5 min ago)
+  it("migrates legacy config keys when they exist", async () => {
+    // cron.pipeline-trigger.lastRunAt does NOT exist, but legacy key DOES
+    mockPrisma.platformConfig.findUnique
+      .mockResolvedValueOnce(null) // cron.pipeline-trigger.lastRunAt
+      .mockResolvedValueOnce({ key: "pipeline.lastAutoRunAt", value: "2026-01-01T00:00:00Z" })
+      // Remaining migration pairs: new key exists or no legacy
+      .mockResolvedValueOnce(null) // cron.monitoring.lastRunAt
+      .mockResolvedValueOnce(null) // pricing.lastRefreshedAt (no legacy)
+      .mockResolvedValueOnce(null) // cron.recommendations.lastRunAt
+      .mockResolvedValueOnce(null) // recommendations.lastProfileRefresh (no legacy)
+      .mockResolvedValueOnce(null) // cron.data-retention.lastRunAt
+      .mockResolvedValueOnce(null); // requests.archiving.lastRunAt (no legacy)
+
+    mockPrisma.platformConfig.create.mockResolvedValue({});
 
     await scheduled(mockEvent, mockEnv, mockCtx);
 
-    expect(mockEnv.FEED_REFRESH_QUEUE.send).not.toHaveBeenCalled();
+    expect(mockPrisma.platformConfig.create).toHaveBeenCalledWith({
+      data: {
+        key: "cron.pipeline-trigger.lastRunAt",
+        value: "2026-01-01T00:00:00Z",
+        description: "Migrated from pipeline.lastAutoRunAt",
+      },
+    });
   });
 
-  it("enqueues when interval HAS elapsed", async () => {
-    const twoHoursAgo = new Date(Date.now() - 120 * 60_000).toISOString();
-    (getConfig as any)
-      .mockResolvedValueOnce(true)          // pipeline.enabled
-      .mockResolvedValueOnce(60)            // pipeline.minIntervalMinutes
-      .mockResolvedValueOnce(twoHoursAgo)   // pipeline.lastAutoRunAt
-      .mockResolvedValueOnce(new Date().toISOString()); // pricing.lastRefreshedAt (recent, skip)
-
-    mockPrisma.platformConfig.upsert.mockResolvedValue({});
+  it("skips migration when new keys already exist", async () => {
+    // All new keys already exist — findUnique returns a record for each
+    mockPrisma.platformConfig.findUnique.mockResolvedValue({ key: "exists", value: "yes" });
 
     await scheduled(mockEvent, mockEnv, mockCtx);
 
-    expect(mockEnv.FEED_REFRESH_QUEUE.send).toHaveBeenCalledWith({ type: "cron" });
+    expect(mockPrisma.platformConfig.create).not.toHaveBeenCalled();
   });
 
-  it("updates pipeline.lastAutoRunAt after successful enqueue", async () => {
-    (getConfig as any)
-      .mockResolvedValueOnce(true)
-      .mockResolvedValueOnce(60)
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce(new Date().toISOString()); // pricing.lastRefreshedAt (recent, skip)
+  it("continues when runJob rejects (allSettled)", async () => {
+    mockRunJob.mockRejectedValue(new Error("job error"));
 
-    mockPrisma.platformConfig.upsert.mockResolvedValue({});
-
+    // Should not throw — Promise.allSettled handles rejections
     await scheduled(mockEvent, mockEnv, mockCtx);
 
-    expect(mockPrisma.platformConfig.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { key: "pipeline.lastAutoRunAt" },
-        create: expect.objectContaining({
-          key: "pipeline.lastAutoRunAt",
-          description: "Timestamp of last automatic pipeline run",
-        }),
-      })
-    );
-  });
-
-  it("defaults to enabled when PlatformConfig missing (getConfig returns fallback)", async () => {
-    // getConfig returns fallback values (simulating no PlatformConfig entries)
-    (getConfig as any)
-      .mockResolvedValueOnce(true)   // pipeline.enabled defaults to true
-      .mockResolvedValueOnce(60)     // pipeline.minIntervalMinutes defaults to 60
-      .mockResolvedValueOnce(null)   // pipeline.lastAutoRunAt defaults to null
-      .mockResolvedValueOnce(new Date().toISOString()); // pricing.lastRefreshedAt (recent, skip)
-
-    mockPrisma.platformConfig.upsert.mockResolvedValue({});
-
-    await scheduled(mockEvent, mockEnv, mockCtx);
-
-    expect(mockEnv.FEED_REFRESH_QUEUE.send).toHaveBeenCalledWith({ type: "cron" });
-  });
-
-  it("should log pipeline_disabled when pipeline is off", async () => {
-    (getConfig as any).mockResolvedValueOnce(false); // pipeline.enabled
-
-    await scheduled(mockEvent, mockEnv, mockCtx);
-
-    expect(mockLogger.info).toHaveBeenCalledWith("pipeline_disabled", {});
-  });
-
-  it("should log feed_refresh_enqueued on successful trigger", async () => {
-    (getConfig as any)
-      .mockResolvedValueOnce(true)   // pipeline.enabled
-      .mockResolvedValueOnce(60)     // pipeline.minIntervalMinutes
-      .mockResolvedValueOnce(null)   // pipeline.lastAutoRunAt
-      .mockResolvedValueOnce(new Date().toISOString()); // pricing.lastRefreshedAt (recent, skip)
-
-    mockPrisma.platformConfig.upsert.mockResolvedValue({});
-
-    await scheduled(mockEvent, mockEnv, mockCtx);
-
-    expect(mockLogger.info).toHaveBeenCalledWith("feed_refresh_enqueued", { trigger: "cron" });
+    expect(mockRunJob).toHaveBeenCalledTimes(5);
   });
 
   it("disconnects prisma in finally block", async () => {
-    (getConfig as any).mockResolvedValueOnce(false);
-
     await scheduled(mockEvent, mockEnv, mockCtx);
 
     expect(mockCtx.waitUntil).toHaveBeenCalledWith(mockPrisma.$disconnect());

@@ -332,7 +332,7 @@ describe("handleOrchestrator", () => {
       );
     });
 
-    it("should mark job COMPLETED after AUDIO_GENERATION and dispatch to assembly queue", async () => {
+    it("should advance job to BRIEFING_ASSEMBLY after AUDIO_GENERATION and dispatch to assembly queue", async () => {
       const msg = createMsg({ requestId: "req1", action: "job-stage-complete", jobId: "job1", completedStage: "AUDIO_GENERATION" });
       mockPrisma.briefingRequest.findUnique.mockResolvedValue({
         id: "req1", status: "PROCESSING", userId: "u1", targetMinutes: 5,
@@ -341,19 +341,19 @@ describe("handleOrchestrator", () => {
         id: "job1", requestId: "req1", episodeId: "ep1", durationTier: 5,
         status: "IN_PROGRESS", currentStage: "AUDIO_GENERATION",
       });
-      // CAS to COMPLETED via updateMany
+      // CAS to BRIEFING_ASSEMBLY via updateMany
       mockPrisma.pipelineJob.updateMany.mockResolvedValue({ count: 1 });
-      // All jobs complete (just this one)
+      // All jobs queued for assembly (just this one)
       mockPrisma.pipelineJob.findMany.mockResolvedValue([
-        { id: "job1", status: "COMPLETED", clipId: "clip1", episodeId: "ep1", durationTier: 5 },
+        { id: "job1", status: "PENDING", currentStage: "BRIEFING_ASSEMBLY", clipId: "clip1", episodeId: "ep1", durationTier: 5 },
       ]);
 
       await handleOrchestrator(createBatch([msg]), env, ctx);
 
-      // Job marked COMPLETED via CAS updateMany
+      // Job advanced to BRIEFING_ASSEMBLY via CAS updateMany
       expect(mockPrisma.pipelineJob.updateMany).toHaveBeenCalledWith({
         where: { id: "job1", status: { not: "COMPLETED" } },
-        data: { status: "COMPLETED", completedAt: expect.any(Date) },
+        data: { currentStage: "BRIEFING_ASSEMBLY", status: "PENDING" },
       });
       // Dispatched to assembly queue
       expect(env.BRIEFING_ASSEMBLY_QUEUE.send).toHaveBeenCalledWith(
@@ -407,8 +407,8 @@ describe("handleOrchestrator", () => {
       });
       mockPrisma.pipelineJob.updateMany.mockResolvedValue({ count: 1 });
       mockPrisma.pipelineJob.findMany.mockResolvedValue([
-        { id: "job1", status: "COMPLETED", clipId: "clip1", episodeId: "ep1", durationTier: 5 },
-        { id: "job2", status: "COMPLETED", clipId: "clip2", episodeId: "ep2", durationTier: 5 },
+        { id: "job1", status: "PENDING", currentStage: "BRIEFING_ASSEMBLY", clipId: "clip1", episodeId: "ep1", durationTier: 5 },
+        { id: "job2", status: "PENDING", currentStage: "BRIEFING_ASSEMBLY", clipId: "clip2", episodeId: "ep2", durationTier: 5 },
       ]);
 
       await handleOrchestrator(createBatch([msg]), env, ctx);
@@ -455,7 +455,7 @@ describe("handleOrchestrator", () => {
       mockPrisma.pipelineJob.updateMany.mockResolvedValue({ count: 1 });
       // All jobs terminal: one COMPLETED, one FAILED
       mockPrisma.pipelineJob.findMany.mockResolvedValue([
-        { id: "job1", status: "COMPLETED", clipId: "clip1", episodeId: "ep1", durationTier: 5 },
+        { id: "job1", status: "PENDING", currentStage: "BRIEFING_ASSEMBLY", clipId: "clip1", episodeId: "ep1", durationTier: 5 },
         { id: "job2", status: "FAILED", clipId: null, episodeId: "ep2", durationTier: 5 },
       ]);
 
