@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback } from "react";
+import { usePolling } from "@/hooks/use-polling";
 import {
   Clock,
   Loader2,
@@ -1309,7 +1310,6 @@ export default function Requests() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [testDialogOpen, setTestDialogOpen] = useState(false);
 
-  const autoRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const load = useCallback((silent = false) => {
     if (!silent) setLoading(true);
@@ -1332,20 +1332,14 @@ export default function Requests() {
     load();
   }, [load]);
 
-  // Poll every 2s — this is an admin monitoring page
-  useEffect(() => {
-    autoRefreshRef.current = setInterval(() => {
-      load(true);
-      if (expandedId) {
-        apiFetch<{ data: BriefingRequest }>(`/requests/${expandedId}`)
-          .then((r) => setDetailCache((prev) => ({ ...prev, [expandedId]: r.data })))
-          .catch(console.error);
-      }
-    }, 2_000);
-    return () => {
-      if (autoRefreshRef.current) clearInterval(autoRefreshRef.current);
-    };
-  }, [load, expandedId, apiFetch]);
+  usePolling(() => {
+    load(true);
+    if (expandedId) {
+      apiFetch<{ data: BriefingRequest }>(`/requests/${expandedId}`)
+        .then((r) => setDetailCache((prev) => ({ ...prev, [expandedId]: r.data })))
+        .catch(console.error);
+    }
+  }, 5_000);
 
   const toggleRow = useCallback(
     (id: string) => {

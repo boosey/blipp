@@ -319,6 +319,30 @@ export async function scheduled(
         ts: new Date().toISOString(),
       }));
     }
+    // Recommendation profile refresh (weekly)
+    try {
+      const recsEnabled = await getConfig(prisma, "recommendations.enabled", true);
+      const refreshDays = await getConfig(prisma, "recommendations.profile.refreshIntervalDays", 7);
+      const lastRecsRefresh = await getConfig<string | null>(prisma, "recommendations.lastProfileRefresh", null);
+      const refreshCutoff = new Date(Date.now() - (refreshDays as number) * 86400000);
+      if (recsEnabled && (!lastRecsRefresh || new Date(lastRecsRefresh) < refreshCutoff)) {
+        const { computePodcastProfiles } = await import("../lib/recommendations");
+        const profileCount = await computePodcastProfiles(prisma);
+        await prisma.platformConfig.upsert({
+          where: { key: "recommendations.lastProfileRefresh" },
+          update: { value: new Date().toISOString() },
+          create: { key: "recommendations.lastProfileRefresh", value: new Date().toISOString(), description: "Last recommendation profile refresh" },
+        });
+        log.info("recommendation_profiles_refreshed", { profileCount });
+      }
+    } catch (err) {
+      console.error(JSON.stringify({
+        level: "error",
+        action: "recommendation_refresh_failed",
+        error: err instanceof Error ? err.message : String(err),
+        ts: new Date().toISOString(),
+      }));
+    }
   } finally {
     ctx.waitUntil(prisma.$disconnect());
   }

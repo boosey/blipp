@@ -9,6 +9,12 @@ import { EmptyState } from "../components/empty-state";
 import { usePullToRefresh } from "../hooks/use-pull-to-refresh";
 import { usePodcastSheet } from "../contexts/podcast-sheet-context";
 
+interface RecommendationItem {
+  podcast: CatalogPodcast;
+  score: number;
+  reasons: string[];
+}
+
 interface CatalogPodcast {
   id: string;
   title: string;
@@ -54,6 +60,11 @@ export function Discover() {
   const [myRequests, setMyRequests] = useState<
     { id: string; feedUrl: string; title?: string; status: string; podcastId?: string }[]
   >([]);
+
+  const { data: recsData } = useFetch<{
+    recommendations: RecommendationItem[];
+    source: string;
+  }>("/recommendations");
 
   const { data: catalogData, error: catalogError, refetch: refetchCatalog } = useFetch<{
     podcasts: CatalogPodcast[];
@@ -264,6 +275,46 @@ export function Discover() {
                     <p className="text-xs font-medium mt-1.5 truncate">
                       {podcast.title}
                     </p>
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* For You / Popular recommendations */}
+          {recsData && recsData.recommendations.length > 0 && (
+            <section className="mt-6">
+              <h2 className="text-lg font-semibold mb-3">
+                {recsData.source === "popular" ? "Popular" : "For You"}
+              </h2>
+              <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide snap-x-mandatory">
+                {recsData.recommendations.slice(0, 8).map((rec) => (
+                  <button
+                    key={rec.podcast.id}
+                    onClick={() => openPodcast(rec.podcast.id)}
+                    className="flex-shrink-0 w-28 snap-start text-left"
+                  >
+                    {rec.podcast.imageUrl ? (
+                      <img
+                        src={rec.podcast.imageUrl}
+                        className="w-28 h-28 rounded-lg object-cover"
+                        alt=""
+                      />
+                    ) : (
+                      <div className="w-28 h-28 rounded-lg bg-zinc-800 flex items-center justify-center">
+                        <span className="text-2xl font-bold text-zinc-500">
+                          {rec.podcast.title.charAt(0).toUpperCase()}
+                        </span>
+                      </div>
+                    )}
+                    <p className="text-xs font-medium mt-1.5 truncate">
+                      {rec.podcast.title}
+                    </p>
+                    {rec.reasons[0] && (
+                      <span className="text-[10px] text-zinc-500 truncate block">
+                        {rec.reasons[0]}
+                      </span>
+                    )}
                   </button>
                 ))}
               </div>

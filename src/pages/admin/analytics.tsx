@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { usePolling } from "@/hooks/use-polling";
 import {
   DollarSign,
   TrendingUp,
@@ -641,7 +642,6 @@ export default function Analytics() {
   const [pipeline, setPipeline] = useState<PipelinePerformanceData | null>(null);
   const [modelCosts, setModelCosts] = useState<ModelCostData | null>(null);
   const [loading, setLoading] = useState(true);
-  const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const load = useCallback(() => {
     const { from, to } = dateRangeFromDays(rangeDays);
@@ -658,13 +658,7 @@ export default function Analytics() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Auto-refresh every 5 minutes
-  useEffect(() => {
-    refreshTimerRef.current = setInterval(load, 5 * 60 * 1000);
-    return () => {
-      if (refreshTimerRef.current) clearInterval(refreshTimerRef.current);
-    };
-  }, [load]);
+  usePolling(load, 5 * 60 * 1000);
 
   if (loading && !costs && !usage && !quality && !pipeline) return <AnalyticsSkeleton />;
 

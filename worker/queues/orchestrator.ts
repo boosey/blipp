@@ -240,29 +240,32 @@ async function handleJobStageComplete(
     log.info("job_stage_advanced", { jobId, from: completedStage, to: nextStage });
     msg.ack();
   } else {
-    // Terminal stage — atomic CAS to prevent duplicate assembly dispatches
-    const completed = await prisma.pipelineJob.updateMany({
+    // Final per-job stage (AUDIO_GENERATION) complete — advance job to BRIEFING_ASSEMBLY PENDING.
+    // The job stays visible in the assembly column until briefing-assembly.ts marks it COMPLETED.
+    const advanced = await prisma.pipelineJob.updateMany({
       where: { id: jobId, status: { not: "COMPLETED" } },
-      data: { status: "COMPLETED", completedAt: new Date() },
+      data: { currentStage: "BRIEFING_ASSEMBLY", status: "PENDING" },
     });
 
-    if (completed.count === 0) {
+    if (advanced.count === 0) {
       log.info("job_already_completed", { jobId });
       msg.ack();
       return;
     }
 
-    log.info("job_completed", { jobId });
+    log.info("job_advanced_to_assembly", { jobId });
 
-    // Check if ALL jobs for this request are done
+    // Dispatch assembly once no jobs remain in stages 1–4 (all are FAILED or queued for assembly)
     const allJobs = await prisma.pipelineJob.findMany({
       where: { requestId: request.id },
     });
-    const pendingOrInProgress = allJobs.filter(
-      (j: any) => j.status !== "COMPLETED" && j.status !== "FAILED"
+    const stillInEarlierStages = allJobs.filter(
+      (j: any) =>
+        j.status !== "FAILED" &&
+        !(j.currentStage === "BRIEFING_ASSEMBLY" && j.status === "PENDING")
     );
 
-    if (pendingOrInProgress.length === 0) {
+    if (stillInEarlierStages.length === 0) {
       await env.BRIEFING_ASSEMBLY_QUEUE.send({ requestId: request.id, correlationId: msg.body.correlationId });
       log.info("assembly_dispatched", { requestId: request.id });
     }
@@ -304,15 +307,17 @@ async function handleJobFailed(
 
   log.info("job_failed", { jobId, stage: job.currentStage, errorMessage });
 
-  // Check if ALL jobs for this request are now terminal
+  // Check if ALL jobs for this request are now terminal or queued for assembly
   const allJobs = await prisma.pipelineJob.findMany({
     where: { requestId: request.id },
   });
-  const pendingOrInProgress = allJobs.filter(
-    (j: any) => j.status !== "COMPLETED" && j.status !== "FAILED"
+  const stillInEarlierStages = allJobs.filter(
+    (j: any) =>
+      j.status !== "FAILED" &&
+      !(j.currentStage === "BRIEFING_ASSEMBLY" && j.status === "PENDING")
   );
 
-  if (pendingOrInProgress.length === 0) {
+  if (stillInEarlierStages.length === 0) {
     await env.BRIEFING_ASSEMBLY_QUEUE.send({ requestId: request.id, correlationId: msg.body.correlationId });
     log.info("assembly_dispatched_after_failure", { requestId: request.id });
   }

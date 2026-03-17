@@ -82,6 +82,8 @@ model User {
   podcastRequests   PodcastRequest[]
   pushSubscriptions PushSubscription[]
   podcastFavorites  PodcastFavorite[]
+  recommendationProfile  UserRecommendationProfile?
+  recommendationCache    RecommendationCache?
 }
 
 // ── Podcast Favorites (interest signals for recommendations) ──
@@ -143,6 +145,7 @@ model Podcast {
   requests          PodcastRequest[]
   favorites         PodcastFavorite[]
   podcastCategories PodcastCategory[]
+  profile           PodcastProfile?
 }
 
 model Episode {
@@ -684,4 +687,37 @@ model PodcastCategory {
   category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
 
   @@id([podcastId, categoryId])
+}
+
+// ── Recommendation Engine ──
+
+model PodcastProfile {
+  id              String   @id @default(cuid())
+  podcastId       String   @unique
+  categoryWeights Json     // { "Technology": 0.8, "Business": 0.3 }
+  topicTags       String[] // Phase 2: topic fingerprinting
+  popularity      Float    @default(0) // Normalized 0-1
+  freshness       Float    @default(0) // Normalized 0-1
+  subscriberCount Int      @default(0)
+  computedAt      DateTime @default(now())
+  podcast         Podcast  @relation(fields: [podcastId], references: [id], onDelete: Cascade)
+  @@index([computedAt])
+}
+
+model UserRecommendationProfile {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  categoryWeights Json     // { "Technology": 0.9, "Science": 0.5 }
+  topicTags       String[] // Phase 2
+  listenCount     Int      @default(0)
+  computedAt      DateTime @default(now())
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model RecommendationCache {
+  id         String   @id @default(cuid())
+  userId     String   @unique
+  podcasts   Json     // [{ podcastId, score, reasons: string[] }]
+  computedAt DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

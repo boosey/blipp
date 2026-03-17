@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { usePolling } from "@/hooks/use-polling";
 import {
   Mic,
   Sparkles,
@@ -667,8 +668,6 @@ export default function Pipeline() {
   const [transcriptOpen, setTranscriptOpen] = useState(false);
   const [transcriptEpisodeId, setTranscriptEpisodeId] = useState<string | null>(null);
 
-  // Auto-refresh ref
-  const autoRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Load request list for filter dropdown
   useEffect(() => {
@@ -701,13 +700,7 @@ export default function Pipeline() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Auto-refresh every 2 seconds
-  useEffect(() => {
-    autoRefreshRef.current = setInterval(() => load(true), 2_000);
-    return () => {
-      if (autoRefreshRef.current) clearInterval(autoRefreshRef.current);
-    };
-  }, [load]);
+  usePolling(() => load(true), 5_000);
 
   const handleJobClick = (job: PipelineJob) => {
     // Transcription jobs open transcript inspector

@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { Env } from "../types";
 import { requireAuth } from "../middleware/auth";
 import { getCurrentUser } from "../lib/admin-helpers";
+import { recomputeUserProfile } from "../lib/recommendations";
 
 export const feed = new Hono<{ Bindings: Env }>();
 
@@ -161,6 +162,13 @@ feed.patch("/:id/listened", async (c) => {
 
   if (result.count === 0) {
     return c.json({ error: "Feed item not found" }, 404);
+  }
+
+  // Recompute recommendations on listen (fire-and-forget)
+  try {
+    await recomputeUserProfile(user.id, prisma);
+  } catch (err) {
+    console.error(JSON.stringify({ level: "warn", action: "recommendation_recompute_failed", userId: user.id, trigger: "listened", error: err instanceof Error ? err.message : String(err), ts: new Date().toISOString() }));
   }
 
   return c.json({ success: true });

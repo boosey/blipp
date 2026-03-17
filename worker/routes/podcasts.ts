@@ -6,6 +6,7 @@ import { getUserWithPlan, checkDurationLimit, checkSubscriptionLimit } from "../
 import { DURATION_TIERS, isValidDurationTier } from "../lib/constants";
 import { getConfig } from "../lib/config";
 import { getCatalogSource } from "../lib/catalog-sources";
+import { recomputeUserProfile } from "../lib/recommendations";
 
 /**
  * Podcast discovery and subscription routes.
@@ -242,6 +243,13 @@ podcasts.post("/subscribe", async (c) => {
     }
   }
 
+  // Recompute recommendations (fire-and-forget, never fail the request)
+  try {
+    await recomputeUserProfile(user.id, prisma);
+  } catch (err) {
+    console.error(JSON.stringify({ level: "warn", action: "recommendation_recompute_failed", userId: user.id, trigger: "subscribe", error: err instanceof Error ? err.message : String(err), ts: new Date().toISOString() }));
+  }
+
   return c.json({ subscription: { ...subscription, podcast }, feedItem }, 201);
 });
 
@@ -300,6 +308,13 @@ podcasts.delete("/subscribe/:podcastId", async (c) => {
       },
     },
   });
+
+  // Recompute recommendations (fire-and-forget, never fail the request)
+  try {
+    await recomputeUserProfile(user.id, prisma);
+  } catch (err) {
+    console.error(JSON.stringify({ level: "warn", action: "recommendation_recompute_failed", userId: user.id, trigger: "unsubscribe", error: err instanceof Error ? err.message : String(err), ts: new Date().toISOString() }));
+  }
 
   return c.json({ success: true });
 });
@@ -374,6 +389,13 @@ podcasts.post("/favorites", async (c) => {
     });
   }
 
+  // Recompute recommendations (fire-and-forget, never fail the request)
+  try {
+    await recomputeUserProfile(user.id, prisma);
+  } catch (err) {
+    console.error(JSON.stringify({ level: "warn", action: "recommendation_recompute_failed", userId: user.id, trigger: "favorites_set", error: err instanceof Error ? err.message : String(err), ts: new Date().toISOString() }));
+  }
+
   return c.json({ data: { count: podcastIds.length } });
 });
 
@@ -391,6 +413,13 @@ podcasts.post("/favorites/:podcastId", async (c) => {
     update: {},
   });
 
+  // Recompute recommendations (fire-and-forget, never fail the request)
+  try {
+    await recomputeUserProfile(user.id, prisma);
+  } catch (err) {
+    console.error(JSON.stringify({ level: "warn", action: "recommendation_recompute_failed", userId: user.id, trigger: "favorite_add", error: err instanceof Error ? err.message : String(err), ts: new Date().toISOString() }));
+  }
+
   return c.json({ data: { favorited: true } }, 201);
 });
 
@@ -405,6 +434,13 @@ podcasts.delete("/favorites/:podcastId", async (c) => {
   await prisma.podcastFavorite.deleteMany({
     where: { userId: user.id, podcastId },
   });
+
+  // Recompute recommendations (fire-and-forget, never fail the request)
+  try {
+    await recomputeUserProfile(user.id, prisma);
+  } catch (err) {
+    console.error(JSON.stringify({ level: "warn", action: "recommendation_recompute_failed", userId: user.id, trigger: "favorite_remove", error: err instanceof Error ? err.message : String(err), ts: new Date().toISOString() }));
+  }
 
   return c.json({ data: { favorited: false } });
 });

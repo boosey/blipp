@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { usePolling } from "@/hooks/use-polling";
 import {
   Play,
   Search,
@@ -237,11 +238,7 @@ export default function BriefingsPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Auto-refresh every 2 seconds
-  useEffect(() => {
-    const interval = setInterval(() => load(), 2_000);
-    return () => clearInterval(interval);
-  }, [load]);
+  usePolling(() => load(), 5_000);
 
   const selectBriefing = useCallback(
     (id: string) => {
