@@ -112,8 +112,13 @@ export function Landing() {
 
         <div className="relative z-10 max-w-3xl">
           {/* Logo */}
-          <div className="animate-fade-up font-sora text-sm font-600 tracking-[0.3em] uppercase text-violet-400 mb-8">
-            Blipp
+          <div className="animate-fade-up mb-8">
+            <img
+              src="/blipp_icon_clean_128.png"
+              alt="Blipp"
+              className="w-20 h-20 mx-auto rounded-2xl"
+              style={{ animation: "pulse-glow 3s ease-in-out infinite" }}
+            />
           </div>
 
           {/* Headline */}
