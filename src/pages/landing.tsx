@@ -1,4 +1,5 @@
 import { SignInButton } from "@clerk/clerk-react";
+import { Link } from "react-router-dom";
 import { Search, Clock, Podcast } from "lucide-react";
 
 const features = [
@@ -265,9 +266,13 @@ export function Landing() {
 
       {/* ─── FOOTER ─── */}
       <footer className="border-t border-white/[0.05] py-8 px-6 text-center">
-        <p className="font-dm text-sm text-zinc-600">
-          &copy; 2026 Blipp. All your podcasts, distilled.
-        </p>
+        <div className="flex items-center justify-center gap-4 font-dm text-sm text-zinc-600">
+          <span>&copy; 2026 Blipp</span>
+          <span className="text-zinc-800">&middot;</span>
+          <Link to="/about" className="hover:text-zinc-400 transition-colors">About</Link>
+          <span className="text-zinc-800">&middot;</span>
+          <Link to="/contact" className="hover:text-zinc-400 transition-colors">Contact</Link>
+        </div>
       </footer>
     </div>
   );

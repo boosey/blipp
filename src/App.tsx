@@ -6,6 +6,8 @@ import { AdminLayout } from "./layouts/admin-layout";
 import { AdminGuard } from "./components/admin-guard";
 import { Landing } from "./pages/landing";
 import { Pricing } from "./pages/pricing";
+import { About } from "./pages/about";
+import { Contact } from "./pages/contact";
 import { Home } from "./pages/home";
 import { Discover } from "./pages/discover";
 import { PodcastDetail } from "./pages/podcast-detail";
@@ -54,6 +56,8 @@ export default function App() {
         </>
       } />
       <Route path="/pricing" element={<Pricing />} />
+      <Route path="/about" element={<About />} />
+      <Route path="/contact" element={<Contact />} />
 
       {/* Backwards compat */}
       <Route path="/dashboard" element={<Navigate to="/home" replace />} />
