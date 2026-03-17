@@ -13,6 +13,7 @@ const QUEUE_BINDINGS: Record<string, string> = {
   BRIEFING_ASSEMBLY_QUEUE: "briefing-assembly",
   ORCHESTRATOR_QUEUE: "orchestrator",
   CATALOG_REFRESH_QUEUE: "catalog-refresh",
+  CONTENT_PREFETCH_QUEUE: "content-prefetch",
 };
 
 /**

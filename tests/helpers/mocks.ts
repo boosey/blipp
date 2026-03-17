@@ -88,6 +88,7 @@ export function createMockEnv(): Env {
     TRANSCRIPTION_QUEUE: { send: vi.fn().mockResolvedValue(undefined) } as unknown as Queue,
     ORCHESTRATOR_QUEUE: { send: vi.fn().mockResolvedValue(undefined) } as unknown as Queue,
     CATALOG_REFRESH_QUEUE: { send: vi.fn().mockResolvedValue(undefined), sendBatch: vi.fn().mockResolvedValue(undefined) } as unknown as Queue,
+    CONTENT_PREFETCH_QUEUE: { send: vi.fn().mockResolvedValue(undefined) } as unknown as Queue,
     DEEPGRAM_API_KEY: "mock-deepgram-key",
     ASSEMBLYAI_API_KEY: "mock-assemblyai-key",
     GOOGLE_STT_API_KEY: "mock-google-stt-key",

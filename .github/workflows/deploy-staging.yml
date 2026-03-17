@@ -15,6 +15,11 @@ jobs:
           cache: 'npm'
       - run: npm ci --legacy-peer-deps
       - run: npx prisma generate
+      - name: Create Prisma barrel export
+        run: |
+          mkdir -p src/generated/prisma
+          echo 'export { PrismaClient } from "./client";' > src/generated/prisma/index.ts
+          echo 'export * from "./enums";' >> src/generated/prisma/index.ts
       - run: npm run typecheck
       - run: npm test
         env:

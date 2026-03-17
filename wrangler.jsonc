@@ -30,10 +30,6 @@
 			"binding": "R2",
 			"bucket_name": "blipp-audio-staging"
 		},
-		{
-			"bucket_name": "blipp-audio-staging",
-			"binding": "blipp_audio_staging"
-		}
 	],
 	"queues": {
 		"producers": [
@@ -68,6 +64,10 @@
 			{
 				"binding": "CATALOG_REFRESH_QUEUE",
 				"queue": "catalog-refresh-staging"
+			},
+			{
+				"binding": "CONTENT_PREFETCH_QUEUE",
+				"queue": "content-prefetch-staging"
 			}
 		],
 		"consumers": [
@@ -119,6 +119,12 @@
 				"max_batch_size": 1,
 				"max_retries": 1,
 				"dead_letter_queue": "dead-letter-staging"
+			},
+			{
+				"queue": "content-prefetch-staging",
+				"max_batch_size": 1,
+				"max_retries": 2,
+				"max_concurrency": 1
 			}
 		]
 	},

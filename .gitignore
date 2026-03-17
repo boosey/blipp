@@ -6,6 +6,11 @@ dist/
 neon-config.env
 secrets-*.env
 *.log
+
+# Prevent loose credential/notes files in repo root
+/cloudflare*
+/google*
+/oauth*
 .claude/
 .firecrawl/
 .playwright-mcp/

@@ -138,7 +138,7 @@ async function bulkInsertPodcasts(
     where: { feedUrl: { in: valid.map((p) => p.feedUrl) } },
     select: { id: true, feedUrl: true },
   });
-  const feedToId = new Map(created.map((p: any) => [p.feedUrl, p.id]));
+  const feedToId = new Map<string, string>(created.map((p: any) => [p.feedUrl, p.id]));
 
   // Bulk create PodcastCategory join records
   const joinRecords: { podcastId: string; categoryId: string }[] = [];
@@ -225,7 +225,7 @@ async function upsertPodcasts(
       where: { feedUrl: { in: chunk.filter((p) => p.feedUrl).map((p) => p.feedUrl) } },
       select: { id: true, feedUrl: true },
     });
-    const feedToId = new Map(podcastsInChunk.map((p: any) => [p.feedUrl, p.id]));
+    const feedToId = new Map<string, string>(podcastsInChunk.map((p: any) => [p.feedUrl, p.id]));
 
     // Clear old joins for this chunk
     const chunkIds = podcastsInChunk.map((p: any) => p.id);
