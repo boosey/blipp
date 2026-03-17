@@ -96,6 +96,21 @@ export async function handleFeedRefresh(
             where: { id: podcast.id },
             data: { language: feed.language },
           });
+
+          // Mark non-English podcasts as pending_deletion
+          const lang = feed.language.toLowerCase();
+          if (!lang.startsWith("en")) {
+            await prisma.podcast.update({
+              where: { id: podcast.id },
+              data: { status: "pending_deletion" },
+            });
+            log.info("non_english_podcast", {
+              podcastId: podcast.id,
+              language: feed.language,
+              title: podcast.title,
+            });
+            continue; // Skip episode processing
+          }
         }
 
         const recent = latestEpisodes(feed.episodes, maxEpisodes);

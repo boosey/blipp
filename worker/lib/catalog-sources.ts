@@ -130,7 +130,7 @@ const PodcastIndexSource: CatalogSource = {
       for (const p of feeds) {
         if (!p.url || seen.has(p.url)) continue;
         // Skip non-Latin titles (CJK, Arabic, etc.)
-        if (/[\u3000-\u9fff\uac00-\ud7af\u0600-\u06ff]/u.test(p.title)) continue;
+        if (/[^\u0000-\u024f\u1e00-\u1eff]/u.test(p.title)) continue;
 
         const categories = mapPiCategories(p.categories ?? {});
         // If no categories mapped from feed data, use the query category
@@ -161,7 +161,7 @@ const PodcastIndexSource: CatalogSource = {
       let added = 0;
       for (const p of overall) {
         if (!p.url || seen.has(p.url)) continue;
-        if (/[\u3000-\u9fff\uac00-\ud7af\u0600-\u06ff]/u.test(p.title)) continue;
+        if (/[^\u0000-\u024f\u1e00-\u1eff]/u.test(p.title)) continue;
         seen.set(p.url, {
           feedUrl: p.url,
           title: p.title,
