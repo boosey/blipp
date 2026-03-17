@@ -343,6 +343,37 @@ export async function scheduled(
         ts: new Date().toISOString(),
       }));
     }
+
+    // Briefing request archiving (once daily)
+    try {
+      const archivingEnabled = await getConfig(prisma, "requests.archiving.enabled", false);
+      if (archivingEnabled) {
+        const lastArchiveRun = await getConfig<string | null>(prisma, "requests.archiving.lastRunAt", null);
+        if (!lastArchiveRun || new Date(lastArchiveRun) < oneDayAgo) {
+          const maxAgeDays = await getConfig(prisma, "requests.archiving.maxAgeDays", 30);
+          const cutoff = new Date(Date.now() - (maxAgeDays as number) * 24 * 60 * 60 * 1000);
+          const { count } = await prisma.briefingRequest.deleteMany({
+            where: {
+              status: { in: ["COMPLETED", "FAILED"] },
+              createdAt: { lt: cutoff },
+            },
+          });
+          await prisma.platformConfig.upsert({
+            where: { key: "requests.archiving.lastRunAt" },
+            update: { value: new Date().toISOString() },
+            create: { key: "requests.archiving.lastRunAt", value: new Date().toISOString(), description: "Last briefing request archiving run" },
+          });
+          log.info("requests_archived", { count, maxAgeDays });
+        }
+      }
+    } catch (err) {
+      console.error(JSON.stringify({
+        level: "error",
+        action: "requests_archiving_failed",
+        error: err instanceof Error ? err.message : String(err),
+        ts: new Date().toISOString(),
+      }));
+    }
   } finally {
     ctx.waitUntil(prisma.$disconnect());
   }

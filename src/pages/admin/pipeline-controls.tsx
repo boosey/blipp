@@ -2,6 +2,7 @@ import {
   Zap,
   Play,
   Loader2,
+  Archive,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -214,6 +215,60 @@ export default function PipelineControls() {
               <SelectItem value="debug" className="text-xs">Debug</SelectItem>
             </SelectContent>
           </Select>
+        </div>
+      </div>
+
+      {/* Request Archiving */}
+      <div className="bg-[#0F1D32] border border-white/5 rounded-lg p-4 space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-[#8B5CF6]/10">
+              <Archive className="h-4 w-4 text-[#8B5CF6]" />
+            </div>
+            <div>
+              <span className="text-xs font-semibold text-[#F9FAFB]">Request Archiving</span>
+              <div className="text-[10px] text-[#9CA3AF]">Delete completed/failed requests older than retention period (runs daily)</div>
+            </div>
+          </div>
+          <Switch
+            checked={Boolean(configs.find((c) => c.key === "requests.archiving.enabled")?.value)}
+            onCheckedChange={(v) => updateConfig("requests.archiving.enabled", v)}
+            disabled={saving === "requests.archiving.enabled"}
+            className="data-[state=checked]:bg-[#8B5CF6]"
+          />
+        </div>
+
+        <Separator className="bg-white/5" />
+
+        <div className="flex items-center justify-between">
+          <div>
+            <Label className="text-xs text-[#F9FAFB]">Retention Days</Label>
+            <div className="text-[10px] text-[#9CA3AF] mt-0.5">Requests older than this are permanently deleted</div>
+          </div>
+          <Input
+            type="number"
+            min={1}
+            max={365}
+            value={(() => {
+              const entry = configs.find((c) => c.key === "requests.archiving.maxAgeDays");
+              return entry?.value != null ? Number(entry.value) : 30;
+            })()}
+            onChange={(e) => {
+              const val = Math.min(365, Math.max(1, Number(e.target.value)));
+              updateConfig("requests.archiving.maxAgeDays", val);
+            }}
+            disabled={saving === "requests.archiving.maxAgeDays"}
+            className="w-20 h-8 text-xs bg-[#1A2942] border-white/10 text-[#F9FAFB] font-mono tabular-nums text-center"
+          />
+        </div>
+
+        <Separator className="bg-white/5" />
+
+        <div className="flex items-center justify-between text-xs">
+          <span className="text-[#9CA3AF]">Last Run</span>
+          <span className="font-mono tabular-nums text-[#F9FAFB]">
+            {relativeTime(configs.find((c) => c.key === "requests.archiving.lastRunAt")?.value as string | null)}
+          </span>
         </div>
       </div>
 
