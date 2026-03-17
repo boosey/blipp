@@ -3,7 +3,7 @@ import { DURATION_TIERS, WORDS_PER_MINUTE } from "../time-fitting";
 
 describe("time-fitting re-exports", () => {
   it("re-exports DURATION_TIERS from constants", () => {
-    expect(DURATION_TIERS).toEqual([1, 2, 3, 5, 7, 10, 15, 30]);
+    expect(DURATION_TIERS).toEqual([2, 5, 10, 15, 30]);
   });
 
   it("exports WORDS_PER_MINUTE", () => {

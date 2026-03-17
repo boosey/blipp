@@ -3,19 +3,19 @@ import { DURATION_TIERS, isValidDurationTier, PIPELINE_STAGE_NAMES, type Duratio
 
 describe("DURATION_TIERS", () => {
   it("has all expected tiers", () => {
-    expect(DURATION_TIERS).toEqual([1, 2, 3, 5, 7, 10, 15, 30]);
+    expect(DURATION_TIERS).toEqual([2, 5, 10, 15, 30]);
   });
 });
 
 describe("isValidDurationTier", () => {
   it("returns true for all valid tiers", () => {
-    for (const tier of [1, 2, 3, 5, 7, 10, 15, 30]) {
+    for (const tier of [2, 5, 10, 15, 30]) {
       expect(isValidDurationTier(tier)).toBe(true);
     }
   });
 
   it("returns false for invalid values", () => {
-    for (const n of [0, 4, 6, 8, 20, -1, 100]) {
+    for (const n of [0, 1, 3, 4, 6, 7, 8, 20, -1, 100]) {
       expect(isValidDurationTier(n)).toBe(false);
     }
   });

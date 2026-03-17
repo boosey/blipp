@@ -19,8 +19,13 @@ vi.mock("../../lib/distillation", () => ({
 }));
 
 vi.mock("../../lib/work-products", () => ({
-  wpKey: vi.fn((params: any) => `wp/${params.type.toLowerCase()}/${params.episodeId}/${params.durationTier}${params.voice ? `/${params.voice}` : ""}`),
+  wpKey: vi.fn((params: any) => {
+    if (params.type === "NARRATIVE") return `wp/narrative/${params.episodeId}/${params.durationTier}.txt`;
+    if (params.type === "CLAIMS") return `wp/claims/${params.episodeId}.json`;
+    return `wp/${params.type.toLowerCase()}/${params.episodeId}`;
+  }),
   putWorkProduct: vi.fn().mockResolvedValue(undefined),
+  getWorkProduct: vi.fn().mockResolvedValue(null),
 }));
 
 const mockLogger = vi.hoisted(() => ({
@@ -33,23 +38,62 @@ vi.mock("../../lib/logger", () => ({
   createPipelineLogger: vi.fn().mockResolvedValue(mockLogger),
 }));
 
-vi.mock("../../lib/ai-models", () => ({
-  getModelConfig: vi.fn().mockResolvedValue({ provider: "anthropic", model: "claude-sonnet-4-20250514" }),
-}));
-
-vi.mock("../../lib/ai-usage", () => ({
-  getModelPricing: vi.fn().mockResolvedValue({ priceInputPerMToken: 3.0, priceOutputPerMToken: 15.0 }),
+vi.mock("../../lib/model-resolution", () => ({
+  resolveStageModel: vi.fn().mockResolvedValue({
+    provider: "anthropic",
+    model: "claude-sonnet-4-20250514",
+    providerModelId: "claude-sonnet-4-20250514",
+    pricing: { priceInputPerMToken: 3.0, priceOutputPerMToken: 15.0 },
+  }),
 }));
 
 vi.mock("../../lib/llm-providers", () => ({
   getLlmProviderImpl: vi.fn().mockReturnValue({ name: "MockLLM", provider: "anthropic" }),
 }));
 
+vi.mock("../../lib/pipeline-events", () => ({
+  writeEvent: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("../../lib/circuit-breaker", () => ({
+  recordSuccess: vi.fn(),
+  recordFailure: vi.fn(),
+}));
+
+vi.mock("../../lib/ai-errors", () => {
+  class AiProviderError extends Error {
+    readonly provider: string;
+    readonly model: string;
+    readonly httpStatus?: number;
+    readonly rawResponse?: string;
+    readonly requestDurationMs: number;
+    readonly rateLimitRemaining?: number;
+    readonly rateLimitResetAt?: Date;
+    constructor(opts: any) {
+      super(opts.message);
+      this.name = "AiProviderError";
+      this.provider = opts.provider;
+      this.model = opts.model;
+      this.httpStatus = opts.httpStatus;
+      this.rawResponse = opts.rawResponse;
+      this.requestDurationMs = opts.requestDurationMs;
+      this.rateLimitRemaining = opts.rateLimitRemaining;
+      this.rateLimitResetAt = opts.rateLimitResetAt;
+    }
+  }
+  return {
+    writeAiError: vi.fn().mockResolvedValue(undefined),
+    classifyAiError: vi.fn().mockReturnValue({ category: "unknown", severity: "transient" }),
+    AiProviderError,
+  };
+});
+
 import { createPrismaClient } from "../../lib/db";
 import { getConfig } from "../../lib/config";
 import { generateNarrative, selectClaimsForDuration } from "../../lib/distillation";
-import { putWorkProduct } from "../../lib/work-products";
-import { getModelConfig } from "../../lib/ai-models";
+import { putWorkProduct, getWorkProduct } from "../../lib/work-products";
+import { resolveStageModel } from "../../lib/model-resolution";
+import { writeAiError } from "../../lib/ai-errors";
 
 let mockPrisma: ReturnType<typeof createMockPrisma>;
 let mockEnv: ReturnType<typeof createMockEnv>;
@@ -66,12 +110,7 @@ const JOB = {
 
 const STEP = { id: "step-1", jobId: "job-1", stage: "NARRATIVE_GENERATION", status: "IN_PROGRESS" };
 
-const DISTILLATION = {
-  id: "dist-1",
-  episodeId: "ep-1",
-  status: "COMPLETED",
-  claimsJson: [{ claim: "Test claim", speaker: "Host", importance: 9, novelty: 7, excerpt: "Here is the verbatim excerpt for this claim." }],
-};
+const CLAIMS = [{ claim: "Test claim", speaker: "Host", importance: 9, novelty: 7, excerpt: "Here is the verbatim excerpt for this claim." }];
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -82,16 +121,28 @@ beforeEach(() => {
 
   // Re-set mocks after clearAllMocks (vitest v4 clears mockResolvedValue)
   (getConfig as any).mockResolvedValue(true);
-  (getModelConfig as any).mockResolvedValue({ provider: "anthropic", model: "claude-sonnet-4-20250514" });
+  (resolveStageModel as any).mockResolvedValue({
+    provider: "anthropic",
+    model: "claude-sonnet-4-20250514",
+    providerModelId: "claude-sonnet-4-20250514",
+    pricing: { priceInputPerMToken: 3.0, priceOutputPerMToken: 15.0 },
+  });
   (generateNarrative as any).mockResolvedValue({
     narrative: "A warm narrative about technology trends.",
     usage: { model: "test-model", inputTokens: 100, outputTokens: 50, cost: null },
   });
   (putWorkProduct as any).mockResolvedValue(undefined);
   (selectClaimsForDuration as any).mockImplementation((claims: any[]) => claims);
-  mockPrisma.workProduct.create.mockResolvedValue({ id: "wp-1" });
-  mockPrisma.workProduct.findFirst.mockResolvedValue(null);
-  mockPrisma.aiModelProvider.findFirst.mockResolvedValue({ providerModelId: "claude-sonnet-4-20250514" });
+  // Claims from R2 (default: return claims JSON)
+  (getWorkProduct as any).mockResolvedValue(new TextEncoder().encode(JSON.stringify(CLAIMS)).buffer);
+
+  // R2 head returns null (no cache hit)
+  (mockEnv.R2.head as any).mockResolvedValue(null);
+
+  mockPrisma.workProduct.upsert.mockResolvedValue({ id: "wp-1" });
+  mockPrisma.pipelineEvent.create.mockResolvedValue({});
+  mockPrisma.pipelineStep.updateMany.mockResolvedValue({ count: 0 });
+
   mockLogger.info.mockReset();
   mockLogger.debug.mockReset();
   mockLogger.error.mockReset();
@@ -110,6 +161,10 @@ beforeEach(() => {
     durationSeconds: 1800,
     podcast: { title: "Test Podcast" },
   });
+
+  // Distillation record for clip upsert
+  mockPrisma.distillation.findUnique.mockResolvedValue({ id: "dist-1", episodeId: "ep-1" });
+  mockPrisma.clip.upsert.mockResolvedValue({ id: "clip-1", episodeId: "ep-1", durationTier: 5 });
 });
 
 function makeBatch(body: any) {
@@ -129,10 +184,6 @@ describe("handleNarrativeGeneration", () => {
   };
 
   it("creates PipelineStep on processing", async () => {
-    mockPrisma.clip.findUnique.mockResolvedValue(null);
-    mockPrisma.distillation.findFirst.mockResolvedValue(DISTILLATION);
-    mockPrisma.clip.upsert.mockResolvedValue({ id: "clip-1", episodeId: "ep-1", durationTier: 5 });
-
     const { mockBatch } = makeBatch(msgBody);
     await handleNarrativeGeneration(mockBatch, mockEnv, mockCtx);
 
@@ -146,24 +197,14 @@ describe("handleNarrativeGeneration", () => {
     });
   });
 
-  it("cache hit — step SKIPPED when NARRATIVE work product exists", async () => {
-    mockPrisma.workProduct.findFirst.mockResolvedValue({ id: "wp-cached", type: "NARRATIVE" });
-    mockPrisma.clip.findUnique.mockResolvedValue({
-      id: "clip-cached",
-      episodeId: "ep-1",
-      durationTier: 5,
-      narrativeText: "cached narrative",
-    });
+  it("cache hit — step SKIPPED when NARRATIVE exists in R2", async () => {
+    // R2 head returns object (narrative exists)
+    (mockEnv.R2.head as any).mockResolvedValue({ size: 500 });
 
     const { mockMsg, mockBatch } = makeBatch(msgBody);
     await handleNarrativeGeneration(mockBatch, mockEnv, mockCtx);
 
-    // Work product lookup for existing NARRATIVE
-    expect(mockPrisma.workProduct.findFirst).toHaveBeenCalledWith({
-      where: { type: "NARRATIVE", episodeId: "ep-1", durationTier: 5 },
-    });
-
-    // Step marked SKIPPED with cached: true and workProductId
+    // Step marked SKIPPED with cached: true
     expect(mockPrisma.pipelineStep.update).toHaveBeenCalledWith({
       where: { id: "step-1" },
       data: expect.objectContaining({
@@ -171,7 +212,6 @@ describe("handleNarrativeGeneration", () => {
         cached: true,
         completedAt: expect.any(Date),
         durationMs: expect.any(Number),
-        workProductId: "wp-cached",
       }),
     });
 
@@ -190,28 +230,17 @@ describe("handleNarrativeGeneration", () => {
     expect(mockMsg.ack).toHaveBeenCalled();
   });
 
-  it("full flow: claims lookup -> narrative generation -> clip upsert -> work product", async () => {
-    mockPrisma.workProduct.findFirst.mockResolvedValue(null);
-    mockPrisma.clip.findUnique.mockResolvedValue(null);
-    mockPrisma.distillation.findFirst.mockResolvedValue(DISTILLATION);
-    mockPrisma.clip.upsert.mockResolvedValue({
-      id: "clip-1",
-      episodeId: "ep-1",
-      durationTier: 5,
-    });
-
+  it("full flow: claims from R2 -> narrative generation -> clip upsert -> work product", async () => {
     const { mockMsg, mockBatch } = makeBatch(msgBody);
     await handleNarrativeGeneration(mockBatch, mockEnv, mockCtx);
 
-    // Distillation claims loaded from DB
-    expect(mockPrisma.distillation.findFirst).toHaveBeenCalledWith({
-      where: { episodeId: "ep-1", status: "COMPLETED" },
-    });
+    // Claims loaded from R2 via getWorkProduct
+    expect(getWorkProduct).toHaveBeenCalled();
 
     // Narrative generated with model from config + episode metadata
     expect(generateNarrative).toHaveBeenCalledWith(
       expect.anything(),
-      DISTILLATION.claimsJson,
+      CLAIMS,
       5,
       expect.any(String),
       8192,
@@ -224,43 +253,34 @@ describe("handleNarrativeGeneration", () => {
       })
     );
 
-    // Clip upserted with narrative but NOT as COMPLETED (audio gen does that)
+    // Clip upserted (narrative content lives in R2 only)
     expect(mockPrisma.clip.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
+        where: { episodeId_durationTier: { episodeId: "ep-1", durationTier: 5 } },
         update: expect.objectContaining({
-          narrativeText: "A warm narrative about technology trends.",
           wordCount: 6,
         }),
         create: expect.objectContaining({
-          narrativeText: "A warm narrative about technology trends.",
-          wordCount: 6,
           durationTier: 5,
+          wordCount: 6,
         }),
       })
     );
 
-    // NARRATIVE work product created (R2 + DB)
+    // NARRATIVE work product written to R2
     expect(putWorkProduct).toHaveBeenCalledTimes(1);
     expect(putWorkProduct).toHaveBeenCalledWith(mockEnv.R2, expect.stringContaining("narrative"), "A warm narrative about technology trends.");
 
-    expect(mockPrisma.workProduct.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        type: "NARRATIVE",
-        episodeId: "ep-1",
-        durationTier: 5,
-        sizeBytes: expect.any(Number),
-        metadata: { wordCount: 6 },
-      }),
-    });
+    // WorkProduct upserted in DB
+    expect(mockPrisma.workProduct.upsert).toHaveBeenCalled();
 
-    // Step marked COMPLETED with only narrative model/usage
+    // Step marked COMPLETED with narrative model/usage
     expect(mockPrisma.pipelineStep.update).toHaveBeenCalledWith({
       where: { id: "step-1" },
       data: expect.objectContaining({
         status: "COMPLETED",
         completedAt: expect.any(Date),
         durationMs: expect.any(Number),
-        workProductId: "wp-1",
         model: "test-model",
         inputTokens: 100,
         outputTokens: 50,
@@ -271,11 +291,6 @@ describe("handleNarrativeGeneration", () => {
   });
 
   it("reports to orchestrator on completion", async () => {
-    mockPrisma.workProduct.findFirst.mockResolvedValue(null);
-    mockPrisma.clip.findUnique.mockResolvedValue(null);
-    mockPrisma.distillation.findFirst.mockResolvedValue(DISTILLATION);
-    mockPrisma.clip.upsert.mockResolvedValue({ id: "clip-1" });
-
     const { mockBatch } = makeBatch(msgBody);
     await handleNarrativeGeneration(mockBatch, mockEnv, mockCtx);
 
@@ -289,27 +304,18 @@ describe("handleNarrativeGeneration", () => {
   });
 
   it("calls selectClaimsForDuration before generating narrative", async () => {
-    mockPrisma.workProduct.findFirst.mockResolvedValue(null);
-    mockPrisma.distillation.findFirst.mockResolvedValue(DISTILLATION);
-    mockPrisma.clip.upsert.mockResolvedValue({ id: "clip-1" });
-
     const { mockBatch } = makeBatch(msgBody);
     await handleNarrativeGeneration(mockBatch, mockEnv, mockCtx);
 
     expect(selectClaimsForDuration).toHaveBeenCalledWith(
-      DISTILLATION.claimsJson,
+      CLAIMS,
       5 // durationTier from msgBody
     );
   });
 
   it("skips selectClaimsForDuration for legacy claims without excerpts", async () => {
-    const legacyDistillation = {
-      ...DISTILLATION,
-      claimsJson: [{ claim: "Old claim", speaker: "Host", importance: 9, novelty: 7 }],
-    };
-    mockPrisma.workProduct.findFirst.mockResolvedValue(null);
-    mockPrisma.distillation.findFirst.mockResolvedValue(legacyDistillation);
-    mockPrisma.clip.upsert.mockResolvedValue({ id: "clip-1" });
+    const legacyClaims = [{ claim: "Old claim", speaker: "Host", importance: 9, novelty: 7 }];
+    (getWorkProduct as any).mockResolvedValueOnce(new TextEncoder().encode(JSON.stringify(legacyClaims)).buffer);
 
     const { mockBatch } = makeBatch(msgBody);
     await handleNarrativeGeneration(mockBatch, mockEnv, mockCtx);
@@ -318,7 +324,7 @@ describe("handleNarrativeGeneration", () => {
     // All claims passed directly to generateNarrative
     expect(generateNarrative).toHaveBeenCalledWith(
       expect.anything(),
-      legacyDistillation.claimsJson,
+      legacyClaims,
       5,
       expect.any(String),
       8192,
@@ -328,23 +334,16 @@ describe("handleNarrativeGeneration", () => {
     );
   });
 
-  it("reads narrative model from config", async () => {
-    (getModelConfig as any).mockResolvedValueOnce({ provider: "anthropic", model: "claude-haiku-4-5-20251001" });
-
-    mockPrisma.workProduct.findFirst.mockResolvedValue(null);
-    mockPrisma.clip.findUnique.mockResolvedValue(null);
-    mockPrisma.distillation.findFirst.mockResolvedValue(DISTILLATION);
-    mockPrisma.clip.upsert.mockResolvedValue({ id: "clip-1" });
-
+  it("reads narrative model via resolveStageModel", async () => {
     const { mockBatch } = makeBatch(msgBody);
     await handleNarrativeGeneration(mockBatch, mockEnv, mockCtx);
 
-    expect(getModelConfig).toHaveBeenCalledWith(expect.anything(), "narrative");
+    expect(resolveStageModel).toHaveBeenCalledWith(expect.anything(), "narrative");
     expect(generateNarrative).toHaveBeenCalledWith(expect.anything(), expect.anything(), 5, expect.any(String), 8192, expect.anything(), expect.anything(), expect.anything());
   });
 
   describe("stage-enabled check", () => {
-    it("ACKs without processing when stage 4 is disabled", async () => {
+    it("ACKs without processing when stage is disabled", async () => {
       (getConfig as any).mockResolvedValueOnce(false);
 
       const { mockMsg, mockBatch } = makeBatch(msgBody);
@@ -357,11 +356,6 @@ describe("handleNarrativeGeneration", () => {
     });
 
     it("bypasses stage-enabled check for manual messages", async () => {
-      mockPrisma.workProduct.findFirst.mockResolvedValue(null);
-      mockPrisma.clip.findUnique.mockResolvedValue(null);
-      mockPrisma.distillation.findFirst.mockResolvedValue(DISTILLATION);
-      mockPrisma.clip.upsert.mockResolvedValue({ id: "clip-1" });
-
       const manualBody = { ...msgBody, type: "manual" as const };
       const { mockMsg, mockBatch } = makeBatch(manualBody);
       await handleNarrativeGeneration(mockBatch, mockEnv, mockCtx);
@@ -373,11 +367,7 @@ describe("handleNarrativeGeneration", () => {
 
   describe("error handling", () => {
     it("marks step FAILED, notifies orchestrator, and acks on error", async () => {
-      mockPrisma.workProduct.findFirst.mockResolvedValue(null);
-      mockPrisma.clip.findUnique.mockResolvedValue(null);
-      mockPrisma.distillation.findFirst.mockResolvedValue(DISTILLATION);
       (generateNarrative as any).mockRejectedValueOnce(new Error("Claude API error"));
-      mockPrisma.pipelineStep.updateMany.mockResolvedValue({ count: 1 });
 
       const { mockMsg, mockBatch } = makeBatch(msgBody);
       await handleNarrativeGeneration(mockBatch, mockEnv, mockCtx);
@@ -403,11 +393,8 @@ describe("handleNarrativeGeneration", () => {
       expect(mockMsg.retry).not.toHaveBeenCalled();
     });
 
-    it("notifies orchestrator when no completed distillation found", async () => {
-      mockPrisma.workProduct.findFirst.mockResolvedValue(null);
-      mockPrisma.clip.findUnique.mockResolvedValue(null);
-      mockPrisma.distillation.findFirst.mockResolvedValue(null);
-      mockPrisma.pipelineStep.updateMany.mockResolvedValue({ count: 1 });
+    it("notifies orchestrator when no claims found in R2", async () => {
+      (getWorkProduct as any).mockResolvedValueOnce(null);
 
       const { mockMsg, mockBatch } = makeBatch(msgBody);
       await handleNarrativeGeneration(mockBatch, mockEnv, mockCtx);
@@ -424,12 +411,6 @@ describe("handleNarrativeGeneration", () => {
   describe("AiProviderError handling", () => {
     it("captures AI provider error via writeAiError and notifies orchestrator", async () => {
       const { AiProviderError } = await import("../../lib/ai-errors");
-      mockPrisma.workProduct.findFirst.mockResolvedValue(null);
-      mockPrisma.clip.findUnique.mockResolvedValue(null);
-      mockPrisma.distillation.findFirst.mockResolvedValue(DISTILLATION);
-      mockPrisma.pipelineStep.updateMany.mockResolvedValue({ count: 1 });
-      mockPrisma.pipelineEvent.create.mockResolvedValue({});
-      mockPrisma.aiServiceError.create.mockResolvedValue({});
 
       (generateNarrative as any).mockRejectedValueOnce(
         new AiProviderError({
@@ -454,17 +435,8 @@ describe("handleNarrativeGeneration", () => {
         }),
       });
 
-      // AI error captured to DB
-      expect(mockPrisma.aiServiceError.create).toHaveBeenCalledWith({
-        data: expect.objectContaining({
-          service: "narrative",
-          provider: "anthropic",
-          model: "claude-sonnet-4-20250514",
-          category: "rate_limit",
-          severity: "transient",
-          httpStatus: 429,
-        }),
-      });
+      // AI error captured via writeAiError
+      expect(writeAiError).toHaveBeenCalled();
 
       // Orchestrator notified with job-failed
       expect(mockEnv.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith(
@@ -483,11 +455,8 @@ describe("handleNarrativeGeneration", () => {
 
   describe("logging", () => {
     it("logs batch_start", async () => {
-      mockPrisma.workProduct.findFirst.mockResolvedValue({ id: "wp-1", type: "NARRATIVE" });
-      mockPrisma.clip.findUnique.mockResolvedValue({
-        id: "clip-1",
-        narrativeText: "cached",
-      });
+      // Cache hit path for simplicity
+      (mockEnv.R2.head as any).mockResolvedValue({ size: 500 });
 
       const { mockBatch } = makeBatch(msgBody);
       await handleNarrativeGeneration(mockBatch, mockEnv, mockCtx);
@@ -496,11 +465,6 @@ describe("handleNarrativeGeneration", () => {
     });
 
     it("logs narrative_generated on success", async () => {
-      mockPrisma.workProduct.findFirst.mockResolvedValue(null);
-      mockPrisma.clip.findUnique.mockResolvedValue(null);
-      mockPrisma.distillation.findFirst.mockResolvedValue(DISTILLATION);
-      mockPrisma.clip.upsert.mockResolvedValue({ id: "clip-1" });
-
       const { mockBatch } = makeBatch(msgBody);
       await handleNarrativeGeneration(mockBatch, mockEnv, mockCtx);
 

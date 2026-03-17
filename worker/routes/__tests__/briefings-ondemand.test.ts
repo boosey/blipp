@@ -94,7 +94,7 @@ describe("POST /generate (on-demand)", () => {
     const res = await app.request("/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ podcastId: "pod1", durationTier: 3 }),
+      body: JSON.stringify({ podcastId: "pod1", durationTier: 5 }),
     }, env, mockExCtx);
 
     expect(res.status).toBe(201);

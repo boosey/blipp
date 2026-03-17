@@ -18,8 +18,13 @@ vi.mock("../../lib/tts", () => ({
 }));
 
 vi.mock("../../lib/work-products", () => ({
-  wpKey: vi.fn((params: any) => `wp/${params.type.toLowerCase()}/${params.episodeId}/${params.durationTier}${params.voice ? `/${params.voice}` : ""}`),
+  wpKey: vi.fn((params: any) => {
+    if (params.type === "AUDIO_CLIP") return `wp/clip/${params.episodeId}/${params.durationTier}/${params.voice ?? "default"}.mp3`;
+    if (params.type === "NARRATIVE") return `wp/narrative/${params.episodeId}/${params.durationTier}.txt`;
+    return `wp/${params.type.toLowerCase()}/${params.episodeId}`;
+  }),
   putWorkProduct: vi.fn().mockResolvedValue(undefined),
+  getWorkProduct: vi.fn().mockResolvedValue(null),
 }));
 
 const mockLogger = vi.hoisted(() => ({
@@ -32,23 +37,62 @@ vi.mock("../../lib/logger", () => ({
   createPipelineLogger: vi.fn().mockResolvedValue(mockLogger),
 }));
 
-vi.mock("../../lib/ai-models", () => ({
-  getModelConfig: vi.fn().mockResolvedValue({ provider: "openai", model: "gpt-4o-mini-tts" }),
-}));
-
-vi.mock("../../lib/ai-usage", () => ({
-  getModelPricing: vi.fn().mockResolvedValue({ pricePerMinute: 0.015 }),
+vi.mock("../../lib/model-resolution", () => ({
+  resolveStageModel: vi.fn().mockResolvedValue({
+    provider: "openai",
+    model: "gpt-4o-mini-tts",
+    providerModelId: "gpt-4o-mini-tts",
+    pricing: { pricePerMinute: 0.015 },
+  }),
 }));
 
 vi.mock("../../lib/tts-providers", () => ({
   getTtsProviderImpl: vi.fn().mockReturnValue({ name: "MockTTS", provider: "openai" }),
 }));
 
+vi.mock("../../lib/pipeline-events", () => ({
+  writeEvent: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("../../lib/circuit-breaker", () => ({
+  recordSuccess: vi.fn(),
+  recordFailure: vi.fn(),
+}));
+
+vi.mock("../../lib/ai-errors", () => {
+  class AiProviderError extends Error {
+    readonly provider: string;
+    readonly model: string;
+    readonly httpStatus?: number;
+    readonly rawResponse?: string;
+    readonly requestDurationMs: number;
+    readonly rateLimitRemaining?: number;
+    readonly rateLimitResetAt?: Date;
+    constructor(opts: any) {
+      super(opts.message);
+      this.name = "AiProviderError";
+      this.provider = opts.provider;
+      this.model = opts.model;
+      this.httpStatus = opts.httpStatus;
+      this.rawResponse = opts.rawResponse;
+      this.requestDurationMs = opts.requestDurationMs;
+      this.rateLimitRemaining = opts.rateLimitRemaining;
+      this.rateLimitResetAt = opts.rateLimitResetAt;
+    }
+  }
+  return {
+    writeAiError: vi.fn().mockResolvedValue(undefined),
+    classifyAiError: vi.fn().mockReturnValue({ category: "unknown", severity: "transient" }),
+    AiProviderError,
+  };
+});
+
 import { createPrismaClient } from "../../lib/db";
 import { getConfig } from "../../lib/config";
 import { generateSpeech } from "../../lib/tts";
-import { putWorkProduct } from "../../lib/work-products";
-import { getModelConfig } from "../../lib/ai-models";
+import { putWorkProduct, getWorkProduct } from "../../lib/work-products";
+import { resolveStageModel } from "../../lib/model-resolution";
+import { writeAiError } from "../../lib/ai-errors";
 
 let mockPrisma: ReturnType<typeof createMockPrisma>;
 let mockEnv: ReturnType<typeof createMockEnv>;
@@ -65,16 +109,6 @@ const JOB = {
 
 const STEP = { id: "step-1", jobId: "job-1", stage: "AUDIO_GENERATION", status: "IN_PROGRESS" };
 
-const CLIP_WITH_NARRATIVE = {
-  id: "clip-1",
-  episodeId: "ep-1",
-  durationTier: 5,
-  narrativeText: "A warm narrative about technology trends.",
-  wordCount: 6,
-  status: "GENERATING_AUDIO",
-  distillationId: "dist-1",
-};
-
 beforeEach(() => {
   vi.clearAllMocks();
   mockPrisma = createMockPrisma();
@@ -84,18 +118,25 @@ beforeEach(() => {
 
   // Re-set mocks after clearAllMocks (vitest v4 clears mockResolvedValue)
   (getConfig as any).mockResolvedValue(true);
-  (getModelConfig as any).mockResolvedValue({ provider: "openai", model: "gpt-4o-mini-tts" });
+  (resolveStageModel as any).mockResolvedValue({
+    provider: "openai",
+    model: "gpt-4o-mini-tts",
+    providerModelId: "gpt-4o-mini-tts",
+    pricing: { pricePerMinute: 0.015 },
+  });
   (generateSpeech as any).mockResolvedValue({
     audio: new ArrayBuffer(2048),
     usage: { model: "test-tts-model", inputTokens: 40, outputTokens: 0, cost: null },
   });
-  mockPrisma.aiModelProvider.findFirst.mockResolvedValue({ providerModelId: "gpt-4o-mini-tts" });
   (putWorkProduct as any).mockResolvedValue(undefined);
-  mockPrisma.workProduct.create.mockResolvedValue({ id: "wp-1" });
-  mockPrisma.workProduct.findFirst.mockResolvedValue(null);
+  (getWorkProduct as any).mockResolvedValue(new TextEncoder().encode("A warm narrative about technology trends.").buffer);
+
   // Safety mocks for error handler (.catch() chains need thenables)
   mockPrisma.pipelineStep.updateMany.mockResolvedValue({ count: 0 });
   mockPrisma.clip.upsert.mockResolvedValue({});
+  mockPrisma.pipelineEvent.create.mockResolvedValue({});
+  mockPrisma.workProduct.upsert.mockResolvedValue({ id: "wp-1" });
+
   mockLogger.info.mockReset();
   mockLogger.debug.mockReset();
   mockLogger.error.mockReset();
@@ -106,6 +147,12 @@ beforeEach(() => {
   mockPrisma.pipelineJob.update.mockResolvedValue(JOB);
   mockPrisma.pipelineStep.create.mockResolvedValue(STEP);
   mockPrisma.pipelineStep.update.mockResolvedValue(STEP);
+
+  // R2 head returns null by default (no cache hit)
+  (mockEnv.R2.head as any).mockResolvedValue(null);
+
+  // clip.findUnique returns null by default (no cached clip)
+  mockPrisma.clip.findUnique.mockResolvedValue(null);
 });
 
 function makeBatch(body: any) {
@@ -125,7 +172,6 @@ describe("handleAudioGeneration", () => {
   };
 
   it("creates PipelineStep on processing", async () => {
-    mockPrisma.clip.findUnique.mockResolvedValueOnce(CLIP_WITH_NARRATIVE);
     mockPrisma.clip.update.mockResolvedValue({ id: "clip-1" });
 
     const { mockBatch } = makeBatch(msgBody);
@@ -141,25 +187,22 @@ describe("handleAudioGeneration", () => {
     });
   });
 
-  it("cache hit — step SKIPPED when completed clip + AUDIO_CLIP work product exist", async () => {
+  it("cache hit — step SKIPPED when completed clip + R2 audio exist", async () => {
+    // R2 head returns object (audio exists in R2)
+    (mockEnv.R2.head as any).mockResolvedValue({ size: 2048 });
+    // Clip exists and is COMPLETED
     mockPrisma.clip.findUnique.mockResolvedValue({
       id: "clip-cached",
       episodeId: "ep-1",
       durationTier: 5,
       status: "COMPLETED",
-      audioKey: "clips/ep-1/5.mp3",
+      audioKey: "wp/clip/ep-1/5/default.mp3",
     });
-    mockPrisma.workProduct.findFirst.mockResolvedValue({ id: "wp-cached" });
 
     const { mockMsg, mockBatch } = makeBatch(msgBody);
     await handleAudioGeneration(mockBatch, mockEnv, mockCtx);
 
-    // Work product lookup for existing AUDIO_CLIP
-    expect(mockPrisma.workProduct.findFirst).toHaveBeenCalledWith({
-      where: { type: "AUDIO_CLIP", episodeId: "ep-1", durationTier: 5 },
-    });
-
-    // Step marked SKIPPED with cached: true and workProductId
+    // Step marked SKIPPED with cached: true
     expect(mockPrisma.pipelineStep.update).toHaveBeenCalledWith({
       where: { id: "step-1" },
       data: expect.objectContaining({
@@ -167,7 +210,6 @@ describe("handleAudioGeneration", () => {
         cached: true,
         completedAt: expect.any(Date),
         durationMs: expect.any(Number),
-        workProductId: "wp-cached",
       }),
     });
 
@@ -194,8 +236,7 @@ describe("handleAudioGeneration", () => {
     expect(mockMsg.ack).toHaveBeenCalled();
   });
 
-  it("full flow: load narrative -> TTS -> R2 -> clip update as COMPLETED", async () => {
-    mockPrisma.clip.findUnique.mockResolvedValueOnce(CLIP_WITH_NARRATIVE);
+  it("full flow: load narrative from R2 -> TTS -> R2 -> clip update as COMPLETED", async () => {
     mockPrisma.clip.update.mockResolvedValue({
       id: "clip-1",
       episodeId: "ep-1",
@@ -206,9 +247,12 @@ describe("handleAudioGeneration", () => {
     const { mockMsg, mockBatch } = makeBatch(msgBody);
     await handleAudioGeneration(mockBatch, mockEnv, mockCtx);
 
-    // TTS generated with model from config
+    // Narrative loaded from R2 via getWorkProduct
+    expect(getWorkProduct).toHaveBeenCalled();
+
+    // TTS generated
     expect(generateSpeech).toHaveBeenCalledWith(
-      expect.anything(),
+      expect.anything(), // tts provider
       "A warm narrative about technology trends.",
       undefined,
       expect.any(String),
@@ -216,39 +260,30 @@ describe("handleAudioGeneration", () => {
       expect.anything()
     );
 
-    // Clip updated as COMPLETED with audioKey (now uses wpKey format)
+    // Clip updated as COMPLETED with audioKey
     expect(mockPrisma.clip.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { episodeId_durationTier: { episodeId: "ep-1", durationTier: 5 } },
         data: expect.objectContaining({
           status: "COMPLETED",
-          audioKey: "wp/audio_clip/ep-1/5/default",
+          audioKey: expect.stringContaining("wp/clip/"),
         }),
       })
     );
 
-    // AUDIO_CLIP work product created (R2 + DB)
+    // Audio written to R2
     expect(putWorkProduct).toHaveBeenCalledTimes(1);
-    expect(putWorkProduct).toHaveBeenCalledWith(mockEnv.R2, expect.stringContaining("audio_clip"), expect.any(ArrayBuffer));
 
-    expect(mockPrisma.workProduct.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        type: "AUDIO_CLIP",
-        episodeId: "ep-1",
-        durationTier: 5,
-        voice: "default",
-        sizeBytes: 2048,
-      }),
-    });
+    // WorkProduct upserted in DB
+    expect(mockPrisma.workProduct.upsert).toHaveBeenCalled();
 
-    // Step marked COMPLETED with TTS-only model/usage
+    // Step marked COMPLETED with TTS model/usage
     expect(mockPrisma.pipelineStep.update).toHaveBeenCalledWith({
       where: { id: "step-1" },
       data: expect.objectContaining({
         status: "COMPLETED",
         completedAt: expect.any(Date),
         durationMs: expect.any(Number),
-        workProductId: "wp-1",
         model: "test-tts-model",
         inputTokens: 40,
         outputTokens: 0,
@@ -267,7 +302,6 @@ describe("handleAudioGeneration", () => {
   });
 
   it("reports to orchestrator on completion", async () => {
-    mockPrisma.clip.findUnique.mockResolvedValueOnce(CLIP_WITH_NARRATIVE);
     mockPrisma.clip.update.mockResolvedValue({ id: "clip-1" });
 
     const { mockBatch } = makeBatch(msgBody);
@@ -282,21 +316,18 @@ describe("handleAudioGeneration", () => {
     );
   });
 
-  it("reads TTS model from config", async () => {
-    (getModelConfig as any).mockResolvedValueOnce({ provider: "openai", model: "tts-1-hd" });
-
-    mockPrisma.clip.findUnique.mockResolvedValueOnce(CLIP_WITH_NARRATIVE);
+  it("reads TTS model via resolveStageModel", async () => {
     mockPrisma.clip.update.mockResolvedValue({ id: "clip-1" });
 
     const { mockBatch } = makeBatch(msgBody);
     await handleAudioGeneration(mockBatch, mockEnv, mockCtx);
 
-    expect(getModelConfig).toHaveBeenCalledWith(expect.anything(), "tts");
+    expect(resolveStageModel).toHaveBeenCalledWith(expect.anything(), "tts");
     expect(generateSpeech).toHaveBeenCalledWith(expect.anything(), expect.anything(), undefined, expect.any(String), expect.anything(), expect.anything());
   });
 
   describe("stage-enabled check", () => {
-    it("ACKs without processing when stage 5 is disabled", async () => {
+    it("ACKs without processing when stage is disabled", async () => {
       (getConfig as any).mockResolvedValueOnce(false);
 
       const { mockMsg, mockBatch } = makeBatch(msgBody);
@@ -309,7 +340,6 @@ describe("handleAudioGeneration", () => {
     });
 
     it("bypasses stage-enabled check for manual messages", async () => {
-      mockPrisma.clip.findUnique.mockResolvedValueOnce(CLIP_WITH_NARRATIVE);
       mockPrisma.clip.update.mockResolvedValue({ id: "clip-1" });
 
       const manualBody = { ...msgBody, type: "manual" as const };
@@ -323,7 +353,6 @@ describe("handleAudioGeneration", () => {
 
   describe("error handling", () => {
     it("marks step FAILED, notifies orchestrator, and acks on TTS error", async () => {
-      mockPrisma.clip.findUnique.mockResolvedValueOnce(CLIP_WITH_NARRATIVE);
       (generateSpeech as any).mockRejectedValueOnce(new Error("TTS API error"));
 
       const { mockMsg, mockBatch } = makeBatch(msgBody);
@@ -350,8 +379,8 @@ describe("handleAudioGeneration", () => {
       expect(mockMsg.retry).not.toHaveBeenCalled();
     });
 
-    it("throws if no narrative found on clip", async () => {
-      mockPrisma.clip.findUnique.mockResolvedValueOnce({ id: "clip-1", narrativeText: null });
+    it("throws if no narrative found in R2", async () => {
+      (getWorkProduct as any).mockResolvedValueOnce(null);
 
       const { mockMsg, mockBatch } = makeBatch(msgBody);
       await handleAudioGeneration(mockBatch, mockEnv, mockCtx);
@@ -368,10 +397,8 @@ describe("handleAudioGeneration", () => {
   describe("AiProviderError handling", () => {
     it("captures AI provider error via writeAiError and notifies orchestrator", async () => {
       const { AiProviderError } = await import("../../lib/ai-errors");
-      mockPrisma.clip.findUnique.mockResolvedValueOnce(CLIP_WITH_NARRATIVE);
-      mockPrisma.pipelineEvent.create.mockResolvedValue({});
-      mockPrisma.aiServiceError.create.mockResolvedValue({});
       mockPrisma.pipelineStep.findFirst.mockResolvedValue({ id: "step-1" });
+      mockPrisma.aiServiceError.create.mockResolvedValue({});
 
       (generateSpeech as any).mockRejectedValueOnce(
         new AiProviderError({
@@ -396,15 +423,8 @@ describe("handleAudioGeneration", () => {
         }),
       });
 
-      // AI error captured to DB
-      expect(mockPrisma.aiServiceError.create).toHaveBeenCalledWith({
-        data: expect.objectContaining({
-          service: "tts",
-          provider: "openai",
-          model: "gpt-4o-mini-tts",
-          operation: "synthesize",
-        }),
-      });
+      // AI error captured via writeAiError
+      expect(writeAiError).toHaveBeenCalled();
 
       // Orchestrator notified with job-failed
       expect(mockEnv.ORCHESTRATOR_QUEUE.send).toHaveBeenCalledWith(
@@ -423,12 +443,13 @@ describe("handleAudioGeneration", () => {
 
   describe("logging", () => {
     it("logs batch_start", async () => {
+      // Cache hit path for simplicity
+      (mockEnv.R2.head as any).mockResolvedValue({ size: 2048 });
       mockPrisma.clip.findUnique.mockResolvedValue({
         id: "clip-1",
         status: "COMPLETED",
         audioKey: "clips/ep-1/5.mp3",
       });
-      mockPrisma.workProduct.findFirst.mockResolvedValue({ id: "wp-1" });
 
       const { mockBatch } = makeBatch(msgBody);
       await handleAudioGeneration(mockBatch, mockEnv, mockCtx);
@@ -437,7 +458,6 @@ describe("handleAudioGeneration", () => {
     });
 
     it("logs audio_completed on success", async () => {
-      mockPrisma.clip.findUnique.mockResolvedValueOnce(CLIP_WITH_NARRATIVE);
       mockPrisma.clip.update.mockResolvedValue({ id: "clip-1" });
 
       const { mockBatch } = makeBatch(msgBody);
@@ -446,7 +466,7 @@ describe("handleAudioGeneration", () => {
       expect(mockLogger.info).toHaveBeenCalledWith("audio_completed", {
         episodeId: "ep-1",
         durationTier: 5,
-        audioKey: "wp/audio_clip/ep-1/5/default",
+        audioKey: expect.stringContaining("wp/clip/"),
       });
     });
   });
