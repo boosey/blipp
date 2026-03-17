@@ -769,3 +769,68 @@ export interface AiErrorSummary {
   }>;
   since: string;
 }
+
+// ── Recommendations ──
+
+export interface AdminRecommendationStats {
+  usersWithProfiles: number;
+  podcastsWithProfiles: number;
+  cacheHitRate: number;
+  lastComputeAt: string | null;
+}
+
+export interface AdminRecommendationUserRow {
+  id: string;
+  name: string | null;
+  email: string;
+  imageUrl?: string;
+  hasProfile: boolean;
+  listenCount: number;
+  categoryCount: number;
+  subscriptionCount: number;
+  cacheAge: number | null;
+  cachedRecommendationCount: number;
+  profileComputedAt: string | null;
+}
+
+export interface AdminRecommendationUserDetail {
+  id: string;
+  name: string | null;
+  email: string;
+  imageUrl?: string;
+  subscriptionCount: number;
+  favoriteCount: number;
+  profile: {
+    categoryWeights: Record<string, number>;
+    listenCount: number;
+    computedAt: string;
+  } | null;
+  cache: {
+    computedAt: string;
+    recommendations: {
+      podcast: {
+        id: string;
+        title: string;
+        author: string;
+        imageUrl: string | null;
+        categories: string[];
+        episodeCount: number;
+      };
+      score: number;
+      reasons: string[];
+    }[];
+  } | null;
+}
+
+export interface AdminPodcastProfile {
+  id: string;
+  podcastId: string;
+  podcastTitle: string;
+  podcastImageUrl: string | null;
+  categories: string[];
+  categoryWeights: Record<string, number>;
+  popularity: number;
+  freshness: number;
+  subscriberCount: number;
+  computedAt: string;
+}

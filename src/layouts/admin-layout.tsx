@@ -100,6 +100,7 @@ const sidebarEntries: SidebarEntry[] = [
     children: [
       { path: "users", label: "Management", icon: Users },
       { path: "plans", label: "Plans", icon: CreditCard },
+      { path: "recommendations", label: "Recommendations", icon: Sparkles },
     ],
   },
 
