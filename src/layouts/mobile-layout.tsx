@@ -31,7 +31,7 @@ function MobileLayoutInner() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-50 flex flex-col max-w-md mx-auto lg:border-x lg:border-zinc-800">
+    <div className="min-h-screen bg-zinc-950 text-zinc-50 flex flex-col max-w-3xl mx-auto lg:border-x lg:border-zinc-800">
       <OfflineIndicator />
       {/* Header */}
       <header className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
@@ -45,7 +45,10 @@ function MobileLayoutInner() {
               <ArrowLeft className="w-5 h-5" />
             </button>
           )}
-          <span className="text-lg font-bold">Blipp</span>
+          <span className="text-lg font-bold flex items-center">
+            <img src="/blipp_icon_clean_128.png" alt="" className="w-6 h-6 rounded-md inline-block -mt-0.5" />
+            <span className="-ml-0.5">lipp</span>
+          </span>
         </div>
         <UserButton />
       </header>

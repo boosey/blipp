@@ -112,7 +112,7 @@ export function Landing() {
 
         <div className="relative z-10 max-w-3xl">
           {/* Logo */}
-          <div className="animate-fade-up mb-8">
+          <div className="animate-fade-up mb-8 mt-12">
             <img
               src="/blipp_icon_clean_128.png"
               alt="Blipp"
