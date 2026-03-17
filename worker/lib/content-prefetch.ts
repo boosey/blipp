@@ -1,16 +1,17 @@
 import { wpKey, putWorkProduct } from "./work-products";
+import { lookupPodcastIndexTranscript } from "./transcript-source";
+import { PodcastIndexClient } from "./podcast-index";
 import type { Env } from "../types";
 
 /**
  * Checks content availability for a new episode and stores transcript in R2 if found.
+ * Runs at concurrency=1 so PI rate limits are not a concern.
  *
  * Flow:
  * 1. If episode has a transcriptUrl from RSS → fetch it → store in R2 → TRANSCRIPT_READY
- * 2. If no transcript → HEAD the audio URL to verify accessibility → AUDIO_READY
- * 3. If neither → NOT_DELIVERABLE
- *
- * Does NOT call Podcast Index API — that's too expensive at scale during feed-refresh.
- * PI transcript lookup happens later in the transcription pipeline stage on-demand.
+ * 2. If no RSS transcript → check Podcast Index for transcript → TRANSCRIPT_READY
+ * 3. If no transcript anywhere → HEAD the audio URL → AUDIO_READY
+ * 4. If neither → NOT_DELIVERABLE
  */
 export async function prefetchEpisodeContent(
   episode: {
@@ -20,37 +21,43 @@ export async function prefetchEpisodeContent(
     audioUrl: string;
     transcriptUrl: string | null;
   },
-  _podcast: {
+  podcast: {
     title: string;
     feedUrl: string;
     podcastIndexId: string | null;
   },
-  _env: Env,
+  env: Env,
   r2: R2Bucket
 ): Promise<{
   contentStatus: "TRANSCRIPT_READY" | "AUDIO_READY" | "NOT_DELIVERABLE";
   transcriptR2Key: string | null;
 }> {
-  // Step 1: Try RSS transcript URL (no API calls, just a direct fetch)
+  // Step 1: Try RSS transcript URL (direct fetch, no API call)
   if (episode.transcriptUrl) {
+    const result = await tryFetchTranscript(episode.transcriptUrl, episode.id, r2);
+    if (result) return result;
+  }
+
+  // Step 2: Try Podcast Index transcript lookup
+  if (podcast.podcastIndexId) {
     try {
-      const res = await fetch(episode.transcriptUrl);
-      if (res.ok) {
-        const transcript = await res.text();
-        if (transcript.length > 100) {
-          const r2Key = wpKey({ type: "TRANSCRIPT", episodeId: episode.id });
-          await putWorkProduct(r2, r2Key, transcript, {
-            contentType: "text/plain",
-          });
-          return { contentStatus: "TRANSCRIPT_READY", transcriptR2Key: r2Key };
-        }
+      const client = new PodcastIndexClient(env.PODCAST_INDEX_KEY, env.PODCAST_INDEX_SECRET);
+      const piUrl = await lookupPodcastIndexTranscript(
+        client,
+        podcast.podcastIndexId,
+        episode.guid,
+        episode.title
+      );
+      if (piUrl) {
+        const result = await tryFetchTranscript(piUrl, episode.id, r2);
+        if (result) return result;
       }
     } catch {
-      // Transcript fetch failed — fall through to audio check
+      // PI lookup failed — fall through
     }
   }
 
-  // Step 2: HEAD the audio URL
+  // Step 3: HEAD the audio URL
   try {
     const headRes = await fetch(episode.audioUrl, { method: "HEAD" });
     if (headRes.ok) {
@@ -68,4 +75,27 @@ export async function prefetchEpisodeContent(
   }
 
   return { contentStatus: "NOT_DELIVERABLE", transcriptR2Key: null };
+}
+
+/** Fetch a transcript URL, store in R2 if valid. Returns null if failed. */
+async function tryFetchTranscript(
+  url: string,
+  episodeId: string,
+  r2: R2Bucket
+): Promise<{
+  contentStatus: "TRANSCRIPT_READY";
+  transcriptR2Key: string;
+} | null> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const transcript = await res.text();
+    if (transcript.length < 100) return null;
+
+    const r2Key = wpKey({ type: "TRANSCRIPT", episodeId });
+    await putWorkProduct(r2, r2Key, transcript, { contentType: "text/plain" });
+    return { contentStatus: "TRANSCRIPT_READY", transcriptR2Key: r2Key };
+  } catch {
+    return null;
+  }
 }
