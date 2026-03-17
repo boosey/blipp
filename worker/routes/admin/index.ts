@@ -18,6 +18,7 @@ import { auditLogRoutes } from "./audit-log";
 import { apiKeysRoutes } from "./api-keys";
 import { adsRoutes } from "./ads";
 import { recommendationsRoutes } from "./recommendations";
+import { cronJobsRoutes } from "./cron-jobs";
 
 /**
  * Admin route tree. All routes require admin authentication.
@@ -45,5 +46,6 @@ adminRoutes.route("/audit-log", auditLogRoutes);
 adminRoutes.route("/api-keys", apiKeysRoutes);
 adminRoutes.route("/ads", adsRoutes);
 adminRoutes.route("/recommendations", recommendationsRoutes);
+adminRoutes.route("/cron-jobs", cronJobsRoutes);
 
 export { adminRoutes };

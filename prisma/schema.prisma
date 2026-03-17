@@ -721,3 +721,45 @@ model RecommendationCache {
   computedAt DateTime @default(now())
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
+
+// ── Scheduled Job Runs ──
+
+model CronRun {
+  id           String        @id @default(cuid())
+  jobKey       String
+  startedAt    DateTime      @default(now())
+  completedAt  DateTime?
+  durationMs   Int?
+  status       CronRunStatus @default(IN_PROGRESS)
+  result       Json?         // structured output: counts, summaries
+  errorMessage String?
+
+  logs CronRunLog[]
+
+  @@index([jobKey, startedAt(sort: Desc)])
+}
+
+enum CronRunStatus {
+  IN_PROGRESS
+  SUCCESS
+  FAILED
+}
+
+model CronRunLog {
+  id        String          @id @default(cuid())
+  runId     String
+  run       CronRun         @relation(fields: [runId], references: [id], onDelete: Cascade)
+  level     CronRunLogLevel
+  message   String
+  data      Json?
+  timestamp DateTime        @default(now())
+
+  @@index([runId, timestamp])
+}
+
+enum CronRunLogLevel {
+  DEBUG
+  INFO
+  WARN
+  ERROR
+}

@@ -9,9 +9,12 @@ import { handleCatalogRefresh } from "./catalog-refresh";
 import { handleContentPrefetch } from "./content-prefetch";
 import type { ContentPrefetchMessage } from "./content-prefetch";
 import { createPrismaClient } from "../lib/db";
-import { getConfig } from "../lib/config";
-import { createPipelineLogger } from "../lib/logger";
-import { checkCostThresholds } from "../lib/cost-alerts";
+import { runJob } from "../lib/cron/runner";
+import { runPipelineTriggerJob } from "../lib/cron/pipeline-trigger";
+import { runMonitoringJob } from "../lib/cron/monitoring";
+import { runUserLifecycleJob } from "../lib/cron/user-lifecycle";
+import { runDataRetentionJob } from "../lib/cron/data-retention";
+import { runRecommendationsJob } from "../lib/cron/recommendations";
 import type {
   TranscriptionMessage,
   DistillationMessage,
@@ -126,8 +129,10 @@ export async function handleQueue(
 }
 
 /**
- * Cron trigger handler -- enqueues a feed refresh job if the pipeline is enabled
- * and the minimum interval has elapsed since the last auto run.
+ * Cron heartbeat handler — fires every 5 minutes and dispatches all named jobs.
+ * Each job manages its own enable toggle and run interval via PlatformConfig.
+ *
+ * Jobs: pipeline-trigger, monitoring, user-lifecycle, data-retention, recommendations
  *
  * @param event - Cloudflare scheduled event
  * @param env - Worker environment bindings
@@ -139,242 +144,68 @@ export async function scheduled(
   ctx: ExecutionContext
 ) {
   const prisma = createPrismaClient(env.HYPERDRIVE);
-  const log = await createPipelineLogger({ stage: "scheduled", prisma });
 
   try {
-    // Check if the pipeline is globally enabled
-    const enabled = await getConfig(prisma, "pipeline.enabled", true);
-    if (!enabled) {
-      log.info("pipeline_disabled", {});
-      return;
-    }
+    // One-time idempotent migration: copy old lastRunAt keys to cron.* namespace
+    await migrateLegacyConfigKeys(prisma);
 
-    // Check minimum interval between auto runs
-    const minIntervalMinutes = await getConfig(
-      prisma,
-      "pipeline.minIntervalMinutes",
-      60
-    );
-    const lastAutoRunAt = await getConfig<string | null>(
-      prisma,
-      "pipeline.lastAutoRunAt",
-      null
-    );
-
-    if (lastAutoRunAt) {
-      const elapsedMs = Date.now() - new Date(lastAutoRunAt).getTime();
-      const elapsedMinutes = elapsedMs / 60_000;
-      if (elapsedMinutes < minIntervalMinutes) {
-        log.debug("interval_skip", { elapsedMinutes: Math.round(elapsedMinutes), minIntervalMinutes });
-        return;
-      }
-    }
-
-    // Enqueue feed refresh
-    await env.FEED_REFRESH_QUEUE.send({ type: "cron" });
-    log.info("feed_refresh_enqueued", { trigger: "cron" });
-
-    // Update lastAutoRunAt
-    await prisma.platformConfig.upsert({
-      where: { key: "pipeline.lastAutoRunAt" },
-      update: { value: new Date().toISOString() },
-      create: {
-        key: "pipeline.lastAutoRunAt",
-        value: new Date().toISOString(),
-        description: "Timestamp of last automatic pipeline run",
-      },
-    });
-
-    // Refresh AI model pricing once per day
-    const lastPriceRefresh = await getConfig<string | null>(prisma, "pricing.lastRefreshedAt", null);
-    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    if (!lastPriceRefresh || new Date(lastPriceRefresh) < oneDayAgo) {
-      const { refreshPricing } = await import("../lib/pricing-updater");
-      const { updated } = await refreshPricing(prisma);
-      log.info("pricing_refreshed", { updated });
-      await prisma.platformConfig.upsert({
-        where: { key: "pricing.lastRefreshedAt" },
-        update: { value: new Date().toISOString() },
-        create: { key: "pricing.lastRefreshedAt", value: new Date().toISOString(), description: "Last pricing refresh timestamp" },
-      });
-    }
-
-    // Trial expiration check
-    try {
-      const trialDaysAgo = new Date();
-      trialDaysAgo.setDate(trialDaysAgo.getDate() - 14); // Default 14-day trial
-
-      // Find users on default/free plan created more than trial period ago
-      // who have never upgraded (no stripeCustomerId)
-      const defaultPlan = await prisma.plan.findFirst({ where: { isDefault: true } });
-      if (defaultPlan) {
-        const expiredTrialUsers = await prisma.user.findMany({
-          where: {
-            planId: defaultPlan.id,
-            stripeCustomerId: null,
-            createdAt: { lt: trialDaysAgo },
-          },
-          select: { id: true, email: true, createdAt: true },
-          take: 100, // Process in batches
-        });
-
-        if (expiredTrialUsers.length > 0) {
-          console.log(JSON.stringify({
-            level: "info",
-            action: "trial_expiration_check",
-            expiredCount: expiredTrialUsers.length,
-            ts: new Date().toISOString(),
-          }));
-          // For now, just log. Future: send reminder emails, restrict features
-        }
-      }
-    } catch (err) {
-      console.error(JSON.stringify({
-        level: "error",
-        action: "trial_check_failed",
-        error: err instanceof Error ? err.message : String(err),
-        ts: new Date().toISOString(),
-      }));
-    }
-
-    // Check cost thresholds and persist alerts
-    try {
-      const costAlerts = await checkCostThresholds(prisma);
-      if (costAlerts.length > 0) {
-        await prisma.platformConfig.upsert({
-          where: { key: "cost.alert.active" },
-          update: { value: costAlerts as any },
-          create: { key: "cost.alert.active", value: costAlerts as any, description: "Active cost threshold alerts" },
-        });
-        console.log(JSON.stringify({
-          level: "warn",
-          action: "cost_threshold_exceeded",
-          alerts: costAlerts,
-          ts: new Date().toISOString(),
-        }));
-      }
-    } catch (err) {
-      console.error(JSON.stringify({
-        level: "error",
-        action: "cost_check_failed",
-        error: err instanceof Error ? err.message : String(err),
-        ts: new Date().toISOString(),
-      }));
-    }
-    // Data retention: count aged episodes and stale podcasts
-    try {
-      const agingEnabled = await getConfig(prisma, "episodes.aging.enabled", false);
-      if (agingEnabled) {
-        const maxAgeDays = await getConfig(prisma, "episodes.aging.maxAgeDays", 180);
-        const cutoff = new Date();
-        cutoff.setDate(cutoff.getDate() - (maxAgeDays as number));
-
-        const agingCount = await prisma.episode.count({
-          where: {
-            publishedAt: { lt: cutoff },
-            feedItems: { none: { status: { in: ["PENDING", "PROCESSING"] } } },
-          },
-        });
-
-        if (agingCount > 0) {
-          await prisma.platformConfig.upsert({
-            where: { key: "episodes.aging.candidateCount" },
-            update: { value: agingCount },
-            create: { key: "episodes.aging.candidateCount", value: agingCount, description: "Episodes eligible for aging deletion" },
-          });
-        }
-      }
-    } catch (err) {
-      console.error(JSON.stringify({
-        level: "error",
-        action: "aging_check_failed",
-        error: err instanceof Error ? err.message : String(err),
-        ts: new Date().toISOString(),
-      }));
-    }
-    // Catalog cleanup check
-    try {
-      const cleanupEnabled = await getConfig(prisma, "catalog.cleanup.enabled", false);
-      if (cleanupEnabled) {
-        const cleanupCount = await prisma.podcast.count({
-          where: {
-            status: { not: "archived" },
-            subscriptions: { none: {} },
-          },
-        });
-
-        if (cleanupCount > 0) {
-          await prisma.platformConfig.upsert({
-            where: { key: "catalog.cleanup.candidateCount" },
-            update: { value: cleanupCount },
-            create: { key: "catalog.cleanup.candidateCount", value: cleanupCount, description: "Podcasts eligible for cleanup" },
-          });
-        }
-      }
-    } catch (err) {
-      console.error(JSON.stringify({
-        level: "error",
-        action: "cleanup_check_failed",
-        error: err instanceof Error ? err.message : String(err),
-        ts: new Date().toISOString(),
-      }));
-    }
-    // Recommendation profile refresh (weekly)
-    try {
-      const recsEnabled = await getConfig(prisma, "recommendations.enabled", true);
-      const refreshDays = await getConfig(prisma, "recommendations.profile.refreshIntervalDays", 7);
-      const lastRecsRefresh = await getConfig<string | null>(prisma, "recommendations.lastProfileRefresh", null);
-      const refreshCutoff = new Date(Date.now() - (refreshDays as number) * 86400000);
-      if (recsEnabled && (!lastRecsRefresh || new Date(lastRecsRefresh) < refreshCutoff)) {
-        const { computePodcastProfiles } = await import("../lib/recommendations");
-        const profileCount = await computePodcastProfiles(prisma);
-        await prisma.platformConfig.upsert({
-          where: { key: "recommendations.lastProfileRefresh" },
-          update: { value: new Date().toISOString() },
-          create: { key: "recommendations.lastProfileRefresh", value: new Date().toISOString(), description: "Last recommendation profile refresh" },
-        });
-        log.info("recommendation_profiles_refreshed", { profileCount });
-      }
-    } catch (err) {
-      console.error(JSON.stringify({
-        level: "error",
-        action: "recommendation_refresh_failed",
-        error: err instanceof Error ? err.message : String(err),
-        ts: new Date().toISOString(),
-      }));
-    }
-
-    // Briefing request archiving (once daily)
-    try {
-      const archivingEnabled = await getConfig(prisma, "requests.archiving.enabled", false);
-      if (archivingEnabled) {
-        const lastArchiveRun = await getConfig<string | null>(prisma, "requests.archiving.lastRunAt", null);
-        if (!lastArchiveRun || new Date(lastArchiveRun) < oneDayAgo) {
-          const maxAgeDays = await getConfig(prisma, "requests.archiving.maxAgeDays", 30);
-          const cutoff = new Date(Date.now() - (maxAgeDays as number) * 24 * 60 * 60 * 1000);
-          const { count } = await prisma.briefingRequest.deleteMany({
-            where: {
-              status: { in: ["COMPLETED", "FAILED"] },
-              createdAt: { lt: cutoff },
-            },
-          });
-          await prisma.platformConfig.upsert({
-            where: { key: "requests.archiving.lastRunAt" },
-            update: { value: new Date().toISOString() },
-            create: { key: "requests.archiving.lastRunAt", value: new Date().toISOString(), description: "Last briefing request archiving run" },
-          });
-          log.info("requests_archived", { count, maxAgeDays });
-        }
-      }
-    } catch (err) {
-      console.error(JSON.stringify({
-        level: "error",
-        action: "requests_archiving_failed",
-        error: err instanceof Error ? err.message : String(err),
-        ts: new Date().toISOString(),
-      }));
-    }
+    // Dispatch all jobs — each checks its own enabled flag and interval
+    await Promise.allSettled([
+      runJob({
+        jobKey: "pipeline-trigger",
+        prisma: prisma as any,
+        execute: (logger) => runPipelineTriggerJob(prisma as any, env, logger),
+      }),
+      runJob({
+        jobKey: "monitoring",
+        prisma: prisma as any,
+        execute: (logger) => runMonitoringJob(prisma as any, logger),
+      }),
+      runJob({
+        jobKey: "user-lifecycle",
+        prisma: prisma as any,
+        execute: (logger) => runUserLifecycleJob(prisma as any, logger),
+      }),
+      runJob({
+        jobKey: "data-retention",
+        prisma: prisma as any,
+        execute: (logger) => runDataRetentionJob(prisma as any, logger),
+      }),
+      runJob({
+        jobKey: "recommendations",
+        prisma: prisma as any,
+        execute: (logger) => runRecommendationsJob(prisma as any, logger),
+      }),
+    ]);
   } finally {
     ctx.waitUntil(prisma.$disconnect());
+  }
+}
+
+/**
+ * Migrates legacy PlatformConfig lastRunAt keys to the unified cron.* namespace.
+ * Idempotent — skips if the new key already exists.
+ */
+async function migrateLegacyConfigKeys(prisma: {
+  platformConfig: {
+    findUnique: (args: any) => Promise<any>;
+    create: (args: any) => Promise<any>;
+  };
+}) {
+  const migrations = [
+    { from: "pipeline.lastAutoRunAt", to: "cron.pipeline-trigger.lastRunAt" },
+    { from: "pricing.lastRefreshedAt", to: "cron.monitoring.lastRunAt" },
+    { from: "recommendations.lastProfileRefresh", to: "cron.recommendations.lastRunAt" },
+    { from: "requests.archiving.lastRunAt", to: "cron.data-retention.lastRunAt" },
+  ];
+
+  for (const { from, to } of migrations) {
+    const exists = await prisma.platformConfig.findUnique({ where: { key: to } });
+    if (exists) continue;
+    const legacy = await prisma.platformConfig.findUnique({ where: { key: from } });
+    if (!legacy) continue;
+    await prisma.platformConfig.create({
+      data: { key: to, value: legacy.value, description: `Migrated from ${from}` },
+    });
   }
 }

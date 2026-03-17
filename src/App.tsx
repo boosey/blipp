@@ -35,6 +35,7 @@ const AdminAuditLog = lazy(() => import("./pages/admin/audit-log"));
 const AdminAiErrors = lazy(() => import("./pages/admin/ai-errors"));
 const AdminAds = lazy(() => import("./pages/admin/ads"));
 const AdminRecommendations = lazy(() => import("./pages/admin/recommendations"));
+const ScheduledJobs = lazy(() => import("./pages/admin/scheduled-jobs"));
 const Onboarding = lazy(() => import("./pages/onboarding"));
 const History = lazy(() => import("./pages/history"));
 
@@ -120,6 +121,7 @@ export default function App() {
         <Route path="ai-errors" element={<Suspense fallback={<AdminLoading />}><AdminAiErrors /></Suspense>} />
         <Route path="ads" element={<Suspense fallback={<AdminLoading />}><AdminAds /></Suspense>} />
         <Route path="recommendations" element={<Suspense fallback={<AdminLoading />}><AdminRecommendations /></Suspense>} />
+        <Route path="scheduled-jobs" element={<Suspense fallback={<AdminLoading />}><ScheduledJobs /></Suspense>} />
       </Route>
     </Routes>
   );

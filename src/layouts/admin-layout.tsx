@@ -24,6 +24,7 @@ import {
   Sparkles,
   Flag,
   Megaphone,
+  Clock,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
@@ -115,6 +116,7 @@ const sidebarEntries: SidebarEntry[] = [
       { path: "api-keys", label: "API Keys", icon: Key },
       { path: "audit-log", label: "Audit Log", icon: ScrollText },
       { path: "ads", label: "Advertisements", icon: Megaphone },
+      { path: "scheduled-jobs", label: "Scheduled Jobs", icon: Clock },
     ],
   },
 ];
