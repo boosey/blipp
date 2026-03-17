@@ -221,7 +221,7 @@ export function Discover() {
         /* Browse mode */
         <>
           {/* Category pills */}
-          <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-hide mt-4 snap-x-mandatory">
+          <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide mt-4 snap-x-mandatory">
             {categoryNames.map((cat) => (
               <button
                 key={cat}
@@ -241,7 +241,7 @@ export function Discover() {
           {trendingPodcasts.length > 0 && (
             <section className="mt-6">
               <h2 className="text-lg font-semibold mb-3">Trending Now</h2>
-              <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-hide snap-x-mandatory">
+              <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide snap-x-mandatory">
                 {trendingPodcasts.map((podcast) => (
                   <button
                     key={podcast.id}

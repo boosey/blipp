@@ -28,7 +28,7 @@ export function MiniPlayer() {
 
   return (
     <>
-      <div className="fixed bottom-[calc(env(safe-area-inset-bottom)+49px)] left-0 right-0 z-40">
+      <div className="fixed bottom-[calc(env(safe-area-inset-bottom)+49px)] left-0 right-0 z-40 max-w-3xl mx-auto">
         {/* Progress bar */}
         <div
           className={`absolute top-0 left-0 h-0.5 transition-all duration-200 ${
