@@ -31,7 +31,7 @@ function MobileLayoutInner() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-50 flex flex-col">
+    <div className="min-h-screen bg-zinc-950 text-zinc-50 flex flex-col max-w-md mx-auto lg:border-x lg:border-zinc-800">
       <OfflineIndicator />
       {/* Header */}
       <header className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
