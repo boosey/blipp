@@ -8,7 +8,7 @@
   - generally not legal but could do it until there is a cease and desist :-)
 - script in the style of the voice
 - Change speed of audio
-- search episode within podcast
+~~- search episode within podcast~~
 - light / dark mode
 - request a podcast
 - "native" app ios then android
