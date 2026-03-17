@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <title>Development Guide</title>
+            <style>
+/* From extension vscode.github */
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+.vscode-dark img[src$=\#gh-light-mode-only],
+.vscode-light img[src$=\#gh-dark-mode-only],
+.vscode-high-contrast:not(.vscode-high-contrast-light) img[src$=\#gh-light-mode-only],
+.vscode-high-contrast-light img[src$=\#gh-dark-mode-only] {
+	display: none;
+}
+
+</style>
+            <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex/dist/katex.min.css">
+<link href="https://cdn.jsdelivr.net/npm/katex-copytex@latest/dist/katex-copytex.min.css" rel="stylesheet" type="text/css">
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Microsoft/vscode/extensions/markdown-language-features/media/markdown.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Microsoft/vscode/extensions/markdown-language-features/media/highlight.css">
+<style>
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe WPC', 'Segoe UI', system-ui, 'Ubuntu', 'Droid Sans', sans-serif;
+                font-size: 14px;
+                line-height: 1.6;
+            }
+        </style>
+        <style>
+.task-list-item {
+    list-style-type: none;
+}
+
+.task-list-item-checkbox {
+    margin-left: -20px;
+    vertical-align: middle;
+    pointer-events: none;
+}
+</style>
+<style>
+:root {
+  --color-note: #0969da;
+  --color-tip: #1a7f37;
+  --color-warning: #9a6700;
+  --color-severe: #bc4c00;
+  --color-caution: #d1242f;
+  --color-important: #8250df;
+}
+
+</style>
+<style>
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-note: #2f81f7;
+    --color-tip: #3fb950;
+    --color-warning: #d29922;
+    --color-severe: #db6d28;
+    --color-caution: #f85149;
+    --color-important: #a371f7;
+  }
+}
+
+</style>
+<style>
+.markdown-alert {
+  padding: 0.5rem 1rem;
+  margin-bottom: 16px;
+  color: inherit;
+  border-left: .25em solid #888;
+}
+
+.markdown-alert>:first-child {
+  margin-top: 0
+}
+
+.markdown-alert>:last-child {
+  margin-bottom: 0
+}
+
+.markdown-alert .markdown-alert-title {
+  display: flex;
+  font-weight: 500;
+  align-items: center;
+  line-height: 1
+}
+
+.markdown-alert .markdown-alert-title .octicon {
+  margin-right: 0.5rem;
+  display: inline-block;
+  overflow: visible !important;
+  vertical-align: text-bottom;
+  fill: currentColor;
+}
+
+.markdown-alert.markdown-alert-note {
+  border-left-color: var(--color-note);
+}
+
+.markdown-alert.markdown-alert-note .markdown-alert-title {
+  color: var(--color-note);
+}
+
+.markdown-alert.markdown-alert-important {
+  border-left-color: var(--color-important);
+}
+
+.markdown-alert.markdown-alert-important .markdown-alert-title {
+  color: var(--color-important);
+}
+
+.markdown-alert.markdown-alert-warning {
+  border-left-color: var(--color-warning);
+}
+
+.markdown-alert.markdown-alert-warning .markdown-alert-title {
+  color: var(--color-warning);
+}
+
+.markdown-alert.markdown-alert-tip {
+  border-left-color: var(--color-tip);
+}
+
+.markdown-alert.markdown-alert-tip .markdown-alert-title {
+  color: var(--color-tip);
+}
+
+.markdown-alert.markdown-alert-caution {
+  border-left-color: var(--color-caution);
+}
+
+.markdown-alert.markdown-alert-caution .markdown-alert-title {
+  color: var(--color-caution);
+}
+
+</style>
+        
+        </head>
+        <body class="vscode-body vscode-light">
+            <h1 id="development-guide">Development Guide</h1>
+<p>Comprehensive guide for setting up, running, and developing the Blipp project locally.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li><strong>Node.js 20+</strong> (LTS recommended)</li>
+<li><strong>npm</strong> -- always use <code>--legacy-peer-deps</code> due to Clerk peer dependency conflicts</li>
+<li><strong>Git</strong></li>
+<li>Accounts and API keys for: Clerk, Stripe, Neon, Anthropic, OpenAI, Podcast Index</li>
+<li>Optional for STT benchmarking: Deepgram, AssemblyAI, Google Cloud STT, Groq</li>
+</ul>
+<h2 id="initial-setup">Initial Setup</h2>
+<h3 id="1-clone-and-install">1. Clone and Install</h3>
+<pre><code class="language-bash">git <span class="hljs-built_in">clone</span> https://github.com/boosey/blipp.git
+<span class="hljs-built_in">cd</span> blipp
+npm install --legacy-peer-deps
+</code></pre>
+<h3 id="2-create-environment-files">2. Create Environment Files</h3>
+<p>Two env files at project root (both gitignored):</p>
+<h4 id="devvars-worker-secrets----used-by-wrangler"><code>.dev.vars</code> (Worker secrets -- used by Wrangler)</h4>
+<pre><code class="language-env"># Auth (Clerk)
+CLERK_SECRET_KEY=sk_test_...
+CLERK_PUBLISHABLE_KEY=pk_test_...
+CLERK_WEBHOOK_SECRET=whsec_placeholder
+
+# Payments (Stripe sandbox)
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_WEBHOOK_SECRET=whsec_placeholder
+
+# Database (Neon pooled connection string)
+DATABASE_URL=postgresql://neondb_owner:PASSWORD@ep-xxxxx-pooler.REGION.aws.neon.tech/neondb?sslmode=require
+
+# AI APIs
+ANTHROPIC_API_KEY=sk-ant-...
+OPENAI_API_KEY=sk-...
+
+# Podcast Index
+PODCAST_INDEX_KEY=...
+PODCAST_INDEX_SECRET=...
+# ^ Quote the secret if it contains special characters (^, $, #)
+
+# Optional — STT benchmark providers
+DEEPGRAM_API_KEY=...
+ASSEMBLYAI_API_KEY=...
+GOOGLE_STT_API_KEY=...
+GROQ_API_KEY=...
+</code></pre>
+<h4 id="env-vite-client-vars--prisma-cli"><code>.env</code> (Vite client vars + Prisma CLI)</h4>
+<pre><code class="language-env"># Prisma CLI reads this for db push / migrate / studio
+DATABASE_URL=postgresql://neondb_owner:PASSWORD@ep-xxxxx-pooler.REGION.aws.neon.tech/neondb?sslmode=require
+
+VITE_CLERK_PUBLISHABLE_KEY=pk_test_...
+VITE_APP_URL=http://localhost:5173
+</code></pre>
+<p><strong>Important:</strong> The <code>.env</code> <code>DATABASE_URL</code> must use the Neon <strong>pooler</strong> endpoint (hostname contains <code>-pooler</code>, port 5432, <code>sslmode=require</code>). Do not use the direct endpoint.</p>
+<p>Webhook secrets (<code>CLERK_WEBHOOK_SECRET</code>, <code>STRIPE_WEBHOOK_SECRET</code>) use placeholders for local dev since webhooks are not called locally. The app runs fine without them.</p>
+<h3 id="3-set-up-the-database">3. Set Up the Database</h3>
+<pre><code class="language-bash"><span class="hljs-comment"># Generate Prisma client (Cloudflare runtime + Node.js runtime)</span>
+npx prisma generate
+
+<span class="hljs-comment"># Push schema to Neon (creates all tables)</span>
+npx prisma db push
+
+<span class="hljs-comment"># Seed initial data (plans, AI model registry, etc.)</span>
+npx prisma db seed
+</code></pre>
+<h4 id="prisma-cloudflare-runtime-quirk">Prisma Cloudflare Runtime Quirk</h4>
+<p>After <code>npx prisma generate</code>, you must manually create a barrel export file at <code>src/generated/prisma/index.ts</code>. The Cloudflare runtime generator does not produce one automatically. This file is gitignored, so it must be recreated after every fresh clone or <code>prisma generate</code>.</p>
+<p>You can verify the database setup with Prisma Studio:</p>
+<pre><code class="language-bash">npx prisma studio
+</code></pre>
+<h3 id="4-run-the-dev-server">4. Run the Dev Server</h3>
+<pre><code class="language-bash">npm run dev
+</code></pre>
+<p>This runs <code>scripts/dev.mjs</code>, which:</p>
+<ol>
+<li>Reads <code>DATABASE_URL</code> from <code>.dev.vars</code></li>
+<li>Exports it as <code>CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE</code></li>
+<li>Starts <code>vite dev</code> (via the Cloudflare Vite plugin)</li>
+</ol>
+<p>The app runs at <strong><a href="http://localhost:8787">http://localhost:8787</a></strong>. The Worker handles <code>/api/*</code> requests, and the Vite SPA serves everything else.</p>
+<hr>
+<h2 id="service-account-setup">Service Account Setup</h2>
+<p>If you need to create accounts from scratch, here is what each service provides and where to sign up.</p>
+<table>
+<thead>
+<tr>
+<th>Service</th>
+<th>Purpose</th>
+<th>Sign Up</th>
+<th>Cost</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Clerk</strong></td>
+<td>Authentication (sign-up, sign-in, sessions)</td>
+<td><a href="https://dashboard.clerk.com/sign-up">dashboard.clerk.com</a></td>
+<td>Free tier</td>
+</tr>
+<tr>
+<td><strong>Neon</strong></td>
+<td>Serverless PostgreSQL</td>
+<td><a href="https://neon.tech">neon.tech</a></td>
+<td>Free tier (0.5 GB)</td>
+</tr>
+<tr>
+<td><strong>Stripe</strong></td>
+<td>Payments and subscriptions</td>
+<td><a href="https://dashboard.stripe.com/register">dashboard.stripe.com</a></td>
+<td>Free sandbox</td>
+</tr>
+<tr>
+<td><strong>Anthropic</strong></td>
+<td>Claude API for distillation/narrative</td>
+<td><a href="https://console.anthropic.com/">console.anthropic.com</a></td>
+<td>$5 min credits</td>
+</tr>
+<tr>
+<td><strong>OpenAI</strong></td>
+<td>TTS audio + Whisper STT</td>
+<td><a href="https://platform.openai.com/">platform.openai.com</a></td>
+<td>$5 min credits</td>
+</tr>
+<tr>
+<td><strong>Podcast Index</strong></td>
+<td>Podcast catalog data</td>
+<td><a href="https://api.podcastindex.org/signup">api.podcastindex.org</a></td>
+<td>Free</td>
+</tr>
+<tr>
+<td><strong>Deepgram</strong></td>
+<td>STT benchmarking (Nova models)</td>
+<td><a href="https://console.deepgram.com/signup">console.deepgram.com</a></td>
+<td>Free credits</td>
+</tr>
+<tr>
+<td><strong>Groq</strong></td>
+<td>Fast STT/LLM/TTS inference</td>
+<td><a href="https://console.groq.com">console.groq.com</a></td>
+<td>Free tier</td>
+</tr>
+</tbody>
+</table>
+<h3 id="clerk-setup">Clerk Setup</h3>
+<ol>
+<li>Create an application named <code>Blipp</code></li>
+<li>Enable <strong>Email address</strong> and <strong>Google</strong> sign-in</li>
+<li>Google SSO uses Clerk's shared dev credentials -- no Google Cloud project needed for local dev</li>
+<li>Copy the <strong>Publishable key</strong> (<code>pk_test_</code>) and <strong>Secret key</strong> (<code>sk_test_</code>) from Configure &gt; API keys</li>
+</ol>
+<h3 id="neon-setup">Neon Setup</h3>
+<ol>
+<li>Create a project named <code>blipp</code> with database <code>neondb</code></li>
+<li>Copy both the <strong>pooled</strong> (<code>-pooler</code> hostname) and <strong>direct</strong> connection strings</li>
+<li>Use the pooled string in <code>.dev.vars</code> and <code>.env</code></li>
+</ol>
+<h3 id="stripe-setup">Stripe Setup</h3>
+<ol>
+<li>Create a sandbox named <code>blipp-dev</code> (no bank details needed)</li>
+<li>Copy the sandbox <strong>Secret key</strong> (<code>sk_test_</code>) from Developers &gt; API keys</li>
+<li>Products are not needed for local dev -- billing flows won't work end-to-end without them</li>
+</ol>
+<h3 id="anthropic--openai-setup">Anthropic / OpenAI Setup</h3>
+<p>Both require purchasing API credits ($5 minimum). Without credits, API requests fail even with a valid key.</p>
+<h3 id="podcast-index-setup">Podcast Index Setup</h3>
+<p>Completely free. Sign up and check your email for the API Key and API Secret.</p>
+<hr>
+<h2 id="scripts-reference">Scripts Reference</h2>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>npm run dev</code></td>
+<td>Start dev server (Worker + Vite SPA at localhost:8787)</td>
+</tr>
+<tr>
+<td><code>npm run build</code></td>
+<td>Production build (Vite)</td>
+</tr>
+<tr>
+<td><code>npm test</code></td>
+<td>Run all tests (Vitest)</td>
+</tr>
+<tr>
+<td><code>npm run test:integration</code></td>
+<td>Run integration tests</td>
+</tr>
+<tr>
+<td><code>npm run typecheck</code></td>
+<td>Type check (<code>tsc --noEmit</code>)</td>
+</tr>
+<tr>
+<td><code>npm run clean:requests</code></td>
+<td>Clean BriefingRequest data (uses raw <code>pg</code>, not Prisma)</td>
+</tr>
+<tr>
+<td><code>npm run clean:pipeline</code></td>
+<td>Clean pipeline data (uses raw <code>pg</code>)</td>
+</tr>
+<tr>
+<td><code>npm run db:check</code></td>
+<td>Database health check (uses raw <code>pg</code>)</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="running-tests">Running Tests</h2>
+<pre><code class="language-bash"><span class="hljs-comment"># All tests</span>
+npm <span class="hljs-built_in">test</span>
+
+<span class="hljs-comment"># Specific test file</span>
+npx vitest run worker/queues/__tests__/feed-refresh.test.ts
+
+<span class="hljs-comment"># Worker tests (may need memory increase)</span>
+NODE_OPTIONS=<span class="hljs-string">&quot;--max-old-space-size=4096&quot;</span> npx vitest run worker/
+
+<span class="hljs-comment"># Type checking</span>
+npm run typecheck
+</code></pre>
+<h3 id="test-helpers">Test Helpers</h3>
+<p>Test utilities live in <code>tests/helpers/mocks.ts</code>:</p>
+<ul>
+<li><code>createMockPrisma()</code> -- Mock Prisma client with all models</li>
+<li><code>createMockEnv()</code> -- Mock Env bindings (queues, R2, Hyperdrive, AI)</li>
+<li><code>createMockContext()</code> -- Mock Hono context with <code>executionCtx</code></li>
+</ul>
+<h3 id="api-route-tests">API Route Tests</h3>
+<p>Tests for public API routes live in <code>worker/routes/__tests__/</code>. Route tests must inject a prisma middleware into the test app before mounting routes:</p>
+<pre><code class="language-typescript">app.<span class="hljs-title function_">use</span>(<span class="hljs-string">&quot;/*&quot;</span>, <span class="hljs-keyword">async</span> (c, next) =&gt; {
+  c.<span class="hljs-title function_">set</span>(<span class="hljs-string">&quot;prisma&quot;</span>, mockPrisma);
+  <span class="hljs-keyword">await</span> <span class="hljs-title function_">next</span>();
+});
+app.<span class="hljs-title function_">route</span>(<span class="hljs-string">&quot;/path&quot;</span>, myRoutes);
+</code></pre>
+<p>This mirrors the real Prisma middleware and provides the mock prisma client to route handlers via <code>c.get(&quot;prisma&quot;)</code>.</p>
+<h3 id="vitest-v4-mock-gotcha">Vitest v4 Mock Gotcha</h3>
+<p><code>vi.clearAllMocks()</code> resets <code>mockResolvedValue</code> implementations. If you use <code>clearAllMocks</code> in <code>afterEach</code>, re-set your mocks in <code>beforeEach</code>.</p>
+<hr>
+<h2 id="key-development-patterns">Key Development Patterns</h2>
+<h3 id="hono-route-pattern">Hono Route Pattern</h3>
+<pre><code class="language-typescript"><span class="hljs-keyword">const</span> routes = <span class="hljs-keyword">new</span> <span class="hljs-title class_">Hono</span>&lt;{ <span class="hljs-title class_">Bindings</span>: <span class="hljs-title class_">Env</span> }&gt;();
+routes.<span class="hljs-title function_">use</span>(<span class="hljs-string">&quot;*&quot;</span>, requireAuth);
+routes.<span class="hljs-title function_">get</span>(<span class="hljs-string">&quot;/&quot;</span>, <span class="hljs-keyword">async</span> (c) =&gt; {
+  <span class="hljs-keyword">const</span> prisma = c.<span class="hljs-title function_">get</span>(<span class="hljs-string">&quot;prisma&quot;</span>) <span class="hljs-keyword">as</span> <span class="hljs-built_in">any</span>;
+  <span class="hljs-comment">// Prisma middleware handles lifecycle — no try/finally needed</span>
+  <span class="hljs-keyword">return</span> c.<span class="hljs-title function_">json</span>({ <span class="hljs-attr">data</span>: result });
+});
+</code></pre>
+<h3 id="database-access">Database Access</h3>
+<p>Prisma middleware (<code>worker/middleware/prisma.ts</code>) creates a per-request PrismaClient and sets it on <code>c.get(&quot;prisma&quot;)</code>. The middleware disconnects automatically via <code>waitUntil</code>. Route handlers simply call <code>c.get(&quot;prisma&quot;)</code> — no manual creation or cleanup needed.</p>
+<p><strong>Note:</strong> Queue handlers do NOT use Hono context. They still use manual <code>createPrismaClient(env.HYPERDRIVE)</code> + try/finally disconnect.</p>
+<h3 id="plan-limit-enforcement">Plan Limit Enforcement</h3>
+<p>Route handlers that create subscriptions or briefings enforce plan limits using helpers from <code>worker/lib/plan-limits.ts</code>:</p>
+<pre><code class="language-typescript"><span class="hljs-keyword">import</span> { getUserWithPlan, checkDurationLimit, checkSubscriptionLimit } <span class="hljs-keyword">from</span> <span class="hljs-string">&quot;../lib/plan-limits&quot;</span>;
+
+<span class="hljs-keyword">const</span> user = <span class="hljs-keyword">await</span> <span class="hljs-title function_">getUserWithPlan</span>(c, prisma);
+<span class="hljs-keyword">const</span> durationError = <span class="hljs-title function_">checkDurationLimit</span>(body.<span class="hljs-property">durationTier</span>, user.<span class="hljs-property">plan</span>.<span class="hljs-property">maxDurationMinutes</span>);
+<span class="hljs-keyword">if</span> (durationError) <span class="hljs-keyword">return</span> c.<span class="hljs-title function_">json</span>({ <span class="hljs-attr">error</span>: durationError }, <span class="hljs-number">403</span>);
+</code></pre>
+<h3 id="admin-route-helpers">Admin Route Helpers</h3>
+<p>Shared helpers in <code>worker/lib/admin-helpers.ts</code> eliminate boilerplate in admin list endpoints:</p>
+<pre><code class="language-typescript"><span class="hljs-keyword">import</span> { parsePagination, parseSort, paginatedResponse } <span class="hljs-keyword">from</span> <span class="hljs-string">&quot;../../lib/admin-helpers&quot;</span>;
+
+routes.<span class="hljs-title function_">get</span>(<span class="hljs-string">&quot;/&quot;</span>, <span class="hljs-keyword">async</span> (c) =&gt; {
+  <span class="hljs-keyword">const</span> prisma = c.<span class="hljs-title function_">get</span>(<span class="hljs-string">&quot;prisma&quot;</span>) <span class="hljs-keyword">as</span> <span class="hljs-built_in">any</span>;
+  <span class="hljs-keyword">const</span> { page, pageSize, skip } = <span class="hljs-title function_">parsePagination</span>(c);
+  <span class="hljs-keyword">const</span> orderBy = <span class="hljs-title function_">parseSort</span>(c);
+  <span class="hljs-keyword">const</span> [data, total] = <span class="hljs-keyword">await</span> <span class="hljs-title class_">Promise</span>.<span class="hljs-title function_">all</span>([
+    prisma.<span class="hljs-property">model</span>.<span class="hljs-title function_">findMany</span>({ skip, <span class="hljs-attr">take</span>: pageSize, orderBy }),
+    prisma.<span class="hljs-property">model</span>.<span class="hljs-title function_">count</span>(),
+  ]);
+  <span class="hljs-keyword">return</span> c.<span class="hljs-title function_">json</span>(<span class="hljs-title function_">paginatedResponse</span>(data, total, page, pageSize));
+});
+</code></pre>
+<ul>
+<li><code>getCurrentUser(c, prisma)</code> — resolves Clerk auth to a DB User record (auto-creates from Clerk API if missing, assigns default plan)</li>
+</ul>
+<h3 id="queue-handler-pattern">Queue Handler Pattern</h3>
+<p>Each queue handler follows this structure:</p>
+<ol>
+<li>Create PrismaClient from env</li>
+<li>Check stage gate: <code>if (!(await checkStageEnabled(prisma, batch, &quot;STAGE_NAME&quot;, log))) return;</code></li>
+<li>Iterate over batch messages</li>
+<li>Process each message in try/catch</li>
+<li><code>msg.ack()</code> on success, <code>msg.retry()</code> on failure</li>
+<li>Disconnect Prisma in <code>finally</code></li>
+</ol>
+<p>The <code>checkStageEnabled()</code> helper from <code>worker/lib/queue-helpers.ts</code> replaces the manual stage-enabled check pattern. Messages with <code>type: &quot;manual&quot;</code> bypass the gate.</p>
+<h3 id="pipeline-events">Pipeline Events</h3>
+<p>Use <code>writeEvent()</code> from <code>worker/lib/pipeline-events.ts</code> for structured logging within pipeline steps. Events are fire-and-forget (errors are swallowed) so they never break processing.</p>
+<h3 id="frontend-data-fetching">Frontend Data Fetching</h3>
+<p>Use the <code>useFetch</code> hook from <code>src/lib/use-fetch.ts</code> for simple load-on-mount data fetching:</p>
+<pre><code class="language-typescript"><span class="hljs-keyword">import</span> { useFetch } <span class="hljs-keyword">from</span> <span class="hljs-string">&quot;../lib/use-fetch&quot;</span>;
+
+<span class="hljs-keyword">const</span> { data, loading, error, refetch } = useFetch&lt;{ <span class="hljs-attr">items</span>: <span class="hljs-title class_">Item</span>[] }&gt;(<span class="hljs-string">&quot;/endpoint&quot;</span>);
+<span class="hljs-keyword">const</span> items = data?.<span class="hljs-property">items</span> ?? [];
+</code></pre>
+<p>For polling or user-triggered fetches (search, form submissions), use <code>useApiFetch()</code> manually.</p>
+<h3 id="admin-routes">Admin Routes</h3>
+<ul>
+<li>Do <strong>not</strong> duplicate <code>clerkMiddleware()</code> in admin route files -- it is applied globally in <code>worker/index.ts</code></li>
+<li>Admin routes use the <code>requireAdmin</code> middleware from <code>worker/middleware/admin.ts</code></li>
+<li>Admin auth checks the <code>isAdmin</code> boolean on the User model</li>
+<li>Import <code>STAGE_NAMES</code> or <code>STAGE_DISPLAY_NAMES</code> from <code>worker/lib/config.ts</code> — do not define locally</li>
+</ul>
+<h3 id="frontend-structure">Frontend Structure</h3>
+<ul>
+<li><strong>MobileLayout</strong> is the primary layout for user-facing routes</li>
+<li>Bottom tab navigation: Home, Discover, Library, Settings</li>
+<li>Admin routes use a separate AdminLayout</li>
+<li>Billing functionality lives within the Settings page (no separate billing page)</li>
+</ul>
+<h3 id="pwa-development">PWA Development</h3>
+<p>The app is configured as a Progressive Web App via <code>vite-plugin-pwa</code>:</p>
+<ul>
+<li>Manifest and service worker are auto-generated by the plugin</li>
+<li>Service worker caches the app shell for offline-capable loading</li>
+<li>Display mode is <code>standalone</code> (fullscreen app experience, no browser chrome)</li>
+<li>Placeholder icons are in <code>public/</code> -- replace with production assets before launch</li>
+</ul>
+<hr>
+<h2 id="prisma-workflow">Prisma Workflow</h2>
+<h3 id="schema-changes">Schema Changes</h3>
+<pre><code class="language-bash"><span class="hljs-comment"># Edit prisma/schema.prisma, then:</span>
+npx prisma db push        <span class="hljs-comment"># Sync schema to Neon (no migration files)</span>
+npx prisma generate        <span class="hljs-comment"># Regenerate client</span>
+</code></pre>
+<p>Use <code>db push</code> for prototyping. Switch to <code>prisma migrate dev</code> when you need migration history.</p>
+<h3 id="dual-generators">Dual Generators</h3>
+<p>The schema defines two generators:</p>
+<ul>
+<li><strong><code>client</code></strong> — Cloudflare runtime output at <code>src/generated/prisma/</code> (used by the Worker)</li>
+<li><strong><code>scripts</code></strong> — Node.js runtime output at <code>src/generated/prisma-node/</code> (used by CLI scripts like seed, clean, db:check)</li>
+</ul>
+<h3 id="runtime-configuration">Runtime Configuration</h3>
+<p>The <code>PlatformConfig</code> table stores runtime config as key-value pairs. Access via <code>getConfig(prisma, key, fallback)</code> from <code>worker/lib/config.ts</code> (caches for 60 seconds).</p>
+<h3 id="ai-model-configuration">AI Model Configuration</h3>
+<p>AI models are managed via the admin Model Registry (<code>/admin/model-registry</code>). The model registry lives in the <code>AiModel</code> + <code>AiModelProvider</code> database tables. Each pipeline stage reads its model+provider config from <code>PlatformConfig</code> via <code>getModelConfig(prisma, stage)</code>.</p>
+<p>Multi-provider implementations:</p>
+<ul>
+<li><strong>STT</strong>: <code>worker/lib/stt-providers.ts</code> (OpenAI, Deepgram, AssemblyAI, Google, Groq, Cloudflare)</li>
+<li><strong>LLM</strong>: <code>worker/lib/llm-providers.ts</code> (Anthropic, Groq, Cloudflare)</li>
+<li><strong>TTS</strong>: <code>worker/lib/tts-providers.ts</code> (OpenAI, Groq, Cloudflare)</li>
+</ul>
+<h3 id="cloudflare-runtime">Cloudflare Runtime</h3>
+<p>The Prisma schema uses <code>runtime = &quot;cloudflare&quot;</code> and the <code>@prisma/adapter-pg</code> adapter to connect through Hyperdrive. The generated client output goes to <code>src/generated/prisma/</code>.</p>
+<hr>
+<h2 id="deployment">Deployment</h2>
+<p>Quick deploy (assuming infrastructure exists):</p>
+<pre><code class="language-bash"><span class="hljs-comment"># Set secrets</span>
+npx wrangler secret put CLERK_SECRET_KEY
+npx wrangler secret put CLERK_PUBLISHABLE_KEY
+<span class="hljs-comment"># ... (all secrets from .dev.vars)</span>
+
+<span class="hljs-comment"># Deploy</span>
+npx wrangler deploy
+</code></pre>
+<hr>
+<h2 id="known-issues-and-workarounds">Known Issues and Workarounds</h2>
+<h3 id="npm-install-requires---legacy-peer-deps">npm install requires --legacy-peer-deps</h3>
+<p>Clerk packages have peer dependency conflicts. Always run:</p>
+<pre><code class="language-bash">npm install --legacy-peer-deps
+</code></pre>
+<h3 id="prisma-cloudflare-runtime----no-barrel-export">Prisma Cloudflare runtime -- no barrel export</h3>
+<p>After <code>npx prisma generate</code>, manually create <code>src/generated/prisma/index.ts</code> re-exporting the generated files. This file is gitignored and must be recreated after fresh clones.</p>
+<h3 id="neon-free-tier-cold-starts">Neon free tier cold starts</h3>
+<p>First request after idle takes 5-10 seconds. Neon spins down compute after 5 minutes of inactivity on the free tier.</p>
+<h3 id="oom-running-all-worker-tests">OOM running all worker tests</h3>
+<p>Running the full worker test suite can cause heap allocation failure:</p>
+<pre><code class="language-bash"><span class="hljs-comment"># Fix: increase Node memory limit</span>
+NODE_OPTIONS=<span class="hljs-string">&quot;--max-old-space-size=4096&quot;</span> npx vitest run worker/
+
+<span class="hljs-comment"># Or: run tests in smaller batches</span>
+npx vitest run worker/queues/__tests__/feed-refresh.test.ts
+</code></pre>
+<h3 id="tailwind-v4-syntax">Tailwind v4 syntax</h3>
+<ul>
+<li><code>@keyframes</code> must be placed outside the <code>@theme</code> block</li>
+<li>Use <code>var(--color-*)</code> instead of <code>theme()</code> for color references</li>
+</ul>
+<h3 id="pre-existing-test-failures">Pre-existing test failures</h3>
+<p><code>src/__tests__/discover.test.tsx</code> and <code>src/__tests__/settings.test.tsx</code> have 2 known failures unrelated to pipeline work. These can be ignored during development.</p>
+<h3 id="clerk-compatibility-shim">Clerk compatibility shim</h3>
+<p><code>src/shims/clerk-load-script.ts</code> handles a version mismatch between <code>@clerk/clerk-react</code> and <code>@hono/clerk-auth</code>. See <code>docs/plans/phase0-decisions.md</code> for details.</p>
+<h3 id="wranglerjsonc-hyperdrive-placeholder">wrangler.jsonc Hyperdrive placeholder</h3>
+<p>The config contains <code>&lt;hyperdrive-config-id&gt;</code> as a placeholder. Replace with a real Hyperdrive config ID for remote deployment. Local dev works without it (uses <code>localConnectionString</code> instead).</p>
+<h3 id="queue-naming-legacy">Queue naming legacy</h3>
+<p>The <code>AUDIO_GENERATION_QUEUE</code> binding maps to the <code>clip-generation</code> queue name in <code>wrangler.jsonc</code>. The queue dispatcher routes <code>clip-generation</code> messages to the audio generation handler. This is a legacy naming artifact.</p>
+
+            <script async src="https://cdn.jsdelivr.net/npm/katex-copytex@latest/dist/katex-copytex.min.js"></script>
+            
+        </body>
+        </html>
