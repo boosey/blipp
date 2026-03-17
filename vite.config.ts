@@ -3,6 +3,9 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { cloudflare } from "@cloudflare/vite-plugin";
 import { VitePWA } from "vite-plugin-pwa";
+import { readFileSync } from "fs";
+
+const pkg = JSON.parse(readFileSync("./package.json", "utf-8"));
 
 export default defineConfig({
   plugins: [
@@ -34,6 +37,9 @@ export default defineConfig({
   server: {
     port: 5174,
     strictPort: true,
+  },
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
   },
   resolve: {
     alias: {

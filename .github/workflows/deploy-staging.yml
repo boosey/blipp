@@ -6,9 +6,12 @@ on:
 
 jobs:
   deploy-staging:
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -20,6 +23,10 @@ jobs:
           mkdir -p src/generated/prisma
           echo 'export { PrismaClient } from "./client";' > src/generated/prisma/index.ts
           echo 'export * from "./enums";' >> src/generated/prisma/index.ts
+
+      - name: Bump patch version
+        run: npm version patch --no-git-tag-version
+
       - run: npm run typecheck
       - run: npm test
         env:
@@ -36,8 +43,11 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 
-      # TODO: Add Playwright smoke tests against staging URL
-      # - name: Run Playwright tests
-      #   run: npx playwright test
-      #   env:
-      #     BASE_URL: ${{ vars.STAGING_URL }}
+      - name: Commit version bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          VERSION=$(node -p "require('./package.json').version")
+          git add package.json package-lock.json
+          git commit -m "chore: bump version to ${VERSION} [skip ci]"
+          git push

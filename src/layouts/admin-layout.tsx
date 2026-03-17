@@ -322,7 +322,7 @@ export function AdminLayout() {
             {!collapsed && (
               <div className="flex flex-col">
                 <span className="text-sm font-semibold">Blipp Admin</span>
-                <span className="text-[10px] text-[#9CA3AF]">Mission Control</span>
+                <span className="text-[10px] text-[#9CA3AF]">v{__APP_VERSION__}</span>
               </div>
             )}
           </div>

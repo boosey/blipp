@@ -267,7 +267,7 @@ export function Landing() {
       {/* ─── FOOTER ─── */}
       <footer className="border-t border-white/[0.05] py-8 px-6 text-center">
         <div className="flex items-center justify-center gap-4 font-dm text-sm text-zinc-600">
-          <span>&copy; 2026 Blipp</span>
+          <span>&copy; 2026 Blipp v{__APP_VERSION__}</span>
           <span className="text-zinc-800">&middot;</span>
           <Link to="/about" className="hover:text-zinc-400 transition-colors">About</Link>
           <span className="text-zinc-800">&middot;</span>
