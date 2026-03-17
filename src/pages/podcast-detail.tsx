@@ -22,7 +22,7 @@ function TierPicker({
   onUpgrade?: (msg: string) => void;
 }) {
   return (
-    <div className="flex flex-wrap gap-1.5">
+    <div className="flex gap-1.5 whitespace-nowrap">
       {DURATION_TIERS.map((tier) => {
         const locked = tier > maxDurationMinutes;
         return (
@@ -348,27 +348,40 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
                       </p>
                     )}
                   </button>
-                  {requestingEpisodeId === ep.id ? (
-                    <span className="text-xs text-zinc-500 px-3 py-1.5">
-                      ...
-                    </span>
-                  ) : briefTierPickerEpisodeId === ep.id ? (
-                    <div className="flex-shrink-0">
-                      <TierPicker
-                        selected={null}
-                        onSelect={(tier) => handleCreateBriefing(ep.id, tier)}
-                        maxDurationMinutes={planUsage.maxDurationMinutes}
-                        onUpgrade={showUpgrade}
-                      />
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => setBriefTierPickerEpisodeId(ep.id)}
-                      className="px-3 py-1.5 bg-white text-zinc-950 rounded text-xs font-medium hover:bg-zinc-200 transition-colors flex-shrink-0"
-                    >
-                      Blipp
-                    </button>
-                  )}
+                  <div className="relative flex-shrink-0">
+                    {requestingEpisodeId === ep.id ? (
+                      <span className="text-xs text-zinc-500 px-3 py-1.5">
+                        ...
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() =>
+                          setBriefTierPickerEpisodeId(
+                            briefTierPickerEpisodeId === ep.id ? null : ep.id
+                          )
+                        }
+                        className="px-3 py-1.5 bg-white text-zinc-950 rounded text-xs font-medium hover:bg-zinc-200 transition-colors"
+                      >
+                        Blipp
+                      </button>
+                    )}
+                    {briefTierPickerEpisodeId === ep.id && (
+                      <>
+                        <div
+                          className="fixed inset-0 z-40"
+                          onClick={() => setBriefTierPickerEpisodeId(null)}
+                        />
+                        <div className="absolute right-0 top-full mt-1.5 z-50 bg-zinc-900/90 backdrop-blur-md border border-zinc-700/50 rounded-lg p-2 shadow-xl shadow-black/40">
+                          <TierPicker
+                            selected={null}
+                            onSelect={(tier) => handleCreateBriefing(ep.id, tier)}
+                            maxDurationMinutes={planUsage.maxDurationMinutes}
+                            onUpgrade={showUpgrade}
+                          />
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}
