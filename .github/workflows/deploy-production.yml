@@ -68,8 +68,11 @@ jobs:
           VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY_PRODUCTION }}
           VITE_APP_URL: https://podblipp.com
 
+      - name: Patch wrangler config for production
+        run: node scripts/patch-wrangler-env.mjs production
+
       - name: Deploy to Production
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          command: deploy --env production
+          command: deploy
