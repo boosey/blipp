@@ -45,9 +45,9 @@ function MobileLayoutInner() {
               <ArrowLeft className="w-5 h-5" />
             </button>
           )}
-          <span className="text-lg font-bold flex items-center">
-            <img src="/blipp_icon_clean_128.png" alt="" className="w-6 h-6 rounded-md inline-block -mt-0.5" />
-            <span className="-ml-0.5">lipp</span>
+          <span className="text-lg font-bold flex items-center gap-0.5">
+            <img src="/blipp_icon_clean_128.png" alt="" className="w-7 h-7 rounded-md" />
+            <span>lipp</span>
           </span>
         </div>
         <UserButton />
