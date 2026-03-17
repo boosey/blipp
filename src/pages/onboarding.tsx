@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useApiFetch } from "../lib/api";
 import { useFetch } from "../lib/use-fetch";
 import { useOnboarding } from "../contexts/onboarding-context";
-import { Check, ChevronRight, Headphones } from "lucide-react";
+import { Check, ChevronRight, Headphones, Search, X } from "lucide-react";
 
 interface CatalogPodcast {
   id: string;
@@ -16,6 +16,11 @@ interface CatalogPodcast {
   episodeCount: number;
 }
 
+const CATEGORIES = [
+  "All", "News", "Technology", "Business", "Comedy",
+  "Science", "Sports", "Culture", "Health", "Education", "True Crime",
+] as const;
+
 export default function Onboarding() {
   const navigate = useNavigate();
   const apiFetch = useApiFetch();
@@ -26,6 +31,10 @@ export default function Onboarding() {
   );
   const [saving, setSaving] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState("All");
+  const [searchInput, setSearchInput] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [searchResults, setSearchResults] = useState<CatalogPodcast[] | null>(null);
+  const [searching, setSearching] = useState(false);
 
   const { data: catalogData, loading: catalogLoading } = useFetch<{
     podcasts: CatalogPodcast[];
@@ -33,15 +42,50 @@ export default function Onboarding() {
 
   const podcasts = catalogData?.podcasts ?? [];
 
-  const allCategories = Array.from(
-    new Set(podcasts.flatMap((p) => p.categories ?? []))
-  ).sort();
-  const categories = ["All", ...allCategories];
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchInput), 300);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
 
-  const filteredPodcasts =
-    categoryFilter === "All"
-      ? podcasts
-      : podcasts.filter((p) => p.categories?.includes(categoryFilter));
+  // Fire search when debounced value changes
+  useEffect(() => {
+    const q = debouncedSearch.trim();
+    if (!q) {
+      setSearchResults(null);
+      return;
+    }
+
+    let cancelled = false;
+    setSearching(true);
+
+    apiFetch<{ podcasts: CatalogPodcast[] }>(
+      `/podcasts/catalog?q=${encodeURIComponent(q)}`
+    )
+      .then((data) => {
+        if (!cancelled) setSearchResults(data.podcasts || []);
+      })
+      .catch(() => {
+        if (!cancelled) setSearchResults([]);
+      })
+      .finally(() => {
+        if (!cancelled) setSearching(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [debouncedSearch, apiFetch]);
+
+  const isSearching = searchInput.trim().length > 0;
+
+  const filteredPodcasts = useMemo(() => {
+    const source = isSearching ? (searchResults ?? []) : podcasts;
+    if (categoryFilter === "All") return source;
+    return source.filter((p) =>
+      p.categories?.some(
+        (c) => c.toLowerCase() === categoryFilter.toLowerCase()
+      )
+    );
+  }, [isSearching, searchResults, podcasts, categoryFilter]);
 
   function togglePodcast(id: string) {
     setSelectedPodcasts((prev) => {
@@ -121,29 +165,55 @@ export default function Onboarding() {
             </p>
           </div>
 
+          {/* Search bar */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+            <input
+              type="text"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="Search podcasts..."
+              className="w-full pl-10 pr-10 py-2.5 bg-zinc-900 border border-zinc-800 rounded-lg text-sm text-zinc-50 placeholder:text-zinc-500 focus:outline-none focus:border-zinc-600"
+            />
+            {searchInput && (
+              <button
+                onClick={() => {
+                  setSearchInput("");
+                  setDebouncedSearch("");
+                  setSearchResults(null);
+                }}
+                className="absolute right-3 top-1/2 -translate-y-1/2"
+              >
+                <X className="w-4 h-4 text-zinc-500 hover:text-zinc-300" />
+              </button>
+            )}
+          </div>
+
           {/* Category filter pills */}
-          {allCategories.length > 0 && (
-            <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-hide">
-              {categories.map((cat) => (
-                <button
-                  key={cat}
-                  onClick={() => setCategoryFilter(cat)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors flex-shrink-0 ${
-                    categoryFilter === cat
-                      ? "bg-white text-zinc-950"
-                      : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
-                  }`}
-                >
-                  {cat}
-                </button>
-              ))}
-            </div>
-          )}
+          <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-hide snap-x-mandatory">
+            {CATEGORIES.map((cat) => (
+              <button
+                key={cat}
+                onClick={() => setCategoryFilter(cat)}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors flex-shrink-0 snap-start ${
+                  categoryFilter === cat
+                    ? "bg-white text-zinc-950"
+                    : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
 
           {/* Podcast grid */}
-          {catalogLoading ? (
+          {catalogLoading || searching ? (
             <div className="text-zinc-500 text-sm text-center py-12">
-              Loading podcasts...
+              {searching ? "Searching..." : "Loading podcasts..."}
+            </div>
+          ) : filteredPodcasts.length === 0 && isSearching ? (
+            <div className="text-zinc-500 text-sm text-center py-12">
+              No podcasts found. Try a different search.
             </div>
           ) : (
             <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3">

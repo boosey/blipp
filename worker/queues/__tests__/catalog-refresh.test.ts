@@ -132,8 +132,8 @@ describe("handleCatalogRefresh", () => {
 
     await handleCatalogRefresh(batch, mockEnv, mockCtx);
 
-    expect(getCatalogSource).toHaveBeenCalledWith("apple");
-    expect(mockDiscover).toHaveBeenCalledWith(200, mockEnv);
+    expect(getCatalogSource).toHaveBeenCalledWith("podcast-index");
+    expect(mockDiscover).toHaveBeenCalledWith(2000, mockEnv);
   });
 
   it("upserts categories from discovered podcasts, filtering genreId 26", async () => {
@@ -170,7 +170,7 @@ describe("handleCatalogRefresh", () => {
           feedUrl: "https://example.com/feed1.xml",
           status: "active",
           appleId: "111",
-          source: "apple",
+          source: "podcast-index",
         }),
       })
     );
@@ -179,12 +179,25 @@ describe("handleCatalogRefresh", () => {
   it("creates PodcastCategory join records", async () => {
     const batch = createBatch("refresh");
 
+    // Mock findMany to handle both markPendingDeletion and chunk lookups
+    mockPrisma.podcast.findMany.mockImplementation(async (args: any) => {
+      if (args?.where?.status) return []; // markPendingDeletion
+      if (args?.where?.feedUrl) {
+        return [
+          { id: "pod-1", feedUrl: "https://example.com/feed1.xml" },
+          { id: "pod-2", feedUrl: "https://example.com/feed2.xml" },
+        ];
+      }
+      return [];
+    });
+
     await handleCatalogRefresh(batch, mockEnv, mockCtx);
 
-    // First podcast: delete old, create new join records for arts + tv
+    // Batch delete old joins for chunk
     expect(mockPrisma.podcastCategory.deleteMany).toHaveBeenCalledWith({
-      where: { podcastId: "pod-1" },
+      where: { podcastId: { in: ["pod-1", "pod-2"] } },
     });
+    // Batch create new join records
     expect(mockPrisma.podcastCategory.createMany).toHaveBeenCalledWith({
       data: expect.arrayContaining([
         { podcastId: "pod-1", categoryId: "cat-arts" },

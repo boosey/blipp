@@ -61,6 +61,8 @@ export type Env = {
   TRANSCRIPTION_QUEUE: Queue;
   /** Queue: orchestrates demand-driven pipeline stages for briefing requests */
   ORCHESTRATOR_QUEUE: Queue;
+  /** Queue: slow content prefetch (transcript/audio validation) for episodes */
+  CONTENT_PREFETCH_QUEUE: Queue;
   /** Deepgram API key for STT benchmark */
   DEEPGRAM_API_KEY: string;
   /** AssemblyAI API key for STT benchmark */

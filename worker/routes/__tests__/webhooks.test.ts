@@ -71,6 +71,7 @@ describe("Clerk Webhooks", () => {
       },
     });
 
+    mockPrisma.plan.findFirst.mockResolvedValueOnce({ id: "plan_free", slug: "free", isDefault: true });
     mockPrisma.user.create.mockResolvedValueOnce({ id: "usr_1" });
 
     const res = await app.request(
@@ -91,6 +92,7 @@ describe("Clerk Webhooks", () => {
         email: "test@example.com",
         name: "John Doe",
         imageUrl: "https://example.com/avatar.jpg",
+        planId: "plan_free",
       },
     });
   });

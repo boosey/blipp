@@ -11,7 +11,7 @@ const features = [
   {
     icon: Clock,
     title: "Choose your time",
-    description: "3-30 minute summaries tailored to your schedule.",
+    description: "2-30 minute summaries tailored to your schedule.",
     color: "from-violet-400 to-purple-500",
   },
   {
@@ -142,7 +142,7 @@ export function Landing() {
           <p className="animate-fade-up delay-300 font-dm text-base sm:text-lg text-zinc-500 mt-5 max-w-xl mx-auto leading-relaxed">
             Blipp turns full podcast episodes into short, voice-narrated summaries
             called <span className="text-white font-500">Blipps</span>. Choose how much time you have
-            — <span className="text-violet-400">3, 5, 7, 10, 15, or 30 minutes</span> — and
+            — <span className="text-violet-400">2, 5, 10, 15, or 30 minutes</span> — and
             Blipp delivers the most important insights from any episode.
           </p>
 

@@ -73,8 +73,16 @@
 		"consumers": [
 			{
 				"queue": "feed-refresh-staging",
-				"max_batch_size": 10,
-				"max_retries": 3
+				"max_batch_size": 1,
+				"max_retries": 3,
+				"max_concurrency": 5,
+				"dead_letter_queue": "feed-refresh-retry-staging"
+			},
+			{
+				"queue": "feed-refresh-retry-staging",
+				"max_batch_size": 1,
+				"max_retries": 2,
+				"max_concurrency": 1
 			},
 			{
 				"queue": "distillation-staging",
@@ -175,13 +183,25 @@
 					{
 						"binding": "CATALOG_REFRESH_QUEUE",
 						"queue": "catalog-refresh"
+					},
+					{
+						"binding": "CONTENT_PREFETCH_QUEUE",
+						"queue": "content-prefetch"
 					}
 				],
 				"consumers": [
 					{
 						"queue": "feed-refresh",
-						"max_batch_size": 10,
-						"max_retries": 3
+						"max_batch_size": 1,
+						"max_retries": 3,
+						"max_concurrency": 5,
+						"dead_letter_queue": "feed-refresh-retry"
+					},
+					{
+						"queue": "feed-refresh-retry",
+						"max_batch_size": 1,
+						"max_retries": 2,
+						"max_concurrency": 1
 					},
 					{
 						"queue": "distillation",
@@ -216,8 +236,14 @@
 					{
 						"queue": "catalog-refresh",
 						"max_batch_size": 1,
-						"max_retries": 1,
+						"max_retries": 3,
 						"dead_letter_queue": "dead-letter"
+					},
+					{
+						"queue": "content-prefetch",
+						"max_batch_size": 1,
+						"max_retries": 2,
+						"max_concurrency": 1
 					}
 				]
 			},

@@ -32,6 +32,11 @@ clerkWebhooks.post("/", async (c) => {
       const d = event.data;
       const email =
         d.email_addresses?.[0]?.email_address ?? `${d.id}@unknown.com`;
+      const defaultPlan = await prisma.plan.findFirst({ where: { isDefault: true } });
+      if (!defaultPlan) {
+        console.error("No default plan configured — cannot create user");
+        return c.json({ error: "No default plan" }, 500);
+      }
       await prisma.user.create({
         data: {
           clerkId: d.id,
@@ -40,6 +45,7 @@ clerkWebhooks.post("/", async (c) => {
             [d.first_name, d.last_name].filter(Boolean).join(" ") ||
             null,
           imageUrl: d.image_url ?? null,
+          planId: defaultPlan.id,
         },
       });
       break;

@@ -66,10 +66,20 @@ export async function getCurrentUser(c: Context<{ Bindings: Env }>, prisma: any)
     const defaultPlan = await prisma.plan.findFirst({ where: { isDefault: true } });
     if (!defaultPlan) throw new Error("No default plan configured");
 
-    return prisma.user.create({
-      data: {
+    const email = clerkUser.emailAddresses[0]?.emailAddress ?? `${clerkId}@unknown.com`;
+
+    // Use upsert to handle the case where a user with this email already exists
+    // (e.g., created via webhook with a different clerkId, or re-created Clerk account)
+    return prisma.user.upsert({
+      where: { email },
+      update: {
         clerkId,
-        email: clerkUser.emailAddresses[0]?.emailAddress ?? `${clerkId}@unknown.com`,
+        name: [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ") || null,
+        imageUrl: clerkUser.imageUrl ?? null,
+      },
+      create: {
+        clerkId,
+        email,
         name: [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ") || null,
         imageUrl: clerkUser.imageUrl ?? null,
         planId: defaultPlan.id,

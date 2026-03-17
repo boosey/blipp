@@ -9,6 +9,8 @@ const LOOKUP_BATCH_SIZE = 150;
 const RETRY_MAX = 3;
 const RETRY_BASE_MS = 1000;
 const INTER_REQUEST_DELAY_MS = 500;
+const USER_AGENT =
+  "Mozilla/5.0 (compatible; Blipp/1.0; +https://podblipp.com)";
 
 /** Genre map: Apple genre ID -> human-readable name (19 top-level podcast genres) */
 export const APPLE_PODCAST_GENRES: Record<string, string> = {
@@ -102,7 +104,9 @@ async function fetchWithRetry(
 
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const res = await fetch(url);
+      const res = await fetch(url, {
+        headers: { "User-Agent": USER_AGENT },
+      });
 
       if (res.ok) return res;
 
@@ -153,10 +157,12 @@ export class ApplePodcastsClient {
    */
   async topByGenre(
     genreId: string,
-    limit: number = 200,
+    limit: number = 100,
     country: string = "us"
   ): Promise<AppleChartEntry[]> {
-    const url = `${CHARTS_BASE}/${country}/podcasts/top/${limit}/podcasts.json?genre=${genreId}`;
+    // Apple's genre charts cap at 100; requesting more returns 500
+    const cappedLimit = Math.min(limit, 100);
+    const url = `${CHARTS_BASE}/${country}/podcasts/top/${cappedLimit}/podcasts.json?genre=${genreId}`;
     try {
       const res = await fetchWithRetry(url);
       const data = (await res.json()) as ChartsResponse;
@@ -173,24 +179,37 @@ export class ApplePodcastsClient {
   /**
    * Fetches top podcasts across all 19 genres, deduplicating by ID and merging genres.
    *
-   * @param limit - Max entries per genre (default 200)
+   * @param limit - Max entries per genre (default 100, Apple caps at 100)
    * @param country - ISO country code (default "us")
    * @returns Deduplicated array of chart entries with merged genre lists
    */
   async topAllGenres(
-    limit: number = 200,
+    limit: number = 100,
     country: string = "us"
   ): Promise<AppleChartEntry[]> {
     const genreIds = Object.keys(APPLE_PODCAST_GENRES);
     const seen = new Map<string, AppleChartEntry>();
 
-    for (const genreId of genreIds) {
-      const entries = await this.topByGenre(genreId, limit, country);
+    // Fetch all genres in parallel (Workers has limited CPU time for sequential + delays)
+    const results = await Promise.allSettled(
+      genreIds.map((genreId) => this.topByGenre(genreId, limit, country))
+    );
+
+    let totalFetched = 0;
+    for (let i = 0; i < genreIds.length; i++) {
+      const result = results[i];
+      const genreName = APPLE_PODCAST_GENRES[genreIds[i]];
+      if (result.status !== "fulfilled") {
+        console.warn(`[Apple] Genre ${genreIds[i]} (${genreName}): FAILED - ${result.reason}`);
+        continue;
+      }
+      const entries = result.value;
+      const prevSize = seen.size;
+      totalFetched += entries.length;
 
       for (const entry of entries) {
         const existing = seen.get(entry.id);
         if (existing) {
-          // Merge genres: add any new genre IDs we haven't seen
           const existingGenreIds = new Set(
             existing.genres.map((g) => g.genreId)
           );
@@ -200,15 +219,17 @@ export class ApplePodcastsClient {
             }
           }
         } else {
-          // Clone to avoid shared references
           seen.set(entry.id, { ...entry, genres: [...entry.genres] });
         }
       }
 
-      // Rate-limit: delay between sequential genre fetches
-      await delay(INTER_REQUEST_DELAY_MS);
+      const newUnique = seen.size - prevSize;
+      console.log(
+        `[Apple] Genre ${genreIds[i]} (${genreName}): ${entries.length} fetched, ${newUnique} new unique | Running total: ${totalFetched} fetched, ${seen.size} unique`
+      );
     }
 
+    console.log(`[Apple] All genres done: ${totalFetched} total fetched, ${seen.size} unique`);
     return Array.from(seen.values());
   }
 

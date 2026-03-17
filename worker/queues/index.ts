@@ -6,6 +6,8 @@ import { handleAudioGeneration } from "./audio-generation";
 import { handleBriefingAssembly } from "./briefing-assembly";
 import { handleOrchestrator } from "./orchestrator";
 import { handleCatalogRefresh } from "./catalog-refresh";
+import { handleContentPrefetch } from "./content-prefetch";
+import type { ContentPrefetchMessage } from "./content-prefetch";
 import { createPrismaClient } from "../lib/db";
 import { getConfig } from "../lib/config";
 import { createPipelineLogger } from "../lib/logger";
@@ -49,6 +51,7 @@ export async function handleQueue(
   try {
   switch (queue) {
     case "feed-refresh":
+    case "feed-refresh-retry":
       return handleFeedRefresh(batch as MessageBatch<FeedRefreshMessage>, env, ctx);
     case "transcription":
       return handleTranscription(
@@ -89,6 +92,12 @@ export async function handleQueue(
     case "catalog-refresh":
       return handleCatalogRefresh(
         batch as MessageBatch<CatalogRefreshMessage>,
+        env,
+        ctx
+      );
+    case "content-prefetch":
+      return handleContentPrefetch(
+        batch as MessageBatch<ContentPrefetchMessage>,
         env,
         ctx
       );

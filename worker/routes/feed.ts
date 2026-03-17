@@ -41,7 +41,10 @@ feed.get("/", async (c) => {
 
   const sort = c.req.query("sort");
 
-  const where: any = { userId: user.id };
+  const where: any = {
+    userId: user.id,
+    episode: { contentStatus: { not: "NOT_DELIVERABLE" } },
+  };
   if (status) where.status = status;
   if (listened !== undefined && listened !== "") {
     where.listened = listened === "true";

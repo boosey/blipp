@@ -33,6 +33,12 @@ interface FeedsResponse {
   feeds: PodcastIndexFeed[];
 }
 
+/** @internal API response wrapper for single feed lookup */
+interface FeedResponse {
+  status: string;
+  feed: PodcastIndexFeed;
+}
+
 /** @internal API response wrapper for episodes */
 interface EpisodesResponse {
   status: string;
@@ -167,20 +173,70 @@ export class PodcastIndexClient {
   }
 
   /**
-   * Fetches trending podcasts.
+   * Looks up a podcast by its Apple/iTunes collection ID.
+   * Returns null if not found in Podcast Index.
+   */
+  async byItunesId(itunesId: number): Promise<PodcastIndexFeed | null> {
+    try {
+      const data = await this.request<FeedResponse>("/podcasts/byitunesid", {
+        id: itunesId.toString(),
+      });
+      return data.feed ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Batch lookup by Apple/iTunes IDs with concurrency limit.
+   * Returns a Map of itunesId -> PodcastIndexFeed.
+   */
+  async batchByItunesId(
+    itunesIds: number[],
+    concurrency: number = 5
+  ): Promise<Map<number, PodcastIndexFeed>> {
+    const results = new Map<number, PodcastIndexFeed>();
+    const queue = [...itunesIds];
+    let looked = 0;
+
+    const worker = async () => {
+      while (queue.length > 0) {
+        const id = queue.shift()!;
+        const feed = await this.byItunesId(id);
+        looked++;
+        if (feed) results.set(id, feed);
+        if (looked % 50 === 0 || queue.length === 0) {
+          console.log(`[PodcastIndex] Lookup progress: ${looked}/${itunesIds.length} checked, ${results.size} found`);
+        }
+      }
+    };
+
+    await Promise.all(Array.from({ length: concurrency }, () => worker()));
+    return results;
+  }
+
+  /**
+   * Fetches trending podcasts, optionally filtered by category.
    *
-   * @param max - Maximum number of results (default 20)
+   * @param max - Maximum number of results (default 20, API max 1000)
    * @param lang - Language filter (default "en")
+   * @param cat - Podcast Index category name or ID (e.g., "Technology" or "102")
    * @returns Array of trending podcast feeds
    */
   async trending(
     max: number = 20,
-    lang: string = "en"
+    lang: string = "en",
+    cat?: string
   ): Promise<PodcastIndexFeed[]> {
-    const data = await this.request<FeedsResponse>("/podcasts/trending", {
+    const params: Record<string, string> = {
       max: max.toString(),
       lang,
-    });
+    };
+    if (cat) params.cat = cat;
+    const data = await this.request<FeedsResponse>(
+      "/podcasts/trending",
+      params
+    );
     return data.feeds ?? [];
   }
 }

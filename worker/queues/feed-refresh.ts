@@ -138,6 +138,13 @@ export async function handleFeedRefresh(
           }
         }
 
+        // Queue content prefetch for new episodes (runs slowly at concurrency=1)
+        if (newEpisodeIds.length > 0) {
+          await env.CONTENT_PREFETCH_QUEUE.sendBatch(
+            newEpisodeIds.map((id) => ({ body: { episodeId: id } }))
+          );
+        }
+
         log.info("podcast_refreshed", {
           podcastId: podcast.id,
           episodesProcessed: recent.length,

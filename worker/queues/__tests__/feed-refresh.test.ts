@@ -20,6 +20,13 @@ vi.mock("../../lib/logger", () => ({
   createPipelineLogger: vi.fn().mockResolvedValue(mockLogger),
 }));
 
+vi.mock("../../lib/content-prefetch", () => ({
+  prefetchEpisodeContent: vi.fn().mockResolvedValue({
+    contentStatus: "AUDIO_READY",
+    transcriptR2Key: null,
+  }),
+}));
+
 vi.mock("../../lib/rss-parser", () => ({
   parseRssFeed: vi.fn().mockReturnValue({
     title: "Test Podcast",

@@ -6,20 +6,26 @@
  * R2: cleaned via the worker's internal API using CLERK_SECRET_KEY as auth.
  *
  * Usage:
- *   npm run clean:pipeline:staging
- *   npm run clean:pipeline:staging:dry
- *   npm run clean:pipeline:staging -- --db-only
+ *   npm run clean:pipeline                        # local
+ *   npm run clean:pipeline:staging                 # staging
+ *   npm run clean:pipeline:production              # production (requires confirmation)
+ *   npm run clean:pipeline:staging:dry             # dry run
+ *   npm run clean:pipeline:production:dry          # dry run
+ *   npm run clean:pipeline:staging -- --db-only    # skip R2
  */
 import { readFileSync } from "node:fs";
+import { createInterface } from "node:readline";
 import pg from "pg";
 
 // ── Config ──
 
 const dryRun = process.argv.includes("--dry-run");
+const production = process.argv.includes("--production");
 const staging = process.argv.includes("--staging");
 const dbOnly = process.argv.includes("--db-only");
 
 const APP_ORIGINS = {
+  production: "https://podblipp.com",
   staging: "https://blipp-staging.boosey-boudreaux.workers.dev",
   local: "http://localhost:8787",
 };
@@ -36,6 +42,14 @@ function readEnvVar(file, key) {
 }
 
 function getDatabaseUrl() {
+  if (production) {
+    const url =
+      readEnvVar("neon-config.env", "PRODUCTION_DATABASE_URL") ||
+      process.env.DATABASE_URL;
+    if (url) return url;
+    console.error("ERROR: No PRODUCTION_DATABASE_URL in neon-config.env or DATABASE_URL in environment");
+    process.exit(1);
+  }
   if (staging) {
     const url =
       readEnvVar("neon-config.env", "STAGING_DATABASE_URL") ||
@@ -53,6 +67,12 @@ function getDatabaseUrl() {
 }
 
 function getClerkSecretKey() {
+  if (production) {
+    return (
+      readEnvVar("secrets-production.env", "CLERK_SECRET_KEY") ||
+      process.env.CLERK_SECRET_KEY
+    );
+  }
   return (
     readEnvVar("secrets-staging.env", "CLERK_SECRET_KEY") ||
     readEnvVar(".dev.vars", "CLERK_SECRET_KEY") ||
@@ -60,19 +80,40 @@ function getClerkSecretKey() {
   );
 }
 
+async function confirmProduction() {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((resolve) => {
+    rl.question(
+      '\n  ⚠️  You are about to clean PRODUCTION pipeline data.\n  Type "CLEAN PRODUCTION" to confirm: ',
+      (answer) => {
+        rl.close();
+        if (answer.trim() !== "CLEAN PRODUCTION") {
+          console.log("\n  Aborted.\n");
+          process.exit(0);
+        }
+        resolve();
+      }
+    );
+  });
+}
+
 // ── Main ──
 
 async function main() {
-  const env = staging ? "STAGING" : "LOCAL";
+  const env = production ? "PRODUCTION" : staging ? "STAGING" : "LOCAL";
   const label = dryRun ? `DRY RUN (${env})` : `CLEANING PIPELINE DATA (${env})`;
   console.log(`\n=== ${label} ===\n`);
+
+  if (production && !dryRun) {
+    await confirmProduction();
+  }
 
   // ── 1. R2 cleanup (no token expiry — uses server secret) ──
 
   if (dbOnly) {
     console.log("  Skipping R2 cleanup (--db-only)\n");
   } else {
-    const origin = staging ? APP_ORIGINS.staging : APP_ORIGINS.local;
+    const origin = production ? APP_ORIGINS.production : staging ? APP_ORIGINS.staging : APP_ORIGINS.local;
     const endpoint = `${origin}/api/internal/clean/work-products`;
     const secret = getClerkSecretKey();
 

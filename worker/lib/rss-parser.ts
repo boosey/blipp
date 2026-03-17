@@ -111,14 +111,15 @@ export function parseRssFeed(xml: string): ParsedFeed {
       transcriptUrl = (preferred ?? transcripts[0])?.["@_url"] ?? null;
     }
 
-    // Handle guid as object or string
+    // Handle guid as object or string — always coerce to string
     const rawGuid = (item as any).guid;
-    const guid =
-      typeof rawGuid === "object" ? rawGuid?.["#text"] ?? "" : String(rawGuid ?? "");
+    const guid = String(
+      typeof rawGuid === "object" ? rawGuid?.["#text"] ?? "" : rawGuid ?? ""
+    );
 
     const episode: ParsedEpisode = {
-      title: (item as any).title ?? "",
-      description: (item as any).description ?? (item as any)["itunes:summary"] ?? "",
+      title: String((item as any).title ?? ""),
+      description: String((item as any).description ?? (item as any)["itunes:summary"] ?? ""),
       audioUrl: (item as any).enclosure?.["@_url"] ?? "",
       publishedAt: (() => {
         if (!(item as any).pubDate) return new Date().toISOString();
