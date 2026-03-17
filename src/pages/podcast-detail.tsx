@@ -1,7 +1,7 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { Heart, Lock } from "lucide-react";
+import { Heart, Lock, Search, X } from "lucide-react";
 import { useApiFetch } from "../lib/api";
 import { DURATION_TIERS } from "../lib/duration-tiers";
 import { Skeleton } from "../components/ui/skeleton";
@@ -67,6 +67,9 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
   const [briefTierPickerEpisodeId, setBriefTierPickerEpisodeId] = useState<string | null>(null);
   const [isFavorited, setIsFavorited] = useState(false);
   const [expandedEpisodeId, setExpandedEpisodeId] = useState<string | null>(null);
+  const [episodeSearch, setEpisodeSearch] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const planUsage = usePlan();
   const { showUpgrade, UpgradeModalElement } = useUpgradeModal();
   const { close: closeSheet } = usePodcastSheet();
@@ -314,14 +317,54 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
 
       {/* Episodes */}
       <div>
-        <h2 className="text-base font-semibold mb-3">Episodes</h2>
+        <div className="flex items-center gap-2 mb-3">
+          {searchOpen ? (
+            <div className="flex-1 flex items-center gap-2 bg-zinc-800/80 backdrop-blur-sm border border-zinc-700/50 rounded-lg px-2.5 py-1.5">
+              <Search className="w-3.5 h-3.5 text-zinc-500 flex-shrink-0" />
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={episodeSearch}
+                onChange={(e) => setEpisodeSearch(e.target.value)}
+                placeholder="Search episodes..."
+                className="flex-1 bg-transparent text-sm text-zinc-200 placeholder:text-zinc-600 outline-none"
+                autoFocus
+              />
+              <button
+                onClick={() => { setEpisodeSearch(""); setSearchOpen(false); }}
+                className="p-0.5 rounded hover:bg-zinc-700 transition-colors"
+              >
+                <X className="w-3.5 h-3.5 text-zinc-500" />
+              </button>
+            </div>
+          ) : (
+            <>
+              <h2 className="text-base font-semibold flex-1">Episodes</h2>
+              {episodes.length > 0 && (
+                <button
+                  onClick={() => setSearchOpen(true)}
+                  className="p-1.5 rounded-full hover:bg-zinc-800 transition-colors text-zinc-500 hover:text-zinc-300"
+                >
+                  <Search className="w-4 h-4" />
+                </button>
+              )}
+            </>
+          )}
+        </div>
         {episodes.length === 0 ? (
           <p className="text-zinc-500 text-sm">
             No episodes yet. Episodes appear after a feed refresh.
           </p>
         ) : (
           <div className="space-y-2">
-            {episodes.map((ep) => (
+            {episodes
+              .filter((ep) => {
+                if (!episodeSearch) return true;
+                const q = episodeSearch.toLowerCase();
+                return ep.title.toLowerCase().includes(q) ||
+                  ep.description?.toLowerCase().includes(q);
+              })
+              .map((ep) => (
               <div
                 key={ep.id}
                 className="bg-zinc-900 border border-zinc-800 rounded-lg p-3"
