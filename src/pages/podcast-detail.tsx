@@ -7,6 +7,7 @@ import { DURATION_TIERS } from "../lib/duration-tiers";
 import { Skeleton } from "../components/ui/skeleton";
 import { usePlan } from "../contexts/plan-context";
 import { useUpgradeModal } from "../components/upgrade-prompt";
+import { usePodcastSheet } from "../contexts/podcast-sheet-context";
 import type { PodcastDetail as PodcastDetailType, EpisodeSummary } from "../types/user";
 import type { DurationTier } from "../lib/duration-tiers";
 
@@ -68,6 +69,7 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
   const [expandedEpisodeId, setExpandedEpisodeId] = useState<string | null>(null);
   const planUsage = usePlan();
   const { showUpgrade, UpgradeModalElement } = useUpgradeModal();
+  const { close: closeSheet } = usePodcastSheet();
 
   const fetchData = useCallback(async () => {
     if (!podcastId) return;
@@ -274,7 +276,7 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
                 planUsage.subscriptions.remaining !== null &&
                 planUsage.subscriptions.remaining <= 0 ? (
                 <button
-                  onClick={() => navigate("/settings")}
+                  onClick={() => { closeSheet(); navigate("/settings"); }}
                   className="px-4 py-1.5 rounded-full text-xs font-medium bg-white text-zinc-950 hover:bg-zinc-200 transition-colors"
                 >
                   Upgrade to Subscribe
