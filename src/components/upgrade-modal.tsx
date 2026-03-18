@@ -23,10 +23,10 @@ export function UpgradeModal({ open, onOpenChange, message }: UpgradeModalProps)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-zinc-950 border-zinc-800 text-zinc-50 max-w-2xl max-h-[85vh] overflow-y-auto">
+      <DialogContent className="bg-background border-border text-foreground max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-xl">Upgrade your plan</DialogTitle>
-          <DialogDescription className="text-zinc-400 text-sm">
+          <DialogDescription className="text-muted-foreground text-sm">
             {message || "Unlock this feature by upgrading to a higher plan."}
           </DialogDescription>
         </DialogHeader>

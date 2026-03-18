@@ -32,12 +32,12 @@ export function MiniPlayer() {
         {/* Progress bar */}
         <div
           className={`absolute top-0 left-0 h-0.5 transition-all duration-200 ${
-            inAd ? "bg-[#F97316]" : "bg-white"
+            inAd ? "bg-[#F97316]" : "bg-foreground"
           }`}
           style={{ width: `${progress}%` }}
         />
 
-        <div className="flex items-center gap-3 px-4 h-14 bg-zinc-900 border-t border-zinc-800">
+        <div className="flex items-center gap-3 px-4 h-14 bg-card border-t border-border">
           {/* Artwork or Ad badge */}
           {inAd ? (
             <div className="w-10 h-10 rounded bg-[#F97316]/20 flex items-center justify-center flex-shrink-0">
@@ -50,7 +50,7 @@ export function MiniPlayer() {
               className="w-10 h-10 rounded object-cover flex-shrink-0"
             />
           ) : (
-            <div className="w-10 h-10 rounded bg-zinc-800 flex-shrink-0" />
+            <div className="w-10 h-10 rounded bg-muted flex-shrink-0" />
           )}
 
           {/* Text — opens PlayerSheet */}
@@ -63,7 +63,7 @@ export function MiniPlayer() {
                 <p className="text-sm font-medium truncate text-[#F97316]">
                   Advertisement
                 </p>
-                <p className="text-xs text-zinc-500 truncate">
+                <p className="text-xs text-muted-foreground truncate">
                   {adState === "preroll" ? "Pre-roll" : "Post-roll"}
                 </p>
               </>
@@ -72,7 +72,7 @@ export function MiniPlayer() {
                 <p className="text-sm font-medium truncate">
                   {currentItem.episode.title}
                 </p>
-                <p className="text-xs text-zinc-500 truncate">
+                <p className="text-xs text-muted-foreground truncate">
                   {currentItem.podcast.title}
                 </p>
               </>

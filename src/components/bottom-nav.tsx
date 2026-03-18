@@ -14,7 +14,7 @@ export function BottomNav() {
   const navigateWithTransition = useViewTransitionNavigate();
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 bg-zinc-950 border-t border-zinc-800 px-2 pb-[env(safe-area-inset-bottom)]">
+    <nav className="fixed bottom-0 left-0 right-0 bg-background border-t border-border px-2 pb-[env(safe-area-inset-bottom)]">
       <div className="flex justify-around max-w-3xl mx-auto">
         {tabs.map(({ to, label, icon: Icon }) => {
           const active = pathname === to || pathname.startsWith(to + "/");
@@ -23,7 +23,7 @@ export function BottomNav() {
               key={to}
               onClick={() => navigateWithTransition(to)}
               className={`flex flex-col items-center gap-1 py-2 px-3 text-xs transition-colors active:scale-[0.98] transition-transform duration-75 ${
-                active ? "text-white" : "text-zinc-500"
+                active ? "text-foreground" : "text-muted-foreground"
               }`}
             >
               <Icon className="w-5 h-5" />

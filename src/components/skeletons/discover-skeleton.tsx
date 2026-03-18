@@ -7,7 +7,7 @@ export function DiscoverSkeleton() {
       {Array.from({ length: 6 }, (_, i) => (
         <div
           key={i}
-          className="flex gap-3 bg-zinc-900 border border-zinc-800 rounded-lg p-3"
+          className="flex gap-3 bg-card border border-border rounded-lg p-3"
         >
           <Skeleton className="w-14 h-14 rounded flex-shrink-0" />
           <div className="flex-1 space-y-2">

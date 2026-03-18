@@ -38,10 +38,10 @@ function TierPicker({
             }}
             className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors flex items-center gap-1 ${
               locked
-                ? "bg-zinc-900 text-zinc-600 cursor-not-allowed"
+                ? "bg-card text-muted-foreground/40 cursor-not-allowed"
                 : selected === tier
-                  ? "bg-white text-zinc-950"
-                  : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted text-muted-foreground hover:bg-accent"
             }`}
           >
             {tier}m
@@ -200,7 +200,7 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
         <div className="space-y-2">
           <Skeleton className="h-5 w-20" />
           {Array.from({ length: 5 }, (_, i) => (
-            <div key={i} className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
+            <div key={i} className="bg-card border border-border rounded-lg p-3">
               <div className="flex items-start justify-between gap-2">
                 <div className="flex-1 space-y-2">
                   <Skeleton className="h-4 w-3/4" />
@@ -218,7 +218,7 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
   if (!podcast) {
     return (
       <div className="flex items-center justify-center py-20">
-        <p className="text-zinc-400">Podcast not found.</p>
+        <p className="text-muted-foreground">Podcast not found.</p>
       </div>
     );
   }
@@ -235,25 +235,25 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
             className="w-24 h-24 rounded-lg object-cover flex-shrink-0"
           />
         ) : (
-          <div className="w-24 h-24 rounded-lg bg-zinc-800 flex-shrink-0" />
+          <div className="w-24 h-24 rounded-lg bg-muted flex-shrink-0" />
         )}
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
             <h1 className="text-lg font-bold">{podcast.title}</h1>
             <button
               onClick={toggleFavorite}
-              className="p-1.5 rounded-full hover:bg-zinc-800 transition-colors flex-shrink-0"
+              className="p-1.5 rounded-full hover:bg-muted transition-colors flex-shrink-0"
               title={isFavorited ? "Remove from favorites" : "Add to favorites"}
             >
               <Heart
-                className={`w-5 h-5 transition-colors ${isFavorited ? "fill-red-500 text-red-500" : "text-zinc-500"}`}
+                className={`w-5 h-5 transition-colors ${isFavorited ? "fill-red-500 text-red-500" : "text-muted-foreground"}`}
               />
             </button>
           </div>
           {podcast.author && (
-            <p className="text-sm text-zinc-400">{podcast.author}</p>
+            <p className="text-sm text-muted-foreground">{podcast.author}</p>
           )}
-          <p className="text-xs text-zinc-500 mt-1">
+          <p className="text-xs text-muted-foreground mt-1">
             {podcast.episodeCount} episodes
           </p>
 
@@ -263,12 +263,12 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
               <button
                 onClick={handleUnsubscribe}
                 disabled={subscribing}
-                className="px-4 py-1.5 rounded-full text-xs font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors disabled:opacity-50"
+                className="px-4 py-1.5 rounded-full text-xs font-medium bg-muted text-foreground/70 hover:bg-accent transition-colors disabled:opacity-50"
               >
                 {subscribing ? "..." : "Subscribed"}
               </button>
               {podcast.subscriptionDurationTier && (
-                <span className="text-[10px] text-zinc-500 bg-zinc-800 px-1.5 py-0.5 rounded">
+                <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
                   {podcast.subscriptionDurationTier}m
                 </span>
               )}
@@ -280,13 +280,13 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
                 planUsage.subscriptions.remaining <= 0 ? (
                 <button
                   onClick={() => { closeSheet(); navigate("/settings"); }}
-                  className="px-4 py-1.5 rounded-full text-xs font-medium bg-white text-zinc-950 hover:bg-zinc-200 transition-colors"
+                  className="px-4 py-1.5 rounded-full text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
                 >
                   Upgrade to Subscribe
                 </button>
               ) : showSubscribeTierPicker ? (
                 <div className="space-y-2">
-                  <p className="text-xs text-zinc-400">Briefing length:</p>
+                  <p className="text-xs text-muted-foreground">Briefing length:</p>
                   <TierPicker
                     selected={null}
                     onSelect={handleSubscribeWithTier}
@@ -298,7 +298,7 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
                 <button
                   onClick={() => setShowSubscribeTierPicker(true)}
                   disabled={subscribing}
-                  className="px-4 py-1.5 rounded-full text-xs font-medium bg-white text-zinc-950 hover:bg-zinc-200 transition-colors disabled:opacity-50"
+                  className="px-4 py-1.5 rounded-full text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
                 >
                   {subscribing ? "..." : "Subscribe"}
                 </button>
@@ -310,7 +310,7 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
 
       {/* Description */}
       {podcast.description && (
-        <p className="text-sm text-zinc-400 line-clamp-4">
+        <p className="text-sm text-muted-foreground line-clamp-4">
           {podcast.description}
         </p>
       )}
@@ -319,22 +319,22 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
       <div>
         <div className="flex items-center gap-2 mb-3">
           {searchOpen ? (
-            <div className="flex-1 flex items-center gap-2 bg-zinc-800/80 backdrop-blur-sm border border-zinc-700/50 rounded-lg px-2.5 py-1.5">
-              <Search className="w-3.5 h-3.5 text-zinc-500 flex-shrink-0" />
+            <div className="flex-1 flex items-center gap-2 bg-muted/80 backdrop-blur-sm border border-border rounded-lg px-2.5 py-1.5">
+              <Search className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
               <input
                 ref={searchInputRef}
                 type="text"
                 value={episodeSearch}
                 onChange={(e) => setEpisodeSearch(e.target.value)}
                 placeholder="Search episodes..."
-                className="flex-1 bg-transparent text-sm text-zinc-200 placeholder:text-zinc-600 outline-none"
+                className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground/50 outline-none"
                 autoFocus
               />
               <button
                 onClick={() => { setEpisodeSearch(""); setSearchOpen(false); }}
-                className="p-0.5 rounded hover:bg-zinc-700 transition-colors"
+                className="p-0.5 rounded hover:bg-accent transition-colors"
               >
-                <X className="w-3.5 h-3.5 text-zinc-500" />
+                <X className="w-3.5 h-3.5 text-muted-foreground" />
               </button>
             </div>
           ) : (
@@ -343,7 +343,7 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
               {episodes.length > 0 && (
                 <button
                   onClick={() => setSearchOpen(true)}
-                  className="p-1.5 rounded-full hover:bg-zinc-800 transition-colors text-zinc-500 hover:text-zinc-300"
+                  className="p-1.5 rounded-full hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
                 >
                   <Search className="w-4 h-4" />
                 </button>
@@ -352,7 +352,7 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
           )}
         </div>
         {episodes.length === 0 ? (
-          <p className="text-zinc-500 text-sm">
+          <p className="text-muted-foreground text-sm">
             No episodes yet. Episodes appear after a feed refresh.
           </p>
         ) : (
@@ -367,7 +367,7 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
               .map((ep) => (
               <div
                 key={ep.id}
-                className="bg-zinc-900 border border-zinc-800 rounded-lg p-3"
+                className="bg-card border border-border rounded-lg p-3"
               >
                 <div className="flex items-start justify-between gap-2">
                   <button
@@ -377,7 +377,7 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
                     )}
                   >
                     <p className="font-medium text-sm text-violet-300">{ep.title}</p>
-                    <div className="flex gap-2 text-xs text-zinc-500 mt-1">
+                    <div className="flex gap-2 text-xs text-muted-foreground mt-1">
                       <span>
                         {new Date(ep.publishedAt).toLocaleDateString()}
                       </span>
@@ -386,7 +386,7 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
                       )}
                     </div>
                     {ep.description && (
-                      <p className={`text-xs text-zinc-500 mt-2 ${
+                      <p className={`text-xs text-muted-foreground mt-2 ${
                         expandedEpisodeId === ep.id ? "" : "line-clamp-2"
                       }`}>
                         {ep.description.replace(/<[^>]*>/g, "")}
@@ -395,7 +395,7 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
                   </button>
                   <div className="relative flex-shrink-0">
                     {requestingEpisodeId === ep.id ? (
-                      <span className="text-xs text-zinc-500 px-3 py-1.5">
+                      <span className="text-xs text-muted-foreground px-3 py-1.5">
                         ...
                       </span>
                     ) : (
@@ -405,7 +405,7 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
                             briefTierPickerEpisodeId === ep.id ? null : ep.id
                           )
                         }
-                        className="px-3 py-1.5 bg-white text-zinc-950 rounded text-xs font-medium hover:bg-zinc-200 transition-colors"
+                        className="px-3 py-1.5 bg-primary text-primary-foreground rounded text-xs font-medium hover:bg-primary/90 transition-colors"
                       >
                         Blipp
                       </button>
@@ -416,7 +416,7 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
                           className="fixed inset-0 z-40"
                           onClick={() => setBriefTierPickerEpisodeId(null)}
                         />
-                        <div className="absolute right-0 top-full mt-1.5 z-50 bg-zinc-900/90 backdrop-blur-md border border-zinc-700/50 rounded-lg p-2 shadow-xl shadow-black/40">
+                        <div className="absolute right-0 top-full mt-1.5 z-50 bg-card/90 backdrop-blur-md border border-border rounded-lg p-2 shadow-xl shadow-black/40">
                           <TierPicker
                             selected={null}
                             onSelect={(tier) => handleCreateBriefing(ep.id, tier)}

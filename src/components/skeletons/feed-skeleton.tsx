@@ -6,7 +6,7 @@ export function FeedSkeleton() {
       {Array.from({ length: 5 }, (_, i) => (
         <div
           key={i}
-          className="flex gap-3 bg-zinc-900 border border-zinc-800 rounded-lg p-3"
+          className="flex gap-3 bg-card border border-border rounded-lg p-3"
         >
           <Skeleton className="w-12 h-12 rounded flex-shrink-0" />
           <div className="flex-1 space-y-2">

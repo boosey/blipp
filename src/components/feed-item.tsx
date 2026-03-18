@@ -63,7 +63,7 @@ export function FeedItemCard({
 
   const card = (
     <div
-      className={`relative flex gap-3 bg-zinc-900 border border-zinc-800 rounded-lg p-3 overflow-hidden${
+      className={`relative flex gap-3 bg-card border border-border rounded-lg p-3 overflow-hidden${
         !item.listened && item.status === "READY"
           ? " border-l-[3px] border-l-blue-500"
           : ""
@@ -77,13 +77,13 @@ export function FeedItemCard({
           className="w-12 h-12 rounded object-cover flex-shrink-0"
         />
       ) : (
-        <div className="w-12 h-12 rounded bg-zinc-800 flex-shrink-0" />
+        <div className="w-12 h-12 rounded bg-muted flex-shrink-0" />
       )}
 
       {/* Text */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-2">
-          <p className="text-xs text-zinc-500 truncate">{item.podcast.title}</p>
+          <p className="text-xs text-muted-foreground truncate">{item.podcast.title}</p>
           {label && (
             <span
               className={`text-[10px] font-medium px-2 py-0.5 rounded-full flex-shrink-0 ${statusColor(item.status)}`}
@@ -100,12 +100,12 @@ export function FeedItemCard({
             {friendlyError(item.errorMessage)}
           </p>
         ) : (
-          <p className="text-xs text-zinc-500 mt-1">
+          <p className="text-xs text-muted-foreground mt-1">
             {item.durationTier} min
             {epDuration && (
               <>
-                <span className="text-zinc-600 mx-1">·</span>
-                <span className="text-zinc-600">from {epDuration}</span>
+                <span className="text-muted-foreground/60 mx-1">·</span>
+                <span className="text-muted-foreground/60">from {epDuration}</span>
               </>
             )}
           </p>

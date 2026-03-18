@@ -106,7 +106,7 @@ export function SwipeableFeedItem({
             className={`h-full flex items-center justify-center px-6 transition-colors ${
               isRemoveZone
                 ? "bg-red-500/30 text-red-400"
-                : "bg-zinc-800 text-zinc-500"
+                : "bg-muted text-muted-foreground"
             }`}
             style={{ width: Math.abs(offset) }}
           >
@@ -122,7 +122,7 @@ export function SwipeableFeedItem({
             className={`h-full flex items-center justify-center px-6 transition-colors ${
               isListenedZone
                 ? "bg-blue-500/30 text-blue-400"
-                : "bg-zinc-800 text-zinc-500"
+                : "bg-muted text-muted-foreground"
             }`}
             style={{ width: offset }}
           >

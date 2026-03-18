@@ -31,15 +31,15 @@ function MobileLayoutInner() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-50 flex flex-col max-w-3xl mx-auto lg:border-x lg:border-zinc-800">
+    <div className="min-h-screen bg-background text-foreground flex flex-col max-w-3xl mx-auto lg:border-x lg:border-border">
       <OfflineIndicator />
       {/* Header */}
-      <header className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
+      <header className="flex items-center justify-between px-4 py-3 border-b border-border">
         <div className="flex items-center gap-2">
           {isSubPage && (
             <button
               onClick={() => navigate(-1)}
-              className="p-1 -ml-1 text-zinc-400 hover:text-zinc-200 transition-colors"
+              className="p-1 -ml-1 text-muted-foreground hover:text-foreground transition-colors"
               aria-label="Go back"
             >
               <ArrowLeft className="w-5 h-5" />
@@ -54,7 +54,7 @@ function MobileLayoutInner() {
           {isAdmin && (
             <Link
               to="/admin"
-              className="p-1.5 text-zinc-400 hover:text-zinc-200 transition-colors"
+              className="p-1.5 text-muted-foreground hover:text-foreground transition-colors"
               title="Admin"
             >
               <Shield className="w-5 h-5" />

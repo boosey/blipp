@@ -67,14 +67,14 @@ function SubscriptionsGrid({ onRefetchRef }: { onRefetchRef?: React.MutableRefOb
                 className="w-full aspect-square rounded-lg object-cover"
               />
             ) : (
-              <div className="w-full aspect-square rounded-lg bg-zinc-800 flex items-center justify-center">
-                <span className="text-xl font-bold text-zinc-500">
+              <div className="w-full aspect-square rounded-lg bg-muted flex items-center justify-center">
+                <span className="text-xl font-bold text-muted-foreground">
                   {sub.podcast.title.charAt(0).toUpperCase()}
                 </span>
               </div>
             )}
             {sub.durationTier && (
-              <span className="absolute bottom-1 right-1 text-[10px] font-medium bg-zinc-950/80 text-zinc-300 px-1.5 py-0.5 rounded">
+              <span className="absolute bottom-1 right-1 text-[10px] font-medium bg-background/80 text-foreground/70 px-1.5 py-0.5 rounded">
                 {sub.durationTier}m
               </span>
             )}
@@ -136,8 +136,8 @@ function FavoritesGrid({ onRefetchRef }: { onRefetchRef?: React.MutableRefObject
                 className="w-full aspect-square rounded-lg object-cover"
               />
             ) : (
-              <div className="w-full aspect-square rounded-lg bg-zinc-800 flex items-center justify-center">
-                <span className="text-xl font-bold text-zinc-500">
+              <div className="w-full aspect-square rounded-lg bg-muted flex items-center justify-center">
+                <span className="text-xl font-bold text-muted-foreground">
                   {podcast.title.charAt(0).toUpperCase()}
                 </span>
               </div>
@@ -148,7 +148,7 @@ function FavoritesGrid({ onRefetchRef }: { onRefetchRef?: React.MutableRefObject
           </button>
           <button
             onClick={() => removeFavorite(podcast.id)}
-            className="absolute top-1 right-1 p-1.5 rounded-full bg-zinc-950/70 text-zinc-400 opacity-0 group-hover:opacity-100 transition-opacity hover:text-red-400"
+            className="absolute top-1 right-1 p-1.5 rounded-full bg-background/70 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity hover:text-red-400"
             title="Remove from favorites"
           >
             <Trash2 className="w-3.5 h-3.5" />
@@ -172,22 +172,22 @@ export function LibraryPage() {
       {pullIndicator}
       <h1 className="text-xl font-bold mb-4">Library</h1>
 
-      <div className="flex gap-4 mb-4 border-b border-zinc-800">
+      <div className="flex gap-4 mb-4 border-b border-border">
         <button
           onClick={() => setTab("favorites")}
-          className={`pb-2 text-sm font-medium ${tab === "favorites" ? "text-white border-b-2 border-white" : "text-zinc-500"}`}
+          className={`pb-2 text-sm font-medium ${tab === "favorites" ? "text-foreground border-b-2 border-foreground" : "text-muted-foreground"}`}
         >
           Favorites
         </button>
         <button
           onClick={() => setTab("subscriptions")}
-          className={`pb-2 text-sm font-medium ${tab === "subscriptions" ? "text-white border-b-2 border-white" : "text-zinc-500"}`}
+          className={`pb-2 text-sm font-medium ${tab === "subscriptions" ? "text-foreground border-b-2 border-foreground" : "text-muted-foreground"}`}
         >
           Subscriptions
         </button>
         <button
           onClick={() => setTab("history")}
-          className={`pb-2 text-sm font-medium ${tab === "history" ? "text-white border-b-2 border-white" : "text-zinc-500"}`}
+          className={`pb-2 text-sm font-medium ${tab === "history" ? "text-foreground border-b-2 border-foreground" : "text-muted-foreground"}`}
         >
           History
         </button>

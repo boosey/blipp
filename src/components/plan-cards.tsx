@@ -96,20 +96,20 @@ export function PlanCards({ currentPlanSlug, onCheckout, compact }: PlanCardsPro
   }
 
   if (loading) {
-    return <p className="text-zinc-400 text-sm text-center py-8">Loading plans...</p>;
+    return <p className="text-muted-foreground text-sm text-center py-8">Loading plans...</p>;
   }
 
   return (
     <div>
       {hasAnnual && (
         <div className="flex justify-center mb-6">
-          <div className="inline-flex items-center bg-zinc-900 rounded-lg p-0.5 border border-zinc-800">
+          <div className="inline-flex items-center bg-card rounded-lg p-0.5 border border-border">
             <button
               onClick={() => setInterval("monthly")}
               className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
                 interval === "monthly"
-                  ? "bg-zinc-50 text-zinc-950"
-                  : "text-zinc-400 hover:text-zinc-200"
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground"
               }`}
             >
               Monthly
@@ -118,8 +118,8 @@ export function PlanCards({ currentPlanSlug, onCheckout, compact }: PlanCardsPro
               onClick={() => setInterval("annual")}
               className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
                 interval === "annual"
-                  ? "bg-zinc-50 text-zinc-950"
-                  : "text-zinc-400 hover:text-zinc-200"
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground"
               }`}
             >
               Annual
@@ -138,10 +138,10 @@ export function PlanCards({ currentPlanSlug, onCheckout, compact }: PlanCardsPro
               key={plan.id}
               className={`rounded-xl ${compact ? "p-4" : "p-6"} flex flex-col relative ${
                 isCurrent
-                  ? "bg-zinc-800 border-2 border-emerald-500/50 ring-1 ring-emerald-500/20"
+                  ? "bg-muted border-2 border-emerald-500/50 ring-1 ring-emerald-500/20"
                   : plan.highlighted
-                    ? "bg-zinc-800 border-2 border-zinc-50 ring-1 ring-zinc-50/20"
-                    : "bg-zinc-900 border border-zinc-800"
+                    ? "bg-muted border-2 border-foreground ring-1 ring-foreground/20"
+                    : "bg-card border border-border"
               }`}
             >
               {isCurrent && (
@@ -150,7 +150,7 @@ export function PlanCards({ currentPlanSlug, onCheckout, compact }: PlanCardsPro
                 </span>
               )}
               {!isCurrent && plan.highlighted && (
-                <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-1">
+                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">
                   Most Popular
                 </span>
               )}
@@ -159,21 +159,21 @@ export function PlanCards({ currentPlanSlug, onCheckout, compact }: PlanCardsPro
                 <p className={`${compact ? "text-xl" : "text-3xl"} font-bold`}>
                   {displayPrice(plan)}
                   {!isFree && (
-                    <span className="text-sm font-normal text-zinc-400">/mo</span>
+                    <span className="text-sm font-normal text-muted-foreground">/mo</span>
                   )}
                 </p>
               </div>
               {plan.description && (
-                <p className="text-xs text-zinc-400 mt-1">{plan.description}</p>
+                <p className="text-xs text-muted-foreground mt-1">{plan.description}</p>
               )}
 
               <ul className={`${compact ? "mt-3 space-y-1.5" : "mt-6 space-y-3"} flex-1`}>
                 {buildFeatures(plan).map((feature) => (
                   <li
                     key={feature}
-                    className={`flex items-start gap-2 ${compact ? "text-xs" : "text-sm"} text-zinc-300`}
+                    className={`flex items-start gap-2 ${compact ? "text-xs" : "text-sm"} text-foreground/80`}
                   >
-                    <span className="text-zinc-500 mt-0.5">&#10003;</span>
+                    <span className="text-muted-foreground mt-0.5">&#10003;</span>
                     {feature}
                   </li>
                 ))}
@@ -181,11 +181,11 @@ export function PlanCards({ currentPlanSlug, onCheckout, compact }: PlanCardsPro
 
               <div className={compact ? "mt-3" : "mt-6"}>
                 {isCurrent ? (
-                  <span className="block text-center py-2 text-sm text-zinc-500">
+                  <span className="block text-center py-2 text-sm text-muted-foreground">
                     Current plan
                   </span>
                 ) : isFree ? (
-                  <span className="block text-center py-2 text-sm text-zinc-500">
+                  <span className="block text-center py-2 text-sm text-muted-foreground">
                     Included
                   </span>
                 ) : (
@@ -196,8 +196,8 @@ export function PlanCards({ currentPlanSlug, onCheckout, compact }: PlanCardsPro
                         disabled={checkoutLoading === plan.id}
                         className={`w-full py-2 rounded-lg font-medium text-sm transition-colors disabled:opacity-50 ${
                           plan.highlighted
-                            ? "bg-zinc-50 text-zinc-950 hover:bg-zinc-200"
-                            : "bg-zinc-800 border border-zinc-700 hover:bg-zinc-700"
+                            ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                            : "bg-muted border border-border hover:bg-accent"
                         }`}
                       >
                         {checkoutLoading === plan.id ? "Redirecting..." : "Upgrade"}
@@ -208,8 +208,8 @@ export function PlanCards({ currentPlanSlug, onCheckout, compact }: PlanCardsPro
                         <button
                           className={`w-full py-2 rounded-lg font-medium text-sm transition-colors ${
                             plan.highlighted
-                              ? "bg-zinc-50 text-zinc-950 hover:bg-zinc-200"
-                              : "bg-zinc-800 border border-zinc-700 hover:bg-zinc-700"
+                              ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                              : "bg-muted border border-border hover:bg-accent"
                           }`}
                         >
                           Get Started

@@ -54,14 +54,14 @@ export function PlayerSheet({
       <SheetContent
         side="bottom"
         showCloseButton={false}
-        className="h-[85dvh] rounded-t-2xl bg-zinc-950 border-zinc-800 flex flex-col items-center px-6 pt-3 pb-[max(2rem,env(safe-area-inset-bottom))] overflow-y-auto"
+        className="h-[85dvh] rounded-t-2xl bg-background border-border flex flex-col items-center px-6 pt-3 pb-[max(2rem,env(safe-area-inset-bottom))] overflow-y-auto"
       >
         {/* Drag handle + close button */}
         <div className="w-full flex items-center justify-center relative flex-shrink-0 mb-4">
-          <div className="w-10 h-1 rounded-full bg-zinc-700" />
+          <div className="w-10 h-1 rounded-full bg-muted" />
           <button
             onClick={() => onOpenChange(false)}
-            className="absolute right-0 p-1.5 text-zinc-500 hover:text-zinc-300 active:scale-90 transition-all"
+            className="absolute right-0 p-1.5 text-muted-foreground hover:text-foreground/80 active:scale-90 transition-all"
             aria-label="Close player"
           >
             <ChevronDown className="w-5 h-5" />
@@ -81,9 +81,9 @@ export function PlayerSheet({
         {/* Artwork */}
         <div className="flex items-center justify-center w-full max-w-sm mt-2">
           {inAd ? (
-            <div className="w-full max-w-[200px] aspect-square max-h-[22vh] rounded-2xl bg-zinc-900 flex flex-col items-center justify-center gap-3 border border-[#F97316]/20">
+            <div className="w-full max-w-[200px] aspect-square max-h-[22vh] rounded-2xl bg-card flex flex-col items-center justify-center gap-3 border border-[#F97316]/20">
               <span className="text-2xl font-bold text-[#F97316]">Advertisement</span>
-              <span className="text-sm text-zinc-400">
+              <span className="text-sm text-muted-foreground">
                 {adState === "preroll" ? "Pre-roll" : "Post-roll"}
               </span>
             </div>
@@ -94,7 +94,7 @@ export function PlayerSheet({
               className="w-full max-w-[200px] aspect-square max-h-[22vh] rounded-2xl object-cover shadow-lg"
             />
           ) : (
-            <div className="w-full max-w-[200px] aspect-square max-h-[22vh] rounded-2xl bg-zinc-800" />
+            <div className="w-full max-w-[200px] aspect-square max-h-[22vh] rounded-2xl bg-muted" />
           )}
         </div>
 
@@ -103,7 +103,7 @@ export function PlayerSheet({
           {inAd ? (
             <>
               <h2 className="text-lg font-bold text-[#F97316]">Advertisement</h2>
-              <p className="text-sm text-zinc-400 mt-1">
+              <p className="text-sm text-muted-foreground mt-1">
                 {adState === "preroll" ? "Pre-roll" : "Post-roll"} — {formatTime(adCurrentTime)} / {formatTime(adDuration)}
               </p>
             </>
@@ -112,10 +112,10 @@ export function PlayerSheet({
               <h2 className="text-lg font-bold truncate">
                 {currentItem.episode.title}
               </h2>
-              <p className="text-sm text-zinc-400 mt-1 truncate">
+              <p className="text-sm text-muted-foreground mt-1 truncate">
                 {currentItem.podcast.title}
               </p>
-              <p className="text-xs text-zinc-500 mt-1">
+              <p className="text-xs text-muted-foreground mt-1">
                 {currentItem.durationTier}m briefing
               </p>
             </>
@@ -160,7 +160,7 @@ export function PlayerSheet({
               {/* Playback rate */}
               <button
                 onClick={cycleRate}
-                className="text-xs font-medium text-zinc-400 bg-zinc-800 px-2.5 py-1 rounded-full min-w-[3rem] active:scale-[0.95] transition-transform duration-75"
+                className="text-xs font-medium text-muted-foreground bg-muted px-2.5 py-1 rounded-full min-w-[3rem] active:scale-[0.95] transition-transform duration-75"
               >
                 {playbackRate}x
               </button>
@@ -168,7 +168,7 @@ export function PlayerSheet({
               {/* Skip back 15s */}
               <button
                 onClick={() => seek(Math.max(0, currentTime - 15))}
-                className="relative p-2 text-zinc-300 active:scale-[0.90] transition-transform duration-75"
+                className="relative p-2 text-foreground/80 active:scale-[0.90] transition-transform duration-75"
                 aria-label="Skip back 15 seconds"
               >
                 <SkipBack className="w-6 h-6" />
@@ -180,7 +180,7 @@ export function PlayerSheet({
               {/* Play/Pause */}
               <button
                 onClick={isPlaying ? pause : resume}
-                className="w-16 h-16 flex items-center justify-center bg-white text-zinc-950 rounded-full active:scale-[0.95] transition-transform duration-75"
+                className="w-16 h-16 flex items-center justify-center bg-primary text-primary-foreground rounded-full active:scale-[0.95] transition-transform duration-75"
                 aria-label={isPlaying ? "Pause" : "Play"}
               >
                 {isPlaying ? (
@@ -193,7 +193,7 @@ export function PlayerSheet({
               {/* Skip forward 30s */}
               <button
                 onClick={() => seek(Math.min(duration, currentTime + 30))}
-                className="relative p-2 text-zinc-300 active:scale-[0.90] transition-transform duration-75"
+                className="relative p-2 text-foreground/80 active:scale-[0.90] transition-transform duration-75"
                 aria-label="Skip forward 30 seconds"
               >
                 <SkipForward className="w-6 h-6" />
@@ -221,7 +221,7 @@ function AdProgressBar({ progress }: { progress: number }) {
     <div className="w-full max-w-sm mt-6">
       <div className="relative w-full h-6 flex items-center">
         {/* Track background */}
-        <div className="absolute w-full h-0.5 bg-zinc-700 rounded-full" />
+        <div className="absolute w-full h-0.5 bg-muted rounded-full" />
         {/* Progress */}
         <div
           className="absolute h-0.5 bg-[#F97316] rounded-full transition-all duration-200"
@@ -302,21 +302,21 @@ function SeekBar({
         }}
       >
         {/* Track background */}
-        <div className="absolute w-full h-0.5 bg-zinc-700 rounded-full" />
+        <div className="absolute w-full h-0.5 bg-muted rounded-full" />
         {/* Played progress */}
         <div
-          className="absolute h-0.5 bg-white rounded-full"
+          className="absolute h-0.5 bg-foreground rounded-full"
           style={{ width: `${progress}%` }}
         />
         {/* Thumb — visible on hover or drag */}
         <div
-          className={`absolute w-3 h-3 bg-white rounded-full -translate-x-1/2 transition-opacity ${
+          className={`absolute w-3 h-3 bg-foreground rounded-full -translate-x-1/2 transition-opacity ${
             isDragging ? "opacity-100" : "opacity-0 group-hover:opacity-100"
           }`}
           style={{ left: `${progress}%` }}
         />
       </div>
-      <div className="flex justify-between text-xs text-zinc-500 mt-1">
+      <div className="flex justify-between text-xs text-muted-foreground mt-1">
         <span>{formatTime(currentTime)}</span>
         <span>{formatTime(duration)}</span>
       </div>

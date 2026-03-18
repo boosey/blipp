@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
+import { Sun, Moon, Monitor } from "lucide-react";
 import { toast } from "sonner";
 import { useApiFetch } from "../lib/api";
 import { Skeleton } from "../components/ui/skeleton";
 import { PlanComparison, type PlanDetail } from "../components/plan-comparison";
+import { useTheme, type Theme } from "../contexts/theme-context";
 
 interface PlanInfo {
   id: string;
@@ -138,21 +140,58 @@ export function Settings() {
         )}
       </div>
 
+      {/* Appearance */}
+      <div className="space-y-4">
+        <h2 className="text-lg font-semibold">Appearance</h2>
+        <ThemeSelector />
+      </div>
+
       {/* Push Notifications */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+      <div className="bg-card border border-border rounded-xl p-4">
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-sm font-medium">Push Notifications</h3>
-            <p className="text-xs text-zinc-500 mt-0.5">Get notified when briefings are ready</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Get notified when briefings are ready</p>
           </div>
           <button
             onClick={togglePush}
             disabled={pushLoading}
-            className={`relative w-11 h-6 rounded-full transition-colors ${pushEnabled ? "bg-white" : "bg-zinc-700"}`}
+            className={`relative w-11 h-6 rounded-full transition-colors ${pushEnabled ? "bg-primary" : "bg-muted"}`}
           >
-            <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full transition-transform ${pushEnabled ? "translate-x-5 bg-zinc-950" : "bg-zinc-400"}`} />
+            <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full transition-transform ${pushEnabled ? "translate-x-5 bg-primary-foreground" : "bg-muted-foreground"}`} />
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+const themeOptions: { value: Theme; label: string; icon: typeof Sun }[] = [
+  { value: "light", label: "Light", icon: Sun },
+  { value: "dark", label: "Dark", icon: Moon },
+  { value: "system", label: "System", icon: Monitor },
+];
+
+function ThemeSelector() {
+  const { theme, setTheme } = useTheme();
+
+  return (
+    <div className="bg-card border border-border rounded-xl p-4">
+      <div className="flex gap-2">
+        {themeOptions.map(({ value, label, icon: Icon }) => (
+          <button
+            key={value}
+            onClick={() => setTheme(value)}
+            className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-medium transition-colors ${
+              theme === value
+                ? "bg-primary text-primary-foreground"
+                : "bg-muted text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Icon className="w-4 h-4" />
+            {label}
+          </button>
+        ))}
       </div>
     </div>
   );

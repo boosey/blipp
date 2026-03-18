@@ -129,19 +129,19 @@ export default function Onboarding() {
   // Step 1 — Welcome
   if (step === 1) {
     return (
-      <div className="min-h-screen bg-zinc-950 text-zinc-50 flex flex-col items-center justify-center px-6">
+      <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center px-6">
         <div className="max-w-sm text-center space-y-6">
-          <div className="w-16 h-16 mx-auto bg-white/10 rounded-2xl flex items-center justify-center">
-            <Headphones className="w-8 h-8 text-white" />
+          <div className="w-16 h-16 mx-auto bg-foreground/10 rounded-2xl flex items-center justify-center">
+            <Headphones className="w-8 h-8 text-foreground" />
           </div>
           <h1 className="text-2xl font-bold">Your podcasts, distilled.</h1>
-          <p className="text-zinc-400 text-sm leading-relaxed">
+          <p className="text-muted-foreground text-sm leading-relaxed">
             Blipp turns hour-long podcast episodes into short audio briefings
             you can listen to in minutes.
           </p>
           <button
             onClick={() => setStep(2)}
-            className="w-full py-3 bg-white text-zinc-950 font-semibold rounded-xl hover:bg-zinc-200 transition-colors flex items-center justify-center gap-2"
+            className="w-full py-3 bg-primary text-primary-foreground font-semibold rounded-xl hover:bg-primary/90 transition-colors flex items-center justify-center gap-2"
           >
             Get Started
             <ChevronRight className="w-4 h-4" />
@@ -154,26 +154,26 @@ export default function Onboarding() {
   // Step 2 — Pick favorites (optional)
   if (step === 2) {
     return (
-      <div className="min-h-screen bg-zinc-950 text-zinc-50 flex flex-col px-4 py-6">
+      <div className="min-h-screen bg-background text-foreground flex flex-col px-4 py-6">
         <div className="space-y-4 flex-1">
           <div>
             <h1 className="text-xl font-bold">
               What podcasts are you into?
             </h1>
-            <p className="text-zinc-400 text-sm mt-1">
+            <p className="text-muted-foreground text-sm mt-1">
               Pick a few so we can tailor your experience.
             </p>
           </div>
 
           {/* Search bar */}
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <input
               type="text"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               placeholder="Search podcasts..."
-              className="w-full pl-10 pr-10 py-2.5 bg-zinc-900 border border-zinc-800 rounded-lg text-sm text-zinc-50 placeholder:text-zinc-500 focus:outline-none focus:border-zinc-600"
+              className="w-full pl-10 pr-10 py-2.5 bg-card border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-muted-foreground"
             />
             {searchInput && (
               <button
@@ -184,7 +184,7 @@ export default function Onboarding() {
                 }}
                 className="absolute right-3 top-1/2 -translate-y-1/2"
               >
-                <X className="w-4 h-4 text-zinc-500 hover:text-zinc-300" />
+                <X className="w-4 h-4 text-muted-foreground hover:text-foreground/70" />
               </button>
             )}
           </div>
@@ -197,8 +197,8 @@ export default function Onboarding() {
                 onClick={() => setCategoryFilter(cat)}
                 className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors flex-shrink-0 snap-start ${
                   categoryFilter === cat
-                    ? "bg-white text-zinc-950"
-                    : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted text-foreground/70 hover:bg-accent"
                 }`}
               >
                 {cat}
@@ -208,11 +208,11 @@ export default function Onboarding() {
 
           {/* Podcast grid */}
           {catalogLoading || searching ? (
-            <div className="text-zinc-500 text-sm text-center py-12">
+            <div className="text-muted-foreground text-sm text-center py-12">
               {searching ? "Searching..." : "Loading podcasts..."}
             </div>
           ) : filteredPodcasts.length === 0 && isSearching ? (
-            <div className="text-zinc-500 text-sm text-center py-12">
+            <div className="text-muted-foreground text-sm text-center py-12">
               No podcasts found. Try a different search.
             </div>
           ) : (
@@ -228,7 +228,7 @@ export default function Onboarding() {
                     <div
                       className={`rounded-xl overflow-hidden border-2 transition-colors ${
                         isSelected
-                          ? "border-white"
+                          ? "border-foreground"
                           : "border-transparent"
                       }`}
                     >
@@ -236,18 +236,18 @@ export default function Onboarding() {
                         <img
                           src={podcast.imageUrl}
                           alt={podcast.title}
-                          className="w-full aspect-square object-cover bg-zinc-800"
+                          className="w-full aspect-square object-cover bg-muted"
                         />
                       ) : (
-                        <div className="w-full aspect-square bg-zinc-800 flex items-center justify-center">
-                          <span className="text-2xl font-bold text-zinc-500">
+                        <div className="w-full aspect-square bg-muted flex items-center justify-center">
+                          <span className="text-2xl font-bold text-muted-foreground">
                             {podcast.title.charAt(0).toUpperCase()}
                           </span>
                         </div>
                       )}
                       {isSelected && (
-                        <div className="absolute top-1.5 right-1.5 w-6 h-6 bg-white rounded-full flex items-center justify-center">
-                          <Check className="w-4 h-4 text-zinc-950" />
+                        <div className="absolute top-1.5 right-1.5 w-6 h-6 bg-primary rounded-full flex items-center justify-center">
+                          <Check className="w-4 h-4 text-primary-foreground" />
                         </div>
                       )}
                     </div>
@@ -262,11 +262,11 @@ export default function Onboarding() {
         </div>
 
         {/* Bottom actions */}
-        <div className="sticky bottom-0 pt-4 pb-2 bg-zinc-950 space-y-2">
+        <div className="sticky bottom-0 pt-4 pb-2 bg-background space-y-2">
           <button
             onClick={handleFinish}
             disabled={saving}
-            className="w-full py-3 bg-white text-zinc-950 font-semibold rounded-xl hover:bg-zinc-200 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+            className="w-full py-3 bg-primary text-primary-foreground font-semibold rounded-xl hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
           >
             {saving
               ? "Saving..."
@@ -285,7 +285,7 @@ export default function Onboarding() {
               markComplete();
               navigate("/home");
             }}
-            className="w-full py-2 text-zinc-500 text-sm hover:text-zinc-300 transition-colors"
+            className="w-full py-2 text-muted-foreground text-sm hover:text-foreground/70 transition-colors"
           >
             Skip for now
           </button>
@@ -296,20 +296,20 @@ export default function Onboarding() {
 
   // Step 3 — Confirmation
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-50 flex flex-col items-center justify-center px-6">
+    <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center px-6">
       <div className="max-w-sm text-center space-y-6">
         <div className="w-16 h-16 mx-auto bg-green-500/20 rounded-full flex items-center justify-center">
           <Check className="w-8 h-8 text-green-400" />
         </div>
         <h1 className="text-2xl font-bold">You're all set!</h1>
-        <p className="text-zinc-400 text-sm leading-relaxed">
+        <p className="text-muted-foreground text-sm leading-relaxed">
           {selectedPodcasts.size > 0
             ? "We've saved your favorites. Explore the catalog to subscribe and start getting briefings."
             : "Browse our catalog to find podcasts and start getting briefings."}
         </p>
         <button
           onClick={() => navigate("/home")}
-          className="w-full py-3 bg-white text-zinc-950 font-semibold rounded-xl hover:bg-zinc-200 transition-colors"
+          className="w-full py-3 bg-primary text-primary-foreground font-semibold rounded-xl hover:bg-primary/90 transition-colors"
         >
           Go to Feed
         </button>

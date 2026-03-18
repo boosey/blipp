@@ -309,7 +309,7 @@ export function AdminLayout() {
 
   return (
     <TooltipProvider delayDuration={0}>
-      <div className="flex h-screen bg-[#0A1628] text-[#F9FAFB] overflow-hidden">
+      <div className="dark flex h-screen bg-[#0A1628] text-[#F9FAFB] overflow-hidden">
         {/* Sidebar */}
         <aside
           className={cn(

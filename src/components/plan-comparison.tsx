@@ -59,19 +59,19 @@ export function PlanComparison({
         return (
           <div
             key={p.id}
-            className={`bg-zinc-900 border rounded-xl p-4 space-y-3 ${
+            className={`bg-card border rounded-xl p-4 space-y-3 ${
               isCurrent
-                ? "border-white"
+                ? "border-foreground"
                 : p.highlighted
-                  ? "border-zinc-600"
-                  : "border-zinc-800"
+                  ? "border-muted-foreground/40"
+                  : "border-border"
             }`}
           >
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="font-semibold">{p.name}</h3>
                 {p.description && (
-                  <p className="text-xs text-zinc-500 mt-0.5">
+                  <p className="text-xs text-muted-foreground mt-0.5">
                     {p.description}
                   </p>
                 )}
@@ -86,7 +86,7 @@ export function PlanComparison({
                 )}
               </div>
             </div>
-            <ul className="text-xs text-zinc-400 space-y-1">
+            <ul className="text-xs text-muted-foreground space-y-1">
               <li>· {p.briefingsPerWeek ?? "Unlimited"} briefings/week</li>
               <li>· Up to {p.maxDurationMinutes}min per briefing</li>
               <li>· {p.maxPodcastSubscriptions ?? "Unlimited"} subscriptions</li>
@@ -96,14 +96,14 @@ export function PlanComparison({
             </ul>
             {isCurrent ? (
               <div className="flex items-center gap-2">
-                <span className="text-xs text-zinc-500 bg-zinc-800 px-2.5 py-1 rounded-full">
+                <span className="text-xs text-muted-foreground bg-muted px-2.5 py-1 rounded-full">
                   Current Plan
                 </span>
                 {p.priceCentsMonthly > 0 && (
                   <button
                     onClick={onManage}
                     disabled={actionLoading === "manage"}
-                    className="text-xs text-zinc-400 hover:text-zinc-200"
+                    className="text-xs text-muted-foreground hover:text-foreground"
                   >
                     {actionLoading === "manage" ? "..." : "Manage"}
                   </button>
@@ -113,7 +113,7 @@ export function PlanComparison({
               <button
                 onClick={() => onUpgrade(p)}
                 disabled={actionLoading === p.id}
-                className="w-full py-2 bg-white text-zinc-950 text-xs font-medium rounded-lg hover:bg-zinc-200 transition-colors disabled:opacity-50"
+                className="w-full py-2 bg-primary text-primary-foreground text-xs font-medium rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
               >
                 {actionLoading === p.id
                   ? "Redirecting..."

@@ -4,6 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#09090b" />
+    <script>
+      (function(){
+        var t = localStorage.getItem('blipp-theme');
+        var dark = t === 'dark' || (!t || t === 'system') && matchMedia('(prefers-color-scheme: dark)').matches;
+        if (dark) document.documentElement.classList.add('dark');
+      })();
+    </script>
     <link rel="manifest" href="/manifest.json" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -12,7 +19,7 @@
     <link rel="apple-touch-icon" href="/icon-192.png" />
     <title>Blipp</title>
   </head>
-  <body style="background-color: #09090b;">
+  <body>
     <div id="root"></div>
     <script src="https://imasdk.googleapis.com/js/sdkloader/ima3.js" async></script>
     <script type="module" src="/src/main.tsx"></script>

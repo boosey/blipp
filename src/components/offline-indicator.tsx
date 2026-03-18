@@ -18,7 +18,7 @@ export function OfflineIndicator() {
   if (!offline) return null;
 
   return (
-    <div className="bg-zinc-800 text-zinc-300 text-xs px-4 py-2 flex items-center gap-2">
+    <div className="bg-muted text-muted-foreground text-xs px-4 py-2 flex items-center gap-2">
       <WifiOff className="w-3.5 h-3.5 flex-shrink-0" />
       <span>You're offline. Previously played briefings are still available.</span>
     </div>

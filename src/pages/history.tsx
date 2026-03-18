@@ -103,31 +103,31 @@ export default function History() {
     <div>
       {/* Stats */}
       <div className="grid grid-cols-3 gap-3 mb-6">
-        <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 text-center">
+        <div className="bg-card border border-border rounded-lg p-3 text-center">
           <p className="text-2xl font-bold">{totalBriefings}</p>
-          <p className="text-[10px] text-zinc-500 mt-0.5">Briefings</p>
+          <p className="text-[10px] text-muted-foreground mt-0.5">Briefings</p>
         </div>
-        <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 text-center">
+        <div className="bg-card border border-border rounded-lg p-3 text-center">
           <p className="text-2xl font-bold">{totalMinutes}</p>
-          <p className="text-[10px] text-zinc-500 mt-0.5">Min listened</p>
+          <p className="text-[10px] text-muted-foreground mt-0.5">Min listened</p>
         </div>
-        <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 text-center">
+        <div className="bg-card border border-border rounded-lg p-3 text-center">
           <p className="text-2xl font-bold">{savedMinutes}</p>
-          <p className="text-[10px] text-zinc-500 mt-0.5">Min saved</p>
+          <p className="text-[10px] text-muted-foreground mt-0.5">Min saved</p>
         </div>
       </div>
 
       {/* Date-grouped items */}
       {groups.map((group) => (
         <div key={group.label} className="mb-4">
-          <h3 className="text-xs font-medium text-zinc-500 uppercase tracking-wider mb-2">
+          <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
             {group.label}
           </h3>
           <div className="space-y-2">
             {group.items.map((item) => (
               <button
                 key={item.id}
-                className="w-full text-left flex items-center gap-3 bg-zinc-900 border border-zinc-800 rounded-lg p-3"
+                className="w-full text-left flex items-center gap-3 bg-card border border-border rounded-lg p-3"
                 onClick={() => audio.play(item)}
                 disabled={!item.briefing?.clip}
               >
@@ -138,21 +138,21 @@ export default function History() {
                     className="w-10 h-10 rounded object-cover flex-shrink-0"
                   />
                 ) : (
-                  <div className="w-10 h-10 rounded bg-zinc-800 flex-shrink-0" />
+                  <div className="w-10 h-10 rounded bg-muted flex-shrink-0" />
                 )}
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">
                     {item.episode.title}
                   </p>
-                  <p className="text-xs text-zinc-500 truncate">
+                  <p className="text-xs text-muted-foreground truncate">
                     {item.podcast.title}
                   </p>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
-                  <span className="text-[10px] text-zinc-500">
+                  <span className="text-[10px] text-muted-foreground">
                     {formatMinutes(item.briefing?.clip?.actualSeconds)}m
                   </span>
-                  <Play className="w-4 h-4 text-zinc-400" />
+                  <Play className="w-4 h-4 text-muted-foreground" />
                 </div>
               </button>
             ))}
