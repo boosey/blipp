@@ -144,7 +144,7 @@ export async function handleDistillation(
 
         // Try each model in the chain until one succeeds
         let claims: any[] | undefined;
-        let claimsUsage: { model: string; inputTokens: number; outputTokens: number; cost: number | null } | undefined;
+        let claimsUsage: { model: string; inputTokens: number; outputTokens: number; cost: number | null; cacheCreationTokens?: number; cacheReadTokens?: number } | undefined;
         for (let i = 0; i < modelChain.length; i++) {
           const resolved = modelChain[i];
           const tier = ["primary", "secondary", "tertiary"][i];
@@ -196,7 +196,13 @@ export async function handleDistillation(
           }
         }
 
-        await writeEvent(prisma, step.id, "DEBUG", `Model: ${claimsUsage!.model}`, { inputTokens: claimsUsage!.inputTokens, outputTokens: claimsUsage!.outputTokens, cost: claimsUsage!.cost });
+        await writeEvent(prisma, step.id, "DEBUG", `Model: ${claimsUsage!.model}`, {
+          inputTokens: claimsUsage!.inputTokens,
+          outputTokens: claimsUsage!.outputTokens,
+          cost: claimsUsage!.cost,
+          ...(claimsUsage!.cacheCreationTokens ? { cacheCreationTokens: claimsUsage!.cacheCreationTokens } : {}),
+          ...(claimsUsage!.cacheReadTokens ? { cacheReadTokens: claimsUsage!.cacheReadTokens } : {}),
+        });
 
         // Mark distillation as completed (claims content lives in R2 only)
         await prisma.distillation.update({

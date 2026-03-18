@@ -161,7 +161,7 @@ export async function handleNarrativeGeneration(
         // Try each model in the chain until one succeeds
         claimCount = claims.length;
         let narrative: string | undefined;
-        let narrativeUsage: { model: string; inputTokens: number; outputTokens: number; cost: number | null } | undefined;
+        let narrativeUsage: { model: string; inputTokens: number; outputTokens: number; cost: number | null; cacheCreationTokens?: number; cacheReadTokens?: number } | undefined;
         for (let i = 0; i < modelChain.length; i++) {
           const resolved = modelChain[i];
           const tier = ["primary", "secondary", "tertiary"][i];
@@ -226,7 +226,13 @@ export async function handleNarrativeGeneration(
         }
 
         const wordCount = narrative!.split(/\s+/).length;
-        await writeEvent(prisma, step.id, "DEBUG", `Model: ${narrativeUsage!.model}`, { inputTokens: narrativeUsage!.inputTokens, outputTokens: narrativeUsage!.outputTokens, cost: narrativeUsage!.cost });
+        await writeEvent(prisma, step.id, "DEBUG", `Model: ${narrativeUsage!.model}`, {
+          inputTokens: narrativeUsage!.inputTokens,
+          outputTokens: narrativeUsage!.outputTokens,
+          cost: narrativeUsage!.cost,
+          ...(narrativeUsage!.cacheCreationTokens ? { cacheCreationTokens: narrativeUsage!.cacheCreationTokens } : {}),
+          ...(narrativeUsage!.cacheReadTokens ? { cacheReadTokens: narrativeUsage!.cacheReadTokens } : {}),
+        });
 
         // Write narrative to R2 + index in DB
         const narrativeR2Key = wpKey({ type: "NARRATIVE", episodeId, durationTier });

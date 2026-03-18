@@ -22,12 +22,24 @@ export interface LlmResult {
   model: string;
   inputTokens: number;
   outputTokens: number;
+  /** Tokens written to cache on this request (Anthropic prompt caching). */
+  cacheCreationTokens?: number;
+  /** Tokens read from cache on this request (Anthropic prompt caching). */
+  cacheReadTokens?: number;
 }
 
 /** A message in the LLM conversation. */
 export interface LlmMessage {
   role: "user" | "assistant";
   content: string;
+}
+
+/** Options for LLM completion calls. */
+export interface LlmCompletionOptions {
+  /** System prompt — used as a separate system message when the provider supports it. */
+  system?: string;
+  /** Enable prompt caching on the system message (Anthropic only). */
+  cacheSystemPrompt?: boolean;
 }
 
 /**
@@ -41,7 +53,8 @@ export interface LlmProvider {
     messages: LlmMessage[],
     providerModelId: string,
     maxTokens: number,
-    env: Env
+    env: Env,
+    options?: LlmCompletionOptions
   ): Promise<LlmResult>;
 }
 
@@ -53,24 +66,49 @@ const AnthropicProvider: LlmProvider = {
   name: "Anthropic",
   provider: "anthropic",
 
-  async complete(messages, providerModelId, maxTokens, env) {
+  async complete(messages, providerModelId, maxTokens, env, options) {
     const start = Date.now();
     try {
       const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
+
+      // Build system parameter with optional prompt caching
+      let system: Anthropic.MessageCreateParams["system"] | undefined;
+      if (options?.system) {
+        if (options.cacheSystemPrompt) {
+          system = [
+            {
+              type: "text" as const,
+              text: options.system,
+              cache_control: { type: "ephemeral" as const },
+            },
+          ];
+        } else {
+          system = options.system;
+        }
+      }
+
       const response = await client.messages.create({
         model: providerModelId,
         max_tokens: maxTokens,
+        ...(system ? { system } : {}),
         messages,
       });
 
       const text =
         response.content[0].type === "text" ? response.content[0].text : "";
 
+      const usage = response.usage as Anthropic.Usage & {
+        cache_creation_input_tokens?: number;
+        cache_read_input_tokens?: number;
+      };
+
       return {
         text,
         model: response.model,
-        inputTokens: response.usage.input_tokens,
-        outputTokens: response.usage.output_tokens,
+        inputTokens: usage.input_tokens,
+        outputTokens: usage.output_tokens,
+        cacheCreationTokens: usage.cache_creation_input_tokens,
+        cacheReadTokens: usage.cache_read_input_tokens,
       };
     } catch (err) {
       const durationMs = Date.now() - start;
@@ -97,8 +135,12 @@ const GroqLlmProvider: LlmProvider = {
   name: "Groq",
   provider: "groq",
 
-  async complete(messages, providerModelId, maxTokens, env) {
+  async complete(messages, providerModelId, maxTokens, env, options) {
     const start = Date.now();
+    // Groq uses OpenAI-compatible format: system prompt goes as a system role message
+    const groqMessages = options?.system
+      ? [{ role: "system" as const, content: options.system }, ...messages]
+      : messages;
     const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -108,7 +150,7 @@ const GroqLlmProvider: LlmProvider = {
       body: JSON.stringify({
         model: providerModelId,
         max_tokens: maxTokens,
-        messages,
+        messages: groqMessages,
       }),
     });
 
@@ -149,11 +191,15 @@ const CloudflareLlmProvider: LlmProvider = {
   name: "Cloudflare Workers AI",
   provider: "cloudflare",
 
-  async complete(messages, providerModelId, maxTokens, env) {
+  async complete(messages, providerModelId, maxTokens, env, options) {
     const start = Date.now();
+    // Cloudflare Workers AI: system prompt as a system role message
+    const cfMessages = options?.system
+      ? [{ role: "system" as const, content: options.system }, ...messages]
+      : messages;
     try {
       const result = (await env.AI.run(providerModelId as any, {
-        messages,
+        messages: cfMessages,
         max_tokens: maxTokens,
       })) as any;
 

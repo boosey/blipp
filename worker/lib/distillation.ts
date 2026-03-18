@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { LlmProvider } from "./llm-providers";
+import type { LlmProvider, LlmCompletionOptions } from "./llm-providers";
 import { calculateTokenCost, type AiUsage, type ModelPricing } from "./ai-usage";
 
 /** Words spoken per minute for podcast-style narration. */
@@ -33,22 +33,8 @@ const ClaimSchema = z.object({
 
 const ClaimsArraySchema = z.array(ClaimSchema).min(1);
 
-/**
- * Pass 1: Extracts all significant claims from a podcast transcript.
- */
-export async function extractClaims(
-  llm: LlmProvider,
-  transcript: string,
-  providerModelId: string,
-  maxTokens: number,
-  env: any,
-  pricing: ModelPricing | null = null
-): Promise<{ claims: Claim[]; usage: AiUsage }> {
-  const result = await llm.complete(
-    [
-      {
-        role: "user",
-        content: `You are a podcast analyst. Extract all significant factual claims, insights, arguments, and notable statements from this transcript.
+/** Stable system prompt for claim extraction — cached across calls. */
+const CLAIMS_SYSTEM_PROMPT = `You are a podcast analyst. Extract all significant factual claims, insights, arguments, and notable statements from podcast transcripts.
 
 For each claim, include:
 - "claim": the factual assertion (one clear sentence)
@@ -65,15 +51,35 @@ Guidelines:
 - Excerpts must be VERBATIM from the transcript, not paraphrased
 - Sort by importance descending
 
-Return ONLY a JSON array. No markdown fences, no commentary.
+Return ONLY a JSON array. No markdown fences, no commentary.`;
 
-TRANSCRIPT:
-${transcript}`,
+/**
+ * Pass 1: Extracts all significant claims from a podcast transcript.
+ */
+export async function extractClaims(
+  llm: LlmProvider,
+  transcript: string,
+  providerModelId: string,
+  maxTokens: number,
+  env: any,
+  pricing: ModelPricing | null = null
+): Promise<{ claims: Claim[]; usage: AiUsage }> {
+  const options: LlmCompletionOptions = {
+    system: CLAIMS_SYSTEM_PROMPT,
+    cacheSystemPrompt: true,
+  };
+
+  const result = await llm.complete(
+    [
+      {
+        role: "user",
+        content: `TRANSCRIPT:\n${transcript}`,
       },
     ],
     providerModelId,
     maxTokens,
-    env
+    env,
+    options
   );
 
   const text = result.text
@@ -108,7 +114,9 @@ ${transcript}`,
     model: result.model,
     inputTokens: result.inputTokens,
     outputTokens: result.outputTokens,
-    cost: calculateTokenCost(pricing, result.inputTokens, result.outputTokens),
+    cost: calculateTokenCost(pricing, result.inputTokens, result.outputTokens, result.cacheCreationTokens, result.cacheReadTokens),
+    cacheCreationTokens: result.cacheCreationTokens,
+    cacheReadTokens: result.cacheReadTokens,
   };
 
   return { claims, usage };
@@ -157,6 +165,28 @@ Then proceed directly into the content summary.
 `;
 }
 
+/** Stable system prompt for narrative generation — cached across calls. */
+const NARRATIVE_SYSTEM_PROMPT_WITH_EXCERPTS = `You are a podcast script writer. Write a spoken narrative summarizing claims and their source excerpts for a daily briefing podcast segment.
+
+Rules:
+- Write in a conversational, engaging tone suitable for audio
+- Cover claims in rough order of importance, but group related topics
+- Use the EXCERPT text for accurate detail and context — do NOT invent facts beyond what the excerpts contain
+- Use natural transitions between topics
+- For shorter briefings, focus only on the highest-impact claims
+- For longer briefings, include supporting context and nuance from excerpts
+- Do NOT include stage directions, speaker labels, or markdown
+- Output ONLY the narrative text`;
+
+const NARRATIVE_SYSTEM_PROMPT_NO_EXCERPTS = `You are a podcast script writer. Write a spoken narrative summarizing claims for a daily briefing podcast segment.
+
+Rules:
+- Write in a conversational, engaging tone suitable for audio
+- Cover the most important claims first
+- Use natural transitions between topics
+- Do NOT include stage directions, speaker labels, or markdown
+- Output ONLY the narrative text`;
+
 /**
  * Pass 2: Generates a spoken narrative from extracted claims at a target duration.
  */
@@ -174,49 +204,35 @@ export async function generateNarrative(
   const hasExcerpts = claims.length > 0 && "excerpt" in claims[0];
   const metadataBlock = metadata ? buildMetadataIntro(metadata) : "";
 
-  const prompt = hasExcerpts
-    ? `You are a podcast script writer. Write a spoken narrative summarizing the following claims and their source excerpts for a daily briefing podcast segment.
+  const systemPrompt = hasExcerpts
+    ? NARRATIVE_SYSTEM_PROMPT_WITH_EXCERPTS
+    : NARRATIVE_SYSTEM_PROMPT_NO_EXCERPTS;
 
-TARGET: approximately ${targetWords} words (${durationMinutes} minutes at ${WORDS_PER_MINUTE} wpm).
-
-Rules:
-- Write in a conversational, engaging tone suitable for audio
-- Cover claims in rough order of importance, but group related topics
-- Use the EXCERPT text for accurate detail and context — do NOT invent facts beyond what the excerpts contain
-- Use natural transitions between topics
-- For shorter briefings, focus only on the highest-impact claims
-- For longer briefings, include supporting context and nuance from excerpts
-- Do NOT include stage directions, speaker labels, or markdown
-- Output ONLY the narrative text
+  const userContent = `TARGET: approximately ${targetWords} words (${durationMinutes} minutes at ${WORDS_PER_MINUTE} wpm).
 ${metadataBlock}
-CLAIMS AND EXCERPTS:
-${JSON.stringify(claims, null, 2)}`
-    : `You are a podcast script writer. Write a spoken narrative summarizing these claims for a daily briefing podcast segment.
-
-TARGET: approximately ${targetWords} words (${durationMinutes} minutes at ${WORDS_PER_MINUTE} wpm).
-
-Rules:
-- Write in a conversational, engaging tone suitable for audio
-- Cover the most important claims first
-- Use natural transitions between topics
-- Do NOT include stage directions, speaker labels, or markdown
-- Output ONLY the narrative text
-${metadataBlock}
-CLAIMS:
+${hasExcerpts ? "CLAIMS AND EXCERPTS" : "CLAIMS"}:
 ${JSON.stringify(claims, null, 2)}`;
 
+  const options: LlmCompletionOptions = {
+    system: systemPrompt,
+    cacheSystemPrompt: true,
+  };
+
   const result = await llm.complete(
-    [{ role: "user", content: prompt }],
+    [{ role: "user", content: userContent }],
     providerModelId,
     maxTokens,
-    env
+    env,
+    options
   );
 
   const usage: AiUsage = {
     model: result.model,
     inputTokens: result.inputTokens,
     outputTokens: result.outputTokens,
-    cost: calculateTokenCost(pricing, result.inputTokens, result.outputTokens),
+    cost: calculateTokenCost(pricing, result.inputTokens, result.outputTokens, result.cacheCreationTokens, result.cacheReadTokens),
+    cacheCreationTokens: result.cacheCreationTokens,
+    cacheReadTokens: result.cacheReadTokens,
   };
 
   return { narrative: result.text, usage };

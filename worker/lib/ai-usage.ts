@@ -4,6 +4,10 @@ export interface AiUsage {
   inputTokens: number;
   outputTokens: number;
   cost: number | null;
+  /** Tokens written to prompt cache on this request (Anthropic). */
+  cacheCreationTokens?: number;
+  /** Tokens read from prompt cache on this request (Anthropic — 90% cheaper). */
+  cacheReadTokens?: number;
 }
 
 /** Pricing info from the AiModelProvider table. */
@@ -32,16 +36,34 @@ export async function getModelPricing(
   };
 }
 
-/** Calculate cost for LLM token-based models (per 1M tokens). */
+/**
+ * Calculate cost for LLM token-based models (per 1M tokens).
+ * When cache tokens are provided, adjusts pricing:
+ *   - cache writes: 1.25x input price
+ *   - cache reads:  0.1x input price
+ *   - remaining input tokens: standard price
+ */
 export function calculateTokenCost(
   pricing: ModelPricing | null,
   inputTokens: number,
-  outputTokens: number
+  outputTokens: number,
+  cacheCreationTokens?: number,
+  cacheReadTokens?: number
 ): number | null {
   if (!pricing?.priceInputPerMToken) return null;
+  const inputPrice = pricing.priceInputPerMToken;
+  const outputPrice = pricing.priceOutputPerMToken ?? 0;
+
+  const cacheWrite = cacheCreationTokens ?? 0;
+  const cacheRead = cacheReadTokens ?? 0;
+  // Non-cached input = total input minus cached portions
+  const standardInput = Math.max(0, inputTokens - cacheWrite - cacheRead);
+
   return (
-    (inputTokens * pricing.priceInputPerMToken +
-      outputTokens * (pricing.priceOutputPerMToken ?? 0)) /
+    (standardInput * inputPrice +
+      cacheWrite * inputPrice * 1.25 +
+      cacheRead * inputPrice * 0.1 +
+      outputTokens * outputPrice) /
     1_000_000
   );
 }

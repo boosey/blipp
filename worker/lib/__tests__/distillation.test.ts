@@ -48,7 +48,7 @@ describe("extractClaims", () => {
     });
   });
 
-  it("should pass the transcript in the prompt", async () => {
+  it("should pass the transcript in the user message", async () => {
     const llm = createMockLlmProvider(JSON.stringify(sampleClaims));
     await extractClaims(llm, "My specific transcript", "mock-model-1", 8192, mockEnv);
 
@@ -57,16 +57,16 @@ describe("extractClaims", () => {
     expect(messages[0].content).toContain("My specific transcript");
   });
 
-  it("should ask for variable claims with excerpts in the prompt", async () => {
+  it("should pass instructions as a cached system prompt", async () => {
     const llm = createMockLlmProvider(JSON.stringify(sampleClaims));
     await extractClaims(llm, "My transcript", "mock-model-1", 8192, mockEnv);
 
     const call = (llm.complete as ReturnType<typeof vi.fn>).mock.calls[0];
-    const messages = call[0];
-    const prompt = messages[0].content;
-    expect(prompt).not.toContain("top 10");
-    expect(prompt).toContain("excerpt");
-    expect(prompt).toContain("verbatim");
+    const options = call[4]; // 5th argument: options
+    expect(options.system).toContain("excerpt");
+    expect(options.system).toContain("verbatim");
+    expect(options.system).not.toContain("top 10");
+    expect(options.cacheSystemPrompt).toBe(true);
   });
 
   it("should pass providerModelId and maxTokens to the provider", async () => {
@@ -117,11 +117,11 @@ describe("extractClaims", () => {
     await extractClaims(llm, "My transcript", "mock-model-1", 8192, mockEnv);
 
     const call = (llm.complete as ReturnType<typeof vi.fn>).mock.calls[0];
-    const prompt = call[0][0].content;
-    expect(prompt).toContain("EXCLUDE ALL ADVERTISEMENTS");
-    expect(prompt).toContain("sponsored segments");
-    expect(prompt).toContain("ad reads");
-    expect(prompt).toContain("discount codes");
+    const systemPrompt = call[4].system; // system prompt is in options
+    expect(systemPrompt).toContain("EXCLUDE ALL ADVERTISEMENTS");
+    expect(systemPrompt).toContain("sponsored segments");
+    expect(systemPrompt).toContain("ad reads");
+    expect(systemPrompt).toContain("discount codes");
   });
 
   it("should throw on importance out of range", async () => {
@@ -182,7 +182,7 @@ describe("generateNarrative", () => {
     expect(call[0][0].content).toContain("AI will transform healthcare");
   });
 
-  it("should use excerpts-aware prompt when claims have excerpt field", async () => {
+  it("should use excerpts-aware system prompt when claims have excerpt field", async () => {
     const claimsWithExcerpts: Claim[] = [
       { claim: "AI transforms healthcare", speaker: "Dr. Smith", importance: 9, novelty: 7, excerpt: "I believe AI will completely transform how we deliver healthcare services." },
     ];
@@ -191,10 +191,11 @@ describe("generateNarrative", () => {
 
     const call = (llm.complete as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(call[0][0].content).toContain("CLAIMS AND EXCERPTS");
-    expect(call[0][0].content).toContain("EXCERPT text for accurate detail");
+    expect(call[4].system).toContain("EXCERPT text for accurate detail");
+    expect(call[4].cacheSystemPrompt).toBe(true);
   });
 
-  it("should use legacy prompt when claims lack excerpt field", async () => {
+  it("should use legacy system prompt when claims lack excerpt field", async () => {
     const legacyClaims = [
       { claim: "AI transforms healthcare", speaker: "Dr. Smith", importance: 9, novelty: 7 },
     ] as Claim[];
@@ -261,7 +262,7 @@ describe("generateNarrative with metadata", () => {
     { claim: "Test", speaker: "Host", importance: 7, novelty: 5, excerpt: "Some text" },
   ];
 
-  it("includes podcast title in prompt when metadata provided", async () => {
+  it("includes podcast title in user message when metadata provided", async () => {
     const llm = createMockLlmProvider("This is a test narrative.");
     const metadata: EpisodeMetadata = {
       podcastTitle: "The Daily",
@@ -273,11 +274,11 @@ describe("generateNarrative with metadata", () => {
 
     await generateNarrative(llm, testClaims, 5, "model", 8192, {}, null, metadata);
 
-    const prompt = (llm.complete as any).mock.calls[0][0][0].content;
-    expect(prompt).toContain("The Daily");
-    expect(prompt).toContain("Election Results");
-    expect(prompt).toContain("Originally 45 minutes");
-    expect(prompt).toContain("5 minutes");
+    const userContent = (llm.complete as any).mock.calls[0][0][0].content;
+    expect(userContent).toContain("The Daily");
+    expect(userContent).toContain("Election Results");
+    expect(userContent).toContain("Originally 45 minutes");
+    expect(userContent).toContain("5 minutes");
   });
 
   it("omits metadata block when metadata not provided", async () => {
@@ -285,8 +286,8 @@ describe("generateNarrative with metadata", () => {
 
     await generateNarrative(llm, testClaims, 5, "model", 8192, {});
 
-    const prompt = (llm.complete as any).mock.calls[0][0][0].content;
-    expect(prompt).not.toContain("Begin the narrative with a brief spoken introduction");
+    const userContent = (llm.complete as any).mock.calls[0][0][0].content;
+    expect(userContent).not.toContain("Begin the narrative with a brief spoken introduction");
   });
 
   it("handles missing durationSeconds gracefully", async () => {
@@ -301,7 +302,7 @@ describe("generateNarrative with metadata", () => {
 
     await generateNarrative(llm, testClaims, 3, "model", 8192, {}, null, metadata);
 
-    const prompt = (llm.complete as any).mock.calls[0][0][0].content;
-    expect(prompt).toContain("Original length unknown");
+    const userContent = (llm.complete as any).mock.calls[0][0][0].content;
+    expect(userContent).toContain("Original length unknown");
   });
 });
