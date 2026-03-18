@@ -40,6 +40,8 @@ export async function handleDistillation(
 
       let step: { id: string } | null = null;
       let requestId: string | undefined;
+      let distillProvider: string | undefined;
+      let distillModel: string | undefined;
 
       try {
         // Load job to get requestId
@@ -119,7 +121,9 @@ export async function handleDistillation(
           throw new Error("No transcript available — run transcription first");
         }
         const transcript = new TextDecoder().decode(transcriptData);
-        await writeEvent(prisma, step.id, "INFO", `Loaded transcript from R2 (${transcript.length} bytes)`);
+        await writeEvent(prisma, step.id, "INFO", `Loaded transcript from R2 (${transcript.length} bytes)`, {
+          transcriptBytes: transcript.length,
+        });
 
         // Ensure Distillation record exists, update status
         const existing = await prisma.distillation.upsert({
@@ -131,7 +135,13 @@ export async function handleDistillation(
         // Extract claims via LLM (Pass 1)
         const resolved = await resolveStageModel(prisma, "distillation");
         const llm = getLlmProviderImpl(resolved.provider);
-        await writeEvent(prisma, step.id, "INFO", `Sending transcript to ${llm.name} (${resolved.providerModelId}) for claim extraction`);
+        distillProvider = resolved.provider;
+        distillModel = resolved.providerModelId;
+        await writeEvent(prisma, step.id, "INFO", `Sending transcript to ${llm.name} (${resolved.providerModelId}) for claim extraction`, {
+          transcriptBytes: transcript.length,
+          model: resolved.providerModelId,
+          provider: resolved.provider,
+        });
         const elapsed = log.timer("claude_extraction");
         const { claims, usage: claimsUsage } = await extractClaims(llm, transcript, resolved.providerModelId, 8192, env, resolved.pricing);
         recordSuccess(resolved.provider);
@@ -238,7 +248,12 @@ export async function handleDistillation(
             }));
           });
 
-        if (step) await writeEvent(prisma, step.id, "ERROR", `Distillation failed: ${errorMessage}`);
+        if (step) await writeEvent(prisma, step.id, "ERROR", `Distillation failed: ${errorMessage.slice(0, 2048)}`, {
+          model: distillModel,
+          provider: distillProvider,
+          httpStatus: (err as any)?.status || (err as any)?.statusCode,
+          errorType: err?.constructor?.name,
+        });
 
         log.error("episode_error", { episodeId, jobId }, err);
 

@@ -57,6 +57,10 @@ export async function handleTranscription(
 
       let stepId: string | null = null;
       let requestId: string | undefined;
+      let sttProvider: string | undefined;
+      let sttModel: string | undefined;
+      let audioSizeBytes: number | undefined;
+      let audioContentType: string | undefined;
       try {
         // Load job to get requestId
         const job = await prisma.pipelineJob.findUnique({ where: { id: jobId } });
@@ -142,7 +146,11 @@ export async function handleTranscription(
           throw new Error(`Episode not found: ${episodeId}`);
         }
         const podcast = await prisma.podcast.findUnique({ where: { id: episode.podcastId } });
-        await writeEvent(prisma, step.id, "DEBUG", `Episode loaded: "${episode.title}"`, { audioUrl: episode.audioUrl?.slice(0, 120) });
+        await writeEvent(prisma, step.id, "DEBUG", `Episode loaded: "${episode.title}"`, {
+          audioUrl: episode.audioUrl?.slice(0, 200),
+          audioDuration: episode.durationSeconds,
+          podcastTitle: podcast?.title,
+        });
 
         let transcript: string | null = null;
         let sttUsage: AiUsage | null = null;
@@ -176,7 +184,8 @@ export async function handleTranscription(
           const resolved = await resolveStageModel(prisma, "stt");
           const providerImpl = getProviderImpl(resolved.provider);
           const providerModelId = resolved.providerModelId;
-          await writeEvent(prisma, step.id, "INFO", `Transcribing via ${providerImpl.name} (model: ${providerModelId})`);
+          sttProvider = resolved.provider;
+          sttModel = providerModelId;
 
           // Fetch audio
           const audioResponse = await fetch(episode.audioUrl);
@@ -188,9 +197,19 @@ export async function handleTranscription(
             throw new Error(`Audio URL returned non-audio content (${finalContentType}, ${audioResponse.status}). The episode audio may be unavailable.`);
           }
           const audioBuffer = await audioResponse.arrayBuffer();
+          audioContentType = audioResponse.headers.get("content-type") || undefined;
+          audioSizeBytes = audioBuffer.byteLength;
           if (audioBuffer.byteLength < 10_000) {
             throw new Error(`Audio file too small (${audioBuffer.byteLength} bytes) — likely an error page, not audio`);
           }
+
+          await writeEvent(prisma, step.id, "INFO", `Transcribing via ${providerImpl.name} (model: ${providerModelId})`, {
+            audioSizeBytes,
+            audioContentType,
+            audioContentLength: audioResponse.headers.get("content-length"),
+            provider: resolved.provider,
+            model: providerModelId,
+          });
 
           // Store source audio for debugging (idempotent — preserve first-seen)
           const sourceAudioKey = wpKey({ type: "SOURCE_AUDIO", episodeId });
@@ -313,7 +332,14 @@ export async function handleTranscription(
 
         // Write error event if step exists
         if (stepId) {
-          await writeEvent(prisma, stepId, "ERROR", `Transcription failed: ${errorMessage}`);
+          await writeEvent(prisma, stepId, "ERROR", `Transcription failed: ${errorMessage.slice(0, 2048)}`, {
+            provider: sttProvider,
+            model: sttModel,
+            audioSizeBytes,
+            audioContentType,
+            httpStatus: (err as any)?.status || (err as any)?.statusCode,
+            errorType: err?.constructor?.name,
+          });
         }
 
         // Upsert distillation as FAILED
