@@ -546,6 +546,31 @@ export interface BriefingRequest {
 
 export type BriefingRequestStatus = "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED";
 
+export interface DeletePreviewRelatedRequest {
+  id: string;
+  status: BriefingRequestStatus;
+  createdAt: string;
+  userName: string;
+  episodeTitle: string | null;
+  podcastTitle: string | null;
+}
+
+export interface DeletePreviewImpact {
+  requestCount: number;
+  jobCount: number;
+  feedItemCount: number;
+  briefingCount: number;
+  workProductCount: number;
+  clipCount: number;
+  r2ObjectCount: number;
+}
+
+export interface DeletePreview {
+  subjectRequest: { id: string; status: BriefingRequestStatus; createdAt: string };
+  relatedRequests: DeletePreviewRelatedRequest[];
+  impactSummary: DeletePreviewImpact;
+}
+
 export interface JobProgress {
   jobId: string;
   episodeId: string;

@@ -2,7 +2,8 @@ import { Hono } from "hono";
 import { getAuth } from "../../middleware/auth";
 import type { Env } from "../../types";
 import type { BriefingRequestItem } from "../../../src/types/admin";
-import { parsePagination, paginatedResponse } from "../../lib/admin-helpers";
+import { parsePagination, paginatedResponse, getCurrentUser } from "../../lib/admin-helpers";
+import { writeAuditLog } from "../../lib/audit-log";
 
 const requestsRoutes = new Hono<{ Bindings: Env }>();
 
@@ -318,6 +319,248 @@ requestsRoutes.post("/test-briefing", async (c) => {
 
   await c.env.ORCHESTRATOR_QUEUE.send({ requestId: request.id, action: "evaluate" });
   return c.json({ data: request }, 201);
+});
+
+// ── Delete helpers ──
+
+/**
+ * Walk the reference graph from a BriefingRequest to find all related entities.
+ * Returns the full set of request IDs to delete and the orphaned entities to GC.
+ */
+async function computeDeleteImpact(prisma: any, subjectId: string) {
+  // 1. Find all WorkProduct IDs referenced by the subject's steps
+  const subjectWpLinks = await prisma.pipelineStep.findMany({
+    where: { job: { requestId: subjectId }, workProductId: { not: null } },
+    select: { workProductId: true },
+  });
+  const wpIds = [...new Set<string>(subjectWpLinks.map((s: any) => s.workProductId as string))];
+
+  // 2. Find all OTHER BriefingRequests whose steps reference those same WorkProducts
+  let relatedRequestIds: string[] = [];
+  if (wpIds.length > 0) {
+    const relatedSteps = await prisma.pipelineStep.findMany({
+      where: { workProductId: { in: wpIds } },
+      select: { job: { select: { requestId: true } } },
+    });
+    relatedRequestIds = [...new Set<string>(relatedSteps.map((s: any) => s.job.requestId as string))];
+  }
+  // Always include the subject
+  const allRequestIds = [...new Set([subjectId, ...relatedRequestIds])];
+
+  // 3. Load request details for the modal
+  const requests = await prisma.briefingRequest.findMany({
+    where: { id: { in: allRequestIds } },
+    include: {
+      user: { select: { name: true, email: true } },
+      jobs: {
+        select: {
+          id: true,
+          episode: { select: { title: true, podcast: { select: { title: true } } } },
+          steps: { select: { id: true } },
+        },
+      },
+    },
+  });
+
+  // 4. Count jobs and steps that will cascade-delete
+  const jobCount = requests.reduce((n: number, r: any) => n + r.jobs.length, 0);
+  const stepIds: string[] = requests.flatMap((r: any) => r.jobs.flatMap((j: any) => j.steps.map((s: any) => s.id)));
+
+  // 5. Find FeedItems referencing any of these requests
+  const feedItems = await prisma.feedItem.findMany({
+    where: { requestId: { in: allRequestIds } },
+    select: { id: true, briefingId: true },
+  });
+
+  // 6. Find Briefings that would be orphaned (no FeedItems left after deletion)
+  const briefingIds = [...new Set(feedItems.map((f: any) => f.briefingId).filter(Boolean))] as string[];
+  let orphanedBriefingIds: string[] = [];
+  let orphanedClipIds: string[] = [];
+  const clipR2Keys: string[] = [];
+
+  if (briefingIds.length > 0) {
+    const feedItemIds = feedItems.map((f: any) => f.id);
+    // For each briefing, check if ALL its feed items are in our delete set
+    for (const bid of briefingIds) {
+      const remaining = await prisma.feedItem.count({
+        where: { briefingId: bid, id: { notIn: feedItemIds } },
+      });
+      if (remaining === 0) orphanedBriefingIds.push(bid);
+    }
+
+    // 7. Find Clips that would be orphaned (no Briefings left)
+    if (orphanedBriefingIds.length > 0) {
+      const briefings = await prisma.briefing.findMany({
+        where: { id: { in: orphanedBriefingIds } },
+        select: { clipId: true },
+      });
+      const clipIds = [...new Set<string>(briefings.map((b: any) => b.clipId as string))];
+      for (const cid of clipIds) {
+        const remaining = await prisma.briefing.count({
+          where: { clipId: cid, id: { notIn: orphanedBriefingIds } },
+        });
+        if (remaining === 0) {
+          orphanedClipIds.push(cid);
+          const clip = await prisma.clip.findUnique({ where: { id: cid }, select: { audioKey: true } });
+          if (clip?.audioKey) clipR2Keys.push(clip.audioKey);
+        }
+      }
+    }
+  }
+
+  // 8. Find WorkProducts that would be orphaned (no PipelineSteps left)
+  let orphanedWpIds: string[] = [];
+  const wpR2Keys: string[] = [];
+  if (wpIds.length > 0) {
+    for (const wpId of wpIds) {
+      const remaining = await prisma.pipelineStep.count({
+        where: { workProductId: wpId, id: { notIn: stepIds } },
+      });
+      if (remaining === 0) {
+        orphanedWpIds.push(wpId);
+        const wp = await prisma.workProduct.findUnique({ where: { id: wpId }, select: { r2Key: true } });
+        if (wp?.r2Key) wpR2Keys.push(wp.r2Key);
+      }
+    }
+  }
+
+  return {
+    allRequestIds,
+    requests,
+    jobCount,
+    feedItems,
+    orphanedBriefingIds,
+    orphanedClipIds,
+    clipR2Keys,
+    orphanedWpIds,
+    wpR2Keys,
+  };
+}
+
+// GET /:id/delete-preview — Impact analysis before deletion
+requestsRoutes.get("/:id/delete-preview", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const subjectId = c.req.param("id");
+
+  const subject = await prisma.briefingRequest.findUnique({ where: { id: subjectId } });
+  if (!subject) return c.json({ error: "Request not found" }, 404);
+
+  const impact = await computeDeleteImpact(prisma, subjectId);
+
+  return c.json({
+    data: {
+      subjectRequest: {
+        id: subject.id,
+        status: subject.status,
+        createdAt: subject.createdAt.toISOString(),
+      },
+      relatedRequests: impact.requests
+        .filter((r: any) => r.id !== subjectId)
+        .map((r: any) => ({
+          id: r.id,
+          status: r.status,
+          createdAt: r.createdAt.toISOString(),
+          userName: r.user?.name ?? r.user?.email ?? "Unknown",
+          episodeTitle: r.jobs?.[0]?.episode?.title ?? null,
+          podcastTitle: r.jobs?.[0]?.episode?.podcast?.title ?? null,
+        })),
+      impactSummary: {
+        requestCount: impact.allRequestIds.length,
+        jobCount: impact.jobCount,
+        feedItemCount: impact.feedItems.length,
+        briefingCount: impact.orphanedBriefingIds.length,
+        workProductCount: impact.orphanedWpIds.length,
+        clipCount: impact.orphanedClipIds.length,
+        r2ObjectCount: impact.wpR2Keys.length + impact.clipR2Keys.length,
+      },
+    },
+  });
+});
+
+// DELETE /:id — Delete request + cascade + garbage-collect orphans
+requestsRoutes.delete("/:id", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const subjectId = c.req.param("id");
+
+  const subject = await prisma.briefingRequest.findUnique({ where: { id: subjectId } });
+  if (!subject) return c.json({ error: "Request not found" }, 404);
+
+  const impact = await computeDeleteImpact(prisma, subjectId);
+
+  // Execute deletions in a transaction
+  await prisma.$transaction(async (tx: any) => {
+    // 1. Delete FeedItems referencing these requests
+    if (impact.feedItems.length > 0) {
+      await tx.feedItem.deleteMany({
+        where: { id: { in: impact.feedItems.map((f: any) => f.id) } },
+      });
+    }
+
+    // 2. Delete all BriefingRequests (cascade: Jobs → Steps → Events)
+    await tx.briefingRequest.deleteMany({
+      where: { id: { in: impact.allRequestIds } },
+    });
+
+    // 3. Delete orphaned Briefings
+    if (impact.orphanedBriefingIds.length > 0) {
+      await tx.briefing.deleteMany({
+        where: { id: { in: impact.orphanedBriefingIds } },
+      });
+    }
+
+    // 4. Delete orphaned Clips
+    if (impact.orphanedClipIds.length > 0) {
+      await tx.clip.deleteMany({
+        where: { id: { in: impact.orphanedClipIds } },
+      });
+    }
+
+    // 5. Delete orphaned WorkProducts
+    if (impact.orphanedWpIds.length > 0) {
+      await tx.workProduct.deleteMany({
+        where: { id: { in: impact.orphanedWpIds } },
+      });
+    }
+  });
+
+  // 6. Delete R2 objects (outside transaction — best effort)
+  const r2Keys = [...impact.wpR2Keys, ...impact.clipR2Keys];
+  if (r2Keys.length > 0) {
+    await Promise.allSettled(r2Keys.map((key) => c.env.R2.delete(key)));
+  }
+
+  // 7. Audit log
+  const user = await getCurrentUser(c, prisma).catch(() => null);
+  await writeAuditLog(prisma, {
+    actorId: user?.id ?? "unknown",
+    actorEmail: user?.email ?? undefined,
+    action: "delete_briefing_request",
+    entityType: "BriefingRequest",
+    entityId: subjectId,
+    metadata: {
+      deletedRequestIds: impact.allRequestIds,
+      deletedJobCount: impact.jobCount,
+      deletedFeedItemCount: impact.feedItems.length,
+      deletedBriefingCount: impact.orphanedBriefingIds.length,
+      deletedClipCount: impact.orphanedClipIds.length,
+      deletedWorkProductCount: impact.orphanedWpIds.length,
+      deletedR2ObjectCount: r2Keys.length,
+    },
+  });
+
+  return c.json({
+    data: {
+      deleted: {
+        requests: impact.allRequestIds.length,
+        jobs: impact.jobCount,
+        feedItems: impact.feedItems.length,
+        briefings: impact.orphanedBriefingIds.length,
+        clips: impact.orphanedClipIds.length,
+        workProducts: impact.orphanedWpIds.length,
+        r2Objects: r2Keys.length,
+      },
+    },
+  });
 });
 
 export { requestsRoutes };

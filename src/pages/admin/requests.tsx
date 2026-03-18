@@ -24,6 +24,7 @@ import {
   List,
   Eye,
   EyeOff,
+  Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -42,6 +43,7 @@ import {
 import { useAuth } from "@clerk/clerk-react";
 import { useAdminFetch } from "@/lib/admin-api";
 import { getApiBase } from "@/lib/api-base";
+import { DeleteRequestDialog } from "@/components/admin/delete-request-dialog";
 import type {
   BriefingRequest,
   BriefingRequestItem,
@@ -828,6 +830,7 @@ function RequestRow({
   request,
   expanded,
   onToggle,
+  onDelete,
   detail,
   detailLoading,
   highlightJobId,
@@ -838,6 +841,7 @@ function RequestRow({
   request: BriefingRequest;
   expanded: boolean;
   onToggle: () => void;
+  onDelete: () => void;
   detail: BriefingRequest | null;
   detailLoading: boolean;
   highlightJobId?: string | null;
@@ -849,9 +853,9 @@ function RequestRow({
 
   return (
     <div className="border-b border-white/5 last:border-b-0">
-      <button
+      <div
         onClick={onToggle}
-        className="w-full grid grid-cols-[24px_100px_1fr_80px_60px_80px_80px_100px] gap-3 items-center px-3 py-3 text-left hover:bg-white/[0.02] transition-colors"
+        className="w-full grid grid-cols-[24px_100px_1fr_80px_60px_80px_80px_100px_32px] gap-3 items-center px-3 py-3 text-left hover:bg-white/[0.02] transition-colors cursor-pointer"
       >
         <div className="flex items-center">
           {expanded ? (
@@ -893,7 +897,14 @@ function RequestRow({
         <div className="text-[10px] text-[#9CA3AF] font-mono tabular-nums">
           {relativeTime(request.createdAt)}
         </div>
-      </button>
+        <button
+          onClick={(e) => { e.stopPropagation(); onDelete(); }}
+          className="flex items-center justify-center h-6 w-6 rounded hover:bg-[#EF4444]/15 text-[#9CA3AF] hover:text-[#EF4444] transition-colors"
+          title="Delete request"
+        >
+          <Trash2 className="h-3 w-3" />
+        </button>
+      </div>
 
       {expanded && (
         <div className="px-3 pb-3 pl-10 bg-white/[0.01]">
@@ -1345,6 +1356,7 @@ export default function Requests() {
   const [detailCache, setDetailCache] = useState<Record<string, BriefingRequest>>({});
   const [detailLoading, setDetailLoading] = useState(false);
   const [testDialogOpen, setTestDialogOpen] = useState(false);
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
 
   // Global event display toggles (apply to all EventTimeline instances)
   const [globalShowDebug, setGlobalShowDebug] = useState(false);
@@ -1523,7 +1535,7 @@ export default function Requests() {
       {/* Table */}
       <div className="flex-1 bg-[#1A2942] border border-white/5 rounded-lg flex flex-col min-h-0 overflow-hidden">
         {/* Table header */}
-        <div className="grid grid-cols-[24px_100px_1fr_80px_60px_80px_80px_100px] gap-3 px-3 py-2 text-[10px] uppercase tracking-wider text-[#9CA3AF] border-b border-white/5 bg-[#0F1D32]">
+        <div className="grid grid-cols-[24px_100px_1fr_80px_60px_80px_80px_100px_32px] gap-3 px-3 py-2 text-[10px] uppercase tracking-wider text-[#9CA3AF] border-b border-white/5 bg-[#0F1D32]">
           <span />
           <span>Status</span>
           <span>User</span>
@@ -1532,6 +1544,7 @@ export default function Requests() {
           <span>Type</span>
           <span>Cost</span>
           <span>Created</span>
+          <span />
         </div>
 
         {/* Rows */}
@@ -1548,6 +1561,7 @@ export default function Requests() {
                 request={req}
                 expanded={expandedId === req.id}
                 onToggle={() => toggleRow(req.id)}
+                onDelete={() => setDeleteTargetId(req.id)}
                 detail={detailCache[req.id] ?? null}
                 detailLoading={detailLoading && expandedId === req.id && !detailCache[req.id]}
                 highlightJobId={expandedId === req.id ? deepLinkJobId : null}
@@ -1594,6 +1608,13 @@ export default function Requests() {
         open={testDialogOpen}
         onOpenChange={setTestDialogOpen}
         onSuccess={load}
+      />
+
+      {/* Delete Request Dialog */}
+      <DeleteRequestDialog
+        requestId={deleteTargetId}
+        onClose={() => setDeleteTargetId(null)}
+        onDeleted={load}
       />
     </div>
   );
