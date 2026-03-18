@@ -536,15 +536,15 @@ function formatEventDataValue(value: unknown): string {
 function EventTimeline({
   events,
   stepStatus,
+  showDebug,
+  showDetails,
 }: {
   events: PipelineEventSummary[];
   stepStatus: PipelineStepStatus;
+  showDebug: boolean;
+  showDetails: boolean;
 }) {
-  const [showDebug, setShowDebug] = useState(false);
-  const [showDetails, setShowDetails] = useState(false);
   const filtered = showDebug ? events : events.filter((e) => e.level !== "DEBUG");
-  const debugCount = events.filter((e) => e.level === "DEBUG").length;
-  const hasData = events.some((e) => e.data && Object.keys(e.data).length > 0);
 
   const borderColor =
     stepStatus === "FAILED" ? "#EF4444" :
@@ -554,26 +554,6 @@ function EventTimeline({
 
   return (
     <div className="py-1">
-      <div className="flex items-center gap-3 mb-1">
-        {debugCount > 0 && (
-          <button
-            onClick={() => setShowDebug((v) => !v)}
-            className="flex items-center gap-1 text-[9px] text-[#6B7280] hover:text-[#9CA3AF] transition-colors"
-          >
-            {showDebug ? <EyeOff className="h-2.5 w-2.5" /> : <Eye className="h-2.5 w-2.5" />}
-            {showDebug ? "Hide" : "Show"} debug ({debugCount})
-          </button>
-        )}
-        {hasData && (
-          <button
-            onClick={() => setShowDetails((v) => !v)}
-            className="flex items-center gap-1 text-[9px] text-[#6B7280] hover:text-[#9CA3AF] transition-colors"
-          >
-            {showDetails ? <EyeOff className="h-2.5 w-2.5" /> : <Eye className="h-2.5 w-2.5" />}
-            {showDetails ? "Hide" : "Show"} details
-          </button>
-        )}
-      </div>
       <div
         className="border-l-2 pl-3 space-y-0.5"
         style={{ borderColor }}
@@ -610,8 +590,12 @@ function EventTimeline({
 
 function ExpandableStepRow({
   step,
+  showDebug,
+  showDetails,
 }: {
   step: StepProgress;
+  showDebug: boolean;
+  showDetails: boolean;
 }) {
   const events = step.events ?? [];
   const wps = [...(step.workProducts ?? [])].sort((a, b) =>
@@ -714,7 +698,7 @@ function ExpandableStepRow({
               </button>
               {showEvents && (
                 <div className="pl-5">
-                  <EventTimeline events={events} stepStatus={step.status} />
+                  <EventTimeline events={events} stepStatus={step.status} showDebug={showDebug} showDetails={showDetails} />
                 </div>
               )}
             </div>
@@ -777,7 +761,7 @@ function RequestCostSummary({ jobs }: { jobs: JobProgress[] }) {
   );
 }
 
-function JobProgressTree({ jobs, highlightJobId, jobRef }: { jobs: JobProgress[]; highlightJobId?: string | null; jobRef?: React.RefObject<HTMLDivElement | null> }) {
+function JobProgressTree({ jobs, highlightJobId, jobRef, showDebug, showDetails }: { jobs: JobProgress[]; highlightJobId?: string | null; jobRef?: React.RefObject<HTMLDivElement | null>; showDebug: boolean; showDetails: boolean }) {
   if (!jobs || jobs.length === 0) {
     return (
       <div className="text-[10px] text-[#9CA3AF] py-2">No job progress data</div>
@@ -819,7 +803,7 @@ function JobProgressTree({ jobs, highlightJobId, jobRef }: { jobs: JobProgress[]
             </div>
           )}
           {job.steps.map((step) => (
-            <ExpandableStepRow key={`${job.jobId}-${step.stage}`} step={step} />
+            <ExpandableStepRow key={`${job.jobId}-${step.stage}`} step={step} showDebug={showDebug} showDetails={showDetails} />
           ))}
         </div>
       ))}
@@ -848,6 +832,8 @@ function RequestRow({
   detailLoading,
   highlightJobId,
   jobRef,
+  showDebug,
+  showDetails,
 }: {
   request: BriefingRequest;
   expanded: boolean;
@@ -856,6 +842,8 @@ function RequestRow({
   detailLoading: boolean;
   highlightJobId?: string | null;
   jobRef?: React.RefObject<HTMLDivElement | null>;
+  showDebug: boolean;
+  showDetails: boolean;
 }) {
   const itemCount = request.items?.length ?? 0;
 
@@ -919,7 +907,7 @@ function RequestRow({
           ) : detail?.jobProgress ? (
             <>
               <RequestCostSummary jobs={detail.jobProgress} />
-              <JobProgressTree jobs={detail.jobProgress} highlightJobId={highlightJobId} jobRef={jobRef} />
+              <JobProgressTree jobs={detail.jobProgress} highlightJobId={highlightJobId} jobRef={jobRef} showDebug={showDebug} showDetails={showDetails} />
             </>
           ) : (
             <div className="text-[10px] text-[#9CA3AF] py-2">
@@ -1358,6 +1346,10 @@ export default function Requests() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [testDialogOpen, setTestDialogOpen] = useState(false);
 
+  // Global event display toggles (apply to all EventTimeline instances)
+  const [globalShowDebug, setGlobalShowDebug] = useState(false);
+  const [globalShowDetails, setGlobalShowDetails] = useState(false);
+
   // Deep-link state
   const deepLinkRequestId = searchParams.get("requestId");
   const deepLinkJobId = searchParams.get("jobId");
@@ -1462,6 +1454,27 @@ export default function Requests() {
             <span className="h-1.5 w-1.5 rounded-full bg-[#10B981] animate-pulse" />
             Live
           </span>
+          <span className="text-[#3F3F46] mx-1">|</span>
+          <button
+            onClick={() => setGlobalShowDebug((v) => !v)}
+            className={cn(
+              "inline-flex items-center gap-1 text-[10px] transition-colors",
+              globalShowDebug ? "text-[#9CA3AF]" : "text-[#9CA3AF]/40 hover:text-[#9CA3AF]/70"
+            )}
+          >
+            <Eye className="h-2.5 w-2.5" />
+            Debug
+          </button>
+          <button
+            onClick={() => setGlobalShowDetails((v) => !v)}
+            className={cn(
+              "inline-flex items-center gap-1 text-[10px] transition-colors",
+              globalShowDetails ? "text-[#9CA3AF]" : "text-[#9CA3AF]/40 hover:text-[#9CA3AF]/70"
+            )}
+          >
+            <Eye className="h-2.5 w-2.5" />
+            Details
+          </button>
         </div>
 
         <div className="flex items-center gap-2">
@@ -1539,6 +1552,8 @@ export default function Requests() {
                 detailLoading={detailLoading && expandedId === req.id && !detailCache[req.id]}
                 highlightJobId={expandedId === req.id ? deepLinkJobId : null}
                 jobRef={expandedId === req.id ? jobScrollRef : undefined}
+                showDebug={globalShowDebug}
+                showDetails={globalShowDetails}
               />
             ))
           )}
