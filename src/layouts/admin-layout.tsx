@@ -25,6 +25,7 @@ import {
   Flag,
   Megaphone,
   Clock,
+  Scale,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
@@ -89,6 +90,7 @@ const sidebarEntries: SidebarEntry[] = [
       { path: "model-registry", label: "Model Registry", icon: Boxes },
       { path: "stage-models", label: "Stage Models", icon: Sparkles },
       { path: "stt-benchmark", label: "STT Benchmark", icon: FlaskConical },
+      { path: "claims-benchmark", label: "Claims Benchmark", icon: Scale },
       { path: "ai-errors", label: "Errors", icon: AlertTriangle },
     ],
   },

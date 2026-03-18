@@ -29,6 +29,7 @@ const PodcastSettings = lazy(() => import("./pages/admin/podcast-settings"));
 const Requests = lazy(() => import("./pages/admin/requests"));
 const Plans = lazy(() => import("./pages/admin/plans"));
 const SttBenchmark = lazy(() => import("./pages/admin/stt-benchmark"));
+const ClaimsBenchmark = lazy(() => import("./pages/admin/claims-benchmark"));
 const ModelRegistry = lazy(() => import("./pages/admin/model-registry"));
 const AdminApiKeys = lazy(() => import("./pages/admin/api-keys"));
 const AdminAuditLog = lazy(() => import("./pages/admin/audit-log"));
@@ -115,6 +116,7 @@ export default function App() {
         <Route path="configuration" element={<Navigate to="pipeline-controls" replace />} />
         <Route path="requests" element={<Suspense fallback={<AdminLoading />}><Requests /></Suspense>} />
         <Route path="stt-benchmark" element={<Suspense fallback={<AdminLoading />}><SttBenchmark /></Suspense>} />
+        <Route path="claims-benchmark" element={<Suspense fallback={<AdminLoading />}><ClaimsBenchmark /></Suspense>} />
         <Route path="model-registry" element={<Suspense fallback={<AdminLoading />}><ModelRegistry /></Suspense>} />
         <Route path="api-keys" element={<Suspense fallback={<AdminLoading />}><AdminApiKeys /></Suspense>} />
         <Route path="audit-log" element={<Suspense fallback={<AdminLoading />}><AdminAuditLog /></Suspense>} />
