@@ -41,6 +41,94 @@ describe("Feed routes", () => {
       expect(data).toHaveProperty("items");
       expect(data).toHaveProperty("total");
     });
+
+    it("passes source filter to where clause", async () => {
+      mockPrisma.feedItem.findMany.mockResolvedValue([]);
+      mockPrisma.feedItem.count.mockResolvedValue(0);
+
+      await app.request("/?source=SUBSCRIPTION");
+
+      expect(mockPrisma.feedItem.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ source: "SUBSCRIPTION" }),
+        })
+      );
+    });
+
+    it("passes source=ON_DEMAND filter to where clause", async () => {
+      mockPrisma.feedItem.findMany.mockResolvedValue([]);
+      mockPrisma.feedItem.count.mockResolvedValue(0);
+
+      await app.request("/?source=ON_DEMAND");
+
+      expect(mockPrisma.feedItem.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ source: "ON_DEMAND" }),
+        })
+      );
+    });
+
+    it("includes narrativeText in clip select", async () => {
+      mockPrisma.feedItem.findMany.mockResolvedValue([]);
+      mockPrisma.feedItem.count.mockResolvedValue(0);
+
+      await app.request("/");
+
+      expect(mockPrisma.feedItem.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          include: expect.objectContaining({
+            briefing: expect.objectContaining({
+              include: expect.objectContaining({
+                clip: expect.objectContaining({
+                  select: expect.objectContaining({ narrativeText: true }),
+                }),
+              }),
+            }),
+          }),
+        })
+      );
+    });
+
+    it("maps narrativeText to previewText in response", async () => {
+      mockPrisma.feedItem.findMany.mockResolvedValue([
+        {
+          id: "fi1",
+          source: "SUBSCRIPTION",
+          status: "READY",
+          listened: false,
+          listenedAt: null,
+          durationTier: 5,
+          createdAt: new Date().toISOString(),
+          errorMessage: null,
+          podcast: { id: "p1", title: "Test", imageUrl: null },
+          episode: {
+            id: "e1",
+            title: "Ep",
+            publishedAt: new Date().toISOString(),
+            durationSeconds: 3600,
+          },
+          briefing: {
+            id: "b1",
+            adAudioUrl: null,
+            clip: {
+              id: "c1",
+              audioKey: "clips/test.mp3",
+              actualSeconds: 180,
+              narrativeText: "This is a test narrative",
+            },
+          },
+        },
+      ]);
+      mockPrisma.feedItem.count.mockResolvedValue(1);
+
+      const res = await app.request("/");
+      expect(res.status).toBe(200);
+      const data: any = await res.json();
+      expect(data.items).toHaveLength(1);
+      expect(data.items[0].briefing.clip.previewText).toBe(
+        "This is a test narrative"
+      );
+    });
   });
 
   describe("GET /:id", () => {

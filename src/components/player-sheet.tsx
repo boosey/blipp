@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Play, Pause, SkipBack, SkipForward, ChevronDown } from "lucide-react";
+import { Play, Pause, SkipBack, SkipForward, ChevronDown, Share2 } from "lucide-react";
+import { toast } from "sonner";
 import {
   Sheet,
   SheetContent,
@@ -7,6 +8,7 @@ import {
   SheetDescription,
 } from "./ui/sheet";
 import { useAudio } from "../contexts/audio-context";
+import { formatDuration } from "../lib/feed-utils";
 
 const RATE_CYCLE = [1, 1.25, 1.5, 2, 0.75] as const;
 
@@ -44,6 +46,26 @@ export function PlayerSheet({
     const next = RATE_CYCLE[(idx + 1) % RATE_CYCLE.length];
     setRate(next);
   }, [playbackRate, setRate]);
+
+  const handleShare = useCallback(async () => {
+    const text = `Check out this briefing from ${currentItem?.podcast.title} on Blipp`;
+    const url = `${window.location.origin}/play/${currentItem?.id}`;
+
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: currentItem?.episode.title, text, url });
+      } catch {
+        // User cancelled or share failed silently
+      }
+    } else {
+      try {
+        await navigator.clipboard.writeText(`${text}\n${url}`);
+        toast("Link copied to clipboard");
+      } catch {
+        // Clipboard failed silently
+      }
+    }
+  }, [currentItem]);
 
   if (!currentItem) return null;
 
@@ -116,8 +138,16 @@ export function PlayerSheet({
                 {currentItem.podcast.title}
               </p>
               <p className="text-xs text-muted-foreground mt-1">
-                {currentItem.durationTier}m briefing
+                {formatDuration(currentItem.briefing?.clip?.actualSeconds ?? null, currentItem.durationTier)} briefing
               </p>
+              {/* Share */}
+              <button
+                onClick={handleShare}
+                className="mt-3 p-2 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                aria-label="Share briefing"
+              >
+                <Share2 className="w-5 h-5" />
+              </button>
             </>
           )}
         </div>

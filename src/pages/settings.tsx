@@ -1,15 +1,37 @@
 import { useEffect, useState } from "react";
-import { Sun, Moon, Monitor } from "lucide-react";
+import { Sun, Moon, Monitor, Download, Trash2, LogOut, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
+import { useClerk } from "@clerk/clerk-react";
 import { useApiFetch } from "../lib/api";
+import { useFetch } from "../lib/use-fetch";
 import { Skeleton } from "../components/ui/skeleton";
 import { PlanComparison, type PlanDetail } from "../components/plan-comparison";
 import { useTheme, type Theme } from "../contexts/theme-context";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "../components/ui/dialog";
 
-interface PlanInfo {
+declare const __APP_VERSION__: string;
+
+interface UserInfo {
   id: string;
-  name: string;
-  slug: string;
+  email: string;
+  name: string | null;
+  imageUrl: string | null;
+  plan: { id: string; name: string; slug: string };
+  isAdmin: boolean;
+}
+
+interface UsageData {
+  briefingsUsed: number;
+  briefingsLimit: number | null;
+  subscriptionsUsed: number;
+  subscriptionsLimit: number | null;
 }
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
@@ -19,20 +41,24 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   return Uint8Array.from(rawData, (char) => char.charCodeAt(0));
 }
 
-/** Settings page for subscription management. */
 export function Settings() {
   const apiFetch = useApiFetch();
-  const [plan, setPlan] = useState<PlanInfo | null>(null);
+  const { signOut } = useClerk();
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushLoading, setPushLoading] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState("");
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [exportLoading, setExportLoading] = useState(false);
 
-  useEffect(() => {
-    apiFetch<{ user: { plan: PlanInfo } }>("/me")
-      .then((r) => setPlan(r.user.plan))
-      .catch(() => toast.error("Failed to load account info"));
-  }, [apiFetch]);
+  const { data: userData, loading: userLoading } = useFetch<{ user: UserInfo }>("/me");
+  const { data: usageData, loading: usageLoading } = useFetch<{ data: UsageData }>("/me/usage");
 
+  const user = userData?.user ?? null;
+  const usage = usageData?.data ?? null;
+
+  // Check push state on mount
   useEffect(() => {
     if ("serviceWorker" in navigator && "PushManager" in window) {
       navigator.serviceWorker.ready.then((reg) => {
@@ -122,46 +148,289 @@ export function Settings() {
     }
   }
 
+  async function handleExport() {
+    setExportLoading(true);
+    try {
+      const data = await apiFetch<Record<string, unknown>>("/me/export");
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "blipp-data-export.json";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success("Data exported successfully");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to export data");
+    } finally {
+      setExportLoading(false);
+    }
+  }
+
+  async function handleDeleteAccount() {
+    if (deleteConfirm !== "DELETE") return;
+    setDeleteLoading(true);
+    try {
+      await apiFetch("/me", {
+        method: "DELETE",
+        body: JSON.stringify({ confirm: "DELETE" }),
+      });
+      toast.success("Account deleted");
+      signOut({ redirectUrl: "/" });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to delete account");
+      setDeleteLoading(false);
+    }
+  }
+
   return (
     <div className="max-w-lg space-y-8">
       <h1 className="text-2xl font-bold">Settings</h1>
 
-      <div className="space-y-4">
+      {/* Account */}
+      <section className="space-y-4">
+        <h2 className="text-lg font-semibold">Account</h2>
+        <div className="bg-card border border-border rounded-xl p-4">
+          {userLoading ? (
+            <div className="flex items-center gap-3">
+              <Skeleton className="w-12 h-12 rounded-full" />
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-3 w-48" />
+              </div>
+            </div>
+          ) : user ? (
+            <div className="flex items-center gap-3">
+              {user.imageUrl ? (
+                <img
+                  src={user.imageUrl}
+                  alt={user.name ?? "Avatar"}
+                  className="w-12 h-12 rounded-full object-cover"
+                />
+              ) : (
+                <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center text-muted-foreground text-lg font-semibold">
+                  {(user.name ?? user.email)?.[0]?.toUpperCase() ?? "?"}
+                </div>
+              )}
+              <div>
+                <p className="font-bold">{user.name ?? "Blipp User"}</p>
+                <p className="text-sm text-muted-foreground">{user.email}</p>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">Failed to load account info</p>
+          )}
+        </div>
+      </section>
+
+      {/* Usage */}
+      <section className="space-y-4">
+        <h2 className="text-lg font-semibold">Usage</h2>
+        <div className="bg-card border border-border rounded-xl p-4 space-y-4">
+          {usageLoading ? (
+            <div className="space-y-3">
+              <Skeleton className="h-4 w-40" />
+              <Skeleton className="h-2 w-full rounded-full" />
+              <Skeleton className="h-4 w-40" />
+              <Skeleton className="h-2 w-full rounded-full" />
+            </div>
+          ) : usage ? (
+            <>
+              <UsageMeter
+                label="Briefings"
+                used={usage.briefingsUsed}
+                limit={usage.briefingsLimit}
+              />
+              <UsageMeter
+                label="Subscriptions"
+                used={usage.subscriptionsUsed}
+                limit={usage.subscriptionsLimit}
+              />
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">Failed to load usage data</p>
+          )}
+        </div>
+      </section>
+
+      {/* Plans */}
+      <section className="space-y-4">
         <h2 className="text-lg font-semibold">Plans</h2>
-        {!plan ? (
+        {!user ? (
           <Skeleton className="h-32 w-full" />
         ) : (
           <PlanComparison
-            currentPlanSlug={plan.slug}
+            currentPlanSlug={user.plan.slug}
             onUpgrade={handleUpgrade}
             onManage={handleManage}
             actionLoading={actionLoading}
           />
         )}
-      </div>
+      </section>
 
       {/* Appearance */}
-      <div className="space-y-4">
+      <section className="space-y-4">
         <h2 className="text-lg font-semibold">Appearance</h2>
         <ThemeSelector />
-      </div>
+      </section>
 
       {/* Push Notifications */}
-      <div className="bg-card border border-border rounded-xl p-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-sm font-medium">Push Notifications</h3>
-            <p className="text-xs text-muted-foreground mt-0.5">Get notified when briefings are ready</p>
+      <section className="space-y-4">
+        <h2 className="text-lg font-semibold">Notifications</h2>
+        <div className="bg-card border border-border rounded-xl p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-medium">Push Notifications</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Get notified when briefings are ready
+              </p>
+            </div>
+            <button
+              onClick={togglePush}
+              disabled={pushLoading}
+              className={`relative w-11 h-6 rounded-full transition-colors ${pushEnabled ? "bg-primary" : "bg-muted"}`}
+            >
+              <span
+                className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full transition-transform ${pushEnabled ? "translate-x-5 bg-primary-foreground" : "bg-muted-foreground"}`}
+              />
+            </button>
           </div>
+        </div>
+      </section>
+
+      {/* Data & Privacy */}
+      <section className="space-y-4">
+        <h2 className="text-lg font-semibold">Data & Privacy</h2>
+        <div className="bg-card border border-border rounded-xl p-4 space-y-3">
           <button
-            onClick={togglePush}
-            disabled={pushLoading}
-            className={`relative w-11 h-6 rounded-full transition-colors ${pushEnabled ? "bg-primary" : "bg-muted"}`}
+            onClick={handleExport}
+            disabled={exportLoading}
+            className="flex items-center gap-2 text-sm text-foreground hover:text-foreground/80 transition-colors disabled:opacity-50"
           >
-            <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full transition-transform ${pushEnabled ? "translate-x-5 bg-primary-foreground" : "bg-muted-foreground"}`} />
+            <Download className="w-4 h-4" />
+            {exportLoading ? "Exporting..." : "Export My Data"}
+          </button>
+          <div className="border-t border-border" />
+          <button
+            onClick={() => setDeleteOpen(true)}
+            className="flex items-center gap-2 text-sm text-red-500 hover:text-red-400 transition-colors"
+          >
+            <Trash2 className="w-4 h-4" />
+            Delete Account
           </button>
         </div>
+
+        <Dialog open={deleteOpen} onOpenChange={(open) => { setDeleteOpen(open); if (!open) setDeleteConfirm(""); }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete Account</DialogTitle>
+              <DialogDescription>
+                This action is permanent and cannot be undone. All your data, briefings,
+                and subscriptions will be permanently deleted.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">
+                Type <span className="font-mono font-bold">DELETE</span> to confirm
+              </label>
+              <input
+                type="text"
+                value={deleteConfirm}
+                onChange={(e) => setDeleteConfirm(e.target.value)}
+                placeholder="DELETE"
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+            <DialogFooter>
+              <button
+                onClick={() => { setDeleteOpen(false); setDeleteConfirm(""); }}
+                className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-muted transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteAccount}
+                disabled={deleteConfirm !== "DELETE" || deleteLoading}
+                className="px-4 py-2 text-sm rounded-lg bg-red-600 text-white hover:bg-red-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {deleteLoading ? "Deleting..." : "Delete My Account"}
+              </button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </section>
+
+      {/* About */}
+      <section className="space-y-4">
+        <h2 className="text-lg font-semibold">About</h2>
+        <div className="bg-card border border-border rounded-xl p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">Version</span>
+            <span className="text-sm font-mono">{__APP_VERSION__}</span>
+          </div>
+          <div className="border-t border-border" />
+          <a
+            href="#"
+            className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ExternalLink className="w-4 h-4" />
+            Terms of Service
+          </a>
+          <a
+            href="#"
+            className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ExternalLink className="w-4 h-4" />
+            Privacy Policy
+          </a>
+        </div>
+      </section>
+
+      {/* Sign Out */}
+      <section>
+        <button
+          onClick={() => signOut({ redirectUrl: "/" })}
+          className="w-full bg-card border border-border rounded-xl p-4 text-red-500 hover:text-red-400 font-medium transition-colors flex items-center justify-center gap-2"
+        >
+          <LogOut className="w-4 h-4" />
+          Sign Out
+        </button>
+      </section>
+    </div>
+  );
+}
+
+function UsageMeter({
+  label,
+  used,
+  limit,
+}: {
+  label: string;
+  used: number;
+  limit: number | null;
+}) {
+  const pct = limit ? Math.min((used / limit) * 100, 100) : 0;
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between text-sm">
+        <span>{label}</span>
+        <span className="text-muted-foreground">
+          {used} / {limit ?? "Unlimited"}
+        </span>
       </div>
+      {limit != null ? (
+        <div className="h-2 w-full rounded-full bg-muted">
+          <div
+            className="h-2 rounded-full bg-primary transition-all"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      ) : (
+        <p className="text-xs text-muted-foreground">Unlimited</p>
+      )}
     </div>
   );
 }

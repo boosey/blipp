@@ -7,6 +7,7 @@ export interface PodcastCardProps {
   author: string;
   description: string;
   imageUrl: string;
+  episodeCount?: number;
 }
 
 export function PodcastCard({
@@ -15,6 +16,7 @@ export function PodcastCard({
   author,
   description,
   imageUrl,
+  episodeCount,
 }: PodcastCardProps) {
   const { open } = usePodcastSheet();
 
@@ -40,6 +42,9 @@ export function PodcastCard({
           <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
             {description}
           </p>
+          {episodeCount !== undefined && (
+            <p className="text-[10px] text-muted-foreground/60 mt-0.5">{episodeCount} episodes</p>
+          )}
         </div>
         <ChevronRight className="w-4 h-4 text-muted-foreground/60 self-center flex-shrink-0" />
       </div>

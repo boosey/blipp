@@ -223,6 +223,7 @@ export function Discover() {
                   author={podcast.author || ""}
                   description={podcast.description || ""}
                   imageUrl={podcast.imageUrl || ""}
+                  episodeCount={podcast.episodeCount}
                 />
               ))}
             </div>
@@ -338,6 +339,7 @@ export function Discover() {
                     author={podcast.author || ""}
                     description={podcast.description || ""}
                     imageUrl={podcast.imageUrl || ""}
+                    episodeCount={podcast.episodeCount}
                   />
                 ))}
               </div>

@@ -1,4 +1,5 @@
 import type { FeedItem } from "../types/feed";
+import { formatDuration } from "../lib/feed-utils";
 import { useAudio } from "../contexts/audio-context";
 
 /** Map raw pipeline error to a short user-facing message. */
@@ -100,15 +101,22 @@ export function FeedItemCard({
             {friendlyError(item.errorMessage)}
           </p>
         ) : (
-          <p className="text-xs text-muted-foreground mt-1">
-            {item.durationTier} min
-            {epDuration && (
-              <>
-                <span className="text-muted-foreground/60 mx-1">·</span>
-                <span className="text-muted-foreground/60">from {epDuration}</span>
-              </>
+          <>
+            <p className="text-xs text-muted-foreground mt-1">
+              {formatDuration(item.briefing?.clip?.actualSeconds, item.durationTier)}
+              {epDuration && (
+                <>
+                  <span className="text-muted-foreground/60 mx-1">·</span>
+                  <span className="text-muted-foreground/60">from {epDuration}</span>
+                </>
+              )}
+            </p>
+            {item.briefing?.clip?.previewText && item.status === "READY" && (
+              <p className="text-xs text-muted-foreground/70 mt-1 line-clamp-2">
+                {item.briefing.clip.previewText}
+              </p>
             )}
-          </p>
+          </>
         )}
       </div>
     </div>

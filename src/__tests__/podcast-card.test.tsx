@@ -60,4 +60,22 @@ describe("PodcastCard", () => {
     );
     expect(screen.getByText("T")).toBeInTheDocument();
   });
+
+  it("renders episode count when provided", () => {
+    render(
+      <MemoryRouter>
+        <PodcastCard {...defaultProps} episodeCount={42} />
+      </MemoryRouter>
+    );
+    expect(screen.getByText("42 episodes")).toBeInTheDocument();
+  });
+
+  it("does not render episode count when not provided", () => {
+    render(
+      <MemoryRouter>
+        <PodcastCard {...defaultProps} />
+      </MemoryRouter>
+    );
+    expect(screen.queryByText(/episodes/)).not.toBeInTheDocument();
+  });
 });

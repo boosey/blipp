@@ -3,50 +3,8 @@ import { useFetch } from "../lib/use-fetch";
 import { useAudio } from "../contexts/audio-context";
 import { EmptyState } from "../components/empty-state";
 import { Skeleton } from "../components/ui/skeleton";
+import { groupByDate, formatDuration } from "../lib/feed-utils";
 import type { FeedItem } from "../types/feed";
-
-function isSameDay(d1: Date, d2: Date) {
-  return (
-    d1.getFullYear() === d2.getFullYear() &&
-    d1.getMonth() === d2.getMonth() &&
-    d1.getDate() === d2.getDate()
-  );
-}
-
-function groupByDate(items: FeedItem[]) {
-  const today = new Date();
-  const yesterday = new Date(today);
-  yesterday.setDate(today.getDate() - 1);
-  const weekAgo = new Date(today);
-  weekAgo.setDate(today.getDate() - 7);
-  const groups = new Map<string, FeedItem[]>();
-
-  for (const item of items) {
-    const date = new Date(item.listenedAt ?? item.createdAt);
-    let label: string;
-    if (isSameDay(date, today)) label = "Today";
-    else if (isSameDay(date, yesterday)) label = "Yesterday";
-    else if (date > weekAgo) label = "This Week";
-    else
-      label = date.toLocaleDateString(undefined, {
-        month: "long",
-        day: "numeric",
-      });
-
-    if (!groups.has(label)) groups.set(label, []);
-    groups.get(label)!.push(item);
-  }
-
-  return Array.from(groups.entries()).map(([label, items]) => ({
-    label,
-    items,
-  }));
-}
-
-function formatMinutes(seconds: number | null | undefined) {
-  if (!seconds) return "0";
-  return Math.round(seconds / 60).toString();
-}
 
 function HistorySkeleton() {
   return (
@@ -97,7 +55,7 @@ export default function History() {
     );
   }
 
-  const groups = groupByDate(items);
+  const groups = groupByDate(items, "listenedAt");
 
   return (
     <div>
@@ -150,7 +108,7 @@ export default function History() {
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <span className="text-[10px] text-muted-foreground">
-                    {formatMinutes(item.briefing?.clip?.actualSeconds)}m
+                    {formatDuration(item.briefing?.clip?.actualSeconds, item.durationTier)}
                   </span>
                   <Play className="w-4 h-4 text-muted-foreground" />
                 </div>

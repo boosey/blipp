@@ -13,6 +13,7 @@ function mapClip(clip: any) {
   return {
     audioUrl: clip.audioKey ? `/api/clips/${clip.audioKey.replace(/^clips\//, "")}` : null,
     actualSeconds: clip.actualSeconds,
+    previewText: clip.narrativeText?.slice(0, 200) ?? null,
   };
 }
 
@@ -37,6 +38,7 @@ feed.get("/", async (c) => {
 
   const status = c.req.query("status");
   const listened = c.req.query("listened");
+  const source = c.req.query("source");
   const limit = Math.min(parseInt(c.req.query("limit") || "30", 10), 100);
   const offset = parseInt(c.req.query("offset") || "0", 10);
 
@@ -47,6 +49,7 @@ feed.get("/", async (c) => {
     episode: { contentStatus: { not: "NOT_DELIVERABLE" } },
   };
   if (status) where.status = status;
+  if (source) where.source = source;
   if (listened !== undefined && listened !== "") {
     where.listened = listened === "true";
   }
@@ -64,7 +67,7 @@ feed.get("/", async (c) => {
         episode: { select: { id: true, title: true, publishedAt: true, durationSeconds: true } },
         briefing: {
           include: {
-            clip: { select: { id: true, audioKey: true, actualSeconds: true } },
+            clip: { select: { id: true, audioKey: true, actualSeconds: true, narrativeText: true } },
           },
         },
       },

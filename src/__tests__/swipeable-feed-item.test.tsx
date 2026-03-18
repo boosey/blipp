@@ -45,7 +45,7 @@ const mockItem: FeedItem = {
   },
   briefing: {
     id: "b1",
-    clip: { audioUrl: "/audio.mp3", actualSeconds: 180 },
+    clip: { audioUrl: "/audio.mp3", actualSeconds: 180, previewText: null },
     adAudioUrl: null,
   },
 };

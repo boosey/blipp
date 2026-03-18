@@ -23,10 +23,13 @@ export interface FeedItem {
     clip: {
       audioUrl: string;
       actualSeconds: number | null;
+      previewText: string | null;
     };
     adAudioUrl: string | null;
   } | null;
 }
+
+export type FeedFilter = "all" | "new" | "subscription" | "on_demand" | "creating";
 
 export interface FeedCounts {
   total: number;
