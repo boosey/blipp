@@ -9,7 +9,8 @@ export type WpKeyParams =
   | { type: "TRANSCRIPT"; episodeId: string }
   | { type: "CLAIMS"; episodeId: string }
   | { type: "NARRATIVE"; episodeId: string; durationTier: number }
-  | { type: "AUDIO_CLIP"; episodeId: string; durationTier: number; voice?: string };
+  | { type: "AUDIO_CLIP"; episodeId: string; durationTier: number; voice?: string }
+  | { type: "SOURCE_AUDIO"; episodeId: string };
 
 /** Builds an R2 key from a work product type and its parameters. */
 export function wpKey(params: WpKeyParams): string {
@@ -22,6 +23,8 @@ export function wpKey(params: WpKeyParams): string {
       return `wp/narrative/${params.episodeId}/${params.durationTier}.txt`;
     case "AUDIO_CLIP":
       return `wp/clip/${params.episodeId}/${params.durationTier}/${params.voice ?? "default"}.mp3`;
+    case "SOURCE_AUDIO":
+      return `wp/source-audio/${params.episodeId}.bin`;
   }
 }
 

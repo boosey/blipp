@@ -92,7 +92,7 @@ requestsRoutes.get("/:id", async (c) => {
 
   // Stage → WorkProduct type mapping (some stages produce multiple types)
   const STAGE_WP_TYPES: Record<string, string[]> = {
-    TRANSCRIPTION: ["TRANSCRIPT"],
+    TRANSCRIPTION: ["TRANSCRIPT", "SOURCE_AUDIO"],
     DISTILLATION: ["CLAIMS"],
     NARRATIVE_GENERATION: ["NARRATIVE"],
     AUDIO_GENERATION: ["AUDIO_CLIP"],
@@ -221,7 +221,7 @@ requestsRoutes.get("/work-product/:id/preview", async (c) => {
     return c.json({ data: { id: wp.id, type: wp.type, r2Key: wp.r2Key, content: null, message: "Object not found in R2" } });
   }
 
-  const isAudio = wp.type === "AUDIO_CLIP" || wp.type === "BRIEFING_AUDIO";
+  const isAudio = wp.type === "AUDIO_CLIP" || wp.type === "BRIEFING_AUDIO" || wp.type === "SOURCE_AUDIO";
   if (isAudio) {
     // For audio, return metadata only (no inline content)
     return c.json({
@@ -265,7 +265,7 @@ requestsRoutes.get("/work-product/:id/audio", async (c) => {
   });
   if (!wp) return c.json({ error: "Work product not found" }, 404);
 
-  const isAudio = wp.type === "AUDIO_CLIP" || wp.type === "BRIEFING_AUDIO";
+  const isAudio = wp.type === "AUDIO_CLIP" || wp.type === "BRIEFING_AUDIO" || wp.type === "SOURCE_AUDIO";
   if (!isAudio) return c.json({ error: "Not an audio work product" }, 400);
 
   const obj = await c.env.R2.get(wp.r2Key);
