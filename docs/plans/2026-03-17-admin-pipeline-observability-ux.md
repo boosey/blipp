@@ -19,10 +19,11 @@ When transcription fails via STT (tier 3), the downloaded audio is discarded. Th
 
 **New work product type:** `SOURCE_AUDIO`
 
-**R2 key pattern:** `wp/source-audio/{episodeId}.{ext}`
+**R2 key pattern:** `wp/source-audio/{episodeId}.bin` (extension-agnostic; actual content-type stored in WorkProduct metadata)
 
 **Backend changes (`worker/queues/transcription.ts`):**
 - After downloading audio for STT (tier 3 only), store to R2 as `SOURCE_AUDIO` work product before passing to STT provider
+- **Idempotency guard:** `R2.head()` check before put — only store if key doesn't already exist, preserving the first-seen audio for forensics on retries
 - Upsert WorkProduct index row with metadata: content-type, content-length, source URL
 - Log source metadata via `writeEvent`
 
@@ -37,9 +38,9 @@ When transcription fails via STT (tier 3), the downloaded audio is discarded. Th
 - Sort order: `SOURCE_AUDIO` renders first in the work products list
 - Uses same audio player as `AUDIO_CLIP`
 
-**API:**
-- Existing `/requests/work-product/:id/audio` endpoint handles streaming — no changes needed
-- Existing work product matching in `GET /requests/:id` needs `SOURCE_AUDIO` mapped to `TRANSCRIPTION` stage
+**API (`worker/routes/admin/requests.ts`):**
+- Add `SOURCE_AUDIO` to `isAudio` guard in both the `/work-product/:id/audio` streaming endpoint and the `/work-product/:id/preview` endpoint (currently only allows `AUDIO_CLIP || BRIEFING_AUDIO`)
+- Add `SOURCE_AUDIO` to the `STAGE_WP_TYPES` map under the `TRANSCRIPTION` entry so the work product surfaces in the request detail response
 
 ---
 
@@ -53,24 +54,26 @@ Pipeline events are too coarse for debugging failures. A "Transcription failed" 
 
 No UI changes. Enrich `writeEvent` calls across all 5 stages with diagnostic context.
 
+**Data size cap:** All `data` payloads passed to `writeEvent` are capped at 4KB to prevent oversized DB rows, consistent with the 2KB cap on `AiServiceError.rawResponse`. Truncate long values (error bodies, URLs) before writing.
+
 **Transcription (`worker/queues/transcription.ts`):**
 - Before STT call: audio file size, duration (if known), content-type, source URL (truncated), provider + model
 - On audio download: HTTP status, content-type, content-length headers
-- On STT failure: full error body/message, HTTP status code, audio metadata, retry attempt number
+- On STT failure: error body/message (truncated to 2KB), HTTP status code, audio metadata, retry attempt number
 - On transcript source lookup: which sources tried, why each failed/succeeded
 
 **Distillation (`worker/queues/distillation.ts`):**
 - Before LLM call: transcript size (bytes), model selected, prompt token estimate
-- On LLM failure: full error response, model, token counts at failure point
+- On LLM failure: error response (truncated), model, token counts at failure point
 - On claim extraction: claim count, any parsing issues
 
 **Narrative Generation (`worker/queues/narrative-generation.ts`):**
 - Before LLM call: claim count, duration tier, model, target word count
-- On failure: full error body, partial output length if any
+- On failure: error body (truncated), partial output length if any
 
 **Audio Generation (`worker/queues/audio-generation.ts`):**
 - Before TTS call: narrative word count, voice selection, provider + model
-- On failure: full error body, provider response details
+- On failure: error body (truncated), provider response details
 
 **Briefing Assembly (`worker/queues/briefing-assembly.ts`):**
 - Clip resolution: whether clipId came from job record or required DB fallback lookup
@@ -95,12 +98,14 @@ When investigating a job in Pipeline Monitor or Command Center, there's no way t
 - Navigate to `/admin/requests?requestId={requestId}&jobId={jobId}`
 
 **Command Center (`src/pages/admin/command-center.tsx`):**
-- Active Issues: `onDoubleClick` on issue card → navigate using issue's `entityId` (resolves to requestId/jobId)
-- Pipeline Pulse events: `onDoubleClick` on event row → navigate using event's job/request context
+- Active Issues: `onDoubleClick` on issue card → navigate to request/job. The `ActiveIssue` shape currently carries `entityType` + `entityId` but not always a `requestId`/`jobId`. Two options:
+  - **Backend enrichment (preferred):** Add optional `jobId` and `requestId` fields to the issues API response, populated when the issue source is a PipelineJob. The CC issues endpoint already queries PipelineJobs to build the issue list, so these IDs are available.
+  - **Fallback for non-job issues:** If `entityType` is not a job (e.g., episode-level issue), navigate to `/admin/requests?search={entityId}` as a best-effort lookup.
+- Pipeline Pulse events: `onDoubleClick` on event row → navigate using the event's job/request context (these already carry jobId/requestId in their data payload)
 
 **Requests page — receiving end (`src/pages/admin/requests.tsx`):**
 - On mount, read `requestId` and `jobId` from URL search params
-- Auto-select the matching request in the list
+- **Deep-link loading:** When `requestId` is present, fire a separate `GET /api/admin/requests/:id` call to load that specific request, injecting it at the top of the list regardless of pagination. This avoids the problem where the target request is on a different page.
 - Auto-expand the matching job accordion
 - Scroll the job into view
 
@@ -121,20 +126,25 @@ Failed jobs persist in Pipeline Monitor stage columns and CC Active Issues indef
 **Schema (`prisma/schema.prisma`):**
 - Add `dismissedAt DateTime?` to `PipelineJob` model
 
-**API (`worker/routes/admin/pipeline.ts` or new file):**
-- `PATCH /api/admin/pipeline/jobs/:id/dismiss` — sets `dismissedAt = now()` on the job
-- `PATCH /api/admin/pipeline/jobs/dismiss-all` — sets `dismissedAt = now()` on all FAILED jobs where `dismissedAt IS NULL`
+**API (`worker/routes/admin/pipeline.ts`):**
+- `PATCH /api/admin/pipeline/jobs/:id/dismiss` — sets `dismissedAt = now()` on the job. Returns `{ data: { id, status, dismissedAt } }`.
+- `PATCH /api/admin/pipeline/jobs/bulk-dismiss` — sets `dismissedAt = now()` on all FAILED jobs where `dismissedAt IS NULL`. Accepts optional `stage` query param to scope by current stage. Returns `{ data: { count } }`.
+- **Route registration order:** `bulk-dismiss` registered before `:id/dismiss` to avoid Hono param matching conflict.
+
+**Retry interaction:**
+- The existing `POST /jobs/:id/retry` endpoint must also clear `dismissedAt` (set to `null`) so retried jobs reappear in Pipeline/CC views.
 
 **Pipeline page (`src/pages/admin/pipeline.tsx`):**
 - Add dismiss button (X icon) on failed job cards in stage columns
 - Add "Dismiss All" button in the Dead Letter Queue section header
 - Filter: pipeline queries add `dismissedAt: null` to WHERE clause
-- Optimistic UI: job disappears immediately on dismiss
+- Optimistic UI: job disappears immediately on dismiss; **on API error, re-insert job card and show error toast**
 
 **Command Center (`src/pages/admin/command-center.tsx`):**
 - Existing Active Issues dismiss button → also calls the new dismiss API to set `dismissedAt` on the underlying PipelineJob
 - Add "Dismiss All" button to Active Issues section header
 - Dismissing from either Monitor or CC dismisses from both (same `dismissedAt` field)
+- **On API error, restore dismissed issue and show error toast**
 
 **Requests page:**
 - No change. Shows all jobs regardless of `dismissedAt` — complete history preserved.
@@ -158,11 +168,11 @@ Failed jobs persist in Pipeline Monitor stage columns and CC Active Issues indef
 - `worker/queues/narrative-generation.ts` — enriched events
 - `worker/queues/audio-generation.ts` — enriched events
 - `worker/queues/briefing-assembly.ts` — enriched events
-- `worker/routes/admin/requests.ts` — SOURCE_AUDIO stage mapping
-- `worker/routes/admin/pipeline.ts` — dismiss endpoints + dismissedAt filter
+- `worker/routes/admin/requests.ts` — SOURCE_AUDIO stage mapping + isAudio guard update
+- `worker/routes/admin/pipeline.ts` — dismiss/bulk-dismiss endpoints + dismissedAt filter + retry clears dismissedAt
 
 ### Frontend
-- `src/types/admin.ts` — `SOURCE_AUDIO` type, `dismissedAt` field
-- `src/pages/admin/requests.tsx` — SOURCE_AUDIO rendering + URL param auto-select
+- `src/types/admin.ts` — `SOURCE_AUDIO` type, `dismissedAt` field, ActiveIssue jobId/requestId fields
+- `src/pages/admin/requests.tsx` — SOURCE_AUDIO rendering + URL param deep-link loading
 - `src/pages/admin/pipeline.tsx` — dismiss buttons + double-click handler
 - `src/pages/admin/command-center.tsx` — dismiss integration + double-click handler
