@@ -66,7 +66,7 @@ function MobileLayoutInner() {
 
       {/* Scrollable content area */}
       <main
-        className={`flex-1 overflow-y-auto px-4 py-4 ${hasMiniPlayer ? "pb-36" : "pb-20"}`}
+        className={`flex-1 min-w-0 overflow-y-auto px-4 py-4 ${hasMiniPlayer ? "pb-36" : "pb-20"}`}
         style={{ viewTransitionName: "page" }}
       >
         <Outlet />

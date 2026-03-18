@@ -233,7 +233,7 @@ export function Discover() {
         /* Browse mode */
         <>
           {/* Category pills */}
-          <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide mt-4 snap-x-mandatory">
+          <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide mt-4 snap-x snap-mandatory">
             {categoryNames.map((cat) => (
               <button
                 key={cat}
@@ -253,7 +253,7 @@ export function Discover() {
           {trendingPodcasts.length > 0 && (
             <section className="mt-6">
               <h2 className="text-lg font-semibold mb-3">Trending Now</h2>
-              <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide snap-x-mandatory">
+              <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide snap-x snap-mandatory">
                 {trendingPodcasts.map((podcast) => (
                   <button
                     key={podcast.id}
@@ -288,7 +288,7 @@ export function Discover() {
               <h2 className="text-lg font-semibold mb-3">
                 {recsData.source === "popular" ? "Popular" : "For You"}
               </h2>
-              <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide snap-x-mandatory">
+              <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide snap-x snap-mandatory">
                 {recsData.recommendations.slice(0, 8).map((rec) => (
                   <button
                     key={rec.podcast.id}
