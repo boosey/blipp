@@ -80,11 +80,26 @@ const OpenAIProvider: SttProvider = {
       return openaiSingleRequest(audioBuffer, filename, env, providerModelId, start);
     }
 
+    const totalBytes = audioBuffer.byteLength;
+    const totalChunks = Math.ceil(totalBytes / WHISPER_CHUNK_SIZE);
     const chunks: string[] = [];
-    for (let offset = 0; offset < audioBuffer.byteLength; offset += WHISPER_CHUNK_SIZE) {
-      const slice = audioBuffer.slice(offset, Math.min(offset + WHISPER_CHUNK_SIZE, audioBuffer.byteLength));
-      const result = await openaiSingleRequest(slice, "chunk.mp3", env, providerModelId, start);
-      if (result.transcript) chunks.push(result.transcript);
+    for (let i = 0; i < totalChunks; i++) {
+      const offset = i * WHISPER_CHUNK_SIZE;
+      const slice = audioBuffer.slice(offset, Math.min(offset + WHISPER_CHUNK_SIZE, totalBytes));
+      try {
+        const result = await openaiSingleRequest(slice, `chunk-${i + 1}.mp3`, env, providerModelId, start);
+        if (result.transcript) chunks.push(result.transcript);
+      } catch (chunkErr) {
+        const msg = chunkErr instanceof Error ? chunkErr.message : String(chunkErr);
+        throw new AiProviderError({
+          message: `OpenAI STT chunk ${i + 1}/${totalChunks} failed (bytes ${offset}-${Math.min(offset + WHISPER_CHUNK_SIZE, totalBytes) - 1}): ${msg.slice(0, 500)}`,
+          provider: "openai",
+          model: providerModelId,
+          httpStatus: (chunkErr as any)?.httpStatus,
+          rawResponse: (chunkErr as any)?.rawResponse,
+          requestDurationMs: Date.now() - start,
+        });
+      }
     }
 
     return { transcript: chunks.join(" "), costDollars: null, latencyMs: Date.now() - start };
@@ -549,10 +564,13 @@ const CloudflareProvider: SttProvider = {
 
     // Whisper models — base64 input, chunked at 5MB
     const CF_CHUNK_SIZE = 5 * 1024 * 1024;
+    const totalBytes = audioBuffer.byteLength;
+    const totalChunks = Math.ceil(totalBytes / CF_CHUNK_SIZE);
     const chunks: string[] = [];
 
-    for (let offset = 0; offset < audioBuffer.byteLength; offset += CF_CHUNK_SIZE) {
-      const slice = audioBuffer.slice(offset, Math.min(offset + CF_CHUNK_SIZE, audioBuffer.byteLength));
+    for (let chunkIdx = 0; chunkIdx < totalChunks; chunkIdx++) {
+      const offset = chunkIdx * CF_CHUNK_SIZE;
+      const slice = audioBuffer.slice(offset, Math.min(offset + CF_CHUNK_SIZE, totalBytes));
       const bytes = new Uint8Array(slice);
       let binary = "";
       for (let i = 0; i < bytes.length; i++) {
@@ -572,7 +590,7 @@ const CloudflareProvider: SttProvider = {
             result = await env.AI.run(providerModelId as any, { audio: base64 });
           } catch (retryErr: any) {
             throw new AiProviderError({
-              message: `Cloudflare AI STT retry failed: ${retryErr?.message ?? String(retryErr)}`,
+              message: `Cloudflare AI STT chunk ${chunkIdx + 1}/${totalChunks} retry failed (bytes ${offset}-${Math.min(offset + CF_CHUNK_SIZE, totalBytes) - 1}): ${retryErr?.message ?? String(retryErr)}`,
               provider: "cloudflare",
               model: providerModelId,
               requestDurationMs: Date.now() - start,
@@ -581,7 +599,7 @@ const CloudflareProvider: SttProvider = {
           }
         } else {
           throw new AiProviderError({
-            message: `Cloudflare AI STT error: ${msg}`,
+            message: `Cloudflare AI STT chunk ${chunkIdx + 1}/${totalChunks} failed (bytes ${offset}-${Math.min(offset + CF_CHUNK_SIZE, totalBytes) - 1}): ${msg}`,
             provider: "cloudflare",
             model: providerModelId,
             requestDurationMs: Date.now() - start,
