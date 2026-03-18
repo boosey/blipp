@@ -251,7 +251,7 @@ export async function handleDistillation(
         if (step) await writeEvent(prisma, step.id, "ERROR", `Distillation failed: ${errorMessage.slice(0, 2048)}`, {
           model: distillModel,
           provider: distillProvider,
-          httpStatus: (err as any)?.status || (err as any)?.statusCode,
+          httpStatus: (err as any)?.httpStatus || (err as any)?.status || (err as any)?.statusCode,
           errorType: err?.constructor?.name,
         });
 

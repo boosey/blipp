@@ -266,7 +266,7 @@ export async function handleAudioGeneration(
               model: audioModel,
               provider: audioProvider,
               narrativeBytes: narrativeLength,
-              httpStatus: (err as any)?.status || (err as any)?.statusCode,
+              httpStatus: (err as any)?.httpStatus || (err as any)?.status || (err as any)?.statusCode,
               errorType: err?.constructor?.name,
             });
           }

@@ -397,11 +397,14 @@ const GroqProvider: SttProvider = {
       try {
         return await groqUrlRequest(sourceUrl, env, providerModelId, start);
       } catch (urlErr) {
-        // URL-based failed (CDN block, geo-restriction, etc.) — fall back to chunked upload
+        // URL-based failed — fall back to chunked upload
+        const urlErrMsg = urlErr instanceof Error ? urlErr.message : String(urlErr);
+        const urlHttpStatus = (urlErr as any)?.httpStatus;
         console.log(JSON.stringify({
           level: "warn", stage: "transcription", provider: "groq",
           action: "url_transcription_failed_falling_back",
-          error: urlErr instanceof Error ? urlErr.message : String(urlErr),
+          error: urlErrMsg.slice(0, 500),
+          httpStatus: urlHttpStatus,
           ts: new Date().toISOString(),
         }));
       }
@@ -410,16 +413,32 @@ const GroqProvider: SttProvider = {
     // Fallback: chunked file upload
     const audioBuffer = await resolveAudioBuffer(audio);
     const filename = "buffer" in audio ? audio.filename : "audio.mp3";
+    const totalBytes = audioBuffer.byteLength;
 
-    if (audioBuffer.byteLength <= WHISPER_CHUNK_SIZE) {
+    if (totalBytes <= WHISPER_CHUNK_SIZE) {
       return groqSingleRequest(audioBuffer, filename, env, providerModelId, start);
     }
 
+    const totalChunks = Math.ceil(totalBytes / WHISPER_CHUNK_SIZE);
     const chunks: string[] = [];
-    for (let offset = 0; offset < audioBuffer.byteLength; offset += WHISPER_CHUNK_SIZE) {
-      const slice = audioBuffer.slice(offset, Math.min(offset + WHISPER_CHUNK_SIZE, audioBuffer.byteLength));
-      const result = await groqSingleRequest(slice, `chunk.mp3`, env, providerModelId, start);
-      if (result.transcript) chunks.push(result.transcript);
+    for (let i = 0; i < totalChunks; i++) {
+      const offset = i * WHISPER_CHUNK_SIZE;
+      const slice = audioBuffer.slice(offset, Math.min(offset + WHISPER_CHUNK_SIZE, totalBytes));
+      try {
+        const result = await groqSingleRequest(slice, `chunk-${i + 1}.mp3`, env, providerModelId, start);
+        if (result.transcript) chunks.push(result.transcript);
+      } catch (chunkErr) {
+        // Re-throw with chunk context so the handler can log which chunk failed
+        const msg = chunkErr instanceof Error ? chunkErr.message : String(chunkErr);
+        throw new AiProviderError({
+          message: `Groq STT chunk ${i + 1}/${totalChunks} failed (bytes ${offset}-${Math.min(offset + WHISPER_CHUNK_SIZE, totalBytes) - 1}): ${msg.slice(0, 500)}`,
+          provider: "groq",
+          model: providerModelId,
+          httpStatus: (chunkErr as any)?.httpStatus,
+          rawResponse: (chunkErr as any)?.rawResponse,
+          requestDurationMs: Date.now() - start,
+        });
+      }
     }
 
     return { transcript: chunks.join(" "), costDollars: null, latencyMs: Date.now() - start };
