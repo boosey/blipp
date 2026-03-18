@@ -25,6 +25,7 @@
 ~~- new transcripts providers~~
 ~~- english only~~
 ~~- prefetch audio or transcript of all episodes~~ 
+~~- version display~~
 - youtube episodes
 
 ## Fixes

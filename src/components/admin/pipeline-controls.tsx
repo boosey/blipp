@@ -1,4 +1,5 @@
 import { Zap, Play, Loader2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import type { PipelineConfig } from "@/types/admin";
@@ -29,6 +30,8 @@ interface PipelineControlsProps {
   variant: "full" | "master-only" | "stage-only";
   /** Required when variant is "stage-only" */
   stage?: string;
+  /** Extra classes for outer wrapper (e.g. h-full for grid layouts) */
+  className?: string;
 }
 
 /**
@@ -72,10 +75,14 @@ function MasterPipelineToggle({
 
 /** Full variant — master toggle + 5 stage toggles + Run Now. Used on Command Center. */
 function FullControls({
-  config, saving, triggering, onTogglePipeline, onToggleStage, onTriggerFeedRefresh,
+  config, saving, triggering, onTogglePipeline, onToggleStage, onTriggerFeedRefresh, className,
 }: Omit<PipelineControlsProps, "variant" | "stage">) {
   return (
-    <div className="rounded-lg bg-[#1A2942] border border-white/5 p-4 space-y-3">
+    <div className={cn("rounded-lg bg-[#1A2942] border border-white/5 p-4 space-y-3", className)}>
+      <div className="widget-drag-handle flex items-center gap-2 -mt-1 mb-1">
+        <Zap className="h-4 w-4 text-[#F59E0B]" />
+        <span className="text-sm font-semibold">Pipeline Controls</span>
+      </div>
       <MasterPipelineToggle config={config} saving={saving} onTogglePipeline={onTogglePipeline} />
 
       {/* Stage toggles — vertical with names */}

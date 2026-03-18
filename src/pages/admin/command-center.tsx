@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { Responsive, WidthProvider, type Layout, type ResponsiveLayouts } from "react-grid-layout/legacy";
+import "react-grid-layout/css/styles.css";
+import "react-resizable/css/styles.css";
 import {
   Activity,
   AlertTriangle,
@@ -21,6 +24,9 @@ import {
   ChevronRight,
   Info,
   Loader2,
+  Lock,
+  Unlock,
+  RotateCcw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -40,10 +46,40 @@ import type {
   ActiveIssue,
 } from "@/types/admin";
 
+// ── Grid Layout Setup ──
+
+const GridLayout = WidthProvider(Responsive);
+
+const LAYOUT_KEY = "blipp-cc-layout";
+const ROW_H = 50;
+const MARGINS: [number, number] = [12, 12];
+const COLS = { lg: 12, md: 10, sm: 6, xs: 1 };
+const BREAKPOINTS = { lg: 1200, md: 996, sm: 768, xs: 0 };
+
+const DEFAULT_LO: ResponsiveLayouts = {
+  lg: [
+    { i: "system-health",     x: 0, y: 0,  w: 5, h: 5, minW: 3, minH: 3 },
+    { i: "pipeline-pulse",    x: 0, y: 5,  w: 5, h: 8, minW: 3, minH: 4 },
+    { i: "active-issues",     x: 5, y: 0,  w: 4, h: 9, minW: 3, minH: 4 },
+    { i: "recent-activity",   x: 5, y: 9,  w: 4, h: 4, minW: 2, minH: 3 },
+    { i: "feed-refresh",      x: 9, y: 0,  w: 3, h: 3, minW: 2, minH: 2 },
+    { i: "pipeline-controls", x: 9, y: 3,  w: 3, h: 5, minW: 2, minH: 3 },
+    { i: "cost-monitor",      x: 9, y: 8,  w: 3, h: 5, minW: 2, minH: 3 },
+    { i: "quick-stats",       x: 9, y: 13, w: 3, h: 3, minW: 2, minH: 2 },
+  ],
+};
+
+function getSavedLayouts(): ResponsiveLayouts {
+  try {
+    const s = localStorage.getItem(LAYOUT_KEY);
+    if (s) return JSON.parse(s);
+  } catch { /* ignore */ }
+  return DEFAULT_LO;
+}
+
 // ── Helpers ──
 
 const STAGE_NAMES = ["Transcription", "Distillation", "Narrative Gen", "Audio Gen", "Assembly"];
-const STAGE_COLORS = ["#8B5CF6", "#F59E0B", "#10B981", "#06B6D4", "#14B8A6"];
 
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -74,45 +110,35 @@ function statusColor(status: string) {
   }
 }
 
-/** Try to extract a readable message from a parsed JSON object. */
 function extractMessage(obj: unknown): string | null {
   if (!obj || typeof obj !== "object") return null;
   const o = obj as Record<string, unknown>;
-  // Walk common error field names
   for (const key of ["message", "msg", "reason", "detail", "details", "statusText", "description"]) {
     if (typeof o[key] === "string" && (o[key] as string).length > 0) return o[key] as string;
   }
-  // Nested error object
   if (o.error && typeof o.error === "object") return extractMessage(o.error);
   if (typeof o.error === "string" && o.error.length > 0) return o.error;
   return null;
 }
 
-/** Try to find and parse JSON anywhere in a string. */
 function findJson(raw: string): unknown | null {
-  // Direct parse
   try { return JSON.parse(raw); } catch { /* continue */ }
-  // Find first { or [ and try from there
   for (const ch of ["{", "["]) {
     const idx = raw.indexOf(ch);
     if (idx >= 0) {
       try { return JSON.parse(raw.slice(idx)); } catch { /* continue */ }
     }
   }
-  // Double-stringified: "\"{ ... }\""
   if (raw.includes('\\"') || raw.includes("\\{")) {
     try { return JSON.parse(JSON.parse(`"${raw}"`)); } catch { /* continue */ }
   }
   return null;
 }
 
-/** Extract a human-readable summary from an error description that may contain JSON. */
 function summarizeIssue(raw: string): { summary: string; rawJson: string | null } {
   if (!raw || raw === "Unknown error") return { summary: raw, rawJson: null };
-
   const parsed = findJson(raw);
   if (parsed && typeof parsed === "object") {
-    // Try to extract a readable message
     if (Array.isArray(parsed)) {
       if (parsed.length === 0) return { summary: "Empty error array", rawJson: raw };
       const first = parsed[0];
@@ -122,20 +148,15 @@ function summarizeIssue(raw: string): { summary: string; rawJson: string | null 
     }
     const msg = extractMessage(parsed);
     if (msg) return { summary: msg, rawJson: raw };
-    // Has JSON but no readable field
     return { summary: "Error occurred (see details)", rawJson: raw };
   }
-
-  // Not JSON — but check if it looks technical / too long
   return { summary: raw, rawJson: null };
 }
 
-/** Turn SCREAMING_SNAKE_CASE into "Screaming snake case". */
 function humanizeType(type: string): string {
   return type.toLowerCase().replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
 }
 
-/** Make issue titles human-readable. "FEED_REFRESH job failed" → "Feed refresh job failed" */
 function humanizeTitle(title: string): string {
   return title.replace(/^[A-Z_]+/, (match) => humanizeType(match));
 }
@@ -204,7 +225,6 @@ function StatusDot({ status }: { status: string }) {
 }
 
 function MiniPie({ breakdown }: { breakdown: CostSummary["breakdown"] }) {
-  // Simple SVG pie chart
   const total = breakdown.reduce((s, b) => s + b.amount, 0);
   if (total === 0) return null;
   const colors = ["#3B82F6", "#8B5CF6", "#F59E0B", "#10B981"];
@@ -303,8 +323,6 @@ function IssueCard({ issue, onRetry, onDismiss, onDoubleClick }: {
   const [retrying, setRetrying] = useState(false);
   const sc = severityColor(issue.severity);
 
-  // Backend now sends pre-parsed description + rawError.
-  // Fallback: if backend hasn't been updated yet, parse on client side.
   const { summary, rawDetails } = useMemo(() => {
     if (issue.rawError) {
       return { summary: issue.description, rawDetails: issue.rawError };
@@ -384,7 +402,7 @@ function IssueCard({ issue, onRetry, onDismiss, onDoubleClick }: {
   );
 }
 
-// ── Loading skeletons ──
+// ── Loading skeleton ──
 
 function CommandCenterSkeleton() {
   return (
@@ -406,6 +424,22 @@ function CommandCenterSkeleton() {
   );
 }
 
+// ── Dark theme overrides ──
+
+const GRID_CSS = `
+  .react-grid-item > .react-resizable-handle::after {
+    border-right: 2px solid rgba(255, 255, 255, 0.15) !important;
+    border-bottom: 2px solid rgba(255, 255, 255, 0.15) !important;
+  }
+  .react-grid-placeholder {
+    background: rgba(59, 130, 246, 0.1) !important;
+    border: 1px dashed rgba(59, 130, 246, 0.3) !important;
+    border-radius: 0.5rem;
+  }
+  .cc-edit .widget-drag-handle { cursor: grab; }
+  .cc-edit .widget-drag-handle:active { cursor: grabbing; }
+`;
+
 // ── Main ──
 
 export default function CommandCenter() {
@@ -419,6 +453,8 @@ export default function CommandCenter() {
   const [events, setEvents] = useState<ActivityEvent[]>([]);
   const [issues, setIssues] = useState<ActiveIssue[]>([]);
   const [loading, setLoading] = useState(true);
+  const [lo, setLo] = useState<ResponsiveLayouts>(getSavedLayouts);
+  const [editing, setEditing] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -463,12 +499,11 @@ export default function CommandCenter() {
           toast.error("Failed to dismiss issue");
         }
       }
-      // Non-job issues: local-only dismiss (no backend call)
     },
     [apiFetch, issues]
   );
 
-  const handleDismissAllIssues = useCallback(async () => {
+  const handleDismissAll = useCallback(async () => {
     const prev = issues;
     setIssues([]);
     try {
@@ -479,333 +514,355 @@ export default function CommandCenter() {
     }
   }, [apiFetch, issues]);
 
-  const handleIssueDoubleClick = useCallback(
-    (issue: ActiveIssue) => {
-      if (issue.jobId && issue.requestId) {
-        navigate(`/admin/requests?requestId=${issue.requestId}&jobId=${issue.jobId}`);
-      }
+  const navToJob = useCallback(
+    (requestId?: string, jobId?: string) => {
+      if (jobId && requestId) navigate(`/admin/requests?requestId=${requestId}&jobId=${jobId}`);
     },
     [navigate]
   );
 
-  const handleEventDoubleClick = useCallback(
-    (evt: ActivityEvent) => {
-      if (evt.jobId && evt.requestId) {
-        navigate(`/admin/requests?requestId=${evt.requestId}&jobId=${evt.jobId}`);
-      }
-    },
-    [navigate]
-  );
+  const onLoChange = useCallback((_cur: Layout, all: ResponsiveLayouts) => {
+    setLo(all);
+    try { localStorage.setItem(LAYOUT_KEY, JSON.stringify(all)); } catch { /* ignore */ }
+  }, []);
+
+  const resetLo = useCallback(() => {
+    setLo(DEFAULT_LO);
+    localStorage.removeItem(LAYOUT_KEY);
+  }, []);
 
   if (loading && !health) return <CommandCenterSkeleton />;
 
   return (
-    <div className="grid grid-cols-[4fr_3fr_2.5fr] gap-4 h-[calc(100vh-7rem)]">
-      {/* ── LEFT COLUMN ── */}
-      <div className="flex flex-col gap-4 min-h-0">
-        {/* System Health Panel */}
-        <div className="rounded-lg bg-[#1A2942] border border-white/5 p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Activity className="h-4 w-4 text-[#3B82F6]" />
-              <span className="text-sm font-semibold">System Health</span>
-            </div>
-            <Badge
-              className={cn(
-                "text-[10px] uppercase tracking-wider font-semibold",
-                health?.overall === "operational"
-                  ? "bg-[#10B981]/15 text-[#10B981] border-[#10B981]/20"
-                  : health?.overall === "degraded"
-                  ? "bg-[#F59E0B]/15 text-[#F59E0B] border-[#F59E0B]/20"
-                  : "bg-[#EF4444]/15 text-[#EF4444] border-[#EF4444]/20"
-              )}
-            >
-              {health?.overall === "operational"
-                ? "All Systems Operational"
-                : health?.overall === "degraded"
-                ? "Degraded Performance"
-                : `${health?.activeIssuesCount ?? 0} Issues`}
-            </Badge>
-          </div>
-          <div className="space-y-1">
-            {health?.stages.map((s) => (
-              <HealthBar
-                key={s.stage}
-                rate={s.completionRate}
-                color={STAGE_COLOR_MAP[s.stage] ?? "#9CA3AF"}
-                label={s.name}
-                onClick={() => navigate(`/admin/pipeline?stage=${s.stage}`)}
-              />
-            ))}
-            {!health && Array.from({ length: 5 }).map((_, i) => (
-              <Skeleton key={i} className="h-6 bg-white/5 rounded" />
-            ))}
-          </div>
+    <>
+      <style>{GRID_CSS}</style>
+
+      {/* Toolbar */}
+      <div className="flex items-center justify-between mb-2">
+        <div>
+          {editing && (
+            <span className="text-xs text-[#9CA3AF]">
+              Drag headers to rearrange, resize from corners
+            </span>
+          )}
         </div>
-
-        {/* Pipeline Pulse */}
-        <div className="rounded-lg bg-[#1A2942] border border-white/5 flex flex-col min-h-0 flex-1 overflow-hidden">
-          <div className="flex items-center justify-between p-4 pb-2">
-            <div className="flex items-center gap-2">
-              <Zap className="h-4 w-4 text-[#F59E0B]" />
-              <span className="text-sm font-semibold">Pipeline Pulse</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="flex items-center gap-1.5 text-[10px] text-[#10B981] font-medium">
-                <span className="relative flex h-2 w-2">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#10B981] opacity-75" />
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-[#10B981]" />
-                </span>
-                LIVE
-              </span>
-              <Button variant="ghost" size="icon-xs" onClick={load} className="text-[#9CA3AF] hover:text-[#F9FAFB]">
-                <RefreshCw className="h-3 w-3" />
-              </Button>
-            </div>
-          </div>
-
-          <ScrollArea className="flex-1 px-4 pb-3">
-            <div className="space-y-0.5">
-              {events.map((evt) => (
-                <div
-                  key={evt.id}
-                  className={cn(
-                    "flex items-center gap-2.5 py-1.5 px-2 rounded text-xs transition-colors hover:bg-white/[0.03]",
-                    evt.status === "failed" && "border-l-2 border-[#EF4444] bg-[#EF4444]/[0.04]",
-                    (evt.jobId && evt.requestId) && "cursor-pointer"
-                  )}
-                  onDoubleClick={() => handleEventDoubleClick(evt)}
-                >
-                  <span className="text-[10px] text-[#9CA3AF] font-mono tabular-nums w-12 shrink-0">
-                    {relativeTime(evt.timestamp)}
-                  </span>
-                  <StageBadge stage={evt.stage} />
-                  <div className="flex-1 min-w-0 truncate">
-                    <span className="text-[#F9FAFB]">{evt.episodeTitle ?? evt.type}</span>
-                    {evt.podcastName && (
-                      <span className="text-[#9CA3AF] ml-1">- {evt.podcastName}</span>
-                    )}
-                  </div>
-                  <StatusDot status={evt.status} />
-                  {evt.processingTime != null && (
-                    <span className="text-[10px] text-[#9CA3AF] font-mono tabular-nums w-10 text-right">
-                      {evt.processingTime < 1000 ? `${evt.processingTime}ms` : `${(evt.processingTime / 1000).toFixed(1)}s`}
-                    </span>
-                  )}
-                </div>
-              ))}
-              {events.length === 0 && !loading && (
-                <div className="flex flex-col items-center justify-center py-12 text-[#9CA3AF]">
-                  <Clock className="h-6 w-6 mb-2 opacity-40" />
-                  <span className="text-xs">No recent activity</span>
-                </div>
-              )}
-            </div>
-          </ScrollArea>
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="icon-xs" onClick={load} className="text-[#9CA3AF] hover:text-[#F9FAFB]">
+            <RefreshCw className="h-3.5 w-3.5" />
+          </Button>
+          {editing && (
+            <Button variant="ghost" size="sm" onClick={resetLo} className="text-[#9CA3AF] hover:text-[#F9FAFB] text-xs gap-1">
+              <RotateCcw className="h-3.5 w-3.5" /> Reset
+            </Button>
+          )}
+          <Button
+            variant={editing ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setEditing(!editing)}
+            className={cn(
+              "text-xs gap-1",
+              editing ? "bg-[#3B82F6] hover:bg-[#3B82F6]/80 text-white" : "text-[#9CA3AF] hover:text-[#F9FAFB]"
+            )}
+          >
+            {editing ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
+            {editing ? "Lock Layout" : "Customize"}
+          </Button>
         </div>
       </div>
 
-      {/* ── CENTER COLUMN ── */}
-      <div className="flex flex-col gap-4 min-h-0">
-        {/* Active Issues */}
-        <div className="rounded-lg bg-[#1A2942] border border-white/5 flex flex-col min-h-0 flex-1 overflow-hidden">
-          <div className="flex items-center justify-between p-4 pb-2">
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-[#EF4444]" />
-              <span className="text-sm font-semibold">Active Issues</span>
-              {issues.length > 0 && (
-                <Badge className="bg-[#EF4444]/15 text-[#EF4444] text-[10px] ml-1">{issues.length}</Badge>
-              )}
-            </div>
-            {issues.length > 0 && (
-              <Button
-                size="sm"
-                variant="ghost"
-                className="text-[#EF4444] hover:text-[#EF4444] hover:bg-[#EF4444]/10 text-xs gap-1"
-                onClick={handleDismissAllIssues}
-              >
-                <XCircle className="h-3 w-3" />
-                Dismiss All
-              </Button>
-            )}
-          </div>
-
-          <ScrollArea className="flex-1 px-4 pb-3">
-            {issues.length === 0 && !loading ? (
-              <div className="flex flex-col items-center justify-center py-16 text-[#9CA3AF]">
-                <CheckCircle2 className="h-8 w-8 mb-2 text-[#10B981] opacity-60" />
-                <span className="text-sm font-medium text-[#10B981]">No active issues</span>
-                <span className="text-xs text-[#9CA3AF] mt-1">All systems running smoothly</span>
+      <div className={editing ? "cc-edit" : ""}>
+        <GridLayout
+          layouts={lo}
+          breakpoints={BREAKPOINTS}
+          cols={COLS}
+          rowHeight={ROW_H}
+          margin={MARGINS}
+          isDraggable={editing}
+          isResizable={editing}
+          draggableHandle=".widget-drag-handle"
+          draggableCancel="button, a, input, select, textarea"
+          onLayoutChange={onLoChange}
+          compactType="vertical"
+        >
+          {/* ── System Health ── */}
+          <div key="system-health">
+            <div className="h-full rounded-lg bg-[#1A2942] border border-white/5 p-4 flex flex-col overflow-hidden">
+              <div className="widget-drag-handle flex items-center justify-between mb-3 shrink-0">
+                <div className="flex items-center gap-2">
+                  <Activity className="h-4 w-4 text-[#3B82F6]" />
+                  <span className="text-sm font-semibold">System Health</span>
+                </div>
+                <Badge
+                  className={cn(
+                    "text-[10px] uppercase tracking-wider font-semibold",
+                    health?.overall === "operational"
+                      ? "bg-[#10B981]/15 text-[#10B981] border-[#10B981]/20"
+                      : health?.overall === "degraded"
+                      ? "bg-[#F59E0B]/15 text-[#F59E0B] border-[#F59E0B]/20"
+                      : "bg-[#EF4444]/15 text-[#EF4444] border-[#EF4444]/20"
+                  )}
+                >
+                  {health?.overall === "operational"
+                    ? "All Systems Operational"
+                    : health?.overall === "degraded"
+                    ? "Degraded Performance"
+                    : `${health?.activeIssuesCount ?? 0} Issues`}
+                </Badge>
               </div>
-            ) : (
-              <div className="space-y-2">
-                {issues.map((issue) => (
-                  <IssueCard
-                    key={issue.id}
-                    issue={issue}
-                    onRetry={handleIssueRetry}
-                    onDismiss={handleIssueDismiss}
-                    onDoubleClick={issue.jobId && issue.requestId ? () => handleIssueDoubleClick(issue) : undefined}
+              <div className="flex-1 min-h-0 overflow-auto space-y-1">
+                {health?.stages.map((s) => (
+                  <HealthBar
+                    key={s.stage}
+                    rate={s.completionRate}
+                    color={STAGE_COLOR_MAP[s.stage] ?? "#9CA3AF"}
+                    label={s.name}
+                    onClick={() => navigate(`/admin/pipeline?stage=${s.stage}`)}
                   />
                 ))}
+                {!health && Array.from({ length: 5 }).map((_, i) => (
+                  <Skeleton key={i} className="h-6 bg-white/5 rounded" />
+                ))}
               </div>
-            )}
-          </ScrollArea>
-        </div>
-
-        {/* Recent Activity */}
-        <div className="rounded-lg bg-[#1A2942] border border-white/5 p-4 max-h-64">
-          <div className="flex items-center gap-2 mb-3">
-            <CircleDot className="h-4 w-4 text-[#14B8A6]" />
-            <span className="text-sm font-semibold">Recent Activity</span>
-          </div>
-          <ScrollArea className="h-40">
-            <div className="space-y-2">
-              {events.slice(0, 8).map((evt) => (
-                <div key={`ra-${evt.id}`} className="flex items-center gap-2 text-xs">
-                  <span className="text-[10px] text-[#9CA3AF] font-mono tabular-nums w-12 shrink-0">
-                    {relativeTime(evt.timestamp)}
-                  </span>
-                  <StatusDot status={evt.status} />
-                  <span className="truncate flex-1 text-[#F9FAFB]/80">
-                    {evt.type === "FEED_REFRESH" ? "Refreshed feed" :
-                     evt.type === "TRANSCRIPTION" ? "Transcribed" :
-                     evt.type === "DISTILLATION" ? "Distilled" :
-                     evt.type === "NARRATIVE_GENERATION" ? "Generated narrative" :
-                     evt.type === "AUDIO_GENERATION" ? "Generated audio" :
-                     evt.type === "CLIP_GENERATION" ? "Generated clips" :
-                     "Assembled briefing"}
-                    {evt.episodeTitle && <span className="text-[#9CA3AF]"> - {evt.episodeTitle}</span>}
-                  </span>
-                </div>
-              ))}
             </div>
-          </ScrollArea>
-        </div>
-      </div>
-
-      {/* ── RIGHT COLUMN ── */}
-      <div className="flex flex-col gap-4 min-h-0">
-        {/* Feed Refresh Summary */}
-        <FeedRefreshCard />
-
-        {/* Pipeline Controls */}
-        {pipeline.loading ? (
-          <Skeleton className="h-48 bg-white/5 rounded-lg" />
-        ) : (
-          <PipelineControls
-            variant="full"
-            config={pipeline.config}
-            saving={pipeline.saving}
-            triggering={pipeline.triggering}
-            onTogglePipeline={pipeline.togglePipeline}
-            onToggleStage={pipeline.toggleStage}
-            onTriggerFeedRefresh={pipeline.triggerFeedRefresh}
-          />
-        )}
-
-        {/* Cost Monitor */}
-        <div className="rounded-lg bg-[#1A2942] border border-white/5 p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <DollarSign className="h-4 w-4 text-[#10B981]" />
-            <span className="text-sm font-semibold">Cost Monitor</span>
           </div>
 
-          {cost ? (
-            <div className="space-y-3">
-              {/* Today's spend */}
-              <div>
-                <span className="text-[10px] uppercase tracking-wider text-[#9CA3AF]">Today&apos;s Spend</span>
-                <div className="text-3xl font-bold font-mono tabular-nums mt-0.5">
-                  {formatCurrency(cost.todaySpend)}
+          {/* ── Pipeline Pulse ── */}
+          <div key="pipeline-pulse">
+            <div className="h-full rounded-lg bg-[#1A2942] border border-white/5 flex flex-col overflow-hidden">
+              <div className="widget-drag-handle flex items-center justify-between p-4 pb-2 shrink-0">
+                <div className="flex items-center gap-2">
+                  <Zap className="h-4 w-4 text-[#F59E0B]" />
+                  <span className="text-sm font-semibold">Pipeline Pulse</span>
                 </div>
+                <span className="flex items-center gap-1.5 text-[10px] text-[#10B981] font-medium">
+                  <span className="relative flex h-2 w-2">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#10B981] opacity-75" />
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-[#10B981]" />
+                  </span>
+                  LIVE
+                </span>
               </div>
+              <ScrollArea className="flex-1 min-h-0 px-4 pb-3">
+                <div className="space-y-0.5">
+                  {events.map((evt) => (
+                    <div
+                      key={evt.id}
+                      className={cn(
+                        "flex items-center gap-2.5 py-1.5 px-2 rounded text-xs transition-colors hover:bg-white/[0.03]",
+                        evt.status === "failed" && "border-l-2 border-[#EF4444] bg-[#EF4444]/[0.04]",
+                        (evt.jobId && evt.requestId) && "cursor-pointer"
+                      )}
+                      onDoubleClick={() => navToJob(evt.requestId, evt.jobId)}
+                    >
+                      <span className="text-[10px] text-[#9CA3AF] font-mono tabular-nums w-12 shrink-0">
+                        {relativeTime(evt.timestamp)}
+                      </span>
+                      <StageBadge stage={evt.stage} />
+                      <div className="flex-1 min-w-0 truncate">
+                        <span className="text-[#F9FAFB]">{evt.episodeTitle ?? evt.type}</span>
+                        {evt.podcastName && <span className="text-[#9CA3AF] ml-1">- {evt.podcastName}</span>}
+                      </div>
+                      <StatusDot status={evt.status} />
+                      {evt.processingTime != null && (
+                        <span className="text-[10px] text-[#9CA3AF] font-mono tabular-nums w-10 text-right">
+                          {evt.processingTime < 1000 ? `${evt.processingTime}ms` : `${(evt.processingTime / 1000).toFixed(1)}s`}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                  {events.length === 0 && !loading && (
+                    <div className="flex flex-col items-center justify-center py-12 text-[#9CA3AF]">
+                      <Clock className="h-6 w-6 mb-2 opacity-40" />
+                      <span className="text-xs">No recent activity</span>
+                    </div>
+                  )}
+                </div>
+              </ScrollArea>
+            </div>
+          </div>
 
-              {/* Sparkline */}
-              <Sparkline data={cost.breakdown.map((b) => b.amount)} />
-
-              {/* Breakdown with pie */}
-              <div className="flex items-center gap-3">
-                <MiniPie breakdown={cost.breakdown} />
-                <div className="flex-1 space-y-1">
-                  {cost.breakdown.map((b, i) => (
-                    <div key={b.category} className="flex items-center gap-2 text-[10px]">
-                      <span
-                        className="h-2 w-2 rounded-full shrink-0"
-                        style={{ backgroundColor: ["#3B82F6", "#8B5CF6", "#F59E0B", "#10B981"][i % 4] }}
+          {/* ── Active Issues ── */}
+          <div key="active-issues">
+            <div className="h-full rounded-lg bg-[#1A2942] border border-white/5 flex flex-col overflow-hidden">
+              <div className="widget-drag-handle flex items-center justify-between p-4 pb-2 shrink-0">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 text-[#EF4444]" />
+                  <span className="text-sm font-semibold">Active Issues</span>
+                  {issues.length > 0 && (
+                    <Badge className="bg-[#EF4444]/15 text-[#EF4444] text-[10px] ml-1">{issues.length}</Badge>
+                  )}
+                </div>
+                {issues.length > 0 && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-[#EF4444] hover:text-[#EF4444] hover:bg-[#EF4444]/10 text-xs gap-1"
+                    onClick={handleDismissAll}
+                  >
+                    <XCircle className="h-3 w-3" /> Dismiss All
+                  </Button>
+                )}
+              </div>
+              <ScrollArea className="flex-1 min-h-0 px-4 pb-3">
+                {issues.length === 0 && !loading ? (
+                  <div className="flex flex-col items-center justify-center py-16 text-[#9CA3AF]">
+                    <CheckCircle2 className="h-8 w-8 mb-2 text-[#10B981] opacity-60" />
+                    <span className="text-sm font-medium text-[#10B981]">No active issues</span>
+                    <span className="text-xs text-[#9CA3AF] mt-1">All systems running smoothly</span>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {issues.map((issue) => (
+                      <IssueCard
+                        key={issue.id}
+                        issue={issue}
+                        onRetry={handleIssueRetry}
+                        onDismiss={handleIssueDismiss}
+                        onDoubleClick={issue.jobId && issue.requestId ? () => navToJob(issue.requestId, issue.jobId) : undefined}
                       />
-                      <span className="text-[#9CA3AF] flex-1">{b.category}</span>
-                      <span className="text-[#F9FAFB] font-mono tabular-nums">{formatCurrency(b.amount)}</span>
+                    ))}
+                  </div>
+                )}
+              </ScrollArea>
+            </div>
+          </div>
+
+          {/* ── Recent Activity ── */}
+          <div key="recent-activity">
+            <div className="h-full rounded-lg bg-[#1A2942] border border-white/5 p-4 flex flex-col overflow-hidden">
+              <div className="widget-drag-handle flex items-center gap-2 mb-3 shrink-0">
+                <CircleDot className="h-4 w-4 text-[#14B8A6]" />
+                <span className="text-sm font-semibold">Recent Activity</span>
+              </div>
+              <ScrollArea className="flex-1 min-h-0">
+                <div className="space-y-2">
+                  {events.slice(0, 8).map((evt) => (
+                    <div key={`ra-${evt.id}`} className="flex items-center gap-2 text-xs">
+                      <span className="text-[10px] text-[#9CA3AF] font-mono tabular-nums w-12 shrink-0">
+                        {relativeTime(evt.timestamp)}
+                      </span>
+                      <StatusDot status={evt.status} />
+                      <span className="truncate flex-1 text-[#F9FAFB]/80">
+                        {evt.type === "FEED_REFRESH" ? "Refreshed feed" :
+                         evt.type === "TRANSCRIPTION" ? "Transcribed" :
+                         evt.type === "DISTILLATION" ? "Distilled" :
+                         evt.type === "NARRATIVE_GENERATION" ? "Generated narrative" :
+                         evt.type === "AUDIO_GENERATION" ? "Generated audio" :
+                         evt.type === "CLIP_GENERATION" ? "Generated clips" :
+                         "Assembled briefing"}
+                        {evt.episodeTitle && <span className="text-[#9CA3AF]"> - {evt.episodeTitle}</span>}
+                      </span>
                     </div>
                   ))}
                 </div>
-              </div>
-
-              <Separator className="bg-white/5" />
-
-              {/* Comparison */}
-              <div className="flex items-center gap-1.5">
-                {cost.trend >= 0 ? (
-                  <TrendingUp className="h-3.5 w-3.5 text-[#EF4444]" />
-                ) : (
-                  <TrendingDown className="h-3.5 w-3.5 text-[#10B981]" />
-                )}
-                <span className={cn(
-                  "text-xs font-medium",
-                  cost.trend >= 0 ? "text-[#EF4444]" : "text-[#10B981]"
-                )}>
-                  {cost.trend >= 0 ? "+" : ""}{cost.trend.toFixed(0)}% vs yesterday
-                </span>
-              </div>
-
-              {/* Budget bar */}
-              <div>
-                <div className="flex items-center justify-between text-[10px] mb-1">
-                  <span className="text-[#9CA3AF]">Budget</span>
-                  <span className="font-mono tabular-nums text-[#9CA3AF]">{cost.budgetUsed}%</span>
-                </div>
-                <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
-                  <div
-                    className={cn(
-                      "h-full rounded-full transition-all",
-                      cost.budgetUsed > 90 ? "bg-[#EF4444]" : cost.budgetUsed > 70 ? "bg-[#F59E0B]" : "bg-[#10B981]"
-                    )}
-                    style={{ width: `${Math.min(cost.budgetUsed, 100)}%` }}
-                  />
-                </div>
-              </div>
+              </ScrollArea>
             </div>
-          ) : (
-            <div className="space-y-3">
-              <Skeleton className="h-10 w-24 bg-white/5" />
-              <Skeleton className="h-7 w-full bg-white/5" />
-              <Skeleton className="h-16 w-full bg-white/5" />
-            </div>
-          )}
-        </div>
-
-        {/* Quick Stats */}
-        <div className="rounded-lg bg-[#1A2942] border border-white/5 p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <Info className="h-4 w-4 text-[#3B82F6]" />
-            <span className="text-sm font-semibold">Quick Stats</span>
           </div>
-          {stats ? (
-            <div className="grid grid-cols-2 gap-2">
-              <QuickStatCard label="Podcasts" value={stats.podcasts.total} trend={stats.podcasts.trend} icon={Library} color="#3B82F6" />
-              <QuickStatCard label="Users" value={stats.users.total} trend={stats.users.trend} icon={Users} color="#14B8A6" />
-              <QuickStatCard label="Episodes" value={stats.episodes.total} trend={stats.episodes.trend} icon={Disc3} color="#8B5CF6" />
-              <QuickStatCard label="Briefings" value={stats.briefings.total} trend={stats.briefings.trend} icon={Radio} color="#F59E0B" />
+
+          {/* ── Feed Refresh ── */}
+          <div key="feed-refresh">
+            <FeedRefreshCard className="h-full overflow-auto" />
+          </div>
+
+          {/* ── Pipeline Controls ── */}
+          <div key="pipeline-controls">
+            {pipeline.loading ? (
+              <Skeleton className="h-full bg-white/5 rounded-lg" />
+            ) : (
+              <PipelineControls
+                variant="full"
+                className="h-full overflow-auto"
+                config={pipeline.config}
+                saving={pipeline.saving}
+                triggering={pipeline.triggering}
+                onTogglePipeline={pipeline.togglePipeline}
+                onToggleStage={pipeline.toggleStage}
+                onTriggerFeedRefresh={pipeline.triggerFeedRefresh}
+              />
+            )}
+          </div>
+
+          {/* ── Cost Monitor ── */}
+          <div key="cost-monitor">
+            <div className="h-full rounded-lg bg-[#1A2942] border border-white/5 p-4 flex flex-col overflow-hidden">
+              <div className="widget-drag-handle flex items-center gap-2 mb-3 shrink-0">
+                <DollarSign className="h-4 w-4 text-[#10B981]" />
+                <span className="text-sm font-semibold">Cost Monitor</span>
+              </div>
+              {cost ? (
+                <div className="flex-1 min-h-0 overflow-auto space-y-3">
+                  <div>
+                    <span className="text-[10px] uppercase tracking-wider text-[#9CA3AF]">Today&apos;s Spend</span>
+                    <div className="text-3xl font-bold font-mono tabular-nums mt-0.5">{formatCurrency(cost.todaySpend)}</div>
+                  </div>
+                  <Sparkline data={cost.breakdown.map((b) => b.amount)} />
+                  <div className="flex items-center gap-3">
+                    <MiniPie breakdown={cost.breakdown} />
+                    <div className="flex-1 space-y-1">
+                      {cost.breakdown.map((b, i) => (
+                        <div key={b.category} className="flex items-center gap-2 text-[10px]">
+                          <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: ["#3B82F6", "#8B5CF6", "#F59E0B", "#10B981"][i % 4] }} />
+                          <span className="text-[#9CA3AF] flex-1">{b.category}</span>
+                          <span className="text-[#F9FAFB] font-mono tabular-nums">{formatCurrency(b.amount)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <Separator className="bg-white/5" />
+                  <div className="flex items-center gap-1.5">
+                    {cost.trend >= 0 ? <TrendingUp className="h-3.5 w-3.5 text-[#EF4444]" /> : <TrendingDown className="h-3.5 w-3.5 text-[#10B981]" />}
+                    <span className={cn("text-xs font-medium", cost.trend >= 0 ? "text-[#EF4444]" : "text-[#10B981]")}>
+                      {cost.trend >= 0 ? "+" : ""}{cost.trend.toFixed(0)}% vs yesterday
+                    </span>
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between text-[10px] mb-1">
+                      <span className="text-[#9CA3AF]">Budget</span>
+                      <span className="font-mono tabular-nums text-[#9CA3AF]">{cost.budgetUsed}%</span>
+                    </div>
+                    <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+                      <div
+                        className={cn("h-full rounded-full transition-all", cost.budgetUsed > 90 ? "bg-[#EF4444]" : cost.budgetUsed > 70 ? "bg-[#F59E0B]" : "bg-[#10B981]")}
+                        style={{ width: `${Math.min(cost.budgetUsed, 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <Skeleton className="h-10 w-24 bg-white/5" />
+                  <Skeleton className="h-7 w-full bg-white/5" />
+                  <Skeleton className="h-16 w-full bg-white/5" />
+                </div>
+              )}
             </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-2">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <Skeleton key={i} className="h-24 bg-white/5 rounded-lg" />
-              ))}
+          </div>
+
+          {/* ── Quick Stats ── */}
+          <div key="quick-stats">
+            <div className="h-full rounded-lg bg-[#1A2942] border border-white/5 p-4 flex flex-col overflow-hidden">
+              <div className="widget-drag-handle flex items-center gap-2 mb-3 shrink-0">
+                <Info className="h-4 w-4 text-[#3B82F6]" />
+                <span className="text-sm font-semibold">Quick Stats</span>
+              </div>
+              {stats ? (
+                <div className="grid grid-cols-2 gap-2 flex-1 min-h-0">
+                  <QuickStatCard label="Podcasts" value={stats.podcasts.total} trend={stats.podcasts.trend} icon={Library} color="#3B82F6" />
+                  <QuickStatCard label="Users" value={stats.users.total} trend={stats.users.trend} icon={Users} color="#14B8A6" />
+                  <QuickStatCard label="Episodes" value={stats.episodes.total} trend={stats.episodes.trend} icon={Disc3} color="#8B5CF6" />
+                  <QuickStatCard label="Briefings" value={stats.briefings.total} trend={stats.briefings.trend} icon={Radio} color="#F59E0B" />
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-2">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <Skeleton key={i} className="h-24 bg-white/5 rounded-lg" />
+                  ))}
+                </div>
+              )}
             </div>
-          )}
-        </div>
+          </div>
+        </GridLayout>
       </div>
-    </div>
+    </>
   );
 }

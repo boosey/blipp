@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { Rss, RefreshCw, Loader2, AlertTriangle, Clock, Podcast } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAdminFetch } from "@/lib/admin-api";
@@ -17,7 +18,7 @@ function relativeTime(iso: string | null): string {
   return `${Math.floor(h / 24)}d ago`;
 }
 
-export function FeedRefreshCard({ compact = false, onRefresh }: { compact?: boolean; onRefresh?: () => void }) {
+export function FeedRefreshCard({ compact = false, onRefresh, className }: { compact?: boolean; onRefresh?: () => void; className?: string }) {
   const apiFetch = useAdminFetch();
   const [summary, setSummary] = useState<FeedRefreshSummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -48,7 +49,7 @@ export function FeedRefreshCard({ compact = false, onRefresh }: { compact?: bool
 
   if (loading) {
     return (
-      <div className="rounded-lg bg-[#1A2942] border border-white/5 p-4" data-testid="feed-refresh-card">
+      <div className={cn("rounded-lg bg-[#1A2942] border border-white/5 p-4", className)} data-testid="feed-refresh-card">
         <div className="space-y-2">
           <Skeleton className="h-4 w-32 bg-white/5" />
           <Skeleton className="h-3 w-full bg-white/5" />
@@ -106,10 +107,10 @@ export function FeedRefreshCard({ compact = false, onRefresh }: { compact?: bool
 
   return (
     <div
-      className="rounded-lg bg-[#1A2942] border border-white/5 p-4"
+      className={cn("rounded-lg bg-[#1A2942] border border-white/5 p-4", className)}
       data-testid="feed-refresh-card"
     >
-      <div className="flex items-center justify-between mb-3">
+      <div className="widget-drag-handle flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <Rss className="h-4 w-4 text-[#3B82F6]" />
           <span className="text-sm font-semibold text-[#F9FAFB]">Feed Refresh</span>
