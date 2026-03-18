@@ -245,7 +245,7 @@ function RunRow({
 
 export default function ScheduledJobs() {
   const { data, loading: jobsLoading } = useFetch<{ jobs: CronJob[] }>(
-    "/api/admin/cron-jobs"
+    "/admin/cron-jobs"
   );
   const jobs = data?.jobs ?? [];
 
@@ -270,7 +270,7 @@ export default function ScheduledJobs() {
     loading: runsLoading,
     refetch: refetchRuns,
   } = useFetch<RunsResponse>(
-    selectedKey ? `/api/admin/cron-jobs/${selectedKey}/runs` : "",
+    selectedKey ? `/admin/cron-jobs/${selectedKey}/runs` : "",
     { enabled: !!selectedKey }
   );
   const runs = runsData?.data ?? [];

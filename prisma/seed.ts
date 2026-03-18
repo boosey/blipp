@@ -102,10 +102,9 @@ async function main() {
     },
     {
       stage: "stt", modelId: "whisper-large-v3-turbo", label: "Whisper Large v3 Turbo", developer: "openai",
-      notes: "Best value STT. Multilingual, near-v3 accuracy at 3-4x speed. Excellent on CF (cheapest) and Groq (fastest). Recommended default.",
+      notes: "Best value STT. Multilingual, near-v3 accuracy at 3-4x speed. Groq is fastest provider. Recommended default.",
       providers: [
-        { provider: "cloudflare", providerModelId: "@cf/openai/whisper-large-v3-turbo", providerLabel: "Cloudflare Workers AI", isDefault: true, pricePerMinute: 0.0005 },
-        { provider: "groq", providerModelId: "whisper-large-v3-turbo", providerLabel: "Groq", pricePerMinute: 0.000667 },
+        { provider: "groq", providerModelId: "whisper-large-v3-turbo", providerLabel: "Groq", isDefault: true, pricePerMinute: 0.000667 },
       ],
     },
     {
@@ -134,7 +133,6 @@ async function main() {
       notes: "Top-tier commercial accuracy. Multilingual, excellent speaker diarization and formatting. Premium cost. Best for high-stakes transcription.",
       providers: [
         { provider: "deepgram", providerLabel: "Deepgram", isDefault: true, pricePerMinute: 0.0077 },
-        { provider: "cloudflare", providerModelId: "@cf/deepgram/nova-3", providerLabel: "Cloudflare Workers AI", pricePerMinute: 0.0052 },
       ],
     },
     {
