@@ -13,7 +13,7 @@ Blipp is a podcast briefing app that distills podcast episodes into short audio 
 | Auth | Clerk (`@hono/clerk-auth` middleware) |
 | Payments | Stripe (checkout, portal, webhooks) |
 | Object Storage | Cloudflare R2 |
-| Task Queues | 7 Cloudflare Queues |
+| Task Queues | 9 Cloudflare Queues |
 | AI (LLM) | Anthropic Claude, Groq, Cloudflare Workers AI (multi-provider) |
 | AI (STT) | OpenAI Whisper, Deepgram Nova, AssemblyAI, Google Chirp, Groq, Cloudflare Workers AI (multi-provider) |
 | AI (TTS) | OpenAI TTS, Groq Orpheus, Cloudflare Workers AI (multi-provider) |
@@ -41,8 +41,8 @@ Blipp is a podcast briefing app that distills podcast episodes into short audio 
   Worker Handlers:
   ================
   fetch     -->  Hono HTTP server (API + SPA asset serving)
-  queue     -->  7 queue consumers (pipeline stages)
-  scheduled -->  Cron trigger (*/30) for feed refresh + daily pricing refresh
+  queue     -->  9 queue consumers (pipeline stages + catalog + prefetch)
+  scheduled -->  Cron heartbeat (*/5) dispatching named jobs (pipeline-trigger, monitoring, etc.)
 
   Pipeline Flow (demand-driven):
   ==============================
@@ -72,7 +72,7 @@ The worker (`worker/index.ts`) exports three handlers:
 
 - **`fetch`** -- Hono HTTP server handling all API requests and serving the SPA via Cloudflare Assets.
 - **`queue`** -- Dispatches incoming queue messages to the appropriate stage consumer based on queue name.
-- **`scheduled`** -- Cron trigger (every 30 minutes) that enqueues feed refresh jobs (gated by `pipeline.enabled` config and interval throttle) and refreshes AI model pricing daily.
+- **`scheduled`** -- Cron heartbeat (every 5 minutes) that dispatches named jobs via the `runJob()` framework. Each job manages its own enable toggle and run interval via PlatformConfig. Jobs: `pipeline-trigger` (feed refresh + pipeline gating), `monitoring` (pricing refresh, cost alerts), `user-lifecycle` (inactive user handling), `data-retention` (archiving old data), `recommendations` (profile recomputation). Execution is tracked via `CronRun` / `CronRunLog` records.
 
 All three handlers pass the environment through `shimQueuesForLocalDev()` which provides a local queue shim during development.
 
@@ -91,6 +91,8 @@ All three handlers pass the environment through `shimQueuesForLocalDev()` which 
 | `AUDIO_GENERATION_QUEUE` | Queue | Pipeline: TTS audio via multi-provider TTS |
 | `BRIEFING_ASSEMBLY_QUEUE` | Queue | Pipeline: Briefing creation + FeedItem linking |
 | `ORCHESTRATOR_QUEUE` | Queue | Pipeline coordination |
+| `CATALOG_REFRESH_QUEUE` | Queue | Podcast catalog seeding/refresh |
+| `CONTENT_PREFETCH_QUEUE` | Queue | Slow transcript/audio validation |
 | `CLERK_SECRET_KEY` | string | Clerk authentication |
 | `CLERK_PUBLISHABLE_KEY` | string | Clerk frontend auth |
 | `CLERK_WEBHOOK_SECRET` | string | Clerk webhook verification |
@@ -104,6 +106,13 @@ All three handlers pass the environment through `shimQueuesForLocalDev()` which 
 | `ASSEMBLYAI_API_KEY` | string | AssemblyAI STT |
 | `GOOGLE_STT_API_KEY` | string | Google Cloud STT (Chirp) |
 | `GROQ_API_KEY` | string | Groq STT/LLM/TTS |
+| `ALLOWED_ORIGINS` | string? | Comma-separated CORS origin allowlist (optional) |
+| `APP_ORIGIN` | string? | Base URL for this environment (Stripe redirects) |
+| `NEON_API_KEY` | string? | Neon API key for backup verification (optional) |
+| `NEON_PROJECT_ID` | string? | Neon project ID for backup verification (optional) |
+| `VAPID_PUBLIC_KEY` | string? | Web Push VAPID public key (optional) |
+| `VAPID_PRIVATE_KEY` | string? | Web Push VAPID private key (optional) |
+| `VAPID_SUBJECT` | string? | Web Push VAPID subject / mailto URL (optional) |
 
 ## Queue System
 
@@ -116,6 +125,8 @@ All three handlers pass the environment through `shimQueuesForLocalDev()` which 
 | `clip-generation` | `AUDIO_GENERATION_QUEUE` | 3 | 3 | TTS generation (legacy queue name) |
 | `briefing-assembly` | `BRIEFING_ASSEMBLY_QUEUE` | 5 | 3 | Briefing creation |
 | `orchestrator` | `ORCHESTRATOR_QUEUE` | 10 | 3 | Coordination |
+| `catalog-refresh` | `CATALOG_REFRESH_QUEUE` | 5 | 3 | Podcast catalog seeding/refresh |
+| `content-prefetch` | `CONTENT_PREFETCH_QUEUE` | 5 | 3 | Slow transcript/audio validation |
 
 **Note:** The `AUDIO_GENERATION_QUEUE` binding maps to the `clip-generation` queue name in `wrangler.jsonc` (legacy naming). The queue dispatcher in `worker/queues/index.ts` routes `clip-generation` messages to `handleAudioGeneration`.
 
@@ -143,6 +154,19 @@ The orchestrator queue is the pipeline brain. It uses a **push-based** model:
 - When all jobs for a request complete, briefing assembly is triggered — this links completed Clips to Briefing records and marks FeedItems as READY.
 - Partial completion is supported: if some jobs fail, briefings are created from the successful ones.
 - Intro/outro jingles are played client-side via audio element sequencing with Cache API caching (not server-side concatenation). See `docs/decisions/2026-03-15-client-side-jingles.md`.
+
+### WorkProduct Registry
+
+Pipeline stages store intermediate and final outputs in R2 via the `WorkProduct` model. Each type has a deterministic R2 key pattern:
+
+| Type | R2 Key Pattern | Stage |
+|------|---------------|-------|
+| `TRANSCRIPT` | `wp/transcript/{episodeId}.txt` | Transcription |
+| `CLAIMS` | `wp/claims/{episodeId}.json` | Distillation |
+| `NARRATIVE` | `wp/narrative/{episodeId}/{durationTier}.txt` | Narrative Gen |
+| `AUDIO_CLIP` | `wp/clip/{episodeId}/{durationTier}/{voice}.mp3` | Audio Gen |
+| `BRIEFING_AUDIO` | (enum only — no wpKey builder) | Reserved |
+| `SOURCE_AUDIO` | `wp/source-audio/{episodeId}.bin` | Transcription (debug) |
 
 ### Runtime Configuration
 
@@ -217,6 +241,39 @@ The admin Model Registry page (`/admin/model-registry`) allows managing availabl
 | `SttExperiment` | STT benchmark experiment definition |
 | `SttBenchmarkResult` | Individual benchmark result (WER, cost, latency per model/speed) |
 
+### Pipeline & Operations Models
+
+| Model | Purpose |
+|-------|---------|
+| `AiServiceError` | Structured AI provider error tracking with classification |
+| `AuditLog` | Admin action audit trail |
+| `ApiKey` | API key management (hashed keys with scopes) |
+| `CronRun` | Scheduled job execution records |
+| `CronRunLog` | Per-run structured log entries |
+
+### Recommendation Models
+
+| Model | Purpose |
+|-------|---------|
+| `PodcastProfile` | Per-podcast category weights, topic tags, popularity |
+| `UserRecommendationProfile` | Per-user aggregated category weights + topic tags |
+| `RecommendationCache` | Precomputed top-20 podcast recommendations per user |
+
+### Catalog Models
+
+| Model | Purpose |
+|-------|---------|
+| `PodcastRequest` | User-submitted podcast requests with admin review |
+| `Category` | Apple genre taxonomy entries |
+| `PodcastCategory` | Join table linking podcasts to categories |
+
+### User Models
+
+| Model | Purpose |
+|-------|---------|
+| `PodcastFavorite` | User favorites (interest signals for recommendations) |
+| `PushSubscription` | Web push notification subscriptions |
+
 ### Configuration
 
 | Model | Purpose |
@@ -237,15 +294,31 @@ Episode ---< WorkProduct
 PipelineStep --- WorkProduct
 AiModel ---< AiModelProvider
 SttExperiment ---< SttBenchmarkResult >--- Episode
+User ---< PodcastFavorite >--- Podcast
+User ---< PushSubscription
+User ---< PodcastRequest >--- Podcast (optional)
+User ---< UserRecommendationProfile
+User ---< RecommendationCache
+Podcast ---< PodcastProfile
+Podcast ---< PodcastCategory >--- Category
+User ---< ApiKey
+User ---< AuditLog
+CronRun ---< CronRunLog
 ```
 
 ## Middleware Stack
 
-All `/api/*` routes pass through three global middleware layers in `worker/index.ts`:
+All `/api/*` routes pass through these global middleware layers in `worker/index.ts` (in order):
 
-1. **CORS** (`hono/cors`) — standard CORS headers
-2. **Clerk auth** (`worker/middleware/auth.ts`) — populates auth context from JWT
-3. **Prisma** (`worker/middleware/prisma.ts`) — creates per-request PrismaClient on `c.get("prisma")` and disconnects via `waitUntil`
+1. **Request ID** (`worker/middleware/request-id.ts`) — Adds correlation ID to each request (must be first so all other middleware can access it)
+2. **CORS** (`hono/cors`) — Explicit origin allowlist from `ALLOWED_ORIGINS` env var (falls back to hardcoded defaults)
+3. **Clerk auth** (`worker/middleware/auth.ts`) — Populates auth context from JWT
+4. **Request Logger** (`worker/middleware/request-logger.ts`) — Structured HTTP request logging (after auth so userId is available)
+5. **Prisma** (`worker/middleware/prisma.ts`) — Creates per-request PrismaClient on `c.get("prisma")` and disconnects via `waitUntil`
+6. **API Key auth** (`worker/middleware/api-key.ts`) — Falls through to Clerk auth if no API key header present (after Prisma, needs DB lookup)
+7. **Rate Limiting** (`worker/middleware/rate-limit.ts`) — Sliding window rate limiter (in-memory); tighter limits on `/api/briefings/generate` (10/hr) and `/api/podcasts/subscribe` (5/min), general 120 req/min for all API routes (webhooks and health exempt)
+8. **Cache** (`worker/middleware/cache.ts`) — Response caching for read-heavy endpoints (`/api/podcasts/catalog`, `/api/health/deep`)
+9. **Security Headers** (`worker/middleware/security-headers.ts`) — X-Frame-Options, CSP, etc. for all responses (applied to `/*`, not just `/api/*`)
 
 Route handlers access the database with `const prisma = c.get("prisma") as any;` — no manual creation or cleanup needed.
 
@@ -268,6 +341,15 @@ Route handlers access the database with `const prisma = c.get("prisma") as any;`
 | `wpKey(params)` | `worker/lib/work-products.ts` | Build R2 keys for work products |
 | `writeEvent(prisma, stepId, ...)` | `worker/lib/pipeline-events.ts` | Write structured pipeline events (fire-and-forget) |
 | `createPipelineLogger(opts)` | `worker/lib/logger.ts` | Structured JSON logger with configurable level |
+| `classifyAiError()` | `worker/lib/ai-errors.ts` | Classify AI provider errors by category/severity |
+| `writeAiError()` | `worker/lib/ai-errors.ts` | Record AI service errors to database |
+| `resolveStageModel()` | `worker/lib/model-resolution.ts` | Resolve AI model+provider with fallback chain |
+| `computePodcastProfiles()` | `worker/lib/recommendations.ts` | Compute recommendation profiles |
+| `audit()` | `worker/lib/audit-log.ts` | Write admin audit log entries |
+| `classifyHttpError()` | `worker/lib/errors.ts` | Classify unhandled errors into HTTP status codes |
+| `deepHealthCheck()` | `worker/lib/health.ts` | Check DB/R2/queue health for `/api/health/deep` |
+| `getFeatureFlag()` | `worker/lib/feature-flags.ts` | Read boolean feature flags from PlatformConfig |
+| `runJob()` | `worker/lib/cron/runner.ts` | Cron job framework with CronRun/CronRunLog tracking |
 
 ## Authentication & Authorization
 
@@ -291,6 +373,7 @@ Plan limits are enforced in route handlers using helpers from `worker/lib/plan-l
 |--------------|------------|
 | `GET /api/plans` | Public (no auth) |
 | `GET /api/health` | Public (no auth) |
+| `GET /api/health/deep` | Public (no auth, cached 30s) |
 | `POST /api/webhooks/*` | Webhook signature verification |
 | `/api/me` | `requireAuth` |
 | `/api/podcasts/*` | `requireAuth` + plan limits |
@@ -336,7 +419,7 @@ Plan limits are enforced in route handlers using helpers from `worker/lib/plan-l
 
 ### Admin Routes (`/api/admin`)
 
-12 route modules: dashboard, podcasts, episodes, pipeline, config, users, analytics, briefings, requests, plans, stt-benchmark, ai-models.
+18 route modules: dashboard, podcasts, episodes, pipeline, config, users, analytics, briefings, requests, plans, stt-benchmark, ai-models, ai-errors, audit-log, api-keys, ads, recommendations, cron-jobs.
 
 Notable admin endpoints:
 - `POST /api/admin/requests/test-briefing` -- Trigger a test briefing with specific podcast/episode selection
@@ -345,6 +428,14 @@ Notable admin endpoints:
 - `GET/POST /api/admin/ai-models` -- AI model registry management
 - `GET/POST /api/admin/stt-benchmark/experiments` -- STT benchmark experiments
 - `GET/POST/PATCH/DELETE /api/admin/plans` -- Plan CRUD management
+- `GET /api/admin/ai-errors` -- AI service error log with filtering
+- `GET /api/admin/audit-log` -- Admin action audit trail
+- `GET/POST/DELETE /api/admin/api-keys` -- API key management
+- `GET/PATCH /api/admin/ads` -- Ad slot management
+- `GET /api/admin/recommendations` -- Recommendation profiles and cache
+- `GET /api/admin/cron-jobs` -- Scheduled job runs and logs
+
+**Note:** The `clean-r2` route module is mounted separately at `/api/internal/clean` (not under `/api/admin`).
 
 ## Frontend Architecture
 
@@ -358,7 +449,7 @@ The frontend is built with Vite 7 using `@cloudflare/vite-plugin` in SPA mode. T
 |---------|-------|--------|
 | Public | Landing (`/`), Pricing (`/pricing`) | Minimal |
 | User | Home (`/home`), Discover (`/discover`), Podcast Detail (`/discover/:podcastId`), Library (`/library`), Player (`/play/:feedItemId`), Settings (`/settings`) | `MobileLayout` |
-| Admin | 11 pages (Command Center, Pipeline, Catalog, Briefings, Users, Plans, Analytics, Configuration, Requests, STT Benchmark, Model Registry) | `AdminLayout` (dark sidebar) |
+| Admin | 20 pages (Command Center, Pipeline, Pipeline Controls, Catalog, Briefings, Users, Plans, Analytics, Requests, STT Benchmark, Model Registry, Stage Models, AI Errors, Recommendations, Scheduled Jobs, Feature Flags, Podcast Settings, Ads, API Keys, Audit Log) | `AdminLayout` (dark sidebar) |
 
 Redirects: `/dashboard` redirects to `/home`, `/billing` redirects to `/settings`, `/briefing/*` redirects to `/home`.
 
@@ -408,6 +499,12 @@ blipp/
       auth.ts             # requireAuth + clerkMiddleware + getAuth
       admin.ts            # requireAdmin (isAdmin check)
       prisma.ts           # Per-request PrismaClient middleware
+      api-key.ts          # API key authentication (falls through to Clerk if absent)
+      cache.ts            # Response caching middleware
+      rate-limit.ts       # Sliding window rate limiter (in-memory)
+      request-id.ts       # Correlation ID middleware
+      request-logger.ts   # Structured HTTP request logging
+      security-headers.ts # CSP, X-Frame-Options, etc.
     routes/
       index.ts            # Route tree assembly
       me.ts               # GET /me — current user
@@ -421,7 +518,7 @@ blipp/
         clerk.ts          # User sync webhook
         stripe.ts         # Payment webhook
       admin/
-        index.ts          # Admin route tree (12 modules)
+        index.ts          # Admin route tree (18 modules)
         dashboard.ts      # Command center stats
         podcasts.ts       # Podcast catalog management
         episodes.ts       # Episode management
@@ -434,6 +531,13 @@ blipp/
         plans.ts          # Plan CRUD management
         stt-benchmark.ts  # STT benchmark experiments
         ai-models.ts      # AI model registry CRUD
+        ai-errors.ts      # AI service error log
+        audit-log.ts      # Admin action audit trail
+        api-keys.ts       # API key management
+        ads.ts            # Ad slot management
+        recommendations.ts # Recommendation profiles + cache
+        cron-jobs.ts      # Scheduled job runs + logs
+        clean-r2.ts       # R2 cleanup (mounted at /internal/clean)
     queues/
       index.ts            # Queue dispatcher + scheduled handler
       feed-refresh.ts     # Periodic RSS polling (standalone cron job)
@@ -443,6 +547,8 @@ blipp/
       audio-generation.ts    # Stage 5: TTS audio rendering
       briefing-assembly.ts   # Stage 6: Briefing creation + FeedItem linking
       orchestrator.ts     # Pipeline coordination
+      catalog-refresh.ts  # Podcast catalog seeding/refresh
+      content-prefetch.ts # Slow transcript/audio validation
     lib/
       db.ts               # PrismaClient factory (Hyperdrive)
       config.ts           # Runtime config with 60s TTL cache + stage names
@@ -473,6 +579,32 @@ blipp/
       local-queue.ts      # Local dev queue shim
       wer.ts              # Word Error Rate calculation
       stt-benchmark-runner.ts # STT benchmark task runner
+      ai-errors.ts        # AI error classification + recording
+      audit-log.ts        # Admin audit log writer
+      recommendations.ts  # Recommendation profile computation
+      model-resolution.ts # AI model+provider fallback resolution
+      queue-messages.ts   # Typed queue message definitions
+      errors.ts           # HTTP error classification
+      feature-flags.ts    # Feature flag reader (PlatformConfig booleans)
+      health.ts           # Deep health check (DB, R2, queues)
+      push.ts             # Web push notification helpers
+      user-data.ts        # User data export/deletion utilities
+      circuit-breaker.ts  # Circuit breaker for external services
+      cost-alerts.ts      # AI cost alerting
+      backup-verify.ts    # Database backup verification
+      catalog-sources.ts  # Podcast catalog source abstractions
+      content-prefetch.ts # Content prefetch logic
+      apple-podcasts.ts   # Apple Podcasts API client
+      sentry.ts           # Error reporting integration
+      constants.ts        # Shared constants (STAGE_NAMES, etc.)
+      transcript-sources.ts # Multi-source transcript resolution
+      cron/               # Scheduled job implementations
+        runner.ts         # Job framework with CronRun/CronRunLog tracking
+        pipeline-trigger.ts # Feed refresh + pipeline gating
+        monitoring.ts     # Pricing refresh, cost alerts
+        user-lifecycle.ts # Inactive user handling
+        data-retention.ts # Archiving old data
+        recommendations.ts # Profile recomputation
   src/
     App.tsx               # Routes + layouts
     main.tsx              # React entry point
@@ -485,18 +617,27 @@ blipp/
       library.tsx         # Library tab — subscriptions & history
       briefing-player.tsx # Audio playback for briefings
       settings.tsx        # Settings tab — account & billing
-      admin/              # 11 admin pages
+      admin/              # 20 admin pages
         command-center.tsx
         pipeline.tsx
+        pipeline-controls.tsx
         catalog.tsx
         briefings.tsx
         users.tsx
         plans.tsx
         analytics.tsx
-        configuration.tsx
         requests.tsx
         stt-benchmark.tsx
         model-registry.tsx
+        stage-models.tsx
+        ai-errors.tsx
+        recommendations.tsx
+        scheduled-jobs.tsx
+        feature-flags.tsx
+        podcast-settings.tsx
+        ads.tsx
+        api-keys.tsx
+        audit-log.tsx
     layouts/
       mobile-layout.tsx   # Mobile-first layout with bottom nav
       admin-layout.tsx    # Admin dark sidebar layout
@@ -519,7 +660,7 @@ blipp/
       user.ts             # User-facing type contracts
       feed.ts             # FeedItem and FeedCounts types
   prisma/
-    schema.prisma         # Full data model (20 models, 15 enums)
+    schema.prisma         # Full data model (32 models, 15 enums)
   docs/
     architecture.md       # This file
   wrangler.jsonc          # Cloudflare Workers config

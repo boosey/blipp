@@ -13,6 +13,7 @@ All routes are served by a Hono app on Cloudflare Workers. The API is mounted at
 |---------------|------------|
 | `GET /api/plans` | None |
 | `GET /api/health` | None |
+| `GET /api/health/deep` | None (cached 30s) |
 | `POST /api/webhooks/*` | Webhook signature verification |
 | `/api/me` | Clerk auth (Bearer token) |
 | `/api/plans/current` | Clerk auth (Bearer token) |
@@ -43,6 +44,14 @@ Returns service health status.
 
 ```json
 { "status": "ok", "timestamp": "2026-03-06T12:00:00.000Z" }
+```
+
+**`GET /api/health/deep`**
+
+Deep health check that probes DB, R2, and queues. No auth required. Cached for 30 seconds. Returns 200 if healthy, 503 if degraded.
+
+```json
+{ "status": "healthy", "checks": { "db": "ok", "r2": "ok" }, "timestamp": "..." }
 ```
 
 ### Plans
@@ -415,14 +424,18 @@ All admin routes require Clerk auth + `User.isAdmin = true`. Returns 401 if unau
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/jobs` | Paginated job list with filters |
-| GET | `/jobs/:id` | Job detail with steps and request context |
-| POST | `/jobs/:id/retry` | Retry a single failed job |
+| GET | `/health` | Pipeline health ping |
+| GET | `/jobs` | Paginated job list with filters (excludes dismissed by default) |
+| GET | `/jobs/:id` | Job detail with steps, request context, and queue position |
+| POST | `/jobs/:id/retry` | Retry a single failed job (dispatches to correct queue) |
+| PATCH | `/jobs/:id/dismiss` | Dismiss a failed job (sets `dismissedAt`) |
 | POST | `/jobs/bulk/retry` | Bulk retry failed jobs |
-| POST | `/trigger/feed-refresh` | Trigger manual feed refresh |
-| POST | `/trigger/stage/:stage` | Trigger a specific stage |
-| POST | `/trigger/episode/:id` | Trigger pipeline for episode |
-| GET | `/stages` | Per-stage aggregate stats |
+| PATCH | `/jobs/bulk-dismiss` | Bulk dismiss failed jobs (optional `?stage=` filter) |
+| POST | `/trigger/feed-refresh` | Trigger manual feed refresh (one or all podcasts) |
+| POST | `/trigger/stage/:stage` | Trigger a specific stage for eligible episodes |
+| POST | `/trigger/episode/:id` | Trigger pipeline for a specific episode (auto-detects or explicit stage) |
+| GET | `/stages` | Per-stage aggregate stats (counts, success rate, avg time, cost) |
+| GET | `/dlq` | Dead letter queue monitoring (stuck jobs + exhausted retries) |
 
 ---
 
@@ -553,3 +566,67 @@ All analytics endpoints accept `from` and `to` query params (ISO date strings).
 | POST | `/upload-audio` | Upload speed-adjusted audio to R2 |
 | GET | `/results/:resultId/transcript` | Fetch STT output transcript from R2 |
 | GET | `/results/:resultId/reference-transcript` | Fetch cleaned reference transcript from R2 |
+
+---
+
+### AI Errors (`/api/admin/ai-errors`)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/` | Paginated list of AI service errors with filters (`service`, `provider`, `category`, `severity`, `resolved`, `since`, `search`) |
+| GET | `/summary` | Aggregate error statistics (by service, provider, category, severity; error rates for 1h/24h/7d; top 10 error messages). Optional `?since=` ISO date. |
+| GET | `/:id` | Single AI error detail with full context (correlation ID, job/step/episode links, retry info, rate-limit data) |
+
+---
+
+### Audit Log (`/api/admin/audit-log`)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/` | Paginated audit log entries with filters (`actorId`, `entityType`, `entityId`, `action`, `from`, `to` date range) |
+
+---
+
+### API Keys (`/api/admin/api-keys`)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/` | Paginated list of API keys (shows prefix, scopes, user — never plaintext hash) |
+| POST | `/` | Create a new API key (returns plaintext key once; body: `{ name, scopes, expiresAt? }`) |
+| DELETE | `/:id` | Revoke an API key (sets `revokedAt`) |
+
+---
+
+### Ads (`/api/admin/ads`)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/` | List all `ads.*` PlatformConfig entries |
+| PUT | `/` | Upsert an ad config entry (body: `{ key: "ads.preroll.vastUrl", value, description? }`) |
+| POST | `/test-vast` | Validate a VAST tag URL (fetches URL, checks for valid VAST XML; body: `{ url }`) |
+
+---
+
+### Recommendations (`/api/admin/recommendations`)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/stats` | Recommendation system statistics (user/podcast profile counts, cache hit rate, last compute time) |
+| POST | `/recompute` | Recompute all podcast recommendation profiles |
+| GET | `/users` | Paginated user list with recommendation profile summaries |
+| GET | `/users/:userId` | User recommendation detail (profile weights, cached recommendations with podcast data) |
+| POST | `/users/:userId/recompute` | Recompute recommendation profile for a single user |
+| GET | `/podcast-profiles` | Paginated podcast profiles sorted by popularity (category weights, freshness, subscriber count) |
+
+---
+
+### Cron Jobs (`/api/admin/cron-jobs`)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/` | List all cron jobs with config (enabled, interval) and latest run status |
+| PATCH | `/:jobKey` | Update cron job config (`enabled`, `intervalMinutes`; valid intervals: 15/30/60/120/360/720/1440/10080) |
+| GET | `/:jobKey/runs` | Paginated run history for a job (status, duration, result, error) |
+| GET | `/:jobKey/runs/:runId/logs` | Logs for a specific cron run (level, message, structured data, timestamp) |
+
+Valid job keys: `pipeline-trigger`, `monitoring`, `user-lifecycle`, `data-retention`, `recommendations`.

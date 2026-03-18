@@ -160,9 +160,18 @@ Completely free. Sign up and check your email for the API Key and API Secret.
 | `npm test` | Run all tests (Vitest) |
 | `npm run test:integration` | Run integration tests |
 | `npm run typecheck` | Type check (`tsc --noEmit`) |
-| `npm run clean:requests` | Clean BriefingRequest data (uses raw `pg`, not Prisma) |
 | `npm run clean:pipeline` | Clean pipeline data (uses raw `pg`) |
+| `npm run clean:pipeline:dry` | Dry-run pipeline clean (preview only) |
+| `npm run clean:pipeline:staging` | Clean pipeline data on staging |
+| `npm run clean:pipeline:production` | Clean pipeline data on production |
+| `npm run clean:stt-benchmark` | Clean STT benchmark data |
 | `npm run db:check` | Database health check (uses raw `pg`) |
+| `npm run db:push` | Push Prisma schema to database |
+| `npm run db:studio` | Open Prisma Studio |
+| `npm run deploy` | Build + deploy to staging |
+| `npm run deploy:production` | Build + deploy to production |
+| `npm run deploy:quick` | Deploy to staging (skip build) |
+| `npm run deploy:quick:production` | Deploy to production (skip build) |
 
 ---
 
@@ -298,7 +307,7 @@ For polling or user-triggered fetches (search, form submissions), use `useApiFet
 - Do **not** duplicate `clerkMiddleware()` in admin route files -- it is applied globally in `worker/index.ts`
 - Admin routes use the `requireAdmin` middleware from `worker/middleware/admin.ts`
 - Admin auth checks the `isAdmin` boolean on the User model
-- Import `STAGE_NAMES` or `STAGE_DISPLAY_NAMES` from `worker/lib/config.ts` — do not define locally
+- Import `PIPELINE_STAGE_NAMES` from `worker/lib/constants.ts` — do not define stage name mappings locally
 
 ### Frontend Structure
 
@@ -408,7 +417,7 @@ npx vitest run worker/queues/__tests__/feed-refresh.test.ts
 
 ### Pre-existing test failures
 
-`src/__tests__/discover.test.tsx` and `src/__tests__/settings.test.tsx` have 2 known failures unrelated to pipeline work. These can be ignored during development.
+All previously known test failures have been resolved. If you encounter test failures, they should be investigated rather than ignored.
 
 ### Clerk compatibility shim
 

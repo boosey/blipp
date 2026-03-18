@@ -1,6 +1,6 @@
 # Pipeline Architecture
 
-Blipp uses a **demand-driven pipeline** to transform podcast episodes into audio briefings. Only feed refresh runs on a cron schedule -- all other processing is triggered by user briefing requests.
+Blipp uses a **demand-driven pipeline** to transform podcast episodes into audio briefings. The scheduled handler runs 5 cron jobs (pipeline trigger, monitoring, user lifecycle, data retention, recommendations) -- all other processing is triggered by user briefing requests.
 
 ## 6-Stage Pipeline
 
@@ -61,7 +61,7 @@ Blipp uses a **demand-driven pipeline** to transform podcast episodes into audio
 
 | Job | Queue | Description |
 |-----|-------|-------------|
-| Feed Refresh | `feed-refresh` | Polls RSS feeds, ingests new episodes into the database. Runs on cron, not part of the pipeline. |
+| Feed Refresh | `feed-refresh` | Polls RSS feeds, ingests new episodes into the database. Triggered by the pipeline-trigger cron job, not directly part of the pipeline. |
 
 ### Pipeline Stage Details
 
@@ -162,6 +162,7 @@ One job per **(episode, durationTier)** per request.
 | `distillationId` | Link to cached distillation work product |
 | `clipId` | Link to cached clip work product |
 | `completedAt` | When job finished |
+| `dismissedAt` | DateTime? — When an admin dismissed a failed job (dismissed jobs are hidden from the default job list) |
 
 ### Relationship to Request
 
@@ -208,10 +209,22 @@ Fine-grained event log entries per step. Written via `writeEvent()` from `worker
 |-------|-------------|
 | `level` | DEBUG, INFO, WARN, ERROR |
 | `message` | Human-readable event message |
-| `data` | Structured JSON payload |
+| `data` | Structured JSON payload with rich diagnostic context |
 | `createdAt` | Event timestamp |
 
 Indexed on `[stepId, createdAt]` for efficient retrieval.
+
+### Enriched Diagnostic Context
+
+Pipeline events now carry rich structured data in the `data` field across all stages. Depending on the stage and event type, this includes:
+
+- **Provider info:** provider name, tier (primary/secondary/tertiary), provider-specific model ID
+- **Model info:** model chain composition, resolved model ID, fallback chain length
+- **Token counts / size metrics:** input/output tokens (LLM), audio size in bytes (TTS/STT), narrative length
+- **Timing data:** per-operation durations, TTS generation time, cache hit indicators
+- **Error context:** failed tier, error message excerpt, retry/circuit-breaker state
+
+This diagnostic data enables the admin AI Errors page and pipeline observability views to show detailed per-step telemetry without needing to parse unstructured log messages.
 
 ---
 
@@ -297,6 +310,26 @@ Provider pricing metadata (per-minute, per-token, per-character) is stored and r
 
 Some STT providers (AssemblyAI, Google) are asynchronous — they return a job ID and require polling. The `SttProvider` interface supports an optional `poll()` method for this pattern.
 
+### Model Fallback Chains (3-Tier)
+
+**File:** `worker/lib/model-resolution.ts`
+
+Each pipeline stage supports a 3-tier model fallback chain configured via PlatformConfig:
+
+| Config Key | Role |
+|-----------|------|
+| `ai.{stage}.model` | Primary model+provider |
+| `ai.{stage}.model.secondary` | Secondary fallback |
+| `ai.{stage}.model.tertiary` | Tertiary fallback |
+
+The `resolveModelChain(prisma, stage)` function returns an ordered list of `ResolvedModel` entries. Each entry includes provider, model ID, provider-specific model ID, pricing metadata, and provider limits.
+
+Fallback behavior:
+- Models whose provider has an **open circuit breaker** are skipped automatically.
+- Stage handlers iterate the chain: if the primary provider fails, the secondary is attempted, then the tertiary.
+- `resolveStageModel(prisma, stage)` resolves only the primary model but will automatically failover to an alternative provider from the `AiModel`/`AiModelProvider` database if the primary's circuit breaker is open.
+- Circuit breakers are managed by `worker/lib/circuit-breaker.ts` — `recordSuccess()` and `recordFailure()` track provider health.
+
 ---
 
 ## WorkProduct Registry
@@ -308,7 +341,7 @@ Work products are stored in **R2** and tracked in the database.
 ```
 WorkProduct {
   id           String
-  type         WorkProductType  // TRANSCRIPT, CLAIMS, NARRATIVE, AUDIO_CLIP, BRIEFING_AUDIO
+  type         WorkProductType  // TRANSCRIPT, CLAIMS, NARRATIVE, AUDIO_CLIP, BRIEFING_AUDIO, SOURCE_AUDIO
   episodeId    String?
   userId       String?
   durationTier Int?
@@ -329,6 +362,7 @@ Work product keys are built via `wpKey()` from `worker/lib/work-products.ts`:
 | Claims | `wp/claims/{episodeId}.json` |
 | Narrative | `wp/narrative/{episodeId}/{durationTier}.txt` |
 | Audio Clip | `wp/clip/{episodeId}/{durationTier}/{voice}.mp3` |
+| Source Audio | `wp/source-audio/{episodeId}.bin` |
 
 Legacy clip audio also exists at `clips/{episodeId}/{durationTier}.mp3` (served by `/api/clips/` route).
 
@@ -351,10 +385,21 @@ Stored in the `PlatformConfig` table, accessed via `getConfig(prisma, key, fallb
 | `pipeline.stage.BRIEFING_ASSEMBLY.enabled` | boolean | `true` | Briefing Assembly stage enable |
 | `pipeline.feedRefresh.maxEpisodesPerPodcast` | number | `10` | Episode cap per podcast per refresh |
 | `ai.stt.model` | JSON | `null` | STT model+provider config: `{provider, model}` |
+| `ai.stt.model.secondary` | JSON | `null` | STT secondary fallback |
+| `ai.stt.model.tertiary` | JSON | `null` | STT tertiary fallback |
 | `ai.distillation.model` | JSON | `null` | Distillation LLM model+provider config |
+| `ai.distillation.model.secondary` | JSON | `null` | Distillation secondary fallback |
+| `ai.distillation.model.tertiary` | JSON | `null` | Distillation tertiary fallback |
 | `ai.narrative.model` | JSON | `null` | Narrative LLM model+provider config |
+| `ai.narrative.model.secondary` | JSON | `null` | Narrative secondary fallback |
+| `ai.narrative.model.tertiary` | JSON | `null` | Narrative tertiary fallback |
 | `ai.tts.model` | JSON | `null` | TTS model+provider config |
+| `ai.tts.model.secondary` | JSON | `null` | TTS secondary fallback |
+| `ai.tts.model.tertiary` | JSON | `null` | TTS tertiary fallback |
 | `pricing.lastRefreshedAt` | string | `null` | Daily pricing refresh timestamp |
+| `cron.{jobKey}.enabled` | boolean | `true` | Enable/disable a cron job |
+| `cron.{jobKey}.intervalMinutes` | number | varies | Run interval for a cron job |
+| `cron.{jobKey}.lastRunAt` | string | `null` | Timestamp of last cron job execution |
 
 ---
 
@@ -371,6 +416,46 @@ Defined in `wrangler.jsonc`.
 | `clip-generation` | 3 | 3 | TTS audio rendering (legacy queue name for audio generation) |
 | `briefing-assembly` | 5 | 3 | Final audio assembly |
 | `orchestrator` | 10 | 3 | Pipeline coordination |
+
+---
+
+## Scheduled Jobs (Cron System)
+
+The Cloudflare Workers `scheduled` handler invokes the cron runner (`worker/lib/cron/runner.ts`) which manages 5 jobs. Each job has an enable flag, configurable interval, and interval-gated execution tracked via `CronRun` and `CronRunLog` models.
+
+### Cron Runner
+
+`runJob({ jobKey, prisma, execute })` handles the lifecycle:
+
+1. Checks `cron.{jobKey}.enabled` config (skips if disabled)
+2. Reads `cron.{jobKey}.intervalMinutes` and `cron.{jobKey}.lastRunAt` to enforce interval gating
+3. Creates a `CronRun` record with `status: IN_PROGRESS`
+4. Executes the job function with a `CronLogger` that writes `CronRunLog` entries
+5. Marks the run as `SUCCESS` or `FAILED` with duration and result/error
+6. Updates `cron.{jobKey}.lastRunAt`
+
+### Job Definitions
+
+| Job Key | Default Interval | Description | Source |
+|---------|-----------------|-------------|--------|
+| `pipeline-trigger` | 15 min | Enqueues a feed refresh cycle (respects `pipeline.enabled` master switch) | `worker/lib/cron/pipeline-trigger.ts` |
+| `monitoring` | 60 min | Refreshes AI model pricing and checks cost threshold alerts | `worker/lib/cron/monitoring.ts` |
+| `user-lifecycle` | 6 hours | Checks for users whose free trial has expired | `worker/lib/cron/user-lifecycle.ts` |
+| `data-retention` | 24 hours | Counts/deletes aged episodes, stale podcasts, and old briefing requests | `worker/lib/cron/data-retention.ts` |
+| `recommendations` | 7 days | Rebuilds podcast recommendation profiles for all users | `worker/lib/cron/recommendations.ts` |
+
+### CronRun Model
+
+| Field | Description |
+|-------|-------------|
+| `jobKey` | Which cron job ran |
+| `status` | IN_PROGRESS, SUCCESS, FAILED |
+| `startedAt` / `completedAt` | Timing |
+| `durationMs` | Execution time |
+| `result` | JSON result payload from the job |
+| `errorMessage` | Error message if failed |
+
+Each run has associated `CronRunLog` entries (level, message, structured data) for fine-grained observability, viewable via the admin Cron Jobs page.
 
 ---
 
@@ -405,7 +490,7 @@ Each log line is JSON with: `{ level, stage, requestId?, jobId?, action, ...data
 
 ### Pipeline Events (Database)
 
-Fine-grained events within pipeline steps are written to the `PipelineEvent` table via `writeEvent()` from `worker/lib/pipeline-events.ts`. These provide step-level observability beyond what structured logs capture.
+Fine-grained events within pipeline steps are written to the `PipelineEvent` table via `writeEvent()` from `worker/lib/pipeline-events.ts`. These provide step-level observability beyond what structured logs capture, including enriched diagnostic data such as provider/model info, token counts, timing metrics, and fallback chain details (see PipelineEvent Model section above).
 
 ---
 
@@ -454,10 +539,18 @@ Key behaviors:
 | `worker/lib/llm-providers.ts` | Multi-provider LLM interface |
 | `worker/lib/tts-providers.ts` | Multi-provider TTS interface |
 | `worker/lib/ai-models.ts` | AI model config reader |
+| `worker/lib/model-resolution.ts` | 3-tier model fallback chain resolver with circuit breaker integration |
+| `worker/lib/circuit-breaker.ts` | Provider circuit breaker (tracks success/failure) |
 | `worker/lib/pipeline-events.ts` | Pipeline event writer |
 | `worker/lib/work-products.ts` | R2 key builders |
 | `worker/lib/transcript-source.ts` | Podcast Index transcript lookup helper |
 | `worker/lib/whisper-chunked.ts` | Chunked Whisper for oversized audio files |
 | `worker/lib/config.ts` | Runtime config helper with TTL cache |
 | `worker/lib/logger.ts` | Structured JSON pipeline logger |
+| `worker/lib/cron/runner.ts` | Cron job runner with interval gating and CronRun lifecycle |
+| `worker/lib/cron/pipeline-trigger.ts` | Feed refresh cron trigger |
+| `worker/lib/cron/monitoring.ts` | Pricing refresh + cost alert cron |
+| `worker/lib/cron/user-lifecycle.ts` | Trial expiration checks |
+| `worker/lib/cron/data-retention.ts` | Episode/podcast/request cleanup |
+| `worker/lib/cron/recommendations.ts` | Podcast profile recomputation |
 | `worker/index.ts` | Worker entry point (queue routing) |
