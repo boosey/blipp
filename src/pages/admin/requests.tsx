@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useSearchParams } from "react-router-dom";
 import { usePolling } from "@/hooks/use-polling";
 import {
   Clock,
@@ -152,6 +153,7 @@ const WP_TYPE_CONFIG: Record<
   NARRATIVE: { icon: FileText, label: "Narrative", color: "#F59E0B" },
   AUDIO_CLIP: { icon: FileAudio, label: "Audio Clip", color: "#10B981" },
   BRIEFING_AUDIO: { icon: FileAudio, label: "Briefing", color: "#EC4899" },
+  SOURCE_AUDIO: { icon: FileAudio, label: "Source Audio", color: "#F97316" },
 };
 
 function formatBytes(bytes: number): string {
@@ -277,7 +279,7 @@ function StepWorkProductPanel({ wp }: { wp: WorkProductSummary }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const isAudio = wp.type === "AUDIO_CLIP" || wp.type === "BRIEFING_AUDIO";
+  const isAudio = wp.type === "AUDIO_CLIP" || wp.type === "BRIEFING_AUDIO" || wp.type === "SOURCE_AUDIO";
 
   useEffect(() => {
     if (isAudio) {
@@ -576,7 +578,9 @@ function ExpandableStepRow({
   step: StepProgress;
 }) {
   const events = step.events ?? [];
-  const wps = step.workProducts ?? [];
+  const wps = [...(step.workProducts ?? [])].sort((a, b) =>
+    a.type === "SOURCE_AUDIO" ? -1 : b.type === "SOURCE_AUDIO" ? 1 : 0
+  );
   const hasContent = events.length > 0 || wps.length > 0;
 
   const [expanded, setExpanded] = useState(
@@ -737,7 +741,7 @@ function RequestCostSummary({ jobs }: { jobs: JobProgress[] }) {
   );
 }
 
-function JobProgressTree({ jobs }: { jobs: JobProgress[] }) {
+function JobProgressTree({ jobs, highlightJobId, jobRef }: { jobs: JobProgress[]; highlightJobId?: string | null; jobRef?: React.RefObject<HTMLDivElement | null> }) {
   if (!jobs || jobs.length === 0) {
     return (
       <div className="text-[10px] text-[#9CA3AF] py-2">No job progress data</div>
@@ -760,9 +764,12 @@ function JobProgressTree({ jobs }: { jobs: JobProgress[] }) {
       </div>
       <div className="space-y-0.5">
       {jobs.map((job) => (
-        <div key={job.jobId}>
+        <div key={job.jobId} ref={job.jobId === highlightJobId ? jobRef : undefined}>
           {jobs.length > 1 && (
-            <div className="flex items-center gap-2 text-[10px] text-[#9CA3AF] py-1 mt-1 border-t border-white/5 first:border-t-0 first:mt-0">
+            <div className={cn(
+              "flex items-center gap-2 text-[10px] text-[#9CA3AF] py-1 mt-1 border-t border-white/5 first:border-t-0 first:mt-0",
+              job.jobId === highlightJobId && "bg-[#3B82F6]/10 rounded px-1 -mx-1"
+            )}>
               <span className="font-medium text-[#F9FAFB]">{job.episodeTitle}</span>
               {job.episodeDurationSeconds != null && (
                 <span className="font-mono tabular-nums">{Math.round(job.episodeDurationSeconds / 60)}m ep</span>
@@ -803,12 +810,16 @@ function RequestRow({
   onToggle,
   detail,
   detailLoading,
+  highlightJobId,
+  jobRef,
 }: {
   request: BriefingRequest;
   expanded: boolean;
   onToggle: () => void;
   detail: BriefingRequest | null;
   detailLoading: boolean;
+  highlightJobId?: string | null;
+  jobRef?: React.RefObject<HTMLDivElement | null>;
 }) {
   const itemCount = request.items?.length ?? 0;
 
@@ -872,7 +883,7 @@ function RequestRow({
           ) : detail?.jobProgress ? (
             <>
               <RequestCostSummary jobs={detail.jobProgress} />
-              <JobProgressTree jobs={detail.jobProgress} />
+              <JobProgressTree jobs={detail.jobProgress} highlightJobId={highlightJobId} jobRef={jobRef} />
             </>
           ) : (
             <div className="text-[10px] text-[#9CA3AF] py-2">
@@ -1298,6 +1309,7 @@ function RequestsSkeleton() {
 
 export default function Requests() {
   const apiFetch = useAdminFetch();
+  const [searchParams] = useSearchParams();
 
   const [requests, setRequests] = useState<BriefingRequest[]>([]);
   const [total, setTotal] = useState(0);
@@ -1310,6 +1322,11 @@ export default function Requests() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [testDialogOpen, setTestDialogOpen] = useState(false);
 
+  // Deep-link state
+  const deepLinkRequestId = searchParams.get("requestId");
+  const deepLinkJobId = searchParams.get("jobId");
+  const [deepLinkHandled, setDeepLinkHandled] = useState(false);
+  const jobScrollRef = useRef<HTMLDivElement | null>(null);
 
   const load = useCallback((silent = false) => {
     if (!silent) setLoading(true);
@@ -1340,6 +1357,37 @@ export default function Requests() {
         .catch(console.error);
     }
   }, 5_000);
+
+  // Deep-link: fetch the target request directly (avoids pagination miss) and auto-expand
+  useEffect(() => {
+    if (!deepLinkRequestId || deepLinkHandled) return;
+    setDeepLinkHandled(true);
+    apiFetch<{ data: BriefingRequest }>(`/requests/${deepLinkRequestId}`)
+      .then((r) => {
+        const detail = r.data;
+        // Inject into list if not present
+        setRequests((prev) =>
+          prev.some((req) => req.id === detail.id)
+            ? prev
+            : [detail, ...prev]
+        );
+        setDetailCache((prev) => ({ ...prev, [detail.id]: detail }));
+        setExpandedId(detail.id);
+      })
+      .catch(console.error);
+  }, [deepLinkRequestId, deepLinkHandled, apiFetch]);
+
+  // Scroll to the highlighted job once the detail is loaded and rendered
+  useEffect(() => {
+    if (!deepLinkJobId || !deepLinkRequestId) return;
+    const detail = detailCache[deepLinkRequestId];
+    if (!detail?.jobProgress) return;
+    // Wait a tick for DOM to render the expanded content
+    const timer = setTimeout(() => {
+      jobScrollRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [deepLinkJobId, deepLinkRequestId, detailCache]);
 
   const toggleRow = useCallback(
     (id: string) => {
@@ -1453,6 +1501,8 @@ export default function Requests() {
                 onToggle={() => toggleRow(req.id)}
                 detail={detailCache[req.id] ?? null}
                 detailLoading={detailLoading && expandedId === req.id && !detailCache[req.id]}
+                highlightJobId={expandedId === req.id ? deepLinkJobId : null}
+                jobRef={expandedId === req.id ? jobScrollRef : undefined}
               />
             ))
           )}

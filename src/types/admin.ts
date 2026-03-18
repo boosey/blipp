@@ -76,6 +76,8 @@ export interface ActivityEvent {
   status: "completed" | "failed" | "in_progress" | "pending";
   processingTime?: number;
   type: string;
+  jobId?: string;
+  requestId?: string;
 }
 
 export interface ActiveIssue {
@@ -577,7 +579,8 @@ export type WorkProductType =
   | "CLAIMS"
   | "NARRATIVE"
   | "AUDIO_CLIP"
-  | "BRIEFING_AUDIO";
+  | "BRIEFING_AUDIO"
+  | "SOURCE_AUDIO";
 
 export interface WorkProductSummary {
   id: string;
