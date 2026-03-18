@@ -8,6 +8,7 @@ export interface ResolvedModel {
   model: string;
   providerModelId: string;
   pricing: ModelPricing | null;
+  limits: Record<string, unknown> | null;
 }
 
 /**
@@ -63,8 +64,9 @@ export async function resolveStageModel(
     where: { provider, model: { modelId: model } },
   });
   const providerModelId = dbProvider?.providerModelId ?? model;
+  const limits = (dbProvider?.limits as Record<string, unknown>) ?? null;
 
-  return { provider, model, providerModelId, pricing };
+  return { provider, model, providerModelId, pricing, limits };
 }
 
 /**
@@ -118,5 +120,6 @@ async function findAlternativeProvider(
     model: altModel.modelId,
     providerModelId: altProvider.providerModelId ?? altModel.modelId,
     pricing,
+    limits: (altProvider.limits as Record<string, unknown>) ?? null,
   };
 }

@@ -713,6 +713,7 @@ export interface AiModelProviderEntry {
   pricePerKChars: number | null;
   isDefault: boolean;
   isAvailable: boolean;
+  limits?: Record<string, unknown> | null;
   priceUpdatedAt: string | null;
 }
 

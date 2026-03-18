@@ -203,12 +203,17 @@ export async function handleTranscription(
             throw new Error(`Audio file too small (${audioBuffer.byteLength} bytes) — likely an error page, not audio`);
           }
 
+          const maxFileSize = (resolved.limits?.maxFileSizeBytes as number) ?? null;
+          const willChunk = maxFileSize != null && audioBuffer.byteLength > maxFileSize;
           await writeEvent(prisma, step.id, "INFO", `Transcribing via ${providerImpl.name} (model: ${providerModelId})`, {
             audioSizeBytes,
             audioContentType,
             audioContentLength: audioResponse.headers.get("content-length"),
             provider: resolved.provider,
             model: providerModelId,
+            maxFileSizeBytes: maxFileSize,
+            willChunk,
+            estimatedChunks: willChunk && maxFileSize ? Math.ceil(audioBuffer.byteLength / maxFileSize) : 1,
           });
 
           // Store source audio for debugging (idempotent — preserve first-seen)

@@ -661,6 +661,7 @@ model AiModelProvider {
   pricePerKChars       Float?    // TTS alt: per 1K characters
   isDefault            Boolean   @default(false)
   isAvailable          Boolean   @default(true)
+  limits               Json?     // provider/model limits, e.g. { "maxFileSizeBytes": 26214400 }
   priceUpdatedAt       DateTime?
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
