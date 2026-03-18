@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import {
   Activity,
   AlertTriangle,
@@ -292,7 +293,12 @@ function QuickStatCard({ label, value, trend, icon: Icon, color }: {
   );
 }
 
-function IssueCard({ issue, onRetry }: { issue: ActiveIssue; onRetry: (issue: ActiveIssue) => Promise<void> }) {
+function IssueCard({ issue, onRetry, onDismiss, onDoubleClick }: {
+  issue: ActiveIssue;
+  onRetry: (issue: ActiveIssue) => Promise<void>;
+  onDismiss: (issue: ActiveIssue) => void;
+  onDoubleClick?: () => void;
+}) {
   const [showDetails, setShowDetails] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const sc = severityColor(issue.severity);
@@ -310,7 +316,10 @@ function IssueCard({ issue, onRetry }: { issue: ActiveIssue; onRetry: (issue: Ac
   const title = useMemo(() => humanizeTitle(issue.title), [issue.title]);
 
   return (
-    <div className={cn("rounded-md border p-3 space-y-2", sc.bg, sc.border)}>
+    <div
+      className={cn("rounded-md border p-3 space-y-2", sc.bg, sc.border, onDoubleClick && "cursor-pointer")}
+      onDoubleClick={onDoubleClick}
+    >
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <Badge className={cn("text-[10px] uppercase font-bold shrink-0", sc.bg, sc.text)}>
@@ -361,7 +370,12 @@ function IssueCard({ issue, onRetry }: { issue: ActiveIssue; onRetry: (issue: Ac
             {retrying ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
             {retrying ? "Retrying..." : "Retry"}
           </Button>
-          <Button size="xs" variant="ghost" className="text-[#9CA3AF] hover:text-[#F9FAFB] text-[10px]">
+          <Button
+            size="xs"
+            variant="ghost"
+            className="text-[#9CA3AF] hover:text-[#F9FAFB] text-[10px]"
+            onClick={() => onDismiss(issue)}
+          >
             <XCircle className="h-3 w-3" /> Dismiss
           </Button>
         </div>
@@ -435,6 +449,52 @@ export default function CommandCenter() {
       }
     },
     [apiFetch, load]
+  );
+
+  const handleIssueDismiss = useCallback(
+    async (issue: ActiveIssue) => {
+      const prev = issues;
+      setIssues((cur) => cur.filter((i) => i.id !== issue.id));
+      if (issue.jobId) {
+        try {
+          await apiFetch(`/pipeline/jobs/${issue.jobId}/dismiss`, { method: "PATCH" });
+        } catch {
+          setIssues(prev);
+          toast.error("Failed to dismiss issue");
+        }
+      }
+      // Non-job issues: local-only dismiss (no backend call)
+    },
+    [apiFetch, issues]
+  );
+
+  const handleDismissAllIssues = useCallback(async () => {
+    const prev = issues;
+    setIssues([]);
+    try {
+      await apiFetch("/pipeline/jobs/bulk-dismiss", { method: "PATCH" });
+    } catch {
+      setIssues(prev);
+      toast.error("Failed to dismiss all issues");
+    }
+  }, [apiFetch, issues]);
+
+  const handleIssueDoubleClick = useCallback(
+    (issue: ActiveIssue) => {
+      if (issue.jobId && issue.requestId) {
+        navigate(`/admin/requests?requestId=${issue.requestId}&jobId=${issue.jobId}`);
+      }
+    },
+    [navigate]
+  );
+
+  const handleEventDoubleClick = useCallback(
+    (evt: ActivityEvent) => {
+      if (evt.jobId && evt.requestId) {
+        navigate(`/admin/requests?requestId=${evt.requestId}&jobId=${evt.jobId}`);
+      }
+    },
+    [navigate]
   );
 
   if (loading && !health) return <CommandCenterSkeleton />;
@@ -511,8 +571,10 @@ export default function CommandCenter() {
                   key={evt.id}
                   className={cn(
                     "flex items-center gap-2.5 py-1.5 px-2 rounded text-xs transition-colors hover:bg-white/[0.03]",
-                    evt.status === "failed" && "border-l-2 border-[#EF4444] bg-[#EF4444]/[0.04]"
+                    evt.status === "failed" && "border-l-2 border-[#EF4444] bg-[#EF4444]/[0.04]",
+                    (evt.jobId && evt.requestId) && "cursor-pointer"
                   )}
+                  onDoubleClick={() => handleEventDoubleClick(evt)}
                 >
                   <span className="text-[10px] text-[#9CA3AF] font-mono tabular-nums w-12 shrink-0">
                     {relativeTime(evt.timestamp)}
@@ -555,6 +617,17 @@ export default function CommandCenter() {
                 <Badge className="bg-[#EF4444]/15 text-[#EF4444] text-[10px] ml-1">{issues.length}</Badge>
               )}
             </div>
+            {issues.length > 0 && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-[#EF4444] hover:text-[#EF4444] hover:bg-[#EF4444]/10 text-xs gap-1"
+                onClick={handleDismissAllIssues}
+              >
+                <XCircle className="h-3 w-3" />
+                Dismiss All
+              </Button>
+            )}
           </div>
 
           <ScrollArea className="flex-1 px-4 pb-3">
@@ -567,7 +640,13 @@ export default function CommandCenter() {
             ) : (
               <div className="space-y-2">
                 {issues.map((issue) => (
-                  <IssueCard key={issue.id} issue={issue} onRetry={handleIssueRetry} />
+                  <IssueCard
+                    key={issue.id}
+                    issue={issue}
+                    onRetry={handleIssueRetry}
+                    onDismiss={handleIssueDismiss}
+                    onDoubleClick={issue.jobId && issue.requestId ? () => handleIssueDoubleClick(issue) : undefined}
+                  />
                 ))}
               </div>
             )}

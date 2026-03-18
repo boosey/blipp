@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import { usePolling } from "@/hooks/use-polling";
 import {
   Mic,
@@ -9,6 +11,7 @@ import {
   DollarSign,
   CheckCircle2,
   XCircle,
+  X,
   Loader2,
   RefreshCw,
   ChevronRight,
@@ -224,20 +227,31 @@ function StageHeader({
   );
 }
 
-function JobCard({ job, onClick }: { job: PipelineJob; onClick: () => void }) {
+function JobCard({ job, onClick, onDismiss, onDoubleClick }: { job: PipelineJob; onClick: () => void; onDismiss?: () => void; onDoubleClick?: () => void }) {
   return (
     <button
       onClick={onClick}
+      onDoubleClick={onDoubleClick}
       className={cn(
-        "w-full text-left rounded-md border border-white/5 bg-[#0F1D32] p-2.5 hover:border-white/10 transition-all duration-300 group animate-in fade-in slide-in-from-top-2",
+        "w-full text-left rounded-md border border-white/5 bg-[#0F1D32] p-2.5 hover:border-white/10 transition-all duration-300 group animate-in fade-in slide-in-from-top-2 relative",
         job.status === "FAILED" && "border-l-2 border-l-[#EF4444]"
       )}
     >
+      {job.status === "FAILED" && onDismiss && (
+        <span
+          role="button"
+          className="absolute top-1.5 right-1.5 p-0.5 rounded hover:bg-white/10 text-[#9CA3AF] hover:text-[#F9FAFB] transition-colors z-10"
+          onClick={(e) => { e.stopPropagation(); onDismiss(); }}
+          title="Dismiss"
+        >
+          <X className="h-3 w-3" />
+        </span>
+      )}
       <div className="flex items-start justify-between gap-1.5 mb-1.5">
         <span className="text-[11px] font-medium text-[#F9FAFB] truncate flex-1 leading-tight">
           {job.episodeTitle ?? job.episodeId}
         </span>
-        <ChevronRight className="h-3 w-3 text-[#9CA3AF]/0 group-hover:text-[#9CA3AF]/60 transition-colors shrink-0 mt-0.5" />
+        <ChevronRight className={cn("h-3 w-3 text-[#9CA3AF]/0 group-hover:text-[#9CA3AF]/60 transition-colors shrink-0 mt-0.5", job.status === "FAILED" && "mr-4")} />
       </div>
       {job.podcastTitle && (
         <div className="flex items-center gap-1.5 mb-1.5">
@@ -634,6 +648,7 @@ function PipelineSkeleton() {
 // ── Main ──
 
 export default function Pipeline() {
+  const navigate = useNavigate();
   const apiFetch = useAdminFetch();
   const {
     config: pipelineConfig,
@@ -712,6 +727,24 @@ export default function Pipeline() {
     setSelectedJob(job);
     setSheetOpen(true);
   };
+
+  const handleJobDoubleClick = (job: PipelineJob) => {
+    navigate(`/admin/requests?requestId=${job.requestId}&jobId=${job.id}`);
+  };
+
+  const handleDismissJob = useCallback(async (job: PipelineJob) => {
+    // Optimistic: remove from local state
+    const stage = job.currentStage;
+    const prev = stageJobs[stage] ?? [];
+    setStageJobs((s) => ({ ...s, [stage]: prev.filter((j) => j.id !== job.id) }));
+    try {
+      await apiFetch(`/pipeline/jobs/${job.id}/dismiss`, { method: "PATCH" });
+    } catch {
+      // Restore on failure
+      setStageJobs((s) => ({ ...s, [stage]: prev }));
+      toast.error("Failed to dismiss job");
+    }
+  }, [apiFetch, stageJobs]);
 
   const allJobs = Object.values(stageJobs).flat();
 
@@ -837,7 +870,13 @@ export default function Pipeline() {
                 <ScrollArea className="flex-1 p-2">
                   <div className="space-y-1.5">
                     {jobs.map((job) => (
-                      <JobCard key={job.id} job={job} onClick={() => handleJobClick(job)} />
+                      <JobCard
+                        key={job.id}
+                        job={job}
+                        onClick={() => handleJobClick(job)}
+                        onDismiss={job.status === "FAILED" ? () => handleDismissJob(job) : undefined}
+                        onDoubleClick={() => handleJobDoubleClick(job)}
+                      />
                     ))}
                     {jobs.length === 0 && !loading && (
                       <div className="flex flex-col items-center justify-center py-8 text-[#9CA3AF]">
@@ -884,12 +923,29 @@ interface DlqData {
 function DlqSection() {
   const apiFetch = useAdminFetch();
   const [dlq, setDlq] = useState<DlqData | null>(null);
+  const [dismissingAll, setDismissingAll] = useState(false);
 
-  useEffect(() => {
+  const loadDlq = useCallback(() => {
     apiFetch<{ data: DlqData }>("/pipeline/dlq")
       .then((r) => setDlq(r.data))
       .catch(() => {});
   }, [apiFetch]);
+
+  useEffect(() => { loadDlq(); }, [loadDlq]);
+
+  const handleDismissAll = async () => {
+    const prev = dlq;
+    setDismissingAll(true);
+    setDlq({ stuckJobs: [], exhaustedRetries: [] });
+    try {
+      await apiFetch("/pipeline/jobs/bulk-dismiss", { method: "PATCH" });
+    } catch {
+      setDlq(prev);
+      toast.error("Failed to dismiss all DLQ items");
+    } finally {
+      setDismissingAll(false);
+    }
+  };
 
   if (!dlq) return null;
   const totalIssues =
@@ -898,10 +954,22 @@ function DlqSection() {
 
   return (
     <div className="bg-[#EF4444]/5 border border-[#EF4444]/20 rounded-xl p-4 mt-1">
-      <h3 className="text-sm font-semibold text-[#EF4444] mb-3 flex items-center gap-2">
-        <AlertTriangle className="h-4 w-4" />
-        Dead Letter Queue ({totalIssues} issues)
-      </h3>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold text-[#EF4444] flex items-center gap-2">
+          <AlertTriangle className="h-4 w-4" />
+          Dead Letter Queue ({totalIssues} issues)
+        </h3>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="text-[#EF4444] hover:text-[#EF4444] hover:bg-[#EF4444]/10 text-xs gap-1"
+          disabled={dismissingAll}
+          onClick={handleDismissAll}
+        >
+          <XCircle className="h-3 w-3" />
+          Dismiss All
+        </Button>
+      </div>
       {dlq.stuckJobs?.length > 0 && (
         <div className="mb-3">
           <p className="text-xs text-[#9CA3AF] mb-1.5">

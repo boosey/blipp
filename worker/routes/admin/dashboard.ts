@@ -124,6 +124,8 @@ dashboardRoutes.get("/activity", async (c) => {
     podcastName: job.episode?.podcast?.title,
     status: job.status.toLowerCase().replace("_", "-") as string,
     type: job.currentStage,
+    jobId: job.id,
+    requestId: job.requestId,
   }));
 
   return c.json({ data });
