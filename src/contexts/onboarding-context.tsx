@@ -5,18 +5,21 @@ import { useApiFetch } from "../lib/api";
 interface OnboardingContextValue {
   needsOnboarding: boolean;
   isChecking: boolean;
+  isAdmin: boolean;
   markComplete: () => void;
 }
 
 const OnboardingContext = createContext<OnboardingContextValue>({
   needsOnboarding: false,
   isChecking: true,
+  isAdmin: false,
   markComplete: () => {},
 });
 
 export function OnboardingProvider({ children }: { children: ReactNode }) {
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [isChecking, setIsChecking] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
   const apiFetch = useApiFetch();
   const checkedRef = useRef(false);
 
@@ -27,8 +30,12 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
     const check = async () => {
       try {
         const res = await apiFetch<{
-          user: { onboardingComplete?: boolean };
+          user: { onboardingComplete?: boolean; isAdmin?: boolean };
         }>("/me");
+
+        if (res.user.isAdmin) {
+          setIsAdmin(true);
+        }
 
         if (res.user.onboardingComplete) {
           setIsChecking(false);
@@ -49,7 +56,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <OnboardingContext.Provider value={{ needsOnboarding, isChecking, markComplete }}>
+    <OnboardingContext.Provider value={{ needsOnboarding, isChecking, isAdmin, markComplete }}>
       {children}
     </OnboardingContext.Provider>
   );

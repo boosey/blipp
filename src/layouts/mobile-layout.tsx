@@ -1,6 +1,6 @@
-import { Outlet, useLocation, useNavigate, Navigate } from "react-router-dom";
+import { Outlet, useLocation, useNavigate, Navigate, Link } from "react-router-dom";
 import { UserButton } from "@clerk/clerk-react";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Shield } from "lucide-react";
 import { BottomNav } from "../components/bottom-nav";
 import { AudioProvider, useAudio } from "../contexts/audio-context";
 import { PlanProvider } from "../contexts/plan-context";
@@ -14,7 +14,7 @@ const TOP_LEVEL_PATHS = ["/home", "/discover", "/library", "/settings"];
 
 function MobileLayoutInner() {
   const { currentItem } = useAudio();
-  const { needsOnboarding, isChecking } = useOnboarding();
+  const { needsOnboarding, isChecking, isAdmin } = useOnboarding();
   const location = useLocation();
   const navigate = useNavigate();
   const hasMiniPlayer = currentItem !== null;
@@ -50,7 +50,18 @@ function MobileLayoutInner() {
             <span>lipp</span>
           </span>
         </div>
-        <UserButton />
+        <div className="flex items-center gap-2">
+          {isAdmin && (
+            <Link
+              to="/admin"
+              className="p-1.5 text-zinc-400 hover:text-zinc-200 transition-colors"
+              title="Admin"
+            >
+              <Shield className="w-5 h-5" />
+            </Link>
+          )}
+          <UserButton />
+        </div>
       </header>
 
       {/* Scrollable content area */}
