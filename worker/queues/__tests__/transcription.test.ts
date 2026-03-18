@@ -22,7 +22,15 @@ vi.mock("../../lib/model-resolution", () => ({
     model: "whisper-large-v3-turbo",
     providerModelId: "@cf/openai/whisper-large-v3-turbo",
     pricing: { pricePerMinute: 0.0005 },
+    limits: null,
   }),
+  resolveSttModelChain: vi.fn().mockResolvedValue([{
+    provider: "cloudflare",
+    model: "whisper-large-v3-turbo",
+    providerModelId: "@cf/openai/whisper-large-v3-turbo",
+    pricing: { pricePerMinute: 0.0005 },
+    limits: null,
+  }]),
 }));
 
 vi.mock("../../lib/ai-usage", () => ({
@@ -120,7 +128,7 @@ vi.mock("../../lib/ai-errors", () => {
 });
 
 const { getConfig } = await import("../../lib/config");
-const { resolveStageModel } = await import("../../lib/model-resolution");
+const { resolveStageModel, resolveSttModelChain } = await import("../../lib/model-resolution");
 const { getTranscriptSource } = await import("../../lib/transcript-sources");
 const { getProviderImpl } = await import("../../lib/stt-providers");
 const { writeAiError } = await import("../../lib/ai-errors");
@@ -191,14 +199,23 @@ describe("handleTranscription", () => {
       return Promise.resolve(true);
     });
 
-    // Re-set resolveStageModel after clearAllMocks
+    // Re-set resolveStageModel + resolveSttModelChain after clearAllMocks
     (resolveStageModel as any).mockReset();
     (resolveStageModel as any).mockResolvedValue({
       provider: "cloudflare",
       model: "whisper-large-v3-turbo",
       providerModelId: "@cf/openai/whisper-large-v3-turbo",
       pricing: { pricePerMinute: 0.0005 },
+      limits: null,
     });
+    (resolveSttModelChain as any).mockReset();
+    (resolveSttModelChain as any).mockResolvedValue([{
+      provider: "cloudflare",
+      model: "whisper-large-v3-turbo",
+      providerModelId: "@cf/openai/whisper-large-v3-turbo",
+      pricing: { pricePerMinute: 0.0005 },
+      limits: null,
+    }]);
 
     // Default: fetch returns a Response-like object
     const audioData = new ArrayBuffer(20000);
@@ -372,7 +389,7 @@ describe("handleTranscription", () => {
     expect(msg.ack).toHaveBeenCalled();
   });
 
-  it("reads STT model via resolveStageModel and dispatches to provider", async () => {
+  it("resolves STT model chain and dispatches to provider", async () => {
     const episodeNoTranscript = { ...EPISODE, transcriptUrl: null };
     const msg = createMsg({ jobId: "job1", episodeId: "ep1" });
     mockPrisma.pipelineJob.findUnique.mockResolvedValue(JOB);
@@ -389,6 +406,7 @@ describe("handleTranscription", () => {
 
     await handleTranscription(createBatch([msg]), env, ctx);
 
+    expect(resolveSttModelChain).toHaveBeenCalled();
     expect(getProviderImpl).toHaveBeenCalledWith("cloudflare");
     expect(mockTranscribe).toHaveBeenCalled();
   });

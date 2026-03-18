@@ -1,5 +1,5 @@
 import { createPrismaClient } from "../lib/db";
-import { resolveStageModel } from "../lib/model-resolution";
+import { resolveStageModel, resolveSttModelChain } from "../lib/model-resolution";
 import { checkStageEnabled } from "../lib/queue-helpers";
 import { createPipelineLogger } from "../lib/logger";
 import { wpKey, putWorkProduct } from "../lib/work-products";
@@ -14,6 +14,42 @@ import type { TranscriptionMessage } from "../lib/queue-messages";
 import type { Env } from "../types";
 
 const CACHE_STATUSES = new Set(["TRANSCRIPT_READY", "EXTRACTING_CLAIMS", "COMPLETED"]);
+
+/** Detect actual audio format from magic bytes (first 12 bytes). */
+function detectAudioFormat(buffer: ArrayBuffer): { format: string; details?: string } {
+  const bytes = new Uint8Array(buffer, 0, Math.min(12, buffer.byteLength));
+  if (bytes.length < 4) return { format: "unknown", details: "too small" };
+
+  // ID3 tag (MP3 with metadata header)
+  if (bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33) {
+    return { format: "mp3", details: `ID3v2.${bytes[3]}` };
+  }
+  // MP3 sync word (0xFF followed by 0xE0+ for various MPEG versions/layers)
+  if (bytes[0] === 0xFF && (bytes[1] & 0xE0) === 0xE0) {
+    const version = (bytes[1] >> 3) & 0x03;
+    const layer = (bytes[1] >> 1) & 0x03;
+    const versionStr = version === 3 ? "MPEG1" : version === 2 ? "MPEG2" : version === 0 ? "MPEG2.5" : "unknown";
+    const layerStr = layer === 1 ? "Layer3" : layer === 2 ? "Layer2" : layer === 3 ? "Layer1" : "unknown";
+    return { format: "mp3", details: `${versionStr} ${layerStr}` };
+  }
+  // RIFF/WAV
+  if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46) {
+    return { format: "wav", details: "RIFF" };
+  }
+  // fLaC
+  if (bytes[0] === 0x66 && bytes[1] === 0x4C && bytes[2] === 0x61 && bytes[3] === 0x43) {
+    return { format: "flac" };
+  }
+  // OggS
+  if (bytes[0] === 0x4F && bytes[1] === 0x67 && bytes[2] === 0x67 && bytes[3] === 0x53) {
+    return { format: "ogg" };
+  }
+  // MP4/M4A (ftyp box)
+  if (bytes[4] === 0x66 && bytes[5] === 0x74 && bytes[6] === 0x79 && bytes[7] === 0x70) {
+    return { format: "m4a", details: "ftyp" };
+  }
+  return { format: "unknown", details: `magic: ${Array.from(bytes.slice(0, 4)).map(b => b.toString(16).padStart(2, "0")).join(" ")}` };
+}
 
 const MIME_TO_EXT: Record<string, string> = {
   "audio/mpeg": "mp3", "audio/mp3": "mp3", "audio/mp4": "m4a",
@@ -179,15 +215,10 @@ export async function handleTranscription(
         }
 
         if (!transcript) {
-          // Tier 3: STT via configured provider (unchanged)
+          // Tier 3: STT via configured model chain (primary → secondary → tertiary)
           await writeEvent(prisma, step.id, "WARN", "No transcript in RSS or Podcast Index — falling back to STT");
-          const resolved = await resolveStageModel(prisma, "stt");
-          const providerImpl = getProviderImpl(resolved.provider);
-          const providerModelId = resolved.providerModelId;
-          sttProvider = resolved.provider;
-          sttModel = providerModelId;
 
-          // Fetch audio
+          // Fetch audio (once, reused across model attempts)
           const audioResponse = await fetch(episode.audioUrl);
           if (!audioResponse.ok) {
             throw new Error(`Audio fetch failed: HTTP ${audioResponse.status} for ${episode.audioUrl.slice(0, 120)}`);
@@ -203,17 +234,20 @@ export async function handleTranscription(
             throw new Error(`Audio file too small (${audioBuffer.byteLength} bytes) — likely an error page, not audio`);
           }
 
-          const maxFileSize = (resolved.limits?.maxFileSizeBytes as number) ?? null;
-          const willChunk = maxFileSize != null && audioBuffer.byteLength > maxFileSize;
-          await writeEvent(prisma, step.id, "INFO", `Transcribing via ${providerImpl.name} (model: ${providerModelId})`, {
-            audioSizeBytes,
-            audioContentType,
-            audioContentLength: audioResponse.headers.get("content-length"),
-            provider: resolved.provider,
-            model: providerModelId,
-            maxFileSizeBytes: maxFileSize,
-            willChunk,
-            estimatedChunks: willChunk && maxFileSize ? Math.ceil(audioBuffer.byteLength / maxFileSize) : 1,
+          // Detect actual audio format from magic bytes
+          const audioFormat = detectAudioFormat(audioBuffer);
+          const formatMismatch = finalContentType && audioFormat.format !== "unknown"
+            && !finalContentType.includes(audioFormat.format);
+
+          await writeEvent(prisma, step.id, "INFO", "Audio file analysis", {
+            sizeBytes: audioBuffer.byteLength,
+            claimedContentType: finalContentType,
+            detectedFormat: audioFormat.format,
+            formatDetails: audioFormat.details,
+            formatMismatch: formatMismatch || false,
+            durationEstimateSeconds: Math.round(audioBuffer.byteLength / (128 * 1000 / 8)),
+            episodeDurationSeconds: episode.durationSeconds,
+            sourceUrl: episode.audioUrl?.slice(0, 200),
           });
 
           // Store source audio for debugging (idempotent — preserve first-seen)
@@ -234,6 +268,8 @@ export async function handleTranscription(
                   contentType: audioResponse.headers.get("content-type"),
                   contentLength: audioResponse.headers.get("content-length"),
                   sourceUrl: episode.audioUrl?.slice(0, 200),
+                  detectedFormat: audioFormat.format,
+                  formatDetails: audioFormat.details,
                 },
               },
               update: {},
@@ -241,33 +277,96 @@ export async function handleTranscription(
             await writeEvent(prisma, step.id, "INFO", "Source audio stored to R2", {
               r2Key: sourceAudioKey,
               sizeBytes: audioBuffer.byteLength,
-              contentType: audioResponse.headers.get("content-type"),
             });
           }
 
           const ext = extFromContentType(finalContentType, episode.audioUrl);
           const durationSeconds = episode.durationSeconds ?? Math.round(audioBuffer.byteLength / (128 * 1000 / 8));
 
-          const sttResult = await providerImpl.transcribe(
-            { buffer: audioBuffer, filename: `audio.${ext}`, sourceUrl: episode.audioUrl },
-            durationSeconds,
-            env,
-            providerModelId
-          );
+          // Resolve model chain: primary → secondary → tertiary
+          const modelChain = await resolveSttModelChain(prisma);
+          if (modelChain.length === 0) {
+            throw new Error("No STT model configured — configure at least a primary in Admin > AI Models");
+          }
 
-          transcript = sttResult.transcript;
-          recordSuccess(resolved.provider);
-          const estimatedSeconds = audioBuffer.byteLength / (128 * 1000 / 8);
-          const sttInputTokens = Math.round(audioBuffer.byteLength / 16000);
-          sttUsage = { model: resolved.model, inputTokens: sttInputTokens, outputTokens: 0, cost: calculateAudioCost(resolved.pricing, estimatedSeconds) };
-          await writeEvent(prisma, step.id, "INFO", `Transcript generated via ${providerImpl.name}`, { bytes: transcript.length, source: resolved.provider });
-          log.info("transcript_fetched", { episodeId, bytes: transcript.length, source: resolved.provider });
+          await writeEvent(prisma, step.id, "INFO", `STT model chain: ${modelChain.map((m, i) => `${["primary", "secondary", "tertiary"][i]}=${m.provider}/${m.providerModelId}`).join(", ")}`, {
+            chainLength: modelChain.length,
+          });
+
+          // Try each model in the chain until one succeeds
+          const sttErrors: { provider: string; model: string; error: string; httpStatus?: number }[] = [];
+          for (let i = 0; i < modelChain.length; i++) {
+            const resolved = modelChain[i];
+            const tier = ["primary", "secondary", "tertiary"][i];
+            const providerImpl = getProviderImpl(resolved.provider);
+            const providerModelId = resolved.providerModelId;
+            sttProvider = resolved.provider;
+            sttModel = providerModelId;
+
+            const maxFileSize = (resolved.limits?.maxFileSizeBytes as number) ?? null;
+            const willChunk = maxFileSize != null && audioBuffer.byteLength > maxFileSize;
+
+            await writeEvent(prisma, step.id, "INFO", `Attempting ${tier}: ${providerImpl.name} (${providerModelId})`, {
+              tier,
+              provider: resolved.provider,
+              model: providerModelId,
+              maxFileSizeBytes: maxFileSize,
+              willChunk,
+              estimatedChunks: willChunk && maxFileSize ? Math.ceil(audioBuffer.byteLength / maxFileSize) : 1,
+              audioSizeBytes,
+            });
+
+            try {
+              const sttResult = await providerImpl.transcribe(
+                { buffer: audioBuffer, filename: `audio.${ext}`, sourceUrl: episode.audioUrl },
+                durationSeconds,
+                env,
+                providerModelId
+              );
+
+              transcript = sttResult.transcript;
+              recordSuccess(resolved.provider);
+              const estimatedSeconds = audioBuffer.byteLength / (128 * 1000 / 8);
+              const sttInputTokens = Math.round(audioBuffer.byteLength / 16000);
+              sttUsage = { model: resolved.model, inputTokens: sttInputTokens, outputTokens: 0, cost: calculateAudioCost(resolved.pricing, estimatedSeconds) };
+
+              await writeEvent(prisma, step.id, "INFO", `Transcript generated via ${tier} ${providerImpl.name}`, {
+                tier,
+                bytes: transcript.length,
+                source: resolved.provider,
+                attemptNumber: i + 1,
+                previousFailures: sttErrors.length,
+              });
+              log.info("transcript_fetched", { episodeId, bytes: transcript.length, source: resolved.provider, tier });
+              break; // Success — stop trying
+            } catch (sttErr) {
+              const errMsg = sttErr instanceof Error ? sttErr.message : String(sttErr);
+              const httpStatus = (sttErr as any)?.httpStatus;
+              recordFailure(resolved.provider);
+              sttErrors.push({ provider: resolved.provider, model: providerModelId, error: errMsg.slice(0, 500), httpStatus });
+
+              await writeEvent(prisma, step.id, "WARN", `${tier} failed: ${providerImpl.name} — ${errMsg.slice(0, 300)}`, {
+                tier,
+                provider: resolved.provider,
+                model: providerModelId,
+                httpStatus,
+                errorType: sttErr?.constructor?.name,
+                willRetryNext: i < modelChain.length - 1,
+              });
+
+              if (i === modelChain.length - 1) {
+                // All models exhausted — throw the last error
+                throw sttErr;
+              }
+              // Otherwise continue to next model
+            }
+          }
         }
 
         // Write transcript to R2 + index in DB
         const r2Key = wpKey({ type: "TRANSCRIPT", episodeId });
-        await putWorkProduct(env.R2, r2Key, transcript);
-        const sizeBytes = new TextEncoder().encode(transcript).byteLength;
+        await putWorkProduct(env.R2, r2Key, transcript!);
+        const sizeBytes = new TextEncoder().encode(transcript!).byteLength;
         await prisma.workProduct.upsert({
           where: { r2Key },
           update: { sizeBytes },

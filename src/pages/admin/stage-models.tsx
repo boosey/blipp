@@ -92,6 +92,13 @@ export default function StageModels() {
     return { provider: val.provider, model: val.model };
   }
 
+  function getModelConfigByKey(key: string): { provider: string; model: string } | null {
+    const entry = configs.find((c) => c.key === key);
+    const val = entry?.value as { provider?: string; model?: string } | null;
+    if (!val?.provider || !val?.model) return null;
+    return { provider: val.provider, model: val.model };
+  }
+
   function getStageWarning(stageKey: string): string | null {
     const cfg = getModelConfig(stageKey);
     if (!cfg) return "No model configured — this stage will fail at runtime";
@@ -121,6 +128,38 @@ export default function StageModels() {
       setEditing(null);
     } catch (e) {
       console.error("Failed to update model:", e);
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const handleFallbackChange = async (configKey: string, compositeKey: string) => {
+    const [provider, ...rest] = compositeKey.split("::");
+    const modelId = rest.join("::");
+    setSaving(configKey);
+    try {
+      await apiFetch(`/config/${configKey}`, {
+        method: "PATCH",
+        body: JSON.stringify({ value: { provider, model: modelId } }),
+      });
+      await load();
+    } catch (e) {
+      console.error("Failed to update fallback model:", e);
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const handleFallbackClear = async (configKey: string) => {
+    setSaving(configKey);
+    try {
+      await apiFetch(`/config/${configKey}`, {
+        method: "PATCH",
+        body: JSON.stringify({ value: null }),
+      });
+      await load();
+    } catch (e) {
+      console.error("Failed to clear fallback model:", e);
     } finally {
       setSaving(null);
     }
@@ -235,6 +274,51 @@ export default function StageModels() {
                   <Settings className="h-3 w-3" />
                   {cfg ? "Change" : "Configure"}
                 </Button>
+              )}
+
+              {/* STT fallback chain: secondary + tertiary */}
+              {mt.key === "stt" && cfg && (
+                <div className="mt-3 pt-3 border-t border-white/5 space-y-2">
+                  <span className="text-[9px] font-medium text-[#6B7280] uppercase tracking-wider">Fallback Chain</span>
+                  {(["secondary", "tertiary"] as const).map((tier) => {
+                    const configKey = `ai.stt.model.${tier}`;
+                    const fallbackCfg = getModelConfigByKey(configKey);
+                    const tierSaving = saving === configKey;
+                    return (
+                      <div key={tier} className="space-y-1">
+                        <span className="text-[10px] text-[#9CA3AF] capitalize">{tier}</span>
+                        <div className="flex items-center gap-1.5">
+                          <Select
+                            value={fallbackCfg ? `${fallbackCfg.provider}::${fallbackCfg.model}` : "__none__"}
+                            onValueChange={(v) => {
+                              if (v === "__none__") handleFallbackClear(configKey);
+                              else handleFallbackChange(configKey, v);
+                            }}
+                            disabled={tierSaving}
+                          >
+                            <SelectTrigger className="flex-1 h-7 text-[10px] bg-[#1A2942] border-white/10 text-[#F9FAFB]">
+                              <SelectValue placeholder="None (disabled)" />
+                            </SelectTrigger>
+                            <SelectContent className="bg-[#1A2942] border-white/10 text-[#F9FAFB]">
+                              <SelectItem value="__none__" className="text-[10px] text-[#6B7280]">
+                                None (disabled)
+                              </SelectItem>
+                              {stageModels.map((m) => (
+                                <SelectItem
+                                  key={`${m.provider}::${m.model}`}
+                                  value={`${m.provider}::${m.model}`}
+                                  className="text-[10px]"
+                                >
+                                  {m.label} ({m.providerLabel})
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               )}
             </div>
           );

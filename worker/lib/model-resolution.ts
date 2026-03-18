@@ -1,4 +1,5 @@
 import { getModelConfig, STAGE_LABELS } from "./ai-models";
+import { getConfig } from "./config";
 import { getModelPricing, type ModelPricing } from "./ai-usage";
 import { checkCircuit, CircuitOpenError } from "./circuit-breaker";
 import type { AIStage } from "./ai-models";
@@ -67,6 +68,46 @@ export async function resolveStageModel(
   const limits = (dbProvider?.limits as Record<string, unknown>) ?? null;
 
   return { provider, model, providerModelId, pricing, limits };
+}
+
+/**
+ * Resolves an ordered list of STT models to try: primary, secondary, tertiary.
+ * Config keys: ai.stt.model, ai.stt.model.secondary, ai.stt.model.tertiary
+ * Skips entries with open circuit breakers. Returns at least one if primary exists.
+ */
+export async function resolveSttModelChain(
+  prisma: any
+): Promise<ResolvedModel[]> {
+  const keys = ["ai.stt.model", "ai.stt.model.secondary", "ai.stt.model.tertiary"];
+  const chain: ResolvedModel[] = [];
+
+  for (const key of keys) {
+    const suffix = key === "ai.stt.model" ? "stt" : key.replace("ai.stt.model.", "stt.");
+    const config = await getConfig<{ provider: string; model: string } | null>(prisma, key, null);
+    if (!config?.provider || !config?.model) continue;
+
+    try {
+      checkCircuit(config.provider);
+    } catch (err) {
+      if (err instanceof CircuitOpenError) continue;
+      throw err;
+    }
+
+    const pricing = await getModelPricing(prisma, config.model, config.provider);
+    const dbProvider = await prisma.aiModelProvider.findFirst({
+      where: { provider: config.provider, model: { modelId: config.model } },
+    });
+
+    chain.push({
+      provider: config.provider,
+      model: config.model,
+      providerModelId: dbProvider?.providerModelId ?? config.model,
+      pricing,
+      limits: (dbProvider?.limits as Record<string, unknown>) ?? null,
+    });
+  }
+
+  return chain;
 }
 
 /**
