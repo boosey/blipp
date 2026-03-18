@@ -27,7 +27,7 @@ pipelineRoutes.get("/jobs", async (c) => {
   const requestId = c.req.query("requestId");
   const search = c.req.query("search");
 
-  const where: Record<string, unknown> = {};
+  const where: Record<string, unknown> = { dismissedAt: null };
   if (currentStage) where.currentStage = currentStage;
   if (status) where.status = status;
   if (requestId) where.requestId = requestId;
@@ -78,6 +78,7 @@ pipelineRoutes.get("/jobs", async (c) => {
     createdAt: job.createdAt.toISOString(),
     updatedAt: job.updatedAt.toISOString(),
     completedAt: job.completedAt?.toISOString(),
+    dismissedAt: job.dismissedAt?.toISOString() ?? null,
     episodeTitle: job.episode?.title,
     episodeDurationSeconds: job.episode?.durationSeconds ?? undefined,
     podcastTitle: job.episode?.podcast?.title,
@@ -85,6 +86,31 @@ pipelineRoutes.get("/jobs", async (c) => {
   }));
 
   return c.json(paginatedResponse(data, total, page, pageSize));
+});
+
+// Bulk dismiss — must be registered before :id routes to avoid param conflict
+pipelineRoutes.patch("/jobs/bulk-dismiss", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const stage = c.req.query("stage");
+  const where: any = { status: "FAILED", dismissedAt: null };
+  if (stage) where.currentStage = stage;
+  const result = await prisma.pipelineJob.updateMany({
+    where,
+    data: { dismissedAt: new Date() },
+  });
+  return c.json({ data: { count: result.count } });
+});
+
+// Single dismiss
+pipelineRoutes.patch("/jobs/:id/dismiss", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const id = c.req.param("id");
+  const job = await prisma.pipelineJob.update({
+    where: { id },
+    data: { dismissedAt: new Date() },
+    select: { id: true, status: true, dismissedAt: true },
+  });
+  return c.json({ data: job });
 });
 
 // GET /jobs/:id - Enriched job detail with steps and request context
@@ -199,6 +225,7 @@ pipelineRoutes.post("/jobs/:id/retry", async (c) => {
         status: "PENDING",
         errorMessage: null,
         completedAt: null,
+        dismissedAt: null,
       },
     });
 
@@ -272,6 +299,7 @@ pipelineRoutes.post("/jobs/bulk/retry", async (c) => {
         status: "PENDING",
         errorMessage: null,
         completedAt: null,
+        dismissedAt: null,
       },
     });
 
@@ -604,6 +632,7 @@ pipelineRoutes.get("/dlq", async (c) => {
       where: {
         status: "IN_PROGRESS",
         updatedAt: { lt: oneHourAgo },
+        dismissedAt: null,
       },
       select: {
         id: true,
@@ -618,6 +647,7 @@ pipelineRoutes.get("/dlq", async (c) => {
       where: {
         status: "FAILED",
         retryCount: { gte: 3 },
+        job: { dismissedAt: null },
       },
       select: {
         id: true,

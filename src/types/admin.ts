@@ -88,6 +88,8 @@ export interface ActiveIssue {
   entityType?: string;
   createdAt: string;
   actionable: boolean;
+  jobId?: string;
+  requestId?: string;
 }
 
 // ── Pipeline Job Lifecycle ──
@@ -129,6 +131,7 @@ export interface PipelineJob {
   createdAt: string;
   updatedAt: string;
   completedAt?: string;
+  dismissedAt?: string | null;
   // Joined data
   episodeTitle?: string;
   episodeDurationSeconds?: number;

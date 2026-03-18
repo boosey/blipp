@@ -225,7 +225,7 @@ dashboardRoutes.get("/issues", async (c) => {
   try {
     [failedJobs, brokenPodcasts] = await Promise.all([
       prisma.pipelineJob.findMany({
-        where: { status: "FAILED", createdAt: { gte: fortyEightHoursAgo } },
+        where: { status: "FAILED", dismissedAt: null, createdAt: { gte: fortyEightHoursAgo } },
         orderBy: { createdAt: "desc" },
         take: 50,
       }),
@@ -252,6 +252,8 @@ dashboardRoutes.get("/issues", async (c) => {
         entityType: "episode",
         createdAt: job.createdAt.toISOString(),
         actionable: true,
+        jobId: job.id,
+        requestId: job.requestId ?? undefined,
       };
     }),
     ...brokenPodcasts.map((p) => {
