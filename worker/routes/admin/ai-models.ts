@@ -93,10 +93,20 @@ aiModelsRoutes.patch("/:id/providers/:providerId", async (c) => {
   return c.json({ data });
 });
 
+// DELETE /:id — delete a model and all its providers (cascade)
+aiModelsRoutes.delete("/:id", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const id = c.req.param("id");
+  await prisma.aiModel.delete({ where: { id } });
+  return c.json({ success: true });
+});
+
 // DELETE /:id/providers/:providerId — remove a provider
 aiModelsRoutes.delete("/:id/providers/:providerId", async (c) => {
   const prisma = c.get("prisma") as any;
+  const modelId = c.req.param("id");
   const id = c.req.param("providerId");
   await prisma.aiModelProvider.delete({ where: { id } });
-  return c.json({ success: true });
+  const remainingProviders = await prisma.aiModelProvider.count({ where: { aiModelId: modelId } });
+  return c.json({ success: true, remainingProviders });
 });

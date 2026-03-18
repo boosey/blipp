@@ -18,6 +18,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { useAdminFetch } from "@/lib/admin-api";
 import { STAGE_LABELS } from "@/lib/ai-models";
@@ -47,6 +55,8 @@ export default function ModelRegistryPage() {
   const [showAddModel, setShowAddModel] = useState(false);
   const [addingProviderFor, setAddingProviderFor] = useState<string | null>(null);
   const [editingProvider, setEditingProvider] = useState<string | null>(null);
+  const [deleteModelConfirm, setDeleteModelConfirm] = useState<AiModelEntry | null>(null);
+  const [lastProviderModelId, setLastProviderModelId] = useState<string | null>(null);
 
   const fetchModels = useCallback(async () => {
     try {
@@ -72,8 +82,22 @@ export default function ModelRegistryPage() {
     fetchModels();
   };
 
-  const deleteProvider = async (modelId: string, providerId: string) => {
-    await apiFetch(`/ai-models/${modelId}/providers/${providerId}`, { method: "DELETE" });
+  const deleteProvider = async (model: AiModelEntry, providerId: string) => {
+    const res = await apiFetch<{ success: boolean; remainingProviders: number }>(
+      `/ai-models/${model.id}/providers/${providerId}`,
+      { method: "DELETE" },
+    );
+    if (res.remainingProviders === 0) {
+      setLastProviderModelId(model.id);
+    }
+    fetchModels();
+  };
+
+  const deleteModel = async (model: AiModelEntry) => {
+    await apiFetch(`/ai-models/${model.id}`, { method: "DELETE" });
+    setDeleteModelConfirm(null);
+    setLastProviderModelId(null);
+    setExpandedId(null);
     fetchModels();
   };
 
@@ -195,6 +219,15 @@ export default function ModelRegistryPage() {
                     >
                       {model.isActive ? <Check className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />}
                     </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      onClick={() => setDeleteModelConfirm(model)}
+                      className="text-[#9CA3AF] hover:text-[#EF4444]"
+                      title="Delete model"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
                   </div>
                 </div>
 
@@ -260,7 +293,7 @@ export default function ModelRegistryPage() {
                                 <Button
                                   variant="ghost"
                                   size="icon-xs"
-                                  onClick={() => deleteProvider(model.id, prov.id)}
+                                  onClick={() => deleteProvider(model, prov.id)}
                                   className="text-[#9CA3AF] hover:text-[#EF4444]"
                                 >
                                   <Trash2 className="h-3 w-3" />
@@ -298,6 +331,59 @@ export default function ModelRegistryPage() {
           })}
         </div>
       )}
+
+      {/* Delete Model Confirmation */}
+      <Dialog open={!!deleteModelConfirm} onOpenChange={(open) => !open && setDeleteModelConfirm(null)}>
+        <DialogContent className="bg-[#0F1D32] border-white/10 sm:max-w-md" showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle className="text-[#F9FAFB]">Delete Model</DialogTitle>
+            <DialogDescription className="text-[#9CA3AF]">
+              This will permanently delete <span className="font-semibold text-[#F9FAFB]">{deleteModelConfirm?.label}</span> and
+              all {deleteModelConfirm?.providers.length ?? 0} provider{deleteModelConfirm?.providers.length === 1 ? "" : "s"}.
+              This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" size="sm" onClick={() => setDeleteModelConfirm(null)} className="text-[#9CA3AF] text-xs">
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => deleteModelConfirm && deleteModel(deleteModelConfirm)}
+              className="bg-[#EF4444] hover:bg-[#EF4444]/80 text-white text-xs"
+            >
+              Delete Model
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Last Provider Deleted — offer to delete model */}
+      <Dialog open={!!lastProviderModelId} onOpenChange={(open) => !open && setLastProviderModelId(null)}>
+        <DialogContent className="bg-[#0F1D32] border-white/10 sm:max-w-md" showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle className="text-[#F9FAFB]">No Providers Remaining</DialogTitle>
+            <DialogDescription className="text-[#9CA3AF]">
+              This model has no providers left. Would you like to delete the model entry too?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" size="sm" onClick={() => setLastProviderModelId(null)} className="text-[#9CA3AF] text-xs">
+              Keep Model
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => {
+                const model = models.find((m) => m.id === lastProviderModelId);
+                if (model) deleteModel(model);
+              }}
+              className="bg-[#EF4444] hover:bg-[#EF4444]/80 text-white text-xs"
+            >
+              Delete Model
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
