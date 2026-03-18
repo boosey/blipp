@@ -484,4 +484,81 @@ describe("handleAudioGeneration", () => {
       });
     });
   });
+
+  describe("model chain fallback", () => {
+    it("falls back to secondary model when primary fails", async () => {
+      mockPrisma.clip.update.mockResolvedValue({ id: "clip-1" });
+
+      // Chain: primary (fails) -> secondary (succeeds)
+      (resolveModelChain as any).mockResolvedValue([
+        { provider: "openai", model: "gpt-4o-mini-tts", providerModelId: "gpt-4o-mini-tts", pricing: null, limits: null },
+        { provider: "elevenlabs", model: "eleven-v2", providerModelId: "eleven_multilingual_v2", pricing: null, limits: null },
+      ]);
+
+      // First call fails, second succeeds
+      (generateSpeech as any)
+        .mockRejectedValueOnce(new Error("OpenAI 500: Internal Server Error"))
+        .mockResolvedValueOnce({
+          audio: new ArrayBuffer(4096),
+          usage: { model: "eleven-v2", inputTokens: 40, outputTokens: 0, cost: null },
+        });
+
+      const { mockMsg, mockBatch } = makeBatch(msgBody);
+      await handleAudioGeneration(mockBatch, mockEnv, mockCtx);
+
+      // Provider was called twice (primary failed, secondary succeeded)
+      expect(generateSpeech).toHaveBeenCalledTimes(2);
+      // Audio written to R2
+      expect(putWorkProduct).toHaveBeenCalledTimes(1);
+      // Step marked COMPLETED
+      expect(mockPrisma.pipelineStep.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "step-1" },
+          data: expect.objectContaining({ status: "COMPLETED" }),
+        })
+      );
+      expect(mockMsg.ack).toHaveBeenCalled();
+    });
+
+    it("fails when all models in chain fail", async () => {
+      (resolveModelChain as any).mockResolvedValue([
+        { provider: "openai", model: "gpt-4o-mini-tts", providerModelId: "gpt-4o-mini-tts", pricing: null, limits: null },
+        { provider: "elevenlabs", model: "eleven-v2", providerModelId: "eleven_multilingual_v2", pricing: null, limits: null },
+      ]);
+
+      (generateSpeech as any)
+        .mockRejectedValueOnce(new Error("OpenAI 500"))
+        .mockRejectedValueOnce(new Error("ElevenLabs 500"));
+
+      const { mockMsg, mockBatch } = makeBatch(msgBody);
+      await handleAudioGeneration(mockBatch, mockEnv, mockCtx);
+
+      expect(generateSpeech).toHaveBeenCalledTimes(2);
+      // Step marked FAILED with last error
+      expect(mockPrisma.pipelineStep.updateMany).toHaveBeenCalledWith({
+        where: { jobId: "job-1", stage: "AUDIO_GENERATION", status: "IN_PROGRESS" },
+        data: expect.objectContaining({
+          status: "FAILED",
+          errorMessage: expect.stringContaining("ElevenLabs 500"),
+        }),
+      });
+      expect(mockMsg.ack).toHaveBeenCalled();
+    });
+
+    it("throws when model chain is empty", async () => {
+      (resolveModelChain as any).mockResolvedValue([]);
+
+      const { mockMsg, mockBatch } = makeBatch(msgBody);
+      await handleAudioGeneration(mockBatch, mockEnv, mockCtx);
+
+      expect(mockPrisma.pipelineStep.updateMany).toHaveBeenCalledWith({
+        where: { jobId: "job-1", stage: "AUDIO_GENERATION", status: "IN_PROGRESS" },
+        data: expect.objectContaining({
+          status: "FAILED",
+          errorMessage: expect.stringContaining("No TTS model configured"),
+        }),
+      });
+      expect(mockMsg.ack).toHaveBeenCalled();
+    });
+  });
 });

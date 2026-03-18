@@ -489,4 +489,83 @@ describe("handleNarrativeGeneration", () => {
       });
     });
   });
+
+  describe("model chain fallback", () => {
+    it("falls back to secondary model when primary fails", async () => {
+      // Chain: primary (fails) -> secondary (succeeds)
+      (resolveModelChain as any).mockResolvedValue([
+        { provider: "anthropic", model: "claude-sonnet-4-20250514", providerModelId: "claude-sonnet-4-20250514", pricing: null, limits: null },
+        { provider: "openai", model: "gpt-4o", providerModelId: "gpt-4o", pricing: null, limits: null },
+      ]);
+
+      // First call fails, second succeeds
+      (generateNarrative as any)
+        .mockRejectedValueOnce(new Error("Anthropic 500: Internal Server Error"))
+        .mockResolvedValueOnce({
+          narrative: "Fallback narrative about technology.",
+          usage: { model: "gpt-4o", inputTokens: 120, outputTokens: 60, cost: null },
+        });
+
+      const { mockMsg, mockBatch } = makeBatch(msgBody);
+      await handleNarrativeGeneration(mockBatch, mockEnv, mockCtx);
+
+      // Provider was called twice (primary failed, secondary succeeded)
+      expect(generateNarrative).toHaveBeenCalledTimes(2);
+      // Narrative written to R2
+      expect(putWorkProduct).toHaveBeenCalledWith(
+        mockEnv.R2,
+        expect.stringContaining("narrative"),
+        "Fallback narrative about technology.",
+      );
+      // Step marked COMPLETED
+      expect(mockPrisma.pipelineStep.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "step-1" },
+          data: expect.objectContaining({ status: "COMPLETED" }),
+        })
+      );
+      expect(mockMsg.ack).toHaveBeenCalled();
+    });
+
+    it("fails when all models in chain fail", async () => {
+      (resolveModelChain as any).mockResolvedValue([
+        { provider: "anthropic", model: "claude-sonnet-4-20250514", providerModelId: "claude-sonnet-4-20250514", pricing: null, limits: null },
+        { provider: "openai", model: "gpt-4o", providerModelId: "gpt-4o", pricing: null, limits: null },
+      ]);
+
+      (generateNarrative as any)
+        .mockRejectedValueOnce(new Error("Anthropic 500"))
+        .mockRejectedValueOnce(new Error("OpenAI 500"));
+
+      const { mockMsg, mockBatch } = makeBatch(msgBody);
+      await handleNarrativeGeneration(mockBatch, mockEnv, mockCtx);
+
+      expect(generateNarrative).toHaveBeenCalledTimes(2);
+      // Step marked FAILED with last error
+      expect(mockPrisma.pipelineStep.updateMany).toHaveBeenCalledWith({
+        where: { jobId: "job-1", stage: "NARRATIVE_GENERATION", status: "IN_PROGRESS" },
+        data: expect.objectContaining({
+          status: "FAILED",
+          errorMessage: expect.stringContaining("OpenAI 500"),
+        }),
+      });
+      expect(mockMsg.ack).toHaveBeenCalled();
+    });
+
+    it("throws when model chain is empty", async () => {
+      (resolveModelChain as any).mockResolvedValue([]);
+
+      const { mockMsg, mockBatch } = makeBatch(msgBody);
+      await handleNarrativeGeneration(mockBatch, mockEnv, mockCtx);
+
+      expect(mockPrisma.pipelineStep.updateMany).toHaveBeenCalledWith({
+        where: { jobId: "job-1", stage: "NARRATIVE_GENERATION", status: "IN_PROGRESS" },
+        data: expect.objectContaining({
+          status: "FAILED",
+          errorMessage: expect.stringContaining("No narrative model configured"),
+        }),
+      });
+      expect(mockMsg.ack).toHaveBeenCalled();
+    });
+  });
 });

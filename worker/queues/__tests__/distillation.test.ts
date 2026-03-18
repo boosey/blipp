@@ -536,4 +536,104 @@ describe("handleDistillation", () => {
       );
     });
   });
+
+  describe("model chain fallback", () => {
+    function setupDistillBase() {
+      mockPrisma.pipelineJob.findUniqueOrThrow.mockResolvedValue({
+        id: "job-1",
+        requestId: "req-1",
+      });
+      mockPrisma.pipelineJob.update.mockResolvedValue({});
+      mockPrisma.pipelineStep.create.mockResolvedValue({ id: "step-1" });
+      mockPrisma.distillation.upsert.mockResolvedValue({ id: "dist-1", episodeId: "ep-1" });
+      mockPrisma.distillation.update.mockResolvedValue({});
+    }
+
+    it("falls back to secondary model when primary fails", async () => {
+      setupDistillBase();
+
+      // Chain: primary (fails) -> secondary (succeeds)
+      (resolveModelChain as any).mockResolvedValue([
+        { provider: "anthropic", model: "claude-sonnet-4-20250514", providerModelId: "claude-sonnet-4-20250514", pricing: null, limits: null },
+        { provider: "openai", model: "gpt-4o", providerModelId: "gpt-4o", pricing: null, limits: null },
+      ]);
+
+      // First call fails, second succeeds
+      (extractClaims as any)
+        .mockRejectedValueOnce(new Error("Anthropic 500: Internal Server Error"))
+        .mockResolvedValueOnce({
+          claims: [{ claim: "Fallback claim", speaker: "Host", importance: 8, novelty: 6, excerpt: "Fallback excerpt." }],
+          usage: { model: "gpt-4o", inputTokens: 120, outputTokens: 60, cost: null },
+        });
+
+      const batch = makeBatch([{ jobId: "job-1", episodeId: "ep-1" }]);
+      await handleDistillation(batch, mockEnv, mockCtx);
+
+      // Provider was called twice (primary failed, secondary succeeded)
+      expect(extractClaims).toHaveBeenCalledTimes(2);
+      // Claims written to R2
+      expect(putWorkProduct).toHaveBeenCalledWith(
+        mockEnv.R2,
+        "wp/claims/ep-1.json",
+        expect.any(String),
+      );
+      // Step marked COMPLETED
+      expect(mockPrisma.pipelineStep.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "step-1" },
+          data: expect.objectContaining({ status: "COMPLETED" }),
+        })
+      );
+      expect(batch.messages[0].ack).toHaveBeenCalled();
+    });
+
+    it("fails when all models in chain fail", async () => {
+      setupDistillBase();
+
+      (resolveModelChain as any).mockResolvedValue([
+        { provider: "anthropic", model: "claude-sonnet-4-20250514", providerModelId: "claude-sonnet-4-20250514", pricing: null, limits: null },
+        { provider: "openai", model: "gpt-4o", providerModelId: "gpt-4o", pricing: null, limits: null },
+      ]);
+
+      (extractClaims as any)
+        .mockRejectedValueOnce(new Error("Anthropic 500"))
+        .mockRejectedValueOnce(new Error("OpenAI 500"));
+
+      const batch = makeBatch([{ jobId: "job-1", episodeId: "ep-1" }]);
+      await handleDistillation(batch, mockEnv, mockCtx);
+
+      expect(extractClaims).toHaveBeenCalledTimes(2);
+      // Step marked FAILED with last error
+      expect(mockPrisma.pipelineStep.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "step-1" },
+          data: expect.objectContaining({
+            status: "FAILED",
+            errorMessage: expect.stringContaining("OpenAI 500"),
+          }),
+        })
+      );
+      expect(batch.messages[0].ack).toHaveBeenCalled();
+    });
+
+    it("throws when model chain is empty", async () => {
+      setupDistillBase();
+
+      (resolveModelChain as any).mockResolvedValue([]);
+
+      const batch = makeBatch([{ jobId: "job-1", episodeId: "ep-1" }]);
+      await handleDistillation(batch, mockEnv, mockCtx);
+
+      expect(mockPrisma.pipelineStep.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "step-1" },
+          data: expect.objectContaining({
+            status: "FAILED",
+            errorMessage: expect.stringContaining("No distillation model configured"),
+          }),
+        })
+      );
+      expect(batch.messages[0].ack).toHaveBeenCalled();
+    });
+  });
 });

@@ -960,3 +960,95 @@ describe("handleTranscription", () => {
     });
   });
 });
+
+/**
+ * detectAudioFormat is not exported from transcription.ts, so we duplicate it
+ * here to test its logic directly without modifying the source.
+ */
+function detectAudioFormat(buffer: ArrayBuffer): { format: string; details?: string } {
+  const bytes = new Uint8Array(buffer, 0, Math.min(12, buffer.byteLength));
+  if (bytes.length < 4) return { format: "unknown", details: "too small" };
+
+  // ID3 tag (MP3 with metadata header)
+  if (bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33) {
+    return { format: "mp3", details: `ID3v2.${bytes[3]}` };
+  }
+  // MP3 sync word (0xFF followed by 0xE0+ for various MPEG versions/layers)
+  if (bytes[0] === 0xFF && (bytes[1] & 0xE0) === 0xE0) {
+    const version = (bytes[1] >> 3) & 0x03;
+    const layer = (bytes[1] >> 1) & 0x03;
+    const versionStr = version === 3 ? "MPEG1" : version === 2 ? "MPEG2" : version === 0 ? "MPEG2.5" : "unknown";
+    const layerStr = layer === 1 ? "Layer3" : layer === 2 ? "Layer2" : layer === 3 ? "Layer1" : "unknown";
+    return { format: "mp3", details: `${versionStr} ${layerStr}` };
+  }
+  // RIFF/WAV
+  if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46) {
+    return { format: "wav", details: "RIFF" };
+  }
+  // fLaC
+  if (bytes[0] === 0x66 && bytes[1] === 0x4C && bytes[2] === 0x61 && bytes[3] === 0x43) {
+    return { format: "flac" };
+  }
+  // OggS
+  if (bytes[0] === 0x4F && bytes[1] === 0x67 && bytes[2] === 0x67 && bytes[3] === 0x53) {
+    return { format: "ogg" };
+  }
+  // MP4/M4A (ftyp box)
+  if (bytes[4] === 0x66 && bytes[5] === 0x74 && bytes[6] === 0x79 && bytes[7] === 0x70) {
+    return { format: "m4a", details: "ftyp" };
+  }
+  return { format: "unknown", details: `magic: ${Array.from(bytes.slice(0, 4)).map(b => b.toString(16).padStart(2, "0")).join(" ")}` };
+}
+
+describe("detectAudioFormat (unit tests)", () => {
+  function makeBuffer(...bytes: number[]): ArrayBuffer {
+    const buf = new ArrayBuffer(bytes.length);
+    const view = new Uint8Array(buf);
+    for (let i = 0; i < bytes.length; i++) view[i] = bytes[i];
+    return buf;
+  }
+
+  it("MP3 with ID3v2 header", () => {
+    const result = detectAudioFormat(makeBuffer(0x49, 0x44, 0x33, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00));
+    expect(result).toEqual({ format: "mp3", details: "ID3v2.4" });
+  });
+
+  it("MP3 raw MPEG1 Layer3", () => {
+    // 0xFF 0xFB = sync word + MPEG1 (version bits 11) + Layer3 (layer bits 01)
+    const result = detectAudioFormat(makeBuffer(0xFF, 0xFB, 0x90, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00));
+    expect(result).toEqual({ format: "mp3", details: "MPEG1 Layer3" });
+  });
+
+  it("WAV RIFF header", () => {
+    const result = detectAudioFormat(makeBuffer(0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00));
+    expect(result).toEqual({ format: "wav", details: "RIFF" });
+  });
+
+  it("FLAC header", () => {
+    // fLaC = 0x66 0x4C 0x61 0x43
+    const result = detectAudioFormat(makeBuffer(0x66, 0x4C, 0x61, 0x43, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00));
+    expect(result).toEqual({ format: "flac" });
+  });
+
+  it("OGG header", () => {
+    // OggS = 0x4F 0x67 0x67 0x53
+    const result = detectAudioFormat(makeBuffer(0x4F, 0x67, 0x67, 0x53, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00));
+    expect(result).toEqual({ format: "ogg" });
+  });
+
+  it("M4A ftyp box", () => {
+    // ftyp at offset 4: bytes[4..7] = 0x66 0x74 0x79 0x70
+    const result = detectAudioFormat(makeBuffer(0x00, 0x00, 0x00, 0x20, 0x66, 0x74, 0x79, 0x70, 0x4D, 0x34, 0x41, 0x20));
+    expect(result).toEqual({ format: "m4a", details: "ftyp" });
+  });
+
+  it("unknown bytes", () => {
+    const result = detectAudioFormat(makeBuffer(0xAA, 0xBB, 0xCC, 0xDD, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00));
+    expect(result).toEqual({ format: "unknown", details: "magic: aa bb cc dd" });
+  });
+
+  it("buffer < 4 bytes returns unknown too small", () => {
+    const result = detectAudioFormat(makeBuffer(0xFF, 0xFB));
+    expect(result).toEqual({ format: "unknown", details: "too small" });
+  });
+});
