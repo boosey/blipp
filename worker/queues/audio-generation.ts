@@ -42,6 +42,10 @@ export async function handleAudioGeneration(
       const startTime = Date.now();
       let requestId: string | undefined;
 
+      let audioModel: string | undefined;
+      let audioProvider: string | undefined;
+      let narrativeLength: number | undefined;
+
       try {
         // Load job to get requestId
         const job = await prisma.pipelineJob.findUniqueOrThrow({
@@ -120,14 +124,22 @@ export async function handleAudioGeneration(
           throw new Error("No narrative found — narrative stage must run first");
         }
         const narrative = new TextDecoder().decode(narrativeData);
+        narrativeLength = narrative.length;
         await writeEvent(prisma, step.id, "INFO", `Loaded narrative from R2 (${narrative.length} bytes)`);
 
         // Read model config
         const resolved = await resolveStageModel(prisma, "tts");
+        audioModel = resolved.providerModelId;
+        audioProvider = resolved.provider;
         const tts = getTtsProviderImpl(resolved.provider);
 
         // Generate TTS audio
-        await writeEvent(prisma, step.id, "INFO", `Generating audio via ${tts.name} (${resolved.providerModelId})`);
+        await writeEvent(prisma, step.id, "INFO", `Generating audio via ${tts.name} (${resolved.providerModelId})`, {
+          narrativeBytes: narrative.length,
+          narrativeWords: narrative.split(/\s+/).length,
+          model: resolved.providerModelId,
+          provider: resolved.provider,
+        });
         const ttsTimer = log.timer("tts_generation");
         const { audio, usage: ttsUsage } = await generateSpeech(tts, narrative, undefined, resolved.providerModelId, env, resolved.pricing);
         recordSuccess(resolved.provider);
@@ -250,7 +262,13 @@ export async function handleAudioGeneration(
             select: { id: true },
           });
           if (failedStep) {
-            await writeEvent(prisma, failedStep.id, "ERROR", `Audio generation failed: ${errorMessage}`);
+            await writeEvent(prisma, failedStep.id, "ERROR", `Audio generation failed: ${errorMessage.slice(0, 2048)}`, {
+              model: audioModel,
+              provider: audioProvider,
+              narrativeBytes: narrativeLength,
+              httpStatus: (err as any)?.status || (err as any)?.statusCode,
+              errorType: err?.constructor?.name,
+            });
           }
         } catch {
           // Swallow — event logging must never block error handling

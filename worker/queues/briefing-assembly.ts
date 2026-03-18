@@ -79,7 +79,11 @@ export async function handleBriefingAssembly(
           });
 
           try {
-            await writeEvent(prisma, step.id, "INFO", "Resolving clip for briefing assembly");
+            await writeEvent(prisma, step.id, "INFO", "Resolving clip for briefing assembly", {
+              clipIdFromJob: !!job.clipId,
+              episodeId: job.episodeId,
+              durationTier: job.durationTier,
+            });
 
             // Resolve clipId — fall back to direct Clip lookup if Hyperdrive returns stale null
             let clipId = job.clipId;
@@ -89,6 +93,11 @@ export async function handleBriefingAssembly(
                 select: { id: true },
               });
               clipId = clip?.id ?? null;
+              if (clipId) {
+                await writeEvent(prisma, step.id, "INFO", "Resolved clipId via DB fallback (Hyperdrive stale read)", {
+                  clipId,
+                });
+              }
             }
 
             if (!clipId) {
@@ -138,7 +147,7 @@ export async function handleBriefingAssembly(
             const errorMessage = jobErr instanceof Error ? jobErr.message : String(jobErr);
             log.error("job_assembly_error", { jobId: job.id, episodeId: job.episodeId }, jobErr);
 
-            await writeEvent(prisma, step.id, "ERROR", `Assembly failed: ${errorMessage}`).catch(() => {});
+            await writeEvent(prisma, step.id, "ERROR", `Assembly failed: ${errorMessage.slice(0, 2048)}`).catch(() => {});
 
             await prisma.pipelineStep
               .updateMany({

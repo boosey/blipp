@@ -42,6 +42,10 @@ export async function handleNarrativeGeneration(
       let stepId: string | undefined;
       let requestId: string | undefined;
 
+      let narrativeModel: string | undefined;
+      let narrativeProvider: string | undefined;
+      let claimCount: number | undefined;
+
       try {
         // Load job to get requestId
         const job = await prisma.pipelineJob.findUniqueOrThrow({
@@ -125,6 +129,8 @@ export async function handleNarrativeGeneration(
 
         // Read model config
         const resolved = await resolveStageModel(prisma, "narrative");
+        narrativeModel = resolved.providerModelId;
+        narrativeProvider = resolved.provider;
         const llm = getLlmProviderImpl(resolved.provider);
 
         // Load episode metadata for narrative intro
@@ -149,7 +155,14 @@ export async function handleNarrativeGeneration(
           : undefined;
 
         // Generate narrative from claims (Pass 2)
-        await writeEvent(prisma, step.id, "INFO", `Generating ${durationTier}-minute narrative from ${claims.length}/${allClaims.length} claims via ${llm.name} (${resolved.providerModelId})`);
+        claimCount = claims.length;
+        await writeEvent(prisma, step.id, "INFO", `Generating ${durationTier}-minute narrative from ${claims.length}/${allClaims.length} claims via ${llm.name} (${resolved.providerModelId})`, {
+          claimCount: claims.length,
+          totalClaims: allClaims.length,
+          durationTier,
+          model: resolved.providerModelId,
+          provider: resolved.provider,
+        });
         const narrativeTimer = log.timer("narrative_generation");
         const { narrative, usage: narrativeUsage } = await generateNarrative(
           llm,
@@ -251,7 +264,14 @@ export async function handleNarrativeGeneration(
             }));
           });
 
-        if (stepId) await writeEvent(prisma, stepId, "ERROR", `Narrative generation failed: ${errorMessage}`);
+        if (stepId) await writeEvent(prisma, stepId, "ERROR", `Narrative generation failed: ${errorMessage.slice(0, 2048)}`, {
+          model: narrativeModel,
+          provider: narrativeProvider,
+          durationTier,
+          claimCount,
+          httpStatus: (err as any)?.status || (err as any)?.statusCode,
+          errorType: err?.constructor?.name,
+        });
 
         // Capture AI provider errors
         if (err instanceof AiProviderError) {
