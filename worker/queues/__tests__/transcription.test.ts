@@ -802,4 +802,154 @@ describe("handleTranscription", () => {
     });
     expect(msg.ack).toHaveBeenCalled();
   });
+
+  describe("STT model chain fallback", () => {
+    const episodeNoTranscript = { ...EPISODE, transcriptUrl: null };
+
+    function setupSttBase() {
+      mockPrisma.pipelineJob.findUnique.mockResolvedValue(JOB);
+      mockPrisma.pipelineJob.update.mockResolvedValue({});
+      mockPrisma.pipelineStep.create.mockResolvedValue({ id: "step1" });
+      mockPrisma.episode.findUnique.mockResolvedValue(episodeNoTranscript);
+      mockPrisma.podcast.findUnique.mockResolvedValue(PODCAST);
+      mockPrisma.distillation.upsert.mockResolvedValue({ id: "dist1", episodeId: "ep1" });
+      mockPrisma.workProduct.upsert.mockResolvedValue({ id: "wp1" });
+      mockPrisma.pipelineStep.update.mockResolvedValue({});
+      mockRssLookup.mockResolvedValue(null);
+      mockPiLookup.mockResolvedValue(null);
+    }
+
+    it("falls back to secondary model when primary fails", async () => {
+      setupSttBase();
+      const msg = createMsg({ jobId: "job1", episodeId: "ep1" });
+
+      // Chain: primary (fails) → secondary (succeeds)
+      (resolveSttModelChain as any).mockResolvedValue([
+        { provider: "groq", model: "whisper-turbo", providerModelId: "whisper-large-v3-turbo", pricing: null, limits: null },
+        { provider: "deepgram", model: "nova-3", providerModelId: "nova-3", pricing: null, limits: null },
+      ]);
+
+      // First call fails, second succeeds
+      mockTranscribe
+        .mockRejectedValueOnce(new Error("Groq 500: Internal Server Error"))
+        .mockResolvedValueOnce({ transcript: "Fallback transcript.", costDollars: null, latencyMs: 200 });
+
+      await handleTranscription(createBatch([msg]), env, ctx);
+
+      // Provider was called twice (primary failed, secondary succeeded)
+      expect(mockTranscribe).toHaveBeenCalledTimes(2);
+      // Transcript was written to R2
+      expect(mockPutWorkProduct).toHaveBeenCalledWith(
+        env.R2,
+        "wp/transcript/ep1.txt",
+        "Fallback transcript.",
+      );
+      expect(msg.ack).toHaveBeenCalled();
+    });
+
+    it("falls back to tertiary when primary and secondary fail", async () => {
+      setupSttBase();
+      const msg = createMsg({ jobId: "job1", episodeId: "ep1" });
+
+      (resolveSttModelChain as any).mockResolvedValue([
+        { provider: "groq", model: "whisper-turbo", providerModelId: "whisper-large-v3-turbo", pricing: null, limits: null },
+        { provider: "deepgram", model: "nova-3", providerModelId: "nova-3", pricing: null, limits: null },
+        { provider: "openai", model: "whisper-1", providerModelId: "whisper-1", pricing: null, limits: null },
+      ]);
+
+      mockTranscribe
+        .mockRejectedValueOnce(new Error("Groq 500"))
+        .mockRejectedValueOnce(new Error("Deepgram 500"))
+        .mockResolvedValueOnce({ transcript: "Third time's a charm.", costDollars: null, latencyMs: 300 });
+
+      await handleTranscription(createBatch([msg]), env, ctx);
+
+      expect(mockTranscribe).toHaveBeenCalledTimes(3);
+      expect(mockPutWorkProduct).toHaveBeenCalledWith(
+        env.R2,
+        "wp/transcript/ep1.txt",
+        "Third time's a charm.",
+      );
+      expect(msg.ack).toHaveBeenCalled();
+    });
+
+    it("fails when all models in the chain fail", async () => {
+      setupSttBase();
+      const msg = createMsg({ jobId: "job1", episodeId: "ep1" });
+
+      (resolveSttModelChain as any).mockResolvedValue([
+        { provider: "groq", model: "whisper-turbo", providerModelId: "whisper-large-v3-turbo", pricing: null, limits: null },
+        { provider: "deepgram", model: "nova-3", providerModelId: "nova-3", pricing: null, limits: null },
+      ]);
+
+      mockTranscribe
+        .mockRejectedValueOnce(new Error("Groq 500"))
+        .mockRejectedValueOnce(new Error("Deepgram 500"));
+
+      await handleTranscription(createBatch([msg]), env, ctx);
+
+      expect(mockTranscribe).toHaveBeenCalledTimes(2);
+      // Step marked FAILED
+      expect(mockPrisma.pipelineStep.updateMany).toHaveBeenCalledWith({
+        where: { jobId: "job1", stage: "TRANSCRIPTION", status: "IN_PROGRESS" },
+        data: expect.objectContaining({
+          status: "FAILED",
+          errorMessage: expect.stringContaining("Deepgram 500"),
+        }),
+      });
+      expect(msg.ack).toHaveBeenCalled();
+    });
+
+    it("throws when model chain is empty (no models configured)", async () => {
+      setupSttBase();
+      const msg = createMsg({ jobId: "job1", episodeId: "ep1" });
+
+      (resolveSttModelChain as any).mockResolvedValue([]);
+
+      await handleTranscription(createBatch([msg]), env, ctx);
+
+      expect(mockPrisma.pipelineStep.updateMany).toHaveBeenCalledWith({
+        where: { jobId: "job1", stage: "TRANSCRIPTION", status: "IN_PROGRESS" },
+        data: expect.objectContaining({
+          status: "FAILED",
+          errorMessage: expect.stringContaining("No STT model configured"),
+        }),
+      });
+      expect(msg.ack).toHaveBeenCalled();
+    });
+  });
+
+  describe("audio format detection", () => {
+    const episodeNoTranscript = { ...EPISODE, transcriptUrl: null };
+
+    it("logs detected audio format in events", async () => {
+      mockPrisma.pipelineJob.findUnique.mockResolvedValue(JOB);
+      mockPrisma.pipelineJob.update.mockResolvedValue({});
+      mockPrisma.pipelineStep.create.mockResolvedValue({ id: "step1" });
+      mockPrisma.episode.findUnique.mockResolvedValue(episodeNoTranscript);
+      mockPrisma.podcast.findUnique.mockResolvedValue(PODCAST);
+      mockPrisma.distillation.upsert.mockResolvedValue({ id: "dist1", episodeId: "ep1" });
+      mockPrisma.workProduct.upsert.mockResolvedValue({ id: "wp1" });
+      mockPrisma.pipelineStep.update.mockResolvedValue({});
+      mockRssLookup.mockResolvedValue(null);
+      mockPiLookup.mockResolvedValue(null);
+
+      const msg = createMsg({ jobId: "job1", episodeId: "ep1" });
+      await handleTranscription(createBatch([msg]), env, ctx);
+
+      // writeEvent should have been called with "Audio file analysis"
+      const { writeEvent } = await import("../../lib/pipeline-events");
+      expect(writeEvent).toHaveBeenCalledWith(
+        expect.anything(),
+        "step1",
+        "INFO",
+        "Audio file analysis",
+        expect.objectContaining({
+          detectedFormat: expect.any(String),
+          sizeBytes: expect.any(Number),
+          claimedContentType: expect.any(String),
+        })
+      );
+    });
+  });
 });
