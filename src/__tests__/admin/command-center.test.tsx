@@ -173,6 +173,12 @@ function setupCCWithIssues(issues: any[]) {
         json: () => Promise.resolve({ data: { enqueued: 1, skipped: 0, message: "ok" } }),
       });
     }
+    if (options?.method === "PATCH") {
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ data: { id: "job-1", status: "FAILED", dismissedAt: new Date().toISOString() } }),
+      });
+    }
     if (url.includes("/config")) {
       return Promise.resolve(CONFIG_RESPONSE);
     }
