@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Play, Pause, SkipBack, SkipForward } from "lucide-react";
+import { Play, Pause, SkipBack, SkipForward, ChevronDown } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -54,10 +54,19 @@ export function PlayerSheet({
       <SheetContent
         side="bottom"
         showCloseButton={false}
-        className="h-[95vh] rounded-t-2xl bg-zinc-950 border-zinc-800 flex flex-col items-center px-6 pt-3 pb-[max(2rem,env(safe-area-inset-bottom))] overflow-y-auto"
+        className="h-[85dvh] rounded-t-2xl bg-zinc-950 border-zinc-800 flex flex-col items-center px-6 pt-3 pb-[max(2rem,env(safe-area-inset-bottom))] overflow-y-auto"
       >
-        {/* Drag handle */}
-        <div className="w-10 h-1 rounded-full bg-zinc-700 mb-6 flex-shrink-0" />
+        {/* Drag handle + close button */}
+        <div className="w-full flex items-center justify-center relative flex-shrink-0 mb-4">
+          <div className="w-10 h-1 rounded-full bg-zinc-700" />
+          <button
+            onClick={() => onOpenChange(false)}
+            className="absolute right-0 p-1.5 text-zinc-500 hover:text-zinc-300 active:scale-90 transition-all"
+            aria-label="Close player"
+          >
+            <ChevronDown className="w-5 h-5" />
+          </button>
+        </div>
 
         {/* Accessibility — visually hidden */}
         <SheetTitle className="sr-only">
@@ -70,9 +79,9 @@ export function PlayerSheet({
         </SheetDescription>
 
         {/* Artwork */}
-        <div className="flex items-center justify-center w-full max-w-sm">
+        <div className="flex items-center justify-center w-full max-w-sm mt-2">
           {inAd ? (
-            <div className="w-full max-w-[280px] aspect-square max-h-[35vh] rounded-2xl bg-zinc-900 flex flex-col items-center justify-center gap-3 border border-[#F97316]/20">
+            <div className="w-full max-w-[200px] aspect-square max-h-[22vh] rounded-2xl bg-zinc-900 flex flex-col items-center justify-center gap-3 border border-[#F97316]/20">
               <span className="text-2xl font-bold text-[#F97316]">Advertisement</span>
               <span className="text-sm text-zinc-400">
                 {adState === "preroll" ? "Pre-roll" : "Post-roll"}
@@ -82,10 +91,10 @@ export function PlayerSheet({
             <img
               src={currentItem.podcast.imageUrl}
               alt=""
-              className="w-full max-w-[280px] aspect-square max-h-[35vh] rounded-2xl object-cover shadow-lg"
+              className="w-full max-w-[200px] aspect-square max-h-[22vh] rounded-2xl object-cover shadow-lg"
             />
           ) : (
-            <div className="w-full max-w-[280px] aspect-square max-h-[35vh] rounded-2xl bg-zinc-800" />
+            <div className="w-full max-w-[200px] aspect-square max-h-[22vh] rounded-2xl bg-zinc-800" />
           )}
         </div>
 

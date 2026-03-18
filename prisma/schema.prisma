@@ -328,6 +328,7 @@ model PipelineJob {
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
   completedAt    DateTime?
+  dismissedAt    DateTime?
 
   request  BriefingRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
   episode  Episode         @relation(fields: [episodeId], references: [id], onDelete: Cascade)
@@ -440,6 +441,7 @@ enum WorkProductType {
   NARRATIVE
   AUDIO_CLIP
   BRIEFING_AUDIO
+  SOURCE_AUDIO
 }
 
 model PipelineEvent {
