@@ -19,6 +19,7 @@ import { apiKeysRoutes } from "./api-keys";
 import { adsRoutes } from "./ads";
 import { recommendationsRoutes } from "./recommendations";
 import { cronJobsRoutes } from "./cron-jobs";
+import { claimsBenchmarkRoutes } from "./claims-benchmark";
 
 /**
  * Admin route tree. All routes require admin authentication.
@@ -47,5 +48,6 @@ adminRoutes.route("/api-keys", apiKeysRoutes);
 adminRoutes.route("/ads", adsRoutes);
 adminRoutes.route("/recommendations", recommendationsRoutes);
 adminRoutes.route("/cron-jobs", cronJobsRoutes);
+adminRoutes.route("/claims-benchmark", claimsBenchmarkRoutes);
 
 export { adminRoutes };
