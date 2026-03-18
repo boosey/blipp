@@ -170,7 +170,8 @@ model Episode {
   pipelineJobs     PipelineJob[]
   workProducts     WorkProduct[]
   feedItems        FeedItem[]
-  benchmarkResults SttBenchmarkResult[]
+  benchmarkResults       SttBenchmarkResult[]
+  claimsBenchmarkResults ClaimsBenchmarkResult[]
 
   @@unique([podcastId, guid])
   @@index([podcastId, publishedAt])
@@ -588,6 +589,67 @@ model SttBenchmarkResult {
   episode    Episode       @relation(fields: [episodeId], references: [id], onDelete: Cascade)
 
   @@unique([experimentId, episodeId, model, provider, speed])
+  @@index([experimentId])
+}
+
+// ── Claims Extraction Benchmark ──
+
+enum ClaimsExperimentStatus {
+  PENDING
+  RUNNING
+  JUDGING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+model ClaimsExperiment {
+  id                String                   @id @default(cuid())
+  name              String
+  status            ClaimsExperimentStatus   @default(PENDING)
+  baselineModelId   String
+  baselineProvider  String
+  judgeModelId      String
+  judgeProvider     String
+  config            Json                     // { models: [{modelId, provider}], episodeIds: string[] }
+  totalTasks        Int                      @default(0)
+  doneTasks         Int                      @default(0)
+  totalJudgeTasks   Int                      @default(0)
+  doneJudgeTasks    Int                      @default(0)
+  errorMessage      String?
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+  completedAt       DateTime?
+  results           ClaimsBenchmarkResult[]
+}
+
+model ClaimsBenchmarkResult {
+  id                    String    @id @default(cuid())
+  experimentId          String
+  episodeId             String
+  model                 String
+  provider              String
+  isBaseline            Boolean   @default(false)
+  status                String    @default("PENDING") // PENDING, RUNNING, COMPLETED, FAILED
+  claimCount            Int?
+  inputTokens           Int?
+  outputTokens          Int?
+  costDollars           Float?
+  latencyMs             Int?
+  coverageScore         Float?    // 0-100, computed server-side from verdicts
+  weightedCoverageScore Float?    // 0-100, importance-weighted
+  hallucinations        Int?      // count from verdicts
+  judgeStatus           String?   // PENDING, RUNNING, COMPLETED, FAILED (null for baseline)
+  r2ClaimsKey           String?   // R2 key for full claims JSON
+  r2JudgeKey            String?   // R2 key for per-claim verdicts JSON
+  errorMessage          String?
+  createdAt             DateTime  @default(now())
+  completedAt           DateTime?
+
+  experiment ClaimsExperiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  episode    Episode          @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+
+  @@unique([experimentId, episodeId, model, provider])
   @@index([experimentId])
 }
 
