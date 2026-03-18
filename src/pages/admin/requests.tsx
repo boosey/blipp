@@ -522,6 +522,17 @@ function formatEventTime(iso: string): string {
   }
 }
 
+function formatEventDataValue(value: unknown): string {
+  if (value === null || value === undefined) return "—";
+  if (typeof value === "number") {
+    if (value > 10_000) return value.toLocaleString();
+    return String(value);
+  }
+  if (typeof value === "boolean") return value ? "yes" : "no";
+  if (typeof value === "string" && value.length > 120) return value.slice(0, 120) + "…";
+  return String(value);
+}
+
 function EventTimeline({
   events,
   stepStatus,
@@ -530,8 +541,10 @@ function EventTimeline({
   stepStatus: PipelineStepStatus;
 }) {
   const [showDebug, setShowDebug] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
   const filtered = showDebug ? events : events.filter((e) => e.level !== "DEBUG");
   const debugCount = events.filter((e) => e.level === "DEBUG").length;
+  const hasData = events.some((e) => e.data && Object.keys(e.data).length > 0);
 
   const borderColor =
     stepStatus === "FAILED" ? "#EF4444" :
@@ -541,27 +554,50 @@ function EventTimeline({
 
   return (
     <div className="py-1">
-      {debugCount > 0 && (
-        <button
-          onClick={() => setShowDebug((v) => !v)}
-          className="flex items-center gap-1 text-[9px] text-[#6B7280] hover:text-[#9CA3AF] mb-1 transition-colors"
-        >
-          {showDebug ? <EyeOff className="h-2.5 w-2.5" /> : <Eye className="h-2.5 w-2.5" />}
-          {showDebug ? "Hide" : "Show"} debug ({debugCount})
-        </button>
-      )}
+      <div className="flex items-center gap-3 mb-1">
+        {debugCount > 0 && (
+          <button
+            onClick={() => setShowDebug((v) => !v)}
+            className="flex items-center gap-1 text-[9px] text-[#6B7280] hover:text-[#9CA3AF] transition-colors"
+          >
+            {showDebug ? <EyeOff className="h-2.5 w-2.5" /> : <Eye className="h-2.5 w-2.5" />}
+            {showDebug ? "Hide" : "Show"} debug ({debugCount})
+          </button>
+        )}
+        {hasData && (
+          <button
+            onClick={() => setShowDetails((v) => !v)}
+            className="flex items-center gap-1 text-[9px] text-[#6B7280] hover:text-[#9CA3AF] transition-colors"
+          >
+            {showDetails ? <EyeOff className="h-2.5 w-2.5" /> : <Eye className="h-2.5 w-2.5" />}
+            {showDetails ? "Hide" : "Show"} details
+          </button>
+        )}
+      </div>
       <div
         className="border-l-2 pl-3 space-y-0.5"
         style={{ borderColor }}
       >
         {filtered.map((event) => (
-          <div key={event.id} className="flex items-start gap-2 text-[10px]">
-            <span className="text-[#6B7280] font-mono text-[9px] shrink-0 tabular-nums">
-              {formatEventTime(event.createdAt)}
-            </span>
-            <span style={{ color: eventColor(event) }}>
-              {event.message}
-            </span>
+          <div key={event.id}>
+            <div className="flex items-start gap-2 text-[10px]">
+              <span className="text-[#6B7280] font-mono text-[9px] shrink-0 tabular-nums">
+                {formatEventTime(event.createdAt)}
+              </span>
+              <span style={{ color: eventColor(event) }}>
+                {event.message}
+              </span>
+            </div>
+            {showDetails && event.data && Object.keys(event.data).length > 0 && (
+              <div className="ml-[70px] mt-0.5 mb-1 flex flex-wrap gap-x-3 gap-y-0.5">
+                {Object.entries(event.data).map(([key, val]) => (
+                  <span key={key} className="text-[9px]">
+                    <span className="text-[#6B7280]">{key}:</span>{" "}
+                    <span className="text-[#A1A1AA] font-mono">{formatEventDataValue(val)}</span>
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         ))}
         {filtered.length === 0 && (
