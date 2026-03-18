@@ -44,6 +44,13 @@ vi.mock("../../lib/model-resolution", () => ({
     providerModelId: "gpt-4o-mini-tts",
     pricing: { pricePerMinute: 0.015 },
   }),
+  resolveModelChain: vi.fn().mockResolvedValue([{
+    provider: "openai",
+    model: "gpt-4o-mini-tts",
+    providerModelId: "gpt-4o-mini-tts",
+    pricing: { pricePerMinute: 0.015 },
+    limits: null,
+  }]),
 }));
 
 vi.mock("../../lib/tts-providers", () => ({
@@ -91,7 +98,7 @@ import { createPrismaClient } from "../../lib/db";
 import { getConfig } from "../../lib/config";
 import { generateSpeech } from "../../lib/tts";
 import { putWorkProduct, getWorkProduct } from "../../lib/work-products";
-import { resolveStageModel } from "../../lib/model-resolution";
+import { resolveStageModel, resolveModelChain } from "../../lib/model-resolution";
 import { writeAiError } from "../../lib/ai-errors";
 
 let mockPrisma: ReturnType<typeof createMockPrisma>;
@@ -124,6 +131,13 @@ beforeEach(() => {
     providerModelId: "gpt-4o-mini-tts",
     pricing: { pricePerMinute: 0.015 },
   });
+  (resolveModelChain as any).mockResolvedValue([{
+    provider: "openai",
+    model: "gpt-4o-mini-tts",
+    providerModelId: "gpt-4o-mini-tts",
+    pricing: { pricePerMinute: 0.015 },
+    limits: null,
+  }]);
   (generateSpeech as any).mockResolvedValue({
     audio: new ArrayBuffer(2048),
     usage: { model: "test-tts-model", inputTokens: 40, outputTokens: 0, cost: null },
@@ -316,13 +330,13 @@ describe("handleAudioGeneration", () => {
     );
   });
 
-  it("reads TTS model via resolveStageModel", async () => {
+  it("reads TTS model via resolveModelChain", async () => {
     mockPrisma.clip.update.mockResolvedValue({ id: "clip-1" });
 
     const { mockBatch } = makeBatch(msgBody);
     await handleAudioGeneration(mockBatch, mockEnv, mockCtx);
 
-    expect(resolveStageModel).toHaveBeenCalledWith(expect.anything(), "tts");
+    expect(resolveModelChain).toHaveBeenCalledWith(expect.anything(), "tts");
     expect(generateSpeech).toHaveBeenCalledWith(expect.anything(), expect.anything(), undefined, expect.any(String), expect.anything(), expect.anything());
   });
 

@@ -3,7 +3,7 @@ import { createPipelineLogger } from "../lib/logger";
 import { checkStageEnabled } from "../lib/queue-helpers";
 import { generateSpeech } from "../lib/tts";
 
-import { resolveStageModel } from "../lib/model-resolution";
+import { resolveModelChain } from "../lib/model-resolution";
 import { getTtsProviderImpl } from "../lib/tts-providers";
 import { wpKey, putWorkProduct, getWorkProduct } from "../lib/work-products";
 import { writeEvent } from "../lib/pipeline-events";
@@ -127,33 +127,79 @@ export async function handleAudioGeneration(
         narrativeLength = narrative.length;
         await writeEvent(prisma, step.id, "INFO", `Loaded narrative from R2 (${narrative.length} bytes)`);
 
-        // Read model config
-        const resolved = await resolveStageModel(prisma, "tts");
-        audioModel = resolved.providerModelId;
-        audioProvider = resolved.provider;
-        const tts = getTtsProviderImpl(resolved.provider);
+        // Resolve model chain: primary -> secondary -> tertiary
+        const modelChain = await resolveModelChain(prisma, "tts");
+        if (modelChain.length === 0) {
+          throw new Error("No TTS model configured — configure at least a primary in Admin > AI Models");
+        }
 
-        // Generate TTS audio
-        await writeEvent(prisma, step.id, "INFO", `Generating audio via ${tts.name} (${resolved.providerModelId})`, {
-          narrativeBytes: narrative.length,
-          narrativeWords: narrative.split(/\s+/).length,
-          model: resolved.providerModelId,
-          provider: resolved.provider,
+        await writeEvent(prisma, step.id, "INFO", `Model chain: ${modelChain.map((m, i) => `${["primary", "secondary", "tertiary"][i]}=${m.provider}/${m.providerModelId}`).join(", ")}`, {
+          chainLength: modelChain.length,
         });
-        const ttsTimer = log.timer("tts_generation");
-        const { audio, usage: ttsUsage } = await generateSpeech(tts, narrative, undefined, resolved.providerModelId, env, resolved.pricing);
-        recordSuccess(resolved.provider);
-        ttsTimer();
-        await writeEvent(prisma, step.id, "INFO", "Audio generated successfully");
-        await writeEvent(prisma, step.id, "DEBUG", `Audio size: ${audio.byteLength} bytes`, { model: ttsUsage.model, sizeBytes: audio.byteLength });
+
+        // Try each model in the chain until one succeeds
+        let audio: ArrayBuffer | undefined;
+        let ttsUsage: { model: string; inputTokens: number; outputTokens: number; cost: number | null } | undefined;
+        for (let i = 0; i < modelChain.length; i++) {
+          const resolved = modelChain[i];
+          const tier = ["primary", "secondary", "tertiary"][i];
+          const tts = getTtsProviderImpl(resolved.provider);
+          audioModel = resolved.providerModelId;
+          audioProvider = resolved.provider;
+
+          await writeEvent(prisma, step.id, "INFO", `Generating audio via ${tier}: ${tts.name} (${resolved.providerModelId})`, {
+            tier,
+            narrativeBytes: narrative.length,
+            narrativeWords: narrative.split(/\s+/).length,
+            model: resolved.providerModelId,
+            provider: resolved.provider,
+          });
+
+          try {
+            const ttsTimer = log.timer("tts_generation");
+            const result = await generateSpeech(tts, narrative, undefined, resolved.providerModelId, env, resolved.pricing);
+            recordSuccess(resolved.provider);
+            audio = result.audio;
+            ttsUsage = result.usage;
+            ttsTimer();
+
+            await writeEvent(prisma, step.id, "INFO", `Audio generated via ${tier} ${tts.name}`, {
+              tier,
+              sizeBytes: audio.byteLength,
+              attemptNumber: i + 1,
+            });
+            break; // Success — stop trying
+          } catch (chainErr) {
+            const errMsg = chainErr instanceof Error ? chainErr.message : String(chainErr);
+            const httpStatus = (chainErr as any)?.httpStatus;
+            recordFailure(resolved.provider);
+
+            await writeEvent(prisma, step.id, "WARN", `${tier} failed: ${tts.name} — ${errMsg.slice(0, 300)}`, {
+              tier,
+              provider: resolved.provider,
+              model: resolved.providerModelId,
+              httpStatus,
+              errorType: chainErr?.constructor?.name,
+              willRetryNext: i < modelChain.length - 1,
+            });
+
+            if (i === modelChain.length - 1) {
+              // All models exhausted — throw the last error
+              throw chainErr;
+            }
+            // Otherwise continue to next model
+          }
+        }
+
+        await writeEvent(prisma, step.id, "DEBUG", `Audio size: ${audio!.byteLength} bytes`, { model: ttsUsage!.model, sizeBytes: audio!.byteLength });
 
         // Write audio to R2 + index in DB
         const audioR2Key = wpKey({ type: "AUDIO_CLIP", episodeId, durationTier, voice: "default" });
-        await putWorkProduct(env.R2, audioR2Key, audio);
+        await putWorkProduct(env.R2, audioR2Key, audio!);
         await prisma.workProduct.upsert({
           where: { r2Key: audioR2Key },
-          update: { sizeBytes: audio.byteLength },
-          create: { type: "AUDIO_CLIP", episodeId, durationTier, voice: "default", r2Key: audioR2Key, sizeBytes: audio.byteLength },
+          update: { sizeBytes: audio!.byteLength },
+          create: { type: "AUDIO_CLIP", episodeId, durationTier, voice: "default", r2Key: audioR2Key, sizeBytes: audio!.byteLength },
         });
         await writeEvent(prisma, step.id, "INFO", "Saved audio clip to R2", { r2Key: audioR2Key });
 
@@ -174,10 +220,10 @@ export async function handleAudioGeneration(
             status: "COMPLETED",
             completedAt: new Date(),
             durationMs: Date.now() - startTime,
-            model: ttsUsage.model,
-            inputTokens: ttsUsage.inputTokens,
-            outputTokens: ttsUsage.outputTokens,
-            cost: ttsUsage.cost ?? null,
+            model: ttsUsage!.model,
+            inputTokens: ttsUsage!.inputTokens,
+            outputTokens: ttsUsage!.outputTokens,
+            cost: ttsUsage!.cost ?? null,
           },
         });
 

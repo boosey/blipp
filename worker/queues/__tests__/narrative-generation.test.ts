@@ -45,6 +45,13 @@ vi.mock("../../lib/model-resolution", () => ({
     providerModelId: "claude-sonnet-4-20250514",
     pricing: { priceInputPerMToken: 3.0, priceOutputPerMToken: 15.0 },
   }),
+  resolveModelChain: vi.fn().mockResolvedValue([{
+    provider: "anthropic",
+    model: "claude-sonnet-4-20250514",
+    providerModelId: "claude-sonnet-4-20250514",
+    pricing: { priceInputPerMToken: 3.0, priceOutputPerMToken: 15.0 },
+    limits: null,
+  }]),
 }));
 
 vi.mock("../../lib/llm-providers", () => ({
@@ -92,7 +99,7 @@ import { createPrismaClient } from "../../lib/db";
 import { getConfig } from "../../lib/config";
 import { generateNarrative, selectClaimsForDuration } from "../../lib/distillation";
 import { putWorkProduct, getWorkProduct } from "../../lib/work-products";
-import { resolveStageModel } from "../../lib/model-resolution";
+import { resolveStageModel, resolveModelChain } from "../../lib/model-resolution";
 import { writeAiError } from "../../lib/ai-errors";
 
 let mockPrisma: ReturnType<typeof createMockPrisma>;
@@ -127,6 +134,13 @@ beforeEach(() => {
     providerModelId: "claude-sonnet-4-20250514",
     pricing: { priceInputPerMToken: 3.0, priceOutputPerMToken: 15.0 },
   });
+  (resolveModelChain as any).mockResolvedValue([{
+    provider: "anthropic",
+    model: "claude-sonnet-4-20250514",
+    providerModelId: "claude-sonnet-4-20250514",
+    pricing: { priceInputPerMToken: 3.0, priceOutputPerMToken: 15.0 },
+    limits: null,
+  }]);
   (generateNarrative as any).mockResolvedValue({
     narrative: "A warm narrative about technology trends.",
     usage: { model: "test-model", inputTokens: 100, outputTokens: 50, cost: null },
@@ -334,11 +348,11 @@ describe("handleNarrativeGeneration", () => {
     );
   });
 
-  it("reads narrative model via resolveStageModel", async () => {
+  it("reads narrative model via resolveModelChain", async () => {
     const { mockBatch } = makeBatch(msgBody);
     await handleNarrativeGeneration(mockBatch, mockEnv, mockCtx);
 
-    expect(resolveStageModel).toHaveBeenCalledWith(expect.anything(), "narrative");
+    expect(resolveModelChain).toHaveBeenCalledWith(expect.anything(), "narrative");
     expect(generateNarrative).toHaveBeenCalledWith(expect.anything(), expect.anything(), 5, expect.any(String), 8192, expect.anything(), expect.anything(), expect.anything());
   });
 
@@ -471,6 +485,7 @@ describe("handleNarrativeGeneration", () => {
       expect(mockLogger.info).toHaveBeenCalledWith("narrative_generated", {
         episodeId: "ep-1",
         wordCount: 6,
+        tier: "primary",
       });
     });
   });

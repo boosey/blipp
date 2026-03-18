@@ -4,12 +4,9 @@ import {
   Mic,
   Sparkles,
   Volume2,
-  Settings,
-  X,
   AlertTriangle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
@@ -30,6 +27,12 @@ const MODEL_TYPES = [
   { key: "tts" as AIStage, label: STAGE_LABELS.tts, icon: Volume2, color: "#10B981" },
 ];
 
+const TIERS = [
+  { key: "primary", label: "Primary", configSuffix: "" },
+  { key: "secondary", label: "Secondary", configSuffix: ".secondary" },
+  { key: "tertiary", label: "Tertiary", configSuffix: ".tertiary" },
+] as const;
+
 function StageModelsSkeleton() {
   return (
     <div className="space-y-4 p-6">
@@ -49,7 +52,6 @@ export default function StageModels() {
   const [configs, setConfigs] = useState<PlatformConfigEntry[]>([]);
   const [modelRegistry, setModelRegistry] = useState<AiModelEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState<string | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -85,14 +87,7 @@ export default function StageModels() {
       );
   }
 
-  function getModelConfig(prefix: string): { provider: string; model: string } | null {
-    const entry = configs.find((c) => c.key === `ai.${prefix}.model`);
-    const val = entry?.value as { provider?: string; model?: string } | null;
-    if (!val?.provider || !val?.model) return null;
-    return { provider: val.provider, model: val.model };
-  }
-
-  function getModelConfigByKey(key: string): { provider: string; model: string } | null {
+  function getConfigByKey(key: string): { provider: string; model: string } | null {
     const entry = configs.find((c) => c.key === key);
     const val = entry?.value as { provider?: string; model?: string } | null;
     if (!val?.provider || !val?.model) return null;
@@ -100,66 +95,41 @@ export default function StageModels() {
   }
 
   function getStageWarning(stageKey: string): string | null {
-    const cfg = getModelConfig(stageKey);
-    if (!cfg) return "No model configured — this stage will fail at runtime";
+    const cfg = getConfigByKey(`ai.${stageKey}.model`);
+    if (!cfg) return "No primary model configured — this stage will fail at runtime";
     const entries = getStageModels(stageKey);
     const exists = entries.some((m) => m.model === cfg.model && m.provider === cfg.provider);
-    if (!exists) return `Configured model "${cfg.model}" from "${cfg.provider}" not found in registry`;
+    if (!exists) return `Primary model "${cfg.model}" from "${cfg.provider}" not found in registry`;
     return null;
   }
 
-  function getModelLabel(stageKey: string, modelId: string, provider: string): string {
-    const entries = getStageModels(stageKey);
-    if (!entries) return modelId;
-    const found = entries.find((m) => m.model === modelId && m.provider === provider);
-    return found ? `${found.label} (${found.providerLabel})` : modelId;
-  }
-
-  const handleModelChange = async (stageKey: string, compositeKey: string) => {
+  const handleTierChange = async (configKey: string, compositeKey: string) => {
+    if (compositeKey === "__none__") {
+      setSaving(configKey);
+      try {
+        await apiFetch(`/config/${configKey}`, {
+          method: "PATCH",
+          body: JSON.stringify({ value: null }),
+        });
+        await load();
+      } catch (e) {
+        console.error("Failed to clear model:", e);
+      } finally {
+        setSaving(null);
+      }
+      return;
+    }
     const [provider, ...rest] = compositeKey.split("::");
     const modelId = rest.join("::");
-    setSaving(stageKey);
+    setSaving(configKey);
     try {
-      await apiFetch(`/config/ai.${stageKey}.model`, {
+      await apiFetch(`/config/${configKey}`, {
         method: "PATCH",
         body: JSON.stringify({ value: { provider, model: modelId } }),
       });
       await load();
-      setEditing(null);
     } catch (e) {
       console.error("Failed to update model:", e);
-    } finally {
-      setSaving(null);
-    }
-  };
-
-  const handleFallbackChange = async (configKey: string, compositeKey: string) => {
-    const [provider, ...rest] = compositeKey.split("::");
-    const modelId = rest.join("::");
-    setSaving(configKey);
-    try {
-      await apiFetch(`/config/${configKey}`, {
-        method: "PATCH",
-        body: JSON.stringify({ value: { provider, model: modelId } }),
-      });
-      await load();
-    } catch (e) {
-      console.error("Failed to update fallback model:", e);
-    } finally {
-      setSaving(null);
-    }
-  };
-
-  const handleFallbackClear = async (configKey: string) => {
-    setSaving(configKey);
-    try {
-      await apiFetch(`/config/${configKey}`, {
-        method: "PATCH",
-        body: JSON.stringify({ value: null }),
-      });
-      await load();
-    } catch (e) {
-      console.error("Failed to clear fallback model:", e);
     } finally {
       setSaving(null);
     }
@@ -171,16 +141,13 @@ export default function StageModels() {
     <div className="space-y-4 p-6">
       <div>
         <h2 className="text-lg font-semibold text-[#F9FAFB]">AI Model Configuration</h2>
-        <p className="text-xs text-[#9CA3AF] mt-0.5">Configure the AI models used across pipeline stages</p>
+        <p className="text-xs text-[#9CA3AF] mt-0.5">Configure primary, secondary, and tertiary models for each pipeline stage. Fallbacks are tried in order on failure.</p>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
         {MODEL_TYPES.map((mt) => {
-          const cfg = getModelConfig(mt.key);
           const warning = modelRegistry.length > 0 ? getStageWarning(mt.key) : null;
           const Icon = mt.icon;
-          const isEditing = editing === mt.key;
-          const isSaving = saving === mt.key;
           const stageModels = getStageModels(mt.key);
           return (
             <div
@@ -210,116 +177,64 @@ export default function StageModels() {
                 </div>
               )}
 
-              {cfg ? (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-[#9CA3AF]">Provider</span>
-                    <span className="font-medium text-[#F9FAFB]">{cfg.provider}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-[#9CA3AF]">Model</span>
-                    <span className="font-mono text-[10px] text-[#F9FAFB]">
-                      {getModelLabel(mt.key, cfg.model, cfg.provider)}
-                    </span>
-                  </div>
-                </div>
-              ) : (
-                <div className="text-xs text-[#9CA3AF] italic">Not configured</div>
-              )}
-
-              {isEditing ? (
-                <div className="flex items-center gap-1.5 mt-3">
-                  <Select
-                    value={cfg ? `${cfg.provider}::${cfg.model}` : undefined}
-                    onValueChange={(v) => handleModelChange(mt.key, v)}
-                    disabled={isSaving}
-                  >
-                    <SelectTrigger className="flex-1 h-8 text-xs bg-[#1A2942] border-white/10 text-[#F9FAFB]">
-                      <SelectValue placeholder="Select a model..." />
-                    </SelectTrigger>
-                    <SelectContent className="bg-[#1A2942] border-white/10 text-[#F9FAFB]">
-                      {stageModels.map((m) => (
-                        <SelectItem
-                          key={`${m.provider}::${m.model}`}
-                          value={`${m.provider}::${m.model}`}
-                          className="text-xs"
-                        >
-                          {m.label} ({m.providerLabel})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    onClick={() => setEditing(null)}
-                    disabled={isSaving}
-                    className="text-[#9CA3AF] hover:text-[#F9FAFB] shrink-0"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              ) : (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setEditing(mt.key)}
-                  className={cn(
-                    "w-full mt-3 text-xs",
-                    warning
-                      ? "border-amber-500/30 text-amber-300 hover:text-amber-200 hover:bg-amber-500/10"
-                      : "border-white/10 text-[#9CA3AF] hover:text-[#F9FAFB] hover:bg-white/5"
-                  )}
-                >
-                  <Settings className="h-3 w-3" />
-                  {cfg ? "Change" : "Configure"}
-                </Button>
-              )}
-
-              {/* STT fallback chain: secondary + tertiary */}
-              {mt.key === "stt" && cfg && (
-                <div className="mt-3 pt-3 border-t border-white/5 space-y-2">
-                  <span className="text-[9px] font-medium text-[#6B7280] uppercase tracking-wider">Fallback Chain</span>
-                  {(["secondary", "tertiary"] as const).map((tier) => {
-                    const configKey = `ai.stt.model.${tier}`;
-                    const fallbackCfg = getModelConfigByKey(configKey);
-                    const tierSaving = saving === configKey;
-                    return (
-                      <div key={tier} className="space-y-1">
-                        <span className="text-[10px] text-[#9CA3AF] capitalize">{tier}</span>
-                        <div className="flex items-center gap-1.5">
-                          <Select
-                            value={fallbackCfg ? `${fallbackCfg.provider}::${fallbackCfg.model}` : "__none__"}
-                            onValueChange={(v) => {
-                              if (v === "__none__") handleFallbackClear(configKey);
-                              else handleFallbackChange(configKey, v);
-                            }}
-                            disabled={tierSaving}
-                          >
-                            <SelectTrigger className="flex-1 h-7 text-[10px] bg-[#1A2942] border-white/10 text-[#F9FAFB]">
-                              <SelectValue placeholder="None (disabled)" />
-                            </SelectTrigger>
-                            <SelectContent className="bg-[#1A2942] border-white/10 text-[#F9FAFB]">
-                              <SelectItem value="__none__" className="text-[10px] text-[#6B7280]">
-                                None (disabled)
-                              </SelectItem>
-                              {stageModels.map((m) => (
-                                <SelectItem
-                                  key={`${m.provider}::${m.model}`}
-                                  value={`${m.provider}::${m.model}`}
-                                  className="text-[10px]"
-                                >
-                                  {m.label} ({m.providerLabel})
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+              <div className="space-y-2">
+                {TIERS.map((tier, tierIdx) => {
+                  const configKey = `ai.${mt.key}.model${tier.configSuffix}`;
+                  const tierCfg = getConfigByKey(configKey);
+                  const tierSaving = saving === configKey;
+                  const isPrimary = tier.key === "primary";
+                  // Collect composite keys of higher-priority tiers to exclude from this dropdown
+                  const selectedAbove = new Set(
+                    TIERS.slice(0, tierIdx)
+                      .map((t) => {
+                        const cfg = getConfigByKey(`ai.${mt.key}.model${t.configSuffix}`);
+                        return cfg ? `${cfg.provider}::${cfg.model}` : null;
+                      })
+                      .filter(Boolean) as string[]
+                  );
+                  const availableModels = stageModels.filter(
+                    (m) => !selectedAbove.has(`${m.provider}::${m.model}`)
+                  );
+                  return (
+                    <div key={tier.key} className="space-y-1">
+                      <span className={cn(
+                        "text-[10px] capitalize",
+                        isPrimary ? "text-[#F9FAFB] font-medium" : "text-[#9CA3AF]"
+                      )}>
+                        {tier.label}
+                      </span>
+                      <Select
+                        value={tierCfg ? `${tierCfg.provider}::${tierCfg.model}` : "__none__"}
+                        onValueChange={(v) => handleTierChange(configKey, v)}
+                        disabled={tierSaving}
+                      >
+                        <SelectTrigger className={cn(
+                          "flex-1 bg-[#1A2942] border-white/10 text-[#F9FAFB]",
+                          isPrimary ? "h-8 text-xs" : "h-7 text-[10px]"
+                        )}>
+                          <SelectValue placeholder={isPrimary ? "Select a model..." : "None (disabled)"} />
+                        </SelectTrigger>
+                        <SelectContent className="bg-[#1A2942] border-white/10 text-[#F9FAFB]">
+                          {!isPrimary && (
+                            <SelectItem value="__none__" className="text-[10px] text-[#6B7280]">
+                              None (disabled)
+                            </SelectItem>
+                          )}
+                          {availableModels.map((m) => (
+                            <SelectItem
+                              key={`${m.provider}::${m.model}`}
+                              value={`${m.provider}::${m.model}`}
+                              className={isPrimary ? "text-xs" : "text-[10px]"}
+                            >
+                              {m.label} ({m.providerLabel})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           );
         })}

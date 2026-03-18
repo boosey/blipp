@@ -2,7 +2,7 @@ import { createPrismaClient } from "../lib/db";
 import { createPipelineLogger } from "../lib/logger";
 import { checkStageEnabled } from "../lib/queue-helpers";
 import { generateNarrative, selectClaimsForDuration, type EpisodeMetadata } from "../lib/distillation";
-import { resolveStageModel } from "../lib/model-resolution";
+import { resolveModelChain } from "../lib/model-resolution";
 import { getLlmProviderImpl } from "../lib/llm-providers";
 import { wpKey, putWorkProduct, getWorkProduct } from "../lib/work-products";
 import { writeEvent } from "../lib/pipeline-events";
@@ -127,11 +127,15 @@ export async function handleNarrativeGeneration(
           ? selectClaimsForDuration(allClaims, durationTier)
           : allClaims;
 
-        // Read model config
-        const resolved = await resolveStageModel(prisma, "narrative");
-        narrativeModel = resolved.providerModelId;
-        narrativeProvider = resolved.provider;
-        const llm = getLlmProviderImpl(resolved.provider);
+        // Resolve model chain: primary -> secondary -> tertiary
+        const modelChain = await resolveModelChain(prisma, "narrative");
+        if (modelChain.length === 0) {
+          throw new Error("No narrative model configured — configure at least a primary in Admin > AI Models");
+        }
+
+        await writeEvent(prisma, step.id, "INFO", `Model chain: ${modelChain.map((m, i) => `${["primary", "secondary", "tertiary"][i]}=${m.provider}/${m.providerModelId}`).join(", ")}`, {
+          chainLength: modelChain.length,
+        });
 
         // Load episode metadata for narrative intro
         const episode = await prisma.episode.findUnique({
@@ -154,37 +158,80 @@ export async function handleNarrativeGeneration(
             }
           : undefined;
 
-        // Generate narrative from claims (Pass 2)
+        // Try each model in the chain until one succeeds
         claimCount = claims.length;
-        await writeEvent(prisma, step.id, "INFO", `Generating ${durationTier}-minute narrative from ${claims.length}/${allClaims.length} claims via ${llm.name} (${resolved.providerModelId})`, {
-          claimCount: claims.length,
-          totalClaims: allClaims.length,
-          durationTier,
-          model: resolved.providerModelId,
-          provider: resolved.provider,
-        });
-        const narrativeTimer = log.timer("narrative_generation");
-        const { narrative, usage: narrativeUsage } = await generateNarrative(
-          llm,
-          claims,
-          durationTier,
-          resolved.providerModelId,
-          8192,
-          env,
-          resolved.pricing,
-          episodeMetadata
-        );
-        recordSuccess(resolved.provider);
-        const wordCount = narrative.split(/\s+/).length;
-        narrativeTimer();
-        await writeEvent(prisma, step.id, "INFO", `Narrative generated: ${wordCount} words`);
-        await writeEvent(prisma, step.id, "DEBUG", `Model: ${narrativeUsage.model}`, { inputTokens: narrativeUsage.inputTokens, outputTokens: narrativeUsage.outputTokens, cost: narrativeUsage.cost });
-        log.info("narrative_generated", { episodeId, wordCount });
+        let narrative: string | undefined;
+        let narrativeUsage: { model: string; inputTokens: number; outputTokens: number; cost: number | null } | undefined;
+        for (let i = 0; i < modelChain.length; i++) {
+          const resolved = modelChain[i];
+          const tier = ["primary", "secondary", "tertiary"][i];
+          const llm = getLlmProviderImpl(resolved.provider);
+          narrativeModel = resolved.providerModelId;
+          narrativeProvider = resolved.provider;
+
+          await writeEvent(prisma, step.id, "INFO", `Generating ${durationTier}-minute narrative from ${claims.length}/${allClaims.length} claims via ${tier}: ${llm.name} (${resolved.providerModelId})`, {
+            tier,
+            claimCount: claims.length,
+            totalClaims: allClaims.length,
+            durationTier,
+            model: resolved.providerModelId,
+            provider: resolved.provider,
+          });
+
+          try {
+            const narrativeTimer = log.timer("narrative_generation");
+            const result = await generateNarrative(
+              llm,
+              claims,
+              durationTier,
+              resolved.providerModelId,
+              8192,
+              env,
+              resolved.pricing,
+              episodeMetadata
+            );
+            recordSuccess(resolved.provider);
+            narrative = result.narrative;
+            narrativeUsage = result.usage;
+            const wordCount = narrative.split(/\s+/).length;
+            narrativeTimer();
+
+            await writeEvent(prisma, step.id, "INFO", `Narrative generated via ${tier} ${llm.name}: ${wordCount} words`, {
+              tier,
+              wordCount,
+              attemptNumber: i + 1,
+            });
+            log.info("narrative_generated", { episodeId, wordCount, tier });
+            break; // Success — stop trying
+          } catch (chainErr) {
+            const errMsg = chainErr instanceof Error ? chainErr.message : String(chainErr);
+            const httpStatus = (chainErr as any)?.httpStatus;
+            recordFailure(resolved.provider);
+
+            await writeEvent(prisma, step.id, "WARN", `${tier} failed: ${llm.name} — ${errMsg.slice(0, 300)}`, {
+              tier,
+              provider: resolved.provider,
+              model: resolved.providerModelId,
+              httpStatus,
+              errorType: chainErr?.constructor?.name,
+              willRetryNext: i < modelChain.length - 1,
+            });
+
+            if (i === modelChain.length - 1) {
+              // All models exhausted — throw the last error
+              throw chainErr;
+            }
+            // Otherwise continue to next model
+          }
+        }
+
+        const wordCount = narrative!.split(/\s+/).length;
+        await writeEvent(prisma, step.id, "DEBUG", `Model: ${narrativeUsage!.model}`, { inputTokens: narrativeUsage!.inputTokens, outputTokens: narrativeUsage!.outputTokens, cost: narrativeUsage!.cost });
 
         // Write narrative to R2 + index in DB
         const narrativeR2Key = wpKey({ type: "NARRATIVE", episodeId, durationTier });
-        await putWorkProduct(env.R2, narrativeR2Key, narrative);
-        const sizeBytes = new TextEncoder().encode(narrative).byteLength;
+        await putWorkProduct(env.R2, narrativeR2Key, narrative!);
+        const sizeBytes = new TextEncoder().encode(narrative!).byteLength;
         await prisma.workProduct.upsert({
           where: { r2Key: narrativeR2Key },
           update: { sizeBytes, metadata: { wordCount } },
@@ -216,10 +263,10 @@ export async function handleNarrativeGeneration(
             status: "COMPLETED",
             completedAt: new Date(),
             durationMs: Date.now() - startTime,
-            model: narrativeUsage.model,
-            inputTokens: narrativeUsage.inputTokens,
-            outputTokens: narrativeUsage.outputTokens,
-            cost: narrativeUsage.cost ?? null,
+            model: narrativeUsage!.model,
+            inputTokens: narrativeUsage!.inputTokens,
+            outputTokens: narrativeUsage!.outputTokens,
+            cost: narrativeUsage!.cost ?? null,
           },
         });
 

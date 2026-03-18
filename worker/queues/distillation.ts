@@ -2,7 +2,7 @@ import { createPrismaClient } from "../lib/db";
 import { createPipelineLogger } from "../lib/logger";
 import { checkStageEnabled } from "../lib/queue-helpers";
 import { extractClaims } from "../lib/distillation";
-import { resolveStageModel } from "../lib/model-resolution";
+import { resolveModelChain } from "../lib/model-resolution";
 import { getLlmProviderImpl } from "../lib/llm-providers";
 import { wpKey, putWorkProduct, getWorkProduct } from "../lib/work-products";
 import { writeEvent } from "../lib/pipeline-events";
@@ -132,23 +132,71 @@ export async function handleDistillation(
           create: { episodeId, status: "EXTRACTING_CLAIMS" },
         });
 
-        // Extract claims via LLM (Pass 1)
-        const resolved = await resolveStageModel(prisma, "distillation");
-        const llm = getLlmProviderImpl(resolved.provider);
-        distillProvider = resolved.provider;
-        distillModel = resolved.providerModelId;
-        await writeEvent(prisma, step.id, "INFO", `Sending transcript to ${llm.name} (${resolved.providerModelId}) for claim extraction`, {
-          transcriptBytes: transcript.length,
-          model: resolved.providerModelId,
-          provider: resolved.provider,
+        // Resolve model chain: primary -> secondary -> tertiary
+        const modelChain = await resolveModelChain(prisma, "distillation");
+        if (modelChain.length === 0) {
+          throw new Error("No distillation model configured — configure at least a primary in Admin > AI Models");
+        }
+
+        await writeEvent(prisma, step.id, "INFO", `Model chain: ${modelChain.map((m, i) => `${["primary", "secondary", "tertiary"][i]}=${m.provider}/${m.providerModelId}`).join(", ")}`, {
+          chainLength: modelChain.length,
         });
-        const elapsed = log.timer("claude_extraction");
-        const { claims, usage: claimsUsage } = await extractClaims(llm, transcript, resolved.providerModelId, 8192, env, resolved.pricing);
-        recordSuccess(resolved.provider);
-        elapsed();
-        await writeEvent(prisma, step.id, "INFO", `Extracted ${claims.length} claims from transcript`);
-        await writeEvent(prisma, step.id, "DEBUG", `Model: ${claimsUsage.model}`, { inputTokens: claimsUsage.inputTokens, outputTokens: claimsUsage.outputTokens, cost: claimsUsage.cost });
-        log.info("claims_extracted", { episodeId, claimCount: claims.length });
+
+        // Try each model in the chain until one succeeds
+        let claims: any[] | undefined;
+        let claimsUsage: { model: string; inputTokens: number; outputTokens: number; cost: number | null } | undefined;
+        for (let i = 0; i < modelChain.length; i++) {
+          const resolved = modelChain[i];
+          const tier = ["primary", "secondary", "tertiary"][i];
+          const llm = getLlmProviderImpl(resolved.provider);
+          distillProvider = resolved.provider;
+          distillModel = resolved.providerModelId;
+
+          await writeEvent(prisma, step.id, "INFO", `Sending transcript to ${tier}: ${llm.name} (${resolved.providerModelId}) for claim extraction`, {
+            tier,
+            transcriptBytes: transcript.length,
+            model: resolved.providerModelId,
+            provider: resolved.provider,
+          });
+
+          try {
+            const elapsed = log.timer("claude_extraction");
+            const result = await extractClaims(llm, transcript, resolved.providerModelId, 8192, env, resolved.pricing);
+            recordSuccess(resolved.provider);
+            elapsed();
+            claims = result.claims;
+            claimsUsage = result.usage;
+
+            await writeEvent(prisma, step.id, "INFO", `Extracted ${claims.length} claims via ${tier} ${llm.name}`, {
+              tier,
+              claimCount: claims.length,
+              attemptNumber: i + 1,
+            });
+            log.info("claims_extracted", { episodeId, claimCount: claims.length, tier });
+            break; // Success — stop trying
+          } catch (chainErr) {
+            const errMsg = chainErr instanceof Error ? chainErr.message : String(chainErr);
+            const httpStatus = (chainErr as any)?.httpStatus;
+            recordFailure(resolved.provider);
+
+            await writeEvent(prisma, step.id, "WARN", `${tier} failed: ${llm.name} — ${errMsg.slice(0, 300)}`, {
+              tier,
+              provider: resolved.provider,
+              model: resolved.providerModelId,
+              httpStatus,
+              errorType: chainErr?.constructor?.name,
+              willRetryNext: i < modelChain.length - 1,
+            });
+
+            if (i === modelChain.length - 1) {
+              // All models exhausted — throw the last error
+              throw chainErr;
+            }
+            // Otherwise continue to next model
+          }
+        }
+
+        await writeEvent(prisma, step.id, "DEBUG", `Model: ${claimsUsage!.model}`, { inputTokens: claimsUsage!.inputTokens, outputTokens: claimsUsage!.outputTokens, cost: claimsUsage!.cost });
 
         // Mark distillation as completed (claims content lives in R2 only)
         await prisma.distillation.update({
@@ -157,16 +205,16 @@ export async function handleDistillation(
         });
 
         // Write claims to R2 + index in DB
-        const claimsStr = JSON.stringify(claims);
+        const claimsStr = JSON.stringify(claims!);
         const r2Key = wpKey({ type: "CLAIMS", episodeId });
         await putWorkProduct(env.R2, r2Key, claimsStr);
         const sizeBytes = new TextEncoder().encode(claimsStr).byteLength;
         await prisma.workProduct.upsert({
           where: { r2Key },
-          update: { sizeBytes, metadata: { claimCount: claims.length } },
-          create: { type: "CLAIMS", episodeId, r2Key, sizeBytes, metadata: { claimCount: claims.length } },
+          update: { sizeBytes, metadata: { claimCount: claims!.length } },
+          create: { type: "CLAIMS", episodeId, r2Key, sizeBytes, metadata: { claimCount: claims!.length } },
         });
-        await writeEvent(prisma, step.id, "INFO", "Saved claims to R2", { r2Key, claimCount: claims.length });
+        await writeEvent(prisma, step.id, "INFO", "Saved claims to R2", { r2Key, claimCount: claims!.length });
 
         // Mark step COMPLETED
         const completedAt = new Date();
@@ -176,10 +224,10 @@ export async function handleDistillation(
             status: "COMPLETED",
             completedAt,
             durationMs: completedAt.getTime() - startedAt.getTime(),
-            model: claimsUsage.model,
-            inputTokens: claimsUsage.inputTokens,
-            outputTokens: claimsUsage.outputTokens,
-            cost: claimsUsage.cost,
+            model: claimsUsage!.model,
+            inputTokens: claimsUsage!.inputTokens,
+            outputTokens: claimsUsage!.outputTokens,
+            cost: claimsUsage!.cost,
           },
         });
 

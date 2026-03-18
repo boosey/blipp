@@ -40,6 +40,13 @@ vi.mock("../../lib/model-resolution", () => ({
     providerModelId: "claude-sonnet-4-20250514",
     pricing: { priceInputPerMToken: 3.0, priceOutputPerMToken: 15.0 },
   }),
+  resolveModelChain: vi.fn().mockResolvedValue([{
+    provider: "anthropic",
+    model: "claude-sonnet-4-20250514",
+    providerModelId: "claude-sonnet-4-20250514",
+    pricing: { priceInputPerMToken: 3.0, priceOutputPerMToken: 15.0 },
+    limits: null,
+  }]),
 }));
 
 vi.mock("../../lib/llm-providers", () => ({
@@ -87,7 +94,7 @@ import { createPrismaClient } from "../../lib/db";
 import { getConfig } from "../../lib/config";
 import { extractClaims } from "../../lib/distillation";
 import { wpKey, putWorkProduct, getWorkProduct } from "../../lib/work-products";
-import { resolveStageModel } from "../../lib/model-resolution";
+import { resolveStageModel, resolveModelChain } from "../../lib/model-resolution";
 import { writeAiError, classifyAiError } from "../../lib/ai-errors";
 
 let mockPrisma: ReturnType<typeof createMockPrisma>;
@@ -109,6 +116,13 @@ beforeEach(() => {
     providerModelId: "claude-sonnet-4-20250514",
     pricing: { priceInputPerMToken: 3.0, priceOutputPerMToken: 15.0 },
   });
+  (resolveModelChain as any).mockResolvedValue([{
+    provider: "anthropic",
+    model: "claude-sonnet-4-20250514",
+    providerModelId: "claude-sonnet-4-20250514",
+    pricing: { priceInputPerMToken: 3.0, priceOutputPerMToken: 15.0 },
+    limits: null,
+  }]);
   (extractClaims as any).mockResolvedValue({
     claims: [{ claim: "Test claim", speaker: "Host", importance: 9, novelty: 7, excerpt: "Verbatim excerpt from the transcript." }],
     usage: { model: "test-model", inputTokens: 100, outputTokens: 50, cost: null },
@@ -294,7 +308,7 @@ describe("handleDistillation", () => {
     );
   });
 
-  it("reads distillation model via resolveStageModel and passes to extractClaims", async () => {
+  it("reads distillation model via resolveModelChain and passes to extractClaims", async () => {
     mockPrisma.pipelineJob.findUniqueOrThrow.mockResolvedValue({ id: "job-1", requestId: "req-1" });
     mockPrisma.pipelineJob.update.mockResolvedValue({});
     mockPrisma.pipelineStep.create.mockResolvedValue({ id: "step-1" });
@@ -304,7 +318,7 @@ describe("handleDistillation", () => {
     const batch = makeBatch([{ jobId: "job-1", episodeId: "ep-1" }]);
     await handleDistillation(batch, mockEnv, mockCtx);
 
-    expect(resolveStageModel).toHaveBeenCalledWith(expect.anything(), "distillation");
+    expect(resolveModelChain).toHaveBeenCalledWith(expect.anything(), "distillation");
     expect(extractClaims).toHaveBeenCalledWith(expect.anything(), expect.any(String), expect.any(String), 8192, expect.anything(), expect.anything());
   });
 
@@ -497,6 +511,7 @@ describe("handleDistillation", () => {
       expect(mockLogger.info).toHaveBeenCalledWith("claims_extracted", {
         episodeId: "ep-1",
         claimCount: 1,
+        tier: "primary",
       });
     });
 

@@ -1,5 +1,5 @@
 import { createPrismaClient } from "../lib/db";
-import { resolveStageModel, resolveSttModelChain } from "../lib/model-resolution";
+import { resolveStageModel, resolveModelChain } from "../lib/model-resolution";
 import { checkStageEnabled } from "../lib/queue-helpers";
 import { createPipelineLogger } from "../lib/logger";
 import { wpKey, putWorkProduct } from "../lib/work-products";
@@ -284,7 +284,7 @@ export async function handleTranscription(
           const durationSeconds = episode.durationSeconds ?? Math.round(audioBuffer.byteLength / (128 * 1000 / 8));
 
           // Resolve model chain: primary → secondary → tertiary
-          const modelChain = await resolveSttModelChain(prisma);
+          const modelChain = await resolveModelChain(prisma, "stt");
           if (modelChain.length === 0) {
             throw new Error("No STT model configured — configure at least a primary in Admin > AI Models");
           }

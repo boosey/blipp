@@ -71,18 +71,22 @@ export async function resolveStageModel(
 }
 
 /**
- * Resolves an ordered list of STT models to try: primary, secondary, tertiary.
- * Config keys: ai.stt.model, ai.stt.model.secondary, ai.stt.model.tertiary
+ * Resolves an ordered list of models to try for a stage: primary, secondary, tertiary.
+ * Config keys: ai.{stage}.model, ai.{stage}.model.secondary, ai.{stage}.model.tertiary
  * Skips entries with open circuit breakers. Returns at least one if primary exists.
  */
-export async function resolveSttModelChain(
-  prisma: any
+export async function resolveModelChain(
+  prisma: any,
+  stage: AIStage
 ): Promise<ResolvedModel[]> {
-  const keys = ["ai.stt.model", "ai.stt.model.secondary", "ai.stt.model.tertiary"];
+  const keys = [
+    `ai.${stage}.model`,
+    `ai.${stage}.model.secondary`,
+    `ai.${stage}.model.tertiary`,
+  ];
   const chain: ResolvedModel[] = [];
 
   for (const key of keys) {
-    const suffix = key === "ai.stt.model" ? "stt" : key.replace("ai.stt.model.", "stt.");
     const config = await getConfig<{ provider: string; model: string } | null>(prisma, key, null);
     if (!config?.provider || !config?.model) continue;
 
@@ -109,6 +113,9 @@ export async function resolveSttModelChain(
 
   return chain;
 }
+
+/** @deprecated Use resolveModelChain(prisma, "stt") instead */
+export const resolveSttModelChain = (prisma: any) => resolveModelChain(prisma, "stt");
 
 /**
  * Find an alternative provider for a stage when the primary is circuit-broken.

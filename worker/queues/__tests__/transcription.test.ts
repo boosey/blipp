@@ -31,6 +31,13 @@ vi.mock("../../lib/model-resolution", () => ({
     pricing: { pricePerMinute: 0.0005 },
     limits: null,
   }]),
+  resolveModelChain: vi.fn().mockResolvedValue([{
+    provider: "cloudflare",
+    model: "whisper-large-v3-turbo",
+    providerModelId: "@cf/openai/whisper-large-v3-turbo",
+    pricing: { pricePerMinute: 0.0005 },
+    limits: null,
+  }]),
 }));
 
 vi.mock("../../lib/ai-usage", () => ({
@@ -128,7 +135,7 @@ vi.mock("../../lib/ai-errors", () => {
 });
 
 const { getConfig } = await import("../../lib/config");
-const { resolveStageModel, resolveSttModelChain } = await import("../../lib/model-resolution");
+const { resolveStageModel, resolveSttModelChain, resolveModelChain } = await import("../../lib/model-resolution");
 const { getTranscriptSource } = await import("../../lib/transcript-sources");
 const { getProviderImpl } = await import("../../lib/stt-providers");
 const { writeAiError } = await import("../../lib/ai-errors");
@@ -208,8 +215,8 @@ describe("handleTranscription", () => {
       pricing: { pricePerMinute: 0.0005 },
       limits: null,
     });
-    (resolveSttModelChain as any).mockReset();
-    (resolveSttModelChain as any).mockResolvedValue([{
+    (resolveModelChain as any).mockReset();
+    (resolveModelChain as any).mockResolvedValue([{
       provider: "cloudflare",
       model: "whisper-large-v3-turbo",
       providerModelId: "@cf/openai/whisper-large-v3-turbo",
@@ -406,7 +413,7 @@ describe("handleTranscription", () => {
 
     await handleTranscription(createBatch([msg]), env, ctx);
 
-    expect(resolveSttModelChain).toHaveBeenCalled();
+    expect(resolveModelChain).toHaveBeenCalled();
     expect(getProviderImpl).toHaveBeenCalledWith("cloudflare");
     expect(mockTranscribe).toHaveBeenCalled();
   });
@@ -824,7 +831,7 @@ describe("handleTranscription", () => {
       const msg = createMsg({ jobId: "job1", episodeId: "ep1" });
 
       // Chain: primary (fails) → secondary (succeeds)
-      (resolveSttModelChain as any).mockResolvedValue([
+      (resolveModelChain as any).mockResolvedValue([
         { provider: "groq", model: "whisper-turbo", providerModelId: "whisper-large-v3-turbo", pricing: null, limits: null },
         { provider: "deepgram", model: "nova-3", providerModelId: "nova-3", pricing: null, limits: null },
       ]);
@@ -851,7 +858,7 @@ describe("handleTranscription", () => {
       setupSttBase();
       const msg = createMsg({ jobId: "job1", episodeId: "ep1" });
 
-      (resolveSttModelChain as any).mockResolvedValue([
+      (resolveModelChain as any).mockResolvedValue([
         { provider: "groq", model: "whisper-turbo", providerModelId: "whisper-large-v3-turbo", pricing: null, limits: null },
         { provider: "deepgram", model: "nova-3", providerModelId: "nova-3", pricing: null, limits: null },
         { provider: "openai", model: "whisper-1", providerModelId: "whisper-1", pricing: null, limits: null },
@@ -877,7 +884,7 @@ describe("handleTranscription", () => {
       setupSttBase();
       const msg = createMsg({ jobId: "job1", episodeId: "ep1" });
 
-      (resolveSttModelChain as any).mockResolvedValue([
+      (resolveModelChain as any).mockResolvedValue([
         { provider: "groq", model: "whisper-turbo", providerModelId: "whisper-large-v3-turbo", pricing: null, limits: null },
         { provider: "deepgram", model: "nova-3", providerModelId: "nova-3", pricing: null, limits: null },
       ]);
@@ -904,7 +911,7 @@ describe("handleTranscription", () => {
       setupSttBase();
       const msg = createMsg({ jobId: "job1", episodeId: "ep1" });
 
-      (resolveSttModelChain as any).mockResolvedValue([]);
+      (resolveModelChain as any).mockResolvedValue([]);
 
       await handleTranscription(createBatch([msg]), env, ctx);
 
