@@ -7,7 +7,7 @@
 - what's legal on imitated voices
   - generally not legal but could do it until there is a cease and desist :-)
 - script in the style of the voice
-- Change speed of audio
+~~- Change speed of audio~~
 ~~- search episode within podcast~~
 - light / dark mode
 - request a podcast
@@ -17,7 +17,7 @@
 ## Enhancements - Admin
 - spot check podcast health
 - archive jobs 
-- delete errored jobs
+~~- delete errored jobs~~
 - logs; formatted; filter by request, podcast, user, etc
 
 ## Changes

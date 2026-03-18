@@ -132,4 +132,31 @@ describe("POST /generate (on-demand)", () => {
     expect(mockPrisma.briefingRequest.create).not.toHaveBeenCalled();
     expect((env.ORCHESTRATOR_QUEUE as any).send).not.toHaveBeenCalled();
   });
+
+  it("resets FAILED FeedItem and re-dispatches pipeline", async () => {
+    mockPrisma.episode.findUniqueOrThrow.mockResolvedValue({ id: "ep1", podcastId: "pod1" });
+    // Upsert returns an existing FAILED feed item
+    mockPrisma.feedItem.upsert.mockResolvedValue({ id: "fi1", status: "FAILED", requestId: "old-req", briefingId: null });
+    // Reset update
+    mockPrisma.feedItem.update.mockResolvedValue({ id: "fi1", status: "PENDING" });
+    mockPrisma.briefingRequest.create.mockResolvedValue({ id: "req-new" });
+
+    const res = await app.request("/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ podcastId: "pod1", episodeId: "ep1", durationTier: 5 }),
+    }, env, mockExCtx);
+
+    expect(res.status).toBe(201);
+    // Should reset the failed feed item
+    expect(mockPrisma.feedItem.update).toHaveBeenCalledWith({
+      where: { id: "fi1" },
+      data: { status: "PENDING", requestId: null, briefingId: null },
+    });
+    // Should create a new request and dispatch
+    expect(mockPrisma.briefingRequest.create).toHaveBeenCalled();
+    expect((env.ORCHESTRATOR_QUEUE as any).send).toHaveBeenCalledWith(
+      expect.objectContaining({ requestId: "req-new", action: "evaluate" })
+    );
+  });
 });

@@ -68,7 +68,7 @@ briefings.post("/generate", async (c) => {
     episodeId = episode.id;
   }
 
-  // Create FeedItem (upsert prevents duplicates)
+  // Create FeedItem (upsert prevents duplicates, but re-queues failed ones)
   const feedItem = await prisma.feedItem.upsert({
     where: {
       userId_episodeId_durationTier: {
@@ -87,6 +87,15 @@ briefings.post("/generate", async (c) => {
     },
     update: {},
   });
+
+  // Reset failed feed items so the user can retry
+  if (feedItem.status === "FAILED") {
+    await prisma.feedItem.update({
+      where: { id: feedItem.id },
+      data: { status: "PENDING", requestId: null, briefingId: null },
+    });
+    feedItem.status = "PENDING";
+  }
 
   // Only dispatch pipeline if not already processed
   if (feedItem.status === "PENDING") {

@@ -214,6 +214,15 @@ podcasts.post("/subscribe", async (c) => {
       update: {},
     });
 
+    // Reset failed feed items so the user can retry
+    if (feedItem.status === "FAILED") {
+      await prisma.feedItem.update({
+        where: { id: feedItem.id },
+        data: { status: "PENDING", requestId: null, briefingId: null },
+      });
+      feedItem.status = "PENDING";
+    }
+
     // Only dispatch pipeline if the FeedItem isn't already processed
     if (feedItem.status === "PENDING") {
       const request = await prisma.briefingRequest.create({
