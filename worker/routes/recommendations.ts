@@ -9,6 +9,256 @@ export const recommendations = new Hono<{ Bindings: Env }>();
 
 recommendations.use("*", requireAuth);
 
+// --- Types ---
+
+interface CuratedRow {
+  title: string;
+  type: "episodes" | "podcasts";
+  items: any[];
+}
+
+// --- Curated rows helper ---
+
+async function generateCuratedRows(
+  userId: string,
+  prisma: any,
+  genre: string | null
+): Promise<CuratedRow[]> {
+  const rows: CuratedRow[] = [];
+  const fourteenDaysAgo = new Date(Date.now() - 14 * 86400000);
+
+  // Get user's subscribed podcast IDs to exclude from discovery rows
+  const subscriptions = await prisma.subscription.findMany({
+    where: { userId },
+    select: { podcastId: true },
+  });
+  const subscribedIds = new Set(subscriptions.map((s: any) => s.podcastId));
+
+  // Row 1: "Trending in {genre}" or "Trending Now"
+  {
+    const where: any = {
+      publishedAt: { gte: fourteenDaysAgo },
+      podcast: {
+        id: { notIn: [...subscribedIds] },
+        ...(genre ? { categories: { has: genre } } : {}),
+      },
+    };
+    const episodes = await prisma.episode.findMany({
+      where,
+      orderBy: { publishedAt: "desc" },
+      take: 15,
+      select: {
+        id: true,
+        title: true,
+        publishedAt: true,
+        durationSeconds: true,
+        topicTags: true,
+        podcast: { select: { id: true, title: true, author: true, imageUrl: true, categories: true } },
+      },
+    });
+    if (episodes.length > 0) {
+      rows.push({
+        title: genre ? `Trending in ${genre}` : "Trending Now",
+        type: "episodes",
+        items: episodes.map((ep: any) => ({
+          episode: { id: ep.id, title: ep.title, publishedAt: ep.publishedAt, durationSeconds: ep.durationSeconds, topicTags: ep.topicTags },
+          podcast: ep.podcast,
+          score: 1,
+          reasons: ["Trending"],
+        })),
+      });
+    }
+  }
+
+  // Row 2: "New on topics you follow"
+  {
+    const userProfile = await prisma.userRecommendationProfile.findUnique({
+      where: { userId },
+    });
+    if (userProfile) {
+      const topicTags: string[] = userProfile.topicTags || [];
+      if (topicTags.length > 0) {
+        const where: any = {
+          publishedAt: { gte: fourteenDaysAgo },
+          topicTags: { hasSome: topicTags },
+          podcast: {
+            id: { notIn: [...subscribedIds] },
+            ...(genre ? { categories: { has: genre } } : {}),
+          },
+        };
+        const episodes = await prisma.episode.findMany({
+          where,
+          orderBy: { publishedAt: "desc" },
+          take: 15,
+          select: {
+            id: true,
+            title: true,
+            publishedAt: true,
+            durationSeconds: true,
+            topicTags: true,
+            podcast: { select: { id: true, title: true, author: true, imageUrl: true, categories: true } },
+          },
+        });
+        if (episodes.length > 0) {
+          rows.push({
+            title: "New on topics you follow",
+            type: "episodes",
+            items: episodes.map((ep: any) => ({
+              episode: { id: ep.id, title: ep.title, publishedAt: ep.publishedAt, durationSeconds: ep.durationSeconds, topicTags: ep.topicTags },
+              podcast: ep.podcast,
+              score: 1,
+              reasons: ["Matches your topics"],
+            })),
+          });
+        }
+      }
+    }
+  }
+
+  // Row 3: "Popular with listeners like you"
+  {
+    try {
+      const result = await scoreRecommendations(userId, prisma, 15);
+      if (result.recommendations.length > 0) {
+        // Hydrate podcast data
+        const podcastIds = result.recommendations.map((r) => r.podcastId);
+        const podcasts = await prisma.podcast.findMany({
+          where: { id: { in: podcastIds } },
+          select: { id: true, title: true, author: true, description: true, imageUrl: true, feedUrl: true, categories: true, episodeCount: true, _count: { select: { subscriptions: true } } },
+        });
+        const podcastMap = new Map(podcasts.map((p: any) => [p.id, { ...p, subscriberCount: p._count.subscriptions, _count: undefined }]));
+
+        const items = result.recommendations
+          .filter((r) => podcastMap.has(r.podcastId))
+          .map((r) => ({
+            podcast: podcastMap.get(r.podcastId),
+            score: r.score,
+            reasons: r.reasons,
+          }));
+
+        if (items.length > 0) {
+          rows.push({
+            title: "Popular with listeners like you",
+            type: "podcasts",
+            items,
+          });
+        }
+      }
+    } catch {
+      // Skip this row on error
+    }
+  }
+
+  // Row 4: "Because you like {podcastName}"
+  {
+    // Pick the user's most recent favorited or most-listened podcast
+    const favorite = await prisma.podcastFavorite.findFirst({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      include: { podcast: { select: { id: true, title: true, categories: true } } },
+    });
+
+    const sourcePodcast = favorite?.podcast;
+    if (sourcePodcast && sourcePodcast.categories?.length > 0) {
+      const where: any = {
+        publishedAt: { gte: fourteenDaysAgo },
+        podcast: {
+          id: { notIn: [...subscribedIds, sourcePodcast.id] },
+          categories: { hasSome: sourcePodcast.categories },
+          ...(genre ? { categories: { has: genre } } : {}),
+        },
+      };
+      const episodes = await prisma.episode.findMany({
+        where,
+        orderBy: { publishedAt: "desc" },
+        take: 15,
+        select: {
+          id: true,
+          title: true,
+          publishedAt: true,
+          durationSeconds: true,
+          topicTags: true,
+          podcast: { select: { id: true, title: true, author: true, imageUrl: true, categories: true } },
+        },
+      });
+      if (episodes.length > 0) {
+        rows.push({
+          title: `Because you like ${sourcePodcast.title}`,
+          type: "episodes",
+          items: episodes.map((ep: any) => ({
+            episode: { id: ep.id, title: ep.title, publishedAt: ep.publishedAt, durationSeconds: ep.durationSeconds, topicTags: ep.topicTags },
+            podcast: ep.podcast,
+            score: 1,
+            reasons: [`Similar to ${sourcePodcast.title}`],
+          })),
+        });
+      }
+    }
+  }
+
+  return rows;
+}
+
+// GET /curated — Netflix-style curated rows
+recommendations.get("/curated", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
+  const genre = c.req.query("genre") || null;
+
+  const rows = await generateCuratedRows(user.id, prisma, genre);
+  return c.json({ rows, podcastSuggestions: [] });
+});
+
+// GET /episodes — browse recent episodes across catalog
+recommendations.get("/episodes", async (c) => {
+  const prisma = c.get("prisma") as any;
+  await getCurrentUser(c, prisma); // auth check
+  const genre = c.req.query("genre") || null;
+  const search = c.req.query("search") || null;
+  const page = parseInt(c.req.query("page") || "1", 10);
+  const pageSize = Math.min(parseInt(c.req.query("pageSize") || "20", 10), 50);
+  const skip = (page - 1) * pageSize;
+
+  const where: any = {};
+  if (genre) {
+    where.podcast = { categories: { has: genre } };
+  }
+  if (search) {
+    where.OR = [
+      { title: { contains: search, mode: "insensitive" } },
+      { podcast: { title: { contains: search, mode: "insensitive" } } },
+    ];
+  }
+
+  const [episodes, total] = await Promise.all([
+    prisma.episode.findMany({
+      where,
+      skip,
+      take: pageSize,
+      orderBy: { publishedAt: "desc" },
+      select: {
+        id: true,
+        title: true,
+        publishedAt: true,
+        durationSeconds: true,
+        topicTags: true,
+        podcast: { select: { id: true, title: true, author: true, imageUrl: true, categories: true } },
+      },
+    }),
+    prisma.episode.count({ where }),
+  ]);
+
+  return c.json({
+    episodes: episodes.map((ep: any) => ({
+      episode: { id: ep.id, title: ep.title, publishedAt: ep.publishedAt, durationSeconds: ep.durationSeconds, topicTags: ep.topicTags },
+      podcast: ep.podcast,
+    })),
+    total,
+    page,
+    pageSize,
+  });
+});
+
 // GET / — personalized recommendations
 recommendations.get("/", async (c) => {
   const prisma = c.get("prisma") as any;
