@@ -10,11 +10,11 @@
 
 ### Problem
 
-All 33 POST/PUT/PATCH endpoints use `c.req.json<T>()` type-casting without runtime validation. Invalid payloads pass through unchecked, creating security and reliability risks. Public routes are the real attack surface.
+All POST/PUT/PATCH endpoints use `c.req.json<T>()` type-casting without runtime validation. Invalid payloads pass through unchecked, creating security and reliability risks. Public routes are the real attack surface.
 
 ### Scope
 
-8 public endpoints (admin routes deferred — already behind `requireAdmin` auth).
+15 public endpoints across 5 route files (admin routes deferred — already behind `requireAdmin` auth).
 
 ### Design
 
@@ -26,30 +26,73 @@ All 33 POST/PUT/PATCH endpoints use `c.req.json<T>()` type-casting without runti
 import { z } from "zod/v4";
 import type { Context } from "hono";
 
+export class ValidationError extends Error {
+  status = 400;
+  code = "VALIDATION_ERROR";
+  details: Array<{ path: string; message: string }>;
+
+  constructor(issues: z.core.$ZodIssue[]) {
+    super("Validation error");
+    this.name = "ValidationError";
+    this.details = issues.map((i) => ({
+      path: i.path.map(String).join("."),
+      message: i.message,
+    }));
+  }
+}
+
 export async function validateBody<T>(c: Context, schema: z.ZodType<T>): Promise<T> {
   const body = await c.req.json().catch(() => ({}));
   const result = schema.safeParse(body);
   if (!result.success) {
-    // Throw an error that classifyHttpError maps to 400
-    const error = new Error("Validation error");
-    (error as any).status = 400;
-    (error as any).details = result.error.issues.map((i) => ({
-      path: i.path.join("."),
-      message: i.message,
-    }));
-    throw error;
+    throw new ValidationError(result.error.issues);
   }
   return result.data;
 }
 ```
 
-#### Error Response Format
+#### Error Classification
 
-The global error handler in `worker/index.ts` already catches thrown errors via `classifyHttpError()`. Extend it to pass through `details` when present:
+Add a `ValidationError` check to `classifyHttpError()` in `worker/lib/errors.ts`:
+
+```typescript
+import { ValidationError } from "./validation";
+
+export function classifyHttpError(err: unknown): { status: number; message: string; code?: string; details?: Array<{ path: string; message: string }> } {
+  // Validation errors — return 400 with field-level details
+  if (err instanceof ValidationError) {
+    return { status: 400, message: err.message, code: err.code, details: err.details };
+  }
+  // ... existing classification logic unchanged
+}
+```
+
+Update `ApiErrorResponse` to include optional `details`:
+
+```typescript
+export interface ApiErrorResponse {
+  error: string;
+  requestId?: string;
+  code?: string;
+  details?: Array<{ path: string; message: string }>;
+}
+```
+
+Update `app.onError` in `worker/index.ts` to pass `details` through to the response:
+
+```typescript
+const { status, message, code, details } = classifyHttpError(err);
+const body: ApiErrorResponse = { error: message, requestId };
+if (code) body.code = code;
+if (details) body.details = details;
+```
+
+#### Error Response Format
 
 ```json
 {
   "error": "Validation error",
+  "code": "VALIDATION_ERROR",
   "details": [{ "path": "keys.auth", "message": "Required" }],
   "requestId": "abc-123"
 }
@@ -57,26 +100,35 @@ The global error handler in `worker/index.ts` already catches thrown errors via 
 
 #### Schemas Per Route
 
-**`worker/routes/me.ts`** (4 endpoints):
+Duration tiers use the canonical `DURATION_TIERS` constant from `worker/lib/constants.ts`: `[2, 5, 10, 15, 30]`.
+
+**`worker/routes/me.ts`** (5 endpoints):
 
 | Endpoint | Schema |
 |----------|--------|
 | `PATCH /onboarding-complete` | `z.object({ reset: z.boolean().optional() })` |
-| `PATCH /preferences` | `z.object({ defaultDurationTier: z.enum(["1","2","3","5","7","10","15"]).transform(Number).optional() })` |
+| `PATCH /preferences` | `z.object({ defaultDurationTier: z.number().refine(v => DURATION_TIERS.includes(v as any)).optional() })` |
+| `DELETE /` (account delete) | `z.object({ confirm: z.literal("DELETE") })` |
 | `POST /push/subscribe` | `z.object({ endpoint: z.url(), keys: z.object({ p256dh: z.string().min(1), auth: z.string().min(1) }) })` |
 | `DELETE /push/subscribe` | `z.object({ endpoint: z.url() })` |
 
-**`worker/routes/podcasts.ts`** (1 endpoint):
+**`worker/routes/podcasts.ts`** (7 endpoints):
 
 | Endpoint | Schema |
 |----------|--------|
-| `POST /search-podcasts` | `z.object({ query: z.string().min(1).max(200) })` |
+| `POST /search-podcasts` | `z.object({ query: z.string().min(2).max(200) })` |
+| `POST /subscribe` | `z.object({ feedUrl: z.string().min(1), title: z.string().min(1), durationTier: z.number().refine(v => DURATION_TIERS.includes(v as any)), description: z.string().optional(), imageUrl: z.string().optional(), podcastIndexId: z.string().optional(), author: z.string().optional() })` |
+| `PATCH /subscribe/:podcastId` | `z.object({ durationTier: z.number().refine(v => DURATION_TIERS.includes(v as any)) })` |
+| `POST /favorites` | `z.object({ podcastIds: z.array(z.string().min(1)) })` |
+| `POST /request` | `z.object({ feedUrl: z.string().min(1), title: z.string().optional() })` |
+| `POST /vote/:podcastId` | `z.object({ vote: z.number().int().min(-1).max(1) })` |
+| `POST /episodes/vote/:episodeId` | `z.object({ vote: z.number().int().min(-1).max(1) })` |
 
 **`worker/routes/briefings.ts`** (1 endpoint):
 
 | Endpoint | Schema |
 |----------|--------|
-| `POST /generate` | `z.object({ podcastId: z.string().min(1), episodeId: z.string().optional(), durationTier: z.number().refine(v => [1,2,3,5,7,10,15].includes(v)) })` |
+| `POST /generate` | `z.object({ podcastId: z.string().min(1), episodeId: z.string().optional(), durationTier: z.number().refine(v => DURATION_TIERS.includes(v as any)) })` |
 
 **`worker/routes/billing.ts`** (1 endpoint):
 
@@ -84,11 +136,17 @@ The global error handler in `worker/index.ts` already catches thrown errors via 
 |----------|--------|
 | `POST /checkout` | `z.object({ planId: z.string().min(1), interval: z.enum(["monthly", "annual"]) })` |
 
-`POST /portal` has no body — skip.
+**`worker/routes/ads.ts`** (1 endpoint — no auth required, highest abuse risk):
+
+| Endpoint | Schema |
+|----------|--------|
+| `POST /event` | `z.object({ briefingId: z.string().optional(), feedItemId: z.string().optional(), placement: z.string().min(1), event: z.string().min(1), metadata: z.record(z.string(), z.unknown()).optional() })` |
+
+`POST /billing/portal` has no body — skip.
 
 #### Where Schemas Live
 
-Inline at the top of each route file. No shared schema file — keeps schemas co-located with the endpoints that use them.
+Inline at the top of each route file. No shared schema file — keeps schemas co-located with the endpoints that use them. The `DURATION_TIERS` constant is imported from `worker/lib/constants.ts` where needed.
 
 ---
 
@@ -117,7 +175,7 @@ SENTRY_DSN: string; // Optional — Sentry no-ops when empty/undefined
 
 #### Worker Entry Point
 
-Wrap the default export in `worker/index.ts` with `withSentry()`:
+Wrap the default export in `worker/index.ts` with `withSentry()`, preserving the existing `shimQueuesForLocalDev` calls:
 
 ```typescript
 import * as Sentry from "@sentry/cloudflare";
@@ -128,14 +186,20 @@ export default Sentry.withSentry(
     tracesSampleRate: 0.1,
   }),
   {
-    fetch: app.fetch,
-    queue: queueHandler,
-    scheduled: scheduledHandler,
+    fetch(request: Request, env: Env, ctx: ExecutionContext) {
+      return app.fetch(request, shimQueuesForLocalDev(env, ctx), ctx);
+    },
+    queue(batch: MessageBatch, env: Env, ctx: ExecutionContext) {
+      return handleQueue(batch, shimQueuesForLocalDev(env, ctx), ctx);
+    },
+    scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
+      return scheduled(event, shimQueuesForLocalDev(env, ctx), ctx);
+    },
   }
 );
 ```
 
-This automatically captures:
+This preserves the existing handler structure while adding automatic Sentry capture for:
 - Unhandled exceptions in fetch/queue/scheduled handlers
 - Request context (method, URL, headers)
 - Breadcrumbs and stack traces
@@ -169,7 +233,7 @@ Add `captureException` to the existing `app.onError` handler in `worker/index.ts
 ```typescript
 app.onError((err, c) => {
   captureException(err, { method: c.req.method, path: c.req.path });
-  // ... existing classifyHttpError + console.error + response
+  // ... existing classifyHttpError + console.error + response (now with details pass-through)
 });
 ```
 
@@ -203,13 +267,14 @@ Until then, Sentry silently no-ops.
 
 | File | Change |
 |------|--------|
-| `worker/lib/validation.ts` | **New** — `validateBody()` helper |
-| `worker/routes/me.ts` | Add Zod schemas + `validateBody()` calls |
-| `worker/routes/podcasts.ts` | Add Zod schema + `validateBody()` call |
-| `worker/routes/briefings.ts` | Add Zod schema + `validateBody()` call |
-| `worker/routes/billing.ts` | Add Zod schema + `validateBody()` call |
-| `worker/lib/errors.ts` | Pass through `details` array on validation errors |
-| `worker/index.ts` | Wrap with `withSentry()`, add `captureException` to `onError` |
+| `worker/lib/validation.ts` | **New** — `ValidationError` class + `validateBody()` helper |
+| `worker/lib/errors.ts` | Add `ValidationError` check to `classifyHttpError()`, add `details` to `ApiErrorResponse` |
+| `worker/routes/me.ts` | Add Zod schemas + `validateBody()` on 5 endpoints |
+| `worker/routes/podcasts.ts` | Add Zod schemas + `validateBody()` on 7 endpoints |
+| `worker/routes/briefings.ts` | Add Zod schema + `validateBody()` on 1 endpoint |
+| `worker/routes/billing.ts` | Add Zod schema + `validateBody()` on 1 endpoint |
+| `worker/routes/ads.ts` | Add Zod schema + `validateBody()` on 1 endpoint |
+| `worker/index.ts` | Wrap with `withSentry()` (preserving `shimQueuesForLocalDev`), add `captureException` to `onError`, pass `details` to response |
 | `worker/lib/sentry.ts` | Replace stubs with real `@sentry/cloudflare` calls |
 | `worker/types.ts` | Add `SENTRY_DSN` to Env |
 | `package.json` | Add `@sentry/cloudflare` dependency |
