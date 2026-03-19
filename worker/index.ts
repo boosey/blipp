@@ -136,16 +136,16 @@ app.use("/*", securityHeaders);
 app.route("/api", routes);
 
 export default Sentry.withSentry(
-  (env) => ({ dsn: env.SENTRY_DSN, tracesSampleRate: 0.1 }),
+  (env: Env) => ({ dsn: env.SENTRY_DSN, tracesSampleRate: 0.1 }),
   {
-    fetch(request: Request, env: Env, ctx: ExecutionContext) {
-      return app.fetch(request, shimQueuesForLocalDev(env, ctx), ctx);
+    fetch: (request: Request, env: any, ctx: ExecutionContext) => {
+      return app.fetch(request, shimQueuesForLocalDev(env as Env, ctx), ctx);
     },
-    queue(batch: MessageBatch, env: Env, ctx: ExecutionContext) {
-      return handleQueue(batch, shimQueuesForLocalDev(env, ctx), ctx);
+    queue: (batch: MessageBatch, env: any, ctx: ExecutionContext) => {
+      return handleQueue(batch, shimQueuesForLocalDev(env as Env, ctx), ctx);
     },
-    scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
-      return scheduled(event, shimQueuesForLocalDev(env, ctx), ctx);
+    scheduled: (event: any, env: any, ctx: ExecutionContext) => {
+      return scheduled(event as ScheduledEvent, shimQueuesForLocalDev(env as Env, ctx), ctx);
     },
-  }
+  } as any
 );
