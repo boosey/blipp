@@ -2,14 +2,21 @@ import { getConfig } from "./config";
 import { getWorkProduct } from "./work-products";
 import { wpKey } from "./work-products";
 import { fingerprint } from "./topic-extraction";
-import { buildEmbeddingText, computeEmbedding, averageEmbeddings } from "./embeddings";
+import { buildEmbeddingText, computeEmbedding, averageEmbeddings, cosineSimilarityVec } from "./embeddings";
 
 // Types
 interface CategoryWeights {
   [category: string]: number;
 }
 
-interface ScoredRecommendation {
+export interface ScoredRecommendation {
+  podcastId: string;
+  score: number;
+  reasons: string[];
+}
+
+export interface ScoredEpisode {
+  episodeId: string;
   podcastId: string;
   score: number;
   reasons: string[];
@@ -35,6 +42,17 @@ export function cosineSimilarity(a: CategoryWeights, b: CategoryWeights): number
   }
   if (normA === 0 || normB === 0) return 0;
   return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+}
+
+// Jaccard similarity between two string arrays
+export function jaccardSimilarity(a: string[], b: string[]): number {
+  if (a.length === 0 && b.length === 0) return 0;
+  const setA = new Set(a);
+  const setB = new Set(b);
+  let intersection = 0;
+  for (const item of setA) if (setB.has(item)) intersection++;
+  const union = new Set([...setA, ...setB]).size;
+  return union > 0 ? intersection / union : 0;
 }
 
 // Compute profiles for ALL podcasts (run weekly via cron)
@@ -338,10 +356,12 @@ export async function scoreRecommendations(
   const configMax = await getConfig(prisma, "recommendations.cache.maxResults", 20);
   const limit = maxResults ?? (configMax as number);
   const minSubs = await getConfig(prisma, "recommendations.coldStart.minSubscriptions", 3);
-  const wCategory = await getConfig(prisma, "recommendations.weights.category", 0.40);
-  const wPopularity = await getConfig(prisma, "recommendations.weights.popularity", 0.35);
-  const wFreshness = await getConfig(prisma, "recommendations.weights.freshness", 0.15);
-  const wOverlap = await getConfig(prisma, "recommendations.weights.subscriberOverlap", 0.10);
+  const wCategory = await getConfig(prisma, "recommendations.weights.category", 0.25);
+  const wPopularity = await getConfig(prisma, "recommendations.weights.popularity", 0.20);
+  const wFreshness = await getConfig(prisma, "recommendations.weights.freshness", 0.10);
+  const wOverlap = await getConfig(prisma, "recommendations.weights.subscriberOverlap", 0.15);
+  const wTopic = await getConfig(prisma, "recommendations.weights.topic", 0.15);
+  const wEmbedding = await getConfig(prisma, "recommendations.weights.embedding", 0.15);
 
   // Get user's subscribed, downvoted, and dismissed podcast IDs to exclude
   const [subscriptions, downvotes, dismissals] = await Promise.all([
@@ -446,11 +466,45 @@ export async function scoreRecommendations(
     const overlapScore = subscriberOverlap(candidateSubs, subscribedPodcastIds, subscriberSets);
     if (overlapScore > 0.1) reasons.push("Popular with listeners like you");
 
-    const score =
-      (wCategory as number) * Math.min(1, catAffinity) +
-      (wPopularity as number) * profile.popularity +
-      (wFreshness as number) * profile.freshness +
-      (wOverlap as number) * overlapScore;
+    // Topic similarity (Jaccard)
+    const userTopics = (userProfile.topicTags as string[]) || [];
+    const podcastTopics = (profile.topicTags as string[]) || [];
+    const topicScore = jaccardSimilarity(userTopics, podcastTopics);
+    if (topicScore > 0.1) {
+      const overlap = userTopics.filter(t => new Set(podcastTopics).has(t));
+      if (overlap[0]) reasons.push(`Both cover ${overlap[0]}`);
+    }
+
+    // Embedding similarity
+    const userEmb = userProfile.embedding as number[] | null;
+    const podcastEmb = profile.embedding as number[] | null;
+    let embScore = 0;
+    const hasEmbedding = !!(userEmb && podcastEmb);
+    if (hasEmbedding) {
+      embScore = cosineSimilarityVec(userEmb, podcastEmb) ?? 0;
+      if (embScore > 0.7) reasons.push("Semantically similar to podcasts you enjoy");
+    }
+
+    let score: number;
+    if (hasEmbedding) {
+      score =
+        (wCategory as number) * Math.min(1, catAffinity) +
+        (wTopic as number) * topicScore +
+        (wEmbedding as number) * embScore +
+        (wPopularity as number) * profile.popularity +
+        (wFreshness as number) * profile.freshness +
+        (wOverlap as number) * overlapScore;
+    } else {
+      // Redistribute embedding weight proportionally to other signals
+      const totalOther = (wCategory as number) + (wTopic as number) + (wPopularity as number) + (wFreshness as number) + (wOverlap as number);
+      const scale = totalOther > 0 ? (totalOther + (wEmbedding as number)) / totalOther : 1;
+      score =
+        (wCategory as number) * scale * Math.min(1, catAffinity) +
+        (wTopic as number) * scale * topicScore +
+        (wPopularity as number) * scale * profile.popularity +
+        (wFreshness as number) * scale * profile.freshness +
+        (wOverlap as number) * scale * overlapScore;
+    }
 
     if (reasons.length === 0) reasons.push("Recommended for you");
 
@@ -462,6 +516,116 @@ export async function scoreRecommendations(
   return {
     recommendations: scored.slice(0, limit),
     source: "personalized",
+  };
+}
+
+// Score episode-level recommendations for a user
+export async function scoreEpisodeRecommendations(
+  userId: string,
+  prisma: any,
+  maxResults = 20
+): Promise<{ episodes: ScoredEpisode[]; podcastSuggestions: ScoredRecommendation[] }> {
+  const userProfile = await prisma.userRecommendationProfile.findUnique({
+    where: { userId },
+  });
+
+  if (!userProfile) {
+    await computeUserProfile(userId, prisma);
+    return scoreEpisodeRecommendations(userId, prisma, maxResults);
+  }
+
+  // Get user's subscribed + excluded podcast IDs
+  const [subscriptions, downvotes, dismissals] = await Promise.all([
+    prisma.subscription.findMany({
+      where: { userId },
+      select: { podcastId: true },
+    }),
+    prisma.podcastVote.findMany({
+      where: { userId, vote: -1 },
+      select: { podcastId: true },
+    }),
+    prisma.recommendationDismissal.findMany({
+      where: { userId },
+      select: { podcastId: true },
+    }),
+  ]);
+  const subscribedIds = new Set<string>(subscriptions.map((s: any) => s.podcastId));
+  const excludeIds = new Set([
+    ...subscribedIds,
+    ...downvotes.map((d: any) => d.podcastId),
+    ...dismissals.map((d: any) => d.podcastId),
+  ]);
+
+  // Query recent episodes from non-subscribed, non-excluded podcasts that have topicTags
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000);
+  const episodes = await prisma.episode.findMany({
+    where: {
+      publishedAt: { gte: thirtyDaysAgo },
+      podcast: { id: { notIn: [...excludeIds] } },
+      topicTags: { isEmpty: false },
+    },
+    select: {
+      id: true,
+      podcastId: true,
+      topicTags: true,
+      publishedAt: true,
+      podcast: { select: { id: true, title: true } },
+    },
+    orderBy: { publishedAt: "desc" },
+    take: 200,
+  });
+
+  const userTopics = (userProfile.topicTags as string[]) || [];
+
+  // Engagement multiplier
+  const listenCount = userProfile.listenCount ?? 0;
+  const engagementMultiplier = 1.0 + Math.min(0.3, listenCount / 167);
+
+  // Score each episode
+  const scoredEpisodes: ScoredEpisode[] = [];
+  const podcastHitCounts = new Map<string, number>();
+
+  for (const ep of episodes) {
+    const epTopics = (ep.topicTags as string[]) || [];
+    const topicScore = jaccardSimilarity(userTopics, epTopics) * engagementMultiplier;
+
+    if (topicScore > 0) {
+      const reasons: string[] = [];
+      const overlap = userTopics.filter((t: string) => new Set(epTopics).has(t));
+      if (overlap[0]) reasons.push(`Covers ${overlap[0]}`);
+      if (reasons.length === 0) reasons.push("Matches your interests");
+
+      scoredEpisodes.push({
+        episodeId: ep.id,
+        podcastId: ep.podcastId,
+        score: topicScore,
+        reasons,
+      });
+
+      podcastHitCounts.set(ep.podcastId, (podcastHitCounts.get(ep.podcastId) || 0) + 1);
+    }
+  }
+
+  scoredEpisodes.sort((a, b) => b.score - a.score);
+
+  // Podcasts with 3+ matched episodes become podcast suggestions
+  const podcastSuggestions: ScoredRecommendation[] = [];
+  for (const [podcastId, count] of podcastHitCounts) {
+    if (count >= 3) {
+      const epScores = scoredEpisodes.filter(e => e.podcastId === podcastId);
+      const avgScore = epScores.reduce((s, e) => s + e.score, 0) / epScores.length;
+      podcastSuggestions.push({
+        podcastId,
+        score: avgScore,
+        reasons: [`${count} recent episodes match your interests`],
+      });
+    }
+  }
+  podcastSuggestions.sort((a, b) => b.score - a.score);
+
+  return {
+    episodes: scoredEpisodes.slice(0, maxResults),
+    podcastSuggestions,
   };
 }
 

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createMockPrisma } from "../../../tests/helpers/mocks";
-import { cosineSimilarity, computePodcastProfiles, computeUserProfile, scoreRecommendations } from "../recommendations";
+import { cosineSimilarity, jaccardSimilarity, computePodcastProfiles, computeUserProfile, scoreRecommendations, scoreEpisodeRecommendations } from "../recommendations";
 
 vi.mock("../config", () => ({
   getConfig: vi.fn(),
@@ -19,12 +19,13 @@ vi.mock("../embeddings", () => ({
   buildEmbeddingText: vi.fn(),
   computeEmbedding: vi.fn(),
   averageEmbeddings: vi.fn(),
+  cosineSimilarityVec: vi.fn(),
 }));
 
 import { getConfig } from "../config";
 import { getWorkProduct } from "../work-products";
 import { fingerprint } from "../topic-extraction";
-import { buildEmbeddingText, computeEmbedding, averageEmbeddings } from "../embeddings";
+import { buildEmbeddingText, computeEmbedding, averageEmbeddings, cosineSimilarityVec } from "../embeddings";
 
 let mockPrisma: ReturnType<typeof createMockPrisma>;
 
@@ -323,10 +324,12 @@ describe("scoreRecommendations", () => {
     (getConfig as any)
       .mockResolvedValueOnce(20)    // recommendations.cache.maxResults
       .mockResolvedValueOnce(3)     // recommendations.coldStart.minSubscriptions
-      .mockResolvedValueOnce(0.40)  // recommendations.weights.category
-      .mockResolvedValueOnce(0.35)  // recommendations.weights.popularity
-      .mockResolvedValueOnce(0.15)  // recommendations.weights.freshness
-      .mockResolvedValueOnce(0.10); // recommendations.weights.subscriberOverlap
+      .mockResolvedValueOnce(0.25)  // recommendations.weights.category
+      .mockResolvedValueOnce(0.20)  // recommendations.weights.popularity
+      .mockResolvedValueOnce(0.10)  // recommendations.weights.freshness
+      .mockResolvedValueOnce(0.15)  // recommendations.weights.subscriberOverlap
+      .mockResolvedValueOnce(0.15)  // recommendations.weights.topic
+      .mockResolvedValueOnce(0.15); // recommendations.weights.embedding
   }
 
   function mockDefaultExclusions() {
@@ -455,10 +458,12 @@ describe("scoreRecommendations", () => {
     (getConfig as any)
       .mockResolvedValueOnce(20)
       .mockResolvedValueOnce(3)
-      .mockResolvedValueOnce(0.40)
-      .mockResolvedValueOnce(0.35)
+      .mockResolvedValueOnce(0.25)
+      .mockResolvedValueOnce(0.20)
+      .mockResolvedValueOnce(0.10)
       .mockResolvedValueOnce(0.15)
-      .mockResolvedValueOnce(0.10);
+      .mockResolvedValueOnce(0.15)
+      .mockResolvedValueOnce(0.15);
 
     await scoreRecommendations("user1", mockPrisma);
     expect(mockPrisma.userRecommendationProfile.upsert).toHaveBeenCalled();
@@ -489,8 +494,204 @@ describe("scoreRecommendations", () => {
     mockPrisma.podcast.findMany.mockResolvedValue([]);
 
     const result = await scoreRecommendations("user1", mockPrisma);
-    // Category score with engagement: cosine(1.0, 1.0) * 1.3 = 1.3, clamped to 1.0 in scoring
-    // Total = 0.40*1.0 + 0.35*0.5 + 0.15*0.5 + 0.10*0 = 0.65
-    expect(result.recommendations[0].score).toBeGreaterThan(0.6);
+    // No embeddings, so weight is redistributed. Category capped at 1.0.
+    // With redistribution scale = 1.0/0.85 ≈ 1.176
+    // Score > 0.25*1.176*1 + 0.20*1.176*0.5 + 0.10*1.176*0.5 = ~0.47
+    expect(result.recommendations[0].score).toBeGreaterThan(0.4);
+  });
+
+  it("includes topic similarity scoring with reason string", async () => {
+    mockConfigDefaults();
+    mockPrisma.subscription.findMany.mockResolvedValue([
+      { podcastId: "sub1" }, { podcastId: "sub2" }, { podcastId: "sub3" },
+    ]);
+    mockDefaultExclusions();
+
+    mockPrisma.userRecommendationProfile.findUnique.mockResolvedValue({
+      categoryWeights: { Technology: 1.0 },
+      topicTags: ["machine learning", "neural networks", "deep learning"],
+      listenCount: 10,
+      embedding: null,
+    });
+
+    mockPrisma.podcastProfile.findMany.mockResolvedValue([
+      {
+        podcastId: "rec1",
+        categoryWeights: { Technology: 0.9 },
+        topicTags: ["machine learning", "neural networks", "transformers"],
+        popularity: 0.5,
+        freshness: 0.5,
+        subscriberCount: 5,
+        embedding: null,
+        podcast: { subscriptions: [] },
+      },
+    ]);
+    mockPrisma.podcast.findMany.mockResolvedValue([]);
+
+    const result = await scoreRecommendations("user1", mockPrisma);
+    expect(result.recommendations[0].reasons).toContain("Both cover machine learning");
+  });
+
+  it("includes embedding similarity scoring with reason string", async () => {
+    mockConfigDefaults();
+    mockPrisma.subscription.findMany.mockResolvedValue([
+      { podcastId: "sub1" }, { podcastId: "sub2" }, { podcastId: "sub3" },
+    ]);
+    mockDefaultExclusions();
+
+    const userEmb = [0.1, 0.2, 0.3];
+    const podcastEmb = [0.1, 0.2, 0.3];
+
+    mockPrisma.userRecommendationProfile.findUnique.mockResolvedValue({
+      categoryWeights: { Technology: 1.0 },
+      topicTags: [],
+      listenCount: 10,
+      embedding: userEmb,
+    });
+
+    mockPrisma.podcastProfile.findMany.mockResolvedValue([
+      {
+        podcastId: "rec1",
+        categoryWeights: { Technology: 0.9 },
+        topicTags: [],
+        popularity: 0.5,
+        freshness: 0.5,
+        subscriberCount: 5,
+        embedding: podcastEmb,
+        podcast: { subscriptions: [] },
+      },
+    ]);
+    mockPrisma.podcast.findMany.mockResolvedValue([]);
+
+    (cosineSimilarityVec as any).mockReturnValue(0.85);
+
+    const result = await scoreRecommendations("user1", mockPrisma);
+    expect(result.recommendations[0].reasons).toContain("Semantically similar to podcasts you enjoy");
+  });
+
+  it("redistributes embedding weight when embeddings are missing", async () => {
+    mockConfigDefaults();
+    mockPrisma.subscription.findMany.mockResolvedValue([
+      { podcastId: "sub1" }, { podcastId: "sub2" }, { podcastId: "sub3" },
+    ]);
+    mockDefaultExclusions();
+
+    mockPrisma.userRecommendationProfile.findUnique.mockResolvedValue({
+      categoryWeights: { Technology: 1.0 },
+      topicTags: [],
+      listenCount: 0,
+      embedding: null,
+    });
+
+    mockPrisma.podcastProfile.findMany.mockResolvedValue([
+      {
+        podcastId: "rec1",
+        categoryWeights: { Technology: 1.0 },
+        topicTags: [],
+        popularity: 1.0,
+        freshness: 1.0,
+        subscriberCount: 5,
+        embedding: null,
+        podcast: { subscriptions: [] },
+      },
+    ]);
+    mockPrisma.podcast.findMany.mockResolvedValue([]);
+
+    const result = await scoreRecommendations("user1", mockPrisma);
+    // Without redistribution: 0.25+0.20+0.10+0+0 = 0.55 (missing 0.15 embedding weight)
+    // With redistribution: scale = 1.0/0.85, total ≈ 0.55 * (1/0.85) ≈ 0.647
+    // Actual: (0.25*scale*1 + 0.20*scale*1 + 0.10*scale*1) = 0.55 * 1.176 ≈ 0.647
+    expect(result.recommendations[0].score).toBeCloseTo(0.647, 2);
+  });
+});
+
+describe("jaccardSimilarity", () => {
+  it("returns 0 for two empty arrays", () => {
+    expect(jaccardSimilarity([], [])).toBe(0);
+  });
+
+  it("returns 0 for disjoint arrays", () => {
+    expect(jaccardSimilarity(["a", "b"], ["c", "d"])).toBe(0);
+  });
+
+  it("returns 1 for identical arrays", () => {
+    expect(jaccardSimilarity(["a", "b"], ["a", "b"])).toBe(1);
+  });
+
+  it("returns correct value for partial overlap", () => {
+    // intersection={a}, union={a,b,c} → 1/3
+    expect(jaccardSimilarity(["a", "b"], ["a", "c"])).toBeCloseTo(1 / 3);
+  });
+
+  it("returns 0 when one array is empty", () => {
+    expect(jaccardSimilarity([], ["a"])).toBe(0);
+    expect(jaccardSimilarity(["a"], [])).toBe(0);
+  });
+
+  it("handles duplicates by deduplicating via Set", () => {
+    // ["a","a"] → Set{a}, ["a","b"] → Set{a,b}, intersection=1, union=2 → 0.5
+    expect(jaccardSimilarity(["a", "a"], ["a", "b"])).toBeCloseTo(0.5);
+  });
+});
+
+describe("scoreEpisodeRecommendations", () => {
+  it("scores episodes by topic overlap and returns podcast suggestions", async () => {
+    mockPrisma.userRecommendationProfile.findUnique.mockResolvedValue({
+      categoryWeights: { Technology: 1.0 },
+      topicTags: ["machine learning", "neural networks", "deep learning"],
+      listenCount: 10,
+      embedding: null,
+    });
+
+    mockPrisma.subscription.findMany.mockResolvedValue([]);
+    mockPrisma.podcastVote.findMany.mockResolvedValue([]);
+    mockPrisma.recommendationDismissal.findMany.mockResolvedValue([]);
+
+    const now = new Date();
+    mockPrisma.episode.findMany.mockResolvedValue([
+      { id: "ep1", podcastId: "pod1", topicTags: ["machine learning", "transformers"], publishedAt: now, podcast: { id: "pod1", title: "AI Pod" } },
+      { id: "ep2", podcastId: "pod1", topicTags: ["neural networks"], publishedAt: now, podcast: { id: "pod1", title: "AI Pod" } },
+      { id: "ep3", podcastId: "pod1", topicTags: ["deep learning", "machine learning"], publishedAt: now, podcast: { id: "pod1", title: "AI Pod" } },
+      { id: "ep4", podcastId: "pod2", topicTags: ["cooking"], publishedAt: now, podcast: { id: "pod2", title: "Cook Pod" } },
+    ]);
+
+    const result = await scoreEpisodeRecommendations("user1", mockPrisma);
+
+    // 3 episodes from pod1 should match, ep4 has no overlap → score = 0
+    expect(result.episodes.length).toBe(3);
+    expect(result.episodes.every((e: any) => e.podcastId === "pod1")).toBe(true);
+
+    // pod1 has 3+ matched episodes → should appear in podcastSuggestions
+    expect(result.podcastSuggestions.length).toBe(1);
+    expect(result.podcastSuggestions[0].podcastId).toBe("pod1");
+    expect(result.podcastSuggestions[0].reasons[0]).toContain("3 recent episodes");
+  });
+
+  it("computes user profile on-the-fly if missing", async () => {
+    mockPrisma.userRecommendationProfile.findUnique
+      .mockResolvedValueOnce(null) // first check
+      .mockResolvedValueOnce({ // after compute
+        categoryWeights: {},
+        topicTags: ["ai"],
+        listenCount: 0,
+        embedding: null,
+      });
+
+    // computeUserProfile mocks
+    mockPrisma.subscription.findMany
+      .mockResolvedValueOnce([]) // computeUserProfile
+      .mockResolvedValueOnce([]); // recursive scoreEpisodeRecommendations
+    mockPrisma.podcastFavorite.findMany.mockResolvedValue([]);
+    mockPrisma.podcastVote.findMany.mockResolvedValue([]);
+    mockPrisma.episodeVote.findMany.mockResolvedValue([]);
+    mockPrisma.feedItem.count.mockResolvedValue(0);
+    mockPrisma.userRecommendationProfile.upsert.mockResolvedValue({});
+    mockPrisma.podcastProfile.findMany.mockResolvedValue([]);
+    mockPrisma.recommendationDismissal.findMany.mockResolvedValue([]);
+    mockPrisma.episode.findMany.mockResolvedValue([]);
+
+    const result = await scoreEpisodeRecommendations("user1", mockPrisma);
+    expect(mockPrisma.userRecommendationProfile.upsert).toHaveBeenCalled();
+    expect(result.episodes).toHaveLength(0);
   });
 });
