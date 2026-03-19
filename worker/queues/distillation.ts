@@ -161,7 +161,7 @@ export async function handleDistillation(
 
           try {
             const elapsed = log.timer("claude_extraction");
-            const result = await extractClaims(llm, transcript, resolved.providerModelId, 8192, env, resolved.pricing);
+            const result = await extractClaims(prisma, llm, transcript, resolved.providerModelId, 8192, env, resolved.pricing);
             recordSuccess(resolved.provider);
             elapsed();
             claims = result.claims;

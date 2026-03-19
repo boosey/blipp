@@ -181,6 +181,7 @@ export async function handleNarrativeGeneration(
           try {
             const narrativeTimer = log.timer("narrative_generation");
             const result = await generateNarrative(
+              prisma,
               llm,
               claims,
               durationTier,
