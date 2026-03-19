@@ -1,10 +1,11 @@
+import { useRef, useCallback } from "react";
 import { Outlet, useLocation, useNavigate, Navigate, Link } from "react-router-dom";
 import { UserButton } from "@clerk/clerk-react";
 import { ArrowLeft, Shield } from "lucide-react";
 import { BottomNav } from "../components/bottom-nav";
 import { AudioProvider, useAudio } from "../contexts/audio-context";
 import { PlanProvider } from "../contexts/plan-context";
-import { MiniPlayer } from "../components/mini-player";
+import { MiniPlayer, type MiniPlayerHandle } from "../components/mini-player";
 import { OnboardingProvider, useOnboarding } from "../contexts/onboarding-context";
 import { OfflineIndicator } from "../components/offline-indicator";
 import { PodcastSheetProvider } from "../contexts/podcast-sheet-context";
@@ -15,6 +16,7 @@ const TOP_LEVEL_PATHS = ["/home", "/discover", "/library", "/settings"];
 function MobileLayoutInner() {
   const { currentItem } = useAudio();
   const { needsOnboarding, isChecking, isAdmin } = useOnboarding();
+  const miniPlayerRef = useRef<MiniPlayerHandle>(null);
   const location = useLocation();
   const navigate = useNavigate();
   const hasMiniPlayer = currentItem !== null;
@@ -73,10 +75,10 @@ function MobileLayoutInner() {
       </main>
 
       {/* Mini-player (above bottom nav) */}
-      {hasMiniPlayer && <MiniPlayer />}
+      {hasMiniPlayer && <MiniPlayer ref={miniPlayerRef} />}
 
       {/* Bottom nav */}
-      <BottomNav />
+      <BottomNav onTabClick={() => miniPlayerRef.current?.closeSheet()} />
 
       {/* Podcast detail sheet */}
       <PodcastDetailSheet />

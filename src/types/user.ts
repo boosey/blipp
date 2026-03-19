@@ -10,6 +10,7 @@ export interface PodcastDetail {
   episodeCount: number;
   isSubscribed: boolean;
   subscriptionDurationTier: number | null;
+  userVote: number; // 1 = up, -1 = down, 0 = none
 }
 
 /** Episode summary for listing */
@@ -19,4 +20,5 @@ export interface EpisodeSummary {
   description: string | null;
   publishedAt: string;
   durationSeconds: number | null;
+  userVote: number; // 1 = up, -1 = down, 0 = none
 }

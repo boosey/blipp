@@ -3,11 +3,13 @@ import { useParams, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Heart, Search, X } from "lucide-react";
 import { useApiFetch } from "../lib/api";
+import { useFetch } from "../lib/use-fetch";
 import { Skeleton } from "../components/ui/skeleton";
 import { usePlan } from "../contexts/plan-context";
 import { useUpgradeModal } from "../components/upgrade-prompt";
 import { usePodcastSheet } from "../contexts/podcast-sheet-context";
 import { TierPicker } from "../components/tier-picker";
+import { ThumbButtons } from "../components/thumb-buttons";
 import type { PodcastDetail as PodcastDetailType, EpisodeSummary } from "../types/user";
 import type { DurationTier } from "../lib/duration-tiers";
 
@@ -31,6 +33,10 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
   const planUsage = usePlan();
   const { showUpgrade, UpgradeModalElement } = useUpgradeModal();
   const { close: closeSheet } = usePodcastSheet();
+  const { data: meData } = useFetch<{ user: { defaultDurationTier: number } }>("/me");
+  const defaultTier = (meData?.user?.defaultDurationTier ?? 5) as DurationTier;
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const didLongPressRef = useRef(false);
 
   const fetchData = useCallback(async () => {
     if (!podcastId) return;
@@ -135,6 +141,37 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
     }
   }
 
+  async function handlePodcastVote(vote: number) {
+    if (!podcast) return;
+    const prev = podcast.userVote;
+    setPodcast((p) => p ? { ...p, userVote: vote } : p);
+    try {
+      await apiFetch(`/podcasts/vote/${podcast.id}`, {
+        method: "POST",
+        body: JSON.stringify({ vote }),
+      });
+    } catch {
+      setPodcast((p) => p ? { ...p, userVote: prev } : p);
+    }
+  }
+
+  async function handleEpisodeVote(episodeId: string, vote: number) {
+    const prev = episodes.find((e) => e.id === episodeId)?.userVote ?? 0;
+    setEpisodes((eps) =>
+      eps.map((e) => (e.id === episodeId ? { ...e, userVote: vote } : e))
+    );
+    try {
+      await apiFetch(`/podcasts/episodes/vote/${episodeId}`, {
+        method: "POST",
+        body: JSON.stringify({ vote }),
+      });
+    } catch {
+      setEpisodes((eps) =>
+        eps.map((e) => (e.id === episodeId ? { ...e, userVote: prev } : e))
+      );
+    }
+  }
+
   function formatDuration(seconds: number | null) {
     if (!seconds) return "";
     const m = Math.floor(seconds / 60);
@@ -198,15 +235,18 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
             <h1 className="text-lg font-bold">{podcast.title}</h1>
-            <button
-              onClick={toggleFavorite}
-              className="p-1.5 rounded-full hover:bg-muted transition-colors flex-shrink-0"
-              title={isFavorited ? "Remove from favorites" : "Add to favorites"}
-            >
-              <Heart
-                className={`w-5 h-5 transition-colors ${isFavorited ? "fill-red-500 text-red-500" : "text-muted-foreground"}`}
-              />
-            </button>
+            <div className="flex items-center gap-1 flex-shrink-0">
+              <ThumbButtons vote={podcast.userVote} onVote={handlePodcastVote} />
+              <button
+                onClick={toggleFavorite}
+                className="p-1.5 rounded-full hover:bg-muted transition-colors"
+                title={isFavorited ? "Remove from favorites" : "Add to favorites"}
+              >
+                <Heart
+                  className={`w-4 h-4 transition-colors ${isFavorited ? "fill-red-500 text-red-500" : "text-muted-foreground"}`}
+                />
+              </button>
+            </div>
           </div>
           {podcast.author && (
             <p className="text-sm text-muted-foreground">{podcast.author}</p>
@@ -351,19 +391,52 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
                       </p>
                     )}
                   </button>
-                  <div className="relative flex-shrink-0">
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <ThumbButtons
+                      vote={ep.userVote}
+                      onVote={(v) => handleEpisodeVote(ep.id, v)}
+                    />
+                    <div className="relative">
                     {requestingEpisodeId === ep.id ? (
                       <span className="text-xs text-muted-foreground px-3 py-1.5">
                         ...
                       </span>
                     ) : (
                       <button
-                        onClick={() =>
-                          setBriefTierPickerEpisodeId(
-                            briefTierPickerEpisodeId === ep.id ? null : ep.id
-                          )
-                        }
-                        className="px-3 py-1.5 bg-primary text-primary-foreground rounded text-xs font-medium hover:bg-primary/90 transition-colors"
+                        onPointerDown={() => {
+                          didLongPressRef.current = false;
+                          longPressTimerRef.current = setTimeout(() => {
+                            didLongPressRef.current = true;
+                            setBriefTierPickerEpisodeId(
+                              briefTierPickerEpisodeId === ep.id ? null : ep.id
+                            );
+                          }, 500);
+                        }}
+                        onPointerUp={() => {
+                          if (longPressTimerRef.current) {
+                            clearTimeout(longPressTimerRef.current);
+                            longPressTimerRef.current = null;
+                          }
+                          if (!didLongPressRef.current) {
+                            if (defaultTier > planUsage.maxDurationMinutes) {
+                              showUpgrade(`Your plan supports briefings up to ${planUsage.maxDurationMinutes} minutes. Upgrade for longer briefings.`);
+                              return;
+                            }
+                            handleCreateBriefing(ep.id, defaultTier);
+                            toast(`${defaultTier}m Blipp requested`, {
+                              description: "Long-press Blipp to pick a different duration",
+                              duration: 4000,
+                            });
+                          }
+                        }}
+                        onPointerLeave={() => {
+                          if (longPressTimerRef.current) {
+                            clearTimeout(longPressTimerRef.current);
+                            longPressTimerRef.current = null;
+                          }
+                        }}
+                        onContextMenu={(e) => e.preventDefault()}
+                        className="px-3 py-1.5 bg-primary text-primary-foreground rounded text-xs font-medium hover:bg-primary/90 transition-colors select-none"
                       >
                         Blipp
                       </button>
@@ -376,7 +449,7 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
                         />
                         <div className="absolute right-0 top-full mt-1.5 z-50 bg-card/90 backdrop-blur-md border border-border rounded-lg p-2 shadow-xl shadow-black/40">
                           <TierPicker
-                            selected={null}
+                            selected={defaultTier}
                             onSelect={(tier) => handleCreateBriefing(ep.id, tier)}
                             maxDurationMinutes={planUsage.maxDurationMinutes}
                             onUpgrade={showUpgrade}
@@ -385,6 +458,7 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
                       </>
                     )}
                   </div>
+                </div>
                 </div>
               </div>
             ))}

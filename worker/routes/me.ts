@@ -42,6 +42,7 @@ me.get("/", async (c) => {
         : null,
       isAdmin: fullUser.isAdmin,
       onboardingComplete: fullUser.onboardingComplete,
+      defaultDurationTier: fullUser.defaultDurationTier,
       featureFlags: flags,
     },
   });
@@ -71,6 +72,29 @@ me.patch("/onboarding-complete", async (c) => {
   });
 
   return c.json({ data: { onboardingComplete: complete } });
+});
+
+/**
+ * PATCH /preferences — Update user preferences.
+ * Body: { defaultDurationTier?: number }
+ */
+me.patch("/preferences", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
+  const body = await c.req.json<{ defaultDurationTier?: number }>();
+
+  const data: Record<string, unknown> = {};
+  if (body.defaultDurationTier !== undefined) {
+    data.defaultDurationTier = body.defaultDurationTier;
+  }
+
+  if (Object.keys(data).length === 0) {
+    return c.json({ error: "No preferences to update" }, 400);
+  }
+
+  await prisma.user.update({ where: { id: user.id }, data });
+
+  return c.json({ data });
 });
 
 /**

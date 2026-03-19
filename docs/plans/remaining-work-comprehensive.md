@@ -69,7 +69,7 @@
 | Item | Effort | Notes |
 |------|--------|-------|
 | **Feed improvements** | Medium | Date grouping exists in history.tsx but NOT in home feed. Missing: filter pills (All/New/Subscription/On-demand/Creating), unlistened count badge, relative timestamps on feed items. Feed item shows `durationTier + "min"` not actual `MM:SS` duration. |
-| **Discover page (minor)** | Low | Episode count badge on artwork cards (data exists, not rendered). Subscriber count display (not in data model). |
+| ~~**Discover page (minor)**~~ | ~~Low~~ | DONE — Episode count badge on carousel artwork cards. Subscriber count added to catalog/recommendations API and displayed on cards + PodcastCard list view. |
 | **Subscription management** | Medium | Library has no list/grid toggle, no management sheet per podcast (change tier, pause, unsubscribe from library). Podcast detail page allows subscribe/unsubscribe but not accessible from library. |
 | **Settings page gaps** | Medium | Has plan info + push notification toggle. Missing: Account section (name/email from Clerk), Preferences (default duration, auto-play), About section (version, legal links), Sign Out button. |
 
@@ -78,9 +78,9 @@
 | Item | Effort | Notes |
 |------|--------|-------|
 | **Smart feed ordering** | Low | Feed shows flat chronological list. No unlistened-first ordering, no "Catch Up" button for sequential playback. |
-| **Briefing preview text** | Low | No text preview from distillation visible on feed items or player page. |
+| ~~**Briefing preview text**~~ | ~~Low~~ | DONE — Feed items show `previewText` (first 200 chars of narrative) when status is READY. Player sheet shows preview below duration. `GET /feed/:id` now includes `narrativeText` in clip select. |
 | **Theme & visual polish** | Medium | Brand accent color defined but set to neutral grays — no distinctive color. Inter font `@font-face` uses Google Fonts CSS URL incorrectly (should be `.woff2` URL or `<link>` import) — font likely not loading. |
-| **Share briefing** | Low | No share button in player sheet. No Web Share API integration. |
+| ~~**Share briefing**~~ | ~~Low~~ | DONE — Share button in player sheet with Web Share API + clipboard fallback. Shared links work cross-user via `GET /feed/shared/:id` endpoint. |
 | **Micro-interactions** | Low | CSS transitions on buttons present. Missing: stagger-fade on feed items, framer-motion not installed. |
 
 #### P3 — Future / Post-Launch

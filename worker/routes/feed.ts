@@ -109,6 +109,48 @@ feed.get("/counts", async (c) => {
 });
 
 /**
+ * GET /shared/:id — Get a feed item for shared link playback (no ownership check).
+ * Allows any authenticated user to play a briefing shared via link.
+ */
+feed.get("/shared/:id", async (c) => {
+  const feedItemId = c.req.param("id");
+  const prisma = c.get("prisma") as any;
+
+  const item = await prisma.feedItem.findFirst({
+    where: { id: feedItemId, status: "READY" },
+    include: {
+      podcast: { select: { id: true, title: true, imageUrl: true } },
+      episode: { select: { id: true, title: true, publishedAt: true, durationSeconds: true } },
+      briefing: {
+        include: {
+          clip: { select: { id: true, audioKey: true, actualSeconds: true, narrativeText: true } },
+        },
+      },
+    },
+  });
+
+  if (!item || !item.briefing) {
+    return c.json({ error: "Briefing not available" }, 404);
+  }
+
+  return c.json({
+    item: {
+      id: item.id,
+      source: item.source,
+      status: item.status,
+      listened: false,
+      listenedAt: null,
+      durationTier: item.durationTier,
+      createdAt: item.createdAt,
+      errorMessage: null,
+      podcast: item.podcast,
+      episode: item.episode,
+      briefing: mapBriefing(item.briefing),
+    },
+  });
+});
+
+/**
  * GET /:id — Get a single feed item detail.
  */
 feed.get("/:id", async (c) => {
@@ -123,7 +165,7 @@ feed.get("/:id", async (c) => {
       episode: { select: { id: true, title: true, publishedAt: true, durationSeconds: true } },
       briefing: {
         include: {
-          clip: { select: { id: true, audioKey: true, actualSeconds: true } },
+          clip: { select: { id: true, audioKey: true, actualSeconds: true, narrativeText: true } },
         },
       },
     },

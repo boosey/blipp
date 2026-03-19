@@ -24,6 +24,7 @@ interface CatalogPodcast {
   imageUrl: string | null;
   feedUrl: string;
   episodeCount: number;
+  subscriberCount: number;
   categories: string[];
 }
 
@@ -132,16 +133,8 @@ export function Discover() {
     onRefresh: async () => { await fetchCatalogPage(1, true); },
   });
 
-  // Trending: top 10 by episode count (from loaded podcasts)
-  const trendingPodcasts = useMemo(() => {
-    if (!allPodcasts.length) return [];
-    return [...allPodcasts]
-      .sort((a, b) => b.episodeCount - a.episodeCount)
-      .slice(0, 10);
-  }, [allPodcasts]);
-
-  // Browse list filtered by category
-  const browsePodcasts = useMemo(() => {
+  // Category-filtered base list (used by all sections)
+  const filteredPodcasts = useMemo(() => {
     if (selectedCategory === "All") return allPodcasts;
     return allPodcasts.filter((p) =>
       p.categories?.some(
@@ -149,6 +142,26 @@ export function Discover() {
       )
     );
   }, [allPodcasts, selectedCategory]);
+
+  // Trending: top 10 by episode count (respects category filter)
+  const trendingPodcasts = useMemo(() => {
+    if (!filteredPodcasts.length) return [];
+    return [...filteredPodcasts]
+      .sort((a, b) => b.episodeCount - a.episodeCount)
+      .slice(0, 10);
+  }, [filteredPodcasts]);
+
+  // Filtered recommendations (respects category filter)
+  const filteredRecs = useMemo(() => {
+    if (!recsData?.recommendations.length) return null;
+    if (selectedCategory === "All") return recsData;
+    const filtered = recsData.recommendations.filter((rec) =>
+      rec.podcast.categories?.some(
+        (c) => c.toLowerCase() === selectedCategory.toLowerCase()
+      )
+    );
+    return { ...recsData, recommendations: filtered };
+  }, [recsData, selectedCategory]);
 
   // Debounce search input
   useEffect(() => {
@@ -281,6 +294,7 @@ export function Discover() {
                   description={podcast.description || ""}
                   imageUrl={podcast.imageUrl || ""}
                   episodeCount={podcast.episodeCount}
+                  subscriberCount={podcast.subscriberCount}
                 />
               ))}
             </div>
@@ -317,22 +331,32 @@ export function Discover() {
                     onClick={() => openPodcast(podcast.id)}
                     className="flex-shrink-0 w-28 snap-start text-left"
                   >
-                    {podcast.imageUrl ? (
-                      <img
-                        src={podcast.imageUrl}
-                        className="w-28 h-28 rounded-lg object-cover"
-                        alt=""
-                      />
-                    ) : (
-                      <div className="w-28 h-28 rounded-lg bg-muted flex items-center justify-center">
-                        <span className="text-2xl font-bold text-muted-foreground">
-                          {podcast.title.charAt(0).toUpperCase()}
-                        </span>
-                      </div>
-                    )}
+                    <div className="relative">
+                      {podcast.imageUrl ? (
+                        <img
+                          src={podcast.imageUrl}
+                          className="w-28 h-28 rounded-lg object-cover"
+                          alt=""
+                        />
+                      ) : (
+                        <div className="w-28 h-28 rounded-lg bg-muted flex items-center justify-center">
+                          <span className="text-2xl font-bold text-muted-foreground">
+                            {podcast.title.charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                      )}
+                      <span className="absolute bottom-1 right-1 bg-black/70 text-white text-[9px] px-1 py-0.5 rounded">
+                        {podcast.episodeCount} ep
+                      </span>
+                    </div>
                     <p className="text-xs font-medium mt-1.5 truncate">
                       {podcast.title}
                     </p>
+                    {podcast.subscriberCount > 0 && (
+                      <span className="text-[10px] text-muted-foreground">
+                        {podcast.subscriberCount} {podcast.subscriberCount === 1 ? "subscriber" : "subscribers"}
+                      </span>
+                    )}
                   </button>
                 ))}
               </ScrollableRow>
@@ -340,37 +364,47 @@ export function Discover() {
           )}
 
           {/* For You / Popular recommendations */}
-          {recsData && recsData.recommendations.length > 0 && (
+          {filteredRecs && filteredRecs.recommendations.length > 0 && (
             <section className="mt-6">
               <h2 className="text-lg font-semibold mb-3">
-                {recsData.source === "popular" ? "Popular" : "For You"}
+                {filteredRecs.source === "popular" ? "Popular" : "For You"}
               </h2>
               <ScrollableRow className="gap-3 pb-2">
-                {recsData.recommendations.slice(0, 8).map((rec) => (
+                {filteredRecs.recommendations.slice(0, 8).map((rec) => (
                   <button
                     key={rec.podcast.id}
                     onClick={() => openPodcast(rec.podcast.id)}
                     className="flex-shrink-0 w-28 snap-start text-left"
                   >
-                    {rec.podcast.imageUrl ? (
-                      <img
-                        src={rec.podcast.imageUrl}
-                        className="w-28 h-28 rounded-lg object-cover"
-                        alt=""
-                      />
-                    ) : (
-                      <div className="w-28 h-28 rounded-lg bg-muted flex items-center justify-center">
-                        <span className="text-2xl font-bold text-muted-foreground">
-                          {rec.podcast.title.charAt(0).toUpperCase()}
-                        </span>
-                      </div>
-                    )}
+                    <div className="relative">
+                      {rec.podcast.imageUrl ? (
+                        <img
+                          src={rec.podcast.imageUrl}
+                          className="w-28 h-28 rounded-lg object-cover"
+                          alt=""
+                        />
+                      ) : (
+                        <div className="w-28 h-28 rounded-lg bg-muted flex items-center justify-center">
+                          <span className="text-2xl font-bold text-muted-foreground">
+                            {rec.podcast.title.charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                      )}
+                      <span className="absolute bottom-1 right-1 bg-black/70 text-white text-[9px] px-1 py-0.5 rounded">
+                        {rec.podcast.episodeCount} ep
+                      </span>
+                    </div>
                     <p className="text-xs font-medium mt-1.5 truncate">
                       {rec.podcast.title}
                     </p>
                     {rec.reasons[0] && (
                       <span className="text-[10px] text-muted-foreground truncate block">
                         {rec.reasons[0]}
+                      </span>
+                    )}
+                    {rec.podcast.subscriberCount > 0 && (
+                      <span className="text-[10px] text-muted-foreground truncate block">
+                        {rec.podcast.subscriberCount} {rec.podcast.subscriberCount === 1 ? "subscriber" : "subscribers"}
                       </span>
                     )}
                   </button>
@@ -391,9 +425,9 @@ export function Discover() {
               <p className="text-red-400 text-sm text-center py-4">{browseError}</p>
             )}
             {!initialLoaded && !browseError && <DiscoverSkeleton />}
-            {browsePodcasts.length > 0 && (
+            {filteredPodcasts.length > 0 && (
               <div className="space-y-2">
-                {browsePodcasts.map((podcast) => (
+                {filteredPodcasts.map((podcast) => (
                   <PodcastCard
                     key={podcast.id}
                     id={podcast.id}
@@ -406,7 +440,7 @@ export function Discover() {
                 ))}
               </div>
             )}
-            {initialLoaded && browsePodcasts.length === 0 && (
+            {initialLoaded && filteredPodcasts.length === 0 && (
               <EmptyState
                 icon={Search}
                 title="No podcasts in this category"

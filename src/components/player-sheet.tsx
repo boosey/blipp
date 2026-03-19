@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Play, Pause, SkipBack, SkipForward, ChevronDown, Share2 } from "lucide-react";
+import { Play, Pause, RotateCcw, RotateCw, ChevronDown, Share2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   Sheet,
@@ -8,7 +8,9 @@ import {
   SheetDescription,
 } from "./ui/sheet";
 import { useAudio } from "../contexts/audio-context";
+import { useApiFetch } from "../lib/api";
 import { formatDuration } from "../lib/feed-utils";
+import { ThumbButtons } from "./thumb-buttons";
 
 const RATE_CYCLE = [1, 1.25, 1.5, 2, 0.75] as const;
 
@@ -40,6 +42,39 @@ export function PlayerSheet({
     adDuration,
     adCurrentTime,
   } = useAudio();
+  const apiFetch = useApiFetch();
+
+  // Episode vote state — reset when track changes
+  const [episodeVote, setEpisodeVote] = useState(0);
+  const lastEpisodeId = useRef<string | null>(null);
+
+  useEffect(() => {
+    const epId = currentItem?.episode.id;
+    if (!epId || epId === lastEpisodeId.current) return;
+    lastEpisodeId.current = epId;
+    setEpisodeVote(0);
+    // Fetch existing vote
+    apiFetch<{ vote: number }>(`/podcasts/episodes/vote/${epId}`)
+      .catch(() => ({ vote: 0 }))
+      .then((data) => {
+        if (lastEpisodeId.current === epId) setEpisodeVote(data.vote);
+      });
+  }, [currentItem?.episode.id, apiFetch]);
+
+  const handleEpisodeVote = useCallback(async (vote: number) => {
+    const epId = currentItem?.episode.id;
+    if (!epId) return;
+    const prev = episodeVote;
+    setEpisodeVote(vote);
+    try {
+      await apiFetch(`/podcasts/episodes/vote/${epId}`, {
+        method: "POST",
+        body: JSON.stringify({ vote }),
+      });
+    } catch {
+      setEpisodeVote(prev);
+    }
+  }, [currentItem?.episode.id, episodeVote, apiFetch]);
 
   const cycleRate = useCallback(() => {
     const idx = RATE_CYCLE.indexOf(playbackRate as (typeof RATE_CYCLE)[number]);
@@ -79,7 +114,7 @@ export function PlayerSheet({
         className="h-[85dvh] rounded-t-2xl bg-background border-border flex flex-col items-center px-6 pt-3 pb-[max(2rem,env(safe-area-inset-bottom))] overflow-y-auto"
       >
         {/* Drag handle + close button */}
-        <div className="w-full flex items-center justify-center relative flex-shrink-0 mb-4">
+        <div className="w-full flex items-center justify-center relative flex-shrink-0 mb-2">
           <div className="w-10 h-1 rounded-full bg-muted" />
           <button
             onClick={() => onOpenChange(false)}
@@ -101,10 +136,10 @@ export function PlayerSheet({
         </SheetDescription>
 
         {/* Artwork */}
-        <div className="flex items-center justify-center w-full max-w-sm mt-2">
+        <div className="flex items-center justify-center w-full max-w-sm mt-1">
           {inAd ? (
-            <div className="w-full max-w-[200px] aspect-square max-h-[22vh] rounded-2xl bg-card flex flex-col items-center justify-center gap-3 border border-[#F97316]/20">
-              <span className="text-2xl font-bold text-[#F97316]">Advertisement</span>
+            <div className="w-full max-w-[160px] aspect-square max-h-[18vh] rounded-2xl bg-card flex flex-col items-center justify-center gap-2 border border-[#F97316]/20">
+              <span className="text-xl font-bold text-[#F97316]">Advertisement</span>
               <span className="text-sm text-muted-foreground">
                 {adState === "preroll" ? "Pre-roll" : "Post-roll"}
               </span>
@@ -113,15 +148,15 @@ export function PlayerSheet({
             <img
               src={currentItem.podcast.imageUrl}
               alt=""
-              className="w-full max-w-[200px] aspect-square max-h-[22vh] rounded-2xl object-cover shadow-lg"
+              className="w-full max-w-[160px] aspect-square max-h-[18vh] rounded-2xl object-cover shadow-lg"
             />
           ) : (
-            <div className="w-full max-w-[200px] aspect-square max-h-[22vh] rounded-2xl bg-muted" />
+            <div className="w-full max-w-[160px] aspect-square max-h-[18vh] rounded-2xl bg-muted" />
           )}
         </div>
 
         {/* Info */}
-        <div className="w-full max-w-sm mt-6 text-center">
+        <div className="w-full max-w-sm mt-3 text-center">
           {inAd ? (
             <>
               <h2 className="text-lg font-bold text-[#F97316]">Advertisement</h2>
@@ -140,14 +175,22 @@ export function PlayerSheet({
               <p className="text-xs text-muted-foreground mt-1">
                 {formatDuration(currentItem.briefing?.clip?.actualSeconds ?? null, currentItem.durationTier)} briefing
               </p>
-              {/* Share */}
-              <button
-                onClick={handleShare}
-                className="mt-3 p-2 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                aria-label="Share briefing"
-              >
-                <Share2 className="w-5 h-5" />
-              </button>
+              {currentItem.briefing?.clip?.previewText && (
+                <p className="text-xs text-muted-foreground/70 mt-3 line-clamp-3 text-left px-2">
+                  {currentItem.briefing.clip.previewText}
+                </p>
+              )}
+              {/* Thumbs + Share */}
+              <div className="flex items-center justify-center gap-2 mt-3">
+                <ThumbButtons vote={episodeVote} onVote={handleEpisodeVote} size="md" />
+                <button
+                  onClick={handleShare}
+                  className="p-2 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                  aria-label="Share briefing"
+                >
+                  <Share2 className="w-5 h-5" />
+                </button>
+              </div>
             </>
           )}
         </div>
@@ -164,7 +207,7 @@ export function PlayerSheet({
         )}
 
         {/* Controls */}
-        <div className="flex items-center justify-center gap-8 mt-6 w-full max-w-sm">
+        <div className="flex items-center justify-center gap-8 mt-4 w-full max-w-sm">
           {inAd ? (
             /* Ad controls: only play/pause, no skip, no rate */
             <>
@@ -172,13 +215,13 @@ export function PlayerSheet({
               <div className="w-6 h-6" />
               <button
                 onClick={isPlaying ? pause : resume}
-                className="w-16 h-16 flex items-center justify-center bg-[#F97316] text-white rounded-full"
+                className="w-14 h-14 flex items-center justify-center bg-[#F97316] text-white rounded-full"
                 aria-label={isPlaying ? "Pause" : "Play"}
               >
                 {isPlaying ? (
-                  <Pause className="w-7 h-7" />
+                  <Pause className="w-6 h-6" />
                 ) : (
-                  <Play className="w-7 h-7 ml-0.5" />
+                  <Play className="w-6 h-6 ml-0.5" />
                 )}
               </button>
               <div className="w-6 h-6" />
@@ -201,8 +244,8 @@ export function PlayerSheet({
                 className="relative p-2 text-foreground/80 active:scale-[0.90] transition-transform duration-75"
                 aria-label="Skip back 15 seconds"
               >
-                <SkipBack className="w-6 h-6" />
-                <span className="absolute text-[10px] font-medium top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
+                <RotateCcw className="w-6 h-6" />
+                <span className="absolute text-[9px] font-bold top-1/2 left-1/2 -translate-x-1/2 -translate-y-[40%]">
                   15
                 </span>
               </button>
@@ -210,25 +253,25 @@ export function PlayerSheet({
               {/* Play/Pause */}
               <button
                 onClick={isPlaying ? pause : resume}
-                className="w-16 h-16 flex items-center justify-center bg-primary text-primary-foreground rounded-full active:scale-[0.95] transition-transform duration-75"
+                className="w-14 h-14 flex items-center justify-center bg-primary text-primary-foreground rounded-full active:scale-[0.95] transition-transform duration-75"
                 aria-label={isPlaying ? "Pause" : "Play"}
               >
                 {isPlaying ? (
-                  <Pause className="w-7 h-7" />
+                  <Pause className="w-6 h-6" />
                 ) : (
-                  <Play className="w-7 h-7 ml-0.5" />
+                  <Play className="w-6 h-6 ml-0.5" />
                 )}
               </button>
 
-              {/* Skip forward 30s */}
+              {/* Skip forward 15s */}
               <button
-                onClick={() => seek(Math.min(duration, currentTime + 30))}
+                onClick={() => seek(Math.min(duration, currentTime + 15))}
                 className="relative p-2 text-foreground/80 active:scale-[0.90] transition-transform duration-75"
-                aria-label="Skip forward 30 seconds"
+                aria-label="Skip forward 15 seconds"
               >
-                <SkipForward className="w-6 h-6" />
-                <span className="absolute text-[10px] font-medium top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
-                  30
+                <RotateCw className="w-6 h-6" />
+                <span className="absolute text-[9px] font-bold top-1/2 left-1/2 -translate-x-1/2 -translate-y-[40%]">
+                  15
                 </span>
               </button>
 
@@ -248,7 +291,7 @@ export function PlayerSheet({
 
 function AdProgressBar({ progress }: { progress: number }) {
   return (
-    <div className="w-full max-w-sm mt-6">
+    <div className="w-full max-w-sm mt-4">
       <div className="relative w-full h-6 flex items-center">
         {/* Track background */}
         <div className="absolute w-full h-0.5 bg-muted rounded-full" />
@@ -312,7 +355,7 @@ function SeekBar({
   }, [isDragging, handleSeek]);
 
   return (
-    <div className="w-full max-w-sm mt-6">
+    <div className="w-full max-w-sm mt-4">
       <div
         ref={trackRef}
         className="relative w-full h-6 flex items-center cursor-pointer group"

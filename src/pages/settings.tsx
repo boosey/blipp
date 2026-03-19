@@ -6,7 +6,10 @@ import { useApiFetch } from "../lib/api";
 import { useFetch } from "../lib/use-fetch";
 import { Skeleton } from "../components/ui/skeleton";
 import { PlanComparison, type PlanDetail } from "../components/plan-comparison";
+import { TierPicker } from "../components/tier-picker";
 import { useTheme, type Theme } from "../contexts/theme-context";
+import { usePlan } from "../contexts/plan-context";
+import type { DurationTier } from "../lib/duration-tiers";
 import {
   Dialog,
   DialogContent,
@@ -25,6 +28,7 @@ interface UserInfo {
   imageUrl: string | null;
   plan: { id: string; name: string; slug: string };
   isAdmin: boolean;
+  defaultDurationTier: number;
 }
 
 interface UsageData {
@@ -54,8 +58,17 @@ export function Settings() {
 
   const { data: userData, loading: userLoading } = useFetch<{ user: UserInfo }>("/me");
   const { data: usageData, loading: usageLoading } = useFetch<{ data: UsageData }>("/me/usage");
+  const planUsage = usePlan();
+  const [defaultTier, setDefaultTier] = useState<number | null>(null);
 
   const user = userData?.user ?? null;
+
+  // Sync default tier from user data
+  useEffect(() => {
+    if (user && defaultTier === null) {
+      setDefaultTier(user.defaultDurationTier);
+    }
+  }, [user, defaultTier]);
   const usage = usageData?.data ?? null;
 
   // Check push state on mount
@@ -297,6 +310,34 @@ export function Settings() {
               />
             </button>
           </div>
+        </div>
+      </section>
+
+      {/* Default Blipp Duration */}
+      <section className="space-y-4">
+        <h2 className="text-lg font-semibold">Default Blipp Duration</h2>
+        <div className="bg-card border border-border rounded-xl p-4 space-y-2">
+          <p className="text-xs text-muted-foreground">
+            Tap a duration to set your default. The Blipp button will use this length.
+          </p>
+          <TierPicker
+            selected={(defaultTier ?? 5) as DurationTier}
+            onSelect={async (tier) => {
+              const prev = defaultTier;
+              setDefaultTier(tier);
+              try {
+                await apiFetch("/me/preferences", {
+                  method: "PATCH",
+                  body: JSON.stringify({ defaultDurationTier: tier }),
+                });
+                toast.success(`Default duration set to ${tier} minutes`);
+              } catch {
+                setDefaultTier(prev);
+                toast.error("Failed to update preference");
+              }
+            }}
+            maxDurationMinutes={planUsage.maxDurationMinutes}
+          />
         </div>
       </section>
 

@@ -55,7 +55,7 @@ podcasts.get("/catalog", async (c) => {
         imageUrl: true,
         feedUrl: true,
         categories: true,
-        _count: { select: { episodes: true } },
+        _count: { select: { episodes: true, subscriptions: true } },
       },
     }),
     prisma.podcast.count({ where }),
@@ -65,6 +65,7 @@ podcasts.get("/catalog", async (c) => {
     podcasts: podcasts.map((p: any) => ({
       ...p,
       episodeCount: p._count.episodes,
+      subscriberCount: p._count.subscriptions,
       _count: undefined,
     })),
     total,
@@ -579,6 +580,75 @@ podcasts.get("/categories", async (c) => {
 });
 
 /**
+ * POST /vote/:podcastId — Vote on a podcast (thumbs up/down).
+ * Body: { vote: 1 | -1 } — pass 0 or omit to remove vote.
+ */
+podcasts.post("/vote/:podcastId", async (c) => {
+  const podcastId = c.req.param("podcastId");
+  const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
+  const { vote } = await c.req.json<{ vote: number }>();
+
+  if (vote === 0 || vote === undefined || vote === null) {
+    await prisma.podcastVote.deleteMany({
+      where: { userId: user.id, podcastId },
+    });
+    return c.json({ vote: 0 });
+  }
+
+  const v = vote > 0 ? 1 : -1;
+  await prisma.podcastVote.upsert({
+    where: { userId_podcastId: { userId: user.id, podcastId } },
+    create: { userId: user.id, podcastId, vote: v },
+    update: { vote: v },
+  });
+
+  return c.json({ vote: v });
+});
+
+/**
+ * GET /episodes/vote/:episodeId — Get user's vote on an episode.
+ */
+podcasts.get("/episodes/vote/:episodeId", async (c) => {
+  const episodeId = c.req.param("episodeId");
+  const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
+
+  const existing = await prisma.episodeVote.findUnique({
+    where: { userId_episodeId: { userId: user.id, episodeId } },
+  });
+
+  return c.json({ vote: existing?.vote ?? 0 });
+});
+
+/**
+ * POST /episodes/vote/:episodeId — Vote on an episode (thumbs up/down).
+ * Body: { vote: 1 | -1 } — pass 0 or omit to remove vote.
+ */
+podcasts.post("/episodes/vote/:episodeId", async (c) => {
+  const episodeId = c.req.param("episodeId");
+  const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
+  const { vote } = await c.req.json<{ vote: number }>();
+
+  if (vote === 0 || vote === undefined || vote === null) {
+    await prisma.episodeVote.deleteMany({
+      where: { userId: user.id, episodeId },
+    });
+    return c.json({ vote: 0 });
+  }
+
+  const v = vote > 0 ? 1 : -1;
+  await prisma.episodeVote.upsert({
+    where: { userId_episodeId: { userId: user.id, episodeId } },
+    create: { userId: user.id, episodeId, vote: v },
+    update: { vote: v },
+  });
+
+  return c.json({ vote: v });
+});
+
+/**
  * GET /:id — Get podcast detail with subscription status.
  *
  * @param id - The podcast's database ID
@@ -589,13 +659,11 @@ podcasts.get("/:id", async (c) => {
   const prisma = c.get("prisma") as any;
   const user = await getCurrentUser(c, prisma);
 
-  const podcast = await prisma.podcast.findUniqueOrThrow({
-    where: { id: podcastId },
-  });
-
-  const subscription = await prisma.subscription.findFirst({
-    where: { userId: user.id, podcastId },
-  });
+  const [podcast, subscription, vote] = await Promise.all([
+    prisma.podcast.findUniqueOrThrow({ where: { id: podcastId } }),
+    prisma.subscription.findFirst({ where: { userId: user.id, podcastId } }),
+    prisma.podcastVote.findUnique({ where: { userId_podcastId: { userId: user.id, podcastId } } }),
+  ]);
 
   return c.json({
     podcast: {
@@ -609,6 +677,7 @@ podcasts.get("/:id", async (c) => {
       episodeCount: podcast.episodeCount,
       isSubscribed: !!subscription,
       subscriptionDurationTier: subscription?.durationTier ?? null,
+      userVote: vote?.vote ?? 0,
     },
   });
 });
@@ -623,6 +692,7 @@ podcasts.get("/:id", async (c) => {
 podcasts.get("/:id/episodes", async (c) => {
   const podcastId = c.req.param("id");
   const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
 
   // Verify podcast exists
   await prisma.podcast.findUniqueOrThrow({
@@ -642,5 +712,18 @@ podcasts.get("/:id/episodes", async (c) => {
     },
   });
 
-  return c.json({ episodes });
+  // Batch-fetch user's episode votes
+  const episodeIds = episodes.map((e: any) => e.id);
+  const votes = await prisma.episodeVote.findMany({
+    where: { userId: user.id, episodeId: { in: episodeIds } },
+    select: { episodeId: true, vote: true },
+  });
+  const voteMap = new Map(votes.map((v: any) => [v.episodeId, v.vote]));
+
+  return c.json({
+    episodes: episodes.map((e: any) => ({
+      ...e,
+      userVote: voteMap.get(e.id) ?? 0,
+    })),
+  });
 });

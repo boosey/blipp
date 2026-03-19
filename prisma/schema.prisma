@@ -70,6 +70,7 @@ model User {
   isAdmin               Boolean  @default(false)
   status                String   @default("active")  // "active" | "suspended" | "banned"
   onboardingComplete    Boolean  @default(false)
+  defaultDurationTier   Int      @default(5)
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
@@ -82,6 +83,8 @@ model User {
   podcastRequests   PodcastRequest[]
   pushSubscriptions PushSubscription[]
   podcastFavorites  PodcastFavorite[]
+  podcastVotes      PodcastVote[]
+  episodeVotes      EpisodeVote[]
   recommendationProfile  UserRecommendationProfile?
   recommendationCache    RecommendationCache?
 }
@@ -99,6 +102,38 @@ model PodcastFavorite {
 
   @@unique([userId, podcastId])
   @@index([userId])
+}
+
+// ── Votes (thumbs up/down) ──
+
+model PodcastVote {
+  id        String   @id @default(cuid())
+  userId    String
+  podcastId String
+  vote      Int      // 1 = up, -1 = down
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  podcast Podcast @relation(fields: [podcastId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, podcastId])
+  @@index([podcastId])
+}
+
+model EpisodeVote {
+  id        String   @id @default(cuid())
+  userId    String
+  episodeId String
+  vote      Int      // 1 = up, -1 = down
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  episode Episode @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, episodeId])
+  @@index([episodeId])
 }
 
 // ── Push Notifications ──
@@ -144,6 +179,7 @@ model Podcast {
   feedItems         FeedItem[]
   requests          PodcastRequest[]
   favorites         PodcastFavorite[]
+  votes             PodcastVote[]
   podcastCategories PodcastCategory[]
   profile           PodcastProfile?
 }
@@ -170,6 +206,7 @@ model Episode {
   pipelineJobs     PipelineJob[]
   workProducts     WorkProduct[]
   feedItems        FeedItem[]
+  votes            EpisodeVote[]
   benchmarkResults       SttBenchmarkResult[]
   claimsBenchmarkResults ClaimsBenchmarkResult[]
 

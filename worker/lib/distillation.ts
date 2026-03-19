@@ -144,22 +144,10 @@ export function selectClaimsForDuration(
 }
 
 function buildMetadataIntro(metadata: EpisodeMetadata): string {
-  const originalMinutes = metadata.durationSeconds
-    ? Math.round(metadata.durationSeconds / 60)
-    : null;
-  const originalLength = originalMinutes
-    ? `Originally ${originalMinutes} minutes`
-    : "Original length unknown";
-
   return `
-Begin the narrative with a brief spoken introduction stating:
-- The podcast name ("${metadata.podcastTitle}")
-- The episode title ("${metadata.episodeTitle}")
-- When it was released (use a relative date like "released yesterday" or "from March 12th")
-- The original episode length (${originalLength})
-- The briefing length (${metadata.briefingMinutes} minutes)
+Begin the narrative with a brief spoken introduction stating the podcast name and episode title.
 
-Example: "From The Daily, episode The Election Results, released yesterday. Originally 45 minutes — here's your 5-minute briefing."
+Example: "From The Daily — The Election Results."
 
 Then proceed directly into the content summary.
 `;

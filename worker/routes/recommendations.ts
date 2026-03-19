@@ -31,9 +31,9 @@ recommendations.get("/", async (c) => {
       const podcastIds = (cached.podcasts as any[]).map((r: any) => r.podcastId);
       const podcasts = await prisma.podcast.findMany({
         where: { id: { in: podcastIds } },
-        select: { id: true, title: true, author: true, description: true, imageUrl: true, feedUrl: true, categories: true, episodeCount: true },
+        select: { id: true, title: true, author: true, description: true, imageUrl: true, feedUrl: true, categories: true, episodeCount: true, _count: { select: { subscriptions: true } } },
       });
-      const podcastMap = new Map(podcasts.map((p: any) => [p.id, p]));
+      const podcastMap = new Map(podcasts.map((p: any) => [p.id, { ...p, subscriberCount: p._count.subscriptions, _count: undefined }]));
 
       const recs = (cached.podcasts as any[])
         .filter((r: any) => podcastMap.has(r.podcastId))
@@ -61,9 +61,9 @@ recommendations.get("/", async (c) => {
   const podcastIds = result.recommendations.map((r) => r.podcastId);
   const podcasts = await prisma.podcast.findMany({
     where: { id: { in: podcastIds } },
-    select: { id: true, title: true, author: true, description: true, imageUrl: true, feedUrl: true, categories: true, episodeCount: true },
+    select: { id: true, title: true, author: true, description: true, imageUrl: true, feedUrl: true, categories: true, episodeCount: true, _count: { select: { subscriptions: true } } },
   });
-  const podcastMap = new Map(podcasts.map((p: any) => [p.id, p]));
+  const podcastMap = new Map(podcasts.map((p: any) => [p.id, { ...p, subscriberCount: p._count.subscriptions, _count: undefined }]));
 
   const recs = result.recommendations
     .filter((r) => podcastMap.has(r.podcastId))
@@ -103,14 +103,14 @@ recommendations.get("/similar/:podcastId", async (c) => {
 
   const allProfiles = await prisma.podcastProfile.findMany({
     where: { podcastId: { not: podcastId } },
-    include: { podcast: { select: { id: true, title: true, author: true, description: true, imageUrl: true, feedUrl: true, categories: true, episodeCount: true } } },
+    include: { podcast: { select: { id: true, title: true, author: true, description: true, imageUrl: true, feedUrl: true, categories: true, episodeCount: true, _count: { select: { subscriptions: true } } } } },
   });
 
   const sourceWeights = profile.categoryWeights as Record<string, number>;
 
   const scored = allProfiles
     .map((p: any) => ({
-      podcast: p.podcast,
+      podcast: { ...p.podcast, subscriberCount: p.podcast._count?.subscriptions ?? 0, _count: undefined },
       score: cosineSimilarity(sourceWeights, p.categoryWeights as Record<string, number>),
     }))
     .sort((a: any, b: any) => b.score - a.score)

@@ -5,6 +5,10 @@ vi.mock("sonner", () => ({
   toast: vi.fn(),
 }));
 
+vi.mock("../lib/api", () => ({
+  useApiFetch: () => vi.fn().mockResolvedValue({ vote: 0 }),
+}));
+
 import { toast } from "sonner";
 
 const mockCurrentItem = {

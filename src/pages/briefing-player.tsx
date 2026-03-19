@@ -22,6 +22,10 @@ export function BriefingPlayer() {
     }
 
     apiFetch<{ item: FeedItem }>(`/feed/${feedItemId}`)
+      .catch(() =>
+        // Feed item doesn't belong to this user — try shared endpoint
+        apiFetch<{ item: FeedItem }>(`/feed/shared/${feedItemId}`)
+      )
       .then((data) => {
         if (data.item.briefing) {
           audio.play(data.item);

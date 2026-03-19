@@ -1,9 +1,13 @@
-import { useState } from "react";
+import { useState, useCallback, useImperativeHandle, forwardRef } from "react";
 import { Play, Pause } from "lucide-react";
 import { useAudio } from "../contexts/audio-context";
 import { PlayerSheet } from "./player-sheet";
 
-export function MiniPlayer() {
+export interface MiniPlayerHandle {
+  closeSheet: () => void;
+}
+
+export const MiniPlayer = forwardRef<MiniPlayerHandle>(function MiniPlayer(_props, ref) {
   const {
     currentItem,
     isPlaying,
@@ -17,6 +21,10 @@ export function MiniPlayer() {
   } = useAudio();
   const [sheetOpen, setSheetOpen] = useState(false);
 
+  useImperativeHandle(ref, () => ({
+    closeSheet: () => setSheetOpen(false),
+  }), []);
+
   if (!currentItem) return null;
 
   const inAd = adState === "preroll" || adState === "postroll";
@@ -28,7 +36,7 @@ export function MiniPlayer() {
 
   return (
     <>
-      <div className="fixed bottom-[calc(env(safe-area-inset-bottom)+49px)] left-0 right-0 z-40 max-w-3xl mx-auto">
+      <div className="fixed bottom-[calc(env(safe-area-inset-bottom)+49px)] left-0 right-0 z-[60] max-w-3xl mx-auto">
         {/* Progress bar */}
         <div
           className={`absolute top-0 left-0 h-0.5 transition-all duration-200 ${
@@ -97,4 +105,4 @@ export function MiniPlayer() {
       <PlayerSheet open={sheetOpen} onOpenChange={setSheetOpen} />
     </>
   );
-}
+});
