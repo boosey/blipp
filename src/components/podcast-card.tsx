@@ -33,11 +33,11 @@ export function PodcastCard({
   if (!loaded) {
     setLoaded(true);
     Promise.all([
-      apiFetch<{ podcast: { userVote: number } }>(`/podcasts/${id}`).catch(() => ({ podcast: { userVote: 0 } })),
-      apiFetch<{ data: { id: string }[] }>("/podcasts/favorites").catch(() => ({ data: [] })),
+      apiFetch<{ podcast: { userVote: number } }>(`/podcasts/${id}`).catch(() => null),
+      apiFetch<{ data: { id: string }[] }>("/podcasts/favorites").catch(() => null),
     ]).then(([podData, favData]) => {
-      setVote(podData.podcast.userVote);
-      setFavorited(favData.data.some((f) => f.id === id));
+      setVote(podData?.podcast?.userVote ?? 0);
+      setFavorited(favData?.data?.some((f) => f.id === id) ?? false);
     });
   }
 

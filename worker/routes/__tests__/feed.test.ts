@@ -28,6 +28,7 @@ describe("Feed routes", () => {
     app.route("/", feed);
 
     (getCurrentUser as any).mockResolvedValue({ id: "user1" });
+    mockPrisma.episodeVote.findMany.mockResolvedValue([]);
   });
 
   describe("GET /", () => {
@@ -100,6 +101,7 @@ describe("Feed routes", () => {
           durationTier: 5,
           createdAt: new Date().toISOString(),
           errorMessage: null,
+          episodeId: "e1",
           podcast: { id: "p1", title: "Test", imageUrl: null },
           episode: {
             id: "e1",
