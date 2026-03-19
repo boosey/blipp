@@ -90,7 +90,7 @@ describe("extractClaims", () => {
 
   it("should throw on invalid JSON response", async () => {
     const llm = createMockLlmProvider("not valid json");
-    await expect(extractClaims(llm, "transcript", "mock-model-1", 8192, mockEnv)).rejects.toThrow("LLM returned invalid JSON");
+    await expect(extractClaims(mockPrisma, llm, "transcript", "mock-model-1", 8192, mockEnv)).rejects.toThrow("LLM returned invalid JSON");
   });
 
   it("should unwrap object with claims key", async () => {
@@ -107,12 +107,12 @@ describe("extractClaims", () => {
 
   it("should throw on missing required fields", async () => {
     const llm = createMockLlmProvider(JSON.stringify([{ claim: "x" }]));
-    await expect(extractClaims(llm, "transcript", "mock-model-1", 8192, mockEnv)).rejects.toThrow("LLM output failed schema validation");
+    await expect(extractClaims(mockPrisma, llm, "transcript", "mock-model-1", 8192, mockEnv)).rejects.toThrow("LLM output failed schema validation");
   });
 
   it("should throw on empty array", async () => {
     const llm = createMockLlmProvider("[]");
-    await expect(extractClaims(llm, "transcript", "mock-model-1", 8192, mockEnv)).rejects.toThrow("LLM output failed schema validation");
+    await expect(extractClaims(mockPrisma, llm, "transcript", "mock-model-1", 8192, mockEnv)).rejects.toThrow("LLM output failed schema validation");
   });
 
   it("should instruct LLM to exclude advertisements from claims", async () => {
@@ -129,7 +129,7 @@ describe("extractClaims", () => {
 
   it("should throw on importance out of range", async () => {
     const llm = createMockLlmProvider(JSON.stringify([{ ...sampleClaims[0], importance: 15 }]));
-    await expect(extractClaims(llm, "transcript", "mock-model-1", 8192, mockEnv)).rejects.toThrow("LLM output failed schema validation");
+    await expect(extractClaims(mockPrisma, llm, "transcript", "mock-model-1", 8192, mockEnv)).rejects.toThrow("LLM output failed schema validation");
   });
 
   it("should return null cost when no pricing provided", async () => {

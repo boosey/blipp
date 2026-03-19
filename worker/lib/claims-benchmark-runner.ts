@@ -125,6 +125,7 @@ async function handleExtraction(
     // Extract claims
     const start = Date.now();
     const { claims, usage } = await extractClaims(
+      prisma,
       llm,
       transcript,
       providerRow.providerModelId,

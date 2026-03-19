@@ -20,7 +20,7 @@ const DEFAULTS: Record<string, string> = {
   [PROMPT_CONFIG_KEYS.narrativeMetadataIntro]: DEFAULT_NARRATIVE_METADATA_INTRO,
 };
 
-const VALID_KEYS = new Set(Object.values(PROMPT_CONFIG_KEYS));
+const VALID_KEYS = new Set<string>(Object.values(PROMPT_CONFIG_KEYS));
 
 const promptsRoutes = new Hono<{ Bindings: Env }>();
 
