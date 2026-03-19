@@ -24,6 +24,7 @@ const mockUserData = {
     imageUrl: "https://example.com/avatar.jpg",
     plan: { id: "plan1", name: "Pro", slug: "pro" },
     isAdmin: false,
+    defaultDurationTier: 5,
   },
 };
 
@@ -55,6 +56,10 @@ vi.mock("../components/plan-comparison", () => ({
 
 vi.mock("../contexts/theme-context", () => ({
   useTheme: () => ({ theme: "dark", setTheme: vi.fn() }),
+}));
+
+vi.mock("../contexts/plan-context", () => ({
+  usePlan: () => ({ maxDurationMinutes: 15, subscriptions: { limit: 10, remaining: 7 } }),
 }));
 
 import { Settings } from "../pages/settings";
