@@ -85,4 +85,6 @@ export type Env = {
   VAPID_PRIVATE_KEY?: string;
   /** VAPID subject (mailto: URL) for Web Push (optional) */
   VAPID_SUBJECT?: string;
+  /** Sentry DSN for error tracking (optional — Sentry no-ops when unset) */
+  SENTRY_DSN?: string;
 };

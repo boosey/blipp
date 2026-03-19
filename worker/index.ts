@@ -6,6 +6,7 @@
  * - `queue` — Queue consumer dispatcher (feed refresh, distillation, clip gen, briefing assembly)
  * - `scheduled` — Cron trigger handler (enqueues feed refresh every 30 min)
  */
+import * as Sentry from "@sentry/cloudflare";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { clerkMiddleware } from "./middleware/auth";
@@ -13,6 +14,7 @@ import { prismaMiddleware } from "./middleware/prisma";
 import { requestIdMiddleware } from "./middleware/request-id";
 import { requestLogger } from "./middleware/request-logger";
 import { classifyHttpError, type ApiErrorResponse } from "./lib/errors";
+import { captureException } from "./lib/sentry";
 import { routes } from "./routes/index";
 import { handleQueue, scheduled } from "./queues/index";
 import { shimQueuesForLocalDev } from "./lib/local-queue";
@@ -27,6 +29,7 @@ const app = new Hono<{ Bindings: Env }>();
 
 // Global error handler — catches all unhandled throws from routes/middleware
 app.onError((err, c) => {
+  captureException(err instanceof Error ? err : new Error(String(err)), { method: c.req.method, path: c.req.path });
   const { status, message, code, details } = classifyHttpError(err);
   const requestId = c.get("requestId") ?? c.req.header("x-request-id") ?? crypto.randomUUID();
 
@@ -132,14 +135,17 @@ app.use("/*", securityHeaders);
 // Mount all API routes under /api
 app.route("/api", routes);
 
-export default {
-  fetch(request: Request, env: Env, ctx: ExecutionContext) {
-    return app.fetch(request, shimQueuesForLocalDev(env, ctx), ctx);
-  },
-  queue(batch: MessageBatch, env: Env, ctx: ExecutionContext) {
-    return handleQueue(batch, shimQueuesForLocalDev(env, ctx), ctx);
-  },
-  scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
-    return scheduled(event, shimQueuesForLocalDev(env, ctx), ctx);
-  },
-};
+export default Sentry.withSentry(
+  (env) => ({ dsn: env.SENTRY_DSN, tracesSampleRate: 0.1 }),
+  {
+    fetch(request: Request, env: Env, ctx: ExecutionContext) {
+      return app.fetch(request, shimQueuesForLocalDev(env, ctx), ctx);
+    },
+    queue(batch: MessageBatch, env: Env, ctx: ExecutionContext) {
+      return handleQueue(batch, shimQueuesForLocalDev(env, ctx), ctx);
+    },
+    scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
+      return scheduled(event, shimQueuesForLocalDev(env, ctx), ctx);
+    },
+  }
+);
