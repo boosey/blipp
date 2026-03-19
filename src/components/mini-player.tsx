@@ -1,6 +1,7 @@
 import { useState, useCallback, useImperativeHandle, forwardRef } from "react";
 import { Play, Pause } from "lucide-react";
 import { useAudio } from "../contexts/audio-context";
+import { usePodcastSheet } from "../contexts/podcast-sheet-context";
 import { PlayerSheet } from "./player-sheet";
 
 export interface MiniPlayerHandle {
@@ -20,6 +21,7 @@ export const MiniPlayer = forwardRef<MiniPlayerHandle>(function MiniPlayer(_prop
     adState,
   } = useAudio();
   const [sheetOpen, setSheetOpen] = useState(false);
+  const { open: openPodcast } = usePodcastSheet();
 
   useImperativeHandle(ref, () => ({
     closeSheet: () => setSheetOpen(false),
@@ -54,14 +56,22 @@ export const MiniPlayer = forwardRef<MiniPlayerHandle>(function MiniPlayer(_prop
             <div className="w-10 h-10 rounded bg-[#F97316]/20 flex items-center justify-center flex-shrink-0">
               <span className="text-[10px] font-bold text-[#F97316] uppercase">Ad</span>
             </div>
-          ) : currentItem.podcast.imageUrl ? (
-            <img
-              src={currentItem.podcast.imageUrl}
-              alt=""
-              className="w-10 h-10 rounded object-cover flex-shrink-0"
-            />
           ) : (
-            <div className="w-10 h-10 rounded bg-muted flex-shrink-0" />
+            <button
+              onClick={(e) => { e.stopPropagation(); openPodcast(currentItem.podcast.id); }}
+              className="flex-shrink-0"
+              aria-label="View podcast"
+            >
+              {currentItem.podcast.imageUrl ? (
+                <img
+                  src={currentItem.podcast.imageUrl}
+                  alt=""
+                  className="w-10 h-10 rounded object-cover"
+                />
+              ) : (
+                <div className="w-10 h-10 rounded bg-muted" />
+              )}
+            </button>
           )}
 
           {/* Text — opens PlayerSheet */}

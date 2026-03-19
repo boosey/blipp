@@ -8,6 +8,7 @@ import {
   SheetDescription,
 } from "./ui/sheet";
 import { useAudio } from "../contexts/audio-context";
+import { usePodcastSheet } from "../contexts/podcast-sheet-context";
 import { useApiFetch } from "../lib/api";
 import { formatDuration } from "../lib/feed-utils";
 import { ThumbButtons } from "./thumb-buttons";
@@ -43,6 +44,8 @@ export function PlayerSheet({
     adCurrentTime,
   } = useAudio();
   const apiFetch = useApiFetch();
+
+  const { open: openPodcast } = usePodcastSheet();
 
   // Episode vote state — reset when track changes
   const [episodeVote, setEpisodeVote] = useState(0);
@@ -186,14 +189,21 @@ export function PlayerSheet({
                   {adState === "preroll" ? "Pre-roll" : "Post-roll"}
                 </span>
               </div>
-            ) : currentItem.podcast.imageUrl ? (
-              <img
-                src={currentItem.podcast.imageUrl}
-                alt=""
-                className="w-full max-w-[120px] aspect-square rounded-2xl object-contain shadow-lg"
-              />
             ) : (
-              <div className="w-full max-w-[120px] aspect-square rounded-2xl bg-muted" />
+              <button
+                onClick={() => { onOpenChange(false); openPodcast(currentItem.podcast.id); }}
+                aria-label="View podcast"
+              >
+                {currentItem.podcast.imageUrl ? (
+                  <img
+                    src={currentItem.podcast.imageUrl}
+                    alt=""
+                    className="w-full max-w-[120px] aspect-square rounded-2xl object-contain shadow-lg"
+                  />
+                ) : (
+                  <div className="w-full max-w-[120px] aspect-square rounded-2xl bg-muted" />
+                )}
+              </button>
             )}
           </div>
           {/* Side actions — thumbs + share */}
