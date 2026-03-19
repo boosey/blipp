@@ -85,7 +85,7 @@ export default function App() {
         <Route path="/library" element={<LibraryPage />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/history" element={<Suspense fallback={null}><History /></Suspense>} />
-        <Route path="/play/:feedItemId" element={<BriefingPlayer />} />
+        <Route path="/play/:id" element={<BriefingPlayer />} />
         <Route path="/briefing/:requestId" element={<Navigate to="/home" replace />} />
         <Route path="/onboarding" element={<Suspense fallback={null}><Onboarding /></Suspense>} />
       </Route>

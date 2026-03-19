@@ -84,7 +84,7 @@ export function PlayerSheet({
 
   const handleShare = useCallback(async () => {
     const text = `Check out this briefing from ${currentItem?.podcast.title} on Blipp`;
-    const url = `${window.location.origin}/play/${currentItem?.id}`;
+    const url = `${window.location.origin}/play/${currentItem?.briefing?.id ?? currentItem?.id}`;
 
     if (navigator.share) {
       try {

@@ -342,6 +342,7 @@ model FeedItem {
 enum FeedItemSource {
   SUBSCRIPTION
   ON_DEMAND
+  SHARED
 }
 
 enum FeedItemStatus {

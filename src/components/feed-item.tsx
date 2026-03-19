@@ -71,13 +71,13 @@ export function FeedItemCard({
   const handleShare = useCallback(async (e: React.MouseEvent) => {
     e.stopPropagation();
     const text = `Check out this briefing from ${item.podcast.title} on Blipp`;
-    const url = `${window.location.origin}/play/${item.id}`;
+    const url = `${window.location.origin}/play/${item.briefing?.id ?? item.id}`;
     if (navigator.share) {
       try { await navigator.share({ title: item.episode.title, text, url }); } catch { /* cancelled */ }
     } else {
       try { await navigator.clipboard.writeText(`${text}\n${url}`); toast("Link copied to clipboard"); } catch { /* failed */ }
     }
-  }, [item.id, item.podcast.title, item.episode.title]);
+  }, [item.id, item.briefing?.id, item.podcast.title, item.episode.title]);
 
   const card = (
     <div

@@ -7,7 +7,7 @@ import { PlayerSkeleton } from "../components/skeletons/player-skeleton";
 import type { FeedItem } from "../types/feed";
 
 export function BriefingPlayer() {
-  const { feedItemId } = useParams<{ feedItemId: string }>();
+  const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const apiFetch = useApiFetch();
   const audio = useAudio();
@@ -16,15 +16,15 @@ export function BriefingPlayer() {
   const [error, setError] = useState(false);
 
   useEffect(() => {
-    if (!feedItemId) {
+    if (!id) {
       navigate("/home", { replace: true });
       return;
     }
 
-    apiFetch<{ item: FeedItem }>(`/feed/${feedItemId}`)
+    // Try as own feed item first, then as shared briefing ID
+    apiFetch<{ item: FeedItem }>(`/feed/${id}`)
       .catch(() =>
-        // Feed item doesn't belong to this user — try shared endpoint
-        apiFetch<{ item: FeedItem }>(`/feed/shared/${feedItemId}`)
+        apiFetch<{ item: FeedItem }>(`/feed/shared/${id}`)
       )
       .then((data) => {
         if (data.item.briefing) {
@@ -39,7 +39,7 @@ export function BriefingPlayer() {
       });
     // Run once on mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [feedItemId]);
+  }, [id]);
 
   if (error) {
     return (

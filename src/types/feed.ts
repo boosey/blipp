@@ -1,6 +1,6 @@
 export interface FeedItem {
   id: string;
-  source: "SUBSCRIPTION" | "ON_DEMAND";
+  source: "SUBSCRIPTION" | "ON_DEMAND" | "SHARED";
   status: "PENDING" | "PROCESSING" | "READY" | "FAILED";
   errorMessage: string | null;
   listened: boolean;
