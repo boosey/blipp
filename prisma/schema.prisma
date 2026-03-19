@@ -199,6 +199,7 @@ model Episode {
   contentStatus   ContentStatus @default(PENDING)
   transcriptR2Key String?
   audioR2Key      String?
+  topicTags       String[]  // Extracted topic fingerprints from claims
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
@@ -804,6 +805,7 @@ model PodcastProfile {
   popularity      Float    @default(0) // Normalized 0-1
   freshness       Float    @default(0) // Normalized 0-1
   subscriberCount Int      @default(0)
+  embedding       Json?    // 768-dim float array from Workers AI
   computedAt      DateTime @default(now())
   podcast         Podcast  @relation(fields: [podcastId], references: [id], onDelete: Cascade)
   @@index([computedAt])
@@ -815,6 +817,7 @@ model UserRecommendationProfile {
   categoryWeights Json     // { "Technology": 0.9, "Science": 0.5 }
   topicTags       String[] // Phase 2
   listenCount     Int      @default(0)
+  embedding       Json?    // 768-dim float array (centroid of subscribed podcasts)
   computedAt      DateTime @default(now())
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
