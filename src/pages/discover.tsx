@@ -113,16 +113,18 @@ export function Discover() {
   const hasMore = allPodcasts.length < browseTotal;
 
   // Intersection observer for infinite scroll
+  // Use the closest scrollable ancestor (main element) as root for desktop compatibility
   useEffect(() => {
     const el = loadMoreRef.current;
     if (!el || typeof IntersectionObserver === "undefined") return;
+    const scrollParent = el.closest("main") ?? null;
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting && hasMore && !browseLoading) {
           fetchCatalogPage(browsePage + 1);
         }
       },
-      { rootMargin: "200px" }
+      { root: scrollParent, rootMargin: "200px" }
     );
     observer.observe(el);
     return () => observer.disconnect();
