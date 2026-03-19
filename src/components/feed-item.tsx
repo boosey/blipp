@@ -1,3 +1,6 @@
+import { useCallback } from "react";
+import { Share2 } from "lucide-react";
+import { toast } from "sonner";
 import type { FeedItem } from "../types/feed";
 import { formatDuration } from "../lib/feed-utils";
 import { useAudio } from "../contexts/audio-context";
@@ -65,6 +68,17 @@ export function FeedItemCard({
   const label = statusLabel(item.status);
   const epDuration = formatEpDuration(item.episode.durationSeconds);
 
+  const handleShare = useCallback(async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const text = `Check out this briefing from ${item.podcast.title} on Blipp`;
+    const url = `${window.location.origin}/play/${item.id}`;
+    if (navigator.share) {
+      try { await navigator.share({ title: item.episode.title, text, url }); } catch { /* cancelled */ }
+    } else {
+      try { await navigator.clipboard.writeText(`${text}\n${url}`); toast("Link copied to clipboard"); } catch { /* failed */ }
+    }
+  }, [item.id, item.podcast.title, item.episode.title]);
+
   const card = (
     <div
       className={`relative flex gap-3 bg-card border border-border rounded-lg p-3 overflow-hidden${
@@ -89,6 +103,15 @@ export function FeedItemCard({
         <div className="flex items-center justify-between gap-2">
           <p className="text-xs text-muted-foreground truncate">{item.podcast.title}</p>
           <div className="flex items-center gap-1.5 flex-shrink-0">
+            {isPlayable && (
+              <button
+                aria-label="Share"
+                onClick={handleShare}
+                className="p-1 text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <Share2 className="w-3.5 h-3.5" />
+              </button>
+            )}
             {onEpisodeVote && (
               <ThumbButtons
                 vote={item.episodeVote}
