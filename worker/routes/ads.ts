@@ -1,23 +1,27 @@
 import { Hono } from "hono";
+import { z } from "zod/v4";
 import type { Env } from "../types";
 import { getAuth } from "../middleware/auth";
 import { getConfig } from "../lib/config";
+import { validateBody } from "../lib/validation";
 
 const ads = new Hono<{ Bindings: Env }>();
 
-const VALID_PLACEMENTS = ["preroll", "postroll"] as const;
-const VALID_EVENTS = [
-  "impression",
-  "start",
-  "firstQuartile",
-  "midpoint",
-  "thirdQuartile",
-  "complete",
-  "error",
-] as const;
-
-type Placement = (typeof VALID_PLACEMENTS)[number];
-type AdEvent = (typeof VALID_EVENTS)[number];
+const adEventSchema = z.object({
+  briefingId: z.string().optional(),
+  feedItemId: z.string().optional(),
+  placement: z.enum(["preroll", "postroll"]),
+  event: z.enum([
+    "impression",
+    "start",
+    "firstQuartile",
+    "midpoint",
+    "thirdQuartile",
+    "complete",
+    "error",
+  ]),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
 
 /**
  * GET /ads/config — Returns resolved ad config for the current user.
@@ -86,30 +90,7 @@ ads.get("/config", async (c) => {
  */
 ads.post("/event", async (c) => {
   const auth = getAuth(c);
-  const body = await c.req.json<{
-    briefingId?: string;
-    feedItemId?: string;
-    placement?: string;
-    event?: string;
-    metadata?: Record<string, unknown>;
-  }>();
-
-  if (
-    !body.placement ||
-    !VALID_PLACEMENTS.includes(body.placement as Placement)
-  ) {
-    return c.json(
-      { error: `Invalid placement. Must be one of: ${VALID_PLACEMENTS.join(", ")}` },
-      400
-    );
-  }
-
-  if (!body.event || !VALID_EVENTS.includes(body.event as AdEvent)) {
-    return c.json(
-      { error: `Invalid event. Must be one of: ${VALID_EVENTS.join(", ")}` },
-      400
-    );
-  }
+  const body = await validateBody(c, adEventSchema);
 
   // Phase 1: structured console.log
   console.log(

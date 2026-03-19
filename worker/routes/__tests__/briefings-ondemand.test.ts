@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import type { Env } from "../../types";
 import { briefings } from "../briefings";
 import { createMockPrisma, createMockEnv } from "../../../tests/helpers/mocks";
+import { classifyHttpError } from "../../lib/errors";
 
 vi.mock("../../middleware/auth", () => ({
   requireAuth: vi.fn((_c: any, next: any) => next()),
@@ -39,6 +40,10 @@ describe("POST /generate (on-demand)", () => {
       await next();
     });
     app.route("/", briefings);
+    app.onError((err, c) => {
+      const { status, message, code, details } = classifyHttpError(err);
+      return c.json({ error: message, code, details }, status as any);
+    });
 
     (getUserWithPlan as any).mockResolvedValue({
       id: "user1",
@@ -63,6 +68,17 @@ describe("POST /generate (on-demand)", () => {
       body: JSON.stringify({ durationTier: 5 }),
     }, env, mockExCtx);
     expect(res.status).toBe(400);
+  });
+
+  it("rejects invalid durationTier value", async () => {
+    const res = await app.request("/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ podcastId: "pod1", durationTier: 99 }),
+    }, env, mockExCtx);
+    expect(res.status).toBe(400);
+    const body: any = await res.json();
+    expect(body.details).toBeDefined();
   });
 
   it("creates FeedItem and dispatches to pipeline for specific episode", async () => {

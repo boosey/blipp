@@ -45,6 +45,7 @@ vi.mock("@clerk/backend", () => ({
 
 // Import after mocks
 const { billing } = await import("../billing");
+const { classifyHttpError } = await import("../../lib/errors");
 
 /** Mock ExecutionContext for Hono test requests */
 const mockExCtx = { waitUntil: vi.fn(), passThroughOnException: vi.fn(), props: {} };
@@ -61,6 +62,10 @@ describe("Billing Routes", () => {
     app = new Hono<{ Bindings: Env }>();
     app.use("/*", async (c, next) => { c.set("prisma", mockPrisma); await next(); });
     app.route("/billing", billing);
+    app.onError((err, c) => {
+      const { status, message, code, details } = classifyHttpError(err);
+      return c.json({ error: message, code, details }, status as any);
+    });
 
     Object.values(mockPrisma).forEach((model) => {
       if (typeof model === "object" && model !== null) {
@@ -88,6 +93,38 @@ describe("Billing Routes", () => {
         mockExCtx
       );
       expect(res.status).toBe(401);
+    });
+
+    it("should return 400 for missing planId", async () => {
+      const res = await app.request(
+        "/billing/checkout",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ interval: "monthly" }),
+        },
+        env,
+        mockExCtx
+      );
+      expect(res.status).toBe(400);
+      const body: any = await res.json();
+      expect(body.details).toBeDefined();
+    });
+
+    it("should return 400 for invalid interval", async () => {
+      const res = await app.request(
+        "/billing/checkout",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ planId: "plan_pro", interval: "weekly" }),
+        },
+        env,
+        mockExCtx
+      );
+      expect(res.status).toBe(400);
+      const body: any = await res.json();
+      expect(body.details).toBeDefined();
     });
 
     it("should return 400 for invalid plan", async () => {

@@ -1,9 +1,11 @@
 import { Hono } from "hono";
+import { z } from "zod/v4";
 import type { Env } from "../types";
 import { requireAuth } from "../middleware/auth";
 import { getCurrentUser } from "../lib/admin-helpers";
 import { getUserWithPlan, checkDurationLimit, checkWeeklyBriefingLimit } from "../lib/plan-limits";
-import { DURATION_TIERS, isValidDurationTier } from "../lib/constants";
+import { DURATION_TIERS } from "../lib/constants";
+import { validateBody } from "../lib/validation";
 
 /**
  * Briefing routes — on-demand briefing generation only.
@@ -23,20 +25,16 @@ briefings.use("*", requireAuth);
  *
  * Creates a FeedItem and dispatches to the pipeline.
  */
+const generateSchema = z.object({
+  podcastId: z.string().min(1),
+  episodeId: z.string().optional(),
+  durationTier: z.number().refine((v) => DURATION_TIERS.includes(v as any), {
+    message: `Must be one of: ${DURATION_TIERS.join(", ")}`,
+  }),
+});
+
 briefings.post("/generate", async (c) => {
-  const body = await c.req.json<{
-    podcastId: string;
-    episodeId?: string;
-    durationTier: number;
-  }>();
-
-  if (!body.podcastId) {
-    return c.json({ error: "podcastId is required" }, 400);
-  }
-
-  if (!body.durationTier || !isValidDurationTier(body.durationTier)) {
-    return c.json({ error: `durationTier is required and must be one of: ${DURATION_TIERS.join(", ")}` }, 400);
-  }
+  const body = await validateBody(c, generateSchema);
 
   const prisma = c.get("prisma") as any;
   const user = await getUserWithPlan(c, prisma);

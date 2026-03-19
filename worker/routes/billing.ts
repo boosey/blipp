@@ -1,8 +1,10 @@
 import { Hono } from "hono";
+import { z } from "zod/v4";
 import type { Env } from "../types";
 import { requireAuth } from "../middleware/auth";
 import { getCurrentUser } from "../lib/admin-helpers";
 import { createStripeClient } from "../lib/stripe";
+import { validateBody } from "../lib/validation";
 
 /**
  * Billing routes for Stripe subscription management.
@@ -20,15 +22,13 @@ billing.use("*", requireAuth);
  * @throws 400 if plan is invalid, missing, or has no Stripe price for the chosen interval
  * @throws 401 if not authenticated
  */
-billing.post("/checkout", async (c) => {
-  const { planId, interval } = await c.req.json<{
-    planId: string;
-    interval: "monthly" | "annual";
-  }>();
+const checkoutSchema = z.object({
+  planId: z.string().min(1),
+  interval: z.enum(["monthly", "annual"]),
+});
 
-  if (!planId || !interval || !["monthly", "annual"].includes(interval)) {
-    return c.json({ error: "planId and interval (monthly|annual) required" }, 400);
-  }
+billing.post("/checkout", async (c) => {
+  const { planId, interval } = await validateBody(c, checkoutSchema);
 
   const prisma = c.get("prisma") as any;
 
