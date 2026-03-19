@@ -464,6 +464,14 @@ export function Discover() {
                 <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
               </div>
             )}
+            {hasMore && !browseLoading && initialLoaded && (
+              <button
+                onClick={() => fetchCatalogPage(browsePage + 1)}
+                className="w-full py-3 text-sm text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Load more
+              </button>
+            )}
           </section>
 
           {/* Request a Podcast */}
