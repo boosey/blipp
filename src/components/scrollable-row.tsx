@@ -23,11 +23,12 @@ export function ScrollableRow({ children, className = "" }: ScrollableRowProps) 
     if (!el) return;
     updateScrollState();
     el.addEventListener("scroll", updateScrollState, { passive: true });
-    const observer = new ResizeObserver(updateScrollState);
-    observer.observe(el);
+    const hasResizeObserver = typeof ResizeObserver !== "undefined";
+    const observer = hasResizeObserver ? new ResizeObserver(updateScrollState) : null;
+    observer?.observe(el);
     return () => {
       el.removeEventListener("scroll", updateScrollState);
-      observer.disconnect();
+      observer?.disconnect();
     };
   }, [updateScrollState]);
 

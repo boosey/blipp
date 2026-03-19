@@ -114,7 +114,7 @@ export function Discover() {
   // Intersection observer for infinite scroll
   useEffect(() => {
     const el = loadMoreRef.current;
-    if (!el) return;
+    if (!el || typeof IntersectionObserver === "undefined") return;
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting && hasMore && !browseLoading) {
