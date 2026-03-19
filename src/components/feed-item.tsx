@@ -65,7 +65,8 @@ export function FeedItemCard({
 }) {
   const audio = useAudio();
   const isPlayable = item.status === "READY" && item.briefing?.clip;
-  const label = statusLabel(item.status);
+  const isCreating = item.status === "PENDING" || item.status === "PROCESSING";
+  const label = item.status === "FAILED" ? statusLabel(item.status) : null;
   const epDuration = formatEpDuration(item.episode.durationSeconds);
 
   const handleShare = useCallback(async (e: React.MouseEvent) => {
@@ -79,11 +80,11 @@ export function FeedItemCard({
     }
   }, [item.id, item.briefing?.id, item.podcast.title, item.episode.title]);
 
-  const card = (
+  const cardInner = (
     <div
       className={`relative flex gap-3 bg-card border border-border rounded-lg p-3 overflow-hidden${
         !item.listened && item.status === "READY"
-          ? " border-l-[3px] border-l-blue-500"
+          ? " border-l-[3px] border-l-primary"
           : ""
       }`}
     >
@@ -155,6 +156,25 @@ export function FeedItemCard({
       </div>
     </div>
   );
+
+  // Wrap creating items with the behind-card sweep glow
+  const card = isCreating ? (
+    <div className="relative py-[3px]">
+      {/* Glow layer — slightly taller than the card, sits behind it */}
+      <div className="absolute inset-x-0 inset-y-0 rounded-lg overflow-hidden">
+        <div
+          className="absolute inset-0 w-1/3"
+          style={{
+            background: "linear-gradient(90deg, transparent, var(--color-primary), transparent)",
+            opacity: 0.45,
+            animation: "creating-sweep 2.5s ease-in-out infinite",
+          }}
+        />
+      </div>
+      {/* Card sits on top */}
+      <div className="relative">{cardInner}</div>
+    </div>
+  ) : cardInner;
 
   if (isPlayable) {
     return (

@@ -196,3 +196,8 @@
 .feed-item-enter {
   animation: feed-fade-in 0.3s ease-out both;
 }
+
+@keyframes creating-sweep {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(400%); }
+}
