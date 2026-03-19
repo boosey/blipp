@@ -100,7 +100,7 @@ export function createMockEnv(): Env {
     ASSEMBLYAI_API_KEY: "mock-assemblyai-key",
     GOOGLE_STT_API_KEY: "mock-google-stt-key",
     GROQ_API_KEY: "mock-groq-key",
-    AI: { run: vi.fn() } as unknown as Ai,
+    AI: { run: vi.fn().mockResolvedValue({ data: [[0.1, 0.2, 0.3]] }) } as unknown as Ai,
   };
 }
 
