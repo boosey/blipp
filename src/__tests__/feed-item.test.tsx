@@ -143,18 +143,19 @@ describe("FeedItemCard", () => {
     expect(screen.getByText("Test Episode")).toBeInTheDocument();
   });
 
-  it("shows status badge for PENDING items", () => {
+  it("shows creating sweep glow for PENDING items", () => {
     const item: FeedItem = {
       ...mockItem,
       status: "PENDING",
       briefing: null,
     };
-    render(
+    const { container } = render(
       <MemoryRouter>
         <FeedItemCard item={item} />
       </MemoryRouter>
     );
-    expect(screen.getByText("Creating")).toBeInTheDocument();
+    // Sweep glow wrapper has py-[3px] class
+    expect(container.querySelector(".py-\\[3px\\]")).toBeInTheDocument();
   });
 
   it("shows error message for FAILED items", () => {
