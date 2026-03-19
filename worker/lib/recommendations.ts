@@ -1,4 +1,8 @@
 import { getConfig } from "./config";
+import { getWorkProduct } from "./work-products";
+import { wpKey } from "./work-products";
+import { fingerprint } from "./topic-extraction";
+import { buildEmbeddingText, computeEmbedding, averageEmbeddings } from "./embeddings";
 
 // Types
 interface CategoryWeights {
@@ -34,19 +38,22 @@ export function cosineSimilarity(a: CategoryWeights, b: CategoryWeights): number
 }
 
 // Compute profiles for ALL podcasts (run weekly via cron)
-export async function computePodcastProfiles(prisma: any): Promise<number> {
+export async function computePodcastProfiles(prisma: any, env?: any): Promise<number> {
   const podcasts = await prisma.podcast.findMany({
     where: { status: "active" },
     select: {
       id: true,
+      title: true,
+      description: true,
       categories: true,
       _count: { select: { subscriptions: true } },
       votes: { select: { vote: true } },
       subscriptions: { select: { userId: true } },
       episodes: {
+        where: { distillation: { status: "COMPLETED" } },
         orderBy: { publishedAt: "desc" },
-        take: 1,
-        select: { publishedAt: true },
+        take: 10,
+        select: { id: true, publishedAt: true },
       },
     },
   });
@@ -63,6 +70,11 @@ export async function computePodcastProfiles(prisma: any): Promise<number> {
       new Set((podcast.subscriptions || []).map((s: any) => s.userId))
     );
   }
+
+  // Check if embeddings are enabled
+  const embeddingsEnabled = env?.AI
+    ? await getConfig(prisma, "recommendations.embeddings.enabled", false)
+    : false;
 
   for (const podcast of podcasts) {
     // Category weights: equal weight for each category
@@ -91,21 +103,71 @@ export async function computePodcastProfiles(prisma: any): Promise<number> {
       freshness = Math.max(0, 1 - daysSince / 30);
     }
 
+    // Topic extraction from R2 claims
+    let podcastTopics: string[] = [];
+    if (env?.R2 && podcast.episodes.length > 0) {
+      const topicWeights = new Map<string, number>();
+
+      for (let i = 0; i < podcast.episodes.length; i++) {
+        const episode = podcast.episodes[i];
+        try {
+          const key = wpKey({ type: "CLAIMS", episodeId: episode.id });
+          const data = await getWorkProduct(env.R2, key);
+          if (!data) continue;
+          const claims = JSON.parse(new TextDecoder().decode(data));
+          const topics = fingerprint(claims);
+
+          // Weight by recency: most recent = 1.0, older episodes decay to 0.5
+          const recencyWeight = 1.0 - (i / podcast.episodes.length) * 0.5;
+
+          for (const t of topics) {
+            topicWeights.set(t.topic, (topicWeights.get(t.topic) || 0) + t.weight * recencyWeight);
+          }
+
+          // Store episode-level topics
+          const episodeTopics = topics.map((t) => t.topic);
+          await prisma.episode.update({
+            where: { id: episode.id },
+            data: { topicTags: episodeTopics },
+          });
+        } catch {
+          // Skip episodes with missing/invalid claims
+        }
+      }
+
+      // Take top 30 podcast-level topics
+      podcastTopics = [...topicWeights.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 30)
+        .map(([topic]) => topic);
+    }
+
+    // Embedding computation
+    let embedding: number[] | null = null;
+    if (embeddingsEnabled && env?.AI && podcastTopics.length > 0) {
+      const text = buildEmbeddingText(podcast.title, podcast.description, podcastTopics);
+      embedding = await computeEmbedding(env.AI, text);
+    }
+
     await prisma.podcastProfile.upsert({
       where: { podcastId: podcast.id },
       create: {
         podcastId: podcast.id,
         categoryWeights,
+        topicTags: podcastTopics,
         popularity,
         freshness,
         subscriberCount: podcast._count.subscriptions,
+        ...(embedding ? { embedding } : {}),
         computedAt: new Date(),
       },
       update: {
         categoryWeights,
+        topicTags: podcastTopics,
         popularity,
         freshness,
         subscriberCount: podcast._count.subscriptions,
+        ...(embedding ? { embedding } : {}),
         computedAt: new Date(),
       },
     });
@@ -199,10 +261,71 @@ export async function computeUserProfile(userId: string, prisma: any): Promise<v
     categoryWeights[key] /= maxWeight;
   }
 
+  // Aggregate topics from podcast profiles
+  const subscribedPodcastIds = subscriptions.map((s: any) => s.podcastId);
+  const upvotedPodcastIds = podcastVotes
+    .filter((pv: any) => pv.vote > 0)
+    .map((pv: any) => pv.podcastId);
+  const allRelevantIds = [...new Set([...subscribedPodcastIds, ...upvotedPodcastIds])];
+
+  let userTopics: string[] = [];
+  let userEmbedding: number[] | null = null;
+
+  if (allRelevantIds.length > 0) {
+    const profiles = await prisma.podcastProfile.findMany({
+      where: { podcastId: { in: allRelevantIds } },
+      select: { podcastId: true, topicTags: true, embedding: true },
+    });
+
+    const topicWeights = new Map<string, number>();
+    const subscribedSet = new Set(subscribedPodcastIds);
+    const upvotedSet = new Set(upvotedPodcastIds);
+
+    for (const profile of profiles) {
+      const tags: string[] = profile.topicTags || [];
+      // Subscription topics weight 1.0, upvote topics weight 0.7
+      let weight = 0;
+      if (subscribedSet.has(profile.podcastId)) weight += 1.0;
+      if (upvotedSet.has(profile.podcastId)) weight += 0.7;
+
+      for (const tag of tags) {
+        topicWeights.set(tag, (topicWeights.get(tag) || 0) + weight);
+      }
+    }
+
+    // Take top 30 user topics
+    userTopics = [...topicWeights.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 30)
+      .map(([topic]) => topic);
+
+    // Compute user embedding as centroid of subscribed podcast embeddings
+    const subscribedEmbeddings = profiles
+      .filter((p: any) => subscribedSet.has(p.podcastId) && p.embedding)
+      .map((p: any) => p.embedding as number[]);
+
+    if (subscribedEmbeddings.length > 0) {
+      userEmbedding = averageEmbeddings(subscribedEmbeddings);
+    }
+  }
+
   await prisma.userRecommendationProfile.upsert({
     where: { userId },
-    create: { userId, categoryWeights, listenCount, computedAt: new Date() },
-    update: { categoryWeights, listenCount, computedAt: new Date() },
+    create: {
+      userId,
+      categoryWeights,
+      topicTags: userTopics,
+      listenCount,
+      ...(userEmbedding ? { embedding: userEmbedding } : {}),
+      computedAt: new Date(),
+    },
+    update: {
+      categoryWeights,
+      topicTags: userTopics,
+      listenCount,
+      ...(userEmbedding ? { embedding: userEmbedding } : {}),
+      computedAt: new Date(),
+    },
   });
 }
 

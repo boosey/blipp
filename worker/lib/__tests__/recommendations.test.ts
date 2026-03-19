@@ -6,7 +6,25 @@ vi.mock("../config", () => ({
   getConfig: vi.fn(),
 }));
 
+vi.mock("../work-products", () => ({
+  getWorkProduct: vi.fn(),
+  wpKey: vi.fn((params: any) => `wp/claims/${params.episodeId}.json`),
+}));
+
+vi.mock("../topic-extraction", () => ({
+  fingerprint: vi.fn(),
+}));
+
+vi.mock("../embeddings", () => ({
+  buildEmbeddingText: vi.fn(),
+  computeEmbedding: vi.fn(),
+  averageEmbeddings: vi.fn(),
+}));
+
 import { getConfig } from "../config";
+import { getWorkProduct } from "../work-products";
+import { fingerprint } from "../topic-extraction";
+import { buildEmbeddingText, computeEmbedding, averageEmbeddings } from "../embeddings";
 
 let mockPrisma: ReturnType<typeof createMockPrisma>;
 
@@ -52,14 +70,18 @@ describe("computePodcastProfiles", () => {
     mockPrisma.podcast.findMany.mockResolvedValue([
       {
         id: "pod1",
+        title: "Tech Podcast",
+        description: "A technology podcast",
         categories: ["Technology", "Science"],
         _count: { subscriptions: 10 },
         votes: [{ vote: 1 }, { vote: 1 }, { vote: -1 }],
         subscriptions: [{ userId: "u1" }, { userId: "u2" }],
-        episodes: [{ publishedAt: now }],
+        episodes: [{ id: "ep1", publishedAt: now }],
       },
       {
         id: "pod2",
+        title: "Empty Podcast",
+        description: null,
         categories: [],
         _count: { subscriptions: 5 },
         votes: [],
@@ -82,8 +104,8 @@ describe("computePodcastProfiles", () => {
 
   it("normalizes popularity relative to max subscribers", async () => {
     mockPrisma.podcast.findMany.mockResolvedValue([
-      { id: "pod1", categories: [], _count: { subscriptions: 100 }, votes: [], subscriptions: [], episodes: [] },
-      { id: "pod2", categories: [], _count: { subscriptions: 50 }, votes: [], subscriptions: [], episodes: [] },
+      { id: "pod1", title: "P1", description: null, categories: [], _count: { subscriptions: 100 }, votes: [], subscriptions: [], episodes: [] },
+      { id: "pod2", title: "P2", description: null, categories: [], _count: { subscriptions: 50 }, votes: [], subscriptions: [], episodes: [] },
     ]);
     mockPrisma.podcastProfile.upsert.mockResolvedValue({});
 
@@ -95,12 +117,127 @@ describe("computePodcastProfiles", () => {
     expect(pop1).toBe(1);   // 100/100
     expect(pop2).toBe(0.5); // 50/100
   });
+
+  it("extracts topics from R2 claims when env is provided", async () => {
+    const now = new Date();
+    const claimsData = [
+      { claim: "Machine learning advances rapidly", speaker: "host", importance: 3, novelty: 2, excerpt: "..." },
+      { claim: "Neural networks improve accuracy", speaker: "guest", importance: 2, novelty: 1, excerpt: "..." },
+    ];
+    const encoded = new TextEncoder().encode(JSON.stringify(claimsData));
+
+    mockPrisma.podcast.findMany.mockResolvedValue([
+      {
+        id: "pod1",
+        title: "AI Pod",
+        description: "AI topics",
+        categories: ["Technology"],
+        _count: { subscriptions: 5 },
+        votes: [],
+        subscriptions: [],
+        episodes: [
+          { id: "ep1", publishedAt: now },
+          { id: "ep2", publishedAt: new Date(now.getTime() - 86400000) },
+        ],
+      },
+    ]);
+    mockPrisma.podcastProfile.upsert.mockResolvedValue({});
+    mockPrisma.episode.update.mockResolvedValue({});
+
+    (getWorkProduct as any)
+      .mockResolvedValueOnce(encoded.buffer) // ep1
+      .mockResolvedValueOnce(encoded.buffer); // ep2
+
+    (fingerprint as any)
+      .mockReturnValueOnce([
+        { topic: "machine learning", weight: 3.0 },
+        { topic: "neural networks", weight: 2.0 },
+      ])
+      .mockReturnValueOnce([
+        { topic: "machine learning", weight: 2.5 },
+        { topic: "deep learning", weight: 1.5 },
+      ]);
+
+    const mockEnv = { R2: { get: vi.fn() } };
+    await computePodcastProfiles(mockPrisma, mockEnv);
+
+    // Episode topics should be stored
+    expect(mockPrisma.episode.update).toHaveBeenCalledTimes(2);
+    expect(mockPrisma.episode.update).toHaveBeenCalledWith({
+      where: { id: "ep1" },
+      data: { topicTags: ["machine learning", "neural networks"] },
+    });
+
+    // Podcast profile should include aggregated topics
+    const upsertCall = mockPrisma.podcastProfile.upsert.mock.calls[0][0];
+    expect(upsertCall.create.topicTags).toContain("machine learning");
+    expect(upsertCall.create.topicTags.length).toBeGreaterThan(0);
+  });
+
+  it("computes embeddings when enabled and AI binding present", async () => {
+    const now = new Date();
+    const claimsData = [{ claim: "test claim", speaker: "host", importance: 1, novelty: 1, excerpt: "..." }];
+    const encoded = new TextEncoder().encode(JSON.stringify(claimsData));
+
+    mockPrisma.podcast.findMany.mockResolvedValue([
+      {
+        id: "pod1",
+        title: "Test Pod",
+        description: "A test podcast",
+        categories: [],
+        _count: { subscriptions: 1 },
+        votes: [],
+        subscriptions: [],
+        episodes: [{ id: "ep1", publishedAt: now }],
+      },
+    ]);
+    mockPrisma.podcastProfile.upsert.mockResolvedValue({});
+    mockPrisma.episode.update.mockResolvedValue({});
+
+    (getWorkProduct as any).mockResolvedValue(encoded.buffer);
+    (fingerprint as any).mockReturnValue([{ topic: "testing", weight: 1.0 }]);
+    (getConfig as any).mockResolvedValue(true); // embeddings enabled
+    (buildEmbeddingText as any).mockReturnValue("Test Pod A test podcast testing");
+    (computeEmbedding as any).mockResolvedValue([0.1, 0.2, 0.3]);
+
+    const mockEnv = { R2: { get: vi.fn() }, AI: { run: vi.fn() } };
+    await computePodcastProfiles(mockPrisma, mockEnv);
+
+    expect(buildEmbeddingText).toHaveBeenCalledWith("Test Pod", "A test podcast", ["testing"]);
+    expect(computeEmbedding).toHaveBeenCalledWith(mockEnv.AI, "Test Pod A test podcast testing");
+
+    const upsertCall = mockPrisma.podcastProfile.upsert.mock.calls[0][0];
+    expect(upsertCall.create.embedding).toEqual([0.1, 0.2, 0.3]);
+  });
+
+  it("skips topics and embeddings when env is not provided", async () => {
+    mockPrisma.podcast.findMany.mockResolvedValue([
+      {
+        id: "pod1",
+        title: "P1",
+        description: null,
+        categories: ["Tech"],
+        _count: { subscriptions: 1 },
+        votes: [],
+        subscriptions: [],
+        episodes: [{ id: "ep1", publishedAt: new Date() }],
+      },
+    ]);
+    mockPrisma.podcastProfile.upsert.mockResolvedValue({});
+
+    await computePodcastProfiles(mockPrisma);
+
+    expect(getWorkProduct).not.toHaveBeenCalled();
+    expect(fingerprint).not.toHaveBeenCalled();
+    const upsertCall = mockPrisma.podcastProfile.upsert.mock.calls[0][0];
+    expect(upsertCall.create.topicTags).toEqual([]);
+  });
 });
 
 describe("computeUserProfile", () => {
   it("upserts a user profile with weighted category aggregation", async () => {
     mockPrisma.subscription.findMany.mockResolvedValue([
-      { podcast: { categories: ["Technology"] } },
+      { podcastId: "pod1", podcast: { categories: ["Technology"] } },
     ]);
     mockPrisma.podcastFavorite.findMany.mockResolvedValue([
       { podcast: { categories: ["Technology", "Science"] } },
@@ -108,6 +245,7 @@ describe("computeUserProfile", () => {
     mockPrisma.podcastVote.findMany.mockResolvedValue([]);
     mockPrisma.episodeVote.findMany.mockResolvedValue([]);
     mockPrisma.feedItem.count.mockResolvedValue(5);
+    mockPrisma.podcastProfile.findMany.mockResolvedValue([]);
     mockPrisma.userRecommendationProfile.upsert.mockResolvedValue({});
 
     await computeUserProfile("user1", mockPrisma);
@@ -130,13 +268,14 @@ describe("computeUserProfile", () => {
     mockPrisma.subscription.findMany.mockResolvedValue([]);
     mockPrisma.podcastFavorite.findMany.mockResolvedValue([]);
     mockPrisma.podcastVote.findMany.mockResolvedValue([
-      { vote: 1, podcast: { categories: ["Comedy", "Society"] } },
-      { vote: -1, podcast: { categories: ["True Crime"] } },
+      { vote: 1, podcastId: "pod1", podcast: { categories: ["Comedy", "Society"] } },
+      { vote: -1, podcastId: "pod2", podcast: { categories: ["True Crime"] } },
     ]);
     mockPrisma.episodeVote.findMany.mockResolvedValue([
       { vote: 1, episode: { podcast: { categories: ["Comedy"] } } },
     ]);
     mockPrisma.feedItem.count.mockResolvedValue(0);
+    mockPrisma.podcastProfile.findMany.mockResolvedValue([]);
     mockPrisma.userRecommendationProfile.upsert.mockResolvedValue({});
 
     await computeUserProfile("user1", mockPrisma);
@@ -148,6 +287,34 @@ describe("computeUserProfile", () => {
     expect(weights.Comedy).toBeCloseTo(1.0);
     expect(weights.Society).toBeCloseTo(0.7);
     expect(weights["True Crime"]).toBe(0);
+  });
+
+  it("aggregates topics from podcast profiles into user profile", async () => {
+    mockPrisma.subscription.findMany.mockResolvedValue([
+      { podcastId: "pod1", podcast: { categories: ["Tech"] } },
+    ]);
+    mockPrisma.podcastFavorite.findMany.mockResolvedValue([]);
+    mockPrisma.podcastVote.findMany.mockResolvedValue([
+      { vote: 1, podcastId: "pod2", podcast: { categories: ["Science"] } },
+    ]);
+    mockPrisma.episodeVote.findMany.mockResolvedValue([]);
+    mockPrisma.feedItem.count.mockResolvedValue(0);
+    mockPrisma.podcastProfile.findMany.mockResolvedValue([
+      { podcastId: "pod1", topicTags: ["machine learning", "neural networks"], embedding: [0.1, 0.2] },
+      { podcastId: "pod2", topicTags: ["quantum computing", "machine learning"], embedding: null },
+    ]);
+    (averageEmbeddings as any).mockReturnValue([0.1, 0.2]);
+    mockPrisma.userRecommendationProfile.upsert.mockResolvedValue({});
+
+    await computeUserProfile("user1", mockPrisma);
+
+    const upsertCall = mockPrisma.userRecommendationProfile.upsert.mock.calls[0][0];
+    // pod1 is subscribed (weight 1.0), pod2 is upvoted (weight 0.7)
+    expect(upsertCall.create.topicTags).toContain("machine learning");
+    expect(upsertCall.create.topicTags).toContain("neural networks");
+    expect(upsertCall.create.topicTags).toContain("quantum computing");
+    // Embedding from subscribed podcast only (pod1 has embedding)
+    expect(upsertCall.create.embedding).toEqual([0.1, 0.2]);
   });
 });
 
@@ -278,7 +445,10 @@ describe("scoreRecommendations", () => {
     mockPrisma.recommendationDismissal.findMany.mockResolvedValue([]);
     mockPrisma.feedItem.count.mockResolvedValue(0);
     mockPrisma.userRecommendationProfile.upsert.mockResolvedValue({});
-    mockPrisma.podcastProfile.findMany.mockResolvedValue([]);
+    // computeUserProfile now queries podcast profiles for topic aggregation
+    mockPrisma.podcastProfile.findMany
+      .mockResolvedValueOnce([]) // computeUserProfile's profile lookup
+      .mockResolvedValueOnce([]); // recursive scoreRecommendations candidate profiles
     mockPrisma.podcast.findMany.mockResolvedValue([]);
 
     // Second call to scoreRecommendations (recursive) needs another set of config mocks

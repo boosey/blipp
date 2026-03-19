@@ -8,10 +8,11 @@ type PrismaLike = object;
  */
 export async function runRecommendationsJob(
   prisma: PrismaLike,
-  logger: CronLogger
+  logger: CronLogger,
+  env?: any
 ): Promise<Record<string, unknown>> {
   const { computePodcastProfiles } = await import("../recommendations");
-  const profileCount = await computePodcastProfiles(prisma as any);
+  const profileCount = await computePodcastProfiles(prisma as any, env);
   await logger.info("recommendation_profiles_refreshed", { profileCount });
   return { profileCount };
 }

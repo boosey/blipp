@@ -174,7 +174,7 @@ export async function scheduled(
       runJob({
         jobKey: "recommendations",
         prisma: prisma as any,
-        execute: (logger) => runRecommendationsJob(prisma as any, logger),
+        execute: (logger) => runRecommendationsJob(prisma as any, logger, env),
       }),
     ]);
   } finally {
