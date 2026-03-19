@@ -19,3 +19,6 @@ secrets-*.env
 
 /src/generated/prisma
 /src/generated/prisma-node
+
+# Build analysis
+bundle-stats.*
