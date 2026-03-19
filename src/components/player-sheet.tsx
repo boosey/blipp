@@ -102,6 +102,42 @@ export function PlayerSheet({
     }
   }, [currentItem]);
 
+  // Swipe-to-dismiss
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const swipeStartY = useRef(0);
+  const swipeCurrentY = useRef(0);
+
+  const onSwipeStart = useCallback((e: React.TouchEvent) => {
+    swipeStartY.current = e.touches[0].clientY;
+    swipeCurrentY.current = e.touches[0].clientY;
+  }, []);
+
+  const onSwipeMove = useCallback((e: React.TouchEvent) => {
+    swipeCurrentY.current = e.touches[0].clientY;
+    const dy = swipeCurrentY.current - swipeStartY.current;
+    // Only allow downward drag when at scroll top
+    const el = sheetRef.current;
+    const scrollTop = el?.scrollTop ?? 0;
+    if (dy > 0 && scrollTop <= 0 && el) {
+      e.preventDefault();
+      el.style.transform = `translateY(${dy}px)`;
+      el.style.transition = "none";
+    }
+  }, []);
+
+  const onSwipeEnd = useCallback(() => {
+    const dy = swipeCurrentY.current - swipeStartY.current;
+    const el = sheetRef.current;
+    const scrollTop = el?.scrollTop ?? 0;
+    if (el) {
+      el.style.transition = "transform 0.2s ease-out";
+      el.style.transform = "";
+    }
+    if (dy > 100 && scrollTop <= 0) {
+      onOpenChange(false);
+    }
+  }, [onOpenChange]);
+
   if (!currentItem) return null;
 
   const inAd = adState === "preroll" || adState === "postroll";
@@ -109,9 +145,13 @@ export function PlayerSheet({
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
+        ref={sheetRef}
         side="bottom"
         showCloseButton={false}
         className="h-[85dvh] rounded-t-2xl bg-background border-border flex flex-col items-center px-6 pt-3 pb-[max(2rem,env(safe-area-inset-bottom))] overflow-y-auto"
+        onTouchStart={onSwipeStart}
+        onTouchMove={onSwipeMove}
+        onTouchEnd={onSwipeEnd}
       >
         {/* Drag handle + close button */}
         <div className="w-full flex items-center justify-center relative flex-shrink-0 mb-2">

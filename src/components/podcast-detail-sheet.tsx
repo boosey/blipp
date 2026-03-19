@@ -1,4 +1,5 @@
 import { useRef, useCallback } from "react";
+import { X } from "lucide-react";
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from "./ui/sheet";
 import { usePodcastSheet } from "../contexts/podcast-sheet-context";
 import { PodcastDetail } from "../pages/podcast-detail";
@@ -52,9 +53,16 @@ export function PodcastDetailSheet() {
       >
         <SheetTitle className="sr-only">Podcast Detail</SheetTitle>
         <SheetDescription className="sr-only">Podcast details and episodes</SheetDescription>
-        {/* Drag handle */}
-        <div className="flex-shrink-0 pt-3 pb-2 px-4">
+        {/* Drag handle + close button (visible on hover/desktop) */}
+        <div className="flex-shrink-0 pt-3 pb-2 px-4 relative">
           <div className="w-10 h-1 bg-muted rounded-full mx-auto" />
+          <button
+            onClick={close}
+            className="absolute right-3 top-2 p-1.5 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors opacity-0 hover:opacity-100 focus:opacity-100 sm:opacity-100"
+            aria-label="Close"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
         {/* Scrollable content */}
         <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 pb-8">
