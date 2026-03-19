@@ -1,12 +1,42 @@
 import { Hono } from "hono";
+import { z } from "zod/v4";
 import type { Env } from "../types";
 import { requireAuth } from "../middleware/auth";
 import { getCurrentUser } from "../lib/admin-helpers";
 import { getUserWithPlan, checkDurationLimit, checkSubscriptionLimit } from "../lib/plan-limits";
-import { DURATION_TIERS, isValidDurationTier } from "../lib/constants";
+import { DURATION_TIERS } from "../lib/constants";
 import { getConfig } from "../lib/config";
 import { getCatalogSource } from "../lib/catalog-sources";
 import { recomputeUserProfile } from "../lib/recommendations";
+import { validateBody } from "../lib/validation";
+
+/* ── Zod schemas ─────────────────────────────────────────── */
+
+const SearchSchema = z.object({ query: z.string().min(2).max(200) });
+
+const SubscribeSchema = z.object({
+  feedUrl: z.string().min(1),
+  title: z.string().min(1),
+  durationTier: z.number().refine(v => DURATION_TIERS.includes(v as any), {
+    message: `Must be one of: ${DURATION_TIERS.join(", ")}`,
+  }),
+  description: z.string().optional(),
+  imageUrl: z.string().optional(),
+  podcastIndexId: z.string().optional(),
+  author: z.string().optional(),
+});
+
+const UpdateSubscriptionSchema = z.object({
+  durationTier: z.number().refine(v => DURATION_TIERS.includes(v as any), {
+    message: `Must be one of: ${DURATION_TIERS.join(", ")}`,
+  }),
+});
+
+const FavoritesSchema = z.object({ podcastIds: z.array(z.string().min(1)) });
+
+const RequestSchema = z.object({ feedUrl: z.string().min(1), title: z.string().optional() });
+
+const VoteSchema = z.object({ vote: z.number().int().min(-1).max(1).optional() });
 
 /**
  * Podcast discovery and subscription routes.
@@ -81,11 +111,7 @@ podcasts.get("/catalog", async (c) => {
  */
 podcasts.post("/search-podcasts", async (c) => {
   const prisma = c.get("prisma") as any;
-  const body = await c.req.json<{ query: string }>();
-
-  if (!body.query || body.query.trim().length < 2) {
-    return c.json({ error: "Query must be at least 2 characters" }, 400);
-  }
+  const body = await validateBody(c, SearchSchema);
 
   const sourceId = await getConfig(prisma, "catalog.source", "podcast-index") as string;
   const source = getCatalogSource(sourceId);
@@ -117,23 +143,7 @@ podcasts.post("/search-podcasts", async (c) => {
  * @returns The created subscription with podcast data and optional feedItem
  */
 podcasts.post("/subscribe", async (c) => {
-  const body = await c.req.json<{
-    feedUrl: string;
-    title: string;
-    durationTier: number;
-    description?: string;
-    imageUrl?: string;
-    podcastIndexId?: string;
-    author?: string;
-  }>();
-
-  if (!body.feedUrl || !body.title) {
-    return c.json({ error: "feedUrl and title are required" }, 400);
-  }
-
-  if (!body.durationTier || !isValidDurationTier(body.durationTier)) {
-    return c.json({ error: `durationTier is required and must be one of: ${DURATION_TIERS.join(", ")}` }, 400);
-  }
+  const body = await validateBody(c, SubscribeSchema);
 
   const prisma = c.get("prisma") as any;
   const user = await getUserWithPlan(c, prisma);
@@ -272,11 +282,7 @@ podcasts.post("/subscribe", async (c) => {
  */
 podcasts.patch("/subscribe/:podcastId", async (c) => {
   const podcastId = c.req.param("podcastId");
-  const body = await c.req.json<{ durationTier: number }>();
-
-  if (!body.durationTier || !isValidDurationTier(body.durationTier)) {
-    return c.json({ error: `durationTier must be one of: ${DURATION_TIERS.join(", ")}` }, 400);
-  }
+  const body = await validateBody(c, UpdateSubscriptionSchema);
 
   const prisma = c.get("prisma") as any;
   const user = await getUserWithPlan(c, prisma);
@@ -380,11 +386,7 @@ podcasts.get("/favorites", async (c) => {
 podcasts.post("/favorites", async (c) => {
   const prisma = c.get("prisma") as any;
   const user = await getCurrentUser(c, prisma);
-  const { podcastIds } = await c.req.json<{ podcastIds: string[] }>();
-
-  if (!Array.isArray(podcastIds)) {
-    return c.json({ error: "podcastIds must be an array" }, 400);
-  }
+  const { podcastIds } = await validateBody(c, FavoritesSchema);
 
   // Replace all favorites atomically
   await prisma.podcastFavorite.deleteMany({ where: { userId: user.id } });
@@ -462,9 +464,7 @@ podcasts.delete("/favorites/:podcastId", async (c) => {
 podcasts.post("/request", async (c) => {
   const prisma = c.get("prisma") as any;
   const user = await getCurrentUser(c, prisma);
-  const body = await c.req.json<{ feedUrl: string; title?: string }>();
-
-  if (!body.feedUrl) return c.json({ error: "feedUrl is required" }, 400);
+  const body = await validateBody(c, RequestSchema);
 
   const requestsEnabled = await getConfig(prisma, "catalog.requests.enabled", true);
   if (!requestsEnabled) return c.json({ error: "Podcast requests are currently disabled" }, 403);
@@ -587,7 +587,7 @@ podcasts.post("/vote/:podcastId", async (c) => {
   const podcastId = c.req.param("podcastId");
   const prisma = c.get("prisma") as any;
   const user = await getCurrentUser(c, prisma);
-  const { vote } = await c.req.json<{ vote: number }>();
+  const { vote } = await validateBody(c, VoteSchema);
 
   if (vote === 0 || vote === undefined || vote === null) {
     await prisma.podcastVote.deleteMany({
@@ -629,7 +629,7 @@ podcasts.post("/episodes/vote/:episodeId", async (c) => {
   const episodeId = c.req.param("episodeId");
   const prisma = c.get("prisma") as any;
   const user = await getCurrentUser(c, prisma);
-  const { vote } = await c.req.json<{ vote: number }>();
+  const { vote } = await validateBody(c, VoteSchema);
 
   if (vote === 0 || vote === undefined || vote === null) {
     await prisma.episodeVote.deleteMany({

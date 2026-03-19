@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import type { Env } from "../../types";
 import { podcasts } from "../podcasts";
 import { createMockPrisma, createMockEnv } from "../../../tests/helpers/mocks";
+import { classifyHttpError } from "../../lib/errors";
 
 vi.mock("../../middleware/auth", () => ({
   requireAuth: vi.fn((_c: any, next: any) => next()),
@@ -38,6 +39,10 @@ describe("POST /subscribe", () => {
     env = createMockEnv();
 
     app = new Hono<{ Bindings: Env }>();
+    app.onError((err, c) => {
+      const { status, message, code, details } = classifyHttpError(err);
+      return c.json({ error: message, code, details }, status as any);
+    });
     app.use("/*", async (c, next) => {
       c.set("prisma", mockPrisma);
       await next();
@@ -60,7 +65,7 @@ describe("POST /subscribe", () => {
     }, env, mockExCtx);
     expect(res.status).toBe(400);
     const data: any = await res.json();
-    expect(data.error).toContain("durationTier");
+    expect(data.code).toBe("VALIDATION_ERROR");
   });
 
   it("rejects invalid durationTier", async () => {
@@ -133,6 +138,10 @@ describe("PATCH /subscribe/:podcastId", () => {
     env = createMockEnv();
 
     app = new Hono<{ Bindings: Env }>();
+    app.onError((err, c) => {
+      const { status, message, code, details } = classifyHttpError(err);
+      return c.json({ error: message, code, details }, status as any);
+    });
     app.use("/*", async (c, next) => {
       c.set("prisma", mockPrisma);
       await next();
@@ -166,5 +175,90 @@ describe("PATCH /subscribe/:podcastId", () => {
     expect(res.status).toBe(200);
     const data: any = await res.json();
     expect(data.subscription.durationTier).toBe(10);
+  });
+
+  it("rejects missing durationTier in PATCH", async () => {
+    const res = await app.request("/subscribe/pod1", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    }, env, mockExCtx);
+    expect(res.status).toBe(400);
+    const data: any = await res.json();
+    expect(data.code).toBe("VALIDATION_ERROR");
+  });
+});
+
+describe("POST /subscribe — Zod validation", () => {
+  let app: Hono<{ Bindings: Env }>;
+  let mockPrisma: any;
+  let env: Env;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockPrisma = createMockPrisma();
+    env = createMockEnv();
+
+    app = new Hono<{ Bindings: Env }>();
+    app.onError((err, c) => {
+      const { status, message, code, details } = classifyHttpError(err);
+      return c.json({ error: message, code, details }, status as any);
+    });
+    app.use("/*", async (c, next) => {
+      c.set("prisma", mockPrisma);
+      await next();
+    });
+    app.route("/", podcasts);
+
+    (getUserWithPlan as any).mockResolvedValue({
+      id: "user1",
+      clerkId: "clerk1",
+      plan: { maxDurationMinutes: 15, maxPodcastSubscriptions: null },
+    });
+    (getCurrentUser as any).mockResolvedValue({ id: "user1", clerkId: "clerk1" });
+  });
+
+  it("rejects missing feedUrl", async () => {
+    const res = await app.request("/subscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "Test", durationTier: 5 }),
+    }, env, mockExCtx);
+    expect(res.status).toBe(400);
+    const data: any = await res.json();
+    expect(data.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("rejects missing title", async () => {
+    const res = await app.request("/subscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ feedUrl: "https://example.com/feed", durationTier: 5 }),
+    }, env, mockExCtx);
+    expect(res.status).toBe(400);
+    const data: any = await res.json();
+    expect(data.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("rejects invalid durationTier value", async () => {
+    const res = await app.request("/subscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ feedUrl: "https://example.com/feed", title: "Test", durationTier: 99 }),
+    }, env, mockExCtx);
+    expect(res.status).toBe(400);
+    const data: any = await res.json();
+    expect(data.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("rejects empty body", async () => {
+    const res = await app.request("/subscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    }, env, mockExCtx);
+    expect(res.status).toBe(400);
+    const data: any = await res.json();
+    expect(data.code).toBe("VALIDATION_ERROR");
   });
 });

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Hono } from "hono";
 import type { Env } from "../../types";
 import { createMockEnv, createMockPrisma } from "../../../tests/helpers/mocks";
+import { classifyHttpError } from "../../lib/errors";
 
 // Mock Prisma deps so Vite doesn't try to resolve the generated client
 vi.mock("@prisma/adapter-pg", () => ({ PrismaPg: vi.fn() }));
@@ -67,6 +68,10 @@ describe("Podcast Routes", () => {
     env = createMockEnv();
 
     app = new Hono<{ Bindings: Env }>();
+    app.onError((err, c) => {
+      const { status, message, code, details } = classifyHttpError(err);
+      return c.json({ error: message, code, details }, status as any);
+    });
     app.use("/*", async (c, next) => { c.set("prisma", mockPrisma); await next(); });
     app.route("/podcasts", podcasts);
 
@@ -201,7 +206,7 @@ describe("Podcast Routes", () => {
 
       expect(res.status).toBe(400);
       const body: any = await res.json();
-      expect(body.error).toContain("durationTier");
+      expect(body.code).toBe("VALIDATION_ERROR");
     });
   });
 
@@ -263,6 +268,120 @@ describe("Podcast Routes", () => {
       const body: any = await res.json();
       expect(body.subscriptions).toHaveLength(1);
       expect(body.subscriptions[0].podcast.title).toBe("My Podcast");
+    });
+  });
+
+  describe("Zod validation rejections", () => {
+    it("POST /search-podcasts rejects short query", async () => {
+      const res = await app.request(
+        "/podcasts/search-podcasts",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query: "a" }),
+        },
+        env,
+        mockExCtx
+      );
+      expect(res.status).toBe(400);
+      const body: any = await res.json();
+      expect(body.code).toBe("VALIDATION_ERROR");
+    });
+
+    it("POST /favorites rejects non-array podcastIds", async () => {
+      const user = { id: "usr_1", clerkId: "user_test123" };
+      mockPrisma.user.findUniqueOrThrow.mockResolvedValueOnce(user);
+
+      const res = await app.request(
+        "/podcasts/favorites",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ podcastIds: "not-an-array" }),
+        },
+        env,
+        mockExCtx
+      );
+      expect(res.status).toBe(400);
+      const body: any = await res.json();
+      expect(body.code).toBe("VALIDATION_ERROR");
+    });
+
+    it("POST /request rejects missing feedUrl", async () => {
+      const user = { id: "usr_1", clerkId: "user_test123" };
+      mockPrisma.user.findUniqueOrThrow.mockResolvedValueOnce(user);
+
+      const res = await app.request(
+        "/podcasts/request",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: "My Podcast" }),
+        },
+        env,
+        mockExCtx
+      );
+      expect(res.status).toBe(400);
+      const body: any = await res.json();
+      expect(body.code).toBe("VALIDATION_ERROR");
+    });
+
+    it("POST /vote/:podcastId rejects vote out of range", async () => {
+      const user = { id: "usr_1", clerkId: "user_test123" };
+      mockPrisma.user.findUniqueOrThrow.mockResolvedValueOnce(user);
+
+      const res = await app.request(
+        "/podcasts/vote/pod_1",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ vote: 5 }),
+        },
+        env,
+        mockExCtx
+      );
+      expect(res.status).toBe(400);
+      const body: any = await res.json();
+      expect(body.code).toBe("VALIDATION_ERROR");
+    });
+
+    it("POST /vote/:podcastId rejects non-integer vote", async () => {
+      const user = { id: "usr_1", clerkId: "user_test123" };
+      mockPrisma.user.findUniqueOrThrow.mockResolvedValueOnce(user);
+
+      const res = await app.request(
+        "/podcasts/vote/pod_1",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ vote: 0.5 }),
+        },
+        env,
+        mockExCtx
+      );
+      expect(res.status).toBe(400);
+      const body: any = await res.json();
+      expect(body.code).toBe("VALIDATION_ERROR");
+    });
+
+    it("POST /vote/:podcastId allows omitted vote (remove vote)", async () => {
+      const user = { id: "usr_1", clerkId: "user_test123" };
+      mockPrisma.user.findUniqueOrThrow.mockResolvedValueOnce(user);
+      mockPrisma.podcastVote.deleteMany.mockResolvedValueOnce({});
+
+      const res = await app.request(
+        "/podcasts/vote/pod_1",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        },
+        env,
+        mockExCtx
+      );
+      expect(res.status).toBe(200);
+      const body: any = await res.json();
+      expect(body.vote).toBe(0);
     });
   });
 });
