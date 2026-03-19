@@ -41,7 +41,7 @@ export function PodcastDetailSheet() {
   }, [close]);
 
   return (
-    <Sheet open={podcastId !== null} onOpenChange={(open) => { if (!open) close(); }}>
+    <Sheet open={podcastId !== null} onOpenChange={(open) => { if (!open) close(); }} modal={false}>
       <SheetContent
         ref={sheetRef}
         side="bottom"
