@@ -105,34 +105,36 @@ export function Discover() {
     }
   }, [apiFetch]);
 
-  // Initial load
+  // Initial load — run once on mount
   useEffect(() => {
     fetchCatalogPage(1, true);
-  }, [fetchCatalogPage]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const hasMore = allPodcasts.length < browseTotal;
 
   // Refs for infinite scroll to avoid re-creating the observer on every state change
-  const browseStateRef = useRef({ hasMore, browseLoading, browsePage });
-  browseStateRef.current = { hasMore, browseLoading, browsePage };
+  const browseStateRef = useRef({ hasMore, browseLoading, browsePage, fetchCatalogPage });
+  browseStateRef.current = { hasMore, browseLoading, browsePage, fetchCatalogPage };
 
-  // Intersection observer for infinite scroll — created once, reads state from ref
+  // Intersection observer for infinite scroll — created once, reads all state from ref
   useEffect(() => {
     const el = loadMoreRef.current;
     if (!el || typeof IntersectionObserver === "undefined") return;
     const scrollParent = el.closest("main") ?? null;
     const observer = new IntersectionObserver(
       (entries) => {
-        const { hasMore: hm, browseLoading: bl, browsePage: bp } = browseStateRef.current;
+        const { hasMore: hm, browseLoading: bl, browsePage: bp, fetchCatalogPage: loadPage } = browseStateRef.current;
         if (entries[0].isIntersecting && hm && !bl) {
-          fetchCatalogPage(bp + 1);
+          loadPage(bp + 1);
         }
       },
       { root: scrollParent, rootMargin: "100px" }
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, [fetchCatalogPage]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Created once — all dynamic values read from browseStateRef
 
   // Pull to refresh reloads page 1
   const { indicator: pullIndicator, bind: pullBind } = usePullToRefresh({
