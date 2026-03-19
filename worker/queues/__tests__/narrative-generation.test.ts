@@ -253,7 +253,8 @@ describe("handleNarrativeGeneration", () => {
 
     // Narrative generated with model from config + episode metadata
     expect(generateNarrative).toHaveBeenCalledWith(
-      expect.anything(),
+      expect.anything(), // prisma
+      expect.anything(), // llm
       CLAIMS,
       5,
       expect.any(String),
@@ -337,7 +338,8 @@ describe("handleNarrativeGeneration", () => {
     expect(selectClaimsForDuration).not.toHaveBeenCalled();
     // All claims passed directly to generateNarrative
     expect(generateNarrative).toHaveBeenCalledWith(
-      expect.anything(),
+      expect.anything(), // prisma
+      expect.anything(), // llm
       legacyClaims,
       5,
       expect.any(String),
@@ -353,7 +355,7 @@ describe("handleNarrativeGeneration", () => {
     await handleNarrativeGeneration(mockBatch, mockEnv, mockCtx);
 
     expect(resolveModelChain).toHaveBeenCalledWith(expect.anything(), "narrative");
-    expect(generateNarrative).toHaveBeenCalledWith(expect.anything(), expect.anything(), 5, expect.any(String), 8192, expect.anything(), expect.anything(), expect.anything());
+    expect(generateNarrative).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.anything(), 5, expect.any(String), 8192, expect.anything(), expect.anything(), expect.anything());
   });
 
   describe("stage-enabled check", () => {
