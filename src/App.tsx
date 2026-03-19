@@ -24,7 +24,7 @@ const Briefings = lazy(() => import("./pages/admin/briefings"));
 const AdminUsers = lazy(() => import("./pages/admin/users"));
 const Analytics = lazy(() => import("./pages/admin/analytics"));
 const PipelineControls = lazy(() => import("./pages/admin/pipeline-controls"));
-const StageModels = lazy(() => import("./pages/admin/stage-models"));
+const StageConfiguration = lazy(() => import("./pages/admin/stage-configuration"));
 const FeatureFlags = lazy(() => import("./pages/admin/feature-flags"));
 const PodcastSettings = lazy(() => import("./pages/admin/podcast-settings"));
 const Requests = lazy(() => import("./pages/admin/requests"));
@@ -38,7 +38,6 @@ const AdminAiErrors = lazy(() => import("./pages/admin/ai-errors"));
 const AdminAds = lazy(() => import("./pages/admin/ads"));
 const AdminRecommendations = lazy(() => import("./pages/admin/recommendations"));
 const ScheduledJobs = lazy(() => import("./pages/admin/scheduled-jobs"));
-const PromptManagement = lazy(() => import("./pages/admin/prompt-management"));
 const DlqMonitor = lazy(() => import("./pages/admin/dlq"));
 const TermsOfService = lazy(() => import("./pages/tos"));
 const PrivacyPolicy = lazy(() => import("./pages/privacy"));
@@ -119,7 +118,8 @@ export default function App() {
         <Route path="plans" element={<Suspense fallback={<AdminLoading />}><Plans /></Suspense>} />
         <Route path="analytics" element={<Suspense fallback={<AdminLoading />}><Analytics /></Suspense>} />
         <Route path="pipeline-controls" element={<Suspense fallback={<AdminLoading />}><PipelineControls /></Suspense>} />
-        <Route path="stage-models" element={<Suspense fallback={<AdminLoading />}><StageModels /></Suspense>} />
+        <Route path="stage-configuration" element={<Suspense fallback={<AdminLoading />}><StageConfiguration /></Suspense>} />
+        <Route path="stage-models" element={<Navigate to="/admin/stage-configuration" replace />} />
         <Route path="feature-flags" element={<Suspense fallback={<AdminLoading />}><FeatureFlags /></Suspense>} />
         <Route path="podcast-settings" element={<Suspense fallback={<AdminLoading />}><PodcastSettings /></Suspense>} />
         <Route path="configuration" element={<Navigate to="pipeline-controls" replace />} />
@@ -133,7 +133,7 @@ export default function App() {
         <Route path="ads" element={<Suspense fallback={<AdminLoading />}><AdminAds /></Suspense>} />
         <Route path="recommendations" element={<Suspense fallback={<AdminLoading />}><AdminRecommendations /></Suspense>} />
         <Route path="scheduled-jobs" element={<Suspense fallback={<AdminLoading />}><ScheduledJobs /></Suspense>} />
-        <Route path="prompt-management" element={<Suspense fallback={<AdminLoading />}><PromptManagement /></Suspense>} />
+        <Route path="prompt-management" element={<Navigate to="/admin/stage-configuration" replace />} />
         <Route path="dlq" element={<Suspense fallback={<AdminLoading />}><DlqMonitor /></Suspense>} />
       </Route>
     </Routes>

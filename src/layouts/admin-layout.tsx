@@ -91,11 +91,10 @@ const sidebarEntries: SidebarEntry[] = [
     icon: Brain,
     children: [
       { path: "model-registry", label: "Model Registry", icon: Boxes },
-      { path: "stage-models", label: "Stage Models", icon: Sparkles },
+      { path: "stage-configuration", label: "Stage Configuration", icon: Sparkles },
       { path: "stt-benchmark", label: "STT Benchmark", icon: FlaskConical },
       { path: "claims-benchmark", label: "Claims Benchmark", icon: Scale },
       { path: "ai-errors", label: "Errors", icon: AlertTriangle },
-      { path: "prompt-management", label: "Prompts", icon: MessageSquare },
     ],
   },
 

@@ -31,17 +31,6 @@ function renderDiscover() {
   );
 }
 
-const mockPodcast = {
-  id: "p1",
-  title: "Tech Pod",
-  author: "Alice",
-  description: "A tech podcast",
-  imageUrl: "https://example.com/img.jpg",
-  feedUrl: "https://example.com/feed.xml",
-  episodeCount: 10,
-  categories: ["Technology"],
-};
-
 function mockJsonResponse(data: any) {
   return {
     ok: true,
@@ -62,11 +51,14 @@ describe("Discover", () => {
           ],
         }));
       }
-      if (url.includes("/podcasts/catalog")) {
-        return Promise.resolve(mockJsonResponse({ podcasts: [] }));
+      if (url.includes("/recommendations/curated")) {
+        return Promise.resolve(mockJsonResponse({ rows: [], podcastSuggestions: [] }));
       }
-      if (url.includes("/recommendations")) {
-        return Promise.resolve(mockJsonResponse({ recommendations: [], source: "popular" }));
+      if (url.includes("/recommendations/episodes")) {
+        return Promise.resolve(mockJsonResponse({ episodes: [], total: 0, page: 1, pageSize: 20 }));
+      }
+      if (url.includes("/podcasts/catalog")) {
+        return Promise.resolve(mockJsonResponse({ podcasts: [], total: 0, page: 1, pageSize: 50 }));
       }
       if (url.includes("/podcasts/requests")) {
         return Promise.resolve(mockJsonResponse({ data: [] }));
@@ -78,11 +70,11 @@ describe("Discover", () => {
   it("renders search input", async () => {
     renderDiscover();
     await waitFor(() => {
-      expect(screen.getByPlaceholderText("Search podcasts...")).toBeInTheDocument();
+      expect(screen.getByPlaceholderText("Search episodes & podcasts...")).toBeInTheDocument();
     });
   });
 
-  it("renders category pills in browse mode", async () => {
+  it("renders category pills", async () => {
     renderDiscover();
     await waitFor(() => {
       expect(screen.getByText("All")).toBeInTheDocument();
@@ -91,39 +83,41 @@ describe("Discover", () => {
     });
   });
 
-  it("renders trending and browse sections with catalog data", async () => {
-    mockFetch.mockImplementation((url: string) => {
-      if (url.includes("/podcasts/catalog")) {
-        return Promise.resolve(mockJsonResponse({ podcasts: [mockPodcast] }));
-      }
-      if (url.includes("/recommendations")) {
-        return Promise.resolve(mockJsonResponse({ recommendations: [], source: "popular" }));
-      }
-      if (url.includes("/podcasts/requests")) {
-        return Promise.resolve(mockJsonResponse({ data: [] }));
-      }
-      return Promise.resolve(mockJsonResponse({}));
-    });
-
+  it("renders Episodes and Podcasts browse tabs", async () => {
     renderDiscover();
-
     await waitFor(() => {
-      expect(screen.getByText("Trending Now")).toBeInTheDocument();
-      expect(screen.getByText("Browse All")).toBeInTheDocument();
-      // Appears in both trending and browse sections
-      expect(screen.getAllByText("Tech Pod")).toHaveLength(2);
+      expect(screen.getByText("Episodes")).toBeInTheDocument();
+      expect(screen.getByText("Podcasts")).toBeInTheDocument();
     });
   });
 
-  it("debounced search triggers API call and shows results", async () => {
-    const user = userEvent.setup();
-
+  it("renders curated rows when API returns them", async () => {
     mockFetch.mockImplementation((url: string) => {
-      if (url.includes("/podcasts/catalog")) {
-        return Promise.resolve(mockJsonResponse({ podcasts: [mockPodcast] }));
+      if (url.includes("/recommendations/curated")) {
+        return Promise.resolve(mockJsonResponse({
+          rows: [
+            {
+              title: "Trending Now",
+              type: "episodes",
+              items: [{
+                episode: { id: "e1", title: "AI Episode", publishedAt: new Date().toISOString(), durationSeconds: 300, topicTags: [] },
+                podcast: { id: "p1", title: "Tech Pod", author: "Alice", imageUrl: null },
+                score: 0.9,
+                reasons: ["Trending"],
+              }],
+            },
+          ],
+          podcastSuggestions: [],
+        }));
       }
-      if (url.includes("/recommendations")) {
-        return Promise.resolve(mockJsonResponse({ recommendations: [], source: "popular" }));
+      if (url.includes("/podcasts/categories")) {
+        return Promise.resolve(mockJsonResponse({ categories: [] }));
+      }
+      if (url.includes("/recommendations/episodes")) {
+        return Promise.resolve(mockJsonResponse({ episodes: [], total: 0, page: 1, pageSize: 20 }));
+      }
+      if (url.includes("/podcasts/catalog")) {
+        return Promise.resolve(mockJsonResponse({ podcasts: [], total: 0, page: 1, pageSize: 50 }));
       }
       if (url.includes("/podcasts/requests")) {
         return Promise.resolve(mockJsonResponse({ data: [] }));
@@ -132,21 +126,9 @@ describe("Discover", () => {
     });
 
     renderDiscover();
-
-    const input = screen.getByPlaceholderText("Search podcasts...");
-    await user.type(input, "tech");
-
-    // Wait for debounce (300ms) + API response
     await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining("/api/podcasts/catalog?q=tech"),
-        expect.any(Object)
-      );
-    }, { timeout: 2000 });
-
-    await waitFor(() => {
-      expect(screen.getByText("Search Results")).toBeInTheDocument();
-      expect(screen.getByText("Tech Pod")).toBeInTheDocument();
+      expect(screen.getByText("Trending Now")).toBeInTheDocument();
+      expect(screen.getByText("AI Episode")).toBeInTheDocument();
     });
   });
 });
