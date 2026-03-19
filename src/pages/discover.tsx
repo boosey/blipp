@@ -1,9 +1,10 @@
-import { useState, useEffect, useMemo } from "react";
-import { Search, X, Plus } from "lucide-react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { Search, X, Plus, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useApiFetch } from "../lib/api";
 import { useFetch } from "../lib/use-fetch";
 import { PodcastCard } from "../components/podcast-card";
+import { ScrollableRow } from "../components/scrollable-row";
 import { DiscoverSkeleton } from "../components/skeletons/discover-skeleton";
 import { EmptyState } from "../components/empty-state";
 import { usePullToRefresh } from "../hooks/use-pull-to-refresh";
@@ -25,6 +26,15 @@ interface CatalogPodcast {
   episodeCount: number;
   categories: string[];
 }
+
+interface CatalogResponse {
+  podcasts: CatalogPodcast[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+const BROWSE_PAGE_SIZE = 50;
 
 export function Discover() {
   const apiFetch = useApiFetch();
@@ -66,13 +76,79 @@ export function Discover() {
     source: string;
   }>("/recommendations");
 
-  const { data: catalogData, error: catalogError, refetch: refetchCatalog } = useFetch<{
-    podcasts: CatalogPodcast[];
-  }>("/podcasts/catalog");
+  // --- Browse All with pagination ---
+  const [allPodcasts, setAllPodcasts] = useState<CatalogPodcast[]>([]);
+  const [browseTotal, setBrowseTotal] = useState(0);
+  const [browsePage, setBrowsePage] = useState(1);
+  const [browseLoading, setBrowseLoading] = useState(false);
+  const [browseError, setBrowseError] = useState<string | null>(null);
+  const [initialLoaded, setInitialLoaded] = useState(false);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
 
+  // Fetch a page of catalog podcasts
+  const fetchCatalogPage = useCallback(async (page: number, reset = false) => {
+    setBrowseLoading(true);
+    setBrowseError(null);
+    try {
+      const data = await apiFetch<CatalogResponse>(
+        `/podcasts/catalog?page=${page}&pageSize=${BROWSE_PAGE_SIZE}`
+      );
+      setAllPodcasts((prev) => reset ? data.podcasts : [...prev, ...data.podcasts]);
+      setBrowseTotal(data.total);
+      setBrowsePage(page);
+      setInitialLoaded(true);
+    } catch (e) {
+      setBrowseError(e instanceof Error ? e.message : "Failed to load catalog");
+    } finally {
+      setBrowseLoading(false);
+    }
+  }, [apiFetch]);
+
+  // Initial load
+  useEffect(() => {
+    fetchCatalogPage(1, true);
+  }, [fetchCatalogPage]);
+
+  const hasMore = allPodcasts.length < browseTotal;
+
+  // Intersection observer for infinite scroll
+  useEffect(() => {
+    const el = loadMoreRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !browseLoading) {
+          fetchCatalogPage(browsePage + 1);
+        }
+      },
+      { rootMargin: "200px" }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMore, browseLoading, browsePage, fetchCatalogPage]);
+
+  // Pull to refresh reloads page 1
   const { indicator: pullIndicator, bind: pullBind } = usePullToRefresh({
-    onRefresh: async () => { await refetchCatalog(); },
+    onRefresh: async () => { await fetchCatalogPage(1, true); },
   });
+
+  // Trending: top 10 by episode count (from loaded podcasts)
+  const trendingPodcasts = useMemo(() => {
+    if (!allPodcasts.length) return [];
+    return [...allPodcasts]
+      .sort((a, b) => b.episodeCount - a.episodeCount)
+      .slice(0, 10);
+  }, [allPodcasts]);
+
+  // Browse list filtered by category
+  const browsePodcasts = useMemo(() => {
+    if (selectedCategory === "All") return allPodcasts;
+    return allPodcasts.filter((p) =>
+      p.categories?.some(
+        (c) => c.toLowerCase() === selectedCategory.toLowerCase()
+      )
+    );
+  }, [allPodcasts, selectedCategory]);
 
   // Debounce search input
   useEffect(() => {
@@ -156,25 +232,6 @@ export function Discover() {
 
   const isSearching = searchInput.trim().length > 0;
 
-  // Trending: top 10 by episode count
-  const trendingPodcasts = useMemo(() => {
-    if (!catalogData?.podcasts) return [];
-    return [...catalogData.podcasts]
-      .sort((a, b) => b.episodeCount - a.episodeCount)
-      .slice(0, 10);
-  }, [catalogData?.podcasts]);
-
-  // Browse list filtered by category
-  const browsePodcasts = useMemo(() => {
-    if (!catalogData?.podcasts) return [];
-    if (selectedCategory === "All") return catalogData.podcasts;
-    return catalogData.podcasts.filter((p) =>
-      p.categories?.some(
-        (c) => c.toLowerCase() === selectedCategory.toLowerCase()
-      )
-    );
-  }, [catalogData?.podcasts, selectedCategory]);
-
   return (
     <div className="space-y-4" {...pullBind}>
       {pullIndicator}
@@ -233,12 +290,12 @@ export function Discover() {
         /* Browse mode */
         <>
           {/* Category pills */}
-          <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide mt-4 snap-x snap-mandatory">
+          <ScrollableRow className="gap-2 pb-2 mt-4">
             {categoryNames.map((cat) => (
               <button
                 key={cat}
                 onClick={() => setSelectedCategory(cat)}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors snap-start ${
+                className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors snap-start flex-shrink-0 ${
                   selectedCategory === cat
                     ? "bg-primary text-primary-foreground"
                     : "bg-muted text-muted-foreground hover:bg-accent"
@@ -247,13 +304,13 @@ export function Discover() {
                 {cat}
               </button>
             ))}
-          </div>
+          </ScrollableRow>
 
           {/* Trending section */}
           {trendingPodcasts.length > 0 && (
             <section className="mt-6">
               <h2 className="text-lg font-semibold mb-3">Trending Now</h2>
-              <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide snap-x snap-mandatory">
+              <ScrollableRow className="gap-3 pb-2">
                 {trendingPodcasts.map((podcast) => (
                   <button
                     key={podcast.id}
@@ -278,7 +335,7 @@ export function Discover() {
                     </p>
                   </button>
                 ))}
-              </div>
+              </ScrollableRow>
             </section>
           )}
 
@@ -288,7 +345,7 @@ export function Discover() {
               <h2 className="text-lg font-semibold mb-3">
                 {recsData.source === "popular" ? "Popular" : "For You"}
               </h2>
-              <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide snap-x snap-mandatory">
+              <ScrollableRow className="gap-3 pb-2">
                 {recsData.recommendations.slice(0, 8).map((rec) => (
                   <button
                     key={rec.podcast.id}
@@ -318,17 +375,22 @@ export function Discover() {
                     )}
                   </button>
                 ))}
-              </div>
+              </ScrollableRow>
             </section>
           )}
 
           {/* Browse All */}
           <section>
-            <h2 className="text-lg font-semibold mb-3">Browse All</h2>
-            {catalogError && (
-              <p className="text-red-400 text-sm text-center py-4">{catalogError}</p>
+            <div className="flex items-baseline justify-between mb-3">
+              <h2 className="text-lg font-semibold">Browse All</h2>
+              {browseTotal > 0 && (
+                <span className="text-xs text-muted-foreground">{browseTotal} podcasts</span>
+              )}
+            </div>
+            {browseError && (
+              <p className="text-red-400 text-sm text-center py-4">{browseError}</p>
             )}
-            {!catalogData && !catalogError && <DiscoverSkeleton />}
+            {!initialLoaded && !browseError && <DiscoverSkeleton />}
             {browsePodcasts.length > 0 && (
               <div className="space-y-2">
                 {browsePodcasts.map((podcast) => (
@@ -344,12 +406,19 @@ export function Discover() {
                 ))}
               </div>
             )}
-            {catalogData && browsePodcasts.length === 0 && (
+            {initialLoaded && browsePodcasts.length === 0 && (
               <EmptyState
                 icon={Search}
                 title="No podcasts in this category"
                 description="Try selecting a different category."
               />
+            )}
+            {/* Infinite scroll sentinel */}
+            <div ref={loadMoreRef} className="h-1" />
+            {browseLoading && initialLoaded && (
+              <div className="flex justify-center py-4">
+                <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+              </div>
             )}
           </section>
 
