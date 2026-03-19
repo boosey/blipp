@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Hono } from "hono";
 import type { Env } from "../../types";
 import { createMockEnv, createMockPrisma } from "../../../tests/helpers/mocks";
+import { classifyHttpError } from "../../lib/errors";
 
 const mockUserId = { userId: "user_test123" };
 let currentAuth: { userId: string } | null = mockUserId;
@@ -179,6 +180,10 @@ describe("DELETE /me", () => {
     env = createMockEnv();
 
     app = new Hono<{ Bindings: Env }>();
+    app.onError((err, c) => {
+      const { status, message, code, details } = classifyHttpError(err);
+      return c.json({ error: message, code, details }, status as any);
+    });
     app.use("/*", async (c, next) => { c.set("prisma", mockPrisma); await next(); });
     app.route("/me", me);
 
@@ -197,8 +202,6 @@ describe("DELETE /me", () => {
       body: JSON.stringify({}),
     }, env, mockExCtx);
     expect(res.status).toBe(400);
-    const body: any = await res.json();
-    expect(body.error).toContain("confirm");
   });
 
   it("returns 400 with wrong confirmation value", async () => {
@@ -235,5 +238,120 @@ describe("DELETE /me", () => {
       body: JSON.stringify({ confirm: "DELETE" }),
     }, env, mockExCtx);
     expect(res.status).toBe(401);
+  });
+});
+
+describe("Validation", () => {
+  let app: Hono<{ Bindings: Env }>;
+  let env: Env;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    currentAuth = mockUserId;
+    env = createMockEnv();
+
+    app = new Hono<{ Bindings: Env }>();
+    app.onError((err, c) => {
+      const { status, message, code, details } = classifyHttpError(err);
+      return c.json({ error: message, code, details }, status as any);
+    });
+    app.use("/*", async (c, next) => { c.set("prisma", mockPrisma); await next(); });
+    app.route("/me", me);
+
+    resetMockPrisma();
+
+    mockPrisma.user.findUniqueOrThrow.mockResolvedValue({
+      id: "usr_1",
+      clerkId: "user_test123",
+      isAdmin: false,
+    });
+  });
+
+  it("PATCH /onboarding-complete rejects non-boolean reset", async () => {
+    const res = await app.request("/me/onboarding-complete", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reset: "yes" }),
+    }, env, mockExCtx);
+    expect(res.status).toBe(400);
+    const body: any = await res.json();
+    expect(body.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("PATCH /preferences rejects invalid duration tier", async () => {
+    const res = await app.request("/me/preferences", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ defaultDurationTier: 99 }),
+    }, env, mockExCtx);
+    expect(res.status).toBe(400);
+    const body: any = await res.json();
+    expect(body.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("PATCH /preferences rejects non-number duration tier", async () => {
+    const res = await app.request("/me/preferences", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ defaultDurationTier: "fast" }),
+    }, env, mockExCtx);
+    expect(res.status).toBe(400);
+    const body: any = await res.json();
+    expect(body.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("DELETE /me rejects missing confirm field", async () => {
+    const res = await app.request("/me", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    }, env, mockExCtx);
+    expect(res.status).toBe(400);
+    const body: any = await res.json();
+    expect(body.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("POST /push/subscribe rejects missing keys", async () => {
+    const res = await app.request("/me/push/subscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ endpoint: "https://push.example.com/sub1" }),
+    }, env, mockExCtx);
+    expect(res.status).toBe(400);
+    const body: any = await res.json();
+    expect(body.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("POST /push/subscribe rejects invalid endpoint URL", async () => {
+    const res = await app.request("/me/push/subscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ endpoint: "not-a-url", keys: { p256dh: "key1", auth: "key2" } }),
+    }, env, mockExCtx);
+    expect(res.status).toBe(400);
+    const body: any = await res.json();
+    expect(body.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("DELETE /push/subscribe rejects missing endpoint", async () => {
+    const res = await app.request("/me/push/subscribe", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    }, env, mockExCtx);
+    expect(res.status).toBe(400);
+    const body: any = await res.json();
+    expect(body.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("DELETE /push/subscribe rejects invalid endpoint URL", async () => {
+    const res = await app.request("/me/push/subscribe", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ endpoint: "not-a-url" }),
+    }, env, mockExCtx);
+    expect(res.status).toBe(400);
+    const body: any = await res.json();
+    expect(body.code).toBe("VALIDATION_ERROR");
   });
 });

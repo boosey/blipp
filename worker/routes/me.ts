@@ -1,10 +1,41 @@
 import { Hono } from "hono";
+import { z } from "zod/v4";
 import type { Env } from "../types";
 import { requireAuth } from "../middleware/auth";
 import { getCurrentUser } from "../lib/admin-helpers";
 import { buildUserExport, deleteUserAccount } from "../lib/user-data";
 import { getActiveFlags } from "../lib/feature-flags";
 import { getUserUsage } from "../lib/plan-limits";
+import { validateBody } from "../lib/validation";
+import { DURATION_TIERS } from "../lib/constants";
+
+const OnboardingCompleteSchema = z.object({
+  reset: z.boolean().optional(),
+});
+
+const PreferencesSchema = z.object({
+  defaultDurationTier: z
+    .number()
+    .refine((n) => (DURATION_TIERS as readonly number[]).includes(n), {
+      message: `Must be one of: ${DURATION_TIERS.join(", ")}`,
+    }),
+});
+
+const DeleteAccountSchema = z.object({
+  confirm: z.literal("DELETE"),
+});
+
+const PushSubscribeSchema = z.object({
+  endpoint: z.url(),
+  keys: z.object({
+    p256dh: z.string().min(1),
+    auth: z.string().min(1),
+  }),
+});
+
+const PushUnsubscribeSchema = z.object({
+  endpoint: z.url(),
+});
 
 export const me = new Hono<{ Bindings: Env }>();
 
@@ -56,15 +87,8 @@ me.patch("/onboarding-complete", async (c) => {
   const prisma = c.get("prisma") as any;
   const user = await getCurrentUser(c, prisma);
 
-  let complete = true;
-  try {
-    const body = await c.req.json<{ reset?: boolean }>();
-    if (body.reset && user.isAdmin) {
-      complete = false;
-    }
-  } catch {
-    // No body — default to marking complete
-  }
+  const body = await validateBody(c, OnboardingCompleteSchema);
+  const complete = body.reset && user.isAdmin ? false : true;
 
   await prisma.user.update({
     where: { id: user.id },
@@ -81,20 +105,14 @@ me.patch("/onboarding-complete", async (c) => {
 me.patch("/preferences", async (c) => {
   const prisma = c.get("prisma") as any;
   const user = await getCurrentUser(c, prisma);
-  const body = await c.req.json<{ defaultDurationTier?: number }>();
+  const body = await validateBody(c, PreferencesSchema);
 
-  const data: Record<string, unknown> = {};
-  if (body.defaultDurationTier !== undefined) {
-    data.defaultDurationTier = body.defaultDurationTier;
-  }
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { defaultDurationTier: body.defaultDurationTier },
+  });
 
-  if (Object.keys(data).length === 0) {
-    return c.json({ error: "No preferences to update" }, 400);
-  }
-
-  await prisma.user.update({ where: { id: user.id }, data });
-
-  return c.json({ data });
+  return c.json({ data: { defaultDurationTier: body.defaultDurationTier } });
 });
 
 /**
@@ -129,13 +147,7 @@ me.delete("/", async (c) => {
   const prisma = c.get("prisma") as any;
   const user = await getCurrentUser(c, prisma);
 
-  const body = await c.req.json<{ confirm?: string }>();
-  if (body.confirm !== "DELETE") {
-    return c.json(
-      { error: 'Request body must contain { confirm: "DELETE" }' },
-      400
-    );
-  }
+  await validateBody(c, DeleteAccountSchema);
 
   const { r2Deleted } = await deleteUserAccount(
     prisma,
@@ -164,14 +176,7 @@ me.delete("/", async (c) => {
 me.post("/push/subscribe", async (c) => {
   const prisma = c.get("prisma") as any;
   const user = await getCurrentUser(c, prisma);
-  const body = await c.req.json<{
-    endpoint: string;
-    keys: { p256dh: string; auth: string };
-  }>();
-
-  if (!body.endpoint || !body.keys?.p256dh || !body.keys?.auth) {
-    return c.json({ error: "endpoint, keys.p256dh, and keys.auth are required" }, 400);
-  }
+  const body = await validateBody(c, PushSubscribeSchema);
 
   const subscription = await prisma.pushSubscription.upsert({
     where: { endpoint: body.endpoint },
@@ -197,11 +202,7 @@ me.post("/push/subscribe", async (c) => {
 me.delete("/push/subscribe", async (c) => {
   const prisma = c.get("prisma") as any;
   const user = await getCurrentUser(c, prisma);
-  const body = await c.req.json<{ endpoint: string }>();
-
-  if (!body.endpoint) {
-    return c.json({ error: "endpoint is required" }, 400);
-  }
+  const body = await validateBody(c, PushUnsubscribeSchema);
 
   await prisma.pushSubscription.deleteMany({
     where: { userId: user.id, endpoint: body.endpoint },
