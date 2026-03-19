@@ -19,8 +19,8 @@ interface SubscriptionManageSheetProps {
   } | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onTierChange: (subId: string, tier: number) => void;
-  onUnsubscribe: (subId: string) => void;
+  onTierChange: (podcastId: string, tier: number) => void;
+  onUnsubscribe: (podcastId: string) => void;
 }
 
 export function SubscriptionManageSheet({
@@ -71,7 +71,7 @@ export function SubscriptionManageSheet({
             <p className="text-sm font-medium mb-2">Briefing length</p>
             <TierPicker
               selected={(subscription.durationTier as DurationTier) ?? null}
-              onSelect={(tier) => onTierChange(subscription.id, tier)}
+              onSelect={(tier) => onTierChange(subscription.podcastId, tier)}
               maxDurationMinutes={maxDurationMinutes}
               onUpgrade={showUpgrade}
             />
@@ -79,7 +79,7 @@ export function SubscriptionManageSheet({
           </div>
 
           <button
-            onClick={() => onUnsubscribe(subscription.id)}
+            onClick={() => onUnsubscribe(subscription.podcastId)}
             className="w-full py-2 text-sm font-medium text-red-500 hover:text-red-400 transition-colors"
           >
             Unsubscribe

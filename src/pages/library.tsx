@@ -41,9 +41,9 @@ function SubscriptionsGrid({ onRefetchRef }: { onRefetchRef?: React.MutableRefOb
   }, [onRefetchRef, refetch]);
   const subscriptions = data?.subscriptions ?? [];
 
-  async function handleTierChange(subId: string, tier: number) {
+  async function handleTierChange(podcastId: string, tier: number) {
     try {
-      await apiFetch(`/podcasts/subscribe/${subId}`, {
+      await apiFetch(`/podcasts/subscribe/${podcastId}`, {
         method: "PATCH",
         body: JSON.stringify({ durationTier: tier }),
       });
@@ -55,9 +55,9 @@ function SubscriptionsGrid({ onRefetchRef }: { onRefetchRef?: React.MutableRefOb
     }
   }
 
-  async function handleUnsubscribe(subId: string) {
+  async function handleUnsubscribe(podcastId: string) {
     try {
-      await apiFetch(`/podcasts/subscribe/${subId}`, { method: "DELETE" });
+      await apiFetch(`/podcasts/subscribe/${podcastId}`, { method: "DELETE" });
       toast.success("Unsubscribed");
       refetch();
       setManagingSub(null);

@@ -99,7 +99,7 @@ describe("SubscriptionManageSheet", () => {
     );
 
     fireEvent.click(screen.getByText("10m"));
-    expect(onTierChange).toHaveBeenCalledWith("sub-1", 10);
+    expect(onTierChange).toHaveBeenCalledWith("pod-1", 10);
   });
 
   it("calls onUnsubscribe when unsubscribe is clicked", () => {
@@ -117,7 +117,7 @@ describe("SubscriptionManageSheet", () => {
     );
 
     fireEvent.click(screen.getByText("Unsubscribe"));
-    expect(onUnsubscribe).toHaveBeenCalledWith("sub-1");
+    expect(onUnsubscribe).toHaveBeenCalledWith("pod-1");
   });
 
   it("renders nothing meaningful when subscription is null", () => {
