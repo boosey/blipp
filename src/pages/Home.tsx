@@ -6,26 +6,13 @@ import { useFetch } from "../lib/use-fetch";
 import { SwipeableFeedItem } from "../components/swipeable-feed-item";
 import { FeedSkeleton } from "../components/skeletons/feed-skeleton";
 import { EmptyState } from "../components/empty-state";
-import { ScrollableRow } from "../components/scrollable-row";
+import { CuratedRow } from "../components/curated-row";
 import type { FeedItem, FeedFilter, FeedCounts } from "../types/feed";
+import type { CuratedResponse } from "../types/recommendations";
 import { groupByDate } from "../lib/feed-utils";
 import { usePullToRefresh } from "../hooks/use-pull-to-refresh";
 import { useAudio } from "../contexts/audio-context";
-import { usePodcastSheet } from "../contexts/podcast-sheet-context";
 import { InstallPrompt } from "../components/install-prompt";
-
-interface RecommendationItem {
-  podcast: {
-    id: string;
-    title: string;
-    imageUrl: string | null;
-    episodeCount: number;
-    subscriberCount: number;
-    categories: string[];
-  };
-  score: number;
-  reasons: string[];
-}
 
 const FILTERS: { key: FeedFilter; label: string }[] = [
   { key: "all", label: "All" },
@@ -53,16 +40,12 @@ function buildFilterParams(filter: FeedFilter): string {
 export function Home() {
   const apiFetch = useApiFetch();
   const audio = useAudio();
-  const { open: openPodcast } = usePodcastSheet();
   const [items, setItems] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FeedFilter>("all");
 
   const { data: counts } = useFetch<FeedCounts>("/feed/counts");
-  const { data: recsData } = useFetch<{
-    recommendations: RecommendationItem[];
-    source: string;
-  }>("/recommendations");
+  const { data: curatedData } = useFetch<CuratedResponse>("/recommendations/curated");
 
   const fetchFeed = useCallback(async () => {
     try {
@@ -248,45 +231,12 @@ export function Home() {
 
       <InstallPrompt />
 
-      {/* For You recommendations */}
-      {recsData && recsData.recommendations.length > 0 && (
-        <section className="mb-3">
-          <h2 className="text-sm font-semibold mb-2">
-            {recsData.source === "popular" ? "Popular" : "For You"}
-          </h2>
-          <ScrollableRow className="gap-3 pb-2">
-            {recsData.recommendations.slice(0, 12).map((rec) => (
-              <button
-                key={rec.podcast.id}
-                onClick={() => openPodcast(rec.podcast.id)}
-                className="flex-shrink-0 w-24 snap-start text-left"
-              >
-                {rec.podcast.imageUrl ? (
-                  <img
-                    src={rec.podcast.imageUrl}
-                    className="w-24 h-24 rounded-lg object-cover"
-                    alt=""
-                  />
-                ) : (
-                  <div className="w-24 h-24 rounded-lg bg-muted flex items-center justify-center">
-                    <span className="text-xl font-bold text-muted-foreground">
-                      {rec.podcast.title.charAt(0).toUpperCase()}
-                    </span>
-                  </div>
-                )}
-                <p className="text-xs font-medium mt-1 truncate">
-                  {rec.podcast.title}
-                </p>
-                {rec.reasons[0] && (
-                  <span className="text-[10px] text-muted-foreground truncate block">
-                    {rec.reasons[0]}
-                  </span>
-                )}
-              </button>
-            ))}
-          </ScrollableRow>
-        </section>
-      )}
+      {/* Curated episode recommendations */}
+      {curatedData?.rows.slice(0, 2).map((row, i) => (
+        <div key={`${row.title}-${i}`} className="mb-3">
+          <CuratedRow row={row} />
+        </div>
+      ))}
 
       {/* Play Next button */}
       {firstUnlistenedReady && (
