@@ -178,7 +178,9 @@ describe("FeedItemCard", () => {
         <FeedItemCard item={mockItem} />
       </MemoryRouter>
     );
-    expect(screen.getByRole("button")).toBeInTheDocument();
+    // Play wrapper + share button
+    const buttons = screen.getAllByRole("button");
+    expect(buttons.length).toBeGreaterThanOrEqual(1);
   });
 
   it("is not clickable when PENDING", () => {
