@@ -69,6 +69,7 @@ describe("GET /podcasts/:id", () => {
       episodeCount: 10,
     });
     mockPrisma.subscription.findFirst.mockResolvedValue({ id: "sub_1" });
+    mockPrisma.podcastVote.findUnique.mockResolvedValue(null);
 
     const res = await app.request("/podcasts/pod_1", {}, env, mockExCtx);
     const body: any = await res.json();
@@ -76,6 +77,7 @@ describe("GET /podcasts/:id", () => {
     expect(res.status).toBe(200);
     expect(body.podcast.id).toBe("pod_1");
     expect(body.podcast.isSubscribed).toBe(true);
+    expect(body.podcast.userVote).toBe(0);
   });
 
   it("returns podcast detail with isSubscribed=false", async () => {
@@ -90,12 +92,14 @@ describe("GET /podcasts/:id", () => {
       episodeCount: 0,
     });
     mockPrisma.subscription.findFirst.mockResolvedValue(null);
+    mockPrisma.podcastVote.findUnique.mockResolvedValue({ vote: -1 });
 
     const res = await app.request("/podcasts/pod_1", {}, env, mockExCtx);
     const body: any = await res.json();
 
     expect(res.status).toBe(200);
     expect(body.podcast.isSubscribed).toBe(false);
+    expect(body.podcast.userVote).toBe(-1);
   });
 });
 
@@ -129,6 +133,7 @@ describe("GET /podcasts/:id/episodes", () => {
         durationSeconds: 3600,
       },
     ]);
+    mockPrisma.episodeVote.findMany.mockResolvedValue([]);
 
     const res = await app.request("/podcasts/pod_1/episodes", {}, env, mockExCtx);
     const body: any = await res.json();
@@ -136,5 +141,6 @@ describe("GET /podcasts/:id/episodes", () => {
     expect(res.status).toBe(200);
     expect(body.episodes).toHaveLength(1);
     expect(body.episodes[0].title).toBe("Episode 1");
+    expect(body.episodes[0].userVote).toBe(0);
   });
 });

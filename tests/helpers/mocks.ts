@@ -51,6 +51,8 @@ export function createMockPrisma() {
     podcastRequest: modelMethods(),
     pushSubscription: modelMethods(),
     podcastFavorite: modelMethods(),
+    podcastVote: modelMethods(),
+    episodeVote: modelMethods(),
     podcastProfile: modelMethods(),
     userRecommendationProfile: modelMethods(),
     recommendationCache: modelMethods(),

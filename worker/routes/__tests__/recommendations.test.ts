@@ -60,7 +60,7 @@ describe("Recommendations routes", () => {
       };
       mockPrisma.recommendationCache.findUnique.mockResolvedValue(freshCache);
       mockPrisma.podcast.findMany.mockResolvedValue([
-        { id: "pod1", title: "Test Pod", author: null, description: null, imageUrl: null, feedUrl: "http://feed", categories: [], episodeCount: 10 },
+        { id: "pod1", title: "Test Pod", author: null, description: null, imageUrl: null, feedUrl: "http://feed", categories: [], episodeCount: 10, _count: { subscriptions: 0 } },
       ]);
       mockPrisma.subscription.count.mockResolvedValue(5);
       (getConfig as any).mockResolvedValueOnce(3); // minSubscriptions
@@ -87,7 +87,7 @@ describe("Recommendations routes", () => {
         source: "personalized",
       });
       mockPrisma.podcast.findMany.mockResolvedValue([
-        { id: "pod1", title: "Fresh Pod", author: null, description: null, imageUrl: null, feedUrl: "http://feed", categories: [], episodeCount: 5 },
+        { id: "pod1", title: "Fresh Pod", author: null, description: null, imageUrl: null, feedUrl: "http://feed", categories: [], episodeCount: 5, _count: { subscriptions: 0 } },
       ]);
       mockPrisma.recommendationCache.upsert.mockResolvedValue({});
 
@@ -164,12 +164,12 @@ describe("Recommendations routes", () => {
         {
           podcastId: "pod2",
           categoryWeights: { Technology: 0.8 },
-          podcast: { id: "pod2", title: "Similar Pod", author: null, description: null, imageUrl: null, feedUrl: "http://feed2", categories: ["Technology"], episodeCount: 5 },
+          podcast: { id: "pod2", title: "Similar Pod", author: null, description: null, imageUrl: null, feedUrl: "http://feed2", categories: ["Technology"], episodeCount: 5, _count: { subscriptions: 2 } },
         },
         {
           podcastId: "pod3",
           categoryWeights: { Business: 1.0 },
-          podcast: { id: "pod3", title: "Different Pod", author: null, description: null, imageUrl: null, feedUrl: "http://feed3", categories: ["Business"], episodeCount: 3 },
+          podcast: { id: "pod3", title: "Different Pod", author: null, description: null, imageUrl: null, feedUrl: "http://feed3", categories: ["Business"], episodeCount: 3, _count: { subscriptions: 0 } },
         },
       ]);
       (cosineSimilarity as any)

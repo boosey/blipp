@@ -277,8 +277,7 @@ describe("generateNarrative with metadata", () => {
     const userContent = (llm.complete as any).mock.calls[0][0][0].content;
     expect(userContent).toContain("The Daily");
     expect(userContent).toContain("Election Results");
-    expect(userContent).toContain("Originally 45 minutes");
-    expect(userContent).toContain("5 minutes");
+    expect(userContent).toContain("podcast name and episode title");
   });
 
   it("omits metadata block when metadata not provided", async () => {
@@ -290,7 +289,7 @@ describe("generateNarrative with metadata", () => {
     expect(userContent).not.toContain("Begin the narrative with a brief spoken introduction");
   });
 
-  it("handles missing durationSeconds gracefully", async () => {
+  it("still includes intro instructions when durationSeconds is null", async () => {
     const llm = createMockLlmProvider("This is a test narrative.");
     const metadata: EpisodeMetadata = {
       podcastTitle: "Test Pod",
@@ -303,6 +302,6 @@ describe("generateNarrative with metadata", () => {
     await generateNarrative(llm, testClaims, 3, "model", 8192, {}, null, metadata);
 
     const userContent = (llm.complete as any).mock.calls[0][0][0].content;
-    expect(userContent).toContain("Original length unknown");
+    expect(userContent).toContain("podcast name and episode title");
   });
 });
