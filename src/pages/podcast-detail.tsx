@@ -182,7 +182,7 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
 
   if (loading) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-6 min-w-0 overflow-hidden">
         <div className="flex gap-4">
           <Skeleton className="w-24 h-24 rounded-lg flex-shrink-0" />
           <div className="flex-1 space-y-2">
@@ -221,7 +221,7 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 min-w-0 overflow-hidden">
       {UpgradeModalElement}
       {/* Podcast header */}
       <div className="flex gap-4">
@@ -236,7 +236,7 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
         )}
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
-            <h1 className="text-lg font-bold">{podcast.title}</h1>
+            <h1 className="text-lg font-bold min-w-0 break-words">{podcast.title}</h1>
             <div className="flex items-center gap-1 flex-shrink-0">
               <ThumbButtons vote={podcast.userVote} onVote={handlePodcastVote} />
               <button
@@ -310,7 +310,7 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
 
       {/* Description */}
       {podcast.description && (
-        <p className="text-sm text-muted-foreground line-clamp-4">
+        <p className="text-sm text-muted-foreground line-clamp-4 break-words">
           {podcast.description}
         </p>
       )}
@@ -376,7 +376,7 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
                       expandedEpisodeId === ep.id ? null : ep.id
                     )}
                   >
-                    <p className="font-medium text-sm text-violet-300">{ep.title}</p>
+                    <p className="font-medium text-sm text-violet-300 break-words">{ep.title}</p>
                     <div className="flex gap-2 text-xs text-muted-foreground mt-1">
                       <span>
                         {new Date(ep.publishedAt).toLocaleDateString()}
@@ -386,7 +386,7 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
                       )}
                     </div>
                     {ep.description && (
-                      <p className={`text-xs text-muted-foreground mt-2 ${
+                      <p className={`text-xs text-muted-foreground mt-2 break-words ${
                         expandedEpisodeId === ep.id ? "" : "line-clamp-2"
                       }`}>
                         {ep.description.replace(/<[^>]*>/g, "")}
