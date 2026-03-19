@@ -27,6 +27,7 @@ import {
   Clock,
   Scale,
   MessageSquare,
+  Inbox,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
@@ -79,6 +80,7 @@ const sidebarEntries: SidebarEntry[] = [
       { path: "requests", label: "Requests", icon: ClipboardList },
       { path: "briefings", label: "Briefings", icon: Radio },
       { path: "pipeline-controls", label: "Controls", icon: Zap },
+      { path: "dlq", label: "Dead Letters", icon: Inbox },
     ],
   },
 

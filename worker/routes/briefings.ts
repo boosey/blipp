@@ -155,12 +155,33 @@ briefings.get("/:id/audio", async (c) => {
     return c.json({ error: "Audio not found" }, 404);
   }
 
-  const body = await clipObj.arrayBuffer();
-  return new Response(body, {
-    headers: {
-      "Content-Type": "audio/mpeg",
-      "Content-Length": String(body.byteLength),
-      "Cache-Control": "public, max-age=86400",
-    },
-  });
+  const headers: Record<string, string> = {
+    "Content-Type": "audio/mpeg",
+    "Content-Length": String(clipObj.size),
+    "Cache-Control": "public, max-age=604800, immutable",
+    "Accept-Ranges": "bytes",
+  };
+  if (clipObj.etag) headers["ETag"] = clipObj.etag;
+
+  // Handle range requests for streaming/seeking
+  const range = c.req.header("Range");
+  if (range) {
+    const body = await clipObj.arrayBuffer();
+    const match = range.match(/bytes=(\d+)-(\d*)/);
+    if (match) {
+      const start = parseInt(match[1], 10);
+      const end = match[2] ? parseInt(match[2], 10) : body.byteLength - 1;
+      const slice = body.slice(start, end + 1);
+      return new Response(slice, {
+        status: 206,
+        headers: {
+          ...headers,
+          "Content-Length": String(slice.byteLength),
+          "Content-Range": `bytes ${start}-${end}/${body.byteLength}`,
+        },
+      });
+    }
+  }
+
+  return new Response(clipObj.body, { headers });
 });

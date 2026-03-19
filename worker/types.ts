@@ -87,4 +87,6 @@ export type Env = {
   VAPID_SUBJECT?: string;
   /** Sentry DSN for error tracking (optional — Sentry no-ops when unset) */
   SENTRY_DSN?: string;
+  /** KV namespace for persistent rate limiting (optional — falls back to in-memory) */
+  RATE_LIMIT_KV?: KVNamespace;
 };

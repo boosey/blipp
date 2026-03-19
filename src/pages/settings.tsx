@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Sun, Moon, Monitor, Download, Trash2, LogOut, ExternalLink } from "lucide-react";
+import { Sun, Moon, Monitor, Download, Trash2, LogOut } from "lucide-react";
+import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { useClerk } from "@clerk/clerk-react";
 import { useApiFetch } from "../lib/api";
@@ -412,20 +413,18 @@ export function Settings() {
             <span className="text-sm font-mono">{__APP_VERSION__}</span>
           </div>
           <div className="border-t border-border" />
-          <a
-            href="#"
+          <Link
+            to="/tos"
             className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
-            <ExternalLink className="w-4 h-4" />
             Terms of Service
-          </a>
-          <a
-            href="#"
+          </Link>
+          <Link
+            to="/privacy"
             className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
-            <ExternalLink className="w-4 h-4" />
             Privacy Policy
-          </a>
+          </Link>
         </div>
       </section>
 

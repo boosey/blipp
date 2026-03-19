@@ -45,20 +45,20 @@ Everything below is fully implemented and merged to `main`. No remaining work.
 
 | # | Area | Item | Effort | Details |
 |---|------|------|--------|---------|
-| 6 | Recs | Home feed integration | Low | Recommendations only on Discover page, not Home. |
+| ~~6~~ | ~~Recs~~ | ~~Home feed integration~~ | ~~Low~~ | **DONE** — "For You" horizontal scroll row on Home page using `/recommendations` API. |
 | 7 | Recs | Topic fingerprinting (Phase 2) | Medium | LLM-based topic extraction from claims → Jaccard similarity → richer reason strings. ~$0.10/month. Includes "Similar Podcasts" on detail page. |
 | 8 | Cost | Share narratives across duration tiers | Medium | Generate longest narrative once, trim for shorter tiers. Saves 1 Claude call per additional tier. |
 | 9 | Cost | Batch API for free tier | Medium | Anthropic Batches API: 50% cheaper, up to 24h latency. |
 | 10 | Cost | TTL-based staleness threshold | Low | Serve cached briefing if <24h old, skip regeneration. |
 | 11 | Admin | Alert delivery | Medium | Cost alerts stored in PlatformConfig but no webhook/email/Slack delivery. Alerts only visible on dashboard. |
 | 12 | Admin | Content moderation | Medium | No mechanism to flag, review, or block generated content. |
-| 13 | Compliance | Terms of Service / Privacy Policy | Low | No legal pages. Settings has placeholder `href="#"` links. Need `/tos`, `/privacy` routes + content. |
-| 14 | Compliance | Consent tracking | Low | No cookie consent, no marketing opt-in. |
-| 15 | Compliance | R2 artifact cleanup on user delete | Low | `deleteR2ByPrefix()` exists in `worker/lib/user-data.ts` but is NOT called from `deleteUserAccount()`. DB cascades but R2 audio artifacts are orphaned. |
-| 16 | Perf | KV-based rate limiter | Medium | Current in-memory rate limiter resets per Worker isolate/redeploy. Need KV or Durable Objects for persistence at scale. |
-| 17 | Perf | R2 custom domain + CDN | Low | CDN caching for audio delivery. |
+| ~~13~~ | ~~Compliance~~ | ~~Terms of Service / Privacy Policy~~ | ~~Low~~ | **DONE** — `/tos` and `/privacy` routes with content. Settings links updated from `href="#"` to React Router `Link`. |
+| ~~14~~ | ~~Compliance~~ | ~~Consent tracking~~ | ~~Low~~ | **DONE** — Cookie consent banner with Accept/Decline, localStorage tracking, link to privacy policy. |
+| ~~15~~ | ~~Compliance~~ | ~~R2 artifact cleanup on user delete~~ | ~~Low~~ | **DONE** — `deleteUserAccount()` now collects orphaned clip R2 keys before cascade delete, then removes them. Only deletes clips not referenced by other users. |
+| ~~16~~ | ~~Perf~~ | ~~KV-based rate limiter~~ | ~~Medium~~ | **DONE** — Rate limiter uses `RATE_LIMIT_KV` when available (KV namespace binding + `expirationTtl`), falls back to in-memory. KV IDs need `wrangler kv namespace create`. |
+| ~~17~~ | ~~Perf~~ | ~~R2 custom domain + CDN~~ | ~~Low~~ | **DONE** — Audio responses now use `Cache-Control: public, max-age=604800, immutable`, ETag from R2, `Accept-Ranges: bytes` with range request support. Custom domain is a manual CF dashboard step. |
 | 18 | Perf | Neon paid plan | Manual | Free tier cold starts (5-10s) are a UX problem. |
-| 19 | Reliability | DLQ monitoring | Low | `feed-refresh-retry` DLQ queue exists but no admin visibility or replay mechanism. |
+| ~~19~~ | ~~Reliability~~ | ~~DLQ monitoring~~ | ~~Low~~ | **DONE** — Admin DLQ page at `/admin/dlq` with stuck jobs table, exhausted retries table, retry buttons, auto-refresh 30s. Sidebar entry in Pipeline group. |
 | 20 | Billing | Trial enforcement | Low | Trial expiration detected by cron but only logs — no access restriction or notification. |
 | 21 | Billing | Missing Stripe events | Low | Missing: `charge.refunded`, `charge.dispute.created`, `customer.subscription.paused`. |
 
@@ -87,7 +87,7 @@ Everything below is fully implemented and merged to `main`. No remaining work.
 | VAPID keys for push notifications | P2 | Unknown |
 | Neon API credentials (backup verification) | P2 | Manual |
 | Branded PWA icons (icon-192/512.png) | P2 | Placeholder |
-| KV namespace for rate limiting | P2 | Not created |
+| ~~KV namespace for rate limiting~~ | ~~P2~~ | **DONE** — KV namespaces created, real IDs in `wrangler.jsonc` |
 
 ---
 

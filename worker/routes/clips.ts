@@ -49,12 +49,38 @@ clips.get("/:episodeId/:durationTier", async (c) => {
     return c.json({ error: "Clip not found" }, 404);
   }
 
-  const body = await obj.arrayBuffer();
-  return new Response(body, {
-    headers: {
-      "Content-Type": "audio/mpeg",
-      "Content-Length": String(body.byteLength),
-      "Cache-Control": "public, max-age=86400",
-    },
-  });
+  const headers: Record<string, string> = {
+    "Content-Type": "audio/mpeg",
+    "Content-Length": String(obj.size),
+    // Audio clips are immutable — aggressive CDN caching (7 days + immutable)
+    "Cache-Control": "public, max-age=604800, immutable",
+    "Accept-Ranges": "bytes",
+  };
+
+  // Use R2's ETag for conditional requests
+  if (obj.etag) {
+    headers["ETag"] = obj.etag;
+  }
+
+  // Handle range requests for better streaming/seeking
+  const range = c.req.header("Range");
+  if (range) {
+    const body = await obj.arrayBuffer();
+    const match = range.match(/bytes=(\d+)-(\d*)/);
+    if (match) {
+      const start = parseInt(match[1], 10);
+      const end = match[2] ? parseInt(match[2], 10) : body.byteLength - 1;
+      const slice = body.slice(start, end + 1);
+      return new Response(slice, {
+        status: 206,
+        headers: {
+          ...headers,
+          "Content-Length": String(slice.byteLength),
+          "Content-Range": `bytes ${start}-${end}/${body.byteLength}`,
+        },
+      });
+    }
+  }
+
+  return new Response(obj.body, { headers });
 });

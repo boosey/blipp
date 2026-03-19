@@ -8,11 +8,12 @@ import { Landing } from "./pages/landing";
 import { Pricing } from "./pages/pricing";
 import { About } from "./pages/about";
 import { Contact } from "./pages/contact";
-import { Home } from "./pages/home";
+import { CookieConsent } from "./components/cookie-consent";
+import { Home } from "./pages/Home";
 import { Discover } from "./pages/discover";
 import { PodcastDetail } from "./pages/podcast-detail";
 import { LibraryPage } from "./pages/library";
-import { Settings } from "./pages/settings";
+import { Settings } from "./pages/Settings";
 import { BriefingPlayer } from "./pages/briefing-player";
 
 // Lazy-load admin pages for code splitting
@@ -38,6 +39,9 @@ const AdminAds = lazy(() => import("./pages/admin/ads"));
 const AdminRecommendations = lazy(() => import("./pages/admin/recommendations"));
 const ScheduledJobs = lazy(() => import("./pages/admin/scheduled-jobs"));
 const PromptManagement = lazy(() => import("./pages/admin/prompt-management"));
+const DlqMonitor = lazy(() => import("./pages/admin/dlq"));
+const TermsOfService = lazy(() => import("./pages/tos"));
+const PrivacyPolicy = lazy(() => import("./pages/privacy"));
 const Onboarding = lazy(() => import("./pages/onboarding"));
 const History = lazy(() => import("./pages/history"));
 
@@ -52,6 +56,8 @@ function AdminLoading() {
 /** Root application component with route definitions. */
 export default function App() {
   return (
+    <>
+    <CookieConsent />
     <Routes>
       <Route path="/" element={
         <>
@@ -62,6 +68,8 @@ export default function App() {
       <Route path="/pricing" element={<Pricing />} />
       <Route path="/about" element={<About />} />
       <Route path="/contact" element={<Contact />} />
+      <Route path="/tos" element={<Suspense fallback={null}><TermsOfService /></Suspense>} />
+      <Route path="/privacy" element={<Suspense fallback={null}><PrivacyPolicy /></Suspense>} />
 
       {/* Backwards compat */}
       <Route path="/dashboard" element={<Navigate to="/home" replace />} />
@@ -126,7 +134,9 @@ export default function App() {
         <Route path="recommendations" element={<Suspense fallback={<AdminLoading />}><AdminRecommendations /></Suspense>} />
         <Route path="scheduled-jobs" element={<Suspense fallback={<AdminLoading />}><ScheduledJobs /></Suspense>} />
         <Route path="prompt-management" element={<Suspense fallback={<AdminLoading />}><PromptManagement /></Suspense>} />
+        <Route path="dlq" element={<Suspense fallback={<AdminLoading />}><DlqMonitor /></Suspense>} />
       </Route>
     </Routes>
+    </>
   );
 }

@@ -52,7 +52,11 @@ vi.mock("../components/install-prompt", () => ({
   InstallPrompt: () => null,
 }));
 
-import { Home } from "../pages/home";
+vi.mock("../contexts/podcast-sheet-context", () => ({
+  usePodcastSheet: () => ({ open: vi.fn(), close: vi.fn() }),
+}));
+
+import { Home } from "../pages/Home";
 
 const makeItem = (id: string, overrides: Partial<FeedItem> = {}): FeedItem => ({
   id,

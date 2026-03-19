@@ -119,7 +119,36 @@ export async function deleteUserAccount(
 
   let r2Deleted = 0;
 
-  // 2. Delete Stripe customer (best-effort)
+  // 2. Collect R2 keys for clips only this user references (before cascade delete)
+  let r2KeysToDelete: string[] = [];
+  try {
+    const userBriefings = await prisma.briefing.findMany({
+      where: { userId },
+      select: { clipId: true, clip: { select: { audioKey: true } } },
+    });
+    // Only delete R2 objects for clips no other user references
+    for (const b of userBriefings) {
+      if (!b.clip?.audioKey) continue;
+      const otherRefCount = await prisma.briefing.count({
+        where: { clipId: b.clipId, userId: { not: userId } },
+      });
+      if (otherRefCount === 0) {
+        r2KeysToDelete.push(b.clip.audioKey);
+      }
+    }
+  } catch (err) {
+    console.error(
+      JSON.stringify({
+        level: "warn",
+        action: "user_delete_r2_collect_failed",
+        userId,
+        error: err instanceof Error ? err.message : String(err),
+        ts: new Date().toISOString(),
+      })
+    );
+  }
+
+  // 3. Delete Stripe customer (best-effort)
   if (user?.stripeCustomerId) {
     try {
       const { createStripeClient } = await import("./stripe");
@@ -156,6 +185,14 @@ export async function deleteUserAccount(
 
   // 5. Delete DB user (cascades to subscriptions, feed items, briefings, requests)
   await prisma.user.delete({ where: { id: userId } });
+
+  // 6. Delete orphaned R2 audio artifacts (best-effort, after cascade)
+  for (const key of r2KeysToDelete) {
+    try {
+      await env.R2.delete(key);
+      r2Deleted++;
+    } catch { /* best-effort */ }
+  }
 
   return { r2Deleted };
 }

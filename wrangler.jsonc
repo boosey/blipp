@@ -128,6 +128,12 @@
 			}
 		]
 	},
+	"kv_namespaces": [
+		{
+			"binding": "RATE_LIMIT_KV",
+			"id": "3d3b2f616e234bdd91c72f62a6ad1c6a"
+		}
+	],
 	"ai": {
 		"binding": "AI"
 	},
@@ -155,6 +161,12 @@
 				"APP_ORIGIN": "https://podblipp.com",
 				"ALLOWED_ORIGINS": "https://podblipp.com,https://www.podblipp.com,capacitor://localhost,ionic://localhost"
 			},
+			"kv_namespaces": [
+				{
+					"binding": "RATE_LIMIT_KV",
+					"id": "172275d80c3a446a84ee7189a461279d"
+				}
+			],
 			"ai": {
 				"binding": "AI"
 			},

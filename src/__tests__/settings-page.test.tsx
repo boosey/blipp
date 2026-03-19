@@ -62,7 +62,7 @@ vi.mock("../contexts/plan-context", () => ({
   usePlan: () => ({ maxDurationMinutes: 15, subscriptions: { limit: 10, remaining: 7 } }),
 }));
 
-import { Settings } from "../pages/settings";
+import { Settings } from "../pages/Settings";
 
 beforeAll(() => {
   (globalThis as any).__APP_VERSION__ = "0.8.17";
