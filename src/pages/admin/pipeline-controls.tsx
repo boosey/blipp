@@ -17,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { usePipelineConfig, STAGE_NAMES } from "@/hooks/use-pipeline-config";
+import { usePipelineConfig } from "@/hooks/use-pipeline-config";
 
 const INTERVAL_OPTIONS = [
   { value: "15", label: "15 minutes" },
@@ -61,7 +61,6 @@ export default function PipelineControls() {
     triggering,
     updateConfig,
     togglePipeline,
-    toggleStage,
     triggerFeedRefresh,
   } = usePipelineConfig();
 
@@ -125,37 +124,6 @@ export default function PipelineControls() {
           <span className="text-[#9CA3AF]">Last Auto-run</span>
           <span className="font-mono tabular-nums text-[#F9FAFB]">{relativeTime(pipelineConfig.lastAutoRunAt)}</span>
         </div>
-      </div>
-
-      {/* Per-stage toggles */}
-      <div className="bg-[#0F1D32] border border-white/5 rounded-lg p-4 space-y-3">
-        <div>
-          <span className="text-xs font-semibold text-[#F9FAFB]">Stage Toggles</span>
-          <p className="text-[10px] text-[#9CA3AF] mt-0.5">Enable or disable individual pipeline stages</p>
-        </div>
-
-        {Object.entries(STAGE_NAMES).map(([key, name], idx) => {
-          const stageConfig = pipelineConfig.stages[key];
-          return (
-            <div key={key} className="flex items-center justify-between py-1.5">
-              <div className="flex items-center gap-2.5">
-                <span
-                  className="flex items-center justify-center h-6 w-6 rounded-full text-[10px] font-bold"
-                  style={{ backgroundColor: "#3B82F620", color: "#3B82F6" }}
-                >
-                  {idx + 1}
-                </span>
-                <span className="text-xs text-[#F9FAFB]">{stageConfig?.name ?? name}</span>
-              </div>
-              <Switch
-                checked={stageConfig?.enabled ?? true}
-                onCheckedChange={(v) => toggleStage(key, v)}
-                disabled={saving === `pipeline.stage.${key}.enabled`}
-                className="data-[state=checked]:bg-[#3B82F6]"
-              />
-            </div>
-          );
-        })}
       </div>
 
       {/* Max Episodes per Podcast */}
