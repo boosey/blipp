@@ -1,11 +1,16 @@
 import { render, screen, fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { PodcastCard } from "../components/podcast-card";
 
 const mockOpen = vi.fn();
 vi.mock("../contexts/podcast-sheet-context", () => ({
   usePodcastSheet: () => ({ podcastId: null, open: mockOpen, close: vi.fn() }),
 }));
+
+vi.mock("../lib/api", () => ({
+  useApiFetch: () => vi.fn().mockResolvedValue({ podcast: { userVote: 0 }, data: [] }),
+}));
+
+import { PodcastCard } from "../components/podcast-card";
 
 const defaultProps = {
   id: "p1",
@@ -37,19 +42,18 @@ describe("PodcastCard", () => {
         <PodcastCard {...defaultProps} />
       </MemoryRouter>
     );
-    fireEvent.click(screen.getByRole("button"));
+    fireEvent.click(screen.getByText("Tech Today"));
     expect(mockOpen).toHaveBeenCalledWith("p1");
   });
 
-  it("renders chevron icon", () => {
+  it("renders thumb buttons", () => {
     render(
       <MemoryRouter>
         <PodcastCard {...defaultProps} />
       </MemoryRouter>
     );
-    const button = screen.getByRole("button");
-    const svg = button.querySelector("svg");
-    expect(svg).toBeInTheDocument();
+    expect(screen.getByLabelText("Thumbs up")).toBeInTheDocument();
+    expect(screen.getByLabelText("Thumbs down")).toBeInTheDocument();
   });
 
   it("shows initial letter when no imageUrl", () => {

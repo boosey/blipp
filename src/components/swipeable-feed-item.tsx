@@ -12,6 +12,7 @@ interface SwipeableFeedItemProps {
   onPlay?: (id: string) => void;
   onToggleListened: (id: string, listened: boolean) => void;
   onRemove: (id: string) => void;
+  onEpisodeVote?: (episodeId: string, vote: number) => void;
 }
 
 export function SwipeableFeedItem({
@@ -19,6 +20,7 @@ export function SwipeableFeedItem({
   onPlay,
   onToggleListened,
   onRemove,
+  onEpisodeVote,
 }: SwipeableFeedItemProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const startXRef = useRef(0);
@@ -145,7 +147,7 @@ export function SwipeableFeedItem({
           pointerEvents: offset !== 0 ? "none" : undefined,
         }}
       >
-        <FeedItemCard item={item} onPlay={onPlay} />
+        <FeedItemCard item={item} onPlay={onPlay} onEpisodeVote={onEpisodeVote} />
       </div>
     </div>
   );

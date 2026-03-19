@@ -1,5 +1,8 @@
-import { ChevronRight } from "lucide-react";
+import { useState } from "react";
+import { ChevronRight, Heart } from "lucide-react";
+import { useApiFetch } from "../lib/api";
 import { usePodcastSheet } from "../contexts/podcast-sheet-context";
+import { ThumbButtons } from "./thumb-buttons";
 
 export interface PodcastCardProps {
   id: string;
@@ -21,10 +24,42 @@ export function PodcastCard({
   subscriberCount,
 }: PodcastCardProps) {
   const { open } = usePodcastSheet();
+  const apiFetch = useApiFetch();
+  const [vote, setVote] = useState(0);
+  const [favorited, setFavorited] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+
+  // Lazy-load vote + favorite state on first render
+  if (!loaded) {
+    setLoaded(true);
+    Promise.all([
+      apiFetch<{ podcast: { userVote: number } }>(`/podcasts/${id}`).catch(() => ({ podcast: { userVote: 0 } })),
+      apiFetch<{ data: { id: string }[] }>("/podcasts/favorites").catch(() => ({ data: [] })),
+    ]).then(([podData, favData]) => {
+      setVote(podData.podcast.userVote);
+      setFavorited(favData.data.some((f) => f.id === id));
+    });
+  }
+
+  async function handleVote(v: number) {
+    const prev = vote;
+    setVote(v);
+    try {
+      await apiFetch(`/podcasts/vote/${id}`, { method: "POST", body: JSON.stringify({ vote: v }) });
+    } catch { setVote(prev); }
+  }
+
+  async function handleFavorite() {
+    const prev = favorited;
+    setFavorited(!prev);
+    try {
+      await apiFetch(`/podcasts/favorites/${id}`, { method: prev ? "DELETE" : "POST" });
+    } catch { setFavorited(prev); }
+  }
 
   return (
-    <button onClick={() => open(id)} className="w-full text-left">
-      <div className="flex gap-3 bg-card border border-border rounded-lg p-3 active:scale-[0.98] transition-transform duration-75">
+    <div className="flex gap-3 bg-card border border-border rounded-lg p-3 active:scale-[0.98] transition-transform duration-75">
+      <button onClick={() => open(id)} className="flex gap-3 flex-1 min-w-0 text-left">
         {imageUrl ? (
           <img
             src={imageUrl}
@@ -52,8 +87,16 @@ export function PodcastCard({
             </p>
           )}
         </div>
-        <ChevronRight className="w-4 h-4 text-muted-foreground/60 self-center flex-shrink-0" />
+      </button>
+      <div className="flex flex-col items-center justify-center gap-1 flex-shrink-0">
+        <ThumbButtons vote={vote} onVote={handleVote} />
+        <button
+          onClick={(e) => { e.stopPropagation(); handleFavorite(); }}
+          className="p-1 rounded-full hover:bg-muted transition-colors"
+        >
+          <Heart className={`w-3.5 h-3.5 transition-colors ${favorited ? "fill-red-500 text-red-500" : "text-muted-foreground"}`} />
+        </button>
       </div>
-    </button>
+    </div>
   );
 }

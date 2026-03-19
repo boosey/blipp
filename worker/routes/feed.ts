@@ -75,6 +75,14 @@ feed.get("/", async (c) => {
     prisma.feedItem.count({ where }),
   ]);
 
+  // Batch-fetch user's episode votes for this page
+  const episodeIds = items.map((item: any) => item.episodeId);
+  const votes = await prisma.episodeVote.findMany({
+    where: { userId: user.id, episodeId: { in: episodeIds } },
+    select: { episodeId: true, vote: true },
+  });
+  const voteMap = new Map(votes.map((v: any) => [v.episodeId, v.vote]));
+
   const data = items.map((item: any) => ({
     id: item.id,
     source: item.source,
@@ -86,6 +94,7 @@ feed.get("/", async (c) => {
     errorMessage: item.errorMessage ?? null,
     podcast: item.podcast,
     episode: item.episode,
+    episodeVote: voteMap.get(item.episodeId) ?? 0,
     briefing: mapBriefing(item.briefing),
   }));
 

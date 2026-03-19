@@ -108,7 +108,7 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
     }
   }
 
-  async function handleCreateBriefing(episodeId: string, tier: DurationTier) {
+  async function handleCreateBriefing(episodeId: string, tier: DurationTier, silent = false) {
     setRequestingEpisodeId(episodeId);
     setBriefTierPickerEpisodeId(null);
     try {
@@ -116,7 +116,9 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
         method: "POST",
         body: JSON.stringify({ podcastId, episodeId, durationTier: tier }),
       });
-      toast("Briefing requested — usually ready in 2-5 minutes", { duration: 4000 });
+      if (!silent) {
+        toast(`${tier}m Blipp requested — usually ready in 2-5 minutes`, { duration: 4000 });
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to request briefing");
     } finally {
@@ -422,10 +424,10 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
                               showUpgrade(`Your plan supports briefings up to ${planUsage.maxDurationMinutes} minutes. Upgrade for longer briefings.`);
                               return;
                             }
-                            handleCreateBriefing(ep.id, defaultTier);
-                            toast(`${defaultTier}m Blipp requested`, {
-                              description: "Long-press Blipp to pick a different duration",
-                              duration: 4000,
+                            handleCreateBriefing(ep.id, defaultTier, true);
+                            toast(`${defaultTier}m Blipp requested — usually ready in 2-5 minutes`, {
+                              description: "Tip: long-press Blipp to pick a different duration",
+                              duration: 5000,
                             });
                           }
                         }}

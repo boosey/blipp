@@ -1,6 +1,7 @@
 import type { FeedItem } from "../types/feed";
 import { formatDuration } from "../lib/feed-utils";
 import { useAudio } from "../contexts/audio-context";
+import { ThumbButtons } from "./thumb-buttons";
 
 /** Map raw pipeline error to a short user-facing message. */
 function friendlyError(raw: string | null): string {
@@ -53,9 +54,11 @@ function formatEpDuration(seconds: number | null): string | null {
 export function FeedItemCard({
   item,
   onPlay,
+  onEpisodeVote,
 }: {
   item: FeedItem;
   onPlay?: (id: string) => void;
+  onEpisodeVote?: (episodeId: string, vote: number) => void;
 }) {
   const audio = useAudio();
   const isPlayable = item.status === "READY" && item.briefing?.clip;
@@ -85,13 +88,21 @@ export function FeedItemCard({
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-2">
           <p className="text-xs text-muted-foreground truncate">{item.podcast.title}</p>
-          {label && (
-            <span
-              className={`text-[10px] font-medium px-2 py-0.5 rounded-full flex-shrink-0 ${statusColor(item.status)}`}
-            >
-              {label}
-            </span>
-          )}
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            {onEpisodeVote && (
+              <ThumbButtons
+                vote={item.episodeVote}
+                onVote={(v) => onEpisodeVote(item.episode.id, v)}
+              />
+            )}
+            {label && (
+              <span
+                className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${statusColor(item.status)}`}
+              >
+                {label}
+              </span>
+            )}
+          </div>
         </div>
         <p className="font-medium text-sm truncate mt-0.5">
           {item.episode.title}
@@ -124,15 +135,25 @@ export function FeedItemCard({
 
   if (isPlayable) {
     return (
-      <button
-        className="w-full text-left active:scale-[0.98] transition-transform duration-75"
-        onClick={() => {
+      <div
+        role="button"
+        tabIndex={0}
+        className="w-full text-left active:scale-[0.98] transition-transform duration-75 cursor-pointer"
+        onClick={(e) => {
+          // Don't play if user clicked a thumb button
+          if ((e.target as HTMLElement).closest("[aria-label]")) return;
           audio.play(item);
           onPlay?.(item.id);
         }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            audio.play(item);
+            onPlay?.(item.id);
+          }
+        }}
       >
         {card}
-      </button>
+      </div>
     );
   }
 

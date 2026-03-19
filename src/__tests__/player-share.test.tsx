@@ -27,6 +27,7 @@ const mockCurrentItem = {
     publishedAt: "2026-03-16T00:00:00Z",
     durationSeconds: 3600,
   },
+  episodeVote: 0,
   briefing: {
     id: "b1",
     clip: { audioUrl: "/audio.mp3", actualSeconds: 185, previewText: null },

@@ -70,6 +70,7 @@ const makeItem = (id: string, overrides: Partial<FeedItem> = {}): FeedItem => ({
     publishedAt: new Date().toISOString(),
     durationSeconds: 3600,
   },
+  episodeVote: 0,
   briefing: {
     id: `b-${id}`,
     clip: { audioUrl: "/audio.mp3", actualSeconds: 180, previewText: null },

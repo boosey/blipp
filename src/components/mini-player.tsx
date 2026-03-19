@@ -36,7 +36,7 @@ export const MiniPlayer = forwardRef<MiniPlayerHandle>(function MiniPlayer(_prop
 
   return (
     <>
-      <div className="fixed bottom-[calc(env(safe-area-inset-bottom)+49px)] left-0 right-0 z-[60] max-w-3xl mx-auto">
+      <div className={`fixed bottom-[calc(env(safe-area-inset-bottom)+49px)] left-0 right-0 z-[60] max-w-3xl mx-auto${sheetOpen ? " hidden" : ""}`}>
         {/* Progress bar */}
         <div
           className={`absolute top-0 left-0 h-0.5 transition-all duration-200 ${

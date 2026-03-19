@@ -18,6 +18,7 @@ export interface FeedItem {
     publishedAt: string;
     durationSeconds: number | null;
   };
+  episodeVote: number;
   briefing: {
     id: string;
     clip: {

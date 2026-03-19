@@ -141,6 +141,21 @@ export function Home() {
     });
   }
 
+  async function handleEpisodeVote(episodeId: string, vote: number) {
+    const prevItems = items;
+    setItems((prev) =>
+      prev.map((i) => (i.episode.id === episodeId ? { ...i, episodeVote: vote } : i))
+    );
+    try {
+      await apiFetch(`/podcasts/episodes/vote/${episodeId}`, {
+        method: "POST",
+        body: JSON.stringify({ vote }),
+      });
+    } catch {
+      setItems(prevItems);
+    }
+  }
+
   function handleRemove(feedItemId: string) {
     const removedItem = items.find((i) => i.id === feedItemId);
     if (!removedItem) return;
@@ -248,6 +263,7 @@ export function Home() {
                       onPlay={handlePlay}
                       onToggleListened={handleToggleListened}
                       onRemove={handleRemove}
+                      onEpisodeVote={handleEpisodeVote}
                     />
                   </div>
                 ))}
