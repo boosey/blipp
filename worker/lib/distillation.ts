@@ -12,6 +12,7 @@ export interface Claim {
   importance: number;
   novelty: number;
   excerpt: string;
+  notable_quote?: string;
 }
 
 /** Episode metadata for the narrative intro. */
@@ -29,6 +30,7 @@ const ClaimSchema = z.object({
   importance: z.number().min(1).max(10),
   novelty: z.number().min(1).max(10),
   excerpt: z.string(),
+  notable_quote: z.string().optional(),
 });
 
 const ClaimsArraySchema = z.array(ClaimSchema).min(1);
