@@ -18,6 +18,7 @@ vi.mock("../../lib/config", () => ({
 vi.mock("../../lib/recommendations", () => ({
   scoreRecommendations: vi.fn(),
   cosineSimilarity: vi.fn(),
+  recomputeUserProfile: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { getCurrentUser } from "../../lib/admin-helpers";
@@ -38,6 +39,8 @@ describe("Recommendations routes", () => {
     });
     app.route("/", recommendations);
     (getCurrentUser as any).mockResolvedValue({ id: "user1" });
+    // Default: no dismissed recommendations
+    mockPrisma.recommendationDismissal.findMany.mockResolvedValue([]);
   });
 
   describe("GET /", () => {

@@ -85,8 +85,9 @@ model User {
   podcastFavorites  PodcastFavorite[]
   podcastVotes      PodcastVote[]
   episodeVotes      EpisodeVote[]
-  recommendationProfile  UserRecommendationProfile?
-  recommendationCache    RecommendationCache?
+  recommendationProfile     UserRecommendationProfile?
+  recommendationCache       RecommendationCache?
+  recommendationDismissals  RecommendationDismissal[]
 }
 
 // ── Podcast Favorites (interest signals for recommendations) ──
@@ -180,8 +181,9 @@ model Podcast {
   requests          PodcastRequest[]
   favorites         PodcastFavorite[]
   votes             PodcastVote[]
-  podcastCategories PodcastCategory[]
-  profile           PodcastProfile?
+  podcastCategories          PodcastCategory[]
+  profile                    PodcastProfile?
+  recommendationDismissals   RecommendationDismissal[]
 }
 
 model Episode {
@@ -823,6 +825,19 @@ model RecommendationCache {
   podcasts   Json     // [{ podcastId, score, reasons: string[] }]
   computedAt DateTime @default(now())
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model RecommendationDismissal {
+  id        String   @id @default(cuid())
+  userId    String
+  podcastId String
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  podcast Podcast @relation(fields: [podcastId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, podcastId])
+  @@index([userId])
 }
 
 // ── Scheduled Job Runs ──

@@ -54,12 +54,16 @@ describe("computePodcastProfiles", () => {
         id: "pod1",
         categories: ["Technology", "Science"],
         _count: { subscriptions: 10 },
+        votes: [{ vote: 1 }, { vote: 1 }, { vote: -1 }],
+        subscriptions: [{ userId: "u1" }, { userId: "u2" }],
         episodes: [{ publishedAt: now }],
       },
       {
         id: "pod2",
         categories: [],
         _count: { subscriptions: 5 },
+        votes: [],
+        subscriptions: [],
         episodes: [],
       },
     ]);
@@ -71,14 +75,15 @@ describe("computePodcastProfiles", () => {
 
     const firstCall = mockPrisma.podcastProfile.upsert.mock.calls[0][0];
     expect(firstCall.where).toEqual({ podcastId: "pod1" });
-    expect(firstCall.create.popularity).toBe(1); // 10/10 = 1 (max)
+    // Popularity is boosted by vote sentiment: 1.0 + (1/3)*0.15 = ~1.05, clamped to 1
+    expect(firstCall.create.popularity).toBe(1);
     expect(firstCall.create.categoryWeights).toMatchObject({ Technology: 0.5, Science: 0.5 });
   });
 
   it("normalizes popularity relative to max subscribers", async () => {
     mockPrisma.podcast.findMany.mockResolvedValue([
-      { id: "pod1", categories: [], _count: { subscriptions: 100 }, episodes: [] },
-      { id: "pod2", categories: [], _count: { subscriptions: 50 }, episodes: [] },
+      { id: "pod1", categories: [], _count: { subscriptions: 100 }, votes: [], subscriptions: [], episodes: [] },
+      { id: "pod2", categories: [], _count: { subscriptions: 50 }, votes: [], subscriptions: [], episodes: [] },
     ]);
     mockPrisma.podcastProfile.upsert.mockResolvedValue({});
 
@@ -100,6 +105,8 @@ describe("computeUserProfile", () => {
     mockPrisma.podcastFavorite.findMany.mockResolvedValue([
       { podcast: { categories: ["Technology", "Science"] } },
     ]);
+    mockPrisma.podcastVote.findMany.mockResolvedValue([]);
+    mockPrisma.episodeVote.findMany.mockResolvedValue([]);
     mockPrisma.feedItem.count.mockResolvedValue(5);
     mockPrisma.userRecommendationProfile.upsert.mockResolvedValue({});
 
@@ -118,6 +125,30 @@ describe("computeUserProfile", () => {
     expect(weights.Technology).toBeCloseTo(1.0);
     expect(weights.Science).toBeCloseTo(0.333, 2);
   });
+
+  it("incorporates vote signals into category weights", async () => {
+    mockPrisma.subscription.findMany.mockResolvedValue([]);
+    mockPrisma.podcastFavorite.findMany.mockResolvedValue([]);
+    mockPrisma.podcastVote.findMany.mockResolvedValue([
+      { vote: 1, podcast: { categories: ["Comedy", "Society"] } },
+      { vote: -1, podcast: { categories: ["True Crime"] } },
+    ]);
+    mockPrisma.episodeVote.findMany.mockResolvedValue([
+      { vote: 1, episode: { podcast: { categories: ["Comedy"] } } },
+    ]);
+    mockPrisma.feedItem.count.mockResolvedValue(0);
+    mockPrisma.userRecommendationProfile.upsert.mockResolvedValue({});
+
+    await computeUserProfile("user1", mockPrisma);
+
+    const weights = mockPrisma.userRecommendationProfile.upsert.mock.calls[0][0].create.categoryWeights;
+    // Comedy: 0.7 (podcast upvote) + 0.3 (episode upvote) = 1.0
+    // Society: 0.7 (podcast upvote)
+    // True Crime: -0.7 (podcast downvote) → clamped to 0
+    expect(weights.Comedy).toBeCloseTo(1.0);
+    expect(weights.Society).toBeCloseTo(0.7);
+    expect(weights["True Crime"]).toBe(0);
+  });
 });
 
 describe("scoreRecommendations", () => {
@@ -131,9 +162,15 @@ describe("scoreRecommendations", () => {
       .mockResolvedValueOnce(0.10); // recommendations.weights.subscriberOverlap
   }
 
+  function mockDefaultExclusions() {
+    mockPrisma.podcastVote.findMany.mockResolvedValue([]);
+    mockPrisma.recommendationDismissal.findMany.mockResolvedValue([]);
+  }
+
   it("returns popular recommendations for cold-start users", async () => {
     mockConfigDefaults();
     mockPrisma.subscription.findMany.mockResolvedValue([]); // 0 subscriptions < 3
+    mockDefaultExclusions();
 
     const popularProfiles = [
       { podcastId: "pod1", popularity: 0.9, podcast: { id: "pod1", title: "Pop 1" } },
@@ -154,9 +191,11 @@ describe("scoreRecommendations", () => {
       { podcastId: "sub2" },
       { podcastId: "sub3" },
     ]);
+    mockDefaultExclusions();
 
     mockPrisma.userRecommendationProfile.findUnique.mockResolvedValue({
       categoryWeights: { Technology: 1.0, Science: 0.5 },
+      listenCount: 10,
     });
 
     mockPrisma.podcastProfile.findMany.mockResolvedValue([
@@ -166,6 +205,7 @@ describe("scoreRecommendations", () => {
         popularity: 0.8,
         freshness: 0.9,
         subscriberCount: 20,
+        podcast: { subscriptions: [{ userId: "u1" }, { userId: "u2" }] },
       },
       {
         podcastId: "rec2",
@@ -173,34 +213,49 @@ describe("scoreRecommendations", () => {
         popularity: 0.3,
         freshness: 0.1,
         subscriberCount: 2,
+        podcast: { subscriptions: [] },
       },
+    ]);
+
+    // User's own subscribed podcasts' subscriber lists
+    mockPrisma.podcast.findMany.mockResolvedValue([
+      { id: "sub1", subscriptions: [{ userId: "u1" }] },
+      { id: "sub2", subscriptions: [{ userId: "u2" }] },
+      { id: "sub3", subscriptions: [] },
     ]);
 
     const result = await scoreRecommendations("user1", mockPrisma);
     expect(result.source).toBe("personalized");
     expect(result.recommendations).toHaveLength(2);
-    // rec1 should score higher (category match + high popularity + high freshness)
+    // rec1 should score higher (category match + high popularity + high freshness + overlap)
     expect(result.recommendations[0].podcastId).toBe("rec1");
   });
 
-  it("excludes already-subscribed podcasts", async () => {
+  it("excludes subscribed, downvoted, and dismissed podcasts", async () => {
     mockConfigDefaults();
     mockPrisma.subscription.findMany.mockResolvedValue([
       { podcastId: "sub1" },
       { podcastId: "sub2" },
       { podcastId: "sub3" },
     ]);
+    mockPrisma.podcastVote.findMany.mockResolvedValue([
+      { podcastId: "downvoted1" },
+    ]);
+    mockPrisma.recommendationDismissal.findMany.mockResolvedValue([
+      { podcastId: "dismissed1" },
+    ]);
     mockPrisma.userRecommendationProfile.findUnique.mockResolvedValue({
       categoryWeights: { Technology: 1.0 },
+      listenCount: 0,
     });
-    // podcastProfile.findMany is called with notIn filter — Prisma handles exclusion
     mockPrisma.podcastProfile.findMany.mockResolvedValue([]);
+    mockPrisma.podcast.findMany.mockResolvedValue([]);
 
     const result = await scoreRecommendations("user1", mockPrisma);
     expect(mockPrisma.podcastProfile.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          podcastId: { notIn: expect.arrayContaining(["sub1", "sub2", "sub3"]) },
+          podcastId: { notIn: expect.arrayContaining(["sub1", "sub2", "sub3", "downvoted1", "dismissed1"]) },
         }),
       })
     );
@@ -216,11 +271,15 @@ describe("scoreRecommendations", () => {
 
     mockPrisma.userRecommendationProfile.findUnique
       .mockResolvedValueOnce(null) // first check — missing
-      .mockResolvedValueOnce({ categoryWeights: { Tech: 1.0 } }); // recursive call
+      .mockResolvedValueOnce({ categoryWeights: { Tech: 1.0 }, listenCount: 0 }); // recursive call
     mockPrisma.podcastFavorite.findMany.mockResolvedValue([]);
+    mockPrisma.podcastVote.findMany.mockResolvedValue([]);
+    mockPrisma.episodeVote.findMany.mockResolvedValue([]);
+    mockPrisma.recommendationDismissal.findMany.mockResolvedValue([]);
     mockPrisma.feedItem.count.mockResolvedValue(0);
     mockPrisma.userRecommendationProfile.upsert.mockResolvedValue({});
     mockPrisma.podcastProfile.findMany.mockResolvedValue([]);
+    mockPrisma.podcast.findMany.mockResolvedValue([]);
 
     // Second call to scoreRecommendations (recursive) needs another set of config mocks
     (getConfig as any)
@@ -233,5 +292,35 @@ describe("scoreRecommendations", () => {
 
     await scoreRecommendations("user1", mockPrisma);
     expect(mockPrisma.userRecommendationProfile.upsert).toHaveBeenCalled();
+  });
+
+  it("boosts category weight for high-engagement users", async () => {
+    mockConfigDefaults();
+    mockPrisma.subscription.findMany.mockResolvedValue([
+      { podcastId: "sub1" }, { podcastId: "sub2" }, { podcastId: "sub3" },
+    ]);
+    mockDefaultExclusions();
+
+    mockPrisma.userRecommendationProfile.findUnique.mockResolvedValue({
+      categoryWeights: { Technology: 1.0 },
+      listenCount: 200, // high engagement → 1.3x multiplier
+    });
+
+    mockPrisma.podcastProfile.findMany.mockResolvedValue([
+      {
+        podcastId: "rec1",
+        categoryWeights: { Technology: 1.0 },
+        popularity: 0.5,
+        freshness: 0.5,
+        subscriberCount: 5,
+        podcast: { subscriptions: [] },
+      },
+    ]);
+    mockPrisma.podcast.findMany.mockResolvedValue([]);
+
+    const result = await scoreRecommendations("user1", mockPrisma);
+    // Category score with engagement: cosine(1.0, 1.0) * 1.3 = 1.3, clamped to 1.0 in scoring
+    // Total = 0.40*1.0 + 0.35*0.5 + 0.15*0.5 + 0.10*0 = 0.65
+    expect(result.recommendations[0].score).toBeGreaterThan(0.6);
   });
 });

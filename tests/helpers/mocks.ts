@@ -56,6 +56,7 @@ export function createMockPrisma() {
     podcastProfile: modelMethods(),
     userRecommendationProfile: modelMethods(),
     recommendationCache: modelMethods(),
+    recommendationDismissal: modelMethods(),
     $disconnect: vi.fn().mockResolvedValue(undefined),
   };
 }

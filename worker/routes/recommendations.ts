@@ -3,7 +3,7 @@ import type { Env } from "../types";
 import { requireAuth } from "../middleware/auth";
 import { getCurrentUser } from "../lib/admin-helpers";
 import { getConfig } from "../lib/config";
-import { scoreRecommendations, cosineSimilarity } from "../lib/recommendations";
+import { scoreRecommendations, cosineSimilarity, recomputeUserProfile } from "../lib/recommendations";
 
 export const recommendations = new Hono<{ Bindings: Env }>();
 
@@ -24,11 +24,20 @@ recommendations.get("/", async (c) => {
     where: { userId: user.id },
   });
 
+  // Fetch dismissed podcast IDs to filter from results
+  const dismissals = await prisma.recommendationDismissal.findMany({
+    where: { userId: user.id },
+    select: { podcastId: true },
+  });
+  const dismissedIds = new Set(dismissals.map((d: any) => d.podcastId));
+
   if (cached) {
     const cacheAge = Date.now() - new Date(cached.computedAt).getTime();
     if (cacheAge < 3600000) { // 1 hour cache validity
-      // Hydrate with podcast data
-      const podcastIds = (cached.podcasts as any[]).map((r: any) => r.podcastId);
+      // Hydrate with podcast data, excluding dismissed
+      const podcastIds = (cached.podcasts as any[])
+        .filter((r: any) => !dismissedIds.has(r.podcastId))
+        .map((r: any) => r.podcastId);
       const podcasts = await prisma.podcast.findMany({
         where: { id: { in: podcastIds } },
         select: { id: true, title: true, author: true, description: true, imageUrl: true, feedUrl: true, categories: true, episodeCount: true, _count: { select: { subscriptions: true } } },
@@ -36,7 +45,7 @@ recommendations.get("/", async (c) => {
       const podcastMap = new Map(podcasts.map((p: any) => [p.id, { ...p, subscriberCount: p._count.subscriptions, _count: undefined }]));
 
       const recs = (cached.podcasts as any[])
-        .filter((r: any) => podcastMap.has(r.podcastId))
+        .filter((r: any) => podcastMap.has(r.podcastId) && !dismissedIds.has(r.podcastId))
         .map((r: any) => ({
           podcast: podcastMap.get(r.podcastId),
           score: r.score,
@@ -66,7 +75,7 @@ recommendations.get("/", async (c) => {
   const podcastMap = new Map(podcasts.map((p: any) => [p.id, { ...p, subscriberCount: p._count.subscriptions, _count: undefined }]));
 
   const recs = result.recommendations
-    .filter((r) => podcastMap.has(r.podcastId))
+    .filter((r) => podcastMap.has(r.podcastId) && !dismissedIds.has(r.podcastId))
     .map((r) => ({
       podcast: podcastMap.get(r.podcastId),
       score: r.score,
@@ -117,4 +126,24 @@ recommendations.get("/similar/:podcastId", async (c) => {
     .slice(0, 10);
 
   return c.json({ similar: scored });
+});
+
+// POST /dismiss/:podcastId — dismiss a recommendation (hide it)
+recommendations.post("/dismiss/:podcastId", async (c) => {
+  const podcastId = c.req.param("podcastId");
+  const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
+
+  await prisma.recommendationDismissal.upsert({
+    where: { userId_podcastId: { userId: user.id, podcastId } },
+    create: { userId: user.id, podcastId },
+    update: {},
+  });
+
+  // Recompute recommendations (fire-and-forget)
+  try { await recomputeUserProfile(user.id, prisma); } catch (err) {
+    console.error(JSON.stringify({ level: "warn", action: "recommendation_recompute_failed", userId: user.id, trigger: "dismiss", error: err instanceof Error ? err.message : String(err), ts: new Date().toISOString() }));
+  }
+
+  return c.json({ dismissed: true });
 });

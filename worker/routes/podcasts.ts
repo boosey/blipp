@@ -593,6 +593,10 @@ podcasts.post("/vote/:podcastId", async (c) => {
     await prisma.podcastVote.deleteMany({
       where: { userId: user.id, podcastId },
     });
+    // Recompute recommendations (fire-and-forget)
+    try { await recomputeUserProfile(user.id, prisma); } catch (err) {
+      console.error(JSON.stringify({ level: "warn", action: "recommendation_recompute_failed", userId: user.id, trigger: "podcast_vote_remove", error: err instanceof Error ? err.message : String(err), ts: new Date().toISOString() }));
+    }
     return c.json({ vote: 0 });
   }
 
@@ -602,6 +606,11 @@ podcasts.post("/vote/:podcastId", async (c) => {
     create: { userId: user.id, podcastId, vote: v },
     update: { vote: v },
   });
+
+  // Recompute recommendations (fire-and-forget)
+  try { await recomputeUserProfile(user.id, prisma); } catch (err) {
+    console.error(JSON.stringify({ level: "warn", action: "recommendation_recompute_failed", userId: user.id, trigger: "podcast_vote", error: err instanceof Error ? err.message : String(err), ts: new Date().toISOString() }));
+  }
 
   return c.json({ vote: v });
 });
@@ -635,6 +644,10 @@ podcasts.post("/episodes/vote/:episodeId", async (c) => {
     await prisma.episodeVote.deleteMany({
       where: { userId: user.id, episodeId },
     });
+    // Recompute recommendations (fire-and-forget)
+    try { await recomputeUserProfile(user.id, prisma); } catch (err) {
+      console.error(JSON.stringify({ level: "warn", action: "recommendation_recompute_failed", userId: user.id, trigger: "episode_vote_remove", error: err instanceof Error ? err.message : String(err), ts: new Date().toISOString() }));
+    }
     return c.json({ vote: 0 });
   }
 
@@ -644,6 +657,11 @@ podcasts.post("/episodes/vote/:episodeId", async (c) => {
     create: { userId: user.id, episodeId, vote: v },
     update: { vote: v },
   });
+
+  // Recompute recommendations (fire-and-forget)
+  try { await recomputeUserProfile(user.id, prisma); } catch (err) {
+    console.error(JSON.stringify({ level: "warn", action: "recommendation_recompute_failed", userId: user.id, trigger: "episode_vote", error: err instanceof Error ? err.message : String(err), ts: new Date().toISOString() }));
+  }
 
   return c.json({ vote: v });
 });
