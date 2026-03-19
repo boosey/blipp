@@ -20,6 +20,7 @@ import { adsRoutes } from "./ads";
 import { recommendationsRoutes } from "./recommendations";
 import { cronJobsRoutes } from "./cron-jobs";
 import { claimsBenchmarkRoutes } from "./claims-benchmark";
+import { promptsRoutes } from "./prompts";
 
 /**
  * Admin route tree. All routes require admin authentication.
@@ -49,5 +50,6 @@ adminRoutes.route("/ads", adsRoutes);
 adminRoutes.route("/recommendations", recommendationsRoutes);
 adminRoutes.route("/cron-jobs", cronJobsRoutes);
 adminRoutes.route("/claims-benchmark", claimsBenchmarkRoutes);
+adminRoutes.route("/prompts", promptsRoutes);
 
 export { adminRoutes };
