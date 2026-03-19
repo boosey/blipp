@@ -47,6 +47,7 @@ export function PodcastDetailSheet() {
         side="bottom"
         showCloseButton={false}
         className="h-[85vh] rounded-t-2xl bg-background border-border flex flex-col p-0"
+        overlayClassName="pointer-events-none"
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
