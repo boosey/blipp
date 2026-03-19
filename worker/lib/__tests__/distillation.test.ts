@@ -27,6 +27,9 @@ const mockPricing = {
   priceInputPerMToken: 3,
   priceOutputPerMToken: 15,
 };
+const mockPrisma = {
+  platformConfig: { findUnique: vi.fn().mockResolvedValue(null) },
+};
 
 describe("extractClaims", () => {
   const sampleClaims: Claim[] = [
@@ -36,7 +39,7 @@ describe("extractClaims", () => {
 
   it("should parse claims JSON from LLM response", async () => {
     const llm = createMockLlmProvider(JSON.stringify(sampleClaims));
-    const result = await extractClaims(llm, "Some transcript text", "mock-model-1", 8192, mockEnv, mockPricing);
+    const result = await extractClaims(mockPrisma, llm, "Some transcript text", "mock-model-1", 8192, mockEnv, mockPricing);
 
     expect(result.claims).toEqual(sampleClaims);
     expect(result.claims).toHaveLength(2);
@@ -50,7 +53,7 @@ describe("extractClaims", () => {
 
   it("should pass the transcript in the user message", async () => {
     const llm = createMockLlmProvider(JSON.stringify(sampleClaims));
-    await extractClaims(llm, "My specific transcript", "mock-model-1", 8192, mockEnv);
+    await extractClaims(mockPrisma, llm, "My specific transcript", "mock-model-1", 8192, mockEnv);
 
     const call = (llm.complete as ReturnType<typeof vi.fn>).mock.calls[0];
     const messages = call[0];
@@ -59,7 +62,7 @@ describe("extractClaims", () => {
 
   it("should pass instructions as a cached system prompt", async () => {
     const llm = createMockLlmProvider(JSON.stringify(sampleClaims));
-    await extractClaims(llm, "My transcript", "mock-model-1", 8192, mockEnv);
+    await extractClaims(mockPrisma, llm, "My transcript", "mock-model-1", 8192, mockEnv);
 
     const call = (llm.complete as ReturnType<typeof vi.fn>).mock.calls[0];
     const options = call[4]; // 5th argument: options
@@ -71,7 +74,7 @@ describe("extractClaims", () => {
 
   it("should pass providerModelId and maxTokens to the provider", async () => {
     const llm = createMockLlmProvider(JSON.stringify(sampleClaims));
-    await extractClaims(llm, "transcript", "custom-model", 4096, mockEnv);
+    await extractClaims(mockPrisma, llm, "transcript", "custom-model", 4096, mockEnv);
 
     const call = (llm.complete as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(call[1]).toBe("custom-model");
@@ -80,7 +83,7 @@ describe("extractClaims", () => {
 
   it("should strip markdown fences from response", async () => {
     const llm = createMockLlmProvider("```json\n" + JSON.stringify(sampleClaims) + "\n```");
-    const result = await extractClaims(llm, "transcript", "mock-model-1", 8192, mockEnv);
+    const result = await extractClaims(mockPrisma, llm, "transcript", "mock-model-1", 8192, mockEnv);
 
     expect(result.claims).toEqual(sampleClaims);
   });
@@ -92,13 +95,13 @@ describe("extractClaims", () => {
 
   it("should unwrap object with claims key", async () => {
     const llm = createMockLlmProvider(JSON.stringify({ claims: sampleClaims }));
-    const result = await extractClaims(llm, "transcript", "mock-model-1", 8192, mockEnv);
+    const result = await extractClaims(mockPrisma, llm, "transcript", "mock-model-1", 8192, mockEnv);
     expect(result.claims).toEqual(sampleClaims);
   });
 
   it("should unwrap object with results key", async () => {
     const llm = createMockLlmProvider(JSON.stringify({ results: sampleClaims }));
-    const result = await extractClaims(llm, "transcript", "mock-model-1", 8192, mockEnv);
+    const result = await extractClaims(mockPrisma, llm, "transcript", "mock-model-1", 8192, mockEnv);
     expect(result.claims).toEqual(sampleClaims);
   });
 
@@ -114,7 +117,7 @@ describe("extractClaims", () => {
 
   it("should instruct LLM to exclude advertisements from claims", async () => {
     const llm = createMockLlmProvider(JSON.stringify(sampleClaims));
-    await extractClaims(llm, "My transcript", "mock-model-1", 8192, mockEnv);
+    await extractClaims(mockPrisma, llm, "My transcript", "mock-model-1", 8192, mockEnv);
 
     const call = (llm.complete as ReturnType<typeof vi.fn>).mock.calls[0];
     const systemPrompt = call[4].system; // system prompt is in options
@@ -131,7 +134,7 @@ describe("extractClaims", () => {
 
   it("should return null cost when no pricing provided", async () => {
     const llm = createMockLlmProvider(JSON.stringify(sampleClaims));
-    const result = await extractClaims(llm, "transcript", "mock-model-1", 8192, mockEnv);
+    const result = await extractClaims(mockPrisma, llm, "transcript", "mock-model-1", 8192, mockEnv);
     expect(result.usage.cost).toBeNull();
   });
 });
@@ -145,7 +148,7 @@ describe("generateNarrative", () => {
     const narrative = "Today we explore how AI is set to transform healthcare...";
     const llm = createMockLlmProvider(narrative);
 
-    const result = await generateNarrative(llm, claims, 3, "mock-model-1", 8192, mockEnv, mockPricing);
+    const result = await generateNarrative(mockPrisma, llm, claims, 3, "mock-model-1", 8192, mockEnv, mockPricing);
     expect(result.narrative).toBe(narrative);
     expect(result.usage).toEqual({
       model: "mock-model-1",
@@ -157,7 +160,7 @@ describe("generateNarrative", () => {
 
   it("should include target word count in the prompt", async () => {
     const llm = createMockLlmProvider("narrative text");
-    await generateNarrative(llm, claims, 5, "mock-model-1", 8192, mockEnv);
+    await generateNarrative(mockPrisma, llm, claims, 5, "mock-model-1", 8192, mockEnv);
 
     const call = (llm.complete as ReturnType<typeof vi.fn>).mock.calls[0];
     const messages = call[0];
@@ -167,7 +170,7 @@ describe("generateNarrative", () => {
 
   it("should pass providerModelId to the provider", async () => {
     const llm = createMockLlmProvider("narrative text");
-    await generateNarrative(llm, claims, 3, "custom-model", 4096, mockEnv);
+    await generateNarrative(mockPrisma, llm, claims, 3, "custom-model", 4096, mockEnv);
 
     const call = (llm.complete as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(call[1]).toBe("custom-model");
@@ -176,7 +179,7 @@ describe("generateNarrative", () => {
 
   it("should include the claims in the prompt", async () => {
     const llm = createMockLlmProvider("narrative text");
-    await generateNarrative(llm, claims, 3, "mock-model-1", 8192, mockEnv);
+    await generateNarrative(mockPrisma, llm, claims, 3, "mock-model-1", 8192, mockEnv);
 
     const call = (llm.complete as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(call[0][0].content).toContain("AI will transform healthcare");
@@ -187,7 +190,7 @@ describe("generateNarrative", () => {
       { claim: "AI transforms healthcare", speaker: "Dr. Smith", importance: 9, novelty: 7, excerpt: "I believe AI will completely transform how we deliver healthcare services." },
     ];
     const llm = createMockLlmProvider("narrative text");
-    await generateNarrative(llm, claimsWithExcerpts, 3, "mock-model-1", 8192, mockEnv);
+    await generateNarrative(mockPrisma, llm, claimsWithExcerpts, 3, "mock-model-1", 8192, mockEnv);
 
     const call = (llm.complete as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(call[0][0].content).toContain("CLAIMS AND EXCERPTS");
@@ -200,7 +203,7 @@ describe("generateNarrative", () => {
       { claim: "AI transforms healthcare", speaker: "Dr. Smith", importance: 9, novelty: 7 },
     ] as Claim[];
     const llm = createMockLlmProvider("narrative text");
-    await generateNarrative(llm, legacyClaims, 3, "mock-model-1", 8192, mockEnv);
+    await generateNarrative(mockPrisma, llm, legacyClaims, 3, "mock-model-1", 8192, mockEnv);
 
     const call = (llm.complete as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(call[0][0].content).toContain("CLAIMS:");
@@ -272,7 +275,7 @@ describe("generateNarrative with metadata", () => {
       briefingMinutes: 5,
     };
 
-    await generateNarrative(llm, testClaims, 5, "model", 8192, {}, null, metadata);
+    await generateNarrative(mockPrisma, llm, testClaims, 5, "model", 8192, {}, null, metadata);
 
     const userContent = (llm.complete as any).mock.calls[0][0][0].content;
     expect(userContent).toContain("The Daily");
@@ -283,7 +286,7 @@ describe("generateNarrative with metadata", () => {
   it("omits metadata block when metadata not provided", async () => {
     const llm = createMockLlmProvider("This is a test narrative.");
 
-    await generateNarrative(llm, testClaims, 5, "model", 8192, {});
+    await generateNarrative(mockPrisma, llm, testClaims, 5, "model", 8192, {});
 
     const userContent = (llm.complete as any).mock.calls[0][0][0].content;
     expect(userContent).not.toContain("Begin the narrative with a brief spoken introduction");
@@ -299,7 +302,7 @@ describe("generateNarrative with metadata", () => {
       briefingMinutes: 3,
     };
 
-    await generateNarrative(llm, testClaims, 3, "model", 8192, {}, null, metadata);
+    await generateNarrative(mockPrisma, llm, testClaims, 3, "model", 8192, {}, null, metadata);
 
     const userContent = (llm.complete as any).mock.calls[0][0][0].content;
     expect(userContent).toContain("podcast name and episode title");

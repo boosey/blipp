@@ -319,7 +319,7 @@ describe("handleDistillation", () => {
     await handleDistillation(batch, mockEnv, mockCtx);
 
     expect(resolveModelChain).toHaveBeenCalledWith(expect.anything(), "distillation");
-    expect(extractClaims).toHaveBeenCalledWith(expect.anything(), expect.any(String), expect.any(String), 8192, expect.anything(), expect.anything());
+    expect(extractClaims).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.any(String), expect.any(String), 8192, expect.anything(), expect.anything());
   });
 
   describe("stage-enabled check", () => {
