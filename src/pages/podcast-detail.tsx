@@ -24,6 +24,7 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
   const [subscribing, setSubscribing] = useState(false);
   const [requestingEpisodeId, setRequestingEpisodeId] = useState<string | null>(null);
   const [showSubscribeTierPicker, setShowSubscribeTierPicker] = useState(false);
+  const [showChangeTierPicker, setShowChangeTierPicker] = useState(false);
   const [briefTierPickerEpisodeId, setBriefTierPickerEpisodeId] = useState<string | null>(null);
   const [isFavorited, setIsFavorited] = useState(false);
   const [expandedEpisodeId, setExpandedEpisodeId] = useState<string | null>(null);
@@ -105,6 +106,23 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
       toast.error(e instanceof Error ? e.message : "Failed to unsubscribe");
     } finally {
       setSubscribing(false);
+    }
+  }
+
+  async function handleChangeTier(tier: DurationTier) {
+    if (!podcast) return;
+    setShowChangeTierPicker(false);
+    try {
+      await apiFetch(`/podcasts/subscribe/${podcast.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ durationTier: tier }),
+      });
+      toast.success(`Briefing length updated to ${tier}m`);
+      setPodcast((prev) =>
+        prev ? { ...prev, subscriptionDurationTier: tier } : prev
+      );
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to update");
     }
   }
 
@@ -257,20 +275,36 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
             {podcast.episodeCount} episodes
           </p>
 
-          {/* Subscribe / Subscribed button */}
+          {/* Subscribe / Unsubscribe + tier */}
           {podcast.isSubscribed ? (
-            <div className="flex items-center gap-2 mt-2">
-              <button
-                onClick={handleUnsubscribe}
-                disabled={subscribing}
-                className="px-4 py-1.5 rounded-full text-xs font-medium bg-muted text-foreground/70 hover:bg-accent transition-colors disabled:opacity-50"
-              >
-                {subscribing ? "..." : "Subscribed"}
-              </button>
-              {podcast.subscriptionDurationTier && (
-                <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                  {podcast.subscriptionDurationTier}m
-                </span>
+            <div className="mt-2 space-y-2">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleUnsubscribe}
+                  disabled={subscribing}
+                  className="px-4 py-1.5 rounded-full text-xs font-medium bg-muted text-red-400 hover:bg-red-500/20 transition-colors disabled:opacity-50"
+                >
+                  {subscribing ? "..." : "Unsubscribe"}
+                </button>
+                {podcast.subscriptionDurationTier && (
+                  <button
+                    onClick={() => setShowChangeTierPicker(!showChangeTierPicker)}
+                    className="text-[10px] font-medium text-muted-foreground bg-muted hover:bg-accent px-1.5 py-0.5 rounded transition-colors"
+                  >
+                    {podcast.subscriptionDurationTier}m
+                  </button>
+                )}
+              </div>
+              {showChangeTierPicker && (
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Change briefing length:</p>
+                  <TierPicker
+                    selected={(podcast.subscriptionDurationTier as DurationTier) ?? null}
+                    onSelect={handleChangeTier}
+                    maxDurationMinutes={planUsage.maxDurationMinutes}
+                    onUpgrade={showUpgrade}
+                  />
+                </div>
               )}
             </div>
           ) : (
