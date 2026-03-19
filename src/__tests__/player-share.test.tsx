@@ -9,6 +9,10 @@ vi.mock("../lib/api", () => ({
   useApiFetch: () => vi.fn().mockResolvedValue({ vote: 0 }),
 }));
 
+vi.mock("../contexts/podcast-sheet-context", () => ({
+  usePodcastSheet: () => ({ podcastId: null, open: vi.fn(), close: vi.fn() }),
+}));
+
 import { toast } from "sonner";
 
 const mockCurrentItem = {
