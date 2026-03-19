@@ -114,7 +114,7 @@ function SubscriptionsGrid({ onRefetchRef }: { onRefetchRef?: React.MutableRefOb
             </button>
             <button
               onClick={(e) => { e.stopPropagation(); setManagingSub(sub); }}
-              className="absolute top-1 right-1 p-1.5 rounded-full bg-background/70 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+              className="absolute top-1 right-1 p-1.5 rounded-full bg-background/70 text-muted-foreground sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
               title="Manage subscription"
             >
               <MoreVertical className="w-3.5 h-3.5" />
@@ -193,7 +193,7 @@ function FavoritesGrid({ onRefetchRef }: { onRefetchRef?: React.MutableRefObject
           </button>
           <button
             onClick={() => removeFavorite(podcast.id)}
-            className="absolute top-1 right-1 p-1.5 rounded-full bg-background/70 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity hover:text-red-400"
+            className="absolute top-1 right-1 p-1.5 rounded-full bg-background/70 text-muted-foreground sm:opacity-0 sm:group-hover:opacity-100 transition-opacity hover:text-red-400"
             title="Remove from favorites"
           >
             <Trash2 className="w-3.5 h-3.5" />
