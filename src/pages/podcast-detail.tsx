@@ -345,7 +345,7 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
       {/* Description */}
       {podcast.description && (
         <p className="text-sm text-muted-foreground line-clamp-4 break-words">
-          {podcast.description}
+          {podcast.description.replace(/<[^>]*>/g, "")}
         </p>
       )}
 

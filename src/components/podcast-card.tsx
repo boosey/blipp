@@ -77,7 +77,7 @@ export function PodcastCard({
           <h3 className="font-semibold text-sm truncate">{title}</h3>
           <p className="text-xs text-muted-foreground truncate">{author}</p>
           <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
-            {description}
+            {description.replace(/<[^>]*>/g, "")}
           </p>
           {(episodeCount !== undefined || (subscriberCount !== undefined && subscriberCount > 0)) && (
             <p className="text-[10px] text-muted-foreground/60 mt-0.5">
