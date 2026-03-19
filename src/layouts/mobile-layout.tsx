@@ -21,9 +21,11 @@ function MobileLayoutInner() {
   const navigate = useNavigate();
   const hasMiniPlayer = currentItem !== null;
   const isOnboarding = location.pathname === "/onboarding";
+  const isSharedPlay = location.pathname.startsWith("/play/");
   const isSubPage = !TOP_LEVEL_PATHS.includes(location.pathname);
 
-  if (!isChecking && needsOnboarding && !isOnboarding) {
+  // Skip onboarding for shared play links — let them hear the briefing first
+  if (!isChecking && needsOnboarding && !isOnboarding && !isSharedPlay) {
     return <Navigate to="/onboarding" replace />;
   }
 
