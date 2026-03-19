@@ -27,7 +27,7 @@ const app = new Hono<{ Bindings: Env }>();
 
 // Global error handler — catches all unhandled throws from routes/middleware
 app.onError((err, c) => {
-  const { status, message, code } = classifyHttpError(err);
+  const { status, message, code, details } = classifyHttpError(err);
   const requestId = c.get("requestId") ?? c.req.header("x-request-id") ?? crypto.randomUUID();
 
   console.error(JSON.stringify({
@@ -45,6 +45,7 @@ app.onError((err, c) => {
 
   const body: ApiErrorResponse = { error: message, requestId };
   if (code) body.code = code;
+  if (details) body.details = details;
 
   return c.json(body, status as any);
 });

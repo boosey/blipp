@@ -2,19 +2,26 @@
 
 import type { Context } from "hono";
 import type { Env } from "../types";
+import { ValidationError } from "./validation";
 
 /** Standard API error response shape. Every error from the API uses this. */
 export interface ApiErrorResponse {
   error: string;
   requestId?: string;
   code?: string;
+  details?: Array<{ path: string; message: string }>;
 }
 
 /**
  * Determines the HTTP status code and user-safe message for a thrown error.
  * Prevents Prisma internals, stack traces, and API keys from leaking to clients.
  */
-export function classifyHttpError(err: unknown): { status: number; message: string; code?: string } {
+export function classifyHttpError(err: unknown): { status: number; message: string; code?: string; details?: Array<{ path: string; message: string }> } {
+  // Validation errors — return 400 with field-level details
+  if (err instanceof ValidationError) {
+    return { status: 400, message: err.message, code: err.code, details: err.details };
+  }
+
   if (err instanceof Error) {
     const msg = err.message;
     const name = err.name;

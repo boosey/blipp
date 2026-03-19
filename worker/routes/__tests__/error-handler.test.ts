@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { classifyHttpError } from "../../lib/errors";
+import { ValidationError } from "../../lib/validation";
 
 describe("classifyHttpError", () => {
   it("classifies Prisma NotFoundError as 404", () => {
@@ -51,5 +52,16 @@ describe("classifyHttpError", () => {
   it("classifies non-Error values as 500", () => {
     const result = classifyHttpError("string error");
     expect(result.status).toBe(500);
+  });
+
+  it("classifies ValidationError as 400 with details", () => {
+    const err = new ValidationError([
+      { path: ["name"], message: "Required", code: "invalid_type", expected: "string", received: "undefined" } as any,
+    ]);
+    const result = classifyHttpError(err);
+    expect(result.status).toBe(400);
+    expect(result.message).toBe("Validation error");
+    expect(result.code).toBe("VALIDATION_ERROR");
+    expect(result.details).toEqual([{ path: "name", message: "Required" }]);
   });
 });
