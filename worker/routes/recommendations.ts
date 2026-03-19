@@ -261,11 +261,12 @@ recommendations.get("/episodes", async (c) => {
     ];
   }
 
-  const [episodes, total] = await Promise.all([
+  // Over-fetch to allow diversity filtering (3x page size)
+  const [rawEpisodes, total] = await Promise.all([
     prisma.episode.findMany({
       where,
       skip,
-      take: pageSize,
+      take: pageSize * 3,
       orderBy: { publishedAt: "desc" },
       select: {
         id: true,
@@ -278,6 +279,9 @@ recommendations.get("/episodes", async (c) => {
     }),
     prisma.episode.count({ where }),
   ]);
+
+  // Diversify: max 3 episodes per podcast per page
+  const episodes = diversifyEpisodes(rawEpisodes, 3, pageSize);
 
   return c.json({
     episodes: episodes.map((ep: any) => ({

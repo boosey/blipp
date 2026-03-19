@@ -218,7 +218,7 @@ describe("Curated recommendations and episode browse", () => {
 
       const call = mockPrisma.episode.findMany.mock.calls[0][0];
       expect(call.skip).toBe(20); // (3-1) * 10
-      expect(call.take).toBe(10);
+      expect(call.take).toBe(30); // 10 * 3 (over-fetch for diversity)
 
       const data = (await res.json()) as any;
       expect(data.page).toBe(3);
@@ -232,7 +232,7 @@ describe("Curated recommendations and episode browse", () => {
       await app.request("/episodes?pageSize=100");
 
       const call = mockPrisma.episode.findMany.mock.calls[0][0];
-      expect(call.take).toBe(50);
+      expect(call.take).toBe(150); // 50 * 3 (over-fetch for diversity)
     });
   });
 });
