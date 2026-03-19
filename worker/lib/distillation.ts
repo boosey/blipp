@@ -1,6 +1,15 @@
 import { z } from "zod";
 import type { LlmProvider, LlmCompletionOptions } from "./llm-providers";
 import { calculateTokenCost, type AiUsage, type ModelPricing } from "./ai-usage";
+import { getConfig } from "./config";
+import {
+  DEFAULT_CLAIMS_SYSTEM_PROMPT,
+  DEFAULT_NARRATIVE_SYSTEM_PROMPT_WITH_EXCERPTS,
+  DEFAULT_NARRATIVE_SYSTEM_PROMPT_NO_EXCERPTS,
+  DEFAULT_NARRATIVE_USER_TEMPLATE,
+  DEFAULT_NARRATIVE_METADATA_INTRO,
+  PROMPT_CONFIG_KEYS,
+} from "./prompt-defaults";
 
 /** Words spoken per minute for podcast-style narration. */
 export const WORDS_PER_MINUTE = 150;
@@ -35,30 +44,11 @@ const ClaimSchema = z.object({
 
 const ClaimsArraySchema = z.array(ClaimSchema).min(1);
 
-/** Stable system prompt for claim extraction — cached across calls. */
-const CLAIMS_SYSTEM_PROMPT = `You are a podcast analyst. Extract all significant factual claims, insights, arguments, and notable statements from podcast transcripts.
-
-For each claim, include:
-- "claim": the factual assertion (one clear sentence)
-- "speaker": who made the claim
-- "importance": 1-10 rating (10 = critical takeaway, 1 = minor detail)
-- "novelty": 1-10 rating (10 = surprising/counterintuitive, 1 = common knowledge)
-- "excerpt": the verbatim passage from the transcript that contains or supports this claim — include enough surrounding context that someone could write a detailed summary from the excerpt alone (may be one sentence or a full exchange)
-
-Guidelines:
-- Extract every claim worth preserving — do NOT limit to a fixed number
-- A dense 3-hour episode may yield 30-40 claims; a light 20-minute episode may yield 8-12
-- EXCLUDE ALL ADVERTISEMENTS: Skip any sponsored segments, ad reads, product promotions, discount codes, affiliate pitches, or endorsements of sponsors. If a host says "this episode is brought to you by..." or promotes a product/service as part of a sponsorship, exclude ALL claims from that segment. Do not extract claims about sponsor products, services, or offers even if they sound factual.
-- Skip filler, repetition, and off-topic tangents
-- Excerpts must be VERBATIM from the transcript, not paraphrased
-- Sort by importance descending
-
-Return ONLY a JSON array. No markdown fences, no commentary.`;
-
 /**
  * Pass 1: Extracts all significant claims from a podcast transcript.
  */
 export async function extractClaims(
+  prisma: any,
   llm: LlmProvider,
   transcript: string,
   providerModelId: string,
@@ -66,8 +56,14 @@ export async function extractClaims(
   env: any,
   pricing: ModelPricing | null = null
 ): Promise<{ claims: Claim[]; usage: AiUsage }> {
+  const systemPrompt = await getConfig(
+    prisma,
+    PROMPT_CONFIG_KEYS.claimsSystem,
+    DEFAULT_CLAIMS_SYSTEM_PROMPT
+  );
+
   const options: LlmCompletionOptions = {
-    system: CLAIMS_SYSTEM_PROMPT,
+    system: systemPrompt as string,
     cacheSystemPrompt: true,
   };
 
@@ -145,42 +141,11 @@ export function selectClaimsForDuration(
   return scored.slice(0, targetCount).map(({ _score, ...claim }) => claim);
 }
 
-function buildMetadataIntro(metadata: EpisodeMetadata): string {
-  return `
-Begin the narrative with a brief spoken introduction stating the podcast name and episode title.
-
-Example: "From The Daily — The Election Results."
-
-Then proceed directly into the content summary.
-`;
-}
-
-/** Stable system prompt for narrative generation — cached across calls. */
-const NARRATIVE_SYSTEM_PROMPT_WITH_EXCERPTS = `You are a podcast script writer. Write a spoken narrative summarizing claims and their source excerpts for a daily briefing podcast segment.
-
-Rules:
-- Write in a conversational, engaging tone suitable for audio
-- Cover claims in rough order of importance, but group related topics
-- Use the EXCERPT text for accurate detail and context — do NOT invent facts beyond what the excerpts contain
-- Use natural transitions between topics
-- For shorter briefings, focus only on the highest-impact claims
-- For longer briefings, include supporting context and nuance from excerpts
-- Do NOT include stage directions, speaker labels, or markdown
-- Output ONLY the narrative text`;
-
-const NARRATIVE_SYSTEM_PROMPT_NO_EXCERPTS = `You are a podcast script writer. Write a spoken narrative summarizing claims for a daily briefing podcast segment.
-
-Rules:
-- Write in a conversational, engaging tone suitable for audio
-- Cover the most important claims first
-- Use natural transitions between topics
-- Do NOT include stage directions, speaker labels, or markdown
-- Output ONLY the narrative text`;
-
 /**
  * Pass 2: Generates a spoken narrative from extracted claims at a target duration.
  */
 export async function generateNarrative(
+  prisma: any,
   llm: LlmProvider,
   claims: Claim[],
   durationMinutes: number,
@@ -192,19 +157,31 @@ export async function generateNarrative(
 ): Promise<{ narrative: string; usage: AiUsage }> {
   const targetWords = Math.round(durationMinutes * WORDS_PER_MINUTE);
   const hasExcerpts = claims.length > 0 && "excerpt" in claims[0];
-  const metadataBlock = metadata ? buildMetadataIntro(metadata) : "";
 
   const systemPrompt = hasExcerpts
-    ? NARRATIVE_SYSTEM_PROMPT_WITH_EXCERPTS
-    : NARRATIVE_SYSTEM_PROMPT_NO_EXCERPTS;
+    ? await getConfig(prisma, PROMPT_CONFIG_KEYS.narrativeSystemWithExcerpts, DEFAULT_NARRATIVE_SYSTEM_PROMPT_WITH_EXCERPTS)
+    : await getConfig(prisma, PROMPT_CONFIG_KEYS.narrativeSystemNoExcerpts, DEFAULT_NARRATIVE_SYSTEM_PROMPT_NO_EXCERPTS);
 
-  const userContent = `TARGET: approximately ${targetWords} words (${durationMinutes} minutes at ${WORDS_PER_MINUTE} wpm).
-${metadataBlock}
-${hasExcerpts ? "CLAIMS AND EXCERPTS" : "CLAIMS"}:
-${JSON.stringify(claims, null, 2)}`;
+  const metadataIntro = metadata
+    ? await getConfig(prisma, PROMPT_CONFIG_KEYS.narrativeMetadataIntro, DEFAULT_NARRATIVE_METADATA_INTRO)
+    : "";
+
+  const userTemplate = await getConfig(
+    prisma,
+    PROMPT_CONFIG_KEYS.narrativeUserTemplate,
+    DEFAULT_NARRATIVE_USER_TEMPLATE
+  );
+
+  const userContent = (userTemplate as string)
+    .replace("{{targetWords}}", String(targetWords))
+    .replace("{{durationMinutes}}", String(durationMinutes))
+    .replace("{{wpm}}", String(WORDS_PER_MINUTE))
+    .replace("{{metadataBlock}}", metadataIntro as string)
+    .replace("{{claimsLabel}}", hasExcerpts ? "CLAIMS AND EXCERPTS" : "CLAIMS")
+    .replace("{{claimsJson}}", JSON.stringify(claims, null, 2));
 
   const options: LlmCompletionOptions = {
-    system: systemPrompt,
+    system: systemPrompt as string,
     cacheSystemPrompt: true,
   };
 
