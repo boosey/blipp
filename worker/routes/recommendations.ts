@@ -17,6 +17,35 @@ interface CuratedRow {
   items: any[];
 }
 
+/** Cap episodes per podcast and interleave for diversity. */
+function diversifyEpisodes(episodes: any[], maxPerPodcast = 2, limit = 15): any[] {
+  const byPodcast = new Map<string, any[]>();
+  for (const ep of episodes) {
+    const pid = ep.podcast?.id ?? ep.podcastId;
+    if (!byPodcast.has(pid)) byPodcast.set(pid, []);
+    byPodcast.get(pid)!.push(ep);
+  }
+
+  // Round-robin across podcasts
+  const result: any[] = [];
+  const iterators = [...byPodcast.values()].map(eps => ({ eps, idx: 0 }));
+  let round = 0;
+
+  while (result.length < limit && iterators.some(it => it.idx < it.eps.length && it.idx < maxPerPodcast)) {
+    for (const it of iterators) {
+      if (result.length >= limit) break;
+      if (it.idx < it.eps.length && it.idx < maxPerPodcast) {
+        result.push(it.eps[it.idx]);
+        it.idx++;
+      }
+    }
+    round++;
+    if (round > limit) break; // safety
+  }
+
+  return result;
+}
+
 // --- Curated rows helper ---
 
 async function generateCuratedRows(
@@ -43,10 +72,10 @@ async function generateCuratedRows(
         ...(genre ? { categories: { has: genre } } : {}),
       },
     };
-    const episodes = await prisma.episode.findMany({
+    const rawEpisodes = await prisma.episode.findMany({
       where,
       orderBy: { publishedAt: "desc" },
-      take: 15,
+      take: 50,
       select: {
         id: true,
         title: true,
@@ -56,6 +85,7 @@ async function generateCuratedRows(
         podcast: { select: { id: true, title: true, author: true, imageUrl: true, categories: true } },
       },
     });
+    const episodes = diversifyEpisodes(rawEpisodes, 2, 15);
     if (episodes.length > 0) {
       rows.push({
         title: genre ? `Trending in ${genre}` : "Trending Now",
@@ -86,10 +116,10 @@ async function generateCuratedRows(
             ...(genre ? { categories: { has: genre } } : {}),
           },
         };
-        const episodes = await prisma.episode.findMany({
+        const rawTopicEpisodes = await prisma.episode.findMany({
           where,
           orderBy: { publishedAt: "desc" },
-          take: 15,
+          take: 50,
           select: {
             id: true,
             title: true,
@@ -99,6 +129,7 @@ async function generateCuratedRows(
             podcast: { select: { id: true, title: true, author: true, imageUrl: true, categories: true } },
           },
         });
+        const episodes = diversifyEpisodes(rawTopicEpisodes, 2, 15);
         if (episodes.length > 0) {
           rows.push({
             title: "New on topics you follow",
