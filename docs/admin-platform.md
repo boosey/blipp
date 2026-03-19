@@ -72,6 +72,10 @@ STT model benchmarking system. Create experiments comparing multiple STT models/
 
 AI model management. Browse all models by stage (stt, distillation, narrative, tts). Add new models with developer and notes. Add/edit/remove providers per model with pricing metadata (per-minute, per-token, per-character). Toggle model active state and provider availability. Set default providers. View pricing update timestamps.
 
+### 12. Prompt Management (`/admin/prompt-management`)
+
+View and edit all LLM prompts used in the pipeline. Prompts are stored as PlatformConfig entries with hardcoded defaults as fallback. Each prompt has an expandable textarea editor, "customized" badge if overridden, "unsaved" indicator for pending changes, Save button, and Reset to Default. Grouped by pipeline stage (Distillation, Narrative Generation). Changes take effect within 60 seconds (config cache TTL). The narrative user prompt template supports `{{variable}}` syntax for runtime substitution. All changes are audit-logged.
+
 ## API Routes
 
 All routes are mounted at `/api/admin/`. Backend route files live in `worker/routes/admin/`.

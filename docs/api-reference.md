@@ -524,6 +524,16 @@ All analytics endpoints accept `from` and `to` query params (ISO date strings).
 
 ---
 
+### Prompts (`/api/admin/prompts`)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/` | List all prompts with current values (from config or defaults) |
+| PATCH | `/:key` | Update a prompt value |
+| DELETE | `/:key` | Reset prompt to default (deletes config override) |
+
+---
+
 ### Requests (`/api/admin/requests`)
 
 | Method | Path | Description |
