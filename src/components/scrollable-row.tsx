@@ -44,7 +44,7 @@ export function ScrollableRow({ children, className = "" }: ScrollableRowProps) 
       {canScrollLeft && (
         <button
           onClick={() => scroll("left")}
-          className="absolute left-0 top-0 bottom-0 z-10 w-10 flex items-center justify-center bg-gradient-to-r from-background/90 to-transparent opacity-0 group-hover/scroll:opacity-100 transition-opacity cursor-pointer"
+          className="absolute left-0 top-0 bottom-0 z-10 w-8 flex items-center justify-center bg-gradient-to-r from-background via-background/80 to-transparent cursor-pointer"
           aria-label="Scroll left"
         >
           <ChevronLeft className="w-5 h-5 text-foreground" />
@@ -59,7 +59,7 @@ export function ScrollableRow({ children, className = "" }: ScrollableRowProps) 
       {canScrollRight && (
         <button
           onClick={() => scroll("right")}
-          className="absolute right-0 top-0 bottom-0 z-10 w-10 flex items-center justify-center bg-gradient-to-l from-background/90 to-transparent opacity-0 group-hover/scroll:opacity-100 transition-opacity cursor-pointer"
+          className="absolute right-0 top-0 bottom-0 z-10 w-8 flex items-center justify-center bg-gradient-to-l from-background via-background/80 to-transparent cursor-pointer"
           aria-label="Scroll right"
         >
           <ChevronRight className="w-5 h-5 text-foreground" />

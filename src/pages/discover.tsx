@@ -148,7 +148,7 @@ export function Discover() {
     if (!filteredPodcasts.length) return [];
     return [...filteredPodcasts]
       .sort((a, b) => b.episodeCount - a.episodeCount)
-      .slice(0, 10);
+      .slice(0, 20);
   }, [filteredPodcasts]);
 
   // Filtered recommendations (respects category filter)
@@ -370,7 +370,7 @@ export function Discover() {
                 {filteredRecs.source === "popular" ? "Popular" : "For You"}
               </h2>
               <ScrollableRow className="gap-3 pb-2">
-                {filteredRecs.recommendations.slice(0, 8).map((rec) => (
+                {filteredRecs.recommendations.slice(0, 16).map((rec) => (
                   <button
                     key={rec.podcast.id}
                     onClick={() => openPodcast(rec.podcast.id)}
