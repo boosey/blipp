@@ -446,6 +446,7 @@ export function Discover() {
                     description={podcast.description || ""}
                     imageUrl={podcast.imageUrl || ""}
                     episodeCount={podcast.episodeCount}
+                    subscriberCount={podcast.subscriberCount}
                   />
                 ))}
               </div>
