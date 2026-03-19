@@ -5,16 +5,13 @@ import { useApiFetch } from "../lib/api";
 import { useFetch } from "../lib/use-fetch";
 import { PodcastCard } from "../components/podcast-card";
 import { ScrollableRow } from "../components/scrollable-row";
+import { CuratedRow } from "../components/curated-row";
+import { EpisodeCard } from "../components/episode-card";
 import { DiscoverSkeleton } from "../components/skeletons/discover-skeleton";
 import { EmptyState } from "../components/empty-state";
 import { usePullToRefresh } from "../hooks/use-pull-to-refresh";
 import { usePodcastSheet } from "../contexts/podcast-sheet-context";
-
-interface RecommendationItem {
-  podcast: CatalogPodcast;
-  score: number;
-  reasons: string[];
-}
+import type { CuratedResponse, EpisodeBrowseItem, EpisodeBrowseResponse } from "../types/recommendations";
 
 interface CatalogPodcast {
   id: string;
@@ -36,6 +33,7 @@ interface CatalogResponse {
 }
 
 const BROWSE_PAGE_SIZE = 50;
+const EPISODE_PAGE_SIZE = 20;
 
 export function Discover() {
   const apiFetch = useApiFetch();
@@ -46,6 +44,7 @@ export function Discover() {
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
+  const [browseTab, setBrowseTab] = useState<"episodes" | "podcasts">("episodes");
 
   // Dynamic category pills from API
   const { data: categoryData } = useFetch<{
@@ -72,12 +71,68 @@ export function Discover() {
     { id: string; feedUrl: string; title?: string; status: string; podcastId?: string }[]
   >([]);
 
-  const { data: recsData } = useFetch<{
-    recommendations: RecommendationItem[];
-    source: string;
-  }>("/recommendations");
+  // --- Curated rows ---
+  const curatedEndpoint = `/recommendations/curated${selectedCategory !== "All" ? `?genre=${encodeURIComponent(selectedCategory)}` : ""}`;
+  const { data: curatedData, loading: curatedLoading } = useFetch<CuratedResponse>(curatedEndpoint);
 
-  // --- Browse All with pagination ---
+  // --- Episodes browse with pagination ---
+  const [episodes, setEpisodes] = useState<EpisodeBrowseItem[]>([]);
+  const [episodeTotal, setEpisodeTotal] = useState(0);
+  const [episodePage, setEpisodePage] = useState(1);
+  const [episodeLoading, setEpisodeLoading] = useState(false);
+  const [episodeInitialLoaded, setEpisodeInitialLoaded] = useState(false);
+  const episodeLoadMoreRef = useRef<HTMLDivElement>(null);
+
+  const fetchEpisodePage = useCallback(async (page: number, reset = false) => {
+    setEpisodeLoading(true);
+    try {
+      const genreParam = selectedCategory !== "All" ? `&genre=${encodeURIComponent(selectedCategory)}` : "";
+      const searchParam = debouncedSearch.trim() ? `&search=${encodeURIComponent(debouncedSearch.trim())}` : "";
+      const data = await apiFetch<EpisodeBrowseResponse>(
+        `/recommendations/episodes?page=${page}&pageSize=${EPISODE_PAGE_SIZE}${genreParam}${searchParam}`
+      );
+      setEpisodes((prev) => reset ? data.episodes : [...prev, ...data.episodes]);
+      setEpisodeTotal(data.total);
+      setEpisodePage(page);
+      setEpisodeInitialLoaded(true);
+    } catch {
+      // Silently fail — curated rows are the primary content
+    } finally {
+      setEpisodeLoading(false);
+    }
+  }, [apiFetch, selectedCategory, debouncedSearch]);
+
+  // Reset episodes when category or search changes
+  useEffect(() => {
+    setEpisodes([]);
+    setEpisodePage(1);
+    setEpisodeInitialLoaded(false);
+    fetchEpisodePage(1, true);
+  }, [fetchEpisodePage]);
+
+  const episodeHasMore = episodes.length < episodeTotal;
+
+  const episodeStateRef = useRef({ episodeHasMore, episodeLoading, episodePage, fetchEpisodePage });
+  episodeStateRef.current = { episodeHasMore, episodeLoading, episodePage, fetchEpisodePage };
+
+  // Intersection observer for episode infinite scroll
+  useEffect(() => {
+    const el = episodeLoadMoreRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const { episodeHasMore: hm, episodeLoading: ld, episodePage: pg, fetchEpisodePage: loadPage } = episodeStateRef.current;
+        if (entries[0].isIntersecting && hm && !ld) {
+          loadPage(pg + 1);
+        }
+      },
+      { rootMargin: "200px" }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  // --- Podcasts browse with pagination ---
   const [allPodcasts, setAllPodcasts] = useState<CatalogPodcast[]>([]);
   const [browseTotal, setBrowseTotal] = useState(0);
   const [browsePage, setBrowsePage] = useState(1);
@@ -86,13 +141,14 @@ export function Discover() {
   const [initialLoaded, setInitialLoaded] = useState(false);
   const loadMoreRef = useRef<HTMLDivElement>(null);
 
-  // Fetch a page of catalog podcasts
   const fetchCatalogPage = useCallback(async (page: number, reset = false) => {
     setBrowseLoading(true);
     setBrowseError(null);
     try {
+      const genreParam = selectedCategory !== "All" ? `&category=${encodeURIComponent(selectedCategory)}` : "";
+      const searchParam = debouncedSearch.trim() ? `&q=${encodeURIComponent(debouncedSearch.trim())}` : "";
       const data = await apiFetch<CatalogResponse>(
-        `/podcasts/catalog?page=${page}&pageSize=${BROWSE_PAGE_SIZE}`
+        `/podcasts/catalog?page=${page}&pageSize=${BROWSE_PAGE_SIZE}${genreParam}${searchParam}`
       );
       setAllPodcasts((prev) => reset ? data.podcasts : [...prev, ...data.podcasts]);
       setBrowseTotal(data.total);
@@ -103,24 +159,22 @@ export function Discover() {
     } finally {
       setBrowseLoading(false);
     }
-  }, [apiFetch]);
+  }, [apiFetch, selectedCategory, debouncedSearch]);
 
-  // Initial load — run once on mount
+  // Reset podcasts browse when category or search changes
   useEffect(() => {
+    setAllPodcasts([]);
+    setBrowsePage(1);
+    setInitialLoaded(false);
     fetchCatalogPage(1, true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [fetchCatalogPage]);
 
   const hasMore = allPodcasts.length < browseTotal;
 
-  // Refs for infinite scroll to avoid re-creating the observer on every state change
   const browseStateRef = useRef({ hasMore, browseLoading, browsePage, fetchCatalogPage });
   browseStateRef.current = { hasMore, browseLoading, browsePage, fetchCatalogPage };
 
-  // Intersection observer for infinite scroll — created once, reads all state from ref.
-  // Uses root: null (viewport) because <main> uses min-h-screen on its parent,
-  // so the page/body scrolls rather than main itself. With root set to main,
-  // the sentinel is always inside main's content area and transitions never fire.
+  // Intersection observer for podcast infinite scroll
   useEffect(() => {
     const el = loadMoreRef.current;
     if (!el || typeof IntersectionObserver === "undefined") return;
@@ -135,43 +189,18 @@ export function Discover() {
     );
     observer.observe(el);
     return () => observer.disconnect();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Created once — all dynamic values read from browseStateRef
+  }, []);
 
-  // Pull to refresh reloads page 1
+  // Pull to refresh
   const { indicator: pullIndicator, bind: pullBind } = usePullToRefresh({
-    onRefresh: async () => { await fetchCatalogPage(1, true); },
+    onRefresh: async () => {
+      if (browseTab === "episodes") {
+        await fetchEpisodePage(1, true);
+      } else {
+        await fetchCatalogPage(1, true);
+      }
+    },
   });
-
-  // Category-filtered base list (used by all sections)
-  const filteredPodcasts = useMemo(() => {
-    if (selectedCategory === "All") return allPodcasts;
-    return allPodcasts.filter((p) =>
-      p.categories?.some(
-        (c) => c.toLowerCase() === selectedCategory.toLowerCase()
-      )
-    );
-  }, [allPodcasts, selectedCategory]);
-
-  // Trending: top 10 by episode count (respects category filter)
-  const trendingPodcasts = useMemo(() => {
-    if (!filteredPodcasts.length) return [];
-    return [...filteredPodcasts]
-      .sort((a, b) => b.episodeCount - a.episodeCount)
-      .slice(0, 20);
-  }, [filteredPodcasts]);
-
-  // Filtered recommendations (respects category filter)
-  const filteredRecs = useMemo(() => {
-    if (!recsData?.recommendations.length) return null;
-    if (selectedCategory === "All") return recsData;
-    const filtered = recsData.recommendations.filter((rec) =>
-      rec.podcast.categories?.some(
-        (c) => c.toLowerCase() === selectedCategory.toLowerCase()
-      )
-    );
-    return { ...recsData, recommendations: filtered };
-  }, [recsData, selectedCategory]);
 
   // Debounce search input
   useEffect(() => {
@@ -179,7 +208,7 @@ export function Discover() {
     return () => clearTimeout(timer);
   }, [searchInput]);
 
-  // Fire search when debounced value changes
+  // Legacy search for search-results mode (podcast search when typing)
   useEffect(() => {
     const q = debouncedSearch.trim();
     if (!q) {
@@ -187,29 +216,11 @@ export function Discover() {
       setSearchError(null);
       return;
     }
-
-    let cancelled = false;
-    setSearching(true);
+    // Search results now handled via browse tabs (episodes + podcasts filtered by search)
+    // Clear the legacy search overlay
+    setSearchResults(null);
     setSearchError(null);
-
-    apiFetch<{ podcasts: CatalogPodcast[] }>(
-      `/podcasts/catalog?q=${encodeURIComponent(q)}`
-    )
-      .then((data) => {
-        if (!cancelled) setSearchResults(data.podcasts || []);
-      })
-      .catch((e) => {
-        if (!cancelled) {
-          setSearchResults([]);
-          setSearchError(e instanceof Error ? e.message : "Search failed");
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setSearching(false);
-      });
-
-    return () => { cancelled = true; };
-  }, [debouncedSearch, apiFetch]);
+  }, [debouncedSearch]);
 
   function handleClearSearch() {
     setSearchInput("");
@@ -237,7 +248,6 @@ export function Discover() {
       toast.success("Podcast request submitted! We'll review it soon.");
       setRequestUrl("");
       setShowRequestForm(false);
-      // Refresh requests list
       apiFetch<{ data: typeof myRequests }>("/podcasts/requests")
         .then((data) => setMyRequests(data.data || []))
         .catch(() => {});
@@ -253,11 +263,10 @@ export function Discover() {
     }
   }
 
-  const isSearching = searchInput.trim().length > 0;
-
   return (
     <div className="space-y-4" {...pullBind}>
       {pullIndicator}
+
       {/* Search bar */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -265,7 +274,7 @@ export function Discover() {
           type="text"
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
-          placeholder="Search podcasts..."
+          placeholder="Search episodes & podcasts..."
           className="w-full pl-10 pr-10 py-2.5 bg-card border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-muted-foreground"
         />
         {searchInput && (
@@ -278,24 +287,157 @@ export function Discover() {
         )}
       </div>
 
-      {isSearching ? (
-        /* Search results mode */
-        <div>
-          <h2 className="text-lg font-semibold mb-3">Search Results</h2>
-          {searching && <DiscoverSkeleton />}
-          {!searching && searchError && (
-            <p className="text-red-400 text-sm text-center py-4">{searchError}</p>
-          )}
-          {!searching && !searchError && searchResults && searchResults.length === 0 && (
+      {/* Category pills */}
+      <ScrollableRow className="gap-2 pb-2">
+        {categoryNames.map((cat) => (
+          <button
+            key={cat}
+            onClick={() => setSelectedCategory(cat)}
+            className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors snap-start flex-shrink-0 ${
+              selectedCategory === cat
+                ? "bg-primary text-primary-foreground"
+                : "bg-muted text-muted-foreground hover:bg-accent"
+            }`}
+          >
+            {cat}
+          </button>
+        ))}
+      </ScrollableRow>
+
+      {/* Curated rows */}
+      {curatedLoading && !curatedData && (
+        <div className="space-y-6">
+          {[1, 2].map((i) => (
+            <div key={i} className="space-y-2">
+              <div className="h-4 w-40 bg-muted rounded animate-pulse" />
+              <div className="flex gap-3 overflow-hidden">
+                {[1, 2, 3].map((j) => (
+                  <div key={j} className="w-[180px] h-[180px] bg-muted rounded-lg animate-pulse flex-shrink-0" />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {curatedData?.rows.map((row, i) => (
+        <CuratedRow key={`${row.title}-${i}`} row={row} />
+      ))}
+
+      {/* Podcast suggestions from curated */}
+      {curatedData?.podcastSuggestions && curatedData.podcastSuggestions.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-semibold">You might want to subscribe</h2>
+          <ScrollableRow className="gap-3 pb-2">
+            {curatedData.podcastSuggestions.map((suggestion) => (
+              <button
+                key={suggestion.podcast.id}
+                onClick={() => openPodcast(suggestion.podcast.id)}
+                className="flex-shrink-0 w-28 snap-start text-left"
+              >
+                {suggestion.podcast.imageUrl ? (
+                  <img
+                    src={suggestion.podcast.imageUrl}
+                    className="w-28 h-28 rounded-lg object-cover"
+                    alt=""
+                  />
+                ) : (
+                  <div className="w-28 h-28 rounded-lg bg-muted flex items-center justify-center">
+                    <span className="text-2xl font-bold text-muted-foreground">
+                      {suggestion.podcast.title.charAt(0).toUpperCase()}
+                    </span>
+                  </div>
+                )}
+                <p className="text-xs font-medium mt-1.5 truncate">{suggestion.podcast.title}</p>
+                {suggestion.topReasons[0] && (
+                  <span className="text-[10px] text-muted-foreground truncate block">
+                    {suggestion.topReasons[0]}
+                  </span>
+                )}
+              </button>
+            ))}
+          </ScrollableRow>
+        </section>
+      )}
+
+      {/* Tab switcher: Episodes / Podcasts */}
+      <div className="flex gap-2 pt-2">
+        <button
+          onClick={() => setBrowseTab("episodes")}
+          className={`px-4 py-1.5 rounded-full text-xs font-medium transition-colors ${
+            browseTab === "episodes"
+              ? "bg-primary text-primary-foreground"
+              : "bg-muted text-muted-foreground hover:bg-accent"
+          }`}
+        >
+          Episodes
+        </button>
+        <button
+          onClick={() => setBrowseTab("podcasts")}
+          className={`px-4 py-1.5 rounded-full text-xs font-medium transition-colors ${
+            browseTab === "podcasts"
+              ? "bg-primary text-primary-foreground"
+              : "bg-muted text-muted-foreground hover:bg-accent"
+          }`}
+        >
+          Podcasts
+        </button>
+      </div>
+
+      {/* Episodes tab */}
+      {browseTab === "episodes" && (
+        <section>
+          {!episodeInitialLoaded && episodeLoading && <DiscoverSkeleton />}
+          {episodeInitialLoaded && episodes.length === 0 && (
             <EmptyState
               icon={Search}
-              title="No podcasts found"
-              description="Try a different search term or browse our catalog."
+              title="No episodes found"
+              description={debouncedSearch.trim() ? "Try a different search term." : "Try selecting a different category."}
             />
           )}
-          {!searching && searchResults && searchResults.length > 0 && (
+          {episodes.length > 0 && (
             <div className="space-y-2">
-              {searchResults.map((podcast) => (
+              {episodes.map((item) => (
+                <EpisodeCard
+                  key={item.episode.id}
+                  episode={item.episode}
+                  podcast={item.podcast}
+                  variant="full"
+                />
+              ))}
+            </div>
+          )}
+          <div ref={episodeLoadMoreRef} className="h-1" />
+          {episodeLoading && episodeInitialLoaded && (
+            <div className="flex justify-center py-4">
+              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+            </div>
+          )}
+          {episodeHasMore && !episodeLoading && episodeInitialLoaded && (
+            <button
+              onClick={() => fetchEpisodePage(episodePage + 1)}
+              className="w-full py-3 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Load more
+            </button>
+          )}
+        </section>
+      )}
+
+      {/* Podcasts tab */}
+      {browseTab === "podcasts" && (
+        <section>
+          <div className="flex items-baseline justify-between mb-3">
+            {browseTotal > 0 && (
+              <span className="text-xs text-muted-foreground">{browseTotal} podcasts</span>
+            )}
+          </div>
+          {browseError && (
+            <p className="text-red-400 text-sm text-center py-4">{browseError}</p>
+          )}
+          {!initialLoaded && !browseError && <DiscoverSkeleton />}
+          {allPodcasts.length > 0 && (
+            <div className="space-y-2">
+              {allPodcasts.map((podcast) => (
                 <PodcastCard
                   key={podcast.id}
                   id={podcast.id}
@@ -309,248 +451,104 @@ export function Discover() {
               ))}
             </div>
           )}
-        </div>
-      ) : (
-        /* Browse mode */
-        <>
-          {/* Category pills */}
-          <ScrollableRow className="gap-2 pb-2 mt-4">
-            {categoryNames.map((cat) => (
-              <button
-                key={cat}
-                onClick={() => setSelectedCategory(cat)}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors snap-start flex-shrink-0 ${
-                  selectedCategory === cat
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-muted-foreground hover:bg-accent"
-                }`}
-              >
-                {cat}
-              </button>
-            ))}
-          </ScrollableRow>
-
-          {/* Trending section */}
-          {trendingPodcasts.length > 0 && (
-            <section className="mt-6">
-              <h2 className="text-lg font-semibold mb-3">Trending Now</h2>
-              <ScrollableRow className="gap-3 pb-2">
-                {trendingPodcasts.map((podcast) => (
-                  <button
-                    key={podcast.id}
-                    onClick={() => openPodcast(podcast.id)}
-                    className="flex-shrink-0 w-28 snap-start text-left"
-                  >
-                    <div className="relative">
-                      {podcast.imageUrl ? (
-                        <img
-                          src={podcast.imageUrl}
-                          className="w-28 h-28 rounded-lg object-cover"
-                          alt=""
-                        />
-                      ) : (
-                        <div className="w-28 h-28 rounded-lg bg-muted flex items-center justify-center">
-                          <span className="text-2xl font-bold text-muted-foreground">
-                            {podcast.title.charAt(0).toUpperCase()}
-                          </span>
-                        </div>
-                      )}
-                      <span className="absolute bottom-1 right-1 bg-black/70 text-white text-[9px] px-1 py-0.5 rounded">
-                        {podcast.episodeCount} ep
-                      </span>
-                    </div>
-                    <p className="text-xs font-medium mt-1.5 truncate">
-                      {podcast.title}
-                    </p>
-                    {podcast.subscriberCount > 0 && (
-                      <span className="text-[10px] text-muted-foreground">
-                        {podcast.subscriberCount} {podcast.subscriberCount === 1 ? "subscriber" : "subscribers"}
-                      </span>
-                    )}
-                  </button>
-                ))}
-              </ScrollableRow>
-            </section>
+          {initialLoaded && allPodcasts.length === 0 && (
+            <EmptyState
+              icon={Search}
+              title="No podcasts found"
+              description={debouncedSearch.trim() ? "Try a different search term." : "Try selecting a different category."}
+            />
           )}
-
-          {/* For You / Popular recommendations */}
-          {filteredRecs && filteredRecs.recommendations.length > 0 && (
-            <section className="mt-6">
-              <h2 className="text-lg font-semibold mb-3">
-                {filteredRecs.source === "popular" ? "Popular" : "For You"}
-              </h2>
-              <ScrollableRow className="gap-3 pb-2">
-                {filteredRecs.recommendations.slice(0, 16).map((rec) => (
-                  <button
-                    key={rec.podcast.id}
-                    onClick={() => openPodcast(rec.podcast.id)}
-                    className="flex-shrink-0 w-28 snap-start text-left"
-                  >
-                    <div className="relative">
-                      {rec.podcast.imageUrl ? (
-                        <img
-                          src={rec.podcast.imageUrl}
-                          className="w-28 h-28 rounded-lg object-cover"
-                          alt=""
-                        />
-                      ) : (
-                        <div className="w-28 h-28 rounded-lg bg-muted flex items-center justify-center">
-                          <span className="text-2xl font-bold text-muted-foreground">
-                            {rec.podcast.title.charAt(0).toUpperCase()}
-                          </span>
-                        </div>
-                      )}
-                      <span className="absolute bottom-1 right-1 bg-black/70 text-white text-[9px] px-1 py-0.5 rounded">
-                        {rec.podcast.episodeCount} ep
-                      </span>
-                    </div>
-                    <p className="text-xs font-medium mt-1.5 truncate">
-                      {rec.podcast.title}
-                    </p>
-                    {rec.reasons[0] && (
-                      <span className="text-[10px] text-muted-foreground truncate block">
-                        {rec.reasons[0]}
-                      </span>
-                    )}
-                    {rec.podcast.subscriberCount > 0 && (
-                      <span className="text-[10px] text-muted-foreground truncate block">
-                        {rec.podcast.subscriberCount} {rec.podcast.subscriberCount === 1 ? "subscriber" : "subscribers"}
-                      </span>
-                    )}
-                  </button>
-                ))}
-              </ScrollableRow>
-            </section>
-          )}
-
-          {/* Browse All */}
-          <section>
-            <div className="flex items-baseline justify-between mb-3">
-              <h2 className="text-lg font-semibold">Browse All</h2>
-              {browseTotal > 0 && (
-                <span className="text-xs text-muted-foreground">{browseTotal} podcasts</span>
-              )}
+          <div ref={loadMoreRef} className="h-1" />
+          {browseLoading && initialLoaded && (
+            <div className="flex justify-center py-4">
+              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
             </div>
-            {browseError && (
-              <p className="text-red-400 text-sm text-center py-4">{browseError}</p>
-            )}
-            {!initialLoaded && !browseError && <DiscoverSkeleton />}
-            {filteredPodcasts.length > 0 && (
-              <div className="space-y-2">
-                {filteredPodcasts.map((podcast) => (
-                  <PodcastCard
-                    key={podcast.id}
-                    id={podcast.id}
-                    title={podcast.title}
-                    author={podcast.author || ""}
-                    description={podcast.description || ""}
-                    imageUrl={podcast.imageUrl || ""}
-                    episodeCount={podcast.episodeCount}
-                    subscriberCount={podcast.subscriberCount}
-                  />
-                ))}
-              </div>
-            )}
-            {initialLoaded && filteredPodcasts.length === 0 && (
-              <EmptyState
-                icon={Search}
-                title="No podcasts in this category"
-                description="Try selecting a different category."
+          )}
+          {hasMore && !browseLoading && initialLoaded && (
+            <button
+              onClick={() => fetchCatalogPage(browsePage + 1)}
+              className="w-full py-3 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Load more
+            </button>
+          )}
+        </section>
+      )}
+
+      {/* Request a Podcast */}
+      <div className="mt-6">
+        {!showRequestForm ? (
+          <button
+            onClick={() => setShowRequestForm(true)}
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Can't find a podcast? Request it
+          </button>
+        ) : (
+          <div className="bg-card border border-border rounded-lg p-3 space-y-2">
+            <p className="text-xs text-muted-foreground">Paste the podcast's RSS feed URL:</p>
+            <div className="flex gap-2">
+              <input
+                value={requestUrl}
+                onChange={(e) => setRequestUrl(e.target.value)}
+                placeholder="https://example.com/feed.xml"
+                className="flex-1 px-3 py-1.5 bg-muted border border-border rounded text-sm"
               />
-            )}
-            {/* Infinite scroll sentinel */}
-            <div ref={loadMoreRef} className="h-1" />
-            {browseLoading && initialLoaded && (
-              <div className="flex justify-center py-4">
-                <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
-              </div>
-            )}
-            {hasMore && !browseLoading && initialLoaded && (
               <button
-                onClick={() => fetchCatalogPage(browsePage + 1)}
-                className="w-full py-3 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                onClick={handlePodcastRequest}
+                disabled={requestLoading || !requestUrl.trim()}
+                className="px-3 py-1.5 bg-primary text-primary-foreground text-sm font-medium rounded disabled:opacity-50"
               >
-                Load more
+                {requestLoading ? "..." : "Submit"}
               </button>
-            )}
-          </section>
-
-          {/* Request a Podcast */}
-          <div className="mt-6">
-            {!showRequestForm ? (
-              <button
-                onClick={() => setShowRequestForm(true)}
-                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                Can't find a podcast? Request it
-              </button>
-            ) : (
-              <div className="bg-card border border-border rounded-lg p-3 space-y-2">
-                <p className="text-xs text-muted-foreground">Paste the podcast's RSS feed URL:</p>
-                <div className="flex gap-2">
-                  <input
-                    value={requestUrl}
-                    onChange={(e) => setRequestUrl(e.target.value)}
-                    placeholder="https://example.com/feed.xml"
-                    className="flex-1 px-3 py-1.5 bg-muted border border-border rounded text-sm"
-                  />
-                  <button
-                    onClick={handlePodcastRequest}
-                    disabled={requestLoading || !requestUrl.trim()}
-                    className="px-3 py-1.5 bg-primary text-primary-foreground text-sm font-medium rounded disabled:opacity-50"
-                  >
-                    {requestLoading ? "..." : "Submit"}
-                  </button>
-                </div>
-                <button
-                  onClick={() => { setShowRequestForm(false); setRequestUrl(""); }}
-                  className="text-xs text-muted-foreground hover:text-foreground"
-                >
-                  Cancel
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* My Requests */}
-          {myRequests.length > 0 && (
-            <div className="mt-4">
-              <h3 className="text-sm font-medium text-muted-foreground mb-2">My Requests</h3>
-              <div className="space-y-1.5">
-                {myRequests.map((req) => (
-                  <div key={req.id} className="flex items-center justify-between bg-card border border-border rounded-lg px-3 py-2">
-                    <div className="min-w-0">
-                      <p className="text-sm truncate">{req.title || req.feedUrl}</p>
-                      <p className="text-xs text-muted-foreground">{req.status.toLowerCase()}</p>
-                    </div>
-                    {req.status === "PENDING" && (
-                      <button
-                        onClick={async () => {
-                          try {
-                            await apiFetch(`/podcasts/request/${req.id}`, { method: "DELETE" });
-                            setMyRequests((prev) => prev.filter((r) => r.id !== req.id));
-                            toast.success("Request cancelled");
-                          } catch {
-                            toast.error("Failed to cancel request");
-                          }
-                        }}
-                        className="text-xs text-muted-foreground hover:text-red-400 ml-2"
-                      >
-                        Cancel
-                      </button>
-                    )}
-                    {req.status === "APPROVED" && req.podcastId && (
-                      <button onClick={() => openPodcast(req.podcastId!)} className="text-xs text-foreground ml-2">
-                        Subscribe &rarr;
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
             </div>
-          )}
-        </>
+            <button
+              onClick={() => { setShowRequestForm(false); setRequestUrl(""); }}
+              className="text-xs text-muted-foreground hover:text-foreground"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* My Requests */}
+      {myRequests.length > 0 && (
+        <div className="mt-4">
+          <h3 className="text-sm font-medium text-muted-foreground mb-2">My Requests</h3>
+          <div className="space-y-1.5">
+            {myRequests.map((req) => (
+              <div key={req.id} className="flex items-center justify-between bg-card border border-border rounded-lg px-3 py-2">
+                <div className="min-w-0">
+                  <p className="text-sm truncate">{req.title || req.feedUrl}</p>
+                  <p className="text-xs text-muted-foreground">{req.status.toLowerCase()}</p>
+                </div>
+                {req.status === "PENDING" && (
+                  <button
+                    onClick={async () => {
+                      try {
+                        await apiFetch(`/podcasts/request/${req.id}`, { method: "DELETE" });
+                        setMyRequests((prev) => prev.filter((r) => r.id !== req.id));
+                        toast.success("Request cancelled");
+                      } catch {
+                        toast.error("Failed to cancel request");
+                      }
+                    }}
+                    className="text-xs text-muted-foreground hover:text-red-400 ml-2"
+                  >
+                    Cancel
+                  </button>
+                )}
+                {req.status === "APPROVED" && req.podcastId && (
+                  <button onClick={() => openPodcast(req.podcastId!)} className="text-xs text-foreground ml-2">
+                    Subscribe &rarr;
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   );
