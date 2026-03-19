@@ -117,11 +117,13 @@ export function Discover() {
   const browseStateRef = useRef({ hasMore, browseLoading, browsePage, fetchCatalogPage });
   browseStateRef.current = { hasMore, browseLoading, browsePage, fetchCatalogPage };
 
-  // Intersection observer for infinite scroll — created once, reads all state from ref
+  // Intersection observer for infinite scroll — created once, reads all state from ref.
+  // Uses root: null (viewport) because <main> uses min-h-screen on its parent,
+  // so the page/body scrolls rather than main itself. With root set to main,
+  // the sentinel is always inside main's content area and transitions never fire.
   useEffect(() => {
     const el = loadMoreRef.current;
     if (!el || typeof IntersectionObserver === "undefined") return;
-    const scrollParent = el.closest("main") ?? null;
     const observer = new IntersectionObserver(
       (entries) => {
         const { hasMore: hm, browseLoading: bl, browsePage: bp, fetchCatalogPage: loadPage } = browseStateRef.current;
@@ -129,7 +131,7 @@ export function Discover() {
           loadPage(bp + 1);
         }
       },
-      { root: scrollParent, rootMargin: "100px" }
+      { rootMargin: "200px" }
     );
     observer.observe(el);
     return () => observer.disconnect();
