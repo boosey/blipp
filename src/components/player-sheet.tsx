@@ -148,7 +148,7 @@ export function PlayerSheet({
         ref={sheetRef}
         side="bottom"
         showCloseButton={false}
-        className="h-[85dvh] rounded-t-2xl bg-background border-border flex flex-col items-center px-6 pt-3 pb-[max(2rem,env(safe-area-inset-bottom))] overflow-y-auto"
+        className="h-[85dvh] rounded-t-2xl bg-background border-border flex flex-col items-center px-4 pt-3 pb-[max(1.5rem,env(safe-area-inset-bottom))] overflow-y-auto"
         onTouchStart={onSwipeStart}
         onTouchMove={onSwipeMove}
         onTouchEnd={onSwipeEnd}
@@ -175,62 +175,67 @@ export function PlayerSheet({
             : `Audio player for ${currentItem.podcast.title}`}
         </SheetDescription>
 
-        {/* Artwork */}
-        <div className="flex items-center justify-center w-full max-w-sm mt-1">
-          {inAd ? (
-            <div className="w-full max-w-[160px] aspect-square max-h-[18vh] rounded-2xl bg-card flex flex-col items-center justify-center gap-2 border border-[#F97316]/20">
-              <span className="text-xl font-bold text-[#F97316]">Advertisement</span>
-              <span className="text-sm text-muted-foreground">
-                {adState === "preroll" ? "Pre-roll" : "Post-roll"}
-              </span>
+        {/* Artwork + Actions row */}
+        <div className="flex items-start w-full max-w-sm mt-1 gap-3">
+          {/* Artwork */}
+          <div className="flex-1 flex justify-center">
+            {inAd ? (
+              <div className="w-full max-w-[120px] aspect-square rounded-2xl bg-card flex flex-col items-center justify-center gap-1 border border-[#F97316]/20">
+                <span className="text-lg font-bold text-[#F97316]">Ad</span>
+                <span className="text-xs text-muted-foreground">
+                  {adState === "preroll" ? "Pre-roll" : "Post-roll"}
+                </span>
+              </div>
+            ) : currentItem.podcast.imageUrl ? (
+              <img
+                src={currentItem.podcast.imageUrl}
+                alt=""
+                className="w-full max-w-[120px] aspect-square rounded-2xl object-contain shadow-lg"
+              />
+            ) : (
+              <div className="w-full max-w-[120px] aspect-square rounded-2xl bg-muted" />
+            )}
+          </div>
+          {/* Side actions — thumbs + share */}
+          {!inAd && (
+            <div className="flex flex-col items-center gap-1 pt-2">
+              <ThumbButtons vote={episodeVote} onVote={handleEpisodeVote} size="md" />
+              <button
+                onClick={handleShare}
+                className="p-2 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                aria-label="Share briefing"
+              >
+                <Share2 className="w-4 h-4" />
+              </button>
             </div>
-          ) : currentItem.podcast.imageUrl ? (
-            <img
-              src={currentItem.podcast.imageUrl}
-              alt=""
-              className="w-full max-w-[160px] aspect-square max-h-[18vh] rounded-2xl object-cover shadow-lg"
-            />
-          ) : (
-            <div className="w-full max-w-[160px] aspect-square max-h-[18vh] rounded-2xl bg-muted" />
           )}
         </div>
 
         {/* Info */}
-        <div className="w-full max-w-sm mt-3 text-center">
+        <div className="w-full max-w-sm mt-2 text-center">
           {inAd ? (
             <>
               <h2 className="text-lg font-bold text-[#F97316]">Advertisement</h2>
-              <p className="text-sm text-muted-foreground mt-1">
+              <p className="text-sm text-muted-foreground mt-0.5">
                 {adState === "preroll" ? "Pre-roll" : "Post-roll"} — {formatTime(adCurrentTime)} / {formatTime(adDuration)}
               </p>
             </>
           ) : (
             <>
-              <h2 className="text-lg font-bold truncate">
+              <h2 className="text-base font-bold truncate">
                 {currentItem.episode.title}
               </h2>
-              <p className="text-sm text-muted-foreground mt-1 truncate">
+              <p className="text-sm text-muted-foreground mt-0.5 truncate">
                 {currentItem.podcast.title}
               </p>
-              <p className="text-xs text-muted-foreground mt-1">
+              <p className="text-xs text-muted-foreground mt-0.5">
                 {formatDuration(currentItem.briefing?.clip?.actualSeconds ?? null, currentItem.durationTier)} briefing
               </p>
               {currentItem.briefing?.clip?.previewText && (
-                <p className="text-xs text-muted-foreground/70 mt-3 line-clamp-3 text-left px-2">
+                <p className="text-xs text-muted-foreground/70 mt-1 line-clamp-2 text-left">
                   {currentItem.briefing.clip.previewText}
                 </p>
               )}
-              {/* Thumbs + Share */}
-              <div className="flex items-center justify-center gap-2 mt-3">
-                <ThumbButtons vote={episodeVote} onVote={handleEpisodeVote} size="md" />
-                <button
-                  onClick={handleShare}
-                  className="p-2 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                  aria-label="Share briefing"
-                >
-                  <Share2 className="w-5 h-5" />
-                </button>
-              </div>
             </>
           )}
         </div>
@@ -247,7 +252,7 @@ export function PlayerSheet({
         )}
 
         {/* Controls */}
-        <div className="flex items-center justify-center gap-8 mt-4 w-full max-w-sm">
+        <div className="flex items-center justify-center gap-6 mt-3 w-full max-w-sm">
           {inAd ? (
             /* Ad controls: only play/pause, no skip, no rate */
             <>
@@ -331,7 +336,7 @@ export function PlayerSheet({
 
 function AdProgressBar({ progress }: { progress: number }) {
   return (
-    <div className="w-full max-w-sm mt-4">
+    <div className="w-full max-w-sm mt-3">
       <div className="relative w-full h-6 flex items-center">
         {/* Track background */}
         <div className="absolute w-full h-0.5 bg-muted rounded-full" />
@@ -395,7 +400,7 @@ function SeekBar({
   }, [isDragging, handleSeek]);
 
   return (
-    <div className="w-full max-w-sm mt-4">
+    <div className="w-full max-w-sm mt-3">
       <div
         ref={trackRef}
         className="relative w-full h-6 flex items-center cursor-pointer group"
