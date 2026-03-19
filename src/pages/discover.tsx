@@ -112,23 +112,27 @@ export function Discover() {
 
   const hasMore = allPodcasts.length < browseTotal;
 
-  // Intersection observer for infinite scroll
-  // Use the closest scrollable ancestor (main element) as root for desktop compatibility
+  // Refs for infinite scroll to avoid re-creating the observer on every state change
+  const browseStateRef = useRef({ hasMore, browseLoading, browsePage });
+  browseStateRef.current = { hasMore, browseLoading, browsePage };
+
+  // Intersection observer for infinite scroll — created once, reads state from ref
   useEffect(() => {
     const el = loadMoreRef.current;
     if (!el || typeof IntersectionObserver === "undefined") return;
     const scrollParent = el.closest("main") ?? null;
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting && hasMore && !browseLoading) {
-          fetchCatalogPage(browsePage + 1);
+        const { hasMore: hm, browseLoading: bl, browsePage: bp } = browseStateRef.current;
+        if (entries[0].isIntersecting && hm && !bl) {
+          fetchCatalogPage(bp + 1);
         }
       },
-      { root: scrollParent, rootMargin: "200px" }
+      { root: scrollParent, rootMargin: "100px" }
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, [hasMore, browseLoading, browsePage, fetchCatalogPage]);
+  }, [fetchCatalogPage]);
 
   // Pull to refresh reloads page 1
   const { indicator: pullIndicator, bind: pullBind } = usePullToRefresh({
