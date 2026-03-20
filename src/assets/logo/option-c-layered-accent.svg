@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="512" height="512">
+  <!--
+    OPTION C: "Layered Accent"
+    The B is complete and solid. The 3 waveform bars sit on top
+    as white/contrasting elements at the junction between bowls.
+    Cleanest and most conventional — easy to adjust sizing/position.
+
+    Grid: 8px base grid, 256x256 coordinate space
+    White bars at 90% opacity for subtle softness against gradient
+  -->
+  <defs>
+    <linearGradient id="grad-c" x1="32" y1="24" x2="208" y2="232" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#8B5CF6"/>
+      <stop offset="100%" stop-color="#EC4899"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Complete B letterform -->
+  <path
+    fill-rule="evenodd"
+    fill="url(#grad-c)"
+    d="
+      M 48 44
+      Q 48 28 64 28
+      L 140 28
+      C 166 28 184 50 184 78
+      C 184 106 166 124 140 128
+      C 166 132 196 152 196 182
+      C 196 212 170 228 140 228
+      L 64 228
+      Q 48 228 48 212
+      Z
+
+      M 80 52
+      L 128 52
+      C 148 52 164 68 164 82
+      C 164 96 148 108 128 108
+      L 80 108
+      Z
+
+      M 80 152
+      L 132 152
+      C 156 152 172 168 172 184
+      C 172 200 156 212 132 212
+      L 114 212
+      L 98 224
+      L 106 212
+      L 80 212
+      Z
+    "
+  />
+
+  <!-- Waveform bars overlaid in white -->
+  <!-- Left bar (shortest) -->
+  <rect x="96" y="104" width="10" height="48" rx="5" fill="white" opacity="0.9"/>
+  <!-- Center bar (tallest) -->
+  <rect x="114" y="90" width="10" height="76" rx="5" fill="white" opacity="0.9"/>
+  <!-- Right bar (medium) -->
+  <rect x="132" y="98" width="10" height="60" rx="5" fill="white" opacity="0.9"/>
+</svg>

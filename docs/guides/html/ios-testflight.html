@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <title>iOS TestFlight Distribution Guide</title>
+            <style>
+/* From extension vscode.github */
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+.vscode-dark img[src$=\#gh-light-mode-only],
+.vscode-light img[src$=\#gh-dark-mode-only],
+.vscode-high-contrast:not(.vscode-high-contrast-light) img[src$=\#gh-light-mode-only],
+.vscode-high-contrast-light img[src$=\#gh-dark-mode-only] {
+	display: none;
+}
+
+</style>
+            <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex/dist/katex.min.css">
+<link href="https://cdn.jsdelivr.net/npm/katex-copytex@latest/dist/katex-copytex.min.css" rel="stylesheet" type="text/css">
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Microsoft/vscode/extensions/markdown-language-features/media/markdown.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Microsoft/vscode/extensions/markdown-language-features/media/highlight.css">
+<style>
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe WPC', 'Segoe UI', system-ui, 'Ubuntu', 'Droid Sans', sans-serif;
+                font-size: 14px;
+                line-height: 1.6;
+            }
+        </style>
+        <style>
+.task-list-item {
+    list-style-type: none;
+}
+
+.task-list-item-checkbox {
+    margin-left: -20px;
+    vertical-align: middle;
+    pointer-events: none;
+}
+</style>
+<style>
+:root {
+  --color-note: #0969da;
+  --color-tip: #1a7f37;
+  --color-warning: #9a6700;
+  --color-severe: #bc4c00;
+  --color-caution: #d1242f;
+  --color-important: #8250df;
+}
+
+</style>
+<style>
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-note: #2f81f7;
+    --color-tip: #3fb950;
+    --color-warning: #d29922;
+    --color-severe: #db6d28;
+    --color-caution: #f85149;
+    --color-important: #a371f7;
+  }
+}
+
+</style>
+<style>
+.markdown-alert {
+  padding: 0.5rem 1rem;
+  margin-bottom: 16px;
+  color: inherit;
+  border-left: .25em solid #888;
+}
+
+.markdown-alert>:first-child {
+  margin-top: 0
+}
+
+.markdown-alert>:last-child {
+  margin-bottom: 0
+}
+
+.markdown-alert .markdown-alert-title {
+  display: flex;
+  font-weight: 500;
+  align-items: center;
+  line-height: 1
+}
+
+.markdown-alert .markdown-alert-title .octicon {
+  margin-right: 0.5rem;
+  display: inline-block;
+  overflow: visible !important;
+  vertical-align: text-bottom;
+  fill: currentColor;
+}
+
+.markdown-alert.markdown-alert-note {
+  border-left-color: var(--color-note);
+}
+
+.markdown-alert.markdown-alert-note .markdown-alert-title {
+  color: var(--color-note);
+}
+
+.markdown-alert.markdown-alert-important {
+  border-left-color: var(--color-important);
+}
+
+.markdown-alert.markdown-alert-important .markdown-alert-title {
+  color: var(--color-important);
+}
+
+.markdown-alert.markdown-alert-warning {
+  border-left-color: var(--color-warning);
+}
+
+.markdown-alert.markdown-alert-warning .markdown-alert-title {
+  color: var(--color-warning);
+}
+
+.markdown-alert.markdown-alert-tip {
+  border-left-color: var(--color-tip);
+}
+
+.markdown-alert.markdown-alert-tip .markdown-alert-title {
+  color: var(--color-tip);
+}
+
+.markdown-alert.markdown-alert-caution {
+  border-left-color: var(--color-caution);
+}
+
+.markdown-alert.markdown-alert-caution .markdown-alert-title {
+  color: var(--color-caution);
+}
+
+</style>
+        
+        </head>
+        <body class="vscode-body vscode-light">
+            <h1 id="ios-testflight-distribution-guide">iOS TestFlight Distribution Guide</h1>
+<p>Complete step-by-step guide for getting Blipp onto iPhones via TestFlight.</p>
+<h2 id="whats-already-done">What's Already Done</h2>
+<ul>
+<li>Capacitor installed (<code>@capacitor/core</code>, <code>@capacitor/cli</code>, <code>@capacitor/ios</code>)</li>
+<li>iOS project scaffolded at <code>ios/</code></li>
+<li><code>capacitor.config.ts</code> configured (app ID <code>com.blipp.app</code>, web dir <code>dist/client</code>)</li>
+<li>API base URL helper routes native API calls to <code>https://podblipp.com</code></li>
+<li>CORS updated to allow <code>capacitor://localhost</code> origin</li>
+<li>Build and sync verified working</li>
+</ul>
+<h2 id="whats-left">What's Left</h2>
+<table>
+<thead>
+<tr>
+<th>Step</th>
+<th style="text-align:center">Requires Mac</th>
+<th style="text-align:center">Requires Apple Developer Account</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Create app icon &amp; splash screen</td>
+<td style="text-align:center">No</td>
+<td style="text-align:center">No</td>
+</tr>
+<tr>
+<td>2. Install <code>@capacitor/assets</code> and generate</td>
+<td style="text-align:center">No</td>
+<td style="text-align:center">No</td>
+</tr>
+<tr>
+<td>3. Complete Apple Developer enrollment</td>
+<td style="text-align:center">No</td>
+<td style="text-align:center">Yes</td>
+</tr>
+<tr>
+<td>4. Register Bundle ID</td>
+<td style="text-align:center">No</td>
+<td style="text-align:center">Yes</td>
+</tr>
+<tr>
+<td>5. Create App Store Connect record</td>
+<td style="text-align:center">No</td>
+<td style="text-align:center">Yes</td>
+</tr>
+<tr>
+<td>6. Open project in Xcode &amp; configure signing</td>
+<td style="text-align:center">Yes</td>
+<td style="text-align:center">Yes</td>
+</tr>
+<tr>
+<td>7. Test on simulator</td>
+<td style="text-align:center">Yes</td>
+<td style="text-align:center">No</td>
+</tr>
+<tr>
+<td>8. Test on physical device</td>
+<td style="text-align:center">Yes</td>
+<td style="text-align:center">Yes (free Apple ID works for dev)</td>
+</tr>
+<tr>
+<td>9. Archive &amp; upload to App Store Connect</td>
+<td style="text-align:center">Yes</td>
+<td style="text-align:center">Yes</td>
+</tr>
+<tr>
+<td>10. Configure TestFlight &amp; invite testers</td>
+<td style="text-align:center">No</td>
+<td style="text-align:center">Yes</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="step-1-create-app-icon--splash-screen">Step 1: Create App Icon &amp; Splash Screen</h2>
+<h3 id="app-icon">App Icon</h3>
+<p>You need a single <strong>1024x1024 PNG</strong> file. Requirements:</p>
+<ul>
+<li>Fully opaque (no transparency — transparent areas render as black)</li>
+<li>sRGB color space</li>
+<li>Square, no rounded corners (Apple applies the squircle mask automatically)</li>
+<li>No alpha channel</li>
+</ul>
+<p><strong>Optional iOS 18 dark/tinted variants</strong> (recommended for a polished look):</p>
+<ul>
+<li><strong>Dark variant</strong>: Use a transparent background; iOS fills with a dark color. Foreground should be lighter.</li>
+<li><strong>Tinted variant</strong>: Provide a fully opaque grayscale image. iOS applies the user's chosen tint.</li>
+</ul>
+<p>If you skip these, iOS auto-generates them (usually poorly — just darkens/desaturates your icon).</p>
+<h3 id="splash-screen">Splash Screen</h3>
+<p>You need a <strong>2732x2732 PNG</strong>. The launch screen uses <code>scaleAspectFill</code> (center-cropped), so keep your logo/content centered within ~1200x1200 pixels of the center.</p>
+<h3 id="where-to-put-them">Where to Put Them</h3>
+<p>Create an <code>assets/</code> directory in the project root:</p>
+<pre><code>assets/
+  icon-only.png          # 1024x1024, your app icon
+  icon-only-dark.png     # 1024x1024, optional dark variant
+  icon-only-tinted.png   # 1024x1024, optional tinted variant (grayscale)
+  splash.png             # 2732x2732, launch screen
+  splash-dark.png        # 2732x2732, optional dark launch screen
+</code></pre>
+<hr>
+<h2 id="step-2-generate-assets-with-capacitorassets">Step 2: Generate Assets with @capacitor/assets</h2>
+<p>This official tool places correctly sized files into the Xcode project.</p>
+<pre><code class="language-bash"><span class="hljs-comment"># Install</span>
+npm install --save-dev @capacitor/assets --legacy-peer-deps
+
+<span class="hljs-comment"># Generate (after placing source files in assets/)</span>
+npx @capacitor/assets generate --ios
+</code></pre>
+<p>This updates:</p>
+<ul>
+<li><code>ios/App/App/Assets.xcassets/AppIcon.appiconset/</code> — all icon sizes + <code>Contents.json</code></li>
+<li><code>ios/App/App/Assets.xcassets/Splash.imageset/</code> — splash screen images</li>
+</ul>
+<p><strong>After generating, rebuild and sync:</strong></p>
+<pre><code class="language-bash">npm run build &amp;&amp; npx <span class="hljs-built_in">cap</span> <span class="hljs-built_in">sync</span> ios
+</code></pre>
+<hr>
+<h2 id="step-3-complete-apple-developer-enrollment">Step 3: Complete Apple Developer Enrollment</h2>
+<p><strong>Cost</strong>: $99 USD/year</p>
+<p><strong>Requirements (Individual)</strong>:</p>
+<ul>
+<li>Apple Account (Apple ID) with two-factor authentication enabled</li>
+<li>You must be the legal age of majority in your jurisdiction</li>
+<li>Valid credit card</li>
+</ul>
+<p><strong>How to enroll</strong>:</p>
+<ol>
+<li>Go to <a href="https://developer.apple.com/programs/enroll/">developer.apple.com/programs/enroll</a> or use the <strong>Apple Developer</strong> app on iPhone/iPad</li>
+<li>Sign in with your Apple ID</li>
+<li>Agree to the Apple Developer Agreement</li>
+<li>Purchase the membership</li>
+</ol>
+<p><strong>Timeline</strong>: Apple says enrollment takes &quot;a few hours&quot; but can take up to 48 hours for identity verification. You'll get an email when approved.</p>
+<p><strong>You cannot proceed past this point until enrollment is active.</strong></p>
+<hr>
+<h2 id="step-4-register-the-bundle-id">Step 4: Register the Bundle ID</h2>
+<p>Once enrollment is approved:</p>
+<ol>
+<li>Go to <a href="https://developer.apple.com/account/resources/identifiers/list">Certificates, Identifiers &amp; Profiles</a></li>
+<li>Click <strong>&quot;+&quot;</strong> to register a new identifier</li>
+<li>Select <strong>App IDs</strong>, then <strong>App</strong></li>
+<li>Description: <code>Blipp iOS App</code></li>
+<li>Bundle ID: select <strong>Explicit</strong>, enter: <code>com.blipp.app</code></li>
+<li>Enable any capabilities you need now or later:
+<ul>
+<li><strong>Push Notifications</strong> — recommended for a podcast app (notify when new briefings are ready)</li>
+<li>Others can be added later</li>
+</ul>
+</li>
+<li>Click <strong>Continue</strong> then <strong>Register</strong></li>
+</ol>
+<p><strong>The Bundle ID cannot be changed after creation.</strong> Make sure <code>com.blipp.app</code> matches <code>appId</code> in <code>capacitor.config.ts</code>.</p>
+<hr>
+<h2 id="step-5-create-the-app-store-connect-record">Step 5: Create the App Store Connect Record</h2>
+<ol>
+<li>Go to <a href="https://appstoreconnect.apple.com/">App Store Connect</a></li>
+<li>Click <strong>Apps</strong> &gt; <strong>&quot;+&quot;</strong> (top left) &gt; <strong>New App</strong></li>
+<li>Fill in:
+<ul>
+<li><strong>Platforms</strong>: iOS</li>
+<li><strong>Name</strong>: <code>Blipp</code></li>
+<li><strong>Primary Language</strong>: English (U.S.)</li>
+<li><strong>Bundle ID</strong>: Select <code>com.blipp.app</code> from the dropdown (registered in step 4)</li>
+<li><strong>SKU</strong>: <code>blipp-ios-001</code> (any internal identifier, not visible to users)</li>
+<li><strong>User Access</strong>: Full Access</li>
+</ul>
+</li>
+<li>Click <strong>Create</strong></li>
+</ol>
+<p>While you're here, fill in the <strong>App Privacy</strong> section (required for TestFlight external testing):</p>
+<ul>
+<li>Navigate to your app &gt; <strong>App Privacy</strong></li>
+<li>Declare what data Blipp collects (email, usage data, etc.) and how it's used</li>
+<li>This must be accurate — inaccurate privacy info causes rejection</li>
+</ul>
+<hr>
+<h2 id="step-6-open-in-xcode--configure-signing">Step 6: Open in Xcode &amp; Configure Signing</h2>
+<p><strong>You need a Mac with Xcode 16.0+ installed for all remaining steps.</strong></p>
+<h3 id="6a-build-and-sync">6a. Build and sync</h3>
+<pre><code class="language-bash"><span class="hljs-comment"># From the project root</span>
+npm run build &amp;&amp; npx <span class="hljs-built_in">cap</span> <span class="hljs-built_in">sync</span> ios
+</code></pre>
+<h3 id="6b-open-in-xcode">6b. Open in Xcode</h3>
+<pre><code class="language-bash">npx <span class="hljs-built_in">cap</span> open ios
+</code></pre>
+<p>This opens <code>ios/App/App.xcodeproj</code> in Xcode.</p>
+<h3 id="6c-configure-signing">6c. Configure signing</h3>
+<ol>
+<li>In Xcode's <strong>Project Navigator</strong> (left sidebar), click the <strong>App</strong> project (blue icon at top)</li>
+<li>Select the <strong>App</strong> target under TARGETS</li>
+<li>Go to the <strong>Signing &amp; Capabilities</strong> tab</li>
+<li>Check <strong>&quot;Automatically manage signing&quot;</strong></li>
+<li>Under <strong>Team</strong>, click the dropdown and select your Apple Developer team
+<ul>
+<li>If not listed, go to Xcode &gt; Settings &gt; Accounts, sign in with your Apple ID</li>
+</ul>
+</li>
+<li>Verify <strong>Bundle Identifier</strong> reads <code>com.blipp.app</code></li>
+<li>Xcode will automatically create/download the necessary provisioning profile</li>
+</ol>
+<p>If you see a red error about provisioning, make sure:</p>
+<ul>
+<li>Your enrollment is fully active</li>
+<li>The Bundle ID is registered (step 4)</li>
+<li>You're signed in with the correct Apple ID</li>
+</ul>
+<h3 id="6d-set-deployment-target">6d. Set deployment target</h3>
+<ol>
+<li>Still on the <strong>App</strong> target, go to the <strong>General</strong> tab</li>
+<li>Under <strong>Minimum Deployments</strong>, set iOS version to <strong>16.0</strong> (or whatever minimum you want)
+<ul>
+<li>iOS 16 covers iPhone 8 and newer</li>
+<li>iOS 17 covers iPhone XS and newer</li>
+<li>Lower = more devices, higher = fewer compatibility issues</li>
+</ul>
+</li>
+</ol>
+<h3 id="6e-set-version-number">6e. Set version number</h3>
+<ol>
+<li>In the <strong>General</strong> tab, set:
+<ul>
+<li><strong>Version</strong>: <code>1.0.0</code> (marketing version shown to users)</li>
+<li><strong>Build</strong>: <code>1</code> (auto-incremented by Xcode on upload, or set manually)</li>
+</ul>
+</li>
+</ol>
+<hr>
+<h2 id="step-7-test-on-simulator">Step 7: Test on Simulator</h2>
+<p>Before investing time in device testing, verify the app works on a simulator.</p>
+<ol>
+<li>In Xcode, select a simulator device from the scheme selector (e.g., <strong>iPhone 16 Pro</strong>)</li>
+<li>Press <strong>Cmd+R</strong> (or Product &gt; Run)</li>
+<li>The simulator launches with Blipp loaded</li>
+</ol>
+<p><strong>What to verify</strong>:</p>
+<ul class="contains-task-list">
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> App launches without white/blank screen</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> The SPA loads and renders correctly</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Navigation works (routes, back button, swipe gestures)</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Clerk auth flow works (sign in, sign out)</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> API calls succeed (check for CORS errors in Safari's Web Inspector — see debugging tips below)</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Audio playback works</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Safe area / notch handling looks correct</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> The splash screen displays your custom image (not the default Capacitor logo)</li>
+</ul>
+<h3 id="debugging-the-webview">Debugging the WebView</h3>
+<p>To inspect the WebView in the simulator:</p>
+<ol>
+<li>Open <strong>Safari</strong> on your Mac</li>
+<li>Go to <strong>Safari &gt; Settings &gt; Advanced</strong> &gt; check &quot;Show features for web developers&quot;</li>
+<li>With the simulator running, go to <strong>Develop &gt; Simulator - iPhone ... &gt; localhost</strong> (or <code>capacitor://localhost</code>)</li>
+<li>Safari's Web Inspector opens — you can see console logs, network requests, DOM, etc.</li>
+</ol>
+<p>This is critical for debugging API calls and auth flows.</p>
+<hr>
+<h2 id="step-8-test-on-a-physical-device">Step 8: Test on a Physical Device</h2>
+<p>Simulator testing misses real-world issues (networking, performance, touch precision). Test on a real iPhone before uploading.</p>
+<h3 id="8a-connect-your-iphone">8a. Connect your iPhone</h3>
+<ol>
+<li>Connect iPhone to Mac via USB (or set up wireless debugging: Window &gt; Devices and Simulators &gt; check &quot;Connect via network&quot;)</li>
+<li>On the iPhone, go to <strong>Settings &gt; Privacy &amp; Security &gt; Developer Mode</strong> and enable it (required for iOS 16+)</li>
+<li>Trust the computer when prompted on the iPhone</li>
+</ol>
+<h3 id="8b-run-on-device">8b. Run on device</h3>
+<ol>
+<li>In Xcode, select your iPhone from the scheme selector (it appears under &quot;Devices&quot;)</li>
+<li>Press <strong>Cmd+R</strong></li>
+<li>First time: your iPhone may prompt you to trust the developer certificate. Go to <strong>Settings &gt; General &gt; VPN &amp; Device Management</strong> and trust your developer certificate.</li>
+</ol>
+<h3 id="8c-what-to-verify-in-addition-to-simulator-checks">8c. What to verify (in addition to simulator checks)</h3>
+<ul class="contains-task-list">
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> App installs and launches on device</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Network requests work over cellular and WiFi</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Audio plays through speakers and headphones</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Performance is acceptable (no jank, smooth scrolling)</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Haptics work (if using Capacitor Haptics plugin)</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> The app doesn't get killed by iOS memory pressure</li>
+</ul>
+<hr>
+<h2 id="step-9-archive--upload-to-app-store-connect">Step 9: Archive &amp; Upload to App Store Connect</h2>
+<p>This creates the production build and sends it to Apple.</p>
+<h3 id="9a-pre-upload-checklist">9a. Pre-upload checklist</h3>
+<p>Before archiving, verify:</p>
+<ul class="contains-task-list">
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> <code>npm run build</code> produces a clean production build</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> <code>npx cap sync ios</code> copies latest web assets</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> No <code>server.url</code> pointing to localhost in <code>capacitor.config.ts</code></li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> App icon is your custom icon (not default Capacitor logo)</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Splash screen is customized</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Bundle ID matches between Xcode, <code>capacitor.config.ts</code>, and App Store Connect</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Version and build number are set in Xcode</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Tested on a real device</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Clerk auth flow works in the Capacitor WebView</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> API calls to <code>podblipp.com</code> work from the app</li>
+</ul>
+<h3 id="9b-create-the-archive">9b. Create the archive</h3>
+<ol>
+<li>In Xcode, set the build destination to <strong>&quot;Any iOS Device (arm64)&quot;</strong> (not a simulator)</li>
+<li>Go to <strong>Product &gt; Archive</strong></li>
+<li>Wait for the build to complete (1-5 minutes)</li>
+<li>The <strong>Organizer</strong> window opens showing your archive</li>
+</ol>
+<h3 id="9c-upload-to-app-store-connect">9c. Upload to App Store Connect</h3>
+<ol>
+<li>In the Organizer, select your archive</li>
+<li>Click <strong>&quot;Distribute App&quot;</strong></li>
+<li>Select <strong>&quot;App Store Connect&quot;</strong> &gt; <strong>Next</strong></li>
+<li>Select <strong>&quot;Upload&quot;</strong> &gt; <strong>Next</strong></li>
+<li>Options:
+<ul>
+<li><strong>Upload your app's symbols</strong>: Yes (for crash reports)</li>
+<li><strong>Manage version and build number</strong>: Yes</li>
+</ul>
+</li>
+<li>Signing: select <strong>&quot;Automatically manage signing&quot;</strong></li>
+<li>Click <strong>Upload</strong></li>
+<li>Wait for upload to complete</li>
+</ol>
+<p><strong>After upload</strong>: Apple processes the build (5-30 minutes). You'll get an email when processing finishes. If there are issues (missing icons, invalid entitlements, privacy manifest problems), you'll get an email about those too.</p>
+<h3 id="9d-common-upload-failures">9d. Common upload failures</h3>
+<table>
+<thead>
+<tr>
+<th>Error</th>
+<th>Fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Missing app icon</td>
+<td>Run <code>@capacitor/assets generate --ios</code>, re-sync, re-archive</td>
+</tr>
+<tr>
+<td>Invalid provisioning profile</td>
+<td>Check signing in Xcode, make sure team is set</td>
+</tr>
+<tr>
+<td>Missing privacy manifest</td>
+<td>Add <code>PrivacyInfo.xcprivacy</code> to the Xcode project (see appendix)</td>
+</tr>
+<tr>
+<td>Build number already used</td>
+<td>Increment the build number in Xcode General tab</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="step-10-configure-testflight--invite-testers">Step 10: Configure TestFlight &amp; Invite Testers</h2>
+<h3 id="internal-testing-fast-no-apple-review">Internal Testing (fast, no Apple review)</h3>
+<p>Best for your team and close collaborators. Up to 100 testers. Builds available immediately.</p>
+<ol>
+<li>In App Store Connect, go to your app &gt; <strong>TestFlight</strong> tab</li>
+<li>Click <strong>Internal Testing</strong> in the sidebar</li>
+<li>Click <strong>&quot;+&quot;</strong> to create a group (e.g., &quot;Core Team&quot;)</li>
+<li>Add testers by their App Store Connect email addresses
+<ul>
+<li>These people must have App Store Connect accounts on your team</li>
+</ul>
+</li>
+<li>Select the build you uploaded</li>
+<li>Click <strong>Save</strong></li>
+<li>Testers receive an email invitation</li>
+</ol>
+<h3 id="external-testing-for-wider-distribution-requires-beta-app-review">External Testing (for wider distribution, requires Beta App Review)</h3>
+<p>For anyone with an email or a public link. Up to 10,000 testers.</p>
+<ol>
+<li>In TestFlight, click <strong>External Testing</strong> in the sidebar</li>
+<li>Click <strong>&quot;+&quot;</strong> to create a group (e.g., &quot;Beta Testers&quot;)</li>
+<li><strong>Provide Test Information</strong> (required):
+<ul>
+<li><strong>Beta App Description</strong>: &quot;Blipp distills your favorite podcasts into short audio briefings. Test the latest features and report any issues.&quot;</li>
+<li><strong>Feedback Email</strong>: Your email</li>
+<li><strong>Beta App Review Information</strong>:
+<ul>
+<li><strong>Test account</strong>: Provide a working Clerk test account (email + password) so the reviewer can sign in</li>
+<li><strong>Notes</strong>: Any context about what's being tested</li>
+</ul>
+</li>
+<li><strong>Privacy URL</strong>: If you have one</li>
+</ul>
+</li>
+<li>Add testers:
+<ul>
+<li><strong>By email</strong>: Enter individual email addresses</li>
+<li><strong>Public link</strong>: Generate a link that anyone can use to join (set an enrollment limit)</li>
+</ul>
+</li>
+<li>Select the build and <strong>Submit for Beta App Review</strong></li>
+</ol>
+<h3 id="what-apple-reviews-for-external-testing">What Apple Reviews for External Testing</h3>
+<p>Beta App Review is lighter than full App Store review, but checks:</p>
+<ul>
+<li>App launches and doesn't crash</li>
+<li>Core features work (audio playback, auth flow)</li>
+<li>You provided test account credentials</li>
+<li>No illegal content</li>
+<li>Privacy info is accurate</li>
+</ul>
+<p><strong>Timeline</strong>: Usually 24-48 hours. Often faster.</p>
+<p><strong>Tip</strong>: Subsequent builds for the same app version may not need re-review.</p>
+<h3 id="how-testers-install">How Testers Install</h3>
+<ol>
+<li>Tester receives your invitation email (or public link)</li>
+<li>They install the <strong>TestFlight</strong> app from the App Store (free)</li>
+<li>Open the email/link on their iPhone — it opens TestFlight</li>
+<li>Tap <strong>Accept</strong>, then <strong>Install</strong></li>
+<li>The app appears on their home screen with an orange dot (beta indicator)</li>
+<li>When you upload new builds, testers get a notification to update</li>
+</ol>
+<p><strong>Build expiration</strong>: TestFlight builds expire after <strong>90 days</strong>.</p>
+<hr>
+<h2 id="ongoing-workflow">Ongoing Workflow</h2>
+<p>Once everything is set up, the cycle for pushing updates is:</p>
+<pre><code class="language-bash"><span class="hljs-comment"># 1. Make changes to the web app</span>
+<span class="hljs-comment"># 2. Build and sync</span>
+npm run build &amp;&amp; npx <span class="hljs-built_in">cap</span> <span class="hljs-built_in">sync</span> ios
+
+<span class="hljs-comment"># 3. Open Xcode, archive, upload</span>
+npx <span class="hljs-built_in">cap</span> open ios
+<span class="hljs-comment"># Product &gt; Archive &gt; Distribute App &gt; Upload</span>
+</code></pre>
+<p>For faster iteration without re-archiving, you can use live reload during development:</p>
+<pre><code class="language-bash"><span class="hljs-comment"># Add to capacitor.config.ts temporarily (REMOVE before archiving):</span>
+<span class="hljs-comment"># server: { url: &#x27;http://YOUR_LAN_IP:5174&#x27;, cleartext: true }</span>
+npx <span class="hljs-built_in">cap</span> <span class="hljs-built_in">sync</span> ios
+npx <span class="hljs-built_in">cap</span> open ios
+<span class="hljs-comment"># Run on device — web changes hot-reload without rebuilding</span>
+</code></pre>
+<hr>
+<h2 id="appendix">Appendix</h2>
+<h3 id="a-privacy-manifest-privacyinfoxcprivacy">A. Privacy Manifest (PrivacyInfo.xcprivacy)</h3>
+<p>Apple requires this for App Store / TestFlight. If the file doesn't exist yet, create it in Xcode:</p>
+<ol>
+<li>In Xcode, right-click the <strong>App</strong> group &gt; <strong>New File</strong></li>
+<li>Search for &quot;App Privacy&quot; &gt; select <strong>App Privacy</strong></li>
+<li>Add it to the App target</li>
+</ol>
+<p>Minimum content (Capacitor uses UserDefaults):</p>
+<pre><code class="language-xml"><span class="hljs-meta">&lt;?xml version=<span class="hljs-string">&quot;1.0&quot;</span> encoding=<span class="hljs-string">&quot;UTF-8&quot;</span>?&gt;</span>
+<span class="hljs-meta">&lt;!DOCTYPE <span class="hljs-keyword">plist</span> <span class="hljs-keyword">PUBLIC</span> <span class="hljs-string">&quot;-//Apple//DTD PLIST 1.0//EN&quot;</span>
+  <span class="hljs-string">&quot;http://www.apple.com/DTDs/PropertyList-1.0.dtd&quot;</span>&gt;</span>
+<span class="hljs-tag">&lt;<span class="hljs-name">plist</span> <span class="hljs-attr">version</span>=<span class="hljs-string">&quot;1.0&quot;</span>&gt;</span>
+<span class="hljs-tag">&lt;<span class="hljs-name">dict</span>&gt;</span>
+  <span class="hljs-tag">&lt;<span class="hljs-name">key</span>&gt;</span>NSPrivacyAccessedAPITypes<span class="hljs-tag">&lt;/<span class="hljs-name">key</span>&gt;</span>
+  <span class="hljs-tag">&lt;<span class="hljs-name">array</span>&gt;</span>
+    <span class="hljs-tag">&lt;<span class="hljs-name">dict</span>&gt;</span>
+      <span class="hljs-tag">&lt;<span class="hljs-name">key</span>&gt;</span>NSPrivacyAccessedAPIType<span class="hljs-tag">&lt;/<span class="hljs-name">key</span>&gt;</span>
+      <span class="hljs-tag">&lt;<span class="hljs-name">string</span>&gt;</span>NSPrivacyAccessedAPICategoryUserDefaults<span class="hljs-tag">&lt;/<span class="hljs-name">string</span>&gt;</span>
+      <span class="hljs-tag">&lt;<span class="hljs-name">key</span>&gt;</span>NSPrivacyAccessedAPITypeReasons<span class="hljs-tag">&lt;/<span class="hljs-name">key</span>&gt;</span>
+      <span class="hljs-tag">&lt;<span class="hljs-name">array</span>&gt;</span>
+        <span class="hljs-tag">&lt;<span class="hljs-name">string</span>&gt;</span>CA92.1<span class="hljs-tag">&lt;/<span class="hljs-name">string</span>&gt;</span>
+      <span class="hljs-tag">&lt;/<span class="hljs-name">array</span>&gt;</span>
+    <span class="hljs-tag">&lt;/<span class="hljs-name">dict</span>&gt;</span>
+  <span class="hljs-tag">&lt;/<span class="hljs-name">array</span>&gt;</span>
+<span class="hljs-tag">&lt;/<span class="hljs-name">dict</span>&gt;</span>
+<span class="hljs-tag">&lt;/<span class="hljs-name">plist</span>&gt;</span>
+</code></pre>
+<h3 id="b-app-review-risk-guideline-42-minimum-functionality">B. App Review Risk: Guideline 4.2 (Minimum Functionality)</h3>
+<p>Apple rejects apps that are &quot;just a website in a WebView.&quot; Since Blipp is a Capacitor wrapper around a web app, take steps to differentiate from a basic web clip:</p>
+<ul>
+<li><strong>Native splash screen and app icon</strong> (done via steps 1-2)</li>
+<li><strong>Push notifications</strong> — consider adding <code>@capacitor/push-notifications</code> to notify users when new briefings are ready</li>
+<li><strong>Native audio controls</strong> — lock screen / control center playback controls make the app feel native</li>
+<li><strong>Haptic feedback</strong> — <code>@capacitor/haptics</code> for button taps, pull-to-refresh</li>
+<li><strong>Offline handling</strong> — the PWA service worker already provides this, but make sure it works in the Capacitor WebView</li>
+<li><strong>Proper navigation</strong> — swipe-back gesture, no browser chrome visible</li>
+</ul>
+<p>The more &quot;native&quot; the app feels, the less likely a 4.2 rejection.</p>
+<h3 id="c-useful-capacitor-plugins-to-consider">C. Useful Capacitor Plugins to Consider</h3>
+<table>
+<thead>
+<tr>
+<th>Plugin</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>@capacitor/push-notifications</code></td>
+<td>Push notifications (new briefing ready, etc.)</td>
+</tr>
+<tr>
+<td><code>@capacitor/haptics</code></td>
+<td>Haptic feedback on interactions</td>
+</tr>
+<tr>
+<td><code>@capacitor/status-bar</code></td>
+<td>Control status bar appearance</td>
+</tr>
+<tr>
+<td><code>@capacitor/splash-screen</code></td>
+<td>Programmatic splash screen control</td>
+</tr>
+<tr>
+<td><code>@capacitor/app</code></td>
+<td>App lifecycle events (foreground/background)</td>
+</tr>
+<tr>
+<td><code>@capacitor/keyboard</code></td>
+<td>Keyboard show/hide events, accessory bar</td>
+</tr>
+</tbody>
+</table>
+<p>Install with <code>npm install &lt;plugin&gt; --legacy-peer-deps</code>, then <code>npx cap sync ios</code>.</p>
+<h3 id="d-npm-scripts-to-add">D. NPM Scripts to Add</h3>
+<p>Consider adding these to <code>package.json</code> for convenience:</p>
+<pre><code class="language-json"><span class="hljs-punctuation">{</span>
+  <span class="hljs-attr">&quot;scripts&quot;</span><span class="hljs-punctuation">:</span> <span class="hljs-punctuation">{</span>
+    <span class="hljs-attr">&quot;cap:sync&quot;</span><span class="hljs-punctuation">:</span> <span class="hljs-string">&quot;npm run build &amp;&amp; npx cap sync ios&quot;</span><span class="hljs-punctuation">,</span>
+    <span class="hljs-attr">&quot;cap:open&quot;</span><span class="hljs-punctuation">:</span> <span class="hljs-string">&quot;npx cap open ios&quot;</span><span class="hljs-punctuation">,</span>
+    <span class="hljs-attr">&quot;cap:run&quot;</span><span class="hljs-punctuation">:</span> <span class="hljs-string">&quot;npm run build &amp;&amp; npx cap sync ios &amp;&amp; npx cap run ios&quot;</span>
+  <span class="hljs-punctuation">}</span>
+<span class="hljs-punctuation">}</span>
+</code></pre>
+<h3 id="e-clerk-auth-in-capacitor-webview">E. Clerk Auth in Capacitor WebView</h3>
+<p>Clerk's sign-in flow may open external URLs (Google OAuth, etc.). Make sure:</p>
+<ol>
+<li><code>allowNavigation</code> in <code>capacitor.config.ts</code> includes your Clerk domain (<code>*.clerk.accounts.dev</code> is already configured)</li>
+<li>OAuth redirects work — Clerk's redirect URL must point back to the Capacitor app. You may need to configure a custom URL scheme (<code>blipp://</code>) as a redirect URI in your Clerk dashboard.</li>
+<li>Test the full sign-in/sign-out flow on a real device before uploading to TestFlight.</li>
+</ol>
+
+            <script async src="https://cdn.jsdelivr.net/npm/katex-copytex@latest/dist/katex-copytex.min.js"></script>
+            
+        </body>
+        </html>

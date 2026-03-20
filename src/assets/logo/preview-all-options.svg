@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 340" width="900" height="340">
+  <!--
+    Preview sheet: all 3 options side by side on dark backgrounds
+    for easy visual comparison
+  -->
+  <defs>
+    <linearGradient id="grad" x1="0" y1="0" x2="1" y2="1" gradientUnits="objectBoundingBox">
+      <stop offset="0%" stop-color="#8B5CF6"/>
+      <stop offset="100%" stop-color="#EC4899"/>
+    </linearGradient>
+
+    <!-- Shared gradient using userSpaceOnUse for each option zone -->
+    <linearGradient id="grad-1" x1="60" y1="44" x2="248" y2="296" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#8B5CF6"/>
+      <stop offset="100%" stop-color="#EC4899"/>
+    </linearGradient>
+    <linearGradient id="grad-2" x1="360" y1="44" x2="548" y2="296" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#8B5CF6"/>
+      <stop offset="100%" stop-color="#EC4899"/>
+    </linearGradient>
+    <linearGradient id="grad-3" x1="660" y1="44" x2="848" y2="296" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#8B5CF6"/>
+      <stop offset="100%" stop-color="#EC4899"/>
+    </linearGradient>
+
+    <!-- Cut-through mask -->
+    <mask id="cuts-1">
+      <rect width="900" height="340" fill="white"/>
+      <rect x="108" y="120" width="10" height="56" rx="5" fill="black"/>
+      <rect x="126" y="106" width="10" height="84" rx="5" fill="black"/>
+      <rect x="144" y="114" width="10" height="68" rx="5" fill="black"/>
+    </mask>
+  </defs>
+
+  <!-- ============ OPTION A: Cut-Through ============ -->
+  <!-- Dark rounded-rect background -->
+  <rect x="10" y="10" width="280" height="320" rx="32" fill="#111117"/>
+
+  <!-- Label -->
+  <text x="150" y="330" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" fill="#666" font-weight="600">A — CUT-THROUGH</text>
+
+  <!-- B with waveform mask (translated to position) -->
+  <g transform="translate(12, 20)">
+    <path
+      mask="url(#cuts-1)"
+      fill-rule="evenodd"
+      fill="url(#grad-1)"
+      d="
+        M 60 64 Q 60 48 76 48 L 152 48 C 178 48 196 70 196 98 C 196 126 178 144 152 148
+        C 178 152 208 172 208 202 C 208 232 182 248 152 248 L 76 248 Q 60 248 60 232 Z
+        M 92 72 L 140 72 C 160 72 176 88 176 102 C 176 116 160 128 140 128 L 92 128 Z
+        M 92 172 L 144 172 C 168 172 184 188 184 204 C 184 220 168 232 144 232
+        L 126 232 L 110 244 L 118 232 L 92 232 Z
+      "
+    />
+  </g>
+
+  <!-- ============ OPTION B: Structural Bridge ============ -->
+  <rect x="310" y="10" width="280" height="320" rx="32" fill="#111117"/>
+
+  <text x="450" y="330" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" fill="#666" font-weight="600">B — STRUCTURAL BRIDGE</text>
+
+  <g transform="translate(312, 20)">
+    <!-- Stem -->
+    <path fill="url(#grad-2)" d="
+      M 92 48 L 76 48 Q 60 48 60 64 L 60 232 Q 60 248 76 248 L 92 248 Z
+    "/>
+
+    <!-- Upper bowl -->
+    <path fill-rule="evenodd" fill="url(#grad-2)" d="
+      M 92 48 L 152 48 C 178 48 196 70 196 98 C 196 124 178 138 152 138 L 92 138 Z
+      M 92 72 L 140 72 C 160 72 176 88 176 102 C 176 116 160 126 140 126 L 92 126 Z
+    "/>
+
+    <!-- Lower bowl -->
+    <path fill-rule="evenodd" fill="url(#grad-2)" d="
+      M 92 158 L 152 158 C 180 158 208 178 208 202 C 208 232 182 248 152 248 L 92 248 Z
+      M 92 174 L 144 174 C 168 174 184 188 184 204 C 184 220 168 234 144 234
+      L 126 234 L 110 246 L 118 234 L 92 234 Z
+    "/>
+
+    <!-- Bridge bars -->
+    <rect x="108" y="130" width="10" height="36" rx="5" fill="url(#grad-2)"/>
+    <rect x="126" y="120" width="10" height="56" rx="5" fill="url(#grad-2)"/>
+    <rect x="144" y="126" width="10" height="44" rx="5" fill="url(#grad-2)"/>
+  </g>
+
+  <!-- ============ OPTION C: Layered Accent ============ -->
+  <rect x="610" y="10" width="280" height="320" rx="32" fill="#111117"/>
+
+  <text x="750" y="330" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" fill="#666" font-weight="600">C — LAYERED ACCENT</text>
+
+  <g transform="translate(612, 20)">
+    <!-- Complete B -->
+    <path
+      fill-rule="evenodd"
+      fill="url(#grad-3)"
+      d="
+        M 60 64 Q 60 48 76 48 L 152 48 C 178 48 196 70 196 98 C 196 126 178 144 152 148
+        C 178 152 208 172 208 202 C 208 232 182 248 152 248 L 76 248 Q 60 248 60 232 Z
+        M 92 72 L 140 72 C 160 72 176 88 176 102 C 176 116 160 128 140 128 L 92 128 Z
+        M 92 172 L 144 172 C 168 172 184 188 184 204 C 184 220 168 232 144 232
+        L 126 232 L 110 244 L 118 232 L 92 232 Z
+      "
+    />
+
+    <!-- White waveform overlay -->
+    <rect x="108" y="124" width="10" height="48" rx="5" fill="white" opacity="0.9"/>
+    <rect x="126" y="110" width="10" height="76" rx="5" fill="white" opacity="0.9"/>
+    <rect x="144" y="118" width="10" height="60" rx="5" fill="white" opacity="0.9"/>
+  </g>
+</svg>

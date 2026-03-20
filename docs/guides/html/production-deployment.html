@@ -150,15 +150,13 @@
 <li><a href="#phase-3-cloudflare-infrastructure">Phase 3: Cloudflare Infrastructure</a></li>
 <li><a href="#phase-4-push-schema--seed">Phase 4: Push Schema &amp; Seed</a></li>
 <li><a href="#phase-5-clerk-auth">Phase 5: Clerk Auth</a></li>
-<li><a href="#phase-6-stripe-billing">Phase 6: Stripe Billing</a></li>
-<li><a href="#phase-7-ai--podcast-services">Phase 7: AI &amp; Podcast Services</a></li>
-<li><a href="#phase-8-web-push-vapid-keys">Phase 8: Web Push VAPID Keys</a></li>
-<li><a href="#phase-9-google-adsense-optional">Phase 9: Google AdSense (Optional)</a></li>
-<li><a href="#phase-10-github-cicd">Phase 10: GitHub CI/CD</a></li>
-<li><a href="#phase-11-domain--dns">Phase 11: Domain &amp; DNS</a></li>
-<li><a href="#phase-12-set-cloudflare-secrets">Phase 12: Set Cloudflare Secrets</a></li>
-<li><a href="#phase-13-first-deploy--webhooks">Phase 13: First Deploy &amp; Webhooks</a></li>
-<li><a href="#phase-14-post-deploy-verification">Phase 14: Post-Deploy Verification</a></li>
+<li><a href="#phase-6-ai--podcast-services">Phase 6: AI &amp; Podcast Services</a></li>
+<li><a href="#phase-7-web-push-vapid-keys">Phase 7: Web Push VAPID Keys</a></li>
+<li><a href="#phase-8-github-cicd">Phase 8: GitHub CI/CD</a></li>
+<li><a href="#phase-9-set-cloudflare-secrets">Phase 9: Set Cloudflare Secrets</a></li>
+<li><a href="#phase-10-deploy-stripe--webhooks">Phase 10: Deploy, Stripe &amp; Webhooks</a></li>
+<li><a href="#phase-11-google-adsense-optional">Phase 11: Google AdSense (Optional)</a></li>
+<li><a href="#phase-12-post-deploy-verification">Phase 12: Post-Deploy Verification</a></li>
 <li><a href="#operational-runbook">Operational Runbook</a></li>
 <li><a href="#automation-scripts">Automation Scripts</a></li>
 </ol>
@@ -186,7 +184,7 @@
 <td>2</td>
 <td>Neon</td>
 <td><a href="https://console.neon.com/signup">https://console.neon.com/signup</a></td>
-<td>Scale plan recommended</td>
+<td>Launch plan minimum; Scale for IP allow list</td>
 </tr>
 <tr>
 <td>3</td>
@@ -266,46 +264,64 @@
 <hr>
 <h2 id="phase-2-neon-database">Phase 2: Neon Database</h2>
 <p>Neon console is at <strong><a href="https://console.neon.com">https://console.neon.com</a></strong> (not neon.tech).</p>
-<p>Both staging and production databases live in the same Neon project, sharing compute.</p>
-<h3 id="21-create-project--databases">2.1 Create Project &amp; Databases</h3>
+<p>Neon organizes data as <strong>projects → branches</strong>. Each branch has its own compute endpoint and connection string. The <code>main</code> branch is production. A <code>staging</code> branch provides an isolated staging environment.</p>
+<h3 id="21-create-project">2.1 Create Project</h3>
 <ul class="contains-task-list">
 <li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Log into <a href="https://console.neon.com">https://console.neon.com</a></li>
 <li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Create a new project named <code>blipp</code></li>
 <li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Region: closest to your Cloudflare Worker (e.g., <code>us-east-1</code>)</li>
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> The default database <code>neondb</code> is your <strong>production</strong> database</li>
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Create a second database: sidebar → <strong>Databases</strong> → <strong>New Database</strong> → name it <code>staging</code></li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> The project creates a <code>main</code> branch with database <code>neondb</code> — this is your <strong>production</strong> database</li>
 </ul>
-<h3 id="22-copy-connection-strings">2.2 Copy Connection Strings</h3>
-<p>In the <strong>Connection Details</strong> widget (pooled toggle should be ON by default):</p>
+<h3 id="22-create-staging-branch">2.2 Create Staging Branch</h3>
 <ul class="contains-task-list">
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Copy the <strong>production</strong> pooled connection string — switch database dropdown to <code>neondb</code>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Sidebar → <strong>Branches</strong> → <strong>Create branch</strong></li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Name: <code>staging</code></li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Parent branch: <code>main</code></li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> This creates an isolated branch with its own compute endpoint and connection string</li>
+</ul>
+<h3 id="23-copy-connection-strings">2.3 Copy Connection Strings</h3>
+<p>Each branch has its own connection string with a different endpoint. In the <strong>Connection Details</strong> widget, select the branch and ensure the pooled toggle is ON (hostname contains <code>-pooler</code>):</p>
+<ul class="contains-task-list">
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Select <strong>main</strong> branch → copy pooled connection string → save as production
 <ul>
 <li>Format: <code>postgresql://neondb_owner:PASSWORD@ep-XXXX-pooler.REGION.aws.neon.tech:5432/neondb?sslmode=require</code></li>
 </ul>
 </li>
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Copy the <strong>staging</strong> pooled connection string — switch database dropdown to <code>staging</code>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Select <strong>staging</strong> branch → copy pooled connection string → save as staging
 <ul>
-<li>Format: <code>postgresql://neondb_owner:PASSWORD@ep-XXXX-pooler.REGION.aws.neon.tech:5432/staging?sslmode=require</code></li>
+<li>Format: <code>postgresql://neondb_owner:PASSWORD@ep-YYYY-pooler.REGION.aws.neon.tech:5432/neondb?sslmode=require</code></li>
+<li>Note: different endpoint (<code>ep-YYYY</code>) but same database name (<code>neondb</code>) — the branch provides isolation</li>
 </ul>
 </li>
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Save both strings to your password manager — you'll need them in Phase 3 and Phase 4</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Save both strings to your password manager — needed in Phase 3 and Phase 4</li>
 </ul>
-<h3 id="23-configure-production-settings">2.3 Configure Production Settings</h3>
+<h3 id="24-configure-settings">2.4 Configure Settings</h3>
 <ul class="contains-task-list">
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Connection pooling is <strong>on by default</strong> — verify the <code>-pooler</code> hostname is shown</li>
 <li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> <strong>Settings &gt; Compute</strong>: set min compute to 0.25 CU+ to reduce cold starts</li>
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Configure <strong>point-in-time restore</strong> window (default 1 day, increase up to 30)</li>
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Consider <strong>protecting your main branch</strong> to prevent accidental schema changes</li>
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Enable <strong>IP allow list</strong> if available</li>
 </ul>
-<h3 id="24-create-config-file-for-scripts">2.4 Create Config File for Scripts</h3>
+<p><strong>All plans</strong> (Free / Launch / Scale):</p>
+<ul class="contains-task-list">
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Point-in-time restore — Free: 6-hour window; Launch: up to 7 days; Scale: up to 30 days</li>
+</ul>
+<p><strong>Launch plan or higher:</strong></p>
+<ul class="contains-task-list">
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Protect your main branch to prevent accidental schema changes</li>
+</ul>
+<p><strong>Scale plan only:</strong></p>
+<ul class="contains-task-list">
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> IP allow list — restrict database access to Cloudflare IPs</li>
+</ul>
+<h3 id="25-create-config-file-for-scripts">2.5 Create Config File for Scripts</h3>
 <pre><code class="language-bash"><span class="hljs-built_in">cp</span> scripts/templates/neon-config.env.template neon-config.env
 </code></pre>
 <ul class="contains-task-list">
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Edit <code>neon-config.env</code> — paste both connection strings from step 2.2</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Edit <code>neon-config.env</code> — paste both connection strings from step 2.3</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Keep this file — it's used by both <code>setup-db.sh</code> (Phase 4) and <code>setup-infra.sh</code> (Phase 3). Delete it after both are done.</li>
 </ul>
 <hr>
 <h2 id="phase-3-cloudflare-infrastructure">Phase 3: Cloudflare Infrastructure</h2>
-<p><strong>Requires:</strong> Neon connection strings from Phase 2.</p>
+<p><strong>Requires:</strong> <code>neon-config.env</code> from Phase 2.5.</p>
 <h3 id="automated-recommended">Automated (Recommended)</h3>
 <p>Run the setup script — it creates R2 buckets, 14 queues, 2 Hyperdrive configs, and patches <code>wrangler.jsonc</code> with the Hyperdrive IDs:</p>
 <pre><code class="language-bash">bash scripts/setup-infra.sh neon-config.env
@@ -359,7 +375,7 @@ npx wrangler hyperdrive create blipp-db \
 <li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> <strong>My Profile &gt; API Tokens &gt; Create Token</strong></li>
 <li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Template: <strong>Edit Cloudflare Workers</strong></li>
 <li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Scope: your account</li>
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> <strong>Save the token</strong> — needed for GitHub in Phase 10</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> <strong>Save the token</strong> — needed for GitHub in Phase 8</li>
 </ul>
 <hr>
 <h2 id="phase-4-push-schema--seed">Phase 4: Push Schema &amp; Seed</h2>
@@ -389,6 +405,10 @@ DATABASE_URL=<span class="hljs-string">&quot;YOUR_PRODUCTION_CONNECTION_STRING&q
 <p>You can verify with <code>npx prisma studio</code> (set DATABASE_URL first).</p>
 <hr>
 <h2 id="phase-5-clerk-auth">Phase 5: Clerk Auth</h2>
+<p><strong>Before starting:</strong> Create the secrets files you'll fill in during Phases 5-8:</p>
+<pre><code class="language-bash"><span class="hljs-built_in">cp</span> scripts/templates/secrets-staging.env.template secrets-staging.env
+<span class="hljs-built_in">cp</span> scripts/templates/secrets-production.env.template secrets-production.env
+</code></pre>
 <h3 id="5a-staging-development-instance">5a: Staging (Development Instance)</h3>
 <p>Your Clerk dev instance is created automatically with your account.</p>
 <ul class="contains-task-list">
@@ -396,13 +416,19 @@ DATABASE_URL=<span class="hljs-string">&quot;YOUR_PRODUCTION_CONNECTION_STRING&q
 <li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> In the dev instance, enable <strong>Email address</strong> sign-in</li>
 <li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Enable <strong>Google</strong> social sign-in (dev uses Clerk's shared Google credentials — no setup needed)</li>
 </ul>
-<p><strong>Collect keys:</strong></p>
+<p><strong>Collect keys</strong> (the same publishable key is used in two places with different names):</p>
 <ul class="contains-task-list">
 <li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Go to the <strong>API Keys</strong> page</li>
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Copy <strong>Publishable Key</strong> (<code>pk_test_...</code>) → save as <code>CLERK_PUBLISHABLE_KEY_STAGING</code></li>
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Copy <strong>Secret Key</strong> (<code>sk_test_...</code>) → save as <code>CLERK_SECRET_KEY_STAGING</code></li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Copy <strong>Publishable Key</strong> (<code>pk_test_...</code>):
+<ul>
+<li>Paste into <code>secrets-staging.env</code> as <code>CLERK_PUBLISHABLE_KEY</code> (Cloudflare Worker secret — used server-side)</li>
+<li>Also note it for Phase 8: you'll add it as GitHub secret <code>VITE_CLERK_PUBLISHABLE_KEY_STAGING</code> (used by Vite to build the frontend)</li>
+<li><strong>Same value, two different names</strong> — the Worker needs it as <code>CLERK_PUBLISHABLE_KEY</code>, the frontend build needs it as <code>VITE_CLERK_PUBLISHABLE_KEY</code></li>
 </ul>
-<p><strong>Webhook setup is deferred to Phase 13</strong> (needs the <code>workers.dev</code> URL from first deploy).</p>
+</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Copy <strong>Secret Key</strong> (<code>sk_test_...</code>) → paste into <code>secrets-staging.env</code> as <code>CLERK_SECRET_KEY</code></li>
+</ul>
+<p><strong>Webhook setup happens in Phase 10</strong> (needs the <code>workers.dev</code> URL from first deploy).</p>
 <h3 id="5b-production-production-instance">5b: Production (Production Instance)</h3>
 <ul class="contains-task-list">
 <li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> At the top of the dashboard, click the <strong>Development</strong> button → dropdown → <strong>Create production instance</strong></li>
@@ -425,138 +451,58 @@ DATABASE_URL=<span class="hljs-string">&quot;YOUR_PRODUCTION_CONNECTION_STRING&q
 <li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Wait for propagation (can take up to 48 hours)</li>
 <li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> When ready, click the <strong>Deploy certificates</strong> button on the Dashboard homepage</li>
 </ul>
-<p><strong>Collect keys:</strong></p>
+<p><strong>Collect keys</strong> (same pattern as staging — publishable key used in two places):</p>
 <ul class="contains-task-list">
 <li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Go to the <strong>API Keys</strong> page (production instance)</li>
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Copy <strong>Publishable Key</strong> (<code>pk_live_...</code>) → save as <code>CLERK_PUBLISHABLE_KEY_PRODUCTION</code></li>
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Copy <strong>Secret Key</strong> (<code>sk_live_...</code>) → save as <code>CLERK_SECRET_KEY_PRODUCTION</code></li>
-</ul>
-<p><strong>Webhook setup is deferred to Phase 13</strong> (needs the deployed URL).</p>
-<hr>
-<h2 id="phase-6-stripe-billing">Phase 6: Stripe Billing</h2>
-<p><strong>Requires:</strong> Databases seeded from Phase 4 (Plan records must exist before updating with Stripe IDs).</p>
-<blockquote>
-<p>Stripe now uses <strong>Sandboxes</strong> (not &quot;Test mode&quot;). Sandboxes are accessed via the <strong>account picker</strong> (top-left of dashboard).</p>
-</blockquote>
-<h3 id="6a-staging-sandbox">6a: Staging (Sandbox)</h3>
-<ul class="contains-task-list">
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Log into <a href="https://dashboard.stripe.com">https://dashboard.stripe.com</a></li>
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Use the <strong>account picker</strong> to select or create a sandbox</li>
-</ul>
-<p><strong>Create test products (inside sandbox):</strong></p>
-<ul class="contains-task-list">
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> <strong>Product catalog</strong> → <strong>Add product</strong> → Name: <code>Pro</code>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Copy <strong>Publishable Key</strong> (<code>pk_live_...</code>):
 <ul>
-<li>Monthly: $9.99/month (recurring), Annual: $99.99/year (recurring)</li>
-<li>Copy Product ID (<code>prod_...</code>) and both Price IDs (<code>price_...</code>)</li>
+<li>Paste into <code>secrets-production.env</code> as <code>CLERK_PUBLISHABLE_KEY</code></li>
+<li>Also note it for Phase 8: GitHub secret <code>VITE_CLERK_PUBLISHABLE_KEY_PRODUCTION</code></li>
 </ul>
 </li>
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> <strong>Add product</strong> → Name: <code>Pro+</code>
-<ul>
-<li>Monthly: $19.99/month (recurring), Annual: $179.99/year (recurring)</li>
-<li>Copy Product ID and both Price IDs</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Copy <strong>Secret Key</strong> (<code>sk_live_...</code>) → paste into <code>secrets-production.env</code> as <code>CLERK_SECRET_KEY</code></li>
 </ul>
-</li>
-</ul>
-<p><strong>Update staging database with Stripe IDs:</strong></p>
-<pre><code class="language-sql"><span class="hljs-comment">-- Run against STAGING database (via Neon SQL Editor or prisma studio)</span>
-<span class="hljs-keyword">UPDATE</span> &quot;Plan&quot; <span class="hljs-keyword">SET</span>
-  &quot;stripePriceIdMonthly&quot; <span class="hljs-operator">=</span> <span class="hljs-string">&#x27;price_STAGING_MONTHLY&#x27;</span>,
-  &quot;stripePriceIdAnnual&quot; <span class="hljs-operator">=</span> <span class="hljs-string">&#x27;price_STAGING_ANNUAL&#x27;</span>,
-  &quot;stripeProductId&quot; <span class="hljs-operator">=</span> <span class="hljs-string">&#x27;prod_STAGING_PRO&#x27;</span>
-<span class="hljs-keyword">WHERE</span> slug <span class="hljs-operator">=</span> <span class="hljs-string">&#x27;pro&#x27;</span>;
-
-<span class="hljs-keyword">UPDATE</span> &quot;Plan&quot; <span class="hljs-keyword">SET</span>
-  &quot;stripePriceIdMonthly&quot; <span class="hljs-operator">=</span> <span class="hljs-string">&#x27;price_STAGING_MONTHLY&#x27;</span>,
-  &quot;stripePriceIdAnnual&quot; <span class="hljs-operator">=</span> <span class="hljs-string">&#x27;price_STAGING_ANNUAL&#x27;</span>,
-  &quot;stripeProductId&quot; <span class="hljs-operator">=</span> <span class="hljs-string">&#x27;prod_STAGING_PROPLUS&#x27;</span>
-<span class="hljs-keyword">WHERE</span> slug <span class="hljs-operator">=</span> <span class="hljs-string">&#x27;pro-plus&#x27;</span>;
-</code></pre>
-<p><strong>Collect keys:</strong></p>
-<ul class="contains-task-list">
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> <strong>Developers Dashboard &gt; API keys</strong> tab → Copy <strong>Secret Key</strong> (<code>sk_test_...</code>)</li>
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Save as <code>STRIPE_SECRET_KEY_STAGING</code></li>
-</ul>
-<p><strong>Webhook setup is deferred to Phase 13.</strong></p>
-<h3 id="6b-production-live-mode">6b: Production (Live Mode)</h3>
-<ul class="contains-task-list">
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Go to <a href="https://dashboard.stripe.com/account/onboarding">https://dashboard.stripe.com/account/onboarding</a></li>
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Complete the <strong>account application</strong> (business details, bank account — KYC compliance)</li>
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Once approved, use the <strong>account picker</strong> to exit sandbox into live mode</li>
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> <strong>Note:</strong> Account country cannot be changed after activation</li>
-</ul>
-<p><strong>Create live products (in live mode):</strong></p>
-<p>Same products as sandbox. Or use <strong>Copy to live mode</strong> on the Product catalog page if you created them in sandbox first.</p>
-<ul class="contains-task-list">
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Pro: Monthly $9.99, Annual $99.99 — copy Product ID + Price IDs</li>
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Pro+: Monthly $19.99, Annual $179.99 — copy Product ID + Price IDs</li>
-</ul>
-<p><strong>Update production database with live Stripe IDs:</strong></p>
-<pre><code class="language-sql"><span class="hljs-comment">-- Run against PRODUCTION database</span>
-<span class="hljs-keyword">UPDATE</span> &quot;Plan&quot; <span class="hljs-keyword">SET</span>
-  &quot;stripePriceIdMonthly&quot; <span class="hljs-operator">=</span> <span class="hljs-string">&#x27;price_LIVE_MONTHLY&#x27;</span>,
-  &quot;stripePriceIdAnnual&quot; <span class="hljs-operator">=</span> <span class="hljs-string">&#x27;price_LIVE_ANNUAL&#x27;</span>,
-  &quot;stripeProductId&quot; <span class="hljs-operator">=</span> <span class="hljs-string">&#x27;prod_LIVE_PRO&#x27;</span>
-<span class="hljs-keyword">WHERE</span> slug <span class="hljs-operator">=</span> <span class="hljs-string">&#x27;pro&#x27;</span>;
-
-<span class="hljs-keyword">UPDATE</span> &quot;Plan&quot; <span class="hljs-keyword">SET</span>
-  &quot;stripePriceIdMonthly&quot; <span class="hljs-operator">=</span> <span class="hljs-string">&#x27;price_LIVE_MONTHLY&#x27;</span>,
-  &quot;stripePriceIdAnnual&quot; <span class="hljs-operator">=</span> <span class="hljs-string">&#x27;price_LIVE_ANNUAL&#x27;</span>,
-  &quot;stripeProductId&quot; <span class="hljs-operator">=</span> <span class="hljs-string">&#x27;prod_LIVE_PROPLUS&#x27;</span>
-<span class="hljs-keyword">WHERE</span> slug <span class="hljs-operator">=</span> <span class="hljs-string">&#x27;pro-plus&#x27;</span>;
-</code></pre>
-<p><strong>Configure customer portal:</strong></p>
-<ul class="contains-task-list">
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> <strong>Settings &gt; Billing &gt; Portal</strong> (URL: <code>dashboard.stripe.com/settings/billing/portal</code>)</li>
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Allow: cancellations, plan switching, payment method updates</li>
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Customize branding in <strong>Settings &gt; Branding</strong></li>
-</ul>
-<p><strong>Collect keys:</strong></p>
-<ul class="contains-task-list">
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> In live mode, <strong>Developers Dashboard &gt; API keys</strong> tab → Copy <strong>Secret Key</strong> (<code>sk_live_...</code>)</li>
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Save as <code>STRIPE_SECRET_KEY_PRODUCTION</code></li>
-</ul>
-<p><strong>Webhook setup is deferred to Phase 13.</strong></p>
+<p><strong>Webhook setup happens in Phase 10</strong> (needs the deployed URL).</p>
 <hr>
-<h2 id="phase-7-ai--podcast-services">Phase 7: AI &amp; Podcast Services</h2>
+<h2 id="phase-6-ai--podcast-services">Phase 6: AI &amp; Podcast Services</h2>
 <p>Same keys for both environments. Staging uses cheap models via PlatformConfig — same keys, different model selection.</p>
-<h3 id="71-anthropic">7.1 Anthropic</h3>
+<h3 id="61-anthropic">6.1 Anthropic</h3>
 <ul class="contains-task-list">
 <li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> <a href="https://console.anthropic.com/">https://console.anthropic.com/</a> → <strong>Settings &gt; Keys</strong> → <strong>Create Key</strong></li>
 <li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Name: <code>blipp</code></li>
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Copy key (<code>sk-ant-...</code>) → save as <code>ANTHROPIC_API_KEY</code></li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Copy key (<code>sk-ant-...</code>) → paste into both <code>secrets-staging.env</code> and <code>secrets-production.env</code> as <code>ANTHROPIC_API_KEY</code></li>
 <li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Add $25+ credits</li>
 </ul>
-<h3 id="72-openai">7.2 OpenAI</h3>
+<h3 id="62-openai">6.2 OpenAI</h3>
 <ul class="contains-task-list">
 <li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> <a href="https://platform.openai.com/">https://platform.openai.com/</a> → <strong>Dashboard &gt; API keys</strong> → <strong>Create new secret key</strong></li>
 <li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Name: <code>blipp</code></li>
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Copy key (<code>sk-...</code>) → save as <code>OPENAI_API_KEY</code></li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Copy key (<code>sk-...</code>) → paste into both <code>secrets-staging.env</code> and <code>secrets-production.env</code> as <code>OPENAI_API_KEY</code></li>
 <li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Add $25+ credits, set spend limit in <strong>Settings &gt; Limits</strong></li>
 </ul>
-<h3 id="73-groq-optional">7.3 Groq (Optional)</h3>
+<h3 id="63-groq-optional">6.3 Groq (Optional)</h3>
 <ul class="contains-task-list">
 <li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> <a href="https://console.groq.com">https://console.groq.com</a> → <strong>API Keys</strong> → <strong>Create API Key</strong></li>
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Copy key (<code>gsk_...</code>) → save as <code>GROQ_API_KEY</code></li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Copy key (<code>gsk_...</code>) → paste into both secrets env files as <code>GROQ_API_KEY</code></li>
 </ul>
-<h3 id="74-deepgram-optional">7.4 Deepgram (Optional)</h3>
+<h3 id="64-deepgram-optional">6.4 Deepgram (Optional)</h3>
 <ul class="contains-task-list">
 <li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> <a href="https://console.deepgram.com">https://console.deepgram.com</a> → <strong>API Keys</strong> → <strong>Create Key</strong></li>
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Copy key → save as <code>DEEPGRAM_API_KEY</code></li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Copy key → paste into both secrets env files as <code>DEEPGRAM_API_KEY</code></li>
 </ul>
-<h3 id="75-podcast-index">7.5 Podcast Index</h3>
+<h3 id="65-podcast-index">6.5 Podcast Index</h3>
 <ul class="contains-task-list">
 <li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> <a href="https://api.podcastindex.org">https://api.podcastindex.org</a> (or check signup email)</li>
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Copy <strong>API Key</strong> → save as <code>PODCAST_INDEX_KEY</code></li>
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Copy <strong>API Secret</strong> → save as <code>PODCAST_INDEX_SECRET</code></li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Copy <strong>API Key</strong> → paste into both secrets env files as <code>PODCAST_INDEX_KEY</code></li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Copy <strong>API Secret</strong> → paste into both secrets env files as <code>PODCAST_INDEX_SECRET</code></li>
 <li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> If the secret contains special characters (<code>^</code>, <code>$</code>, <code>#</code>), quote it when pasting</li>
 </ul>
-<h3 id="76-cloudflare-workers-ai">7.6 Cloudflare Workers AI</h3>
+<h3 id="66-cloudflare-workers-ai">6.6 Cloudflare Workers AI</h3>
 <ul class="contains-task-list">
 <li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> No setup needed — included with Workers Paid plan via <code>AI</code> binding</li>
 </ul>
 <hr>
-<h2 id="phase-8-web-push-vapid-keys">Phase 8: Web Push VAPID Keys</h2>
+<h2 id="phase-7-web-push-vapid-keys">Phase 7: Web Push VAPID Keys</h2>
 <p>Optional but recommended. Shared between environments.</p>
 <pre><code class="language-bash">npx web-push generate-vapid-keys
 </code></pre>
@@ -566,91 +512,33 @@ DATABASE_URL=<span class="hljs-string">&quot;YOUR_PRODUCTION_CONNECTION_STRING&q
 <li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Set <code>VAPID_SUBJECT</code> to <code>mailto:your@email.com</code></li>
 </ul>
 <hr>
-<h2 id="phase-9-google-adsense-optional">Phase 9: Google AdSense (Optional)</h2>
-<p>Ads are disabled by default (<code>ads.enabled</code> = false in PlatformConfig). You can skip this entirely and enable later. The IMA SDK is already loaded in <code>index.html</code>.</p>
-<p><strong>Background:</strong> Google Ad Manager requires an AdSense account to sign up. AdSense requires site verification before approval. You don't need AdSense to use VAST tags from other ad servers — only if you want Google's ad network.</p>
-<h3 id="if-you-want-google-ads">If you want Google ads:</h3>
-<h4 id="91-sign-up--verify">9.1 Sign Up &amp; Verify</h4>
-<ul class="contains-task-list">
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Sign up at <a href="https://www.google.com/adsense/">https://www.google.com/adsense/</a></li>
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Google gives you a publisher ID (<code>ca-pub-XXXXXXXXXXXXXXXX</code>)</li>
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Choose a verification method:</li>
-</ul>
-<p><strong>Option A — AdSense code snippet</strong> (add to <code>index.html</code> <code>&lt;head&gt;</code>):</p>
-<pre><code class="language-html"><span class="hljs-tag">&lt;<span class="hljs-name">script</span> <span class="hljs-attr">async</span> <span class="hljs-attr">src</span>=<span class="hljs-string">&quot;https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-XXXXXXXXXXXXXXXX&quot;</span> <span class="hljs-attr">crossorigin</span>=<span class="hljs-string">&quot;anonymous&quot;</span>&gt;</span><span class="hljs-tag">&lt;/<span class="hljs-name">script</span>&gt;</span>
-</code></pre>
-<p><strong>Option B — Meta tag</strong> (add to <code>index.html</code> <code>&lt;head&gt;</code>, lighter — no ads load):</p>
-<pre><code class="language-html"><span class="hljs-tag">&lt;<span class="hljs-name">meta</span> <span class="hljs-attr">name</span>=<span class="hljs-string">&quot;google-adsense-account&quot;</span> <span class="hljs-attr">content</span>=<span class="hljs-string">&quot;ca-pub-XXXXXXXXXXXXXXXX&quot;</span> /&gt;</span>
-</code></pre>
-<p><strong>Option C — ads.txt file</strong> (add to <code>public/ads.txt</code>):</p>
-<pre><code>google.com, pub-XXXXXXXXXXXXXXXX, DIRECT, f08c47fec0942fa0
-</code></pre>
-<ul class="contains-task-list">
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Deploy the app with your chosen verification method</li>
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> In AdSense dashboard, click <strong>Request review</strong></li>
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Wait for approval (days to weeks)</li>
-</ul>
-<h4 id="92-set-up-ad-manager-after-approval">9.2 Set Up Ad Manager (After Approval)</h4>
-<p>Once approved:</p>
-<ul class="contains-task-list">
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Go to <a href="https://admanager.google.com/">https://admanager.google.com/</a></li>
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Create audio ad units (Preroll + Postroll, master size: <strong>Audio</strong>)</li>
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Create line items with <strong>Video and audio</strong> ad type, <strong>Audio</strong> expected creative size</li>
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Generate VAST tag URLs: <strong>Inventory &gt; Ad units &gt; [your unit] &gt; Tags</strong>
-<ul>
-<li>VAST tags must include: <code>ad_type=audio</code>, <code>env=instream</code>, <code>vpmute=0</code></li>
-</ul>
-</li>
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Configure in admin UI: set <code>ads.preroll.vastTagUrl</code> and <code>ads.postroll.vastTagUrl</code> in PlatformConfig</li>
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Enable ads: set <code>ads.enabled</code> to <code>true</code> in PlatformConfig</li>
-</ul>
-<h3 id="if-you-want-to-skip-ads">If you want to skip ads:</h3>
-<ul class="contains-task-list">
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> No action needed — ads are disabled by default</li>
-</ul>
-<hr>
-<h2 id="phase-10-github-cicd">Phase 10: GitHub CI/CD</h2>
+<h2 id="phase-8-github-cicd">Phase 8: GitHub CI/CD</h2>
 <p><strong>Requires:</strong> API token from Phase 3.4, Clerk publishable keys from Phase 5.</p>
-<h3 id="101-add-repository-secrets">10.1 Add Repository Secrets</h3>
+<h3 id="81-add-repository-secrets">8.1 Add Repository Secrets</h3>
 <p>Go to <a href="https://github.com/boosey/blipp">https://github.com/boosey/blipp</a> → <strong>Settings &gt; Secrets and variables &gt; Actions &gt; New repository secret</strong></p>
 <ul class="contains-task-list">
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> <code>CLOUDFLARE_API_TOKEN</code> — from Phase 3.4</li>
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> <code>VITE_CLERK_PUBLISHABLE_KEY_STAGING</code> — <code>pk_test_...</code> from Phase 5a</li>
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> <code>VITE_CLERK_PUBLISHABLE_KEY_PRODUCTION</code> — <code>pk_live_...</code> from Phase 5b</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> <code>CLOUDFLARE_API_TOKEN</code> — the Cloudflare API token from Phase 3.4</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> <code>VITE_CLERK_PUBLISHABLE_KEY_STAGING</code> — the <strong>same <code>pk_test_...</code> value</strong> you pasted into <code>secrets-staging.env</code> as <code>CLERK_PUBLISHABLE_KEY</code> in Phase 5a</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> <code>VITE_CLERK_PUBLISHABLE_KEY_PRODUCTION</code> — the <strong>same <code>pk_live_...</code> value</strong> you pasted into <code>secrets-production.env</code> as <code>CLERK_PUBLISHABLE_KEY</code> in Phase 5b</li>
 </ul>
-<h3 id="102-add-repository-variable">10.2 Add Repository Variable</h3>
+<h3 id="82-add-repository-variable">8.2 Add Repository Variable</h3>
 <p><strong>Settings &gt; Secrets and variables &gt; Actions &gt; Variables &gt; New repository variable</strong></p>
 <ul class="contains-task-list">
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> <code>STAGING_URL</code> — set to <code>placeholder</code> for now. Update after first deploy in Phase 13 when you learn the <code>workers.dev</code> URL.</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> <code>STAGING_URL</code> — set to <code>placeholder</code> for now. Update after first deploy in Phase 10.1 when you learn the <code>workers.dev</code> URL.</li>
 </ul>
-<h3 id="103-verify-workflows-exist">10.3 Verify Workflows Exist</h3>
+<h3 id="83-verify-workflows-exist">8.3 Verify Workflows Exist</h3>
 <ul class="contains-task-list">
 <li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> <code>.github/workflows/deploy-staging.yml</code> — auto-deploys staging on push to <code>main</code></li>
 <li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> <code>.github/workflows/deploy-production.yml</code> — manual trigger (workflow_dispatch)</li>
 </ul>
 <hr>
-<h2 id="phase-11-domain--dns">Phase 11: Domain &amp; DNS</h2>
-<p>Only production gets a custom domain. Staging uses the <code>workers.dev</code> URL.</p>
-<p><code>podblipp.com</code> was purchased through Cloudflare, so DNS is already on Cloudflare.</p>
-<h3 id="111-add-custom-domain-to-production-worker">11.1 Add Custom Domain to Production Worker</h3>
-<p>After the first production deploy (Phase 13), add the custom domain:</p>
-<p><strong>Via dashboard:</strong></p>
-<ul class="contains-task-list">
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> <strong>Workers &amp; Pages &gt; blipp &gt; Settings &gt; Domains &amp; Routes</strong></li>
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> <strong>Add custom domain</strong>: <code>podblipp.com</code></li>
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Add <code>www.podblipp.com</code> if desired</li>
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> SSL is provisioned immediately (DNS is on Cloudflare)</li>
-</ul>
-<p><strong>Or via wrangler.jsonc</strong> — add <code>routes</code> inside <code>env.production</code>:</p>
-<pre><code class="language-jsonc"><span class="hljs-attr">&quot;routes&quot;</span><span class="hljs-punctuation">:</span> <span class="hljs-punctuation">[</span>
-  <span class="hljs-punctuation">{</span> <span class="hljs-attr">&quot;pattern&quot;</span><span class="hljs-punctuation">:</span> <span class="hljs-string">&quot;podblipp.com&quot;</span><span class="hljs-punctuation">,</span> <span class="hljs-attr">&quot;custom_domain&quot;</span><span class="hljs-punctuation">:</span> <span class="hljs-keyword">true</span> <span class="hljs-punctuation">}</span><span class="hljs-punctuation">,</span>
-  <span class="hljs-punctuation">{</span> <span class="hljs-attr">&quot;pattern&quot;</span><span class="hljs-punctuation">:</span> <span class="hljs-string">&quot;www.podblipp.com&quot;</span><span class="hljs-punctuation">,</span> <span class="hljs-attr">&quot;custom_domain&quot;</span><span class="hljs-punctuation">:</span> <span class="hljs-keyword">true</span> <span class="hljs-punctuation">}</span>
-<span class="hljs-punctuation">]</span>
-</code></pre>
-<hr>
-<h2 id="phase-12-set-cloudflare-secrets">Phase 12: Set Cloudflare Secrets</h2>
+<h2 id="phase-9-set-cloudflare-secrets">Phase 9: Set Cloudflare Secrets</h2>
 <p><strong>Requires:</strong> All keys from Phases 5-8.</p>
-<p>Secrets are set separately per environment. Webhook signing secrets are NOT available yet — they come from Phase 13 after creating webhook endpoints. Use <code>placeholder</code> for now.</p>
+<p>Secrets are set separately per environment. Some secrets use <code>placeholder</code> initially:</p>
+<ul>
+<li><strong>Webhook signing secrets</strong> (<code>CLERK_WEBHOOK_SECRET</code>, <code>STRIPE_WEBHOOK_SECRET</code>) — updated in Phase 12 after creating webhook endpoints</li>
+<li><strong>Stripe secret keys</strong> (<code>STRIPE_SECRET_KEY</code>) — set in Phase 12.6 after both environments are deployed. Use <code>placeholder</code> for now.</li>
+</ul>
 <h3 id="automated-1">Automated</h3>
 <pre><code class="language-bash"><span class="hljs-comment"># 1. Copy templates</span>
 <span class="hljs-built_in">cp</span> scripts/templates/secrets-staging.env.template secrets-staging.env
@@ -661,8 +549,8 @@ DATABASE_URL=<span class="hljs-string">&quot;YOUR_PRODUCTION_CONNECTION_STRING&q
 <span class="hljs-comment">#    (you&#x27;ll update these after Phase 13)</span>
 
 <span class="hljs-comment"># 3. Push secrets</span>
-bash scripts/set-secrets.sh secrets-staging.env
-bash scripts/set-secrets.sh secrets-production.env --<span class="hljs-built_in">env</span> production
+bash scripts/set-secrets.sh secrets-staging.env staging
+bash scripts/set-secrets.sh secrets-production.env production
 
 <span class="hljs-comment"># 4. DELETE THE FILES</span>
 <span class="hljs-built_in">rm</span> secrets-staging.env secrets-production.env
@@ -722,10 +610,10 @@ npx wrangler secret put VAPID_SUBJECT --<span class="hljs-built_in">env</span> p
 <li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Same 9 secrets with <code>--env production</code></li>
 </ul>
 <hr>
-<h2 id="phase-13-first-deploy--webhooks">Phase 13: First Deploy &amp; Webhooks</h2>
+<h2 id="phase-10-deploy-stripe--webhooks">Phase 10: Deploy, Stripe &amp; Webhooks</h2>
 <p><strong>Requires:</strong> All prior phases complete. Secrets set (with placeholder webhook secrets).</p>
 <p>This phase has a specific order: deploy → get URL → create webhooks → update secrets.</p>
-<h3 id="131-deploy-staging">13.1 Deploy Staging</h3>
+<h3 id="101-deploy-staging">10.1 Deploy Staging</h3>
 <pre><code class="language-bash">npx prisma generate
 npm run typecheck
 npm <span class="hljs-built_in">test</span>
@@ -734,9 +622,9 @@ npx wrangler deploy
 <ul class="contains-task-list">
 <li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Deploy succeeded</li>
 <li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> <strong>Write down the <code>workers.dev</code> URL</strong> (e.g., <code>https://blipp-staging.XXXXXX.workers.dev</code>)</li>
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Update the <code>STAGING_URL</code> GitHub variable (Phase 10.2) with this URL</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Update the <code>STAGING_URL</code> GitHub variable (Phase 8.2) with this URL</li>
 </ul>
-<h3 id="132-create-staging-webhook-endpoints">13.2 Create Staging Webhook Endpoints</h3>
+<h3 id="102-create-staging-webhook-endpoints">10.2 Create Staging Webhook Endpoints</h3>
 <p>Now that you have the <code>workers.dev</code> URL:</p>
 <p><strong>Clerk (Development instance):</strong></p>
 <ul class="contains-task-list">
@@ -753,13 +641,13 @@ npx wrangler deploy
 <li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Events: <code>checkout.session.completed</code>, <code>customer.subscription.updated</code>, <code>customer.subscription.deleted</code>, <code>invoice.payment_failed</code> → <strong>Add endpoint</strong></li>
 <li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Expand <strong>Signing secret</strong> → copy it</li>
 </ul>
-<h3 id="133-update-staging-webhook-secrets">13.3 Update Staging Webhook Secrets</h3>
+<h3 id="103-update-staging-webhook-secrets">10.3 Update Staging Webhook Secrets</h3>
 <p>Replace the placeholders with real signing secrets:</p>
 <pre><code class="language-bash">npx wrangler secret put CLERK_WEBHOOK_SECRET       <span class="hljs-comment"># paste Clerk signing secret</span>
 npx wrangler secret put STRIPE_WEBHOOK_SECRET      <span class="hljs-comment"># paste Stripe signing secret</span>
 </code></pre>
 <p>No redeploy needed — secrets take effect immediately.</p>
-<h3 id="134-verify-staging">13.4 Verify Staging</h3>
+<h3 id="104-verify-staging">10.4 Verify Staging</h3>
 <ul class="contains-task-list">
 <li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Homepage loads at the <code>workers.dev</code> URL</li>
 <li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Sign up / sign in works (Clerk dev instance)</li>
@@ -772,14 +660,53 @@ npx wrangler secret put STRIPE_WEBHOOK_SECRET      <span class="hljs-comment"># 
 <ul class="contains-task-list">
 <li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Admin panel accessible at <code>/admin</code></li>
 </ul>
-<h3 id="135-deploy-production">13.5 Deploy Production</h3>
+<h3 id="105-deploy-production">10.5 Deploy Production</h3>
 <pre><code class="language-bash">npx wrangler deploy --<span class="hljs-built_in">env</span> production
 </code></pre>
 <ul class="contains-task-list">
 <li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Deploy succeeded</li>
-<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Set up custom domain (Phase 11) if not already done</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Custom domain <code>podblipp.com</code> is configured automatically via <code>routes</code> in <code>wrangler.jsonc</code></li>
 </ul>
-<h3 id="136-create-production-webhook-endpoints">13.6 Create Production Webhook Endpoints</h3>
+<h3 id="106-stripe-setup">10.6 Stripe Setup</h3>
+<p>Now that both environments are deployed, set up Stripe billing.</p>
+<blockquote>
+<p>Stripe uses <strong>Sandboxes</strong> (not &quot;Test mode&quot;). Access via the <strong>account picker</strong> (top-left of dashboard).</p>
+</blockquote>
+<p><strong>Staging (Sandbox):</strong></p>
+<ul class="contains-task-list">
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Log into <a href="https://dashboard.stripe.com">https://dashboard.stripe.com</a></li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Use the <strong>account picker</strong> to select or create a sandbox</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> <strong>Developers Dashboard &gt; API keys</strong> tab → Copy <strong>Secret Key</strong> (<code>sk_test_...</code>)</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Set the secret: <code>npx wrangler secret put STRIPE_SECRET_KEY</code> → paste the key</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Create products:<pre><code class="language-bash">DATABASE_URL=<span class="hljs-string">&quot;YOUR_STAGING_CONNECTION_STRING&quot;</span> \
+STRIPE_SECRET_KEY=<span class="hljs-string">&quot;sk_test_...&quot;</span> \
+npx tsx scripts/setup-stripe.ts
+</code></pre>
+</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Products created in sandbox, staging Plan records updated</li>
+</ul>
+<p><strong>Production (Live Mode):</strong></p>
+<ul class="contains-task-list">
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Go to <a href="https://dashboard.stripe.com/account/onboarding">https://dashboard.stripe.com/account/onboarding</a></li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Complete the <strong>account application</strong> (business details, bank account, website URL <code>https://podblipp.com</code>)</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Once approved, use the <strong>account picker</strong> to exit sandbox into live mode</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> <strong>Note:</strong> Account country cannot be changed after activation</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> <strong>Developers Dashboard &gt; API keys</strong> tab (in live mode) → Copy <strong>Secret Key</strong> (<code>sk_live_...</code>)</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Set the secret: <code>npx wrangler secret put STRIPE_SECRET_KEY --env production</code> → paste the key</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Create products:<pre><code class="language-bash">DATABASE_URL=<span class="hljs-string">&quot;YOUR_PRODUCTION_CONNECTION_STRING&quot;</span> \
+STRIPE_SECRET_KEY=<span class="hljs-string">&quot;sk_live_...&quot;</span> \
+npx tsx scripts/setup-stripe.ts
+</code></pre>
+</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Products created in live mode, production Plan records updated</li>
+</ul>
+<p><strong>Configure customer portal (live mode):</strong></p>
+<ul class="contains-task-list">
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> <strong>Settings &gt; Billing &gt; Portal</strong> (URL: <code>dashboard.stripe.com/settings/billing/portal</code>)</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Allow: cancellations, plan switching, payment method updates</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Customize branding in <strong>Settings &gt; Branding</strong></li>
+</ul>
+<h3 id="107-create-production-webhook-endpoints">10.7 Create Production Webhook Endpoints</h3>
 <p><strong>Clerk (Production instance):</strong></p>
 <ul class="contains-task-list">
 <li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Dashboard (switch to production instance) → <strong>Webhooks</strong> → <strong>Add Endpoint</strong></li>
@@ -795,11 +722,11 @@ npx wrangler secret put STRIPE_WEBHOOK_SECRET      <span class="hljs-comment"># 
 <li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Events: <code>checkout.session.completed</code>, <code>customer.subscription.updated</code>, <code>customer.subscription.deleted</code>, <code>invoice.payment_failed</code> → <strong>Add endpoint</strong></li>
 <li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Expand <strong>Signing secret</strong> → copy it</li>
 </ul>
-<h3 id="137-update-production-webhook-secrets">13.7 Update Production Webhook Secrets</h3>
+<h3 id="108-update-production-webhook-secrets">10.8 Update Production Webhook Secrets</h3>
 <pre><code class="language-bash">npx wrangler secret put CLERK_WEBHOOK_SECRET --<span class="hljs-built_in">env</span> production    <span class="hljs-comment"># paste Clerk signing secret</span>
 npx wrangler secret put STRIPE_WEBHOOK_SECRET --<span class="hljs-built_in">env</span> production   <span class="hljs-comment"># paste Stripe signing secret</span>
 </code></pre>
-<h3 id="138-verify-production">13.8 Verify Production</h3>
+<h3 id="109-verify-production">10.9 Verify Production</h3>
 <ul class="contains-task-list">
 <li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Homepage loads at <code>podblipp.com</code></li>
 <li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Sign up / sign in works (Clerk production instance)</li>
@@ -811,7 +738,7 @@ npx wrangler secret put STRIPE_WEBHOOK_SECRET --<span class="hljs-built_in">env<
 <ul class="contains-task-list">
 <li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Admin panel accessible at <code>/admin</code></li>
 </ul>
-<h3 id="139-configure-staging-platformconfig">13.9 Configure Staging PlatformConfig</h3>
+<h3 id="1010-configure-staging-platformconfig">10.10 Configure Staging PlatformConfig</h3>
 <p>Set staging to use cheapest AI models (via admin UI at <code>workers.dev</code> URL → <code>/admin</code>):</p>
 <ul class="contains-task-list">
 <li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> STT model → Whisper Large v3 Turbo on Cloudflare</li>
@@ -820,7 +747,49 @@ npx wrangler secret put STRIPE_WEBHOOK_SECRET --<span class="hljs-built_in">env<
 <li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> TTS model → MeloTTS on Cloudflare</li>
 </ul>
 <hr>
-<h2 id="phase-14-post-deploy-verification">Phase 14: Post-Deploy Verification</h2>
+<h2 id="phase-11-google-adsense-optional">Phase 11: Google AdSense (Optional)</h2>
+<p>Ads are disabled by default (<code>ads.enabled</code> = false in PlatformConfig). The IMA SDK is already loaded in <code>index.html</code>. You don't need AdSense to use VAST tags from other ad servers — only if you want Google's ad network.</p>
+<h3 id="if-you-want-google-ads">If you want Google ads:</h3>
+<h4 id="111-sign-up--verify">11.1 Sign Up &amp; Verify</h4>
+<ul class="contains-task-list">
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Sign up at <a href="https://www.google.com/adsense/">https://www.google.com/adsense/</a></li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Google gives you a publisher ID (<code>ca-pub-XXXXXXXXXXXXXXXX</code>)</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Choose a verification method:</li>
+</ul>
+<p><strong>Option A — AdSense code snippet</strong> (add to <code>index.html</code> <code>&lt;head&gt;</code>):</p>
+<pre><code class="language-html"><span class="hljs-tag">&lt;<span class="hljs-name">script</span> <span class="hljs-attr">async</span> <span class="hljs-attr">src</span>=<span class="hljs-string">&quot;https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-XXXXXXXXXXXXXXXX&quot;</span> <span class="hljs-attr">crossorigin</span>=<span class="hljs-string">&quot;anonymous&quot;</span>&gt;</span><span class="hljs-tag">&lt;/<span class="hljs-name">script</span>&gt;</span>
+</code></pre>
+<p><strong>Option B — Meta tag</strong> (add to <code>index.html</code> <code>&lt;head&gt;</code>, lighter — no ads load):</p>
+<pre><code class="language-html"><span class="hljs-tag">&lt;<span class="hljs-name">meta</span> <span class="hljs-attr">name</span>=<span class="hljs-string">&quot;google-adsense-account&quot;</span> <span class="hljs-attr">content</span>=<span class="hljs-string">&quot;ca-pub-XXXXXXXXXXXXXXXX&quot;</span> /&gt;</span>
+</code></pre>
+<p><strong>Option C — ads.txt file</strong> (add to <code>public/ads.txt</code>):</p>
+<pre><code>google.com, pub-XXXXXXXXXXXXXXXX, DIRECT, f08c47fec0942fa0
+</code></pre>
+<ul class="contains-task-list">
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Redeploy with your chosen verification method</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> In AdSense dashboard, click <strong>Request review</strong></li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Wait for approval (days to weeks)</li>
+</ul>
+<h4 id="112-set-up-ad-manager-after-approval">11.2 Set Up Ad Manager (After Approval)</h4>
+<p>Once approved:</p>
+<ul class="contains-task-list">
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Go to <a href="https://admanager.google.com/">https://admanager.google.com/</a></li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Create audio ad units (Preroll + Postroll, master size: <strong>Audio</strong>)</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Create line items with <strong>Video and audio</strong> ad type, <strong>Audio</strong> expected creative size</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Generate VAST tag URLs: <strong>Inventory &gt; Ad units &gt; [your unit] &gt; Tags</strong>
+<ul>
+<li>VAST tags must include: <code>ad_type=audio</code>, <code>env=instream</code>, <code>vpmute=0</code></li>
+</ul>
+</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Configure in admin UI: set <code>ads.preroll.vastTagUrl</code> and <code>ads.postroll.vastTagUrl</code> in PlatformConfig</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Enable ads: set <code>ads.enabled</code> to <code>true</code> in PlatformConfig</li>
+</ul>
+<h3 id="if-you-want-to-skip-ads">If you want to skip ads:</h3>
+<ul class="contains-task-list">
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> No action needed — ads are disabled by default</li>
+</ul>
+<hr>
+<h2 id="phase-12-post-deploy-verification">Phase 12: Post-Deploy Verification</h2>
 <h3 id="staging-smoke-tests">Staging Smoke Tests</h3>
 <ul class="contains-task-list">
 <li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Homepage loads</li>
@@ -1007,9 +976,14 @@ npx wrangler secret put STRIPE_WEBHOOK_SECRET --<span class="hljs-built_in">env<
 <td><code>neon-config.env</code></td>
 </tr>
 <tr>
+<td><code>scripts/setup-stripe.ts</code></td>
+<td>Create Stripe products/prices, update Plan records</td>
+<td><code>DATABASE_URL</code> + <code>STRIPE_SECRET_KEY</code> env vars</td>
+</tr>
+<tr>
 <td><code>scripts/set-secrets.sh</code></td>
 <td>Batch-set Cloudflare Worker secrets</td>
-<td><code>secrets-*.env [--env production]</code></td>
+<td><code>secrets-*.env staging|production</code></td>
 </tr>
 </tbody>
 </table>
@@ -1053,8 +1027,8 @@ bash scripts/setup-infra.sh neon-config.env
 <span class="hljs-built_in">cp</span> scripts/templates/secrets-staging.env.template secrets-staging.env
 <span class="hljs-built_in">cp</span> scripts/templates/secrets-production.env.template secrets-production.env
 <span class="hljs-comment"># Edit both with keys from Phases 5-8</span>
-bash scripts/set-secrets.sh secrets-staging.env
-bash scripts/set-secrets.sh secrets-production.env --<span class="hljs-built_in">env</span> production
+bash scripts/set-secrets.sh secrets-staging.env staging
+bash scripts/set-secrets.sh secrets-production.env production
 
 <span class="hljs-comment"># 4. Clean up credential files</span>
 <span class="hljs-built_in">rm</span> neon-config.env secrets-staging.env secrets-production.env
