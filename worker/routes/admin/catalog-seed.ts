@@ -14,7 +14,7 @@ catalogSeedRoutes.post("/", async (c) => {
 
   // Reject if a job is already active
   const active = await prisma.catalogSeedJob.findFirst({
-    where: { status: { in: ["pending", "discovering", "upserting", "feed_refresh"] } },
+    where: { status: { in: ["pending", "discovering", "upserting", "feed_refresh", "paused"] } },
   });
   if (active) {
     return c.json({ error: "A seed job is already active.", activeJobId: active.id }, 409);
@@ -38,7 +38,7 @@ catalogSeedRoutes.get("/active", async (c) => {
 
   // Find active or most recent job
   let job = await prisma.catalogSeedJob.findFirst({
-    where: { status: { in: ["pending", "discovering", "upserting", "feed_refresh"] } },
+    where: { status: { in: ["pending", "discovering", "upserting", "feed_refresh", "paused"] } },
     orderBy: { startedAt: "desc" },
   });
 
@@ -53,7 +53,7 @@ catalogSeedRoutes.get("/active", async (c) => {
   }
 
   // Lazy completion detection
-  const isActive = ["pending", "discovering", "upserting", "feed_refresh"].includes(job.status);
+  const isActive = ["pending", "discovering", "upserting", "feed_refresh", "paused"].includes(job.status);
   if (
     isActive &&
     job.status === "feed_refresh" &&
@@ -168,6 +168,106 @@ catalogSeedRoutes.get("/active", async (c) => {
       updatedAt: e.updatedAt.toISOString(),
     })),
   });
+});
+
+// POST /:id/pause — Pause an active seed job
+catalogSeedRoutes.post("/:id/pause", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const { id } = c.req.param();
+
+  const job = await prisma.catalogSeedJob.findUnique({ where: { id } });
+  if (!job) return c.json({ error: "Job not found" }, 404);
+  if (job.status !== "feed_refresh") {
+    return c.json({ error: `Cannot pause job in '${job.status}' status` }, 409);
+  }
+
+  const updated = await prisma.catalogSeedJob.update({
+    where: { id },
+    data: { status: "paused" },
+  });
+
+  return c.json({ job: updated });
+});
+
+// POST /:id/cancel — Cancel an active or paused seed job
+catalogSeedRoutes.post("/:id/cancel", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const { id } = c.req.param();
+
+  const job = await prisma.catalogSeedJob.findUnique({ where: { id } });
+  if (!job) return c.json({ error: "Job not found" }, 404);
+  if (!["feed_refresh", "paused"].includes(job.status)) {
+    return c.json({ error: `Cannot cancel job in '${job.status}' status` }, 409);
+  }
+
+  const updated = await prisma.catalogSeedJob.update({
+    where: { id },
+    data: { status: "cancelled", completedAt: new Date() },
+  });
+
+  return c.json({ job: updated });
+});
+
+// POST /:id/resume — Resume a paused seed job
+catalogSeedRoutes.post("/:id/resume", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const { id } = c.req.param();
+
+  const job = await prisma.catalogSeedJob.findUnique({ where: { id } });
+  if (!job) return c.json({ error: "Job not found" }, 404);
+  if (job.status !== "paused") {
+    return c.json({ error: `Cannot resume job in '${job.status}' status` }, 409);
+  }
+
+  const watermark = job.startedAt;
+
+  // Re-discover remaining work
+  const podcasts = await prisma.podcast.findMany({
+    where: { createdAt: { gte: watermark } },
+    select: { id: true },
+  });
+  const pendingEpisodes = await prisma.episode.findMany({
+    where: { createdAt: { gte: watermark }, contentStatus: "PENDING" },
+    select: { id: true },
+  });
+
+  // Reset counters and resume
+  const updated = await prisma.catalogSeedJob.update({
+    where: { id },
+    data: {
+      status: "feed_refresh",
+      feedsCompleted: 0,
+      feedsTotal: podcasts.length,
+      prefetchCompleted: 0,
+      prefetchTotal: pendingEpisodes.length,
+    },
+  });
+
+  // Re-queue feed refresh for all podcasts (idempotent — already-processed feeds just re-fetch)
+  const podcastIds = podcasts.map((p: any) => p.id);
+  const BATCH_SIZE = 100;
+  for (let i = 0; i < podcastIds.length; i += BATCH_SIZE) {
+    const batch = podcastIds.slice(i, i + BATCH_SIZE);
+    await c.env.FEED_REFRESH_QUEUE.sendBatch(
+      batch.map((podcastId: string) => ({
+        body: { podcastId, seedJobId: id },
+      }))
+    );
+  }
+
+  // Re-queue prefetch for episodes still PENDING (feed-refresh won't re-queue these
+  // because they already exist in the DB and won't appear in newEpisodeIds)
+  const pendingIds = pendingEpisodes.map((e: any) => e.id);
+  for (let i = 0; i < pendingIds.length; i += BATCH_SIZE) {
+    const batch = pendingIds.slice(i, i + BATCH_SIZE);
+    await c.env.CONTENT_PREFETCH_QUEUE.sendBatch(
+      batch.map((episodeId: string) => ({
+        body: { episodeId, seedJobId: id },
+      }))
+    );
+  }
+
+  return c.json({ job: updated });
 });
 
 export { catalogSeedRoutes };
