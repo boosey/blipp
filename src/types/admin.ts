@@ -986,6 +986,15 @@ export interface CatalogSeedProgress {
   podcastsInserted: number;
   episodesDiscovered: number;
   prefetchBreakdown: Record<string, number>;
+  pagination: {
+    pageSize: number;
+    podcastPage: number;
+    podcastTotal: number;
+    episodePage: number;
+    episodeTotal: number;
+    prefetchPage: number;
+    prefetchTotal: number;
+  };
   recentPodcasts: {
     id: string;
     title: string;

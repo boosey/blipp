@@ -21,7 +21,7 @@ export async function handleCatalogRefresh(
         if (seedJobId) await updateSeedJob(prisma, seedJobId, { status: "discovering" });
 
         if (action === "seed") {
-          await wipeCatalogData(prisma);
+          await wipeCatalogData(prisma, env.R2);
         }
 
         const source = getCatalogSource("podcast-index");
@@ -79,7 +79,8 @@ async function updateStatus(prisma: any, status: string): Promise<void> {
   });
 }
 
-async function wipeCatalogData(prisma: any): Promise<void> {
+async function wipeCatalogData(prisma: any, r2: R2Bucket): Promise<void> {
+  // Delete DB records
   await prisma.feedItem.deleteMany({});
   await prisma.briefing.deleteMany({});
   await prisma.briefingRequest.deleteMany({});
@@ -89,6 +90,19 @@ async function wipeCatalogData(prisma: any): Promise<void> {
   await prisma.episode.deleteMany({});
   await prisma.podcast.deleteMany({});
   await prisma.category.deleteMany({});
+
+  // Delete all work products from R2
+  let totalDeleted = 0;
+  let cursor: string | undefined;
+  do {
+    const listed = await r2.list({ prefix: "wp/", cursor, limit: 500 });
+    if (listed.objects.length > 0) {
+      await Promise.all(listed.objects.map((obj) => r2.delete(obj.key)));
+      totalDeleted += listed.objects.length;
+    }
+    cursor = listed.truncated ? listed.cursor : undefined;
+  } while (cursor);
+  console.log(`[catalog-refresh] Deleted ${totalDeleted} R2 objects`);
 }
 
 async function upsertCategories(prisma: any, discovered: DiscoveredPodcast[]): Promise<Map<string, string>> {

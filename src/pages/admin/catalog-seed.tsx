@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useAdminFetch } from "@/lib/admin-api";
 import { usePolling } from "@/hooks/use-polling";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,7 @@ import {
   Radio,
   Podcast,
   FileText,
+  ChevronDown,
 } from "lucide-react";
 import type { CatalogSeedProgress } from "@/types/admin";
 
@@ -68,22 +69,72 @@ export default function CatalogSeed() {
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchProgress = useCallback(async () => {
+  // Accumulated lists across pages
+  const [allPodcasts, setAllPodcasts] = useState<CatalogSeedProgress["recentPodcasts"]>([]);
+  const [allEpisodes, setAllEpisodes] = useState<CatalogSeedProgress["recentEpisodes"]>([]);
+  const [allPrefetch, setAllPrefetch] = useState<CatalogSeedProgress["recentPrefetch"]>([]);
+  const [pages, setPages] = useState({ podcast: 1, episode: 1, prefetch: 1 });
+  const [loadingMore, setLoadingMore] = useState({ podcast: false, episode: false, prefetch: false });
+
+  // Track job ID to reset accumulated lists when job changes
+  const currentJobId = useRef<string | null>(null);
+
+  const fetchProgress = useCallback(async (overridePages?: { podcast?: number; episode?: number; prefetch?: number }) => {
+    const p = { ...pages, ...overridePages };
+    const params = new URLSearchParams();
+    if (p.podcast > 1) params.set("podcastPage", String(p.podcast));
+    if (p.episode > 1) params.set("episodePage", String(p.episode));
+    if (p.prefetch > 1) params.set("prefetchPage", String(p.prefetch));
+    const qs = params.toString();
     try {
-      const result = await apiFetch<CatalogSeedProgress>("/catalog-seed/active");
+      const result = await apiFetch<CatalogSeedProgress>(`/catalog-seed/active${qs ? `?${qs}` : ""}`);
       setData(result);
       setError(null);
+
+      // Reset accumulated lists if job changed
+      if (result.job && result.job.id !== currentJobId.current) {
+        currentJobId.current = result.job.id;
+        setAllPodcasts(result.recentPodcasts ?? []);
+        setAllEpisodes(result.recentEpisodes ?? []);
+        setAllPrefetch(result.recentPrefetch ?? []);
+        setPages({ podcast: 1, episode: 1, prefetch: 1 });
+      } else if (!overridePages) {
+        // Polling refresh — only replace accumulated lists if still on page 1
+        if (pages.podcast === 1) setAllPodcasts(result.recentPodcasts ?? []);
+        if (pages.episode === 1) setAllEpisodes(result.recentEpisodes ?? []);
+        if (pages.prefetch === 1) setAllPrefetch(result.recentPrefetch ?? []);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch progress");
     } finally {
       setLoading(false);
     }
-  }, [apiFetch]);
+  }, [apiFetch, pages]);
 
-  useEffect(() => { fetchProgress(); }, [fetchProgress]);
+  useEffect(() => { fetchProgress(); }, []);
 
   const isActive = data?.job && !["complete", "failed"].includes(data.job.status);
   usePolling(fetchProgress, 3000, !!isActive);
+
+  const loadMore = useCallback(async (type: "podcast" | "episode" | "prefetch") => {
+    const nextPage = pages[type] + 1;
+    const newPages = { ...pages, [type]: nextPage };
+    setPages(newPages);
+    setLoadingMore((prev) => ({ ...prev, [type]: true }));
+    try {
+      const params = new URLSearchParams();
+      params.set(`${type === "podcast" ? "podcast" : type === "episode" ? "episode" : "prefetch"}Page`, String(nextPage));
+      const result = await apiFetch<CatalogSeedProgress>(`/catalog-seed/active?${params.toString()}`);
+      if (type === "podcast") setAllPodcasts((prev) => [...prev, ...(result.recentPodcasts ?? [])]);
+      else if (type === "episode") setAllEpisodes((prev) => [...prev, ...(result.recentEpisodes ?? [])]);
+      else setAllPrefetch((prev) => [...prev, ...(result.recentPrefetch ?? [])]);
+    } catch {
+      // Revert page on error
+      setPages(pages);
+    } finally {
+      setLoadingMore((prev) => ({ ...prev, [type]: false }));
+    }
+  }, [apiFetch, pages]);
 
   const startSeed = async () => {
     if (!window.confirm("This will wipe ALL catalog data (podcasts, episodes, subscriptions, briefings) and re-seed from scratch. Are you sure?")) return;
@@ -231,11 +282,13 @@ export default function CatalogSeed() {
                   </div>
                   <Progress value={job.podcastsDiscovered > 0 ? 100 : 0} />
                 </div>
-                {data?.recentPodcasts && data.recentPodcasts.length > 0 && (
+                {allPodcasts.length > 0 && (
                   <div className="space-y-1">
-                    <p className="text-xs text-[#9CA3AF] font-medium">Recent Podcasts</p>
-                    <div className="max-h-[300px] overflow-y-auto space-y-1 pr-1">
-                      {data.recentPodcasts.map((p) => (
+                    <p className="text-xs text-[#9CA3AF] font-medium">
+                      Podcasts ({allPodcasts.length} of {data?.pagination?.podcastTotal ?? allPodcasts.length})
+                    </p>
+                    <div className="max-h-[400px] overflow-y-auto space-y-1 pr-1">
+                      {allPodcasts.map((p) => (
                         <div key={p.id} className="flex items-center gap-2 rounded p-1.5 bg-white/[0.02]">
                           {p.imageUrl ? (
                             <img src={p.imageUrl} alt="" className="h-8 w-8 rounded object-cover shrink-0" />
@@ -253,6 +306,18 @@ export default function CatalogSeed() {
                         </div>
                       ))}
                     </div>
+                    {data?.pagination && allPodcasts.length < data.pagination.podcastTotal && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="w-full text-[#9CA3AF] hover:text-white"
+                        onClick={() => loadMore("podcast")}
+                        disabled={loadingMore.podcast}
+                      >
+                        {loadingMore.podcast ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <ChevronDown className="h-3 w-3 mr-1" />}
+                        Load more ({data.pagination.podcastTotal - allPodcasts.length} remaining)
+                      </Button>
+                    )}
                   </div>
                 )}
               </AccordionContent>
@@ -280,11 +345,13 @@ export default function CatalogSeed() {
                 <p className="text-xs text-[#9CA3AF]">
                   Episodes found: {data?.episodesDiscovered?.toLocaleString() ?? 0}
                 </p>
-                {data?.recentEpisodes && data.recentEpisodes.length > 0 && (
+                {allEpisodes.length > 0 && (
                   <div className="space-y-1">
-                    <p className="text-xs text-[#9CA3AF] font-medium">Recent Episodes</p>
-                    <div className="max-h-[300px] overflow-y-auto space-y-1 pr-1">
-                      {data.recentEpisodes.map((ep) => (
+                    <p className="text-xs text-[#9CA3AF] font-medium">
+                      Episodes ({allEpisodes.length} of {data?.pagination?.episodeTotal ?? allEpisodes.length})
+                    </p>
+                    <div className="max-h-[400px] overflow-y-auto space-y-1 pr-1">
+                      {allEpisodes.map((ep) => (
                         <div key={ep.id} className="flex items-center gap-2 rounded p-1.5 bg-white/[0.02]">
                           {ep.podcast.imageUrl ? (
                             <img src={ep.podcast.imageUrl} alt="" className="h-8 w-8 rounded object-cover shrink-0" />
@@ -305,6 +372,18 @@ export default function CatalogSeed() {
                         </div>
                       ))}
                     </div>
+                    {data?.pagination && allEpisodes.length < data.pagination.episodeTotal && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="w-full text-[#9CA3AF] hover:text-white"
+                        onClick={() => loadMore("episode")}
+                        disabled={loadingMore.episode}
+                      >
+                        {loadingMore.episode ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <ChevronDown className="h-3 w-3 mr-1" />}
+                        Load more ({data.pagination.episodeTotal - allEpisodes.length} remaining)
+                      </Button>
+                    )}
                   </div>
                 )}
               </AccordionContent>
@@ -338,11 +417,13 @@ export default function CatalogSeed() {
                     ))}
                   </div>
                 )}
-                {data?.recentPrefetch && data.recentPrefetch.length > 0 && (
+                {allPrefetch.length > 0 && (
                   <div className="space-y-1">
-                    <p className="text-xs text-[#9CA3AF] font-medium">Recent Prefetch Results</p>
-                    <div className="max-h-[300px] overflow-y-auto space-y-1 pr-1">
-                      {data.recentPrefetch.map((ep) => (
+                    <p className="text-xs text-[#9CA3AF] font-medium">
+                      Prefetch Results ({allPrefetch.length} of {data?.pagination?.prefetchTotal ?? allPrefetch.length})
+                    </p>
+                    <div className="max-h-[400px] overflow-y-auto space-y-1 pr-1">
+                      {allPrefetch.map((ep) => (
                         <div key={ep.id} className="flex items-center gap-2 rounded p-1.5 bg-white/[0.02]">
                           {ep.podcast.imageUrl ? (
                             <img src={ep.podcast.imageUrl} alt="" className="h-8 w-8 rounded object-cover shrink-0" />
@@ -375,6 +456,18 @@ export default function CatalogSeed() {
                         </div>
                       ))}
                     </div>
+                    {data?.pagination && allPrefetch.length < data.pagination.prefetchTotal && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="w-full text-[#9CA3AF] hover:text-white"
+                        onClick={() => loadMore("prefetch")}
+                        disabled={loadingMore.prefetch}
+                      >
+                        {loadingMore.prefetch ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <ChevronDown className="h-3 w-3 mr-1" />}
+                        Load more ({data.pagination.prefetchTotal - allPrefetch.length} remaining)
+                      </Button>
+                    )}
                   </div>
                 )}
               </AccordionContent>

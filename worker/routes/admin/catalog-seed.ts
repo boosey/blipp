@@ -31,6 +31,11 @@ catalogSeedRoutes.post("/", async (c) => {
 catalogSeedRoutes.get("/active", async (c) => {
   const prisma = c.get("prisma") as any;
 
+  const PAGE_SIZE = 50;
+  const podcastPage = Math.max(1, parseInt(c.req.query("podcastPage") ?? "1", 10) || 1);
+  const episodePage = Math.max(1, parseInt(c.req.query("episodePage") ?? "1", 10) || 1);
+  const prefetchPage = Math.max(1, parseInt(c.req.query("prefetchPage") ?? "1", 10) || 1);
+
   // Find active or most recent job
   let job = await prisma.catalogSeedJob.findFirst({
     where: { status: { in: ["pending", "discovering", "upserting", "feed_refresh"] } },
@@ -65,7 +70,7 @@ catalogSeedRoutes.get("/active", async (c) => {
   const watermark = job.startedAt;
 
   // Derived counts
-  const [podcastsInserted, episodesDiscovered, prefetchBreakdown] = await Promise.all([
+  const [podcastsInserted, episodesDiscovered, prefetchBreakdown, prefetchTotal] = await Promise.all([
     prisma.podcast.count({ where: { createdAt: { gte: watermark } } }),
     prisma.episode.count({ where: { createdAt: { gte: watermark } } }),
     prisma.episode.groupBy({
@@ -73,14 +78,16 @@ catalogSeedRoutes.get("/active", async (c) => {
       where: { createdAt: { gte: watermark }, contentStatus: { not: "PENDING" } },
       _count: true,
     }),
+    prisma.episode.count({ where: { createdAt: { gte: watermark }, contentStatus: { not: "PENDING" } } }),
   ]);
 
-  // Recent items for accordions
+  // Paginated items for accordions
   const [recentPodcasts, recentEpisodes, recentPrefetch] = await Promise.all([
     prisma.podcast.findMany({
       where: { createdAt: { gte: watermark } },
       orderBy: { createdAt: "desc" },
-      take: 50,
+      skip: (podcastPage - 1) * PAGE_SIZE,
+      take: PAGE_SIZE,
       select: {
         id: true,
         title: true,
@@ -93,7 +100,8 @@ catalogSeedRoutes.get("/active", async (c) => {
     prisma.episode.findMany({
       where: { createdAt: { gte: watermark } },
       orderBy: { createdAt: "desc" },
-      take: 50,
+      skip: (episodePage - 1) * PAGE_SIZE,
+      take: PAGE_SIZE,
       select: {
         id: true,
         title: true,
@@ -106,7 +114,8 @@ catalogSeedRoutes.get("/active", async (c) => {
     prisma.episode.findMany({
       where: { createdAt: { gte: watermark }, contentStatus: { not: "PENDING" } },
       orderBy: { updatedAt: "desc" },
-      take: 50,
+      skip: (prefetchPage - 1) * PAGE_SIZE,
+      take: PAGE_SIZE,
       select: {
         id: true,
         title: true,
@@ -139,6 +148,15 @@ catalogSeedRoutes.get("/active", async (c) => {
       },
       {} as Record<string, number>
     ),
+    pagination: {
+      pageSize: PAGE_SIZE,
+      podcastPage,
+      podcastTotal: podcastsInserted,
+      episodePage,
+      episodeTotal: episodesDiscovered,
+      prefetchPage,
+      prefetchTotal,
+    },
     recentPodcasts,
     recentEpisodes: recentEpisodes.map((e: any) => ({
       ...e,
