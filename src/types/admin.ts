@@ -970,7 +970,7 @@ export interface AdminPodcastProfile {
 
 export interface CatalogSeedJob {
   id: string;
-  status: string; // pending | discovering | upserting | feed_refresh | complete | failed
+  status: string; // pending | discovering | upserting | feed_refresh | paused | cancelled | complete | failed
   podcastsDiscovered: number;
   feedsTotal: number;
   feedsCompleted: number;
