@@ -81,6 +81,55 @@ app.use("/api/*", cors({
   allowHeaders: ["Content-Type", "Authorization"],
 }));
 
+// Clerk Frontend API proxy — routes Clerk SDK requests through our domain
+// so native apps (capacitor://localhost) don't hit CORS issues on clerk.podblipp.com.
+// Must be before Clerk auth middleware since these are Clerk's own API calls.
+app.all("/__clerk/*", async (c) => {
+  const origin = c.req.header("origin") ?? "";
+  const allowedOrigins = [
+    "https://podblipp.com",
+    "https://www.podblipp.com",
+    "capacitor://localhost",
+    "ionic://localhost",
+    "http://localhost:8787",
+    "http://localhost:5173",
+  ];
+  const corsOrigin = allowedOrigins.includes(origin) ? origin : "";
+
+  // Handle CORS preflight
+  if (c.req.method === "OPTIONS") {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": corsOrigin,
+        "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+        "Access-Control-Allow-Headers": c.req.header("access-control-request-headers") ?? "*",
+        "Access-Control-Allow-Credentials": "true",
+        "Access-Control-Max-Age": "86400",
+      },
+    });
+  }
+
+  // Proxy to Clerk's Frontend API
+  const url = new URL(c.req.url);
+  const clerkPath = url.pathname.replace("/__clerk", "");
+  const targetUrl = `https://clerk.podblipp.com${clerkPath}${url.search}`;
+
+  const headers = new Headers(c.req.raw.headers);
+  headers.delete("host");
+
+  const resp = await fetch(targetUrl, {
+    method: c.req.method,
+    headers,
+    body: c.req.method !== "GET" && c.req.method !== "HEAD" ? c.req.raw.body : undefined,
+  });
+
+  const proxyResp = new Response(resp.body, resp);
+  proxyResp.headers.set("Access-Control-Allow-Origin", corsOrigin);
+  proxyResp.headers.set("Access-Control-Allow-Credentials", "true");
+  return proxyResp;
+});
+
 // Clerk auth middleware — populates auth context for all API routes
 app.use("/api/*", clerkMiddleware());
 
