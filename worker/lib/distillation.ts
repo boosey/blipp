@@ -28,7 +28,7 @@ export interface Claim {
 export interface EpisodeMetadata {
   podcastTitle: string;
   episodeTitle: string;
-  publishedAt: Date;
+  publishedAt: Date | null;
   durationSeconds: number | null;
   briefingMinutes: number;
 }
