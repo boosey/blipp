@@ -192,7 +192,7 @@ model Episode {
   title           String
   description     String?
   audioUrl        String
-  publishedAt     DateTime
+  publishedAt     DateTime?
   durationSeconds Int?
   guid            String
   transcriptUrl   String?

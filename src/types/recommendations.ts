@@ -2,7 +2,7 @@ export interface CuratedEpisodeItem {
   episode: {
     id: string;
     title: string;
-    publishedAt: string;
+    publishedAt: string | null;
     durationSeconds: number | null;
     topicTags: string[];
   };
@@ -47,7 +47,7 @@ export interface EpisodeBrowseItem {
   episode: {
     id: string;
     title: string;
-    publishedAt: string;
+    publishedAt: string | null;
     durationSeconds: number | null;
     topicTags: string[];
   };

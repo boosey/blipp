@@ -10,8 +10,8 @@ export interface ParsedEpisode {
   description: string;
   /** Direct URL to the audio file */
   audioUrl: string;
-  /** Publication date as ISO string */
-  publishedAt: string;
+  /** Publication date as ISO string, or null if feed lacks pubDate */
+  publishedAt: string | null;
   /** Episode duration in seconds, or null if not parseable */
   durationSeconds: number | null;
   /** Episode GUID */
@@ -122,9 +122,9 @@ export function parseRssFeed(xml: string): ParsedFeed {
       description: String((item as any).description ?? (item as any)["itunes:summary"] ?? ""),
       audioUrl: (item as any).enclosure?.["@_url"] ?? "",
       publishedAt: (() => {
-        if (!(item as any).pubDate) return new Date().toISOString();
+        if (!(item as any).pubDate) return null;
         const d = new Date((item as any).pubDate);
-        return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
+        return isNaN(d.getTime()) ? null : d.toISOString();
       })(),
       durationSeconds: parseDuration((item as any)["itunes:duration"]),
       guid,
@@ -136,10 +136,7 @@ export function parseRssFeed(xml: string): ParsedFeed {
     if (!episode.audioUrl) continue;
     if (!episode.title) episode.title = "Untitled Episode";
 
-    // Validate date
-    if (episode.publishedAt === "Invalid Date" || isNaN(new Date(episode.publishedAt).getTime())) {
-      episode.publishedAt = new Date().toISOString();
-    }
+    // publishedAt is null when feed lacks pubDate — stored as NULL in DB
 
     episodes.push(episode);
   }

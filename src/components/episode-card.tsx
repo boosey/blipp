@@ -4,7 +4,7 @@ interface EpisodeCardProps {
   episode: {
     id: string;
     title: string;
-    publishedAt: string;
+    publishedAt: string | null;
     durationSeconds: number | null;
     topicTags: string[];
   };
@@ -25,7 +25,8 @@ function formatDuration(s: number | null): string {
   return `${m}:${String(sec).padStart(2, "0")}`;
 }
 
-function relativeDate(iso: string): string {
+function relativeDate(iso: string | null): string {
+  if (!iso) return "";
   const d = Date.now() - new Date(iso).getTime();
   const days = Math.floor(d / 86400000);
   if (days === 0) return "Today";

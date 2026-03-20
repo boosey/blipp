@@ -174,7 +174,7 @@ describe("parseRssFeed", () => {
     expect(feed.episodes[0].title).toBe("Untitled Episode");
   });
 
-  it("should fallback to current date for invalid pubDate", () => {
+  it("should return null publishedAt for invalid pubDate", () => {
     const xml = `<?xml version="1.0"?>
     <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
       <channel>
@@ -189,14 +189,28 @@ describe("parseRssFeed", () => {
       </channel>
     </rss>`;
 
-    const before = new Date();
     const feed = parseRssFeed(xml);
-    const after = new Date();
-
     expect(feed.episodes).toHaveLength(1);
-    const parsedDate = new Date(feed.episodes[0].publishedAt);
-    expect(parsedDate.getTime()).toBeGreaterThanOrEqual(before.getTime());
-    expect(parsedDate.getTime()).toBeLessThanOrEqual(after.getTime());
+    expect(feed.episodes[0].publishedAt).toBeNull();
+  });
+
+  it("should return null publishedAt for missing pubDate", () => {
+    const xml = `<?xml version="1.0"?>
+    <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+      <channel>
+        <title>Test</title>
+        <description>Test</description>
+        <item>
+          <title>No Date Episode</title>
+          <guid>guid-no-date</guid>
+          <enclosure url="https://example.com/ep.mp3" type="audio/mpeg" />
+        </item>
+      </channel>
+    </rss>`;
+
+    const feed = parseRssFeed(xml);
+    expect(feed.episodes).toHaveLength(1);
+    expect(feed.episodes[0].publishedAt).toBeNull();
   });
 
   it("should pass valid episodes through unchanged", () => {

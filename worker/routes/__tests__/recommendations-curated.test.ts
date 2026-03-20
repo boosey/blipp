@@ -32,7 +32,6 @@ describe("Curated recommendations and episode browse", () => {
     id,
     title,
     publishedAt: new Date("2026-03-15").toISOString(),
-    createdAt: new Date("2026-03-18").toISOString(), // differs from publishedAt — not a fallback
     durationSeconds: 3600,
     topicTags: ["tech", "ai"],
     podcast: { id: podcastId, title: `Podcast ${podcastId}`, author: "Author", imageUrl: null, categories: ["Technology"] },

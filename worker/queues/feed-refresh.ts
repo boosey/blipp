@@ -11,7 +11,11 @@ import type { Env } from "../types";
  */
 function latestEpisodes(episodes: ParsedEpisode[], max: number): ParsedEpisode[] {
   return [...episodes]
-    .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime())
+    .sort((a, b) => {
+      const ta = a.publishedAt ? new Date(a.publishedAt).getTime() : 0;
+      const tb = b.publishedAt ? new Date(b.publishedAt).getTime() : 0;
+      return tb - ta;
+    })
     .slice(0, max);
 }
 
@@ -140,7 +144,7 @@ export async function handleFeedRefresh(
               title: ep.title,
               description: ep.description,
               audioUrl: ep.audioUrl,
-              publishedAt: new Date(ep.publishedAt),
+              publishedAt: ep.publishedAt ? new Date(ep.publishedAt) : null,
               durationSeconds: ep.durationSeconds,
               guid: ep.guid,
               transcriptUrl: ep.transcriptUrl,
