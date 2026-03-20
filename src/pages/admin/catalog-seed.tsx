@@ -21,7 +21,21 @@ import {
   Podcast,
   FileText,
   ChevronDown,
+  Pause,
+  Play,
+  Ban,
 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Input } from "@/components/ui/input";
 import type { CatalogSeedProgress } from "@/types/admin";
 
 function formatDuration(ms: number): string {
@@ -44,14 +58,24 @@ function formatTimeAgo(iso: string): string {
   return new Date(iso).toLocaleDateString();
 }
 
-type PhaseStatus = "pending" | "active" | "complete" | "failed";
+type PhaseStatus = "pending" | "active" | "complete" | "failed" | "paused" | "cancelled";
 
-function getPhaseStatuses(status: string | undefined): [PhaseStatus, PhaseStatus, PhaseStatus] {
+function getPhaseStatuses(status: string | undefined, feedsTotal?: number): [PhaseStatus, PhaseStatus, PhaseStatus] {
   if (!status || status === "pending") return ["pending", "pending", "pending"];
   if (status === "discovering" || status === "upserting") return ["active", "pending", "pending"];
-  if (status === "feed_refresh") return ["complete", "active", "active"]; // Phase 2+3 overlap
+  if (status === "feed_refresh") return ["complete", "active", "active"];
   if (status === "complete") return ["complete", "complete", "complete"];
   if (status === "failed") return ["failed", "failed", "failed"];
+  if (status === "paused") {
+    return (feedsTotal ?? 0) > 0
+      ? ["complete", "paused", "paused"]
+      : ["paused", "paused", "paused"];
+  }
+  if (status === "cancelled") {
+    return (feedsTotal ?? 0) > 0
+      ? ["complete", "cancelled", "cancelled"]
+      : ["cancelled", "cancelled", "cancelled"];
+  }
   return ["pending", "pending", "pending"];
 }
 
@@ -59,6 +83,8 @@ function PhaseIndicator({ status }: { status: PhaseStatus }) {
   if (status === "active") return <Loader2 className="h-5 w-5 text-[#3B82F6] animate-spin" />;
   if (status === "complete") return <div className="h-5 w-5 rounded-full bg-[#10B981] flex items-center justify-center"><Check className="h-3 w-3 text-white" /></div>;
   if (status === "failed") return <div className="h-5 w-5 rounded-full bg-[#EF4444] flex items-center justify-center"><X className="h-3 w-3 text-white" /></div>;
+  if (status === "paused") return <div className="h-5 w-5 rounded-full bg-[#F59E0B] flex items-center justify-center"><Pause className="h-3 w-3 text-white" /></div>;
+  if (status === "cancelled") return <div className="h-5 w-5 rounded-full bg-[#6B7280] flex items-center justify-center"><X className="h-3 w-3 text-white" /></div>;
   return <div className="h-5 w-5 rounded-full border-2 border-[#9CA3AF]/30" />;
 }
 
@@ -68,6 +94,12 @@ export default function CatalogSeed() {
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [seedDialogOpen, setSeedDialogOpen] = useState(false);
+  const [seedConfirmText, setSeedConfirmText] = useState("");
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [pausing, setPausing] = useState(false);
+  const [resuming, setResuming] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
 
   // Accumulated lists across pages
   const [allPodcasts, setAllPodcasts] = useState<CatalogSeedProgress["recentPodcasts"]>([]);
@@ -113,8 +145,9 @@ export default function CatalogSeed() {
 
   useEffect(() => { fetchProgress(); }, []);
 
-  const isActive = data?.job && !["complete", "failed"].includes(data.job.status);
-  usePolling(fetchProgress, 3000, !!isActive);
+  const isActive = data?.job && !["complete", "failed", "cancelled"].includes(data.job.status);
+  const pollInterval = data?.job?.status === "paused" ? 10000 : 3000;
+  usePolling(fetchProgress, pollInterval, !!isActive);
 
   const loadMore = useCallback(async (type: "podcast" | "episode" | "prefetch") => {
     const nextPage = pages[type] + 1;
@@ -137,10 +170,11 @@ export default function CatalogSeed() {
   }, [apiFetch, pages]);
 
   const startSeed = async () => {
-    if (!window.confirm("This will wipe ALL catalog data (podcasts, episodes, subscriptions, briefings) and re-seed from scratch. Are you sure?")) return;
     setStarting(true);
     try {
       await apiFetch("/catalog-seed", { method: "POST", body: JSON.stringify({ confirm: true }) });
+      setSeedDialogOpen(false);
+      setSeedConfirmText("");
       await fetchProgress();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to start seed");
@@ -149,8 +183,48 @@ export default function CatalogSeed() {
     }
   };
 
+  const pauseSeed = async () => {
+    if (!job) return;
+    setPausing(true);
+    try {
+      await apiFetch(`/catalog-seed/${job.id}/pause`, { method: "POST" });
+      await fetchProgress();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to pause");
+    } finally {
+      setPausing(false);
+    }
+  };
+
+  const resumeSeed = async () => {
+    if (!job) return;
+    setResuming(true);
+    try {
+      await apiFetch(`/catalog-seed/${job.id}/resume`, { method: "POST" });
+      await fetchProgress();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to resume");
+    } finally {
+      setResuming(false);
+    }
+  };
+
+  const cancelSeed = async () => {
+    if (!job) return;
+    setCancelling(true);
+    try {
+      await apiFetch(`/catalog-seed/${job.id}/cancel`, { method: "POST" });
+      setCancelDialogOpen(false);
+      await fetchProgress();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to cancel");
+    } finally {
+      setCancelling(false);
+    }
+  };
+
   const job = data?.job;
-  const [p1Status, p2Status, p3Status] = getPhaseStatuses(job?.status);
+  const [p1Status, p2Status, p3Status] = getPhaseStatuses(job?.status, job?.feedsTotal);
 
   const elapsed = job?.startedAt
     ? formatDuration(
@@ -164,7 +238,7 @@ export default function CatalogSeed() {
   if (p2Status === "active") defaultAccordion.push("feed-refresh");
   if (p3Status === "active") defaultAccordion.push("prefetch");
   if (defaultAccordion.length === 0 && job) {
-    if (job.status === "complete") defaultAccordion.push("discovery", "feed-refresh", "prefetch");
+    if (["complete", "paused", "cancelled"].includes(job.status)) defaultAccordion.push("discovery", "feed-refresh", "prefetch");
     else defaultAccordion.push("discovery");
   }
 
@@ -191,14 +265,78 @@ export default function CatalogSeed() {
             )}
           </div>
         </div>
-        <Button
-          onClick={startSeed}
-          disabled={!!isActive || starting}
-          className="bg-[#10B981] hover:bg-[#059669] text-white"
-        >
-          {starting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Sprout className="h-4 w-4 mr-2" />}
-          Start Seed
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* Phase 1 active (including pending before queue picks up) — show disabled controls */}
+          {job && ["pending", "discovering", "upserting"].includes(job.status) && (
+            <>
+              <Button variant="outline" size="sm" disabled title="Phase 1 completes in ~30s">
+                <Pause className="h-4 w-4 mr-1" /> Pause
+              </Button>
+              <Button variant="outline" size="sm" disabled title="Phase 1 completes in ~30s" className="text-[#EF4444] border-[#EF4444]/30">
+                <Ban className="h-4 w-4 mr-1" /> Cancel
+              </Button>
+            </>
+          )}
+
+          {/* feed_refresh — Pause + Cancel */}
+          {job?.status === "feed_refresh" && (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={pauseSeed}
+                disabled={pausing}
+                className="text-[#F59E0B] border-[#F59E0B]/30 hover:bg-[#F59E0B]/10"
+              >
+                {pausing ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Pause className="h-4 w-4 mr-1" />}
+                Pause
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCancelDialogOpen(true)}
+                className="text-[#EF4444] border-[#EF4444]/30 hover:bg-[#EF4444]/10"
+              >
+                <Ban className="h-4 w-4 mr-1" /> Cancel
+              </Button>
+            </>
+          )}
+
+          {/* paused — Resume + Cancel */}
+          {job?.status === "paused" && (
+            <>
+              <Button
+                size="sm"
+                onClick={resumeSeed}
+                disabled={resuming}
+                className="bg-[#10B981] hover:bg-[#059669] text-white"
+              >
+                {resuming ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Play className="h-4 w-4 mr-1" />}
+                Resume
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCancelDialogOpen(true)}
+                className="text-[#EF4444] border-[#EF4444]/30 hover:bg-[#EF4444]/10"
+              >
+                <Ban className="h-4 w-4 mr-1" /> Cancel
+              </Button>
+            </>
+          )}
+
+          {/* No active job — Start Seed */}
+          {(!job || ["complete", "failed", "cancelled"].includes(job.status)) && (
+            <Button
+              onClick={() => setSeedDialogOpen(true)}
+              disabled={starting}
+              className="bg-[#10B981] hover:bg-[#059669] text-white"
+            >
+              {starting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Sprout className="h-4 w-4 mr-2" />}
+              Start Seed
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Error banner */}
@@ -256,6 +394,34 @@ export default function CatalogSeed() {
                 <p className="text-sm text-[#9CA3AF]">
                   {data?.podcastsInserted ?? 0} podcasts · {data?.episodesDiscovered ?? 0} episodes · {job.prefetchCompleted} prefetched
                   {elapsed && ` · ${elapsed}`}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Paused banner */}
+          {job.status === "paused" && (
+            <div className="rounded-lg border border-[#F59E0B]/30 bg-[#F59E0B]/10 p-4 flex items-start gap-3">
+              <Pause className="h-5 w-5 text-[#F59E0B] shrink-0 mt-0.5" />
+              <div>
+                <p className="font-medium text-[#F59E0B]">Seed Paused</p>
+                <p className="text-sm text-[#9CA3AF]">
+                  {job.feedsCompleted} / {job.feedsTotal} feeds processed · {job.prefetchCompleted} prefetched.
+                  Resume to continue processing.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Cancelled banner */}
+          {job.status === "cancelled" && (
+            <div className="rounded-lg border border-[#6B7280]/30 bg-[#6B7280]/10 p-4 flex items-start gap-3">
+              <Ban className="h-5 w-5 text-[#6B7280] shrink-0 mt-0.5" />
+              <div>
+                <p className="font-medium text-[#6B7280]">Seed Cancelled</p>
+                <p className="text-sm text-[#9CA3AF]">
+                  {data?.podcastsInserted ?? 0} podcasts and {data?.episodesDiscovered ?? 0} episodes were processed before cancellation.
+                  {elapsed && ` Ran for ${elapsed}.`}
                 </p>
               </div>
             </div>
@@ -482,6 +648,72 @@ export default function CatalogSeed() {
           )}
         </>
       )}
+
+      {/* Start Seed Confirmation Dialog */}
+      <AlertDialog open={seedDialogOpen} onOpenChange={(open) => { setSeedDialogOpen(open); if (!open) setSeedConfirmText(""); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Start Catalog Seed</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>This will run a 3-phase catalog refresh:</p>
+                <ol className="list-decimal list-inside space-y-1 text-sm">
+                  <li>Discover ~2000 podcasts from Podcast Index</li>
+                  <li>Fetch RSS feeds for each podcast, pulling episodes</li>
+                  <li>Prefetch transcript/audio availability for episodes</li>
+                </ol>
+                <div className="rounded-md bg-[#EF4444]/10 border border-[#EF4444]/20 p-3 text-sm text-[#EF4444]">
+                  Warning: This wipes ALL existing catalog data — podcasts, episodes, subscriptions, briefings, and R2 work products.
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Type <span className="font-mono font-bold">SEED</span> to confirm:</label>
+                  <Input
+                    value={seedConfirmText}
+                    onChange={(e) => setSeedConfirmText(e.target.value)}
+                    placeholder="SEED"
+                    className="font-mono"
+                    autoFocus
+                  />
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={startSeed}
+              disabled={seedConfirmText !== "SEED" || starting}
+              className="bg-[#EF4444] hover:bg-[#DC2626] text-white disabled:opacity-50"
+            >
+              {starting && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+              Start Seed
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Cancel Confirmation Dialog */}
+      <AlertDialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel Catalog Seed</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will stop all remaining feed refresh and prefetch processing. Data already inserted will be kept. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep Running</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={cancelSeed}
+              disabled={cancelling}
+              className="bg-[#EF4444] hover:bg-[#DC2626] text-white"
+            >
+              {cancelling && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+              Cancel Seed
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
