@@ -34,3 +34,17 @@ export function ackAll(
 ): void {
   for (const msg of messages) msg.ack();
 }
+
+/**
+ * Check if a catalog seed job is still in an active (processable) state.
+ * Queue consumers call this before processing each message to support
+ * cooperative pause/cancel.
+ */
+export async function isSeedJobActive(prisma: any, seedJobId: string): Promise<boolean> {
+  const job = await prisma.catalogSeedJob.findUnique({
+    where: { id: seedJobId },
+    select: { status: true },
+  });
+  if (!job) return false;
+  return !["paused", "cancelled", "complete", "failed"].includes(job.status);
+}
