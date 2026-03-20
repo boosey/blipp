@@ -1,5 +1,6 @@
 import { createPrismaClient } from "../lib/db";
 import { prefetchEpisodeContent } from "../lib/content-prefetch";
+import { isSeedJobActive } from "../lib/queue-helpers";
 import type { Env } from "../types";
 
 export interface ContentPrefetchMessage {
@@ -24,6 +25,15 @@ export async function handleContentPrefetch(
       const { episodeId } = msg.body;
 
       try {
+        // Cooperative pause/cancel: skip if seed job is no longer active
+        if (msg.body.seedJobId) {
+          const active = await isSeedJobActive(prisma, msg.body.seedJobId);
+          if (!active) {
+            msg.ack();
+            continue;
+          }
+        }
+
         const episode = await prisma.episode.findUnique({
           where: { id: episodeId },
           include: { podcast: { select: { title: true, feedUrl: true, podcastIndexId: true } } },

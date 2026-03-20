@@ -3,6 +3,7 @@ import { getConfig } from "../lib/config";
 import { createPipelineLogger } from "../lib/logger";
 import { parseRssFeed, type ParsedEpisode } from "../lib/rss-parser";
 import type { FeedRefreshMessage } from "../lib/queue-messages";
+import { isSeedJobActive } from "../lib/queue-helpers";
 import type { Env } from "../types";
 
 /**
@@ -91,7 +92,18 @@ export async function handleFeedRefresh(
     const maxEpisodes = (await getConfig(prisma, "pipeline.feedRefresh.maxEpisodesPerPodcast", 5)) as number;
 
     for (const podcast of podcasts) {
+      let processed = false;
       try {
+        // Cooperative pause/cancel: skip processing if seed job is no longer active
+        if (seedJobId) {
+          const active = await isSeedJobActive(prisma, seedJobId);
+          if (!active) {
+            log.info("seed_job_inactive", { podcastId: podcast.id, seedJobId });
+            continue; // Skip this podcast — don't increment feedsCompleted
+          }
+          processed = true; // Mark here so non-English skips still count toward feedsCompleted
+        }
+
         const response = await fetch(podcast.feedUrl);
         const xml = await response.text();
         const feed = parseRssFeed(xml);
@@ -273,7 +285,7 @@ export async function handleFeedRefresh(
         // Log and continue — don't let one failed feed block others
         log.error("podcast_error", { podcastId: podcast.id }, err);
       } finally {
-        if (seedJobId) {
+        if (seedJobId && processed) {
           await prisma.catalogSeedJob.update({
             where: { id: seedJobId },
             data: { feedsCompleted: { increment: 1 } },
