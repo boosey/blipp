@@ -17,6 +17,15 @@ interface CuratedRow {
   items: any[];
 }
 
+/** Filter out episodes where publishedAt is a fallback (within 60s of createdAt). */
+function filterFallbackDates(episodes: any[]): any[] {
+  return episodes.filter((ep) => {
+    const pub = new Date(ep.publishedAt).getTime();
+    const cre = new Date(ep.createdAt).getTime();
+    return Math.abs(pub - cre) > 60_000;
+  });
+}
+
 /** Cap episodes per podcast and interleave for diversity. */
 function diversifyEpisodes(episodes: any[], maxPerPodcast = 2, limit = 15): any[] {
   const byPodcast = new Map<string, any[]>();
@@ -80,12 +89,13 @@ async function generateCuratedRows(
         id: true,
         title: true,
         publishedAt: true,
+        createdAt: true,
         durationSeconds: true,
         topicTags: true,
         podcast: { select: { id: true, title: true, author: true, imageUrl: true, categories: true } },
       },
     });
-    const episodes = diversifyEpisodes(rawEpisodes, 2, 15);
+    const episodes = diversifyEpisodes(filterFallbackDates(rawEpisodes), 2, 15);
     if (episodes.length > 0) {
       rows.push({
         title: genre ? `Trending in ${genre}` : "Trending Now",
@@ -129,7 +139,7 @@ async function generateCuratedRows(
             podcast: { select: { id: true, title: true, author: true, imageUrl: true, categories: true } },
           },
         });
-        const episodes = diversifyEpisodes(rawTopicEpisodes, 2, 15);
+        const episodes = diversifyEpisodes(filterFallbackDates(rawTopicEpisodes), 2, 15);
         if (episodes.length > 0) {
           rows.push({
             title: "New on topics you follow",
@@ -272,6 +282,7 @@ recommendations.get("/episodes", async (c) => {
         id: true,
         title: true,
         publishedAt: true,
+        createdAt: true,
         durationSeconds: true,
         topicTags: true,
         podcast: { select: { id: true, title: true, author: true, imageUrl: true, categories: true } },
@@ -280,8 +291,8 @@ recommendations.get("/episodes", async (c) => {
     prisma.episode.count({ where }),
   ]);
 
-  // Diversify: max 3 episodes per podcast per page
-  const episodes = diversifyEpisodes(rawEpisodes, 3, pageSize);
+  // Filter bad dates + diversify: max 3 episodes per podcast per page
+  const episodes = diversifyEpisodes(filterFallbackDates(rawEpisodes), 3, pageSize);
 
   return c.json({
     episodes: episodes.map((ep: any) => ({

@@ -31,7 +31,8 @@ describe("Curated recommendations and episode browse", () => {
   const mockEpisode = (id: string, podcastId: string, title: string) => ({
     id,
     title,
-    publishedAt: new Date().toISOString(),
+    publishedAt: new Date("2026-03-15").toISOString(),
+    createdAt: new Date("2026-03-18").toISOString(), // differs from publishedAt — not a fallback
     durationSeconds: 3600,
     topicTags: ["tech", "ai"],
     podcast: { id: podcastId, title: `Podcast ${podcastId}`, author: "Author", imageUrl: null, categories: ["Technology"] },
