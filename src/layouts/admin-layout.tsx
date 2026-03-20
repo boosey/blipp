@@ -28,6 +28,7 @@ import {
   Scale,
   MessageSquare,
   Inbox,
+  Sprout,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
@@ -66,6 +67,7 @@ const sidebarEntries: SidebarEntry[] = [
     icon: Library,
     children: [
       { path: "catalog", label: "Catalog", icon: Library },
+      { path: "catalog-seed", label: "Catalog Seed", icon: Sprout },
       { path: "podcast-settings", label: "Settings", icon: Settings },
     ],
   },

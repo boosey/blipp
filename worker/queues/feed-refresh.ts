@@ -47,6 +47,7 @@ export async function handleFeedRefresh(
     // Collect specific podcast IDs from messages, if any
     const podcastIds = new Set<string>();
     let fetchAll = false;
+    let seedJobId: string | undefined;
     for (const msg of batch.messages) {
       const body = msg.body;
       if (body.podcastId) {
@@ -54,6 +55,7 @@ export async function handleFeedRefresh(
       } else {
         fetchAll = true;
       }
+      if (body.seedJobId) seedJobId = body.seedJobId;
     }
 
     log.debug("podcast_filter", { fetchAll, podcastIds: [...podcastIds] });
@@ -160,8 +162,14 @@ export async function handleFeedRefresh(
         // Queue content prefetch for new episodes (runs slowly at concurrency=1)
         if (newEpisodeIds.length > 0) {
           await env.CONTENT_PREFETCH_QUEUE.sendBatch(
-            newEpisodeIds.map((id) => ({ body: { episodeId: id } }))
+            newEpisodeIds.map((id) => ({ body: { episodeId: id, ...(seedJobId && { seedJobId }) } }))
           );
+          if (seedJobId) {
+            await prisma.catalogSeedJob.update({
+              where: { id: seedJobId },
+              data: { prefetchTotal: { increment: newEpisodeIds.length } },
+            });
+          }
         }
 
         log.info("podcast_refreshed", {
@@ -264,6 +272,13 @@ export async function handleFeedRefresh(
       } catch (err) {
         // Log and continue — don't let one failed feed block others
         log.error("podcast_error", { podcastId: podcast.id }, err);
+      } finally {
+        if (seedJobId) {
+          await prisma.catalogSeedJob.update({
+            where: { id: seedJobId },
+            data: { feedsCompleted: { increment: 1 } },
+          }).catch(() => {});
+        }
       }
     }
 

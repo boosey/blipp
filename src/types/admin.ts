@@ -965,3 +965,48 @@ export interface AdminPodcastProfile {
   subscriberCount: number;
   computedAt: string;
 }
+
+// ── Catalog Seed Progress ──
+
+export interface CatalogSeedJob {
+  id: string;
+  status: string; // pending | discovering | upserting | feed_refresh | complete | failed
+  podcastsDiscovered: number;
+  feedsTotal: number;
+  feedsCompleted: number;
+  prefetchTotal: number;
+  prefetchCompleted: number;
+  error: string | null;
+  startedAt: string;
+  completedAt: string | null;
+}
+
+export interface CatalogSeedProgress {
+  job: CatalogSeedJob | null;
+  podcastsInserted: number;
+  episodesDiscovered: number;
+  prefetchBreakdown: Record<string, number>;
+  recentPodcasts: {
+    id: string;
+    title: string;
+    author: string | null;
+    imageUrl: string | null;
+    categories: string[];
+    createdAt: string;
+  }[];
+  recentEpisodes: {
+    id: string;
+    title: string;
+    publishedAt: string | null;
+    durationSeconds: number | null;
+    createdAt: string;
+    podcast: { title: string; imageUrl: string | null };
+  }[];
+  recentPrefetch: {
+    id: string;
+    title: string;
+    contentStatus: string;
+    updatedAt: string;
+    podcast: { title: string; imageUrl: string | null };
+  }[];
+}

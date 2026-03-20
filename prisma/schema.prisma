@@ -884,3 +884,20 @@ enum CronRunLogLevel {
   WARN
   ERROR
 }
+
+// ── Catalog Seed Jobs ──
+
+model CatalogSeedJob {
+  id                  String    @id @default(cuid())
+  status              String    @default("pending")
+  podcastsDiscovered  Int       @default(0)
+  feedsTotal          Int       @default(0)
+  feedsCompleted      Int       @default(0)
+  prefetchTotal       Int       @default(0)
+  prefetchCompleted   Int       @default(0)
+  error               String?
+  startedAt           DateTime  @default(now())
+  completedAt         DateTime?
+
+  @@index([status])
+}

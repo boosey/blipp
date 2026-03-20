@@ -4,6 +4,7 @@ import type { Env } from "../types";
 
 export interface ContentPrefetchMessage {
   episodeId: string;
+  seedJobId?: string;
 }
 
 /**
@@ -71,6 +72,13 @@ export async function handleContentPrefetch(
           contentStatus: result.contentStatus,
           ts: new Date().toISOString(),
         }));
+
+        if (msg.body.seedJobId) {
+          await prisma.catalogSeedJob.update({
+            where: { id: msg.body.seedJobId },
+            data: { prefetchCompleted: { increment: 1 } },
+          }).catch(() => {});
+        }
 
         msg.ack();
       } catch (err) {

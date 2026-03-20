@@ -67,9 +67,11 @@ export interface BriefingAssemblyMessage {
 export interface FeedRefreshMessage {
   podcastId?: string;
   type?: "manual" | "cron";
+  seedJobId?: string;
 }
 
 /** Catalog refresh queue. */
 export interface CatalogRefreshMessage {
   action: "seed" | "refresh";
+  seedJobId?: string;
 }

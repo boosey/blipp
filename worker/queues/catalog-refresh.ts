@@ -13,11 +13,12 @@ export async function handleCatalogRefresh(
 
   try {
     for (const msg of batch.messages) {
-      const { action } = msg.body;
+      const { action, seedJobId } = msg.body;
       console.log(`[catalog-refresh] Starting ${action}...`);
 
       try {
         await updateStatus(prisma, "fetching_charts");
+        if (seedJobId) await updateSeedJob(prisma, seedJobId, { status: "discovering" });
 
         if (action === "seed") {
           await wipeCatalogData(prisma);
@@ -26,11 +27,13 @@ export async function handleCatalogRefresh(
         const source = getCatalogSource("podcast-index");
         const discovered = await source.discover(2000, env);
         console.log(`[catalog-refresh] Discovered ${discovered.length} unique podcasts`);
+        if (seedJobId) await updateSeedJob(prisma, seedJobId, { podcastsDiscovered: discovered.length });
 
         await updateStatus(prisma, "resolving_metadata");
         const categoryIdMap = await upsertCategories(prisma, discovered);
 
         await updateStatus(prisma, "upserting");
+        if (seedJobId) await updateSeedJob(prisma, seedJobId, { status: "upserting" });
         let upsertedIds: string[];
 
         if (action === "seed") {
@@ -41,7 +44,8 @@ export async function handleCatalogRefresh(
           await markPendingDeletion(prisma, upsertedIds);
         }
 
-        await queueFeedRefresh(env, upsertedIds);
+        if (seedJobId) await updateSeedJob(prisma, seedJobId, { status: "feed_refresh", feedsTotal: upsertedIds.length });
+        await queueFeedRefresh(env, upsertedIds, seedJobId);
 
         await updateStatus(prisma, "complete");
         console.log(`[catalog-refresh] ${action} complete. ${upsertedIds.length} podcasts processed.`);
@@ -49,12 +53,22 @@ export async function handleCatalogRefresh(
       } catch (err) {
         console.error(`[catalog-refresh] ${action} failed:`, err);
         await updateStatus(prisma, "failed");
+        if (seedJobId) {
+          await updateSeedJob(prisma, seedJobId, {
+            status: "failed",
+            error: err instanceof Error ? err.message : String(err),
+          }).catch(() => {});
+        }
         msg.retry();
       }
     }
   } finally {
     ctx.waitUntil(prisma.$disconnect());
   }
+}
+
+async function updateSeedJob(prisma: any, seedJobId: string, data: Record<string, unknown>): Promise<void> {
+  await prisma.catalogSeedJob.update({ where: { id: seedJobId }, data });
 }
 
 async function updateStatus(prisma: any, status: string): Promise<void> {
@@ -274,10 +288,10 @@ async function markPendingDeletion(prisma: any, chartPodcastIds: string[]): Prom
   }
 }
 
-async function queueFeedRefresh(env: Env, podcastIds: string[]): Promise<void> {
+async function queueFeedRefresh(env: Env, podcastIds: string[], seedJobId?: string): Promise<void> {
   if (podcastIds.length === 0) return;
   const messages = podcastIds.map((podcastId) => ({
-    body: { podcastId, type: "manual" as const },
+    body: { podcastId, type: "manual" as const, ...(seedJobId && { seedJobId }) },
   }));
   const BATCH_SIZE = 100;
   for (let i = 0; i < messages.length; i += BATCH_SIZE) {

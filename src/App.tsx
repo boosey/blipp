@@ -37,6 +37,7 @@ const AdminAuditLog = lazy(() => import("./pages/admin/audit-log"));
 const AdminAiErrors = lazy(() => import("./pages/admin/ai-errors"));
 const AdminAds = lazy(() => import("./pages/admin/ads"));
 const AdminRecommendations = lazy(() => import("./pages/admin/recommendations"));
+const CatalogSeed = lazy(() => import("./pages/admin/catalog-seed"));
 const ScheduledJobs = lazy(() => import("./pages/admin/scheduled-jobs"));
 const DlqMonitor = lazy(() => import("./pages/admin/dlq"));
 const TermsOfService = lazy(() => import("./pages/tos"));
@@ -113,6 +114,7 @@ export default function App() {
         <Route path="command-center" element={<Suspense fallback={<AdminLoading />}><CommandCenter /></Suspense>} />
         <Route path="pipeline" element={<Suspense fallback={<AdminLoading />}><Pipeline /></Suspense>} />
         <Route path="catalog" element={<Suspense fallback={<AdminLoading />}><Catalog /></Suspense>} />
+        <Route path="catalog-seed" element={<Suspense fallback={<AdminLoading />}><CatalogSeed /></Suspense>} />
         <Route path="briefings" element={<Suspense fallback={<AdminLoading />}><Briefings /></Suspense>} />
         <Route path="users" element={<Suspense fallback={<AdminLoading />}><AdminUsers /></Suspense>} />
         <Route path="plans" element={<Suspense fallback={<AdminLoading />}><Plans /></Suspense>} />
