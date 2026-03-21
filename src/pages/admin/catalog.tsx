@@ -1095,7 +1095,6 @@ export default function Catalog() {
   const [totalResults, setTotalResults] = useState(0);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [selectedPodcasts, setSelectedPodcasts] = useState<string[]>([]);
-  const [showSeedConfirm, setShowSeedConfirm] = useState(false);
   const totalPages = Math.ceil(totalResults / pageSize);
 
   // Fetch language + category filter options
@@ -1198,35 +1197,6 @@ export default function Catalog() {
         {/* Feed Refresh Status Bar */}
         <div className="mb-3">
           <FeedRefreshCard compact onRefresh={load} />
-          <div className="flex items-center gap-2 mt-2">
-            <button onClick={() => setShowSeedConfirm(true)} className="text-xs text-red-400 hover:text-red-300">
-              Seed (Reset)
-            </button>
-          </div>
-          {showSeedConfirm && (
-            <div className="bg-red-950/50 border border-red-800 rounded-lg p-3 mt-2">
-              <p className="text-xs text-red-300 mb-2">This will delete all existing catalog data including subscriptions, feed items, and briefings. Continue?</p>
-              <div className="flex gap-2">
-                <button onClick={async () => {
-                  try {
-                    await apiFetch("/podcasts/catalog-seed", {
-                      method: "POST",
-                      body: JSON.stringify({ confirm: true }),
-                    });
-                    toast.success("Catalog seed started");
-                    setShowSeedConfirm(false);
-                  } catch {
-                    toast.error("Failed to start seed");
-                  }
-                }} className="px-3 py-1 bg-red-600 hover:bg-red-500 text-white text-xs rounded">
-                  Yes, Reset Catalog
-                </button>
-                <button onClick={() => setShowSeedConfirm(false)} className="px-3 py-1 bg-zinc-800 text-zinc-300 text-xs rounded">
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Toolbar */}
