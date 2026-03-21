@@ -5,6 +5,7 @@ import { writeAuditLog } from "../../lib/audit-log";
 import {
   PROMPT_CONFIG_KEYS,
   PROMPT_METADATA,
+  PROMPT_STAGES,
   DEFAULT_CLAIMS_SYSTEM_PROMPT,
   DEFAULT_NARRATIVE_SYSTEM_PROMPT_WITH_EXCERPTS,
   DEFAULT_NARRATIVE_SYSTEM_PROMPT_NO_EXCERPTS,
@@ -20,11 +21,11 @@ const DEFAULTS: Record<string, string> = {
   [PROMPT_CONFIG_KEYS.narrativeMetadataIntro]: DEFAULT_NARRATIVE_METADATA_INTRO,
 };
 
-const VALID_KEYS = new Set<string>(Object.values(PROMPT_CONFIG_KEYS));
+const VALID_STAGES = new Set(Object.keys(PROMPT_STAGES));
 
-async function getNextVersion(prisma: any, promptKey: string): Promise<number> {
+async function getNextStageVersion(prisma: any, stage: string): Promise<number> {
   const latest = await prisma.promptVersion.findFirst({
-    where: { promptKey },
+    where: { stage },
     orderBy: { version: "desc" },
     select: { version: true },
   });
@@ -67,203 +68,243 @@ promptsRoutes.get("/", async (c) => {
   return c.json({ data });
 });
 
-/** PATCH /:key — Update a prompt and create a version. */
-promptsRoutes.patch("/:key", async (c) => {
+/** POST /stages/:stage — Save all prompts for a stage and create one grouped version. */
+promptsRoutes.post("/stages/:stage", async (c) => {
   const prisma = c.get("prisma") as any;
   const auth = getAuth(c);
-  const key = decodeURIComponent(c.req.param("key"));
-  const body = await c.req.json<{ value: string; label?: string }>();
+  const stage = c.req.param("stage");
+  const body = await c.req.json<{ values: Record<string, string>; label?: string }>();
 
-  if (!VALID_KEYS.has(key)) {
-    return c.json({ error: "Unknown prompt key" }, 400);
+  if (!VALID_STAGES.has(stage)) {
+    return c.json({ error: "Unknown stage" }, 400);
   }
 
-  if (typeof body.value !== "string" || body.value.trim().length === 0) {
-    return c.json({ error: "Prompt value must be a non-empty string" }, 400);
+  const stageKeys = PROMPT_STAGES[stage];
+  if (!body.values || typeof body.values !== "object") {
+    return c.json({ error: "values must be a Record<string, string>" }, 400);
+  }
+
+  // Validate all provided keys belong to this stage
+  for (const key of Object.keys(body.values)) {
+    if (!stageKeys.includes(key)) {
+      return c.json({ error: `Key "${key}" does not belong to stage "${stage}"` }, 400);
+    }
+    if (typeof body.values[key] !== "string" || body.values[key].trim().length === 0) {
+      return c.json({ error: `Value for "${key}" must be a non-empty string` }, 400);
+    }
   }
 
   try {
-    const existing = await prisma.platformConfig.findUnique({ where: { key } });
-    const meta = PROMPT_METADATA[key];
+    // Upsert each PlatformConfig entry
+    for (const key of stageKeys) {
+      const value = body.values[key];
+      if (!value) continue; // skip keys not provided (keep current)
 
-    if (existing) {
-      await prisma.platformConfig.update({
-        where: { key },
-        data: {
-          value: body.value,
-          description: meta?.description,
-          updatedBy: auth?.userId ?? null,
-        },
-      });
-      writeAuditLog(prisma, {
-        actorId: auth?.userId ?? "unknown",
-        action: "prompt.update",
-        entityType: "PlatformConfig",
-        entityId: key,
-        before: { value: (existing.value as string).slice(0, 200) + "..." },
-        after: { value: body.value.slice(0, 200) + "..." },
-      }).catch(() => {});
-    } else {
-      await prisma.platformConfig.create({
-        data: {
-          key,
-          value: body.value,
-          description: meta?.description,
-          updatedBy: auth?.userId ?? null,
-        },
-      });
-      writeAuditLog(prisma, {
-        actorId: auth?.userId ?? "unknown",
-        action: "prompt.create",
-        entityType: "PlatformConfig",
-        entityId: key,
-        after: { value: body.value.slice(0, 200) + "..." },
-      }).catch(() => {});
+      const meta = PROMPT_METADATA[key];
+      const existing = await prisma.platformConfig.findUnique({ where: { key } });
+
+      if (existing) {
+        await prisma.platformConfig.update({
+          where: { key },
+          data: {
+            value,
+            description: meta?.description,
+            updatedBy: auth?.userId ?? null,
+          },
+        });
+      } else {
+        await prisma.platformConfig.create({
+          data: {
+            key,
+            value,
+            description: meta?.description,
+            updatedBy: auth?.userId ?? null,
+          },
+        });
+      }
     }
 
-    // Create a version record
-    const nextVersion = await getNextVersion(prisma, key);
+    // Build the full snapshot: for keys not in body.values, use the current config or default
+    const fullValues: Record<string, string> = {};
+    for (const key of stageKeys) {
+      if (body.values[key]) {
+        fullValues[key] = body.values[key];
+      } else {
+        const config = await prisma.platformConfig.findUnique({ where: { key } });
+        fullValues[key] = config ? (config.value as string) : DEFAULTS[key];
+      }
+    }
+
+    // Create one grouped version
+    const nextVersion = await getNextStageVersion(prisma, stage);
     await prisma.promptVersion.create({
       data: {
-        promptKey: key,
+        stage,
         version: nextVersion,
-        value: body.value,
+        values: fullValues,
         label: body.label ?? null,
         createdBy: auth?.userId ?? null,
       },
     });
 
-    return c.json({ data: { key, value: body.value, isDefault: false } });
+    writeAuditLog(prisma, {
+      actorId: auth?.userId ?? "unknown",
+      action: "prompt.save_stage",
+      entityType: "PromptVersion",
+      entityId: `${stage}:v${nextVersion}`,
+      after: { stage, version: nextVersion, keys: Object.keys(fullValues) },
+    }).catch(() => {});
+
+    return c.json({ data: { stage, version: nextVersion, values: fullValues } });
   } catch {
-    return c.json({ error: "Failed to update prompt" }, 503);
+    return c.json({ error: "Failed to save prompts" }, 503);
   }
 });
 
-/** DELETE /:key — Reset prompt to default (deletes config entry). */
-promptsRoutes.delete("/:key", async (c) => {
+/** DELETE /stages/:stage — Reset all prompts in a stage to defaults. */
+promptsRoutes.delete("/stages/:stage", async (c) => {
   const prisma = c.get("prisma") as any;
   const auth = getAuth(c);
-  const key = decodeURIComponent(c.req.param("key"));
+  const stage = c.req.param("stage");
 
-  if (!VALID_KEYS.has(key)) {
-    return c.json({ error: "Unknown prompt key" }, 400);
+  if (!VALID_STAGES.has(stage)) {
+    return c.json({ error: "Unknown stage" }, 400);
   }
 
+  const stageKeys = PROMPT_STAGES[stage];
+
   try {
-    const existing = await prisma.platformConfig.findUnique({ where: { key } });
-    if (existing) {
-      await prisma.platformConfig.delete({ where: { key } });
-      writeAuditLog(prisma, {
-        actorId: auth?.userId ?? "unknown",
-        action: "prompt.reset",
-        entityType: "PlatformConfig",
-        entityId: key,
-        before: { value: (existing.value as string).slice(0, 200) + "..." },
-        after: { value: "DEFAULT" },
-      }).catch(() => {});
+    for (const key of stageKeys) {
+      const existing = await prisma.platformConfig.findUnique({ where: { key } });
+      if (existing) {
+        await prisma.platformConfig.delete({ where: { key } });
+      }
     }
 
-    return c.json({ data: { key, value: DEFAULTS[key], isDefault: true } });
+    writeAuditLog(prisma, {
+      actorId: auth?.userId ?? "unknown",
+      action: "prompt.reset_stage",
+      entityType: "PlatformConfig",
+      entityId: stage,
+      after: { stage, keys: stageKeys, values: "DEFAULTS" },
+    }).catch(() => {});
+
+    const defaults: Record<string, string> = {};
+    for (const key of stageKeys) defaults[key] = DEFAULTS[key];
+
+    return c.json({ data: { stage, values: defaults, isDefault: true } });
   } catch {
-    return c.json({ error: "Failed to reset prompt" }, 503);
+    return c.json({ error: "Failed to reset prompts" }, 503);
   }
 });
 
-/** GET /:key/versions — List all versions for a prompt key. */
-promptsRoutes.get("/:key/versions", async (c) => {
+/** GET /stages/:stage/versions — List all grouped versions for a stage. */
+promptsRoutes.get("/stages/:stage/versions", async (c) => {
   const prisma = c.get("prisma") as any;
-  const key = decodeURIComponent(c.req.param("key"));
+  const stage = c.req.param("stage");
 
-  if (!VALID_KEYS.has(key)) {
-    return c.json({ error: "Unknown prompt key" }, 400);
+  if (!VALID_STAGES.has(stage)) {
+    return c.json({ error: "Unknown stage" }, 400);
   }
 
   const versions = await prisma.promptVersion.findMany({
-    where: { promptKey: key },
+    where: { stage },
     orderBy: { version: "desc" },
   });
 
-  // Determine which version is active by comparing value to current config
-  const config = await prisma.platformConfig.findUnique({ where: { key } });
-  const activeValue = config ? (config.value as string) : null;
+  // Determine active: compare current config values to each version's values
+  const stageKeys = PROMPT_STAGES[stage];
+  const currentValues: Record<string, string> = {};
+  for (const key of stageKeys) {
+    const config = await prisma.platformConfig.findUnique({ where: { key } });
+    currentValues[key] = config ? (config.value as string) : DEFAULTS[key];
+  }
 
-  const data = versions.map((v: any) => ({
-    id: v.id,
-    promptKey: v.promptKey,
-    version: v.version,
-    label: v.label,
-    value: v.value,
-    notes: v.notes,
-    createdAt: v.createdAt.toISOString(),
-    createdBy: v.createdBy,
-    isActive: activeValue !== null && v.value === activeValue,
-  }));
+  const data = versions.map((v: any) => {
+    const versionValues = v.values as Record<string, string>;
+    const isActive = stageKeys.every((key) => versionValues[key] === currentValues[key]);
+    return {
+      id: v.id,
+      stage: v.stage,
+      version: v.version,
+      label: v.label,
+      values: versionValues,
+      notes: v.notes,
+      createdAt: v.createdAt.toISOString(),
+      createdBy: v.createdBy,
+      isActive,
+    };
+  });
 
   return c.json({ data });
 });
 
-/** PATCH /:key/versions/:id/activate — Activate a specific version. */
-promptsRoutes.patch("/:key/versions/:id/activate", async (c) => {
+/** PATCH /stages/:stage/versions/:id/activate — Activate a grouped version (restore all prompt values). */
+promptsRoutes.patch("/stages/:stage/versions/:id/activate", async (c) => {
   const prisma = c.get("prisma") as any;
   const auth = getAuth(c);
-  const key = decodeURIComponent(c.req.param("key"));
+  const stage = c.req.param("stage");
   const versionId = c.req.param("id");
 
-  if (!VALID_KEYS.has(key)) {
-    return c.json({ error: "Unknown prompt key" }, 400);
+  if (!VALID_STAGES.has(stage)) {
+    return c.json({ error: "Unknown stage" }, 400);
   }
 
   const version = await prisma.promptVersion.findUnique({
     where: { id: versionId },
   });
 
-  if (!version || version.promptKey !== key) {
+  if (!version || version.stage !== stage) {
     return c.json({ error: "Version not found" }, 404);
   }
 
-  const meta = PROMPT_METADATA[key];
-  await prisma.platformConfig.upsert({
-    where: { key },
-    create: {
-      key,
-      value: version.value,
-      description: meta?.description,
-      updatedBy: auth?.userId ?? null,
-    },
-    update: {
-      value: version.value,
-      description: meta?.description,
-      updatedBy: auth?.userId ?? null,
-    },
-  });
+  const versionValues = version.values as Record<string, string>;
+
+  for (const [key, value] of Object.entries(versionValues)) {
+    const meta = PROMPT_METADATA[key];
+    await prisma.platformConfig.upsert({
+      where: { key },
+      create: {
+        key,
+        value,
+        description: meta?.description,
+        updatedBy: auth?.userId ?? null,
+      },
+      update: {
+        value,
+        description: meta?.description,
+        updatedBy: auth?.userId ?? null,
+      },
+    });
+  }
 
   writeAuditLog(prisma, {
     actorId: auth?.userId ?? "unknown",
     action: "prompt.activate_version",
     entityType: "PromptVersion",
     entityId: versionId,
-    after: { promptKey: key, version: version.version },
+    after: { stage, version: version.version },
   }).catch(() => {});
 
-  return c.json({ data: { key, versionId, version: version.version } });
+  return c.json({ data: { stage, versionId, version: version.version } });
 });
 
-/** PATCH /:key/versions/:id/notes — Update notes on a version. */
-promptsRoutes.patch("/:key/versions/:id/notes", async (c) => {
+/** PATCH /stages/:stage/versions/:id/notes — Update notes on a grouped version. */
+promptsRoutes.patch("/stages/:stage/versions/:id/notes", async (c) => {
   const prisma = c.get("prisma") as any;
-  const key = decodeURIComponent(c.req.param("key"));
+  const stage = c.req.param("stage");
   const versionId = c.req.param("id");
   const body = await c.req.json<{ notes: string }>();
 
-  if (!VALID_KEYS.has(key)) {
-    return c.json({ error: "Unknown prompt key" }, 400);
+  if (!VALID_STAGES.has(stage)) {
+    return c.json({ error: "Unknown stage" }, 400);
   }
 
   const version = await prisma.promptVersion.findUnique({
     where: { id: versionId },
   });
 
-  if (!version || version.promptKey !== key) {
+  if (!version || version.stage !== stage) {
     return c.json({ error: "Version not found" }, 404);
   }
 
