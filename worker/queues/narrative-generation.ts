@@ -248,20 +248,30 @@ export async function handleNarrativeGeneration(
 
         // Upsert Clip record (narrative content lives in R2 only)
         const distillation = await prisma.distillation.findUnique({ where: { episodeId } });
-        await prisma.clip.upsert({
-          where: { episodeId_durationTier: { episodeId, durationTier } },
-          update: {
-            wordCount,
-            ...(distillation ? { distillationId: distillation.id } : {}),
-          },
-          create: {
-            episodeId,
-            distillationId: distillation?.id ?? "unknown",
-            durationTier,
-            status: "PENDING",
-            wordCount,
-          },
+        const voicePresetId = job.voicePresetId ?? null;
+        const existingClip = await prisma.clip.findFirst({
+          where: { episodeId, durationTier, voicePresetId },
         });
+        if (existingClip) {
+          await prisma.clip.update({
+            where: { id: existingClip.id },
+            data: {
+              wordCount,
+              ...(distillation ? { distillationId: distillation.id } : {}),
+            },
+          });
+        } else {
+          await prisma.clip.create({
+            data: {
+              episodeId,
+              distillationId: distillation?.id ?? "unknown",
+              durationTier,
+              voicePresetId,
+              status: "PENDING",
+              wordCount,
+            },
+          });
+        }
 
         // Mark step COMPLETED
         await prisma.pipelineStep.update({
