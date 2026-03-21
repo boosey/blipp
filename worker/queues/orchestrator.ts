@@ -107,7 +107,7 @@ async function handleEvaluate(
   }
 
   // Resolve useLatest items to actual episodeIds
-  const resolvedItems: Array<{ episodeId: string; durationTier: number }> = [];
+  const resolvedItems: Array<{ episodeId: string; durationTier: number; voicePresetId?: string }> = [];
   for (const item of items) {
     let episodeId = item.episodeId;
 
@@ -125,7 +125,7 @@ async function handleEvaluate(
       }
     }
 
-    resolvedItems.push({ episodeId: episodeId!, durationTier: item.durationTier });
+    resolvedItems.push({ episodeId: episodeId!, durationTier: item.durationTier, voicePresetId: item.voicePresetId });
   }
 
   if (resolvedItems.length === 0) {
@@ -152,6 +152,7 @@ async function handleEvaluate(
         requestId: request.id,
         episodeId: resolved.episodeId,
         durationTier: resolved.durationTier,
+        voicePresetId: resolved.voicePresetId ?? null,
         status: "PENDING",
         currentStage: "TRANSCRIPTION",
       },
@@ -233,6 +234,9 @@ async function handleJobStageComplete(
     const message: Record<string, any> = { jobId, episodeId: job.episodeId, correlationId: msg.body.correlationId };
     if (nextStage === "NARRATIVE_GENERATION" || nextStage === "AUDIO_GENERATION") {
       message.durationTier = job.durationTier;
+    }
+    if (nextStage === "AUDIO_GENERATION") {
+      message.voicePresetId = job.voicePresetId ?? null;
     }
 
     await env[queueBinding].send(message);

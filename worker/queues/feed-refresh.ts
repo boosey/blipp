@@ -194,20 +194,33 @@ export async function handleFeedRefresh(
         if (newEpisodeIds.length > 0) {
           const subscriptions = await prisma.subscription.findMany({
             where: { podcastId: podcast.id },
+            include: { user: { select: { defaultVoicePresetId: true } } },
           });
 
           if (subscriptions.length > 0) {
-            // Group subscribers by durationTier for efficient pipeline requests
-            const tierGroups = new Map<number, string[]>();
+            // Group subscribers by (durationTier, resolvedVoicePresetId)
+            // voicePresetId: subscription-level > user default > null
+            const groupKey = (tier: number, vpId: string | null) => `${tier}:${vpId ?? ""}`;
+            const tierVoiceGroups = new Map<string, { durationTier: number; voicePresetId: string | null; userIds: string[] }>();
+
             for (const sub of subscriptions) {
-              const tier = sub.durationTier;
-              if (!tierGroups.has(tier)) tierGroups.set(tier, []);
-              tierGroups.get(tier)!.push(sub.userId);
+              const resolvedVoicePresetId = sub.voicePresetId ?? sub.user?.defaultVoicePresetId ?? null;
+              const key = groupKey(sub.durationTier, resolvedVoicePresetId);
+              if (!tierVoiceGroups.has(key)) {
+                tierVoiceGroups.set(key, {
+                  durationTier: sub.durationTier,
+                  voicePresetId: resolvedVoicePresetId,
+                  userIds: [],
+                });
+              }
+              tierVoiceGroups.get(key)!.userIds.push(sub.userId);
             }
 
             for (const episodeId of newEpisodeIds) {
-              for (const [durationTier, userIds] of tierGroups) {
-                // Create FeedItems for all subscribers at this tier
+              for (const [, group] of tierVoiceGroups) {
+                const { durationTier, voicePresetId, userIds } = group;
+
+                // Create FeedItems for all subscribers in this group
                 for (const userId of userIds) {
                   await prisma.feedItem.upsert({
                     where: {
@@ -229,7 +242,7 @@ export async function handleFeedRefresh(
                   });
                 }
 
-                // Create one BriefingRequest per (episode, tier) — the clip is shared
+                // Create one BriefingRequest per (episode, tier, voice) — the clip is shared
                 const request = await prisma.briefingRequest.create({
                   data: {
                     userId: userIds[0], // Anchor to first subscriber
@@ -238,6 +251,7 @@ export async function handleFeedRefresh(
                       podcastId: podcast.id,
                       episodeId,
                       durationTier,
+                      voicePresetId: voicePresetId ?? undefined,
                       useLatest: false,
                     }],
                     isTest: false,
@@ -245,11 +259,12 @@ export async function handleFeedRefresh(
                   },
                 });
 
-                // Link all FeedItems at this tier to the request
+                // Link all FeedItems in this group to the request
                 await prisma.feedItem.updateMany({
                   where: {
                     episodeId,
                     durationTier,
+                    userId: { in: userIds },
                     status: "PENDING",
                     requestId: null,
                   },
@@ -268,6 +283,7 @@ export async function handleFeedRefresh(
                   podcastId: podcast.id,
                   episodeId,
                   durationTier,
+                  voicePresetId,
                   subscriberCount: userIds.length,
                   requestId: request.id,
                 });

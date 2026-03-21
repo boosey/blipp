@@ -8,6 +8,7 @@ import { DURATION_TIERS } from "../lib/constants";
 import { getConfig } from "../lib/config";
 import { getCatalogSource } from "../lib/catalog-sources";
 import { recomputeUserProfile } from "../lib/recommendations";
+import { checkVoicePresetAccess } from "../lib/voice-presets";
 import { validateBody } from "../lib/validation";
 
 /* ── Zod schemas ─────────────────────────────────────────── */
@@ -20,6 +21,7 @@ const SubscribeSchema = z.object({
   durationTier: z.number().refine(v => DURATION_TIERS.includes(v as any), {
     message: `Must be one of: ${DURATION_TIERS.join(", ")}`,
   }),
+  voicePresetId: z.string().nullable().optional(),
   description: z.string().optional(),
   imageUrl: z.string().optional(),
   podcastIndexId: z.string().optional(),
@@ -29,7 +31,8 @@ const SubscribeSchema = z.object({
 const UpdateSubscriptionSchema = z.object({
   durationTier: z.number().refine(v => DURATION_TIERS.includes(v as any), {
     message: `Must be one of: ${DURATION_TIERS.join(", ")}`,
-  }),
+  }).optional(),
+  voicePresetId: z.string().nullable().optional(),
 });
 
 const FavoritesSchema = z.object({ podcastIds: z.array(z.string().min(1)) });
@@ -180,7 +183,16 @@ podcasts.post("/subscribe", async (c) => {
     },
   });
 
-  // Create/update subscription with durationTier
+  // Resolve voice preset: explicit param > user default > null
+  const voicePresetId = body.voicePresetId !== undefined
+    ? body.voicePresetId
+    : user.defaultVoicePresetId ?? null;
+
+  // Enforce plan access for voice preset
+  const voiceError = await checkVoicePresetAccess(prisma, user.planId, voicePresetId);
+  if (voiceError) return c.json({ error: voiceError }, 403);
+
+  // Create/update subscription with durationTier + voicePresetId
   const subscription = await prisma.subscription.upsert({
     where: {
       userId_podcastId: {
@@ -192,9 +204,11 @@ podcasts.post("/subscribe", async (c) => {
       userId: user.id,
       podcastId: podcast.id,
       durationTier: body.durationTier,
+      voicePresetId,
     },
     update: {
       durationTier: body.durationTier,
+      voicePresetId,
     },
   });
 
@@ -244,6 +258,7 @@ podcasts.post("/subscribe", async (c) => {
             podcastId: podcast.id,
             episodeId: latestEpisode.id,
             durationTier: body.durationTier,
+            voicePresetId: voicePresetId ?? undefined,
             useLatest: false,
           }],
           isTest: false,
@@ -287,9 +302,21 @@ podcasts.patch("/subscribe/:podcastId", async (c) => {
   const prisma = c.get("prisma") as any;
   const user = await getUserWithPlan(c, prisma);
 
-  // Enforce duration limit
-  const durationError = checkDurationLimit(body.durationTier, user.plan.maxDurationMinutes);
-  if (durationError) return c.json({ error: durationError }, 403);
+  // Enforce duration limit if provided
+  if (body.durationTier !== undefined) {
+    const durationError = checkDurationLimit(body.durationTier, user.plan.maxDurationMinutes);
+    if (durationError) return c.json({ error: durationError }, 403);
+  }
+
+  // Enforce plan access for voice preset if changing it
+  if (body.voicePresetId !== undefined) {
+    const voiceError = await checkVoicePresetAccess(prisma, user.planId, body.voicePresetId);
+    if (voiceError) return c.json({ error: voiceError }, 403);
+  }
+
+  const data: any = {};
+  if (body.durationTier !== undefined) data.durationTier = body.durationTier;
+  if (body.voicePresetId !== undefined) data.voicePresetId = body.voicePresetId;
 
   const subscription = await prisma.subscription.update({
     where: {
@@ -298,7 +325,7 @@ podcasts.patch("/subscribe/:podcastId", async (c) => {
         podcastId,
       },
     },
-    data: { durationTier: body.durationTier },
+    data,
   });
 
   return c.json({ subscription });
@@ -695,6 +722,7 @@ podcasts.get("/:id", async (c) => {
       episodeCount: podcast.episodeCount,
       isSubscribed: !!subscription,
       subscriptionDurationTier: subscription?.durationTier ?? null,
+      subscriptionVoicePresetId: subscription?.voicePresetId ?? null,
       userVote: vote?.vote ?? 0,
     },
   });

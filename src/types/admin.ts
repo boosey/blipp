@@ -813,6 +813,7 @@ export interface AdminPlan {
   stripePriceIdAnnual: string | null;
   stripeProductId: string | null;
   trialDays: number;
+  allowedVoicePresetIds: string[];
   features: string[];
   highlighted: boolean;
   active: boolean;
@@ -1018,6 +1019,40 @@ export interface CatalogSeedProgress {
     updatedAt: string;
     podcast: { title: string; imageUrl: string | null };
   }[];
+}
+
+// ── Voice Presets ──
+
+export interface VoicePresetProviderConfig {
+  voice?: string;
+  instructions?: string;
+  speed?: number;
+}
+
+export interface VoicePresetConfig {
+  openai?: VoicePresetProviderConfig;
+  groq?: { voice?: string };
+  cloudflare?: Record<string, unknown>;
+  [provider: string]: unknown;
+}
+
+export interface VoicePresetEntry {
+  id: string;
+  name: string;
+  description: string | null;
+  isSystem: boolean;
+  isActive: boolean;
+  config: VoicePresetConfig;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Slim shape returned by GET /api/voice-presets (public endpoint). */
+export interface VoicePresetOption {
+  id: string;
+  name: string;
+  description: string | null;
+  isSystem: boolean;
 }
 
 // ── Prompt Versioning ──

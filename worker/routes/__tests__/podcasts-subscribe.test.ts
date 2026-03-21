@@ -177,15 +177,13 @@ describe("PATCH /subscribe/:podcastId", () => {
     expect(data.subscription.durationTier).toBe(10);
   });
 
-  it("rejects missing durationTier in PATCH", async () => {
+  it("accepts empty PATCH body as no-op update", async () => {
     const res = await app.request("/subscribe/pod1", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({}),
     }, env, mockExCtx);
-    expect(res.status).toBe(400);
-    const data: any = await res.json();
-    expect(data.code).toBe("VALIDATION_ERROR");
+    expect(res.status).toBe(200);
   });
 });
 

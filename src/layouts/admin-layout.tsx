@@ -29,6 +29,7 @@ import {
   MessageSquare,
   Inbox,
   Sprout,
+  Mic,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
@@ -97,6 +98,7 @@ const sidebarEntries: SidebarEntry[] = [
       { path: "stt-benchmark", label: "STT Benchmark", icon: FlaskConical },
       { path: "claims-benchmark", label: "Claims Benchmark", icon: Scale },
       { path: "ai-errors", label: "Errors", icon: AlertTriangle },
+      { path: "voice-presets", label: "Voice Presets", icon: Mic },
     ],
   },
 

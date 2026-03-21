@@ -26,6 +26,7 @@ const PLAN_WRITABLE_FIELDS = [
   "priceCentsMonthly",
   "priceCentsAnnual",
   "trialDays",
+  "allowedVoicePresetIds",
   "features",
   "highlighted",
   "active",

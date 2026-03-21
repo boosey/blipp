@@ -19,7 +19,8 @@ export interface TtsProvider {
     voice: string,
     providerModelId: string,
     instructions: string | undefined,
-    env: Env
+    env: Env,
+    speed?: number
   ): Promise<TtsResult>;
 }
 
@@ -31,7 +32,7 @@ const OpenAITtsProvider: TtsProvider = {
   name: "OpenAI",
   provider: "openai",
 
-  async synthesize(text, voice, providerModelId, instructions, env) {
+  async synthesize(text, voice, providerModelId, instructions, env, speed) {
     const start = Date.now();
     try {
       const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
@@ -41,6 +42,7 @@ const OpenAITtsProvider: TtsProvider = {
         input: text,
         response_format: "mp3",
         ...(instructions ? { instructions } : {}),
+        ...(speed != null ? { speed } : {}),
       });
 
       const audio = await response.arrayBuffer();

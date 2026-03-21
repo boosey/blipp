@@ -44,6 +44,9 @@ model Plan {
   stripeProductId         String?  @unique
   trialDays               Int      @default(0)
 
+  // Voice Presets
+  allowedVoicePresetIds   String[]                      // IDs of voice presets this plan grants access to (system default always available)
+
   // Display
   features                String[]                      // Marketing bullet points
   highlighted             Boolean  @default(false)
@@ -71,20 +74,22 @@ model User {
   status                String   @default("active")  // "active" | "suspended" | "banned"
   onboardingComplete    Boolean  @default(false)
   defaultDurationTier   Int      @default(5)
+  defaultVoicePresetId  String?
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
-  plan             Plan             @relation(fields: [planId], references: [id])
-  subscriptions    Subscription[]
-  briefings        Briefing[]
-  feedItems        FeedItem[]
-  briefingRequests BriefingRequest[]
-  apiKeys          ApiKey[]
-  podcastRequests   PodcastRequest[]
-  pushSubscriptions PushSubscription[]
-  podcastFavorites  PodcastFavorite[]
-  podcastVotes      PodcastVote[]
-  episodeVotes      EpisodeVote[]
+  plan                 Plan             @relation(fields: [planId], references: [id])
+  defaultVoicePreset   VoicePreset?     @relation("defaultVoicePreset", fields: [defaultVoicePresetId], references: [id])
+  subscriptions        Subscription[]
+  briefings            Briefing[]
+  feedItems            FeedItem[]
+  briefingRequests     BriefingRequest[]
+  apiKeys              ApiKey[]
+  podcastRequests       PodcastRequest[]
+  pushSubscriptions     PushSubscription[]
+  podcastFavorites      PodcastFavorite[]
+  podcastVotes          PodcastVote[]
+  episodeVotes          EpisodeVote[]
   recommendationProfile     UserRecommendationProfile?
   recommendationCache       RecommendationCache?
   recommendationDismissals  RecommendationDismissal[]
@@ -264,11 +269,14 @@ model Clip {
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
 
+  voicePresetId  String?
+
   episode      Episode      @relation(fields: [episodeId], references: [id], onDelete: Cascade)
   distillation Distillation @relation(fields: [distillationId], references: [id], onDelete: Cascade)
+  voicePreset  VoicePreset? @relation(fields: [voicePresetId], references: [id])
   briefings    Briefing[]
 
-  @@unique([episodeId, durationTier])
+  @@unique([episodeId, durationTier, voicePresetId])
 }
 
 // ── Briefings (per-user wrapper around a shared Clip) ──
@@ -300,15 +308,17 @@ enum ClipStatus {
 // ── User Subscriptions ──
 
 model Subscription {
-  id           String   @id @default(cuid())
-  userId       String
-  podcastId    String
-  durationTier Int      // 1, 2, 3, 5, 7, 10, 15, or 30 (minutes)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id            String   @id @default(cuid())
+  userId        String
+  podcastId     String
+  durationTier  Int      // 1, 2, 3, 5, 7, 10, 15, or 30 (minutes)
+  voicePresetId String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  podcast Podcast @relation(fields: [podcastId], references: [id], onDelete: Cascade)
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  podcast     Podcast      @relation(fields: [podcastId], references: [id], onDelete: Cascade)
+  voicePreset VoicePreset? @relation(fields: [voicePresetId], references: [id])
 
   @@unique([userId, podcastId])
   @@index([userId])
@@ -362,6 +372,7 @@ model PipelineJob {
   requestId      String
   episodeId      String
   durationTier   Int               // from request item — source of truth
+  voicePresetId  String?
   status         PipelineJobStatus @default(PENDING)
   currentStage   PipelineStage     @default(TRANSCRIPTION)
   distillationId String?
@@ -372,9 +383,10 @@ model PipelineJob {
   completedAt    DateTime?
   dismissedAt    DateTime?
 
-  request  BriefingRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  episode  Episode         @relation(fields: [episodeId], references: [id], onDelete: Cascade)
-  steps    PipelineStep[]
+  request     BriefingRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  episode     Episode         @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  voicePreset VoicePreset?    @relation(fields: [voicePresetId], references: [id])
+  steps       PipelineStep[]
 
   @@index([requestId, status])
 }
@@ -740,6 +752,24 @@ model PromptVersion {
 
   @@unique([promptKey, version])
   @@index([promptKey])
+}
+
+// ── Voice Presets ──
+
+model VoicePreset {
+  id            String   @id @default(cuid())
+  name          String   @unique
+  description   String?
+  isSystem      Boolean  @default(false)  // true = cannot be deleted
+  isActive      Boolean  @default(true)
+  config        Json     // { openai: { voice, instructions, speed }, groq: { voice }, cloudflare: {} }
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  clips         Clip[]
+  subscriptions Subscription[]
+  users         User[]         @relation("defaultVoicePreset")
+  pipelineJobs  PipelineJob[]
 }
 
 // ── AI Model Registry ──

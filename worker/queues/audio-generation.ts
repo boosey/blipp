@@ -2,6 +2,7 @@ import { createPrismaClient } from "../lib/db";
 import { createPipelineLogger } from "../lib/logger";
 import { checkStageEnabled } from "../lib/queue-helpers";
 import { generateSpeech } from "../lib/tts";
+import { loadPresetConfig, extractProviderConfig } from "../lib/voice-presets";
 
 import { resolveModelChain } from "../lib/model-resolution";
 import { getTtsProviderImpl } from "../lib/tts-providers";
@@ -37,7 +38,7 @@ export async function handleAudioGeneration(
     if (!(await checkStageEnabled(prisma, batch, "AUDIO_GENERATION", log))) return;
 
     for (const msg of batch.messages) {
-      const { jobId, episodeId, durationTier } = msg.body;
+      const { jobId, episodeId, durationTier, voicePresetId } = msg.body;
       const correlationId = msg.body.correlationId ?? crypto.randomUUID();
       const startTime = Date.now();
       let requestId: string | undefined;
@@ -71,11 +72,15 @@ export async function handleAudioGeneration(
 
         await writeEvent(prisma, step.id, "INFO", "Checking cache for completed audio clip");
 
+        // Resolve voice preset config for TTS
+        const voiceTag = voicePresetId ?? "default";
+        const presetConfig = voicePresetId ? await loadPresetConfig(prisma, voicePresetId) : null;
+
         // Cache check: audio clip already exists in R2
-        const cachedAudioR2Key = wpKey({ type: "AUDIO_CLIP", episodeId, durationTier, voice: "default" });
+        const cachedAudioR2Key = wpKey({ type: "AUDIO_CLIP", episodeId, durationTier, voice: voiceTag });
         const existingAudio = await env.R2.head(cachedAudioR2Key);
-        const existingClip = await prisma.clip.findUnique({
-          where: { episodeId_durationTier: { episodeId, durationTier } },
+        const existingClip = await prisma.clip.findFirst({
+          where: { episodeId, durationTier, voicePresetId: voicePresetId ?? null },
         });
 
         if (existingAudio && existingClip?.status === "COMPLETED") {
@@ -86,7 +91,7 @@ export async function handleAudioGeneration(
           await prisma.workProduct.upsert({
             where: { r2Key: cachedAudioR2Key },
             update: {},
-            create: { type: "AUDIO_CLIP", episodeId, durationTier, voice: "default", r2Key: cachedAudioR2Key, sizeBytes: existingAudio.size },
+            create: { type: "AUDIO_CLIP", episodeId, durationTier, voice: voiceTag, r2Key: cachedAudioR2Key, sizeBytes: existingAudio.size },
           });
 
           await prisma.pipelineStep.update({
@@ -157,7 +162,11 @@ export async function handleAudioGeneration(
 
           try {
             const ttsTimer = log.timer("tts_generation");
-            const result = await generateSpeech(tts, narrative, undefined, resolved.providerModelId, env, resolved.pricing);
+            const voiceConfig = extractProviderConfig(presetConfig, resolved.provider);
+            const result = await generateSpeech(
+              tts, narrative, voiceConfig.voice, resolved.providerModelId, env,
+              resolved.pricing, voiceConfig.instructions, voiceConfig.speed
+            );
             recordSuccess(resolved.provider);
             audio = result.audio;
             ttsUsage = result.usage;
@@ -194,24 +203,46 @@ export async function handleAudioGeneration(
         await writeEvent(prisma, step.id, "DEBUG", `Audio size: ${audio!.byteLength} bytes`, { model: ttsUsage!.model, sizeBytes: audio!.byteLength });
 
         // Write audio to R2 + index in DB
-        const audioR2Key = wpKey({ type: "AUDIO_CLIP", episodeId, durationTier, voice: "default" });
+        const audioR2Key = wpKey({ type: "AUDIO_CLIP", episodeId, durationTier, voice: voiceTag });
         await putWorkProduct(env.R2, audioR2Key, audio!);
         await prisma.workProduct.upsert({
           where: { r2Key: audioR2Key },
           update: { sizeBytes: audio!.byteLength },
-          create: { type: "AUDIO_CLIP", episodeId, durationTier, voice: "default", r2Key: audioR2Key, sizeBytes: audio!.byteLength },
+          create: { type: "AUDIO_CLIP", episodeId, durationTier, voice: voiceTag, r2Key: audioR2Key, sizeBytes: audio!.byteLength },
         });
         await writeEvent(prisma, step.id, "INFO", "Saved audio clip to R2", { r2Key: audioR2Key });
 
         // Update Clip record: status COMPLETED, store audioKey
-        const audioKey = wpKey({ type: "AUDIO_CLIP", episodeId, durationTier, voice: "default" });
-        const clip = await prisma.clip.update({
-          where: { episodeId_durationTier: { episodeId, durationTier } },
-          data: {
-            status: "COMPLETED",
-            audioKey,
-          },
+        const audioKey = wpKey({ type: "AUDIO_CLIP", episodeId, durationTier, voice: voiceTag });
+        let existingClipForUpdate = await prisma.clip.findFirst({
+          where: { episodeId, durationTier, voicePresetId: voicePresetId ?? null },
         });
+        let finalClipId: string;
+        if (existingClipForUpdate) {
+          await prisma.clip.update({
+            where: { id: existingClipForUpdate.id },
+            data: { status: "COMPLETED", audioKey },
+          });
+          finalClipId = existingClipForUpdate.id;
+        } else {
+          const distillation = await prisma.distillation.findFirst({
+            where: { episodeId },
+            orderBy: { createdAt: "desc" },
+            select: { id: true },
+          });
+          if (!distillation) throw new Error("No distillation found for clip creation");
+          const newClip = await prisma.clip.create({
+            data: {
+              episodeId,
+              distillationId: distillation.id,
+              durationTier,
+              voicePresetId: voicePresetId ?? null,
+              status: "COMPLETED",
+              audioKey,
+            },
+          });
+          finalClipId = newClip.id;
+        }
 
         // Mark step COMPLETED
         await prisma.pipelineStep.update({
@@ -230,7 +261,7 @@ export async function handleAudioGeneration(
         // Update job with clipId
         await prisma.pipelineJob.update({
           where: { id: jobId },
-          data: { clipId: clip.id },
+          data: { clipId: finalClipId },
         });
 
         log.info("audio_completed", { episodeId, durationTier, audioKey });
@@ -275,20 +306,23 @@ export async function handleAudioGeneration(
           });
 
         // Try to record the error on the clip
-        await prisma.clip
-          .upsert({
-            where: {
-              episodeId_durationTier: { episodeId, durationTier },
-            },
-            update: { status: "FAILED", errorMessage },
-            create: {
-              episodeId,
-              distillationId: "unknown",
-              durationTier,
-              status: "FAILED",
-              errorMessage,
-            },
-          })
+        const failedClip = await prisma.clip.findFirst({
+          where: { episodeId, durationTier, voicePresetId: voicePresetId ?? null },
+          select: { id: true },
+        }).catch(() => null);
+        await (failedClip
+          ? prisma.clip.update({ where: { id: failedClip.id }, data: { status: "FAILED", errorMessage } })
+          : prisma.clip.create({
+              data: {
+                episodeId,
+                distillationId: "unknown",
+                durationTier,
+                voicePresetId: voicePresetId ?? null,
+                status: "FAILED",
+                errorMessage,
+              },
+            })
+        )
           .catch((dbErr: unknown) => {
             console.error(JSON.stringify({
               level: "error",

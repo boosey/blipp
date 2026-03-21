@@ -76,6 +76,10 @@ Generated from `prisma/schema.prisma`. Current as of 2026-03-18.
   | AiServiceError |     |  AuditLog  |     |  ApiKey    |
   | (standalone)   |     | (standalone)|     +------------+
   +----------------+     +------------+
+
+  +---------------+
+  | VoicePreset   |----> Clip, Subscription, User (default), PipelineJob
+  +---------------+
 ```
 
 ### Key Relationships
@@ -99,6 +103,10 @@ Podcast 1---* Episode
 Podcast 1---* FeedItem
 Podcast 1---* PodcastCategory *---1 Category
 Podcast 1--? PodcastProfile
+VoicePreset 1---* Clip
+VoicePreset 1---* Subscription
+VoicePreset 1---* User (defaultVoicePreset)
+VoicePreset 1---* PipelineJob
 Episode 1--? Distillation 1---* Clip
 Episode 1---* Clip
 Episode 1---* WorkProduct
@@ -175,11 +183,14 @@ Authenticated user from Clerk with plan and billing info.
 | isAdmin | Boolean | `false` | Admin access flag |
 | status | String | `"active"` | Account status ("active"/"suspended"/"banned") |
 | onboardingComplete | Boolean | `false` | Whether user has completed onboarding |
+| defaultDurationTier | Int | `5` | Default briefing duration tier |
+| defaultVoicePresetId | String? | -- | FK to VoicePreset (user's default voice) |
 | createdAt | DateTime | `now()` | Record creation timestamp |
 | updatedAt | DateTime | `@updatedAt` | Last update timestamp |
 
 **Relations:**
 - `plan` -> Plan (many-to-one)
+- `defaultVoicePreset` -> VoicePreset? (many-to-one, named "defaultVoicePreset")
 - `subscriptions` -> Subscription[] (one-to-many)
 - `briefings` -> Briefing[] (one-to-many)
 - `feedItems` -> FeedItem[] (one-to-many)
@@ -310,6 +321,7 @@ A generated audio clip for a specific episode at a specific duration tier.
 | episodeId | String | -- | FK to Episode |
 | distillationId | String | -- | FK to Distillation |
 | durationTier | Int | -- | Target duration in minutes (1, 2, 3, 5, 7, 10, or 15) |
+| voicePresetId | String? | -- | FK to VoicePreset (null = default voice) |
 | status | ClipStatus | `PENDING` | Processing status |
 | narrativeText | String? | -- | Generated narrative script |
 | wordCount | Int? | -- | Word count of narrative |
@@ -323,10 +335,11 @@ A generated audio clip for a specific episode at a specific duration tier.
 **Relations:**
 - `episode` -> Episode (many-to-one, cascade delete)
 - `distillation` -> Distillation (many-to-one, cascade delete)
+- `voicePreset` -> VoicePreset? (many-to-one)
 - `briefings` -> Briefing[] (one-to-many)
 
 **Constraints:**
-- `@@unique([episodeId, durationTier])` -- one clip per episode per duration tier
+- `@@unique([episodeId, durationTier, voicePresetId])` -- one clip per episode per duration tier per voice preset
 
 ---
 
@@ -340,12 +353,14 @@ Join table linking users to their subscribed podcasts, with a per-subscription d
 | userId | String | -- | FK to User |
 | podcastId | String | -- | FK to Podcast |
 | durationTier | Int | -- | Briefing duration in minutes (1, 2, 3, 5, 7, 10, 15, or 30) |
+| voicePresetId | String? | -- | FK to VoicePreset (per-subscription voice override) |
 | createdAt | DateTime | `now()` | Record creation timestamp |
 | updatedAt | DateTime | `@updatedAt` | Last update timestamp |
 
 **Relations:**
 - `user` -> User (many-to-one, cascade delete)
 - `podcast` -> Podcast (many-to-one, cascade delete)
+- `voicePreset` -> VoicePreset? (many-to-one)
 
 **Constraints:**
 - `@@unique([userId, podcastId])` -- one subscription per user per podcast
@@ -440,6 +455,7 @@ Tracks one episode + duration tier through the pipeline for a given request.
 | requestId | String | -- | FK to BriefingRequest |
 | episodeId | String | -- | FK to Episode |
 | durationTier | Int | -- | Target clip duration in minutes |
+| voicePresetId | String? | -- | FK to VoicePreset (voice to use for TTS) |
 | status | PipelineJobStatus | `PENDING` | Job lifecycle status |
 | currentStage | PipelineStage | `TRANSCRIPTION` | Current processing stage |
 | distillationId | String? | -- | Resolved Distillation ID |
@@ -453,6 +469,7 @@ Tracks one episode + duration tier through the pipeline for a given request.
 **Relations:**
 - `request` -> BriefingRequest (many-to-one, cascade delete)
 - `episode` -> Episode (many-to-one, cascade delete)
+- `voicePreset` -> VoicePreset? (many-to-one)
 - `steps` -> PipelineStep[] (one-to-many)
 
 **Constraints:**
@@ -536,6 +553,41 @@ Tracks artifacts stored in R2 (transcripts, audio clips, etc.).
 
 **Constraints:**
 - `r2Key` is unique
+
+---
+
+### VoicePreset
+
+Configurable TTS voice preset. Stores per-provider voice settings (voice ID, instructions, speed) as a JSON config object. System presets cannot be deleted.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| id | String | `cuid()` | Primary key |
+| name | String | -- | Display name (unique, e.g. "Warm Coral", "News Anchor") |
+| description | String? | -- | Human-readable description |
+| isSystem | Boolean | `false` | System presets cannot be deleted |
+| isActive | Boolean | `true` | Whether preset is available for selection |
+| config | Json | -- | Per-provider voice config (see below) |
+| createdAt | DateTime | `now()` | Record creation timestamp |
+| updatedAt | DateTime | `@updatedAt` | Last update timestamp |
+
+**Config JSON shape:**
+```json
+{
+  "openai": { "voice": "coral", "instructions": "Speak warmly...", "speed": 1.0 },
+  "groq": { "voice": "aura-orpheus-en" },
+  "cloudflare": { "voice": "en-US-Neural2-F" }
+}
+```
+
+**Relations:**
+- `clips` -> Clip[] (one-to-many)
+- `subscriptions` -> Subscription[] (one-to-many)
+- `users` -> User[] (one-to-many, named "defaultVoicePreset")
+- `pipelineJobs` -> PipelineJob[] (one-to-many)
+
+**Constraints:**
+- `name` is unique
 
 ---
 

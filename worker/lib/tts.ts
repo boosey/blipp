@@ -26,14 +26,17 @@ export async function generateSpeech(
   voice: string = DEFAULT_VOICE,
   providerModelId: string,
   env: any,
-  pricing: ModelPricing | null = null
+  pricing: ModelPricing | null = null,
+  instructions: string = DEFAULT_INSTRUCTIONS,
+  speed?: number
 ): Promise<{ audio: ArrayBuffer; usage: AiUsage }> {
   const result = await tts.synthesize(
     text,
     voice,
     providerModelId,
-    DEFAULT_INSTRUCTIONS,
-    env
+    instructions,
+    env,
+    speed
   );
 
   // TTS pricing: try per-minute first (based on output audio), fall back to per-char
