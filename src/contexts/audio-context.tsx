@@ -37,6 +37,7 @@ interface AudioState {
 
 interface AudioActions {
   play: (item: FeedItem) => void;
+  playAll: (items: FeedItem[]) => void;
   pause: () => void;
   resume: () => void;
   seek: (time: number) => void;
@@ -74,6 +75,9 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   const pendingItemRef = useRef<FeedItem | null>(null);
   // Guards against audio element events fired by the silent unlock WAV
   const unlockingRef = useRef(false);
+
+  // Queue for Play All
+  const queueRef = useRef<FeedItem[]>([]);
 
   // Begin content playback — sets src to briefing audio, fires listened PATCH
   const beginContent = useCallback(
@@ -152,6 +156,20 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     [beginContent]
   );
 
+  // Ref to hold `play` for use in onPlaybackFinished (avoids circular dep)
+  const playRef = useRef<(item: FeedItem) => void>(() => {});
+
+  // Called when an item fully finishes (content + postroll). Advances queue.
+  const onPlaybackFinished = useCallback(() => {
+    const next = queueRef.current.shift();
+    if (next) {
+      playRef.current(next);
+    } else {
+      setAdState("none");
+      setIsPlaying(false);
+    }
+  }, []);
+
   // IMA ads hook callbacks
   const onPrerollComplete = useCallback(() => {
     const item = pendingItemRef.current;
@@ -161,9 +179,8 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   }, [startContentPlayback]);
 
   const onPostrollComplete = useCallback(() => {
-    setAdState("none");
-    setIsPlaying(false);
-  }, []);
+    onPlaybackFinished();
+  }, [onPlaybackFinished]);
 
   // Track which ad flow we're in
   const adFlowRef = useRef<"preroll" | "postroll" | null>(null);
@@ -243,6 +260,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     adConfigRef.current = null;
     pendingItemRef.current = null;
     adFlowRef.current = null;
+    queueRef.current = [];
   }, [ima]);
 
   const play = useCallback(
@@ -305,6 +323,21 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     [apiFetch, ima, startContentPlayback]
   );
 
+  // Keep playRef in sync so onPlaybackFinished can call play without circular deps
+  useEffect(() => {
+    playRef.current = play;
+  }, [play]);
+
+  const playAll = useCallback(
+    (items: FeedItem[]) => {
+      if (items.length === 0) return;
+      const [first, ...rest] = items;
+      queueRef.current = rest;
+      play(first);
+    },
+    [play]
+  );
+
   // Check for postroll ad or end playback
   const handlePostrollOrEnd = useCallback(() => {
     const config = adConfigRef.current;
@@ -319,9 +352,8 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       ima.requestAds(config.postroll.vastTagUrl);
       return;
     }
-    setAdState("none");
-    setIsPlaying(false);
-  }, [ima]);
+    onPlaybackFinished();
+  }, [ima, onPlaybackFinished]);
 
   // Handle audio ended — sequence: intro-jingle → content → outro-jingle → postroll
   const handleEnded = useCallback(async () => {
@@ -460,6 +492,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     adCurrentTime: ima.adCurrentTime,
     // Actions
     play,
+    playAll,
     pause,
     resume,
     seek,

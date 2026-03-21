@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { Heart, Search, X } from "lucide-react";
+import { Heart, Search, X, Loader2, Check, Headphones } from "lucide-react";
 import { useApiFetch } from "../lib/api";
 import { useFetch } from "../lib/use-fetch";
 import { Skeleton } from "../components/ui/skeleton";
@@ -153,6 +153,14 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
         method: "POST",
         body: JSON.stringify({ podcastId, episodeId, durationTier: tier }),
       });
+      // Optimistically mark episode as having a pending blipp
+      setEpisodes((eps) =>
+        eps.map((e) =>
+          e.id === episodeId
+            ? { ...e, blippStatus: { status: "PENDING" as const, listened: false } }
+            : e
+        )
+      );
       if (!silent) {
         toast(`${tier}m Blipp requested — usually ready in 2-5 minutes`, { duration: 4000 });
       }
@@ -469,8 +477,41 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
                     <div className="relative">
                     {requestingEpisodeId === ep.id ? (
                       <span className="text-xs text-muted-foreground px-3 py-1.5">
-                        ...
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
                       </span>
+                    ) : ep.blippStatus?.status === "PENDING" || ep.blippStatus?.status === "PROCESSING" ? (
+                      <span className="flex items-center gap-1 px-3 py-1.5 rounded text-xs font-medium bg-yellow-500/15 text-yellow-400">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        Creating
+                      </span>
+                    ) : ep.blippStatus?.status === "READY" ? (
+                      <span className={`flex items-center gap-1 px-3 py-1.5 rounded text-xs font-medium ${
+                        ep.blippStatus.listened
+                          ? "bg-muted text-muted-foreground"
+                          : "bg-green-500/15 text-green-400"
+                      }`}>
+                        {ep.blippStatus.listened
+                          ? <><Check className="w-3 h-3" /> Listened</>
+                          : <><Headphones className="w-3 h-3" /> In Feed</>
+                        }
+                      </span>
+                    ) : ep.blippStatus?.status === "FAILED" ? (
+                      <button
+                        onClick={() => {
+                          if (defaultTier > planUsage.maxDurationMinutes) {
+                            showUpgrade(`Your plan supports briefings up to ${planUsage.maxDurationMinutes} minutes. Upgrade for longer briefings.`);
+                            return;
+                          }
+                          handleCreateBriefing(ep.id, defaultTier, true);
+                          toast(`${defaultTier}m Blipp requested — usually ready in 2-5 minutes`, {
+                            description: "Tip: long-press Blipp to pick a different duration",
+                            duration: 5000,
+                          });
+                        }}
+                        className="flex items-center gap-1 px-3 py-1.5 rounded text-xs font-medium bg-red-500/15 text-red-400 hover:bg-red-500/25 transition-colors"
+                      >
+                        Retry
+                      </button>
                     ) : (
                       <button
                         onPointerDown={() => {

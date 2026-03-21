@@ -758,18 +758,34 @@ podcasts.get("/:id/episodes", async (c) => {
     },
   });
 
-  // Batch-fetch user's episode votes
+  // Batch-fetch user's episode votes + feed item status
   const episodeIds = episodes.map((e: any) => e.id);
-  const votes = await prisma.episodeVote.findMany({
-    where: { userId: user.id, episodeId: { in: episodeIds } },
-    select: { episodeId: true, vote: true },
-  });
+  const [votes, feedItems] = await Promise.all([
+    prisma.episodeVote.findMany({
+      where: { userId: user.id, episodeId: { in: episodeIds } },
+      select: { episodeId: true, vote: true },
+    }),
+    prisma.feedItem.findMany({
+      where: { userId: user.id, episodeId: { in: episodeIds } },
+      select: { episodeId: true, status: true, listened: true },
+      orderBy: { createdAt: "desc" },
+    }),
+  ]);
   const voteMap = new Map(votes.map((v: any) => [v.episodeId, v.vote]));
+
+  // Build blipp status per episode (use most recent feed item)
+  const blippMap = new Map<string, { status: string; listened: boolean }>();
+  for (const fi of feedItems as any[]) {
+    if (!blippMap.has(fi.episodeId)) {
+      blippMap.set(fi.episodeId, { status: fi.status, listened: fi.listened });
+    }
+  }
 
   return c.json({
     episodes: episodes.map((e: any) => ({
       ...e,
       userVote: voteMap.get(e.id) ?? 0,
+      blippStatus: blippMap.get(e.id) ?? null,
     })),
   });
 });

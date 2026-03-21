@@ -85,7 +85,7 @@ export function Home() {
     return () => clearInterval(interval);
   }, [fetchFeed]);
 
-  // Smart sort: unlistened READY first, then rest, both by createdAt desc
+  // Smart sort: active items (unlistened READY + in-progress) first, then rest
   const sortedItems = useMemo(() => {
     const filtered =
       filter === "creating"
@@ -95,20 +95,21 @@ export function Home() {
     const byDate = (a: FeedItem, b: FeedItem) =>
       new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
 
-    const unlistenedReady = filtered
-      .filter((i) => !i.listened && i.status === "READY")
-      .sort(byDate);
-    const rest = filtered
-      .filter((i) => i.listened || i.status !== "READY")
-      .sort(byDate);
+    const isActive = (i: FeedItem) =>
+      (!i.listened && i.status === "READY") ||
+      i.status === "PENDING" ||
+      i.status === "PROCESSING";
 
-    return [...unlistenedReady, ...rest];
+    const active = filtered.filter(isActive).sort(byDate);
+    const rest = filtered.filter((i) => !isActive(i)).sort(byDate);
+
+    return [...active, ...rest];
   }, [items, filter]);
 
   const groups = useMemo(() => groupByDate(sortedItems), [sortedItems]);
 
-  const firstUnlistenedReady = useMemo(
-    () => sortedItems.find((i) => !i.listened && i.status === "READY"),
+  const unlistenedReady = useMemo(
+    () => sortedItems.filter((i) => !i.listened && i.status === "READY"),
     [sortedItems]
   );
 
@@ -119,15 +120,17 @@ export function Home() {
     );
   }
 
-  function handlePlayNext() {
-    if (!firstUnlistenedReady) return;
-    audio.play(firstUnlistenedReady);
-    handlePlay(firstUnlistenedReady.id);
+  function handlePlayAll() {
+    if (unlistenedReady.length === 0) return;
+    audio.playAll(unlistenedReady);
+    // Mark all as listened optimistically
+    const ids = new Set(unlistenedReady.map((i) => i.id));
     setItems((prev) =>
-      prev.map((i) =>
-        i.id === firstUnlistenedReady.id ? { ...i, listened: true } : i
-      )
+      prev.map((i) => (ids.has(i.id) ? { ...i, listened: true } : i))
     );
+    for (const item of unlistenedReady) {
+      handlePlay(item.id);
+    }
   }
 
   function handleToggleListened(feedItemId: string, listened: boolean) {
@@ -238,14 +241,14 @@ export function Home() {
         </div>
       ))}
 
-      {/* Play Next button */}
-      {firstUnlistenedReady && (
+      {/* Play All button */}
+      {unlistenedReady.length > 0 && (
         <button
-          onClick={handlePlayNext}
+          onClick={handlePlayAll}
           className="flex items-center gap-2 mb-3 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium active:scale-[0.98] transition-transform duration-75"
         >
           <Play className="w-4 h-4" />
-          Play Next
+          Play All ({unlistenedReady.length})
         </button>
       )}
 
