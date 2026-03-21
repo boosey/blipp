@@ -23,7 +23,9 @@
     "deploy:quick": "npx wrangler deploy",
     "deploy:quick:production": "node scripts/patch-wrangler-env.mjs production && npx wrangler deploy",
     "db:push:staging": "powershell -Command \"Get-Content neon-config.env | ForEach-Object { if($_ -match '^STAGING_DATABASE_URL=(.+)$') { $env:DATABASE_URL=$matches[1] } }; npx prisma db push\"",
-    "db:push:production": "powershell -Command \"Get-Content neon-config.env | ForEach-Object { if($_ -match '^PRODUCTION_DATABASE_URL=(.+)$') { $env:DATABASE_URL=$matches[1] } }; npx prisma db push\""
+    "db:push:production": "powershell -Command \"Get-Content neon-config.env | ForEach-Object { if($_ -match '^PRODUCTION_DATABASE_URL=(.+)$') { $env:DATABASE_URL=$matches[1] } }; npx prisma db push\"",
+    "db:push:staging:force": "powershell -Command \"Get-Content neon-config.env | ForEach-Object { if($_ -match '^STAGING_DATABASE_URL=(.+)$') { $env:DATABASE_URL=$matches[1] } }; npx prisma db push --accept-data-loss\"",
+    "db:push:production:force": "powershell -Command \"Get-Content neon-config.env | ForEach-Object { if($_ -match '^PRODUCTION_DATABASE_URL=(.+)$') { $env:DATABASE_URL=$matches[1] } }; npx prisma db push --accept-data-loss\""
   },
   "repository": {
     "type": "git",

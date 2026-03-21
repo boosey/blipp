@@ -27,6 +27,16 @@ jobs:
           echo 'export { PrismaClient } from "./client";' > src/generated/prisma/index.ts
           echo 'export * from "./enums";' >> src/generated/prisma/index.ts
 
+      - name: Push schema to staging database
+        run: |
+          npx prisma db push 2>&1 || {
+            echo "::error::prisma db push failed — likely a destructive schema change."
+            echo "::error::Run manually with --accept-data-loss, then re-run this workflow."
+            exit 1
+          }
+        env:
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+
       - name: Bump patch version
         run: npm version patch --no-git-tag-version
 

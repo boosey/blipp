@@ -9,7 +9,9 @@ npm run build            # Vite production build
 npm test                 # Run all tests (vitest)
 npm run typecheck        # TypeScript check (tsc --noEmit)
 npx prisma generate      # Regenerate Prisma client
-npx prisma db push       # Push schema to database
+npx prisma db push       # Push schema to database (CI does this automatically for additive changes)
+npm run db:push:staging:force   # Force push schema to staging (for breaking changes)
+npm run db:push:production:force # Force push schema to production (for breaking changes)
 npx prisma db seed       # Seed plans data
 npm run clean:pipeline   # Clean all user/pipeline data (feed, briefings, subscriptions, pipeline)
 npm run db:check         # Database health check
@@ -95,6 +97,7 @@ docs/             — Architecture, pipeline, API ref, data model, guides
 - **Tests OOM**: Run worker tests in batches or with `--max-old-space-size=4096`
 - **Vitest v4**: `vi.clearAllMocks()` clears `mockResolvedValue`; re-set mocks in `beforeEach`
 - **Clerk middleware**: Applied once globally — don't duplicate in route files
+- **Schema deploys**: CI runs `prisma db push` automatically before `wrangler deploy`. For breaking changes (column renames/drops), CI fails — run `db:push:*:force` locally first, then re-trigger CI
 
 ## Documentation
 See `docs/` for comprehensive docs:
