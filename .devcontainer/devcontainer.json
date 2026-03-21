@@ -5,7 +5,7 @@
     "cpus": 2,
     "memory": "4gb"
   },
-  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y ttyd && npm install --legacy-peer-deps && npx prisma generate && mkdir -p src/generated/prisma && echo 'export { PrismaClient } from \"./client\";' > src/generated/prisma/index.ts && echo 'export * from \"./enums\";' >> src/generated/prisma/index.ts && npm install -g @anthropic-ai/claude-code",
+  "postCreateCommand": "bash .devcontainer/setup.sh",
   "postStartCommand": "ttyd -p 7681 -W bash &",
   "forwardPorts": [7681, 8787, 5174],
   "portsAttributes": {
