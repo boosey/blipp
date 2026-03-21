@@ -65,6 +65,32 @@ async function main() {
 
   console.log("Seeded plans.");
 
+  // ── Voice Presets ──
+
+  await prisma.voicePreset.upsert({
+    where: { name: "System Default" },
+    update: {},
+    create: {
+      name: "System Default",
+      description: "The default Blipp voice — warm, professional podcast briefing tone.",
+      isSystem: true,
+      isActive: true,
+      config: {
+        openai: {
+          voice: "coral",
+          instructions:
+            "Speak in a warm, professional tone suitable for a daily podcast briefing. " +
+            "Maintain a steady, engaging pace. Pause naturally between topics.",
+          speed: 1.0,
+        },
+        groq: { voice: "austin" },
+        cloudflare: {},
+      },
+    },
+  });
+
+  console.log("Seeded voice presets.");
+
   // ── Platform Config ──
 
   console.log("Seeded platform config.");

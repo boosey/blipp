@@ -31,7 +31,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { useAdminFetch } from "@/lib/admin-api";
-import type { AdminPlan, DurationTier, PaginatedResponse } from "@/types/admin";
+import type { AdminPlan, DurationTier, PaginatedResponse, VoicePresetEntry } from "@/types/admin";
 
 // ── Helpers ──
 
@@ -76,6 +76,7 @@ interface PlanFormData {
   priceCentsMonthly: string;
   priceCentsAnnual: string;
   trialDays: string;
+  allowedVoicePresetIds: string[];
   features: string;
   highlighted: boolean;
   sortOrder: string;
@@ -98,6 +99,7 @@ function emptyForm(): PlanFormData {
     priceCentsMonthly: "0",
     priceCentsAnnual: "",
     trialDays: "0",
+    allowedVoicePresetIds: [],
     features: "",
     highlighted: false,
     sortOrder: "0",
@@ -121,6 +123,7 @@ function planToForm(plan: AdminPlan): PlanFormData {
     priceCentsMonthly: String(plan.priceCentsMonthly),
     priceCentsAnnual: plan.priceCentsAnnual != null ? String(plan.priceCentsAnnual) : "",
     trialDays: String(plan.trialDays),
+    allowedVoicePresetIds: plan.allowedVoicePresetIds ?? [],
     features: plan.features.join(", "),
     highlighted: plan.highlighted,
     sortOrder: String(plan.sortOrder),
@@ -144,6 +147,7 @@ function formToPayload(form: PlanFormData) {
     priceCentsMonthly: Number(form.priceCentsMonthly),
     priceCentsAnnual: form.priceCentsAnnual ? Number(form.priceCentsAnnual) : null,
     trialDays: Number(form.trialDays),
+    allowedVoicePresetIds: form.allowedVoicePresetIds,
     features: form.features
       .split(",")
       .map((s) => s.trim())
@@ -164,6 +168,7 @@ function PlanFormDialog({
   setForm,
   onSubmit,
   saving,
+  voicePresets,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -172,8 +177,16 @@ function PlanFormDialog({
   setForm: (f: PlanFormData) => void;
   onSubmit: () => void;
   saving: boolean;
+  voicePresets: VoicePresetEntry[];
 }) {
   const update = (patch: Partial<PlanFormData>) => setForm({ ...form, ...patch });
+
+  const toggleVoicePreset = (id: string) => {
+    const ids = form.allowedVoicePresetIds.includes(id)
+      ? form.allowedVoicePresetIds.filter((v) => v !== id)
+      : [...form.allowedVoicePresetIds, id];
+    update({ allowedVoicePresetIds: ids });
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -283,6 +296,28 @@ function PlanFormDialog({
                 ))}
               </div>
             </div>
+
+            <Separator className="bg-white/5" />
+
+            {/* Voice Presets */}
+            {voicePresets.filter((vp) => !vp.isSystem).length > 0 && (
+              <div className="space-y-3">
+                <span className="text-xs font-semibold text-[#9CA3AF] uppercase tracking-wider">Voice Presets</span>
+                <p className="text-[10px] text-[#9CA3AF]">System Default is always available. Select additional presets this plan grants access to.</p>
+                <div className="grid grid-cols-2 gap-y-2 gap-x-6">
+                  {voicePresets.filter((vp) => !vp.isSystem).map((vp) => (
+                    <div key={vp.id} className="flex items-center justify-between">
+                      <Label className="text-xs text-[#F9FAFB]">{vp.name}</Label>
+                      <Switch
+                        checked={form.allowedVoicePresetIds.includes(vp.id)}
+                        onCheckedChange={() => toggleVoicePreset(vp.id)}
+                        className="data-[state=checked]:bg-[#10B981]"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <Separator className="bg-white/5" />
 
@@ -498,6 +533,9 @@ export default function PlansPage() {
   const [tiersLoading, setTiersLoading] = useState(true);
   const [tiersOpen, setTiersOpen] = useState(false);
 
+  // Voice presets (for plan configuration)
+  const [voicePresets, setVoicePresets] = useState<VoicePresetEntry[]>([]);
+
   const loadPlans = useCallback(() => {
     setLoading(true);
     apiFetch<PaginatedResponse<AdminPlan>>("/plans?pageSize=50&sort=sortOrder&direction=asc")
@@ -509,6 +547,12 @@ export default function PlansPage() {
   useEffect(() => {
     loadPlans();
   }, [loadPlans]);
+
+  useEffect(() => {
+    apiFetch<{ data: VoicePresetEntry[] }>("/voice-presets?includeInactive=true")
+      .then((r) => setVoicePresets(r.data ?? []))
+      .catch(() => {});
+  }, [apiFetch]);
 
   useEffect(() => {
     setTiersLoading(true);
@@ -906,6 +950,7 @@ export default function PlansPage() {
         setForm={setForm}
         onSubmit={submitCreate}
         saving={saving}
+        voicePresets={voicePresets}
       />
 
       {/* Edit Dialog */}
@@ -917,6 +962,7 @@ export default function PlansPage() {
         setForm={setForm}
         onSubmit={submitEdit}
         saving={saving}
+        voicePresets={voicePresets}
       />
 
       {/* Delete Dialog */}

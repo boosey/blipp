@@ -211,7 +211,8 @@ The admin Model Registry page (`/admin/model-registry`) allows managing availabl
 | `User` | User profile with Clerk ID, Stripe customer ID, `planId` FK, `isAdmin` flag |
 | `Podcast` | Podcast metadata (title, feed URL, image, health status) |
 | `Episode` | Individual episodes linked to podcasts |
-| `Subscription` | User-to-podcast subscriptions with per-subscription duration tier |
+| `Subscription` | User-to-podcast subscriptions with per-subscription duration tier and optional voice preset |
+| `VoicePreset` | Configurable TTS voice presets with per-provider config (voice, instructions, speed) |
 
 ### Pipeline Models
 
@@ -584,6 +585,7 @@ blipp/
       recommendations.ts  # Recommendation profile computation
       model-resolution.ts # AI model+provider fallback resolution
       queue-messages.ts   # Typed queue message definitions
+      voice-presets.ts    # Voice preset resolution + config extraction
       errors.ts           # HTTP error classification
       feature-flags.ts    # Feature flag reader (PlatformConfig booleans)
       health.ts           # Deep health check (DB, R2, queues)
@@ -632,6 +634,7 @@ blipp/
         stage-models.tsx
         ai-errors.tsx
         recommendations.tsx
+        voice-presets.tsx
         scheduled-jobs.tsx
         feature-flags.tsx
         podcast-settings.tsx

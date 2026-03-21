@@ -40,6 +40,7 @@ const AdminRecommendations = lazy(() => import("./pages/admin/recommendations"))
 const CatalogSeed = lazy(() => import("./pages/admin/catalog-seed"));
 const ScheduledJobs = lazy(() => import("./pages/admin/scheduled-jobs"));
 const DlqMonitor = lazy(() => import("./pages/admin/dlq"));
+const VoicePresets = lazy(() => import("./pages/admin/voice-presets"));
 const TermsOfService = lazy(() => import("./pages/tos"));
 const PrivacyPolicy = lazy(() => import("./pages/privacy"));
 const Onboarding = lazy(() => import("./pages/onboarding"));
@@ -137,6 +138,7 @@ export default function App() {
         <Route path="scheduled-jobs" element={<Suspense fallback={<AdminLoading />}><ScheduledJobs /></Suspense>} />
         <Route path="prompt-management" element={<Navigate to="/admin/stage-configuration" replace />} />
         <Route path="dlq" element={<Suspense fallback={<AdminLoading />}><DlqMonitor /></Suspense>} />
+        <Route path="voice-presets" element={<Suspense fallback={<AdminLoading />}><VoicePresets /></Suspense>} />
       </Route>
     </Routes>
     </>

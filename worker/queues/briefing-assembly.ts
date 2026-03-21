@@ -88,8 +88,8 @@ export async function handleBriefingAssembly(
             // Resolve clipId — fall back to direct Clip lookup if Hyperdrive returns stale null
             let clipId = job.clipId;
             if (!clipId) {
-              const clip = await prisma.clip.findUnique({
-                where: { episodeId_durationTier: { episodeId: job.episodeId, durationTier: job.durationTier } },
+              const clip = await prisma.clip.findFirst({
+                where: { episodeId: job.episodeId, durationTier: job.durationTier, voicePresetId: job.voicePresetId ?? null },
                 select: { id: true },
               });
               clipId = clip?.id ?? null;

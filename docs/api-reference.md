@@ -107,6 +107,7 @@ All routes below require a valid Clerk session (Bearer token). Returns 401 if un
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/me` | Get/create current user with plan info |
+| PATCH | `/api/me/preferences` | Update user preferences (defaultDurationTier, defaultVoicePresetId) |
 
 **`GET /api/me`**
 
@@ -121,8 +122,51 @@ Response:
     "name": "string",
     "imageUrl": "string",
     "plan": { "id": "string", "name": "string", "slug": "string" },
-    "isAdmin": false
+    "isAdmin": false,
+    "defaultDurationTier": 5,
+    "defaultVoicePresetId": "string | null"
   }
+}
+```
+
+**`PATCH /api/me/preferences`**
+
+Body:
+```json
+{
+  "defaultDurationTier": "number (optional, one of 1/2/3/5/7/10/15/30)",
+  "defaultVoicePresetId": "string | null (optional)"
+}
+```
+
+Response: `{ "user": {...} }`
+
+Updates user preferences. Setting `defaultVoicePresetId` to `null` clears the default voice.
+
+---
+
+### Voice Presets (`/api/voice-presets`)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/voice-presets` | List all active voice presets |
+
+**`GET /api/voice-presets`**
+
+Returns all active voice presets for selection in the UI.
+
+Response:
+```json
+{
+  "data": [
+    {
+      "id": "string",
+      "name": "string",
+      "description": "string | null",
+      "isSystem": true,
+      "config": { "openai": { "voice": "coral" }, "groq": { "voice": "..." } }
+    }
+  ]
 }
 ```
 
@@ -173,6 +217,7 @@ Body:
   "feedUrl": "string (required)",
   "title": "string (required)",
   "durationTier": "number (required, one of 1/2/3/5/7/10/15/30)",
+  "voicePresetId": "string (optional, FK to VoicePreset)",
   "description": "string",
   "imageUrl": "string",
   "podcastIndexId": "string",
@@ -188,12 +233,15 @@ Upserts podcast and subscription. Enforces plan limits (duration, subscription c
 
 Body:
 ```json
-{ "durationTier": "number (required, one of 1/2/3/5/7/10/15/30)" }
+{
+  "durationTier": "number (optional, one of 1/2/3/5/7/10/15/30)",
+  "voicePresetId": "string | null (optional)"
+}
 ```
 
 Response: `{ "subscription": {...} }`
 
-Enforces plan duration limit.
+Enforces plan duration limit. Setting `voicePresetId` to `null` clears the per-subscription voice override.
 
 **`DELETE /api/podcasts/subscribe/:podcastId`**
 
@@ -640,3 +688,48 @@ All analytics endpoints accept `from` and `to` query params (ISO date strings).
 | GET | `/:jobKey/runs/:runId/logs` | Logs for a specific cron run (level, message, structured data, timestamp) |
 
 Valid job keys: `pipeline-trigger`, `monitoring`, `user-lifecycle`, `data-retention`, `recommendations`.
+
+---
+
+### Voice Presets (`/api/admin/voice-presets`)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/` | List all voice presets (active and inactive) |
+| POST | `/` | Create a new voice preset |
+| PATCH | `/:id` | Update a voice preset |
+| DELETE | `/:id` | Delete a non-system voice preset (403 for system presets) |
+
+**`POST /`**
+
+Body:
+```json
+{
+  "name": "string (required, unique)",
+  "description": "string (optional)",
+  "config": { "openai": { "voice": "coral" }, "groq": { "voice": "..." } },
+  "isSystem": false
+}
+```
+
+Response (201): `{ "data": { ...preset } }`
+
+**`PATCH /:id`**
+
+Body (all optional):
+```json
+{
+  "name": "string",
+  "description": "string",
+  "config": { ... },
+  "isActive": true
+}
+```
+
+Response: `{ "data": { ...preset } }`
+
+**`DELETE /:id`**
+
+Returns 403 if the preset has `isSystem: true`. Returns 404 if not found.
+
+Response: `{ "success": true }`

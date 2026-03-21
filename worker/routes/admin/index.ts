@@ -22,6 +22,7 @@ import { recommendationsRoutes } from "./recommendations";
 import { cronJobsRoutes } from "./cron-jobs";
 import { claimsBenchmarkRoutes } from "./claims-benchmark";
 import { promptsRoutes } from "./prompts";
+import { voicePresetsRoutes } from "./voice-presets";
 
 /**
  * Admin route tree. All routes require admin authentication.
@@ -53,5 +54,6 @@ adminRoutes.route("/recommendations", recommendationsRoutes);
 adminRoutes.route("/cron-jobs", cronJobsRoutes);
 adminRoutes.route("/claims-benchmark", claimsBenchmarkRoutes);
 adminRoutes.route("/prompts", promptsRoutes);
+adminRoutes.route("/voice-presets", voicePresetsRoutes);
 
 export { adminRoutes };

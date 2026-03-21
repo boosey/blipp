@@ -9,6 +9,7 @@ import { usePlan } from "../contexts/plan-context";
 import { useUpgradeModal } from "../components/upgrade-prompt";
 import { usePodcastSheet } from "../contexts/podcast-sheet-context";
 import { TierPicker } from "../components/tier-picker";
+import { VoicePresetPicker } from "../components/voice-preset-picker";
 import { ThumbButtons } from "../components/thumb-buttons";
 import type { PodcastDetail as PodcastDetailType, EpisodeSummary } from "../types/user";
 import type { DurationTier } from "../lib/duration-tiers";
@@ -25,6 +26,7 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
   const [requestingEpisodeId, setRequestingEpisodeId] = useState<string | null>(null);
   const [showSubscribeTierPicker, setShowSubscribeTierPicker] = useState(false);
   const [showChangeTierPicker, setShowChangeTierPicker] = useState(false);
+  const [showChangeVoicePicker, setShowChangeVoicePicker] = useState(false);
   const [briefTierPickerEpisodeId, setBriefTierPickerEpisodeId] = useState<string | null>(null);
   const [isFavorited, setIsFavorited] = useState(false);
   const [expandedEpisodeId, setExpandedEpisodeId] = useState<string | null>(null);
@@ -81,7 +83,7 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
       toast.success(`Subscribed to ${podcast.title}`);
       setPodcast((prev) =>
         prev
-          ? { ...prev, isSubscribed: true, subscriptionDurationTier: tier }
+          ? { ...prev, isSubscribed: true, subscriptionDurationTier: tier, subscriptionVoicePresetId: null }
           : prev
       );
     } catch (e) {
@@ -99,7 +101,7 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
       toast.success(`Unsubscribed from ${podcast.title}`);
       setPodcast((prev) =>
         prev
-          ? { ...prev, isSubscribed: false, subscriptionDurationTier: null }
+          ? { ...prev, isSubscribed: false, subscriptionDurationTier: null, subscriptionVoicePresetId: null }
           : prev
       );
     } catch (e) {
@@ -120,6 +122,23 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
       toast.success(`Briefing length updated to ${tier}m`);
       setPodcast((prev) =>
         prev ? { ...prev, subscriptionDurationTier: tier } : prev
+      );
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to update");
+    }
+  }
+
+  async function handleChangeVoice(voicePresetId: string | null) {
+    if (!podcast) return;
+    setShowChangeVoicePicker(false);
+    try {
+      await apiFetch(`/podcasts/subscribe/${podcast.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ voicePresetId }),
+      });
+      toast.success(voicePresetId ? "Voice updated" : "Voice reset to default");
+      setPodcast((prev) =>
+        prev ? { ...prev, subscriptionVoicePresetId: voicePresetId } : prev
       );
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to update");
@@ -288,12 +307,18 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
                 </button>
                 {podcast.subscriptionDurationTier && (
                   <button
-                    onClick={() => setShowChangeTierPicker(!showChangeTierPicker)}
+                    onClick={() => { setShowChangeTierPicker(!showChangeTierPicker); setShowChangeVoicePicker(false); }}
                     className="text-[10px] font-medium text-muted-foreground bg-muted hover:bg-accent px-1.5 py-0.5 rounded transition-colors"
                   >
                     {podcast.subscriptionDurationTier}m
                   </button>
                 )}
+                <button
+                  onClick={() => { setShowChangeVoicePicker(!showChangeVoicePicker); setShowChangeTierPicker(false); }}
+                  className="text-[10px] font-medium text-muted-foreground bg-muted hover:bg-accent px-1.5 py-0.5 rounded transition-colors"
+                >
+                  Voice
+                </button>
               </div>
               {showChangeTierPicker && (
                 <div className="space-y-1">
@@ -303,6 +328,15 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
                     onSelect={handleChangeTier}
                     maxDurationMinutes={planUsage.maxDurationMinutes}
                     onUpgrade={showUpgrade}
+                  />
+                </div>
+              )}
+              {showChangeVoicePicker && (
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Change voice:</p>
+                  <VoicePresetPicker
+                    selected={podcast.subscriptionVoicePresetId}
+                    onSelect={handleChangeVoice}
                   />
                 </div>
               )}
