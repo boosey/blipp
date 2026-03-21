@@ -742,10 +742,10 @@ model PlatformConfig {
 
 model PromptVersion {
   id        String   @id @default(cuid())
-  stage     String                    // "distillation", "narrative" — groups all prompt keys for this stage
+  stage     String   @default("")      // "distillation", "narrative" — groups all prompt keys for this stage
   version   Int
   label     String?
-  values    Json                      // Record<promptKey, value> — all prompt values in this stage
+  values    Json     @default("{}")   // Record<promptKey, value> — all prompt values in this stage
   notes     String?
   createdAt DateTime @default(now())
   createdBy String?
