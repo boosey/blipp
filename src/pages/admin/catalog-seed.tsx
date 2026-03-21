@@ -24,6 +24,7 @@ import {
   Pause,
   Play,
   Ban,
+  Plus,
 } from "lucide-react";
 import {
   AlertDialog,
@@ -95,6 +96,7 @@ export default function CatalogSeed() {
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [seedDialogOpen, setSeedDialogOpen] = useState(false);
+  const [seedMode, setSeedMode] = useState<"destructive" | "additive">("additive");
   const [seedConfirmText, setSeedConfirmText] = useState("");
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [pausing, setPausing] = useState(false);
@@ -172,9 +174,10 @@ export default function CatalogSeed() {
   const startSeed = async () => {
     setStarting(true);
     try {
-      await apiFetch("/catalog-seed", { method: "POST", body: JSON.stringify({ confirm: true }) });
+      await apiFetch("/catalog-seed", { method: "POST", body: JSON.stringify({ confirm: true, mode: seedMode }) });
       setSeedDialogOpen(false);
       setSeedConfirmText("");
+      setSeedMode("additive");
       await fetchProgress();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to start seed");
@@ -257,7 +260,14 @@ export default function CatalogSeed() {
         <div className="flex items-center gap-3">
           <Sprout className="h-6 w-6 text-[#10B981]" />
           <div>
-            <h2 className="text-xl font-semibold">Catalog Seed</h2>
+            <h2 className="text-xl font-semibold flex items-center gap-2">
+              Catalog Seed
+              {job && (
+                <Badge variant="outline" className={job.mode === "additive" ? "text-[#10B981] border-[#10B981]/30 text-xs" : "text-[#EF4444] border-[#EF4444]/30 text-xs"}>
+                  {job.mode === "additive" ? "Additive" : "Destructive"}
+                </Badge>
+              )}
+            </h2>
             {elapsed && isActive && (
               <p className="text-sm text-[#9CA3AF] flex items-center gap-1">
                 <Clock className="h-3 w-3" /> {elapsed} elapsed
@@ -325,16 +335,27 @@ export default function CatalogSeed() {
             </>
           )}
 
-          {/* No active job — Start Seed */}
+          {/* No active job — Start Seed (two modes) */}
           {(!job || ["complete", "failed", "cancelled"].includes(job.status)) && (
-            <Button
-              onClick={() => setSeedDialogOpen(true)}
-              disabled={starting}
-              className="bg-[#10B981] hover:bg-[#059669] text-white"
-            >
-              {starting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Sprout className="h-4 w-4 mr-2" />}
-              Start Seed
-            </Button>
+            <>
+              <Button
+                onClick={() => { setSeedMode("additive"); setSeedDialogOpen(true); }}
+                disabled={starting}
+                className="bg-[#10B981] hover:bg-[#059669] text-white"
+              >
+                {starting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
+                Add New
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => { setSeedMode("destructive"); setSeedDialogOpen(true); }}
+                disabled={starting}
+                className="text-[#EF4444] border-[#EF4444]/30 hover:bg-[#EF4444]/10"
+              >
+                {starting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Sprout className="h-4 w-4 mr-2" />}
+                Full Reseed
+              </Button>
+            </>
           )}
         </div>
       </div>
@@ -653,41 +674,67 @@ export default function CatalogSeed() {
       <AlertDialog open={seedDialogOpen} onOpenChange={(open) => { setSeedDialogOpen(open); if (!open) setSeedConfirmText(""); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Start Catalog Seed</AlertDialogTitle>
+            <AlertDialogTitle>
+              {seedMode === "destructive" ? "Full Reseed" : "Add New Podcasts"}
+            </AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="space-y-3">
-                <p>This will run a 3-phase catalog refresh:</p>
-                <ol className="list-decimal list-inside space-y-1 text-sm">
-                  <li>Discover ~2000 podcasts from Podcast Index</li>
-                  <li>Fetch RSS feeds for each podcast, pulling episodes</li>
-                  <li>Prefetch transcript/audio availability for episodes</li>
-                </ol>
-                <div className="rounded-md bg-[#EF4444]/10 border border-[#EF4444]/20 p-3 text-sm text-[#EF4444]">
-                  Warning: This wipes ALL existing catalog data — podcasts, episodes, subscriptions, briefings, and R2 work products.
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium">Type <span className="font-mono font-bold">SEED</span> to confirm:</label>
-                  <Input
-                    value={seedConfirmText}
-                    onChange={(e) => setSeedConfirmText(e.target.value)}
-                    placeholder="SEED"
-                    className="font-mono"
-                    autoFocus
-                  />
-                </div>
+                {seedMode === "additive" ? (
+                  <>
+                    <p>This will discover trending podcasts and add any that aren't already in the catalog. Existing data is untouched.</p>
+                    <ol className="list-decimal list-inside space-y-1 text-sm">
+                      <li>Discover trending podcasts from Podcast Index</li>
+                      <li>Insert only new podcasts not already in catalog</li>
+                      <li>Fetch RSS feeds and prefetch content for new podcasts</li>
+                    </ol>
+                  </>
+                ) : (
+                  <>
+                    <p>This will run a full destructive catalog reseed:</p>
+                    <ol className="list-decimal list-inside space-y-1 text-sm">
+                      <li>Wipe all existing catalog data</li>
+                      <li>Discover trending podcasts from Podcast Index</li>
+                      <li>Fetch RSS feeds and prefetch content</li>
+                    </ol>
+                    <div className="rounded-md bg-[#EF4444]/10 border border-[#EF4444]/20 p-3 text-sm text-[#EF4444]">
+                      Warning: This wipes ALL existing catalog data — podcasts, episodes, subscriptions, briefings, and R2 work products.
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium">Type <span className="font-mono font-bold">SEED</span> to confirm:</label>
+                      <Input
+                        value={seedConfirmText}
+                        onChange={(e) => setSeedConfirmText(e.target.value)}
+                        placeholder="SEED"
+                        className="font-mono"
+                        autoFocus
+                      />
+                    </div>
+                  </>
+                )}
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={startSeed}
-              disabled={seedConfirmText !== "SEED" || starting}
-              className="bg-[#EF4444] hover:bg-[#DC2626] text-white disabled:opacity-50"
-            >
-              {starting && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-              Start Seed
-            </AlertDialogAction>
+            {seedMode === "additive" ? (
+              <AlertDialogAction
+                onClick={startSeed}
+                disabled={starting}
+                className="bg-[#10B981] hover:bg-[#059669] text-white disabled:opacity-50"
+              >
+                {starting && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                Add New Podcasts
+              </AlertDialogAction>
+            ) : (
+              <AlertDialogAction
+                onClick={startSeed}
+                disabled={seedConfirmText !== "SEED" || starting}
+                className="bg-[#EF4444] hover:bg-[#DC2626] text-white disabled:opacity-50"
+              >
+                {starting && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                Full Reseed
+              </AlertDialogAction>
+            )}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

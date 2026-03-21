@@ -1,8 +1,11 @@
 import type { Env } from "../types";
 import type { CatalogRefreshMessage } from "../lib/queue-messages";
 import { createPrismaClient } from "../lib/db";
+import { getConfig } from "../lib/config";
 import { getCatalogSource } from "../lib/catalog-sources";
 import type { DiscoveredPodcast } from "../lib/catalog-sources";
+
+const DEFAULT_DISCOVER_COUNT = 2000;
 
 export async function handleCatalogRefresh(
   batch: MessageBatch<CatalogRefreshMessage>,
@@ -13,19 +16,21 @@ export async function handleCatalogRefresh(
 
   try {
     for (const msg of batch.messages) {
-      const { action, seedJobId } = msg.body;
-      console.log(`[catalog-refresh] Starting ${action}...`);
+      const { action, mode, seedJobId } = msg.body;
+      const seedMode = mode ?? "destructive";
+      console.log(`[catalog-refresh] Starting ${action} (mode: ${seedMode})...`);
 
       try {
         await updateStatus(prisma, "fetching_charts");
         if (seedJobId) await updateSeedJob(prisma, seedJobId, { status: "discovering" });
 
-        if (action === "seed") {
+        if (action === "seed" && seedMode === "destructive") {
           await wipeCatalogData(prisma, env.R2);
         }
 
+        const discoverCount = Number(await getConfig(prisma, "catalog.seedSize", DEFAULT_DISCOVER_COUNT));
         const source = getCatalogSource("podcast-index");
-        const discovered = await source.discover(2000, env);
+        const discovered = await source.discover(discoverCount, env);
         console.log(`[catalog-refresh] Discovered ${discovered.length} unique podcasts`);
         if (seedJobId) await updateSeedJob(prisma, seedJobId, { podcastsDiscovered: discovered.length });
 
@@ -36,9 +41,18 @@ export async function handleCatalogRefresh(
         if (seedJobId) await updateSeedJob(prisma, seedJobId, { status: "upserting" });
         let upsertedIds: string[];
 
-        if (action === "seed") {
+        if (action === "seed" && seedMode === "destructive") {
           // Bulk insert — DB was just wiped so no conflicts
           upsertedIds = await bulkInsertPodcasts(prisma, discovered, categoryIdMap);
+        } else if (action === "seed" && seedMode === "additive") {
+          // Only insert podcasts not already in DB
+          const newPodcasts = await filterNewPodcasts(prisma, discovered);
+          console.log(`[catalog-refresh] Additive: ${newPodcasts.length} new of ${discovered.length} discovered`);
+          if (newPodcasts.length > 0) {
+            upsertedIds = await bulkInsertPodcasts(prisma, newPodcasts, categoryIdMap);
+          } else {
+            upsertedIds = [];
+          }
         } else {
           upsertedIds = await upsertPodcasts(prisma, discovered, categoryIdMap);
           await markPendingDeletion(prisma, upsertedIds);
@@ -48,7 +62,7 @@ export async function handleCatalogRefresh(
         await queueFeedRefresh(env, upsertedIds, seedJobId);
 
         await updateStatus(prisma, "complete");
-        console.log(`[catalog-refresh] ${action} complete. ${upsertedIds.length} podcasts processed.`);
+        console.log(`[catalog-refresh] ${action} (${seedMode}) complete. ${upsertedIds.length} podcasts processed.`);
         msg.ack();
       } catch (err) {
         console.error(`[catalog-refresh] ${action} failed:`, err);
@@ -103,6 +117,23 @@ async function wipeCatalogData(prisma: any, r2: R2Bucket): Promise<void> {
     cursor = listed.truncated ? listed.cursor : undefined;
   } while (cursor);
   console.log(`[catalog-refresh] Deleted ${totalDeleted} R2 objects`);
+}
+
+async function filterNewPodcasts(prisma: any, discovered: DiscoveredPodcast[]): Promise<DiscoveredPodcast[]> {
+  const feedUrls = discovered.filter((p) => p.feedUrl).map((p) => p.feedUrl);
+  const BATCH = 500;
+  const existingUrls = new Set<string>();
+
+  for (let i = 0; i < feedUrls.length; i += BATCH) {
+    const batch = feedUrls.slice(i, i + BATCH);
+    const existing = await prisma.podcast.findMany({
+      where: { feedUrl: { in: batch } },
+      select: { feedUrl: true },
+    });
+    for (const p of existing) existingUrls.add(p.feedUrl);
+  }
+
+  return discovered.filter((p) => p.feedUrl && !existingUrls.has(p.feedUrl));
 }
 
 async function upsertCategories(prisma: any, discovered: DiscoveredPodcast[]): Promise<Map<string, string>> {

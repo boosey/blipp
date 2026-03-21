@@ -742,16 +742,16 @@ model PlatformConfig {
 
 model PromptVersion {
   id        String   @id @default(cuid())
-  promptKey String
+  stage     String                    // "distillation", "narrative" — groups all prompt keys for this stage
   version   Int
   label     String?
-  value     String
+  values    Json                      // Record<promptKey, value> — all prompt values in this stage
   notes     String?
   createdAt DateTime @default(now())
   createdBy String?
 
-  @@unique([promptKey, version])
-  @@index([promptKey])
+  @@unique([stage, version])
+  @@index([stage])
 }
 
 // ── Voice Presets ──
@@ -933,6 +933,7 @@ enum CronRunLogLevel {
 
 model CatalogSeedJob {
   id                  String    @id @default(cuid())
+  mode                String    @default("destructive") // "destructive" | "additive"
   status              String    @default("pending")
   podcastsDiscovered  Int       @default(0)
   feedsTotal          Int       @default(0)

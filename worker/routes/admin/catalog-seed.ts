@@ -8,6 +8,8 @@ catalogSeedRoutes.post("/", async (c) => {
   const prisma = c.get("prisma") as any;
   const body = await c.req.json().catch(() => ({}));
 
+  const mode = body.mode === "additive" ? "additive" : "destructive";
+
   if (!body.confirm) {
     return c.json({ error: "Confirmation required. Send { confirm: true }." }, 400);
   }
@@ -20,9 +22,9 @@ catalogSeedRoutes.post("/", async (c) => {
     return c.json({ error: "A seed job is already active.", activeJobId: active.id }, 409);
   }
 
-  const job = await prisma.catalogSeedJob.create({ data: {} });
+  const job = await prisma.catalogSeedJob.create({ data: { mode } });
 
-  await c.env.CATALOG_REFRESH_QUEUE.send({ action: "seed", seedJobId: job.id });
+  await c.env.CATALOG_REFRESH_QUEUE.send({ action: "seed", mode, seedJobId: job.id });
 
   return c.json({ status: "queued", jobId: job.id });
 });
@@ -129,6 +131,7 @@ catalogSeedRoutes.get("/active", async (c) => {
   return c.json({
     job: {
       id: job.id,
+      mode: job.mode,
       status: job.status,
       podcastsDiscovered: job.podcastsDiscovered,
       feedsTotal: job.feedsTotal,

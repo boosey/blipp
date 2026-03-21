@@ -75,5 +75,6 @@ export interface FeedRefreshMessage {
 /** Catalog refresh queue. */
 export interface CatalogRefreshMessage {
   action: "seed" | "refresh";
+  mode?: "destructive" | "additive";
   seedJobId?: string;
 }

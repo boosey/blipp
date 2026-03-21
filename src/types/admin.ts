@@ -971,6 +971,7 @@ export interface AdminPodcastProfile {
 
 export interface CatalogSeedJob {
   id: string;
+  mode: "destructive" | "additive";
   status: string; // pending | discovering | upserting | feed_refresh | paused | cancelled | complete | failed
   podcastsDiscovered: number;
   feedsTotal: number;
@@ -1059,10 +1060,10 @@ export interface VoicePresetOption {
 
 export interface PromptVersionEntry {
   id: string;
-  promptKey: string;
+  stage: string;
   version: number;
   label: string | null;
-  value: string;
+  values: Record<string, string>;
   notes: string | null;
   createdAt: string;
   createdBy: string | null;
