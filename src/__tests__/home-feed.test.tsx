@@ -194,37 +194,35 @@ describe("Home Feed", () => {
     });
   });
 
-  describe("Smart ordering", () => {
-    it("shows unlistened READY items before listened items", async () => {
-      const unlistenedItem = makeItem("unlistened", {
-        listened: false,
-        status: "READY",
+  describe("Chronological ordering", () => {
+    it("sorts by request time with youngest first", async () => {
+      const olderItem = makeItem("older", {
+        createdAt: new Date("2026-03-20T10:00:00Z").toISOString(),
       });
-      const listenedItem = makeItem("listened", {
-        listened: true,
-        status: "READY",
+      const newerItem = makeItem("newer", {
+        createdAt: new Date("2026-03-21T10:00:00Z").toISOString(),
       });
 
-      // Provide listened first in the API response to prove sorting happens
+      // Provide older first in the API response to prove sorting happens
       mockApiFetch.mockResolvedValue({
-        items: [listenedItem, unlistenedItem],
+        items: [olderItem, newerItem],
       });
 
       renderHome();
 
       await waitFor(() => {
-        expect(screen.getByText("Episode unlistened")).toBeInTheDocument();
+        expect(screen.getByText("Episode newer")).toBeInTheDocument();
       });
 
       const allEpisodeTitles = screen.getAllByText(/^Episode /);
-      const unlistenedIndex = allEpisodeTitles.findIndex(
-        (el) => el.textContent === "Episode unlistened"
+      const newerIndex = allEpisodeTitles.findIndex(
+        (el) => el.textContent === "Episode newer"
       );
-      const listenedIndex = allEpisodeTitles.findIndex(
-        (el) => el.textContent === "Episode listened"
+      const olderIndex = allEpisodeTitles.findIndex(
+        (el) => el.textContent === "Episode older"
       );
 
-      expect(unlistenedIndex).toBeLessThan(listenedIndex);
+      expect(newerIndex).toBeLessThan(olderIndex);
     });
   });
 

@@ -85,25 +85,16 @@ export function Home() {
     return () => clearInterval(interval);
   }, [fetchFeed]);
 
-  // Smart sort: active items (unlistened READY + in-progress) first, then rest
+  // Sort by request time, youngest first
   const sortedItems = useMemo(() => {
     const filtered =
       filter === "creating"
         ? items.filter((i) => i.status === "PENDING" || i.status === "PROCESSING")
         : items;
 
-    const byDate = (a: FeedItem, b: FeedItem) =>
-      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-
-    const isActive = (i: FeedItem) =>
-      (!i.listened && i.status === "READY") ||
-      i.status === "PENDING" ||
-      i.status === "PROCESSING";
-
-    const active = filtered.filter(isActive).sort(byDate);
-    const rest = filtered.filter((i) => !isActive(i)).sort(byDate);
-
-    return [...active, ...rest];
+    return [...filtered].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
   }, [items, filter]);
 
   const groups = useMemo(() => groupByDate(sortedItems), [sortedItems]);

@@ -1,8 +1,10 @@
 import { useState } from "react";
+import { ChevronRightIcon } from "lucide-react";
 import { ScrollableRow } from "./scrollable-row";
 import { EpisodeCard } from "./episode-card";
 import { usePodcastSheet } from "../contexts/podcast-sheet-context";
-import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "./ui/accordion";
+import { Accordion, AccordionItem, AccordionContent } from "./ui/accordion";
+import { Accordion as AccordionPrimitive } from "radix-ui";
 import type { CuratedRow as CuratedRowType } from "../types/recommendations";
 
 interface CuratedRowProps {
@@ -35,9 +37,12 @@ export function CuratedRow({ row }: CuratedRowProps) {
   return (
     <Accordion type="multiple" value={value} onValueChange={handleChange}>
       <AccordionItem value="content" className="border-b-0">
-        <AccordionTrigger className="py-1 hover:no-underline">
-          <h2 className="text-sm font-semibold">{row.title}</h2>
-        </AccordionTrigger>
+        <AccordionPrimitive.Header className="flex">
+          <AccordionPrimitive.Trigger className="flex items-center gap-1 py-1 text-left outline-none [&[data-state=open]>svg]:rotate-90">
+            <h2 className="text-sm font-semibold">{row.title}</h2>
+            <ChevronRightIcon className="size-3.5 text-muted-foreground shrink-0 transition-transform duration-200" />
+          </AccordionPrimitive.Trigger>
+        </AccordionPrimitive.Header>
         <AccordionContent className="pb-0">
           <ScrollableRow className="gap-3 pb-2">
             {row.items.map((item, i) => {
