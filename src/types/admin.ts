@@ -1019,3 +1019,17 @@ export interface CatalogSeedProgress {
     podcast: { title: string; imageUrl: string | null };
   }[];
 }
+
+// ── Prompt Versioning ──
+
+export interface PromptVersionEntry {
+  id: string;
+  promptKey: string;
+  version: number;
+  label: string | null;
+  value: string;
+  notes: string | null;
+  createdAt: string;
+  createdBy: string | null;
+  isActive: boolean;
+}

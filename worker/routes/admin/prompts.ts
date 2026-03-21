@@ -22,6 +22,15 @@ const DEFAULTS: Record<string, string> = {
 
 const VALID_KEYS = new Set<string>(Object.values(PROMPT_CONFIG_KEYS));
 
+async function getNextVersion(prisma: any, promptKey: string): Promise<number> {
+  const latest = await prisma.promptVersion.findFirst({
+    where: { promptKey },
+    orderBy: { version: "desc" },
+    select: { version: true },
+  });
+  return (latest?.version ?? 0) + 1;
+}
+
 const promptsRoutes = new Hono<{ Bindings: Env }>();
 
 /** GET / — List all prompts with current values (from config or defaults). */
@@ -58,12 +67,12 @@ promptsRoutes.get("/", async (c) => {
   return c.json({ data });
 });
 
-/** PATCH /:key — Update a prompt. */
+/** PATCH /:key — Update a prompt and create a version. */
 promptsRoutes.patch("/:key", async (c) => {
   const prisma = c.get("prisma") as any;
   const auth = getAuth(c);
   const key = decodeURIComponent(c.req.param("key"));
-  const body = await c.req.json<{ value: string }>();
+  const body = await c.req.json<{ value: string; label?: string }>();
 
   if (!VALID_KEYS.has(key)) {
     return c.json({ error: "Unknown prompt key" }, 400);
@@ -112,6 +121,18 @@ promptsRoutes.patch("/:key", async (c) => {
       }).catch(() => {});
     }
 
+    // Create a version record
+    const nextVersion = await getNextVersion(prisma, key);
+    await prisma.promptVersion.create({
+      data: {
+        promptKey: key,
+        version: nextVersion,
+        value: body.value,
+        label: body.label ?? null,
+        createdBy: auth?.userId ?? null,
+      },
+    });
+
     return c.json({ data: { key, value: body.value, isDefault: false } });
   } catch {
     return c.json({ error: "Failed to update prompt" }, 503);
@@ -146,6 +167,112 @@ promptsRoutes.delete("/:key", async (c) => {
   } catch {
     return c.json({ error: "Failed to reset prompt" }, 503);
   }
+});
+
+/** GET /:key/versions — List all versions for a prompt key. */
+promptsRoutes.get("/:key/versions", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const key = decodeURIComponent(c.req.param("key"));
+
+  if (!VALID_KEYS.has(key)) {
+    return c.json({ error: "Unknown prompt key" }, 400);
+  }
+
+  const versions = await prisma.promptVersion.findMany({
+    where: { promptKey: key },
+    orderBy: { version: "desc" },
+  });
+
+  // Determine which version is active by comparing value to current config
+  const config = await prisma.platformConfig.findUnique({ where: { key } });
+  const activeValue = config ? (config.value as string) : null;
+
+  const data = versions.map((v: any) => ({
+    id: v.id,
+    promptKey: v.promptKey,
+    version: v.version,
+    label: v.label,
+    value: v.value,
+    notes: v.notes,
+    createdAt: v.createdAt.toISOString(),
+    createdBy: v.createdBy,
+    isActive: activeValue !== null && v.value === activeValue,
+  }));
+
+  return c.json({ data });
+});
+
+/** PATCH /:key/versions/:id/activate — Activate a specific version. */
+promptsRoutes.patch("/:key/versions/:id/activate", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const auth = getAuth(c);
+  const key = decodeURIComponent(c.req.param("key"));
+  const versionId = c.req.param("id");
+
+  if (!VALID_KEYS.has(key)) {
+    return c.json({ error: "Unknown prompt key" }, 400);
+  }
+
+  const version = await prisma.promptVersion.findUnique({
+    where: { id: versionId },
+  });
+
+  if (!version || version.promptKey !== key) {
+    return c.json({ error: "Version not found" }, 404);
+  }
+
+  const meta = PROMPT_METADATA[key];
+  await prisma.platformConfig.upsert({
+    where: { key },
+    create: {
+      key,
+      value: version.value,
+      description: meta?.description,
+      updatedBy: auth?.userId ?? null,
+    },
+    update: {
+      value: version.value,
+      description: meta?.description,
+      updatedBy: auth?.userId ?? null,
+    },
+  });
+
+  writeAuditLog(prisma, {
+    actorId: auth?.userId ?? "unknown",
+    action: "prompt.activate_version",
+    entityType: "PromptVersion",
+    entityId: versionId,
+    after: { promptKey: key, version: version.version },
+  }).catch(() => {});
+
+  return c.json({ data: { key, versionId, version: version.version } });
+});
+
+/** PATCH /:key/versions/:id/notes — Update notes on a version. */
+promptsRoutes.patch("/:key/versions/:id/notes", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const key = decodeURIComponent(c.req.param("key"));
+  const versionId = c.req.param("id");
+  const body = await c.req.json<{ notes: string }>();
+
+  if (!VALID_KEYS.has(key)) {
+    return c.json({ error: "Unknown prompt key" }, 400);
+  }
+
+  const version = await prisma.promptVersion.findUnique({
+    where: { id: versionId },
+  });
+
+  if (!version || version.promptKey !== key) {
+    return c.json({ error: "Version not found" }, 404);
+  }
+
+  await prisma.promptVersion.update({
+    where: { id: versionId },
+    data: { notes: body.notes },
+  });
+
+  return c.json({ data: { id: versionId, notes: body.notes } });
 });
 
 export { promptsRoutes };

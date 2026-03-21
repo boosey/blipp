@@ -9,6 +9,9 @@ import {
   ChevronRight,
   RotateCcw,
   Save,
+  History,
+  Play,
+  StickyNote,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -25,7 +28,7 @@ import {
 import { useAdminFetch } from "@/lib/admin-api";
 import { STAGE_LABELS } from "@/lib/ai-models";
 import type { AIStage } from "@/lib/ai-models";
-import type { AiModelEntry, PlatformConfigEntry } from "@/types/admin";
+import type { AiModelEntry, PlatformConfigEntry, PromptVersionEntry } from "@/types/admin";
 
 interface PromptEntry {
   key: string;
@@ -77,6 +80,10 @@ export default function StageConfiguration() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
   const [expandedStage, setExpandedStage] = useState<AIStage | null>(null);
+  const [versions, setVersions] = useState<Record<string, PromptVersionEntry[]>>({});
+  const [expandedVersions, setExpandedVersions] = useState<string | null>(null);
+  const [editingNotes, setEditingNotes] = useState<Record<string, string>>({});
+  const [savingNotes, setSavingNotes] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -204,8 +211,9 @@ export default function StageConfiguration() {
         method: "PATCH",
         body: JSON.stringify({ value: editValues[key] }),
       });
-      toast.success("Prompt updated");
+      toast.success("Prompt saved as new version");
       await load();
+      if (expandedVersions === key) await loadVersions(key);
     } catch {
       toast.error("Failed to save prompt");
     } finally {
@@ -232,6 +240,62 @@ export default function StageConfiguration() {
   const isPromptDirty = (key: string) => {
     const original = prompts.find((p) => p.key === key);
     return original && editValues[key] !== original.value;
+  };
+
+  const loadVersions = useCallback(async (promptKey: string) => {
+    try {
+      const res = await apiFetch<{ data: PromptVersionEntry[] }>(
+        `/prompts/${encodeURIComponent(promptKey)}/versions`
+      );
+      setVersions((prev) => ({ ...prev, [promptKey]: res.data }));
+    } catch {
+      toast.error("Failed to load versions");
+    }
+  }, [apiFetch]);
+
+  const handleActivateVersion = async (promptKey: string, versionId: string) => {
+    setSaving(`activate:${versionId}`);
+    try {
+      await apiFetch(
+        `/prompts/${encodeURIComponent(promptKey)}/versions/${versionId}/activate`,
+        { method: "PATCH" }
+      );
+      toast.success("Version activated");
+      await load();
+      await loadVersions(promptKey);
+    } catch {
+      toast.error("Failed to activate version");
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const handleSaveNotes = async (promptKey: string, versionId: string) => {
+    setSavingNotes(versionId);
+    try {
+      await apiFetch(
+        `/prompts/${encodeURIComponent(promptKey)}/versions/${versionId}/notes`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ notes: editingNotes[versionId] ?? "" }),
+        }
+      );
+      toast.success("Notes saved");
+      await loadVersions(promptKey);
+    } catch {
+      toast.error("Failed to save notes");
+    } finally {
+      setSavingNotes(null);
+    }
+  };
+
+  const toggleVersionHistory = (promptKey: string) => {
+    if (expandedVersions === promptKey) {
+      setExpandedVersions(null);
+    } else {
+      setExpandedVersions(promptKey);
+      loadVersions(promptKey);
+    }
   };
 
   if (loading && configs.length === 0) return <StageConfigSkeleton />;
@@ -444,6 +508,111 @@ export default function StageConfiguration() {
                                   {isSaving ? "Saving..." : "Save"}
                                 </Button>
                               </div>
+                            </div>
+
+                            {/* Version History */}
+                            <div className="border-t border-white/5 pt-2 mt-2">
+                              <button
+                                onClick={() => toggleVersionHistory(prompt.key)}
+                                className="flex items-center gap-1.5 text-[10px] text-[#9CA3AF] hover:text-[#F9FAFB] transition-colors"
+                              >
+                                <History className="h-3 w-3" />
+                                Version History
+                                {expandedVersions === prompt.key ? (
+                                  <ChevronDown className="h-3 w-3" />
+                                ) : (
+                                  <ChevronRight className="h-3 w-3" />
+                                )}
+                              </button>
+
+                              {expandedVersions === prompt.key && (
+                                <div className="mt-2 space-y-2 max-h-64 overflow-y-auto">
+                                  {(versions[prompt.key] ?? []).length === 0 ? (
+                                    <p className="text-[10px] text-[#6B7280] italic">No versions saved yet</p>
+                                  ) : (
+                                    (versions[prompt.key] ?? []).map((v) => (
+                                      <div
+                                        key={v.id}
+                                        className={cn(
+                                          "rounded-lg border p-2.5 space-y-1.5",
+                                          v.isActive
+                                            ? "bg-[#10B981]/5 border-[#10B981]/30"
+                                            : "bg-[#0F1D32] border-white/5"
+                                        )}
+                                      >
+                                        <div className="flex items-center justify-between">
+                                          <div className="flex items-center gap-2">
+                                            <span className="text-[10px] font-mono font-semibold text-[#F9FAFB]">
+                                              v{v.version}
+                                            </span>
+                                            {v.label && (
+                                              <span className="text-[10px] text-[#9CA3AF]">{v.label}</span>
+                                            )}
+                                            {v.isActive && (
+                                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#10B981]/20 text-[#10B981]">
+                                                active
+                                              </span>
+                                            )}
+                                          </div>
+                                          <div className="flex items-center gap-1.5">
+                                            {!v.isActive && (
+                                              <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() => handleActivateVersion(prompt.key, v.id)}
+                                                disabled={saving === `activate:${v.id}`}
+                                                className="h-6 text-[10px] text-[#10B981] hover:bg-[#10B981]/10 gap-1 px-2"
+                                              >
+                                                <Play className="h-2.5 w-2.5" />
+                                                Activate
+                                              </Button>
+                                            )}
+                                            <Button
+                                              variant="ghost"
+                                              size="sm"
+                                              onClick={() => {
+                                                setEditValues((prev) => ({ ...prev, [prompt.key]: v.value }));
+                                              }}
+                                              className="h-6 text-[10px] text-[#3B82F6] hover:bg-[#3B82F6]/10 px-2"
+                                            >
+                                              Load
+                                            </Button>
+                                          </div>
+                                        </div>
+
+                                        <div className="text-[10px] text-[#6B7280]">
+                                          {new Date(v.createdAt).toLocaleString()}
+                                        </div>
+
+                                        {/* Notes */}
+                                        <div className="flex items-start gap-1.5">
+                                          <StickyNote className="h-3 w-3 text-[#6B7280] mt-0.5 shrink-0" />
+                                          <textarea
+                                            value={editingNotes[v.id] ?? v.notes ?? ""}
+                                            onChange={(e) =>
+                                              setEditingNotes((prev) => ({ ...prev, [v.id]: e.target.value }))
+                                            }
+                                            placeholder="Add notes about this version..."
+                                            className="flex-1 bg-transparent border-none text-[10px] text-[#9CA3AF] placeholder:text-[#4B5563] resize-none focus:outline-none min-h-[20px]"
+                                            rows={1}
+                                          />
+                                          {(editingNotes[v.id] !== undefined && editingNotes[v.id] !== (v.notes ?? "")) && (
+                                            <Button
+                                              variant="ghost"
+                                              size="sm"
+                                              onClick={() => handleSaveNotes(prompt.key, v.id)}
+                                              disabled={savingNotes === v.id}
+                                              className="h-5 text-[10px] text-[#F59E0B] hover:bg-[#F59E0B]/10 px-1.5"
+                                            >
+                                              {savingNotes === v.id ? "..." : "Save"}
+                                            </Button>
+                                          )}
+                                        </div>
+                                      </div>
+                                    ))
+                                  )}
+                                </div>
+                              )}
                             </div>
                           </div>
                         );

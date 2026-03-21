@@ -728,6 +728,20 @@ model PlatformConfig {
   updatedBy   String?  // admin clerkId who last updated
 }
 
+model PromptVersion {
+  id        String   @id @default(cuid())
+  promptKey String
+  version   Int
+  label     String?
+  value     String
+  notes     String?
+  createdAt DateTime @default(now())
+  createdBy String?
+
+  @@unique([promptKey, version])
+  @@index([promptKey])
+}
+
 // ── AI Model Registry ──
 
 enum AiStage {
