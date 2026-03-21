@@ -302,9 +302,12 @@ dashboardRoutes.get("/feed-refresh-summary", async (c) => {
 
   const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-  const [totalPodcasts, recentEpisodes, feedErrors] = await Promise.all([
+  const [totalPodcasts, totalEpisodes, recentEpisodes, prefetchedTranscripts, prefetchedAudio, feedErrors] = await Promise.all([
     prisma.podcast.count({ where: { status: "active" } }),
+    prisma.episode.count(),
     prisma.episode.count({ where: { createdAt: { gte: twentyFourHoursAgo } } }),
+    prisma.episode.count({ where: { contentStatus: { in: ["TRANSCRIPT_READY", "AUDIO_READY"] } } }),
+    prisma.episode.count({ where: { contentStatus: "AUDIO_READY" } }),
     prisma.podcast.count({ where: { feedError: { not: null }, status: "active" } }),
   ]);
 
@@ -313,7 +316,10 @@ dashboardRoutes.get("/feed-refresh-summary", async (c) => {
       lastRunAt: lastRunAt?.toISOString() ?? null,
       podcastsRefreshed,
       totalPodcasts,
+      totalEpisodes,
       recentEpisodes,
+      prefetchedTranscripts,
+      prefetchedAudio,
       feedErrors,
     },
   });

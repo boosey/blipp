@@ -52,6 +52,11 @@ function limitsText(plan: AdminPlan): string {
   } else {
     parts.push("Unlim pods");
   }
+  if (plan.pastEpisodesLimit != null) {
+    parts.push(`${plan.pastEpisodesLimit} past eps`);
+  } else {
+    parts.push("Unlim past eps");
+  }
   return parts.join(" · ");
 }
 
@@ -68,6 +73,7 @@ interface PlanFormData {
   briefingsPerWeek: string;
   maxDurationMinutes: string;
   maxPodcastSubscriptions: string;
+  pastEpisodesLimit: string;
   adFree: boolean;
   priorityProcessing: boolean;
   earlyAccess: boolean;
@@ -91,6 +97,7 @@ function emptyForm(): PlanFormData {
     briefingsPerWeek: "",
     maxDurationMinutes: "5",
     maxPodcastSubscriptions: "",
+    pastEpisodesLimit: "",
     adFree: false,
     priorityProcessing: false,
     earlyAccess: false,
@@ -115,6 +122,7 @@ function planToForm(plan: AdminPlan): PlanFormData {
     briefingsPerWeek: plan.briefingsPerWeek != null ? String(plan.briefingsPerWeek) : "",
     maxDurationMinutes: String(plan.maxDurationMinutes),
     maxPodcastSubscriptions: plan.maxPodcastSubscriptions != null ? String(plan.maxPodcastSubscriptions) : "",
+    pastEpisodesLimit: plan.pastEpisodesLimit != null ? String(plan.pastEpisodesLimit) : "",
     adFree: plan.adFree,
     priorityProcessing: plan.priorityProcessing,
     earlyAccess: plan.earlyAccess,
@@ -139,6 +147,7 @@ function formToPayload(form: PlanFormData) {
     briefingsPerWeek: form.briefingsPerWeek ? Number(form.briefingsPerWeek) : null,
     maxDurationMinutes: Number(form.maxDurationMinutes),
     maxPodcastSubscriptions: form.maxPodcastSubscriptions ? Number(form.maxPodcastSubscriptions) : null,
+    pastEpisodesLimit: form.pastEpisodesLimit ? Number(form.pastEpisodesLimit) : null,
     adFree: form.adFree,
     priorityProcessing: form.priorityProcessing,
     earlyAccess: form.earlyAccess,
@@ -237,7 +246,7 @@ function PlanFormDialog({
             {/* Limits */}
             <div className="space-y-3">
               <span className="text-xs font-semibold text-[#9CA3AF] uppercase tracking-wider">Limits</span>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label className="text-xs text-[#F9FAFB]">Briefings/week</Label>
                   <Input
@@ -264,6 +273,17 @@ function PlanFormDialog({
                     type="number"
                     value={form.maxPodcastSubscriptions}
                     onChange={(e) => update({ maxPodcastSubscriptions: e.target.value })}
+                    placeholder="Unlimited"
+                    className="h-8 text-xs bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono"
+                  />
+                  <span className="text-[10px] text-[#9CA3AF]">Empty = unlimited</span>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-[#F9FAFB]">Past episodes</Label>
+                  <Input
+                    type="number"
+                    value={form.pastEpisodesLimit}
+                    onChange={(e) => update({ pastEpisodesLimit: e.target.value })}
                     placeholder="Unlimited"
                     className="h-8 text-xs bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono"
                   />
@@ -300,14 +320,17 @@ function PlanFormDialog({
             <Separator className="bg-white/5" />
 
             {/* Voice Presets */}
-            {voicePresets.filter((vp) => !vp.isSystem).length > 0 && (
+            {voicePresets.length > 0 && (
               <div className="space-y-3">
                 <span className="text-xs font-semibold text-[#9CA3AF] uppercase tracking-wider">Voice Presets</span>
-                <p className="text-[10px] text-[#9CA3AF]">System Default is always available. Select additional presets this plan grants access to.</p>
+                <p className="text-[10px] text-[#9CA3AF]">Select which voice presets this plan grants access to.</p>
                 <div className="grid grid-cols-2 gap-y-2 gap-x-6">
-                  {voicePresets.filter((vp) => !vp.isSystem).map((vp) => (
+                  {voicePresets.map((vp) => (
                     <div key={vp.id} className="flex items-center justify-between">
-                      <Label className="text-xs text-[#F9FAFB]">{vp.name}</Label>
+                      <Label className="text-xs text-[#F9FAFB]">
+                        {vp.name}
+                        {vp.isSystem && <span className="text-[10px] text-[#9CA3AF] ml-1">(system)</span>}
+                      </Label>
                       <Switch
                         checked={form.allowedVoicePresetIds.includes(vp.id)}
                         onCheckedChange={() => toggleVoicePreset(vp.id)}
@@ -664,6 +687,7 @@ export default function PlansPage() {
               <th className="text-right px-3 py-2.5 text-[10px] uppercase text-[#9CA3AF] font-medium">Annual</th>
               <th className="text-center px-3 py-2.5 text-[10px] uppercase text-[#9CA3AF] font-medium">Users</th>
               <th className="text-left px-3 py-2.5 text-[10px] uppercase text-[#9CA3AF] font-medium">Limits</th>
+              <th className="text-center px-3 py-2.5 text-[10px] uppercase text-[#9CA3AF] font-medium">Voices</th>
               <th className="text-center px-3 py-2.5 text-[10px] uppercase text-[#9CA3AF] font-medium">Active</th>
               <th className="text-center px-3 py-2.5 text-[10px] uppercase text-[#9CA3AF] font-medium">Order</th>
               <th className="text-right px-3 py-2.5 text-[10px] uppercase text-[#9CA3AF] font-medium">Actions</th>
@@ -721,6 +745,24 @@ export default function PlansPage() {
                 {/* Limits */}
                 <td className="px-3 py-2.5">
                   <span className="text-[#9CA3AF] text-[10px]">{limitsText(plan)}</span>
+                </td>
+
+                {/* Voices */}
+                <td className="px-3 py-2.5 text-center">
+                  {(plan.allowedVoicePresetIds?.length ?? 0) > 0 ? (
+                    <div className="flex flex-wrap gap-0.5 justify-center">
+                      {plan.allowedVoicePresetIds.map((vpId) => {
+                        const vp = voicePresets.find((v) => v.id === vpId);
+                        return (
+                          <Badge key={vpId} className="bg-white/5 text-[#9CA3AF] border-white/10 text-[9px]">
+                            {vp?.name ?? vpId.slice(0, 6)}
+                          </Badge>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <span className="text-[10px] text-[#9CA3AF]/50">-</span>
+                  )}
                 </td>
 
                 {/* Active Toggle */}
@@ -838,6 +880,19 @@ export default function PlansPage() {
                           {f}
                         </Badge>
                       ))}
+                    </div>
+                  )}
+
+                  {(plan.allowedVoicePresetIds?.length ?? 0) > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {plan.allowedVoicePresetIds.map((vpId) => {
+                        const vp = voicePresets.find((v) => v.id === vpId);
+                        return (
+                          <Badge key={vpId} className="bg-[#3B82F6]/10 text-[#3B82F6] text-[9px] font-normal">
+                            {vp?.name ?? vpId.slice(0, 6)}
+                          </Badge>
+                        );
+                      })}
                     </div>
                   )}
                 </div>

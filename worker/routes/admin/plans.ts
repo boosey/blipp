@@ -18,6 +18,7 @@ const PLAN_WRITABLE_FIELDS = [
   "briefingsPerWeek",
   "maxDurationMinutes",
   "maxPodcastSubscriptions",
+  "pastEpisodesLimit",
   "adFree",
   "priorityProcessing",
   "earlyAccess",

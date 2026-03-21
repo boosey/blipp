@@ -213,7 +213,11 @@ describe("Dashboard Routes", () => {
         .mockResolvedValueOnce(5)   // podcastsRefreshed (within 10 min window)
         .mockResolvedValueOnce(10)  // totalPodcasts (active)
         .mockResolvedValueOnce(2);  // feedErrors
-      mockPrisma.episode.count.mockResolvedValueOnce(8); // recentEpisodes (last 24h)
+      mockPrisma.episode.count
+        .mockResolvedValueOnce(500) // totalEpisodes
+        .mockResolvedValueOnce(8)   // recentEpisodes (last 24h)
+        .mockResolvedValueOnce(120) // prefetchedTranscripts
+        .mockResolvedValueOnce(80); // prefetchedAudio
 
       const res = await app.request("/dashboard/feed-refresh-summary", {}, env, mockExCtx);
       expect(res.status).toBe(200);
@@ -222,7 +226,10 @@ describe("Dashboard Routes", () => {
         lastRunAt: lastFetched.toISOString(),
         podcastsRefreshed: 5,
         totalPodcasts: 10,
+        totalEpisodes: 500,
         recentEpisodes: 8,
+        prefetchedTranscripts: 120,
+        prefetchedAudio: 80,
         feedErrors: 2,
       });
     });
@@ -232,7 +239,11 @@ describe("Dashboard Routes", () => {
       mockPrisma.podcast.count
         .mockResolvedValueOnce(3)  // totalPodcasts
         .mockResolvedValueOnce(0); // feedErrors
-      mockPrisma.episode.count.mockResolvedValueOnce(0); // recentEpisodes
+      mockPrisma.episode.count
+        .mockResolvedValueOnce(0)  // totalEpisodes
+        .mockResolvedValueOnce(0)  // recentEpisodes
+        .mockResolvedValueOnce(0)  // prefetchedTranscripts
+        .mockResolvedValueOnce(0); // prefetchedAudio
 
       const res = await app.request("/dashboard/feed-refresh-summary", {}, env, mockExCtx);
       expect(res.status).toBe(200);

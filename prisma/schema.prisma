@@ -26,6 +26,7 @@ model Plan {
   briefingsPerWeek        Int?                          // null = unlimited
   maxDurationMinutes      Int      @default(5)
   maxPodcastSubscriptions Int?                          // null = unlimited
+  pastEpisodesLimit       Int?                          // null = unlimited, otherwise max past episodes available
 
   // Feature flags
   adFree                  Boolean  @default(false)

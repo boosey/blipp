@@ -225,12 +225,12 @@ export function Home() {
 
       <InstallPrompt />
 
-      {/* Curated episode recommendations */}
-      {curatedData?.rows.slice(0, 2).map((row, i) => (
-        <div key={`${row.title}-${i}`} className="mb-3">
-          <CuratedRow row={row} />
+      {/* Suggested Next Blipps */}
+      {curatedData?.rows?.[0]?.items && curatedData.rows[0].items.length > 0 && (
+        <div className="mb-3">
+          <CuratedRow row={{ title: "Suggested Next Blipp", type: curatedData.rows[0].type, items: curatedData.rows[0].items.slice(0, 6) }} />
         </div>
-      ))}
+      )}
 
       {/* Play All button */}
       {unlistenedReady.length > 0 && (

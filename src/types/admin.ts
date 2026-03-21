@@ -31,7 +31,10 @@ export interface FeedRefreshSummary {
   lastRunAt: string | null;
   podcastsRefreshed: number;
   totalPodcasts: number;
+  totalEpisodes: number;
   recentEpisodes: number;
+  prefetchedTranscripts: number;
+  prefetchedAudio: number;
   feedErrors: number;
 }
 
@@ -802,6 +805,7 @@ export interface AdminPlan {
   briefingsPerWeek: number | null;
   maxDurationMinutes: number;
   maxPodcastSubscriptions: number | null;
+  pastEpisodesLimit: number | null;
   adFree: boolean;
   priorityProcessing: boolean;
   earlyAccess: boolean;

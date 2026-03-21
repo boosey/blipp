@@ -448,7 +448,7 @@ function PodcastCard({
           )}
           <div className="flex gap-1 mt-1">
             {podcast.categories?.slice(0, 3).map((cat) => (
-              <span key={cat} className="px-1.5 py-0.5 bg-zinc-800 text-zinc-500 text-[10px] rounded">
+              <span key={cat} className="px-1.5 py-0.5 bg-zinc-800 text-zinc-500 text-[10px] rounded-full">
                 {cat}
               </span>
             ))}

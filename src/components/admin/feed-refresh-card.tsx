@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Rss, RefreshCw, Loader2, AlertTriangle, Clock, Podcast } from "lucide-react";
+import { Rss, RefreshCw, Loader2, AlertTriangle, Clock, Podcast, FileText, Volume2, Database } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -70,16 +70,29 @@ export function FeedRefreshCard({ compact = false, onRefresh, className }: { com
           <span className="text-xs font-semibold text-[#F9FAFB]">Feed Refresh</span>
         </div>
         {summary && (
-          <>
+          <div className="flex items-center gap-4 flex-wrap">
             <div className="flex items-center gap-1 text-[10px] text-[#9CA3AF]">
               <Clock className="h-3 w-3" />
               {relativeTime(summary.lastRunAt)}
             </div>
             <div className="text-[10px] text-[#9CA3AF]">
-              <span className="font-mono tabular-nums text-[#F9FAFB]">{summary.podcastsRefreshed}</span>/{summary.totalPodcasts} refreshed
+              <Podcast className="inline h-3 w-3 mr-0.5" />
+              <span className="font-mono tabular-nums text-[#F9FAFB]">{summary.totalPodcasts}</span> podcasts
+            </div>
+            <div className="text-[10px] text-[#9CA3AF]">
+              <Database className="inline h-3 w-3 mr-0.5" />
+              <span className="font-mono tabular-nums text-[#F9FAFB]">{summary.totalEpisodes.toLocaleString()}</span> episodes
             </div>
             <div className="text-[10px] text-[#9CA3AF]">
               <span className="font-mono tabular-nums text-[#10B981]">{summary.recentEpisodes}</span> new (24h)
+            </div>
+            <div className="text-[10px] text-[#9CA3AF]">
+              <FileText className="inline h-3 w-3 mr-0.5" />
+              <span className="font-mono tabular-nums text-[#F9FAFB]">{summary.prefetchedTranscripts.toLocaleString()}</span> transcripts
+            </div>
+            <div className="text-[10px] text-[#9CA3AF]">
+              <Volume2 className="inline h-3 w-3 mr-0.5" />
+              <span className="font-mono tabular-nums text-[#F9FAFB]">{summary.prefetchedAudio.toLocaleString()}</span> audio
             </div>
             {summary.feedErrors > 0 && (
               <div className="flex items-center gap-1 text-[10px] text-[#EF4444]">
@@ -87,7 +100,7 @@ export function FeedRefreshCard({ compact = false, onRefresh, className }: { com
                 {summary.feedErrors} errors
               </div>
             )}
-          </>
+          </div>
         )}
         <div className="ml-auto">
           <Button
@@ -128,7 +141,7 @@ export function FeedRefreshCard({ compact = false, onRefresh, className }: { com
       </div>
 
       {summary && (
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-3 gap-2">
           <div className="rounded-md bg-white/[0.03] p-2">
             <div className="text-[10px] text-[#9CA3AF] mb-0.5">Last Run</div>
             <div className="flex items-center gap-1 text-[11px] text-[#F9FAFB]">
@@ -140,13 +153,34 @@ export function FeedRefreshCard({ compact = false, onRefresh, className }: { com
             <div className="text-[10px] text-[#9CA3AF] mb-0.5">Podcasts</div>
             <div className="text-[11px] text-[#F9FAFB] flex items-center gap-1">
               <Podcast className="h-3 w-3 text-[#3B82F6]" />
-              <span className="font-mono tabular-nums">{summary.podcastsRefreshed}</span>
-              <span className="text-[#9CA3AF]">/ {summary.totalPodcasts}</span>
+              <span className="font-mono tabular-nums">{summary.totalPodcasts}</span>
+              <span className="text-[#9CA3AF]">({summary.podcastsRefreshed} refreshed)</span>
+            </div>
+          </div>
+          <div className="rounded-md bg-white/[0.03] p-2">
+            <div className="text-[10px] text-[#9CA3AF] mb-0.5">Total Episodes</div>
+            <div className="text-[11px] text-[#F9FAFB] flex items-center gap-1">
+              <Database className="h-3 w-3 text-[#3B82F6]" />
+              <span className="font-mono tabular-nums">{summary.totalEpisodes.toLocaleString()}</span>
             </div>
           </div>
           <div className="rounded-md bg-white/[0.03] p-2">
             <div className="text-[10px] text-[#9CA3AF] mb-0.5">New Episodes (24h)</div>
             <div className="text-[11px] font-mono tabular-nums text-[#10B981]">{summary.recentEpisodes}</div>
+          </div>
+          <div className="rounded-md bg-white/[0.03] p-2">
+            <div className="text-[10px] text-[#9CA3AF] mb-0.5">Prefetched Transcripts</div>
+            <div className="text-[11px] text-[#F9FAFB] flex items-center gap-1">
+              <FileText className="h-3 w-3 text-[#10B981]" />
+              <span className="font-mono tabular-nums">{summary.prefetchedTranscripts.toLocaleString()}</span>
+            </div>
+          </div>
+          <div className="rounded-md bg-white/[0.03] p-2">
+            <div className="text-[10px] text-[#9CA3AF] mb-0.5">Prefetched Audio</div>
+            <div className="text-[11px] text-[#F9FAFB] flex items-center gap-1">
+              <Volume2 className="h-3 w-3 text-[#10B981]" />
+              <span className="font-mono tabular-nums">{summary.prefetchedAudio.toLocaleString()}</span>
+            </div>
           </div>
           <div className="rounded-md bg-white/[0.03] p-2">
             <div className="text-[10px] text-[#9CA3AF] mb-0.5">Feed Errors</div>

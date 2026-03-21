@@ -66,7 +66,7 @@ export function FeedItemCard({
   const audio = useAudio();
   const isPlayable = item.status === "READY" && item.briefing?.clip;
   const isCreating = item.status === "PENDING" || item.status === "PROCESSING";
-  const label = item.status === "FAILED" ? statusLabel(item.status) : null;
+  const label = statusLabel(item.status);
   const epDuration = formatEpDuration(item.episode.durationSeconds);
 
   const handleShare = useCallback(async (e: React.MouseEvent) => {
