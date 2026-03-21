@@ -81,18 +81,18 @@ export function FeedRefreshCard({ compact = false, onRefresh, className }: { com
             </div>
             <div className="text-[10px] text-[#9CA3AF]">
               <Database className="inline h-3 w-3 mr-0.5" />
-              <span className="font-mono tabular-nums text-[#F9FAFB]">{summary.totalEpisodes.toLocaleString()}</span> episodes
+              <span className="font-mono tabular-nums text-[#F9FAFB]">{(summary.totalEpisodes ?? 0).toLocaleString()}</span> episodes
             </div>
             <div className="text-[10px] text-[#9CA3AF]">
               <span className="font-mono tabular-nums text-[#10B981]">{summary.recentEpisodes}</span> new (24h)
             </div>
             <div className="text-[10px] text-[#9CA3AF]">
               <FileText className="inline h-3 w-3 mr-0.5" />
-              <span className="font-mono tabular-nums text-[#F9FAFB]">{summary.prefetchedTranscripts.toLocaleString()}</span> transcripts
+              <span className="font-mono tabular-nums text-[#F9FAFB]">{(summary.prefetchedTranscripts ?? 0).toLocaleString()}</span> transcripts
             </div>
             <div className="text-[10px] text-[#9CA3AF]">
               <Volume2 className="inline h-3 w-3 mr-0.5" />
-              <span className="font-mono tabular-nums text-[#F9FAFB]">{summary.prefetchedAudio.toLocaleString()}</span> audio
+              <span className="font-mono tabular-nums text-[#F9FAFB]">{(summary.prefetchedAudio ?? 0).toLocaleString()}</span> audio
             </div>
             {summary.feedErrors > 0 && (
               <div className="flex items-center gap-1 text-[10px] text-[#EF4444]">
@@ -161,7 +161,7 @@ export function FeedRefreshCard({ compact = false, onRefresh, className }: { com
             <div className="text-[10px] text-[#9CA3AF] mb-0.5">Total Episodes</div>
             <div className="text-[11px] text-[#F9FAFB] flex items-center gap-1">
               <Database className="h-3 w-3 text-[#3B82F6]" />
-              <span className="font-mono tabular-nums">{summary.totalEpisodes.toLocaleString()}</span>
+              <span className="font-mono tabular-nums">{(summary.totalEpisodes ?? 0).toLocaleString()}</span>
             </div>
           </div>
           <div className="rounded-md bg-white/[0.03] p-2">
@@ -172,14 +172,14 @@ export function FeedRefreshCard({ compact = false, onRefresh, className }: { com
             <div className="text-[10px] text-[#9CA3AF] mb-0.5">Prefetched Transcripts</div>
             <div className="text-[11px] text-[#F9FAFB] flex items-center gap-1">
               <FileText className="h-3 w-3 text-[#10B981]" />
-              <span className="font-mono tabular-nums">{summary.prefetchedTranscripts.toLocaleString()}</span>
+              <span className="font-mono tabular-nums">{(summary.prefetchedTranscripts ?? 0).toLocaleString()}</span>
             </div>
           </div>
           <div className="rounded-md bg-white/[0.03] p-2">
             <div className="text-[10px] text-[#9CA3AF] mb-0.5">Prefetched Audio</div>
             <div className="text-[11px] text-[#F9FAFB] flex items-center gap-1">
               <Volume2 className="h-3 w-3 text-[#10B981]" />
-              <span className="font-mono tabular-nums">{summary.prefetchedAudio.toLocaleString()}</span>
+              <span className="font-mono tabular-nums">{(summary.prefetchedAudio ?? 0).toLocaleString()}</span>
             </div>
           </div>
           <div className="rounded-md bg-white/[0.03] p-2">
