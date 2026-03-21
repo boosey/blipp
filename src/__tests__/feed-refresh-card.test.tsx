@@ -21,7 +21,10 @@ const mockSummary = {
     lastRunAt: new Date(Date.now() - 300000).toISOString(), // 5m ago
     podcastsRefreshed: 12,
     totalPodcasts: 15,
+    totalEpisodes: 500,
     recentEpisodes: 7,
+    prefetchedTranscripts: 120,
+    prefetchedAudio: 80,
     feedErrors: 2,
   },
 };
@@ -42,9 +45,12 @@ describe("FeedRefreshCard", () => {
       expect(screen.getByText("Feed Refresh")).toBeInTheDocument();
     });
 
-    expect(screen.getByText("12")).toBeInTheDocument();
-    expect(screen.getByText("/ 15")).toBeInTheDocument();
+    expect(screen.getByText("15")).toBeInTheDocument();
+    expect(screen.getByText("(12 refreshed)")).toBeInTheDocument();
+    expect(screen.getByText("500")).toBeInTheDocument();
     expect(screen.getByText("7")).toBeInTheDocument();
+    expect(screen.getByText("120")).toBeInTheDocument();
+    expect(screen.getByText("80")).toBeInTheDocument();
     expect(screen.getByText("2")).toBeInTheDocument();
   });
 
@@ -71,7 +77,8 @@ describe("FeedRefreshCard", () => {
     });
 
     // Compact shows inline stats
-    expect(screen.getByText(/\/15 refreshed/)).toBeInTheDocument();
+    expect(screen.getByText(/15/)).toBeInTheDocument();
+    expect(screen.getByText(/podcasts/)).toBeInTheDocument();
     expect(screen.getByText(/2 errors/)).toBeInTheDocument();
   });
 });
