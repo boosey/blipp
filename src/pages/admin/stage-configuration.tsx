@@ -84,6 +84,7 @@ export default function StageConfiguration() {
   const [expandedVersions, setExpandedVersions] = useState<string | null>(null);
   const [editingNotes, setEditingNotes] = useState<Record<string, string>>({});
   const [savingNotes, setSavingNotes] = useState<string | null>(null);
+  const [changeDescriptions, setChangeDescriptions] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     try {
@@ -209,8 +210,9 @@ export default function StageConfiguration() {
     try {
       await apiFetch(`/prompts/${encodeURIComponent(key)}`, {
         method: "PATCH",
-        body: JSON.stringify({ value: editValues[key] }),
+        body: JSON.stringify({ value: editValues[key], label: changeDescriptions[key]?.trim() || undefined }),
       });
+      setChangeDescriptions((prev) => ({ ...prev, [key]: "" }));
       toast.success("Prompt saved as new version");
       await load();
       if (expandedVersions === key) await loadVersions(key);
@@ -479,6 +481,17 @@ export default function StageConfiguration() {
                               className="w-full h-48 bg-[#0F1D32] border border-white/10 rounded-lg p-3 text-xs font-mono text-[#E5E7EB] placeholder:text-[#6B7280] resize-y focus:outline-none focus:border-[#3B82F6]"
                               spellCheck={false}
                             />
+                            {dirty && (
+                              <input
+                                type="text"
+                                value={changeDescriptions[prompt.key] ?? ""}
+                                onChange={(e) =>
+                                  setChangeDescriptions((prev) => ({ ...prev, [prompt.key]: e.target.value }))
+                                }
+                                placeholder="Describe this change (e.g. 'added notable quotes instruction')..."
+                                className="w-full bg-[#0F1D32] border border-white/10 rounded-lg px-3 py-1.5 text-xs text-[#E5E7EB] placeholder:text-[#4B5563] focus:outline-none focus:border-[#3B82F6]"
+                              />
+                            )}
                             <div className="flex items-center justify-between">
                               <div className="text-[10px] text-[#6B7280]">
                                 {prompt.updatedAt
@@ -541,15 +554,17 @@ export default function StageConfiguration() {
                                         )}
                                       >
                                         <div className="flex items-center justify-between">
-                                          <div className="flex items-center gap-2">
-                                            <span className="text-[10px] font-mono font-semibold text-[#F9FAFB]">
+                                          <div className="flex items-center gap-2 min-w-0">
+                                            <span className="text-[10px] font-mono font-semibold text-[#F9FAFB] shrink-0">
                                               v{v.version}
                                             </span>
-                                            {v.label && (
-                                              <span className="text-[10px] text-[#9CA3AF]">{v.label}</span>
+                                            {v.label ? (
+                                              <span className="text-[10px] text-[#E5E7EB] truncate">{v.label}</span>
+                                            ) : (
+                                              <span className="text-[10px] text-[#4B5563] italic">no description</span>
                                             )}
                                             {v.isActive && (
-                                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#10B981]/20 text-[#10B981]">
+                                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#10B981]/20 text-[#10B981] shrink-0">
                                                 active
                                               </span>
                                             )}
