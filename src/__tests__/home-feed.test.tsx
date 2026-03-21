@@ -3,9 +3,11 @@ import { MemoryRouter } from "react-router-dom";
 import type { FeedItem } from "../types/feed";
 
 const mockPlay = vi.fn();
+const mockPlayAll = vi.fn();
 vi.mock("../contexts/audio-context", () => ({
   useAudio: () => ({
     play: mockPlay,
+    playAll: mockPlayAll,
     pause: vi.fn(),
     resume: vi.fn(),
     currentItem: null,
@@ -164,16 +166,17 @@ describe("Home Feed", () => {
     });
   });
 
-  describe("Play Next", () => {
-    it("shows Play Next button when unlistened READY items exist", async () => {
+  describe("Play All", () => {
+    it("shows Play All button with count when unlistened READY items exist", async () => {
       renderHome();
 
       await waitFor(() => {
-        expect(screen.getByText("Play Next")).toBeInTheDocument();
+        // 2 unlistened READY items in defaultItems (items 1 and 3)
+        expect(screen.getByText("Play All (2)")).toBeInTheDocument();
       });
     });
 
-    it("does not show Play Next when all items are listened", async () => {
+    it("does not show Play All when all items are listened", async () => {
       mockApiFetch.mockResolvedValue({
         items: [
           makeItem("1", { listened: true, status: "READY" }),
@@ -187,7 +190,7 @@ describe("Home Feed", () => {
         expect(screen.getByText("Episode 1")).toBeInTheDocument();
       });
 
-      expect(screen.queryByText("Play Next")).not.toBeInTheDocument();
+      expect(screen.queryByText(/Play All/)).not.toBeInTheDocument();
     });
   });
 
