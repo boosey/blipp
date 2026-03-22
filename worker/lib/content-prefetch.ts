@@ -34,12 +34,18 @@ export async function prefetchEpisodeContent(
 }> {
   // Step 1: Try RSS transcript URL (direct fetch, no API call)
   if (episode.transcriptUrl) {
+    console.log(`[content-prefetch] GET transcript (RSS): ${episode.transcriptUrl} (episode: ${episode.title})`);
     const result = await tryFetchTranscript(episode.transcriptUrl, episode.id, r2);
-    if (result) return result;
+    if (result) {
+      console.log(`[content-prefetch] Transcript fetched OK → ${result.contentStatus} (episode: ${episode.title})`);
+      return result;
+    }
+    console.log(`[content-prefetch] Transcript fetch failed (episode: ${episode.title})`);
   }
 
   // Step 2: Try Podcast Index transcript lookup
   if (podcast.podcastIndexId) {
+    console.log(`[content-prefetch] Looking up PI transcript for podcastIndexId=${podcast.podcastIndexId} (episode: ${episode.title})`);
     try {
       const client = new PodcastIndexClient(env.PODCAST_INDEX_KEY, env.PODCAST_INDEX_SECRET);
       const piUrl = await lookupPodcastIndexTranscript(
@@ -49,17 +55,27 @@ export async function prefetchEpisodeContent(
         episode.title
       );
       if (piUrl) {
+        console.log(`[content-prefetch] GET transcript (PI): ${piUrl} (episode: ${episode.title})`);
         const result = await tryFetchTranscript(piUrl, episode.id, r2);
-        if (result) return result;
+        if (result) {
+          console.log(`[content-prefetch] PI transcript fetched OK → ${result.contentStatus} (episode: ${episode.title})`);
+          return result;
+        }
+      } else {
+        console.log(`[content-prefetch] No PI transcript found (episode: ${episode.title})`);
       }
     } catch {
-      // PI lookup failed — fall through
+      console.log(`[content-prefetch] PI transcript lookup failed (episode: ${episode.title})`);
     }
+  } else {
+    console.log(`[content-prefetch] No podcastIndexId — skipping PI transcript lookup (episode: ${episode.title})`);
   }
 
   // Step 3: HEAD the audio URL
+  console.log(`[content-prefetch] HEAD audio: ${episode.audioUrl} (episode: ${episode.title})`);
   try {
     const headRes = await fetch(episode.audioUrl, { method: "HEAD" });
+    console.log(`[content-prefetch] Audio HEAD response: ${headRes.status} ${headRes.statusText} (episode: ${episode.title})`);
     if (headRes.ok) {
       const contentType =
         headRes.headers.get("content-type")?.split(";")[0].trim() ?? "";
@@ -67,8 +83,10 @@ export async function prefetchEpisodeContent(
         contentType.startsWith("audio/") ||
         contentType === "application/octet-stream"
       ) {
+        console.log(`[content-prefetch] Audio OK (${contentType}) → AUDIO_READY (episode: ${episode.title})`);
         return { contentStatus: "AUDIO_READY", transcriptR2Key: null };
       }
+      console.log(`[content-prefetch] Audio content-type not audio: ${contentType} (episode: ${episode.title})`);
     }
   } catch {
     // HEAD failed

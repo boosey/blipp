@@ -234,10 +234,13 @@ export class ApplePodcastsClient {
    */
   async top200(country: string = "us"): Promise<AppleRSSEntry[]> {
     const url = `${ITUNES_BASE}/${country}/rss/toppodcasts/limit=200/json`;
+    console.log(`[ApplePodcasts] GET ${url}`);
     try {
       const res = await fetchWithRetry(url);
+      console.log(`[ApplePodcasts] top200 response: ${res.status} ${res.statusText}`);
       const data = (await res.json()) as ITunesRSSResponse;
       const entries = data.feed?.entry ?? [];
+      console.log(`[ApplePodcasts] top200 parsed ${entries.length} entries`);
 
       return entries.map((e) => {
         const images = e["im:image"] ?? [];
@@ -370,15 +373,18 @@ export class ApplePodcastsClient {
       const chunk = ids.slice(i, i + LOOKUP_BATCH_SIZE);
       const csvIds = chunk.join(",");
       const url = `${ITUNES_BASE}/lookup?id=${csvIds}&entity=podcast`;
+      console.log(`[ApplePodcasts] GET lookup batch ${Math.floor(i / LOOKUP_BATCH_SIZE) + 1} (${chunk.length} IDs): ${url.slice(0, 120)}...`);
 
       try {
         const res = await fetchWithRetry(url);
+        console.log(`[ApplePodcasts] lookup batch response: ${res.status} ${res.statusText}`);
         const data = (await res.json()) as ITunesResponse;
 
         // Filter to podcast results only (exclude artist entries, etc.)
         const podcasts = (data.results ?? []).filter(
           (r) => r.wrapperType === "track" && r.kind === "podcast"
         );
+        console.log(`[ApplePodcasts] lookup batch: ${data.resultCount} results, ${podcasts.length} podcasts with feedUrl`);
         results.push(...podcasts);
       } catch (err) {
         console.warn(

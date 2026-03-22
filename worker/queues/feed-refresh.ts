@@ -104,9 +104,12 @@ export async function handleFeedRefresh(
           processed = true; // Mark here so non-English skips still count toward feedsCompleted
         }
 
+        console.log(`[feed-refresh] GET RSS feed: ${podcast.feedUrl} (podcast: ${podcast.title})`);
         const response = await fetch(podcast.feedUrl);
+        console.log(`[feed-refresh] RSS response: ${response.status} ${response.statusText} (${podcast.title})`);
         const xml = await response.text();
         const feed = parseRssFeed(xml);
+        console.log(`[feed-refresh] Parsed ${feed.episodes.length} episodes from ${podcast.title}`);
 
         // Write the RSS language tag to the podcast record
         if (feed.language) {
