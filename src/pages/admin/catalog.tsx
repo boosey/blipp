@@ -127,6 +127,24 @@ function StatusBadge({ status }: { status: PodcastStatus }) {
   );
 }
 
+const SOURCE_CONFIG: Record<string, { color: string; label: string }> = {
+  apple: { color: "#A855F7", label: "Apple" },
+  "podcast-index": { color: "#3B82F6", label: "PI" },
+  manual: { color: "#F59E0B", label: "Manual" },
+};
+
+function SourceBadge({ source }: { source: string | undefined }) {
+  const cfg = SOURCE_CONFIG[source ?? ""] ?? { color: "#6B7280", label: source ?? "?" };
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium"
+      style={{ backgroundColor: `${cfg.color}15`, color: cfg.color }}
+    >
+      {cfg.label}
+    </span>
+  );
+}
+
 // ── Filter Sidebar ──
 
 function FilterSidebar({
@@ -277,6 +295,35 @@ function FilterSidebar({
                   ))}
                 </div>
               </div>
+
+              <Separator className="bg-white/5" />
+
+              {/* Source */}
+              {stats && Object.keys(stats.bySource ?? {}).length > 0 && (
+                <div>
+                  <span className="text-[10px] uppercase tracking-wider text-[#9CA3AF] font-medium">Source</span>
+                  <div className="mt-2 space-y-1">
+                    {Object.entries(stats.bySource).map(([src, count]) => {
+                      const cfg = SOURCE_CONFIG[src] ?? { color: "#6B7280", label: src };
+                      const active = filters.source === src;
+                      return (
+                        <button
+                          key={src}
+                          onClick={() => onFilterChange({ ...filters, source: active ? undefined : src })}
+                          className={cn(
+                            "flex items-center gap-2 w-full text-left rounded px-1.5 py-1 text-[11px] transition-colors",
+                            active ? "bg-white/5 text-[#F9FAFB]" : "text-[#9CA3AF] hover:bg-white/[0.03]"
+                          )}
+                        >
+                          <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: cfg.color }} />
+                          <span className="flex-1">{cfg.label}</span>
+                          <span className="ml-auto font-mono text-[10px]">{count}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               <Separator className="bg-white/5" />
 
@@ -431,6 +478,7 @@ function PodcastCard({
                   {podcast.language}
                 </span>
               )}
+              <SourceBadge source={podcast.source} />
               <HealthBadge health={podcast.feedHealth} />
               <Switch
                 checked={podcast.status === "active"}
@@ -521,6 +569,7 @@ function PodcastRow({
       )}
       <span className="w-14 text-right font-mono tabular-nums text-[#9CA3AF]">{podcast.episodeCount}</span>
       <span className="w-12 text-right font-mono tabular-nums text-[#9CA3AF]">{podcast.subscriberCount}</span>
+      <span className="w-14 text-center"><SourceBadge source={podcast.source} /></span>
       <span className="w-20 text-center"><HealthBadge health={podcast.feedHealth} /></span>
       <span className="w-16 text-center"><StatusBadge status={podcast.status} /></span>
       <span className="w-16 text-right text-[10px] text-[#9CA3AF]">{relativeTime(podcast.lastFetchedAt)}</span>
@@ -1108,6 +1157,7 @@ export default function Catalog() {
     if (filters.health?.length) params.set("health", filters.health.join(","));
     if (filters.status?.length) params.set("status", filters.status.join(","));
     if (filters.activity) params.set("activity", filters.activity);
+    if (filters.source) params.set("source", filters.source);
     if (filters.language) params.set("language", filters.language);
     if (filters.categories?.length) params.set("categories", filters.categories.join(","));
     params.set("sort", sort);

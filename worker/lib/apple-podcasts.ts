@@ -68,11 +68,38 @@ export interface AppleLookupResult {
   contentAdvisoryRating: string;
 }
 
+/** An entry from the iTunes RSS feed (older endpoint that supports genre filtering) */
+export interface AppleRSSEntry {
+  id: string;
+  name: string;
+  artistName: string;
+  artworkUrl100: string;
+  genres: AppleChartGenre[];
+  url: string;
+}
+
 /** @internal Charts API response shape */
 interface ChartsResponse {
   feed: {
     results: AppleChartEntry[];
   };
+}
+
+/** @internal iTunes RSS feed response shape */
+interface ITunesRSSResponse {
+  feed: {
+    entry: ITunesRSSEntry[];
+  };
+}
+
+/** @internal Raw entry from iTunes RSS feed */
+interface ITunesRSSEntry {
+  "im:name": { label: string };
+  "im:artist": { label: string };
+  "im:image": { label: string; attributes: { height: string } }[];
+  id: { label: string; attributes: { "im:id": string } };
+  category: { attributes: { "im:id": string; label: string } };
+  link: { attributes: { href: string } };
 }
 
 /** @internal iTunes Lookup/Search response shape */
@@ -147,6 +174,46 @@ async function fetchWithRetry(
  * Provides access to Charts (top podcasts by genre), iTunes Lookup, and Search.
  */
 export class ApplePodcastsClient {
+  /**
+   * Fetches the overall top 100 podcasts using the iTunes RSS endpoint.
+   * This endpoint reliably returns the top chart (unlike the Charts API which ignores genre filters).
+   *
+   * @param country - ISO country code (default "us")
+   * @returns Array of RSS entries with Apple IDs, or empty array on failure
+   */
+  async top100(country: string = "us"): Promise<AppleRSSEntry[]> {
+    const url = `${ITUNES_BASE}/${country}/rss/toppodcasts/limit=100/json`;
+    try {
+      const res = await fetchWithRetry(url);
+      const data = (await res.json()) as ITunesRSSResponse;
+      const entries = data.feed?.entry ?? [];
+
+      return entries.map((e) => {
+        const images = e["im:image"] ?? [];
+        const largestImage = images[images.length - 1]?.label ?? "";
+        return {
+          id: e.id?.attributes?.["im:id"] ?? "",
+          name: e["im:name"]?.label ?? "",
+          artistName: e["im:artist"]?.label ?? "",
+          artworkUrl100: largestImage,
+          genres: e.category
+            ? [
+                {
+                  genreId: e.category.attributes["im:id"],
+                  name: e.category.attributes.label,
+                  url: "",
+                },
+              ]
+            : [],
+          url: e.link?.attributes?.href ?? e.id?.label ?? "",
+        };
+      });
+    } catch (err) {
+      console.warn("[ApplePodcasts] Failed to fetch top 100:", err);
+      return [];
+    }
+  }
+
   /**
    * Fetches the top podcasts chart for a specific genre.
    *

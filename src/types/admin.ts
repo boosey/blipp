@@ -209,6 +209,7 @@ export interface AdminPodcast {
   feedError?: string;
   episodeCount: number;
   status: PodcastStatus;
+  source?: string;
   subscriberCount: number;
   appleId?: string;
   language?: string;
@@ -225,6 +226,7 @@ export interface AdminPodcastDetail extends AdminPodcast {
 export interface CatalogFilters {
   health?: FeedHealth[];
   status?: PodcastStatus[];
+  source?: string;
   transcriptAvailability?: "has_transcript" | "needs_transcription" | "mixed";
   activity?: "today" | "this_week" | "stale" | "inactive";
   categories?: string[];
@@ -236,7 +238,18 @@ export interface CatalogStats {
   total: number;
   byHealth: Record<FeedHealth, number>;
   byStatus: Record<PodcastStatus, number>;
+  bySource: Record<string, number>;
   needsAttention: number;
+}
+
+export interface PodcastSourceStats {
+  identifier: string;
+  name: string;
+  podcastCount: number;
+  percentage: number;
+  episodeCount: number;
+  byHealth: Record<string, number>;
+  status: string;
 }
 
 // ── Episodes ──

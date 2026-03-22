@@ -38,6 +38,7 @@ const AdminAiErrors = lazy(() => import("./pages/admin/ai-errors"));
 const AdminAds = lazy(() => import("./pages/admin/ads"));
 const AdminRecommendations = lazy(() => import("./pages/admin/recommendations"));
 const CatalogSeed = lazy(() => import("./pages/admin/catalog-seed"));
+const PodcastSources = lazy(() => import("./pages/admin/podcast-sources"));
 const ScheduledJobs = lazy(() => import("./pages/admin/scheduled-jobs"));
 const DlqMonitor = lazy(() => import("./pages/admin/dlq"));
 const VoicePresets = lazy(() => import("./pages/admin/voice-presets"));
@@ -116,6 +117,7 @@ export default function App() {
         <Route path="pipeline" element={<Suspense fallback={<AdminLoading />}><Pipeline /></Suspense>} />
         <Route path="catalog" element={<Suspense fallback={<AdminLoading />}><Catalog /></Suspense>} />
         <Route path="catalog-seed" element={<Suspense fallback={<AdminLoading />}><CatalogSeed /></Suspense>} />
+        <Route path="podcast-sources" element={<Suspense fallback={<AdminLoading />}><PodcastSources /></Suspense>} />
         <Route path="briefings" element={<Suspense fallback={<AdminLoading />}><Briefings /></Suspense>} />
         <Route path="users" element={<Suspense fallback={<AdminLoading />}><AdminUsers /></Suspense>} />
         <Route path="plans" element={<Suspense fallback={<AdminLoading />}><Plans /></Suspense>} />

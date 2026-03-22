@@ -215,8 +215,8 @@ const ApplePodcastsSource: CatalogSource = {
       env.PODCAST_INDEX_SECRET
     );
 
-    // Apple genre filtering is broken — only fetches global top 100
-    const chartEntries = await appleClient.topByGenre("", 100, "us");
+    // Use iTunes RSS endpoint (Charts API genre filtering is broken)
+    const chartEntries = await appleClient.top100("us");
     if (chartEntries.length === 0) return [];
 
     const appleIds = chartEntries.map((e) => Number(e.id));

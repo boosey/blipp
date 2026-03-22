@@ -28,33 +28,66 @@ export async function handleCatalogRefresh(
           await wipeCatalogData(prisma, env.R2);
         }
 
+        // ── Phase 1: Apple source (top 100, authoritative) ──
+        const appleSource = getCatalogSource("apple");
+        let appleDiscovered: DiscoveredPodcast[] = [];
+        try {
+          appleDiscovered = await appleSource.discover(100, env);
+          console.log(`[catalog-refresh] Apple: discovered ${appleDiscovered.length} podcasts`);
+        } catch (err) {
+          console.warn("[catalog-refresh] Apple source failed, continuing with PI only:", err);
+        }
+
+        // ── Phase 2: Podcast Index source ──
         const discoverCount = Number(await getConfig(prisma, "catalog.seedSize", DEFAULT_DISCOVER_COUNT));
-        const source = getCatalogSource("podcast-index");
-        const discovered = await source.discover(discoverCount, env);
-        console.log(`[catalog-refresh] Discovered ${discovered.length} unique podcasts`);
-        if (seedJobId) await updateSeedJob(prisma, seedJobId, { podcastsDiscovered: discovered.length });
+        const piSource = getCatalogSource("podcast-index");
+        const piDiscovered = await piSource.discover(discoverCount, env);
+        console.log(`[catalog-refresh] Podcast Index: discovered ${piDiscovered.length} podcasts`);
 
+        const totalDiscovered = appleDiscovered.length + piDiscovered.length;
+        if (seedJobId) await updateSeedJob(prisma, seedJobId, { podcastsDiscovered: totalDiscovered });
+
+        // ── Upsert categories from both sources ──
         await updateStatus(prisma, "resolving_metadata");
-        const categoryIdMap = await upsertCategories(prisma, discovered);
+        const allDiscovered = [...appleDiscovered, ...piDiscovered];
+        const categoryIdMap = await upsertCategories(prisma, allDiscovered);
 
+        // ── Upsert podcasts: Apple first (authoritative), then PI (fills nulls) ──
         await updateStatus(prisma, "upserting");
         if (seedJobId) await updateSeedJob(prisma, seedJobId, { status: "upserting" });
         let upsertedIds: string[];
 
         if (action === "seed" && seedMode === "destructive") {
           // Bulk insert — DB was just wiped so no conflicts
-          upsertedIds = await bulkInsertPodcasts(prisma, discovered, categoryIdMap);
+          const appleIds = appleDiscovered.length > 0
+            ? await bulkInsertPodcasts(prisma, appleDiscovered, categoryIdMap, "apple")
+            : [];
+          const piIds = await bulkInsertPodcasts(prisma, piDiscovered, categoryIdMap, "podcast-index");
+          upsertedIds = [...appleIds, ...piIds];
         } else if (action === "seed" && seedMode === "additive") {
-          // Only insert podcasts not already in DB
-          const newPodcasts = await filterNewPodcasts(prisma, discovered);
-          console.log(`[catalog-refresh] Additive: ${newPodcasts.length} new of ${discovered.length} discovered`);
-          if (newPodcasts.length > 0) {
-            upsertedIds = await bulkInsertPodcasts(prisma, newPodcasts, categoryIdMap);
-          } else {
-            upsertedIds = [];
+          // Apple first — insert new ones
+          let appleIds: string[] = [];
+          if (appleDiscovered.length > 0) {
+            const newApple = await filterNewPodcasts(prisma, appleDiscovered);
+            if (newApple.length > 0) {
+              appleIds = await bulkInsertPodcasts(prisma, newApple, categoryIdMap, "apple");
+            }
+            console.log(`[catalog-refresh] Additive Apple: ${appleIds.length} new of ${appleDiscovered.length}`);
           }
+          // PI second — insert new ones
+          const newPI = await filterNewPodcasts(prisma, piDiscovered);
+          console.log(`[catalog-refresh] Additive PI: ${newPI.length} new of ${piDiscovered.length}`);
+          const piIds = newPI.length > 0
+            ? await bulkInsertPodcasts(prisma, newPI, categoryIdMap, "podcast-index")
+            : [];
+          upsertedIds = [...appleIds, ...piIds];
         } else {
-          upsertedIds = await upsertPodcasts(prisma, discovered, categoryIdMap);
+          // Refresh mode: Apple first (authoritative), PI second (fill nulls only)
+          const appleIds = appleDiscovered.length > 0
+            ? await upsertPodcasts(prisma, appleDiscovered, categoryIdMap, "apple")
+            : [];
+          const piIds = await upsertPodcasts(prisma, piDiscovered, categoryIdMap, "podcast-index");
+          upsertedIds = [...new Set([...appleIds, ...piIds])];
           await markPendingDeletion(prisma, upsertedIds);
         }
 
@@ -165,7 +198,8 @@ async function upsertCategories(prisma: any, discovered: DiscoveredPodcast[]): P
 async function bulkInsertPodcasts(
   prisma: any,
   discovered: DiscoveredPodcast[],
-  categoryIdMap: Map<string, string>
+  categoryIdMap: Map<string, string>,
+  sourceId: string
 ): Promise<string[]> {
   const BATCH = 500;
   const valid = discovered.filter((p) => p.feedUrl);
@@ -183,13 +217,13 @@ async function bulkInsertPodcasts(
         podcastIndexId: p.podcastIndexId,
         categories: (p.categories ?? []).filter((c) => c.genreId !== "26").map((c) => c.name),
         language: "en",
-        source: "podcast-index",
+        source: sourceId,
         feedUrl: p.feedUrl,
         status: "active",
       })),
       skipDuplicates: true,
     });
-    console.log(`[catalog-refresh] Inserted ${Math.min(i + BATCH, valid.length)}/${valid.length} podcasts`);
+    console.log(`[catalog-refresh] [${sourceId}] Inserted ${Math.min(i + BATCH, valid.length)}/${valid.length} podcasts`);
   }
 
   // Fetch all created podcast IDs
@@ -227,7 +261,8 @@ async function bulkInsertPodcasts(
 async function upsertPodcasts(
   prisma: any,
   discovered: DiscoveredPodcast[],
-  categoryIdMap: Map<string, string>
+  categoryIdMap: Map<string, string>,
+  sourceId: string
 ): Promise<string[]> {
   const upsertedIds: string[] = [];
   const CHUNK = 100;
@@ -243,58 +278,90 @@ async function upsertPodcasts(
         .filter((c) => c.genreId !== "26")
         .map((c) => c.name);
 
-      const data = {
-        title: podcast.title,
-        description: podcast.description,
-        imageUrl: podcast.imageUrl,
-        author: podcast.author,
-        appleId: podcast.appleId,
-        podcastIndexId: podcast.podcastIndexId,
-        categories: categoryNames,
-        appleMetadata: podcast.appleMetadata ?? undefined,
-        language: "en",
-        source: "podcast-index",
-      };
-
       try {
-        const upserted = await prisma.podcast.upsert({
+        // Check if podcast already exists
+        const existing = await prisma.podcast.findUnique({
           where: { feedUrl: podcast.feedUrl },
-          update: { ...data, status: undefined },
-          create: { ...data, feedUrl: podcast.feedUrl, status: "active" },
         });
 
-        if (upserted.status === "pending_deletion") {
-          await prisma.podcast.update({
-            where: { id: upserted.id },
-            data: { status: "active" },
-          });
-        }
+        if (existing && existing.source === "apple" && sourceId === "podcast-index") {
+          // Apple is authoritative — PI only fills null fields
+          const nullFills: Record<string, unknown> = {};
+          if (!existing.description && podcast.description) nullFills.description = podcast.description;
+          if (!existing.imageUrl && podcast.imageUrl) nullFills.imageUrl = podcast.imageUrl;
+          if (!existing.author && podcast.author) nullFills.author = podcast.author;
+          if (!existing.podcastIndexId && podcast.podcastIndexId) nullFills.podcastIndexId = podcast.podcastIndexId;
+          if ((!existing.categories || existing.categories.length === 0) && categoryNames.length > 0) {
+            nullFills.categories = categoryNames;
+          }
 
-        upsertedIds.push(upserted.id);
+          if (Object.keys(nullFills).length > 0) {
+            await prisma.podcast.update({ where: { id: existing.id }, data: nullFills });
+          }
+
+          if (existing.status === "pending_deletion") {
+            await prisma.podcast.update({ where: { id: existing.id }, data: { status: "active" } });
+          }
+
+          upsertedIds.push(existing.id);
+        } else {
+          // Full upsert — either new podcast, or this source owns it
+          const data = {
+            title: podcast.title,
+            description: podcast.description,
+            imageUrl: podcast.imageUrl,
+            author: podcast.author,
+            appleId: podcast.appleId,
+            podcastIndexId: podcast.podcastIndexId,
+            categories: categoryNames,
+            appleMetadata: podcast.appleMetadata ?? undefined,
+            language: "en",
+            source: sourceId,
+          };
+
+          const upserted = await prisma.podcast.upsert({
+            where: { feedUrl: podcast.feedUrl },
+            update: { ...data, status: undefined },
+            create: { ...data, feedUrl: podcast.feedUrl, status: "active" },
+          });
+
+          if (upserted.status === "pending_deletion") {
+            await prisma.podcast.update({ where: { id: upserted.id }, data: { status: "active" } });
+          }
+
+          upsertedIds.push(upserted.id);
+        }
       } catch (err) {
-        console.warn(`[catalog-refresh] Failed to upsert "${podcast.title}":`, err);
+        console.warn(`[catalog-refresh] [${sourceId}] Failed to upsert "${podcast.title}":`, err);
       }
     }
 
-    console.log(`[catalog-refresh] Upserted ${Math.min(i + CHUNK, discovered.length)}/${discovered.length} podcasts`);
+    console.log(`[catalog-refresh] [${sourceId}] Upserted ${Math.min(i + CHUNK, discovered.length)}/${discovered.length} podcasts`);
 
     // Batch PodcastCategory joins per chunk
     const joinRecords: { podcastId: string; categoryId: string }[] = [];
     const podcastsInChunk = await prisma.podcast.findMany({
       where: { feedUrl: { in: chunk.filter((p) => p.feedUrl).map((p) => p.feedUrl) } },
-      select: { id: true, feedUrl: true },
+      select: { id: true, feedUrl: true, source: true },
     });
     const feedToId = new Map<string, string>(podcastsInChunk.map((p: any) => [p.feedUrl, p.id]));
+    const feedToSource = new Map<string, string>(podcastsInChunk.map((p: any) => [p.feedUrl, p.source]));
 
-    // Clear old joins for this chunk
-    const chunkIds = podcastsInChunk.map((p: any) => p.id);
-    if (chunkIds.length > 0) {
-      await prisma.podcastCategory.deleteMany({ where: { podcastId: { in: chunkIds } } });
+    // Only clear+replace category joins if this source owns the podcast
+    const ownedChunkIds = podcastsInChunk
+      .filter((p: any) => p.source !== "apple" || sourceId === "apple")
+      .map((p: any) => p.id);
+    if (ownedChunkIds.length > 0) {
+      await prisma.podcastCategory.deleteMany({ where: { podcastId: { in: ownedChunkIds } } });
     }
 
     for (const podcast of chunk) {
       const podcastId = feedToId.get(podcast.feedUrl);
       if (!podcastId) continue;
+      // Skip category replacement for Apple-sourced pods when PI is running
+      const existingSource = feedToSource.get(podcast.feedUrl);
+      if (existingSource === "apple" && sourceId === "podcast-index") continue;
+
       for (const cat of podcast.categories ?? []) {
         if (cat.genreId === "26") continue;
         const categoryId = categoryIdMap.get(cat.genreId);

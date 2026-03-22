@@ -78,6 +78,10 @@ describe("Admin Podcasts Routes", () => {
         .mockResolvedValueOnce([
           { status: "active", _count: 22 },
           { status: "archived", _count: 3 },
+        ])
+        .mockResolvedValueOnce([
+          { source: "apple", _count: 5 },
+          { source: "podcast-index", _count: 20 },
         ]);
 
       const res = await app.request("/podcasts/stats", {}, env, mockExCtx);
@@ -86,6 +90,7 @@ describe("Admin Podcasts Routes", () => {
       expect(body.data).toHaveProperty("total");
       expect(body.data).toHaveProperty("byHealth");
       expect(body.data).toHaveProperty("byStatus");
+      expect(body.data).toHaveProperty("bySource");
       expect(body.data).toHaveProperty("needsAttention");
     });
 

@@ -62,6 +62,7 @@ const sidebarEntries: SidebarEntry[] = [
   { type: "item", path: "command-center", label: "Command Center", icon: LayoutDashboard },
 
   { type: "item", path: "catalog", label: "Catalog", icon: Library },
+  { type: "item", path: "podcast-sources", label: "Podcast Sources", icon: Boxes },
   { type: "item", path: "catalog-seed", label: "Catalog Seed", icon: Sprout },
   { type: "item", path: "podcast-settings", label: "Podcast Settings", icon: Settings },
 
