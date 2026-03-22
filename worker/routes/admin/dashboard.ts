@@ -306,7 +306,7 @@ dashboardRoutes.get("/feed-refresh-summary", async (c) => {
     prisma.podcast.count({ where: { status: "active" } }),
     prisma.episode.count(),
     prisma.episode.count({ where: { createdAt: { gte: twentyFourHoursAgo } } }),
-    prisma.episode.count({ where: { contentStatus: { in: ["TRANSCRIPT_READY", "AUDIO_READY"] } } }),
+    prisma.episode.count({ where: { contentStatus: "TRANSCRIPT_READY" } }),
     prisma.episode.count({ where: { contentStatus: "AUDIO_READY" } }),
     prisma.podcast.count({ where: { feedError: { not: null }, status: "active" } }),
   ]);

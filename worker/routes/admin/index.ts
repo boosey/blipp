@@ -23,6 +23,7 @@ import { cronJobsRoutes } from "./cron-jobs";
 import { claimsBenchmarkRoutes } from "./claims-benchmark";
 import { promptsRoutes } from "./prompts";
 import { voicePresetsRoutes } from "./voice-presets";
+import { storageRoutes } from "./storage";
 
 /**
  * Admin route tree. All routes require admin authentication.
@@ -55,5 +56,6 @@ adminRoutes.route("/cron-jobs", cronJobsRoutes);
 adminRoutes.route("/claims-benchmark", claimsBenchmarkRoutes);
 adminRoutes.route("/prompts", promptsRoutes);
 adminRoutes.route("/voice-presets", voicePresetsRoutes);
+adminRoutes.route("/storage", storageRoutes);
 
 export { adminRoutes };
