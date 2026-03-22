@@ -35,6 +35,57 @@ export const APPLE_PODCAST_GENRES: Record<string, string> = {
   "1309": "TV & Film",
 };
 
+/** Maps Apple sub-genre IDs to their top-level parent genre ID */
+export const APPLE_SUBGENRE_TO_PARENT: Record<string, string> = {
+  // Arts (1301)
+  "1402": "1301", "1405": "1301", "1406": "1301", "1407": "1301", "1482": "1301",
+  // Business (1321)
+  "1412": "1321", "1491": "1321", "1492": "1321", "1493": "1321", "1494": "1321",
+  // Comedy (1303)
+  "1495": "1303", "1496": "1303", "1497": "1303", "1498": "1303",
+  // Education (1304)
+  "1499": "1304", "1500": "1304", "1501": "1304",
+  // Fiction (1483)
+  "1484": "1483", "1485": "1483", "1486": "1483",
+  // Health & Fitness (1512)
+  "1513": "1512", "1514": "1512", "1515": "1512", "1516": "1512", "1517": "1512",
+  // Kids & Family (1305)
+  "1519": "1305", "1520": "1305", "1521": "1305", "1522": "1305",
+  // Leisure (1502)
+  "1503": "1502", "1504": "1502", "1506": "1502", "1507": "1502", "1508": "1502",
+  // Music (1310)
+  "1523": "1310", "1524": "1310",
+  // News (1489)
+  "1526": "1489", "1527": "1489", "1528": "1489", "1529": "1489", "1530": "1489",
+  // Religion & Spirituality (1314)
+  "1438": "1314", "1439": "1314", "1440": "1314", "1441": "1314", "1442": "1314", "1443": "1314", "1444": "1314",
+  // Science (1533)
+  "1534": "1533", "1535": "1533", "1536": "1533", "1537": "1533", "1538": "1533",
+  // Society & Culture (1324)
+  "1302": "1324", "1539": "1324", "1540": "1324", "1541": "1324", "1542": "1324", "1543": "1324",
+  // Sports (1545)
+  "1546": "1545", "1547": "1545", "1548": "1545", "1549": "1545", "1550": "1545",
+  "1551": "1545", "1552": "1545", "1553": "1545", "1554": "1545", "1555": "1545",
+  "1556": "1545", "1557": "1545", "1558": "1545", "1559": "1545", "1560": "1545",
+  // TV & Film (1309)
+  "1561": "1309", "1562": "1309", "1563": "1309",
+};
+
+/**
+ * Resolves a genre ID to its top-level parent.
+ * Returns the same ID if it's already a top-level genre.
+ */
+export function resolveTopLevelGenre(genreId: string): { genreId: string; name: string } | null {
+  if (APPLE_PODCAST_GENRES[genreId]) {
+    return { genreId, name: APPLE_PODCAST_GENRES[genreId] };
+  }
+  const parentId = APPLE_SUBGENRE_TO_PARENT[genreId];
+  if (parentId && APPLE_PODCAST_GENRES[parentId]) {
+    return { genreId: parentId, name: APPLE_PODCAST_GENRES[parentId] };
+  }
+  return null;
+}
+
 /** A genre entry from the Charts API response */
 export interface AppleChartGenre {
   genreId: string;
@@ -175,14 +226,14 @@ async function fetchWithRetry(
  */
 export class ApplePodcastsClient {
   /**
-   * Fetches the overall top 100 podcasts using the iTunes RSS endpoint.
+   * Fetches the overall top 200 podcasts using the iTunes RSS endpoint.
    * This endpoint reliably returns the top chart (unlike the Charts API which ignores genre filters).
    *
    * @param country - ISO country code (default "us")
    * @returns Array of RSS entries with Apple IDs, or empty array on failure
    */
-  async top100(country: string = "us"): Promise<AppleRSSEntry[]> {
-    const url = `${ITUNES_BASE}/${country}/rss/toppodcasts/limit=100/json`;
+  async top200(country: string = "us"): Promise<AppleRSSEntry[]> {
+    const url = `${ITUNES_BASE}/${country}/rss/toppodcasts/limit=200/json`;
     try {
       const res = await fetchWithRetry(url);
       const data = (await res.json()) as ITunesRSSResponse;
@@ -197,19 +248,21 @@ export class ApplePodcastsClient {
           artistName: e["im:artist"]?.label ?? "",
           artworkUrl100: largestImage,
           genres: e.category
-            ? [
-                {
-                  genreId: e.category.attributes["im:id"],
-                  name: e.category.attributes.label,
-                  url: "",
-                },
-              ]
+            ? (() => {
+                const rawId = e.category.attributes["im:id"];
+                const resolved = resolveTopLevelGenre(rawId);
+                if (resolved) {
+                  return [{ genreId: resolved.genreId, name: resolved.name, url: "" }];
+                }
+                // Fallback: use raw ID and label if no parent mapping exists
+                return [{ genreId: rawId, name: e.category.attributes.label, url: "" }];
+              })()
             : [],
           url: e.link?.attributes?.href ?? e.id?.label ?? "",
         };
       });
     } catch (err) {
-      console.warn("[ApplePodcasts] Failed to fetch top 100:", err);
+      console.warn("[ApplePodcasts] Failed to fetch top 200:", err);
       return [];
     }
   }

@@ -28,7 +28,7 @@ export async function handleCatalogRefresh(
           await wipeCatalogData(prisma, env.R2);
         }
 
-        // ── Phase 1: Apple source (top 100, authoritative) ──
+        // ── Phase 1: Apple source (top 200, authoritative) ──
         const appleSource = getCatalogSource("apple");
         let appleDiscovered: DiscoveredPodcast[] = [];
         try {
@@ -38,34 +38,29 @@ export async function handleCatalogRefresh(
           console.warn("[catalog-refresh] Apple source failed, continuing with PI only:", err);
         }
 
-        // ── Phase 2: Podcast Index source ──
-        const discoverCount = Number(await getConfig(prisma, "catalog.seedSize", DEFAULT_DISCOVER_COUNT));
-        const piSource = getCatalogSource("podcast-index");
-        const piDiscovered = await piSource.discover(discoverCount, env);
-        console.log(`[catalog-refresh] Podcast Index: discovered ${piDiscovered.length} podcasts`);
+        // ── Phase 2: Podcast Index source DISABLED — testing Apple-only data ──
+        // const discoverCount = Number(await getConfig(prisma, "catalog.seedSize", DEFAULT_DISCOVER_COUNT));
+        // const piSource = getCatalogSource("podcast-index");
+        // const piDiscovered = await piSource.discover(discoverCount, env);
+        // console.log(`[catalog-refresh] Podcast Index: discovered ${piDiscovered.length} podcasts`);
 
-        const totalDiscovered = appleDiscovered.length + piDiscovered.length;
+        const totalDiscovered = appleDiscovered.length;
         if (seedJobId) await updateSeedJob(prisma, seedJobId, { podcastsDiscovered: totalDiscovered });
 
-        // ── Upsert categories from both sources ──
+        // ── Upsert categories (Apple only) ──
         await updateStatus(prisma, "resolving_metadata");
-        const allDiscovered = [...appleDiscovered, ...piDiscovered];
-        const categoryIdMap = await upsertCategories(prisma, allDiscovered);
+        const categoryIdMap = await upsertCategories(prisma, appleDiscovered);
 
-        // ── Upsert podcasts: Apple first (authoritative), then PI (fills nulls) ──
+        // ── Upsert podcasts (Apple only) ──
         await updateStatus(prisma, "upserting");
         if (seedJobId) await updateSeedJob(prisma, seedJobId, { status: "upserting" });
         let upsertedIds: string[];
 
         if (action === "seed" && seedMode === "destructive") {
-          // Bulk insert — DB was just wiped so no conflicts
-          const appleIds = appleDiscovered.length > 0
+          upsertedIds = appleDiscovered.length > 0
             ? await bulkInsertPodcasts(prisma, appleDiscovered, categoryIdMap, "apple")
             : [];
-          const piIds = await bulkInsertPodcasts(prisma, piDiscovered, categoryIdMap, "podcast-index");
-          upsertedIds = [...appleIds, ...piIds];
         } else if (action === "seed" && seedMode === "additive") {
-          // Apple first — insert new ones
           let appleIds: string[] = [];
           if (appleDiscovered.length > 0) {
             const newApple = await filterNewPodcasts(prisma, appleDiscovered);
@@ -74,20 +69,11 @@ export async function handleCatalogRefresh(
             }
             console.log(`[catalog-refresh] Additive Apple: ${appleIds.length} new of ${appleDiscovered.length}`);
           }
-          // PI second — insert new ones
-          const newPI = await filterNewPodcasts(prisma, piDiscovered);
-          console.log(`[catalog-refresh] Additive PI: ${newPI.length} new of ${piDiscovered.length}`);
-          const piIds = newPI.length > 0
-            ? await bulkInsertPodcasts(prisma, newPI, categoryIdMap, "podcast-index")
-            : [];
-          upsertedIds = [...appleIds, ...piIds];
+          upsertedIds = appleIds;
         } else {
-          // Refresh mode: Apple first (authoritative), PI second (fill nulls only)
-          const appleIds = appleDiscovered.length > 0
+          upsertedIds = appleDiscovered.length > 0
             ? await upsertPodcasts(prisma, appleDiscovered, categoryIdMap, "apple")
             : [];
-          const piIds = await upsertPodcasts(prisma, piDiscovered, categoryIdMap, "podcast-index");
-          upsertedIds = [...new Set([...appleIds, ...piIds])];
           await markPendingDeletion(prisma, upsertedIds);
         }
 
