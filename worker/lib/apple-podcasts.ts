@@ -5,7 +5,7 @@
 
 const CHARTS_BASE = "https://rss.marketingtools.apple.com/api/v2";
 const ITUNES_BASE = "https://itunes.apple.com";
-const LOOKUP_BATCH_SIZE = 150;
+const LOOKUP_BATCH_SIZE = 10;
 const RETRY_MAX = 3;
 const RETRY_BASE_MS = 1000;
 const INTER_REQUEST_DELAY_MS = 500;
@@ -189,7 +189,7 @@ async function fetchWithRetry(
       if (res.ok) return res;
 
       const status = res.status;
-      const isRetryable = status === 429 || status >= 500;
+      const isRetryable = status === 403 || status === 429 || status >= 500;
 
       if (!isRetryable || attempt === retries) {
         throw new Error(
