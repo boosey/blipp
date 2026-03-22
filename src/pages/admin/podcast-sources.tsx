@@ -141,11 +141,11 @@ function SourceCard({ source }: { source: PodcastSourceStats }) {
 }
 
 export default function PodcastSources() {
-  const { data, loading } = useFetch<{ sources: PodcastSourceStats[]; lastRefresh: string | null }>(
+  const { data: raw, loading } = useFetch<{ data: { sources: PodcastSourceStats[]; lastRefresh: string | null } }>(
     "/admin/podcasts/sources"
   );
 
-  if (loading || !data) {
+  if (loading || !raw?.data) {
     return (
       <div className="space-y-4 p-6">
         <Skeleton className="h-8 w-48 bg-white/5" />
@@ -158,7 +158,7 @@ export default function PodcastSources() {
     );
   }
 
-  const { sources, lastRefresh } = data;
+  const { sources, lastRefresh } = raw.data;
   const totalPodcasts = sources.reduce((s, src) => s + src.podcastCount, 0);
   const totalEpisodes = sources.reduce((s, src) => s + src.episodeCount, 0);
 
