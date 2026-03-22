@@ -989,6 +989,8 @@ export interface AdminPodcastProfile {
 export interface CatalogSeedJob {
   id: string;
   mode: "destructive" | "additive";
+  source: string; // "apple" | "podcast-index" | "manual"
+  trigger: string; // "admin" | "script" | "cron"
   status: string; // pending | discovering | upserting | feed_refresh | paused | cancelled | complete | failed
   podcastsDiscovered: number;
   feedsTotal: number;
@@ -996,8 +998,27 @@ export interface CatalogSeedJob {
   prefetchTotal: number;
   prefetchCompleted: number;
   error: string | null;
+  archivedAt: string | null;
   startedAt: string;
   completedAt: string | null;
+}
+
+export interface CatalogJobError {
+  id: string;
+  phase: string; // "discovery" | "feed_refresh" | "prefetch"
+  message: string;
+  podcastId: string | null;
+  episodeId: string | null;
+  podcastTitle?: string;
+  episodeTitle?: string;
+  createdAt: string;
+}
+
+export interface CatalogSeedJobList {
+  data: CatalogSeedJob[];
+  total: number;
+  page: number;
+  pageSize: number;
 }
 
 export interface CatalogSeedProgress {
@@ -1005,6 +1026,7 @@ export interface CatalogSeedProgress {
   podcastsInserted: number;
   episodesDiscovered: number;
   prefetchBreakdown: Record<string, number>;
+  errorCounts: { discovery: number; feed_refresh: number; prefetch: number; total: number };
   pagination: {
     pageSize: number;
     podcastPage: number;

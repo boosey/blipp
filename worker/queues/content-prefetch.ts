@@ -99,6 +99,19 @@ export async function handleContentPrefetch(
           error: err instanceof Error ? err.message : String(err),
           ts: new Date().toISOString(),
         }));
+
+        // Record error to CatalogJobError if this is part of a seed job
+        if (msg.body.seedJobId) {
+          await prisma.catalogJobError.create({
+            data: {
+              jobId: msg.body.seedJobId,
+              phase: "prefetch",
+              message: err instanceof Error ? err.message : String(err),
+              episodeId,
+            },
+          }).catch(() => {});
+        }
+
         msg.retry();
       }
     }

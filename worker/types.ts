@@ -89,4 +89,6 @@ export type Env = {
   SENTRY_DSN?: string;
   /** KV namespace for persistent rate limiting (optional — falls back to in-memory) */
   RATE_LIMIT_KV?: KVNamespace;
+  /** GitHub PAT for triggering Actions workflows (optional — Apple refresh button) */
+  GITHUB_TOKEN?: string;
 };

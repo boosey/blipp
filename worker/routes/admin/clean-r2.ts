@@ -41,9 +41,18 @@ cleanR2Routes.post("/bulk-refresh", async (c) => {
     return c.json({ error: "Unauthorized" }, 401);
   }
 
-  const { podcastIds } = await c.req.json();
+  const prisma = c.get("prisma") as any;
+  const { podcastIds, seedJobId } = await c.req.json();
   if (!podcastIds?.length) {
     return c.json({ error: "podcastIds (string[]) required" }, 400);
+  }
+
+  // If seedJobId provided, update feedsTotal on the job
+  if (seedJobId) {
+    await prisma.catalogSeedJob.update({
+      where: { id: seedJobId },
+      data: { feedsTotal: podcastIds.length },
+    }).catch(() => {});
   }
 
   const BATCH_SIZE = 100;
@@ -51,7 +60,9 @@ cleanR2Routes.post("/bulk-refresh", async (c) => {
   for (let i = 0; i < podcastIds.length; i += BATCH_SIZE) {
     const batch = podcastIds.slice(i, i + BATCH_SIZE);
     await c.env.FEED_REFRESH_QUEUE.sendBatch(
-      batch.map((podcastId: string) => ({ body: { podcastId, type: "manual" as const } }))
+      batch.map((podcastId: string) => ({
+        body: { podcastId, type: "manual" as const, ...(seedJobId && { seedJobId }) },
+      }))
     );
     queued += batch.length;
   }

@@ -303,6 +303,18 @@ export async function handleFeedRefresh(
       } catch (err) {
         // Log and continue — don't let one failed feed block others
         log.error("podcast_error", { podcastId: podcast.id }, err);
+
+        // Record error to CatalogJobError if this is part of a seed job
+        if (seedJobId) {
+          await prisma.catalogJobError.create({
+            data: {
+              jobId: seedJobId,
+              phase: "feed_refresh",
+              message: err instanceof Error ? err.message : String(err),
+              podcastId: podcast.id,
+            },
+          }).catch(() => {});
+        }
       } finally {
         if (seedJobId && processed) {
           await prisma.catalogSeedJob.update({

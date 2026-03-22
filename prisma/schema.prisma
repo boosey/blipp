@@ -933,17 +933,37 @@ enum CronRunLogLevel {
 // ── Catalog Seed Jobs ──
 
 model CatalogSeedJob {
-  id                  String    @id @default(cuid())
-  mode                String    @default("destructive") // "destructive" | "additive"
-  status              String    @default("pending")
-  podcastsDiscovered  Int       @default(0)
-  feedsTotal          Int       @default(0)
-  feedsCompleted      Int       @default(0)
-  prefetchTotal       Int       @default(0)
-  prefetchCompleted   Int       @default(0)
+  id                  String             @id @default(cuid())
+  mode                String             @default("additive")
+  source              String             @default("apple")   // "apple" | "podcast-index" | "manual"
+  trigger             String             @default("admin")   // "admin" | "script" | "cron"
+  status              String             @default("pending")
+  podcastsDiscovered  Int                @default(0)
+  feedsTotal          Int                @default(0)
+  feedsCompleted      Int                @default(0)
+  prefetchTotal       Int                @default(0)
+  prefetchCompleted   Int                @default(0)
   error               String?
-  startedAt           DateTime  @default(now())
+  archivedAt          DateTime?
+  startedAt           DateTime           @default(now())
   completedAt         DateTime?
+  errors              CatalogJobError[]
 
   @@index([status])
+  @@index([startedAt])
+  @@index([archivedAt])
+}
+
+model CatalogJobError {
+  id         String          @id @default(cuid())
+  jobId      String
+  job        CatalogSeedJob  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  phase      String          // "discovery" | "feed_refresh" | "prefetch"
+  message    String
+  podcastId  String?
+  episodeId  String?
+  createdAt  DateTime        @default(now())
+
+  @@index([jobId])
+  @@index([jobId, phase])
 }

@@ -91,6 +91,15 @@ export async function handleCatalogRefresh(
             status: "failed",
             error: err instanceof Error ? err.message : String(err),
           }).catch(() => {});
+
+          // Record error to CatalogJobError
+          await prisma.catalogJobError.create({
+            data: {
+              jobId: seedJobId,
+              phase: "discovery",
+              message: err instanceof Error ? err.message : String(err),
+            },
+          }).catch(() => {});
         }
         msg.retry();
       }

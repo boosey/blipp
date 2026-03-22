@@ -3,39 +3,29 @@
  * Apple Podcasts Discovery Script
  * ================================
  *
- * WHY THIS RUNS LOCALLY (not in Cloudflare Workers):
+ * WHY THIS RUNS LOCALLY / IN CI (not in Cloudflare Workers):
  * Apple's iTunes Lookup API (itunes.apple.com/lookup) returns 403 Forbidden
  * when called from Cloudflare Workers IP ranges. Apple blocks known cloud/bot
  * IPs from this endpoint. The RSS chart feed works fine from Workers, but
  * without the lookup we can't resolve Apple IDs to RSS feed URLs.
  *
- * Running locally avoids the IP block since requests come from a residential IP.
+ * Running locally or in GitHub Actions avoids the IP block since requests
+ * come from a residential/runner IP.
  *
  * WHAT IT DOES:
- * 1. Fetches the Apple Podcasts top 200 chart (RSS feed — always works)
+ * 1. Fetches the Apple Podcasts top chart (RSS feed — always works)
  * 2. Batch-resolves Apple IDs to feed URLs via iTunes Lookup API (10 per request)
- * 3. Upserts discovered podcasts into the database with source="apple"
- * 4. Creates/updates category associations
- * 5. Calls the Worker's /internal/clean/bulk-refresh endpoint to queue
- *    feed refresh for all upserted podcasts (unless --no-refresh)
- * 6. Workers then process: feed refresh → content prefetch automatically
- *
- * WHAT IT DOES NOT DO:
- * - Feed refresh (fetching episodes) — triggered via Worker queue by step 5
- * - Content prefetch (transcripts/audio) — triggered automatically after feed refresh
- * - Podcast Index discovery — handled separately by Workers catalog-refresh queue
+ * 3. POSTs discovered podcasts to the catalog-seed API endpoints
+ * 4. The server handles DB upserts, category creation, and feed refresh queuing
  *
  * Usage:
  *   npm run apple:discover                             # staging (default)
  *   npm run apple:discover:production                  # production
- *   npm run apple:discover:dry                         # preview only, no DB writes
+ *   npm run apple:discover:dry                         # preview only, no API calls
  *   node scripts/apple-discover.mjs --country=gb       # UK chart instead of US
  *   node scripts/apple-discover.mjs --limit=100        # top 100 instead of 200
- *   node scripts/apple-discover.mjs --no-refresh       # upsert only, skip feed refresh queue
  */
-import pg from "pg";
 import { readFileSync } from "node:fs";
-import crypto from "node:crypto";
 
 // ── Config ──
 
@@ -46,33 +36,38 @@ const country = countryArg ? countryArg.split("=")[1] : "us";
 const limitArg = process.argv.find((a) => a.startsWith("--limit="));
 const chartLimit = limitArg ? parseInt(limitArg.split("=")[1]) : 200;
 
-const noRefresh = process.argv.includes("--no-refresh");
 const env = production ? "production" : "staging";
-const envKey = production ? "PRODUCTION_DATABASE_URL" : "STAGING_DATABASE_URL";
 
 const APP_ORIGINS = {
   production: "https://podblipp.com",
   staging: "https://blipp-staging.boosey-boudreaux.workers.dev",
 };
 
-// ── Database ──
+// ── Environment / Auth ──
 
-function getDatabaseUrl() {
-  const lines = readFileSync("neon-config.env", "utf8").split("\n");
-  for (const line of lines) {
-    const match = line.match(new RegExp(`^${envKey}=(.+)$`));
-    if (match) return match[1].trim();
+function getConfig() {
+  // In CI (GitHub Actions), read from environment variables
+  if (process.env.GITHUB_ACTIONS) {
+    const clerkSecret = process.env.CLERK_SECRET_KEY;
+    const appOrigin = process.env.APP_ORIGIN;
+    if (!clerkSecret) throw new Error("CLERK_SECRET_KEY env var not set");
+    if (!appOrigin) throw new Error("APP_ORIGIN env var not set");
+    return { clerkSecret, appOrigin };
   }
-  throw new Error(`${envKey} not found in neon-config.env`);
+
+  // Locally, read from files
+  const clerkSecret = readEnvFile(".dev.vars", "CLERK_SECRET_KEY");
+  const appOrigin = APP_ORIGINS[env];
+  return { clerkSecret, appOrigin };
 }
 
-function getClerkSecret() {
-  const lines = readFileSync(".dev.vars", "utf8").split("\n");
+function readEnvFile(filePath, key) {
+  const lines = readFileSync(filePath, "utf8").split("\n");
   for (const line of lines) {
-    const match = line.match(/^CLERK_SECRET_KEY=(.+)$/);
+    const match = line.match(new RegExp(`^${key}=(.+)$`));
     if (match) return match[1].trim();
   }
-  throw new Error("CLERK_SECRET_KEY not found in .dev.vars");
+  throw new Error(`${key} not found in ${filePath}`);
 }
 
 // ── Apple API helpers ──
@@ -190,6 +185,27 @@ async function lookupBatch(appleIds) {
   return results;
 }
 
+// ── API helpers ──
+
+const INGEST_CHUNK_SIZE = 50;
+
+async function apiPost(url, body, clerkSecret) {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${clerkSecret}`,
+    },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg = data.error || data.message || `${res.status} ${res.statusText}`;
+    throw new Error(msg);
+  }
+  return data;
+}
+
 // ── Main ──
 
 async function main() {
@@ -230,10 +246,10 @@ async function main() {
     });
   }
 
-  console.log(`\n${discovered.length} podcasts with feed URLs ready for upsert`);
+  console.log(`\n${discovered.length} podcasts with feed URLs ready for ingest`);
 
   if (dryRun) {
-    console.log("\n-- DRY RUN -- No database changes made.\n");
+    console.log("\n-- DRY RUN -- No API calls made.\n");
     console.log("Top 10 discovered:");
     for (const p of discovered.slice(0, 10)) {
       console.log(`  ${p.title} (${p.author}) — ${p.feedUrl.slice(0, 60)}`);
@@ -241,141 +257,57 @@ async function main() {
     process.exit(0);
   }
 
-  // Step 4: Connect to database and upsert
-  const dbUrl = getDatabaseUrl();
-  const client = new pg.Client({ connectionString: dbUrl });
-  await client.connect();
-  console.log(`\nConnected to ${env} database`);
+  // Step 4: Create catalog seed job via API
+  const { clerkSecret, appOrigin } = getConfig();
+  console.log(`\nCreating catalog seed job at ${appOrigin}...`);
 
-  try {
-    // Upsert categories
-    console.log("Upserting categories...");
-    const genreMap = new Map();
-    for (const p of discovered) {
-      for (const cat of p.categories) {
-        if (cat.genreId && cat.genreId !== "26") {
-          genreMap.set(cat.genreId, cat.name);
-        }
-      }
-    }
+  const jobResult = await apiPost(`${appOrigin}/api/admin/catalog-seed`, {
+    confirm: true,
+    source: "apple",
+    trigger: "script",
+    mode: "additive",
+  }, clerkSecret);
 
-    const categoryIdMap = new Map();
-    for (const [genreId, name] of genreMap) {
-      const res = await client.query(
-        `INSERT INTO "Category" (id, name, "appleGenreId", "createdAt", "updatedAt")
-         VALUES (gen_random_uuid()::text, $1, $2, now(), now())
-         ON CONFLICT ("appleGenreId") DO UPDATE SET name = $1, "updatedAt" = now()
-         RETURNING id`,
-        [name, genreId]
-      );
-      categoryIdMap.set(genreId, res.rows[0].id);
-    }
-    console.log(`  ${categoryIdMap.size} categories`);
-
-    // Upsert podcasts
-    console.log("Upserting podcasts...");
-    let created = 0, updated = 0, failed = 0;
-    const upsertedIds = [];
-
-    for (const podcast of discovered) {
-      try {
-        const categoryNames = podcast.categories
-          .filter((c) => c.genreId !== "26")
-          .map((c) => c.name);
-
-        // Check if exists
-        const existing = await client.query(
-          `SELECT id, source FROM "Podcast" WHERE "feedUrl" = $1`,
-          [podcast.feedUrl]
-        );
-
-        let podcastId;
-
-        if (existing.rows.length > 0) {
-          podcastId = existing.rows[0].id;
-          // Update — Apple is authoritative
-          await client.query(
-            `UPDATE "Podcast" SET
-              title = $1, "imageUrl" = $2, author = $3, "appleId" = $4,
-              categories = $5, source = 'apple', status = 'active', "updatedAt" = now()
-             WHERE id = $6`,
-            [podcast.title, podcast.imageUrl, podcast.author, podcast.appleId, categoryNames, podcastId]
-          );
-          upsertedIds.push(podcastId);
-          updated++;
-        } else {
-          // Insert new
-          const res = await client.query(
-            `INSERT INTO "Podcast" (id, title, "feedUrl", "imageUrl", author, "appleId", categories, source, status, language, "createdAt", "updatedAt")
-             VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, 'apple', 'active', 'en', now(), now())
-             RETURNING id`,
-            [podcast.title, podcast.feedUrl, podcast.imageUrl, podcast.author, podcast.appleId, categoryNames]
-          );
-          podcastId = res.rows[0].id;
-          upsertedIds.push(podcastId);
-          created++;
-        }
-
-        // Upsert category joins
-        for (const cat of podcast.categories) {
-          if (cat.genreId === "26") continue;
-          const categoryId = categoryIdMap.get(cat.genreId);
-          if (categoryId) {
-            await client.query(
-              `INSERT INTO "PodcastCategory" ("podcastId", "categoryId")
-               VALUES ($1, $2)
-               ON CONFLICT DO NOTHING`,
-              [podcastId, categoryId]
-            );
-          }
-        }
-      } catch (err) {
-        console.log(`  FAILED: ${podcast.title} — ${err.message}`);
-        failed++;
-      }
-    }
-
-    console.log(`\n=== Summary ===`);
-    console.log(`Chart entries:  ${chartEntries.length}`);
-    console.log(`Feed URLs:      ${discovered.length} (${chartEntries.length - discovered.length} unresolved)`);
-    console.log(`Created:        ${created}`);
-    console.log(`Updated:        ${updated}`);
-    console.log(`Failed:         ${failed}`);
-    console.log(`Categories:     ${categoryIdMap.size}`);
-
-    // Step 5: Trigger feed refresh via Worker bulk-refresh endpoint
-    if (upsertedIds.length > 0 && !noRefresh) {
-      console.log(`\nTriggering feed refresh for ${upsertedIds.length} podcasts...`);
-      const origin = APP_ORIGINS[env];
-      const clerkSecret = getClerkSecret();
-      try {
-        const res = await fetch(`${origin}/api/internal/clean/bulk-refresh`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${clerkSecret}`,
-          },
-          body: JSON.stringify({ podcastIds: upsertedIds }),
-        });
-        const result = await res.json();
-        if (res.ok) {
-          console.log(`  Queued ${result.data?.queued ?? 0} feed refreshes`);
-        } else {
-          console.log(`  Failed to queue: ${result.error ?? res.status}`);
-          console.log("  You can manually trigger from admin UI or re-run without --no-refresh");
-        }
-      } catch (err) {
-        console.log(`  Failed to reach Worker: ${err.message}`);
-        console.log("  Podcasts are in the DB — trigger feed refresh from admin UI");
-      }
-    } else if (noRefresh) {
-      console.log(`\nSkipped feed refresh (--no-refresh). Trigger from admin UI when ready.`);
-    }
-
-    console.log(`\nDone.`);
-  } finally {
-    await client.end();
+  const jobId = jobResult.jobId;
+  if (!jobId) {
+    console.error("Failed to create seed job — no jobId returned:", jobResult);
+    process.exit(1);
   }
+  console.log(`  Created job: ${jobId}`);
+
+  // Step 5: Send discovered podcasts in chunks
+  console.log(`\nIngesting ${discovered.length} podcasts in chunks of ${INGEST_CHUNK_SIZE}...`);
+  const totalChunks = Math.ceil(discovered.length / INGEST_CHUNK_SIZE);
+  let totalIngested = 0;
+
+  for (let i = 0; i < discovered.length; i += INGEST_CHUNK_SIZE) {
+    const chunk = discovered.slice(i, i + INGEST_CHUNK_SIZE);
+    const chunkNum = Math.floor(i / INGEST_CHUNK_SIZE) + 1;
+    const isLast = i + INGEST_CHUNK_SIZE >= discovered.length;
+
+    process.stdout.write(`  Chunk ${chunkNum}/${totalChunks} (${chunk.length} podcasts, final=${isLast})...`);
+
+    try {
+      const result = await apiPost(
+        `${appOrigin}/api/admin/catalog-seed/${jobId}/ingest`,
+        { podcasts: chunk, final: isLast },
+        clerkSecret
+      );
+      totalIngested += chunk.length;
+      console.log(` OK (created=${result.created ?? 0}, updated=${result.updated ?? 0})`);
+    } catch (err) {
+      console.log(` FAILED: ${err.message}`);
+      console.error(`\nFatal: ingest failed at chunk ${chunkNum}. Job ${jobId} may be incomplete.`);
+      process.exit(1);
+    }
+  }
+
+  console.log(`\n=== Summary ===`);
+  console.log(`Chart entries:  ${chartEntries.length}`);
+  console.log(`Feed URLs:      ${discovered.length} (${chartEntries.length - discovered.length} unresolved)`);
+  console.log(`Ingested:       ${totalIngested}`);
+  console.log(`Job ID:         ${jobId}`);
+  console.log(`\nDone.`);
 }
 
 main().catch((err) => {
