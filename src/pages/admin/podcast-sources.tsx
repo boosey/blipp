@@ -142,7 +142,7 @@ function SourceCard({ source }: { source: PodcastSourceStats }) {
 
 export default function PodcastSources() {
   const { data, loading } = useFetch<{ sources: PodcastSourceStats[]; lastRefresh: string | null }>(
-    "/api/admin/podcasts/sources"
+    "/admin/podcasts/sources"
   );
 
   if (loading || !data) {
