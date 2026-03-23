@@ -29,7 +29,7 @@
       // Intercept fetch to log Clerk API calls
       var _origFetch = window.fetch;
       window.fetch = function(url, opts) {
-        var u = typeof url === 'string' ? url : (url instanceof Request ? url.url : (url && url.url ? url.url : 'UNKNOWN:' + typeof url));
+        var u = typeof url === 'string' ? url : (url instanceof Request ? url.url : (url instanceof URL ? url.href : 'OBJ:' + JSON.stringify(url).substring(0, 200)));
         console.log('FETCH_DEBUG:', opts && opts.method || 'GET', u);
         return _origFetch.apply(this, arguments).then(function(resp) {
           if (!resp.ok) {
