@@ -93,7 +93,7 @@ requestsRoutes.get("/:id", async (c) => {
 
   // Stage → WorkProduct type mapping (some stages produce multiple types)
   const STAGE_WP_TYPES: Record<string, string[]> = {
-    TRANSCRIPTION: ["TRANSCRIPT", "SOURCE_AUDIO"],
+    TRANSCRIPTION: ["TRANSCRIPT"],
     DISTILLATION: ["CLAIMS"],
     NARRATIVE_GENERATION: ["NARRATIVE"],
     AUDIO_GENERATION: ["AUDIO_CLIP"],

@@ -250,35 +250,6 @@ export async function handleTranscription(
             sourceUrl: episode.audioUrl?.slice(0, 200),
           });
 
-          // Store source audio for debugging (idempotent — preserve first-seen)
-          const sourceAudioKey = wpKey({ type: "SOURCE_AUDIO", episodeId });
-          const existingSource = await env.R2.head(sourceAudioKey);
-          if (!existingSource) {
-            await putWorkProduct(env.R2, sourceAudioKey, audioBuffer, {
-              contentType: audioResponse.headers.get("content-type") || "audio/mpeg",
-            });
-            await prisma.workProduct.upsert({
-              where: { r2Key: sourceAudioKey },
-              create: {
-                episodeId,
-                type: "SOURCE_AUDIO",
-                r2Key: sourceAudioKey,
-                sizeBytes: audioBuffer.byteLength,
-                metadata: {
-                  contentType: audioResponse.headers.get("content-type"),
-                  contentLength: audioResponse.headers.get("content-length"),
-                  sourceUrl: episode.audioUrl?.slice(0, 200),
-                  detectedFormat: audioFormat.format,
-                  formatDetails: audioFormat.details,
-                },
-              },
-              update: {},
-            });
-            await writeEvent(prisma, step.id, "INFO", "Source audio stored to R2", {
-              r2Key: sourceAudioKey,
-              sizeBytes: audioBuffer.byteLength,
-            });
-          }
 
           const ext = extFromContentType(finalContentType, episode.audioUrl);
           const durationSeconds = episode.durationSeconds ?? Math.round(audioBuffer.byteLength / (128 * 1000 / 8));
