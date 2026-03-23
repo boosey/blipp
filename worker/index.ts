@@ -131,7 +131,17 @@ app.all("/__clerk/*", async (c) => {
 });
 
 // Clerk auth middleware — populates auth context for all API routes
-app.use("/api/*", clerkMiddleware());
+// Skip Clerk for server-to-server requests using Bearer CLERK_SECRET_KEY
+app.use("/api/*", async (c, next) => {
+  const authHeader = c.req.header("Authorization");
+  if (authHeader?.startsWith("Bearer ")) {
+    const token = authHeader.slice(7);
+    if (token === c.env.CLERK_SECRET_KEY) {
+      return next();
+    }
+  }
+  return clerkMiddleware()(c, next);
+});
 
 // Request logger — after auth so userId is available
 app.use("/api/*", requestLogger);
