@@ -16,6 +16,7 @@ import { requestLogger } from "./middleware/request-logger";
 import { classifyHttpError, type ApiErrorResponse } from "./lib/errors";
 import { captureException } from "./lib/sentry";
 import { routes } from "./routes/index";
+import { clerkProxy } from "./routes/clerk-proxy";
 import { handleQueue, scheduled } from "./queues/index";
 import { shimQueuesForLocalDev } from "./lib/local-queue";
 import { apiKeyAuth } from "./middleware/api-key";
@@ -131,6 +132,9 @@ app.use("/api/health/deep", cacheResponse({ maxAge: 30 }));
 
 // Security headers — CSP, X-Frame-Options, etc. for all responses
 app.use("/*", securityHeaders);
+
+// Clerk FAPI proxy for Capacitor native apps (before /api routes)
+app.route("/__clerk", clerkProxy);
 
 // Mount all API routes under /api
 app.route("/api", routes);
