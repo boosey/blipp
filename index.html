@@ -25,6 +25,7 @@
   <body>
     <div id="root"><h1 style="color:red;padding:40px">LOADING...</h1></div>
     <script>
+      console.log('ORIGIN_DEBUG:', window.location.origin, window.location.href);
       // Intercept fetch to log Clerk API calls
       var _origFetch = window.fetch;
       window.fetch = function(url, opts) {
