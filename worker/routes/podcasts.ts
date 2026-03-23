@@ -21,11 +21,11 @@ const SubscribeSchema = z.object({
   durationTier: z.number().refine(v => DURATION_TIERS.includes(v as any), {
     message: `Must be one of: ${DURATION_TIERS.join(", ")}`,
   }),
-  voicePresetId: z.string().nullable().optional(),
-  description: z.string().optional(),
-  imageUrl: z.string().optional(),
-  podcastIndexId: z.string().optional(),
-  author: z.string().optional(),
+  voicePresetId: z.string().nullish(),
+  description: z.string().nullish(),
+  imageUrl: z.string().nullish(),
+  podcastIndexId: z.string().nullish(),
+  author: z.string().nullish(),
 });
 
 const UpdateSubscriptionSchema = z.object({
