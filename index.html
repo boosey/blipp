@@ -23,7 +23,22 @@
     <title>Blipp</title>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"><h1 style="color:red;padding:40px">LOADING...</h1></div>
+    <script>
+      var _origError = console.error.bind(console);
+      console.error = function() {
+        var args = Array.from(arguments);
+        args.forEach(function(arg) {
+          if (arg instanceof Error) {
+            _origError('CLERK_DEBUG message:', arg.message);
+            _origError('CLERK_DEBUG stack:', arg.stack);
+          } else if (typeof arg === 'object' && arg !== null) {
+            try { _origError('CLERK_DEBUG obj:', JSON.stringify(arg)); } catch(e) { _origError('CLERK_DEBUG obj:', Object.keys(arg)); }
+          }
+        });
+        _origError.apply(null, arguments);
+      };
+    </script>
     <script src="https://imasdk.googleapis.com/js/sdkloader/ima3.js" async></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>

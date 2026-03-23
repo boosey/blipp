@@ -6,11 +6,18 @@ const config: CapacitorConfig = {
   webDir: "dist/client",
   ios: {
     contentInset: "automatic",
-    scheme: "Blipp",
+    // Use https scheme so Clerk can set cookies in the WebView
+    scheme: "https",
   },
   server: {
+    hostname: "localhost",
     // Allow mixed content (capacitor:// loading from https API)
-    allowNavigation: ["podblipp.com", "*.podblipp.com", "*.clerk.accounts.dev"],
+    allowNavigation: [
+      "podblipp.com",
+      "*.podblipp.com",
+      "clerk.podblipp.com",
+      "*.clerk.accounts.dev",
+    ],
   },
 };
 
