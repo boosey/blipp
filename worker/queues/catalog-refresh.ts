@@ -16,9 +16,10 @@ export async function handleCatalogRefresh(
 
   try {
     for (const msg of batch.messages) {
-      const { action, mode, seedJobId } = msg.body;
+      const { action, mode, source, seedJobId } = msg.body;
       const seedMode = mode ?? "destructive";
-      console.log(`[catalog-refresh] Starting ${action} (mode: ${seedMode})...`);
+      const sourceId = source ?? "apple";
+      console.log(`[catalog-refresh] Starting ${action} (mode: ${seedMode}, source: ${sourceId})...`);
 
       try {
         await updateStatus(prisma, "fetching_charts");
@@ -28,51 +29,42 @@ export async function handleCatalogRefresh(
           await wipeCatalogData(prisma, env.R2);
         }
 
-        // ── Phase 1: Apple source (top 200, authoritative) ──
-        const appleSource = getCatalogSource("apple");
-        let appleDiscovered: DiscoveredPodcast[] = [];
-        try {
-          appleDiscovered = await appleSource.discover(100, env);
-          console.log(`[catalog-refresh] Apple: discovered ${appleDiscovered.length} podcasts`);
-        } catch (err) {
-          console.warn("[catalog-refresh] Apple source failed, continuing with PI only:", err);
-        }
+        // ── Discover from the requested source ──
+        const catalogSource = getCatalogSource(sourceId);
+        const discoverCount = sourceId === "apple"
+          ? 100
+          : Number(await getConfig(prisma, "catalog.seedSize", DEFAULT_DISCOVER_COUNT));
+        const discovered = await catalogSource.discover(discoverCount, env);
+        console.log(`[catalog-refresh] ${catalogSource.name}: discovered ${discovered.length} podcasts`);
 
-        // ── Phase 2: Podcast Index source DISABLED — testing Apple-only data ──
-        // const discoverCount = Number(await getConfig(prisma, "catalog.seedSize", DEFAULT_DISCOVER_COUNT));
-        // const piSource = getCatalogSource("podcast-index");
-        // const piDiscovered = await piSource.discover(discoverCount, env);
-        // console.log(`[catalog-refresh] Podcast Index: discovered ${piDiscovered.length} podcasts`);
+        if (seedJobId) await updateSeedJob(prisma, seedJobId, { podcastsDiscovered: discovered.length });
 
-        const totalDiscovered = appleDiscovered.length;
-        if (seedJobId) await updateSeedJob(prisma, seedJobId, { podcastsDiscovered: totalDiscovered });
-
-        // ── Upsert categories (Apple only) ──
+        // ── Upsert categories ──
         await updateStatus(prisma, "resolving_metadata");
-        const categoryIdMap = await upsertCategories(prisma, appleDiscovered);
+        const categoryIdMap = await upsertCategories(prisma, discovered);
 
-        // ── Upsert podcasts (Apple only) ──
+        // ── Upsert podcasts ──
         await updateStatus(prisma, "upserting");
         if (seedJobId) await updateSeedJob(prisma, seedJobId, { status: "upserting" });
         let upsertedIds: string[];
 
         if (action === "seed" && seedMode === "destructive") {
-          upsertedIds = appleDiscovered.length > 0
-            ? await bulkInsertPodcasts(prisma, appleDiscovered, categoryIdMap, "apple")
+          upsertedIds = discovered.length > 0
+            ? await bulkInsertPodcasts(prisma, discovered, categoryIdMap, sourceId)
             : [];
         } else if (action === "seed" && seedMode === "additive") {
-          let appleIds: string[] = [];
-          if (appleDiscovered.length > 0) {
-            const newApple = await filterNewPodcasts(prisma, appleDiscovered);
-            if (newApple.length > 0) {
-              appleIds = await bulkInsertPodcasts(prisma, newApple, categoryIdMap, "apple");
+          let newIds: string[] = [];
+          if (discovered.length > 0) {
+            const newPodcasts = await filterNewPodcasts(prisma, discovered);
+            if (newPodcasts.length > 0) {
+              newIds = await bulkInsertPodcasts(prisma, newPodcasts, categoryIdMap, sourceId);
             }
-            console.log(`[catalog-refresh] Additive Apple: ${appleIds.length} new of ${appleDiscovered.length}`);
+            console.log(`[catalog-refresh] Additive ${catalogSource.name}: ${newIds.length} new of ${discovered.length}`);
           }
-          upsertedIds = appleIds;
+          upsertedIds = newIds;
         } else {
-          upsertedIds = appleDiscovered.length > 0
-            ? await upsertPodcasts(prisma, appleDiscovered, categoryIdMap, "apple")
+          upsertedIds = discovered.length > 0
+            ? await upsertPodcasts(prisma, discovered, categoryIdMap, sourceId)
             : [];
           await markPendingDeletion(prisma, upsertedIds);
         }
@@ -81,7 +73,7 @@ export async function handleCatalogRefresh(
         await queueFeedRefresh(env, upsertedIds, seedJobId);
 
         await updateStatus(prisma, "complete");
-        console.log(`[catalog-refresh] ${action} (${seedMode}) complete. ${upsertedIds.length} podcasts processed.`);
+        console.log(`[catalog-refresh] ${action} (${seedMode}, ${sourceId}) complete. ${upsertedIds.length} podcasts processed.`);
         msg.ack();
       } catch (err) {
         console.error(`[catalog-refresh] ${action} failed:`, err);

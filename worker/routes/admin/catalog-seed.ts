@@ -162,6 +162,7 @@ catalogSeedRoutes.post("/", async (c) => {
     await c.env.CATALOG_REFRESH_QUEUE.send({
       action: "seed",
       mode,
+      source,
       seedJobId: job.id,
     });
   }
@@ -171,6 +172,7 @@ catalogSeedRoutes.post("/", async (c) => {
     await c.env.CATALOG_REFRESH_QUEUE.send({
       action: "seed",
       mode,
+      source,
       seedJobId: job.id,
     });
   }

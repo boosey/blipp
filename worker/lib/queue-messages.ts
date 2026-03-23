@@ -76,5 +76,6 @@ export interface FeedRefreshMessage {
 export interface CatalogRefreshMessage {
   action: "seed" | "refresh";
   mode?: "destructive" | "additive";
+  source?: "apple" | "podcast-index";
   seedJobId?: string;
 }
