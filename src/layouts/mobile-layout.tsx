@@ -1,5 +1,5 @@
 import { useRef, useCallback } from "react";
-import { Outlet, useLocation, useNavigate, Navigate, Link } from "react-router-dom";
+import { Outlet, useLocation, useNavigate, Navigate } from "react-router-dom";
 import { UserButton } from "@clerk/clerk-react";
 import { ArrowLeft, Shield } from "lucide-react";
 import { BottomNav } from "../components/bottom-nav";
@@ -56,13 +56,13 @@ function MobileLayoutInner() {
         </div>
         <div className="flex items-center gap-2">
           {isAdmin && (
-            <Link
-              to="/admin"
+            <button
+              onClick={() => window.open("/admin", "blipp-admin")}
               className="p-1.5 text-muted-foreground hover:text-foreground transition-colors"
               title="Admin"
             >
               <Shield className="w-5 h-5" />
-            </Link>
+            </button>
           )}
           <UserButton />
         </div>
