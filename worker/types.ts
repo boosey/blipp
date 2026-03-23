@@ -5,6 +5,7 @@ declare module "hono" {
     requestId: string;
     apiKeyScopes: string[];
     apiKeyUserId: string;
+    scriptAuth: boolean;
   }
 }
 
@@ -91,4 +92,6 @@ export type Env = {
   RATE_LIMIT_KV?: KVNamespace;
   /** GitHub PAT for triggering Actions workflows (optional — Apple refresh button) */
   GITHUB_TOKEN?: string;
+  /** Shared secret for server-to-server script auth (GH Actions, CI) */
+  SCRIPT_TOKEN?: string;
 };

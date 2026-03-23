@@ -9,7 +9,7 @@ import type { Env } from "../types";
  */
 export const requireAdmin = createMiddleware<{ Bindings: Env }>(
   async (c, next) => {
-    // Allow server-to-server auth via Bearer CLERK_SECRET_KEY (scripts, CI)
+    // Allow server-to-server auth via Bearer CLERK_SECRET_KEY or X-Script-Token (scripts, CI)
     const authHeader = c.req.header("Authorization");
     if (authHeader?.startsWith("Bearer ")) {
       const token = authHeader.slice(7);
@@ -17,6 +17,11 @@ export const requireAdmin = createMiddleware<{ Bindings: Env }>(
         await next();
         return;
       }
+    }
+    const scriptToken = c.req.header("X-Script-Token");
+    if (scriptToken && c.env.SCRIPT_TOKEN && scriptToken === c.env.SCRIPT_TOKEN) {
+      await next();
+      return;
     }
 
     const auth = getAuth(c);

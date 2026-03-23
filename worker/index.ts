@@ -8,6 +8,7 @@
  */
 import * as Sentry from "@sentry/cloudflare";
 import { Hono } from "hono";
+import { createMiddleware } from "hono/factory";
 import { cors } from "hono/cors";
 import { clerkMiddleware } from "./middleware/auth";
 import { prismaMiddleware } from "./middleware/prisma";
@@ -23,6 +24,7 @@ import { rateLimit } from "./middleware/rate-limit";
 import { securityHeaders } from "./middleware/security-headers";
 import { cacheResponse } from "./middleware/cache";
 import { deepHealthCheck } from "./lib/health";
+import { catalogSeedRoutes } from "./routes/admin/catalog-seed";
 import type { Env } from "./types";
 
 const app = new Hono<{ Bindings: Env }>();
@@ -129,6 +131,37 @@ app.all("/__clerk/*", async (c) => {
   proxyResp.headers.set("Access-Control-Allow-Credentials", "true");
   return proxyResp;
 });
+
+// ── Catalog-seed routes: script-token OR Clerk session ──
+// Script/CI requests bypass Clerk entirely via X-Script-Token or Bearer CLERK_SECRET_KEY.
+// Browser admin requests fall through to Clerk + requireAdmin (normal admin flow).
+const scriptOrClerkAuth = createMiddleware<{ Bindings: Env }>(async (c, next) => {
+  // Script token bypass (GH Actions, CI)
+  const scriptToken = c.req.header("X-Script-Token");
+  if (scriptToken && c.env.SCRIPT_TOKEN && scriptToken === c.env.SCRIPT_TOKEN) {
+    c.set("scriptAuth", true);
+    return next();
+  }
+  // Bearer secret bypass
+  const authHeader = c.req.header("Authorization");
+  if (authHeader?.startsWith("Bearer ")) {
+    const token = authHeader.slice(7);
+    if (token === c.env.CLERK_SECRET_KEY) {
+      c.set("scriptAuth", true);
+      return next();
+    }
+  }
+  // Browser request — run Clerk middleware, then requireAdmin
+  return clerkMiddleware()(c, async () => {
+    const { requireAdmin } = await import("./middleware/admin");
+    await requireAdmin(c, next);
+  });
+});
+for (const path of ["/api/admin/catalog-seed", "/api/admin/catalog-seed/*"] as const) {
+  app.use(path, prismaMiddleware);
+  app.use(path, scriptOrClerkAuth);
+}
+app.route("/api/admin/catalog-seed", catalogSeedRoutes);
 
 // Clerk auth middleware — populates auth context for all API routes
 // Skip Clerk for server-to-server requests using Bearer CLERK_SECRET_KEY
