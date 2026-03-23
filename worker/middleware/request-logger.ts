@@ -14,7 +14,8 @@ export const requestLogger = createMiddleware<{ Bindings: Env }>(
 
     const status = c.res.status;
     const requestId = c.get("requestId") ?? c.req.header("x-request-id");
-    const auth = getAuth(c);
+    let auth: ReturnType<typeof getAuth> | null = null;
+    try { auth = getAuth(c); } catch {}
 
     // Skip logging for health checks to reduce noise
     if (c.req.path === "/api/health") return;
