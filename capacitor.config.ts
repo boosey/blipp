@@ -16,6 +16,7 @@ const config: CapacitorConfig = {
       "*.podblipp.com",
       "clerk.podblipp.com",
       "*.clerk.accounts.dev",
+      "*.workers.dev",
     ],
   },
 };
