@@ -104,6 +104,14 @@ beforeEach(() => {
   mockPrisma.podcast.findUnique.mockResolvedValue(null);
   mockPrisma.podcast.findMany.mockResolvedValue([]);
   mockPrisma.subscription.count.mockResolvedValue(0);
+
+  // EpisodeRefreshJob creation after discovery
+  (mockPrisma as any).episodeRefreshJob = createModelMethods();
+  (mockPrisma as any).episodeRefreshJob.create.mockResolvedValue({ id: "refresh-job-1" });
+
+  // CatalogSeedJob updates
+  (mockPrisma as any).catalogSeedJob = createModelMethods();
+  (mockPrisma as any).catalogSeedJob.update.mockResolvedValue({});
 });
 
 function createBatch(action: "seed" | "refresh"): MessageBatch<CatalogRefreshMessage> {
@@ -276,8 +284,8 @@ describe("handleCatalogRefresh", () => {
     const sendBatchCall = (mockEnv.FEED_REFRESH_QUEUE as any).sendBatch.mock.calls[0][0];
     expect(sendBatchCall).toEqual(
       expect.arrayContaining([
-        { body: { podcastId: "pod-1", type: "manual" } },
-        { body: { podcastId: "pod-2", type: "manual" } },
+        { body: { podcastId: "pod-1", type: "manual", refreshJobId: "refresh-job-1" } },
+        { body: { podcastId: "pod-2", type: "manual", refreshJobId: "refresh-job-1" } },
       ])
     );
   });
