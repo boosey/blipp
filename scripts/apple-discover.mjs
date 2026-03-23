@@ -263,7 +263,11 @@ async function main() {
 
   // Step 4: Create catalog seed job via API
   const { clerkSecret, appOrigin } = getConfig();
-  console.log(`\nCreating catalog seed job at ${appOrigin}...`);
+  // Log key fingerprint for debugging (prefix + length — GH won't mask these)
+  const keyLen = clerkSecret.length;
+  const keyPrefix = clerkSecret.slice(0, 8);
+  console.log(`\nKey fingerprint: ${keyPrefix}... (${keyLen} chars)`);
+  console.log(`Creating catalog seed job at ${appOrigin}...`);
 
   const jobResult = await apiPost(`${appOrigin}/api/admin/catalog-seed`, {
     confirm: true,
