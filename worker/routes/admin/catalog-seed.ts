@@ -189,6 +189,11 @@ catalogSeedRoutes.post("/trigger-apple", async (c) => {
   const owner = "PodBlipp";
   const repo = "blipp";
 
+  // Detect environment from request origin or APP_ORIGIN
+  const host = c.req.header("host") ?? "";
+  const isProduction = host.includes("podblipp.com") || c.env.APP_ORIGIN?.includes("podblipp.com");
+  const environment = body.environment ?? (isProduction ? "production" : "staging");
+
   const resp = await fetch(
     `https://api.github.com/repos/${owner}/${repo}/actions/workflows/apple-discover.yml/dispatches`,
     {
@@ -201,7 +206,7 @@ catalogSeedRoutes.post("/trigger-apple", async (c) => {
       body: JSON.stringify({
         ref: "main",
         inputs: {
-          environment: body.environment ?? "staging",
+          environment,
           country: body.country ?? "us",
           limit: String(body.limit ?? 200),
         },
