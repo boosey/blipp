@@ -50,15 +50,16 @@ function getConfig() {
   if (process.env.GITHUB_ACTIONS) {
     const clerkSecret = process.env.CLERK_SECRET_KEY;
     const appOrigin = process.env.APP_ORIGIN;
+    const scriptToken = process.env.SCRIPT_TOKEN || undefined;
     if (!clerkSecret) throw new Error("CLERK_SECRET_KEY env var not set");
     if (!appOrigin) throw new Error("APP_ORIGIN env var not set");
-    return { clerkSecret, appOrigin };
+    return { clerkSecret, appOrigin, scriptToken };
   }
 
   // Locally, read from files
   const clerkSecret = readEnvFile(".dev.vars", "CLERK_SECRET_KEY");
   const appOrigin = APP_ORIGINS[env];
-  return { clerkSecret, appOrigin };
+  return { clerkSecret, appOrigin, scriptToken: undefined };
 }
 
 function readEnvFile(filePath, key) {
@@ -189,13 +190,16 @@ async function lookupBatch(appleIds) {
 
 const INGEST_CHUNK_SIZE = 50;
 
-async function apiPost(url, body, clerkSecret) {
+async function apiPost(url, body, clerkSecret, scriptToken) {
+  const headers = {
+    "Content-Type": "application/json",
+    "Authorization": `Bearer ${clerkSecret}`,
+  };
+  if (scriptToken) headers["X-Script-Token"] = scriptToken;
+
   const res = await fetch(url, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${clerkSecret}`,
-    },
+    headers,
     body: JSON.stringify(body),
   });
   const text = await res.text();
@@ -262,19 +266,15 @@ async function main() {
   }
 
   // Step 4: Create catalog seed job via API
-  const { clerkSecret, appOrigin } = getConfig();
-  // Log key fingerprint for debugging (prefix + length — GH won't mask these)
-  const keyLen = clerkSecret.length;
-  const keyPrefix = clerkSecret.slice(0, 8);
-  console.log(`\nKey fingerprint: ${keyPrefix}... (${keyLen} chars)`);
-  console.log(`Creating catalog seed job at ${appOrigin}...`);
+  const { clerkSecret, appOrigin, scriptToken } = getConfig();
+  console.log(`\nCreating catalog seed job at ${appOrigin}...`);
 
   const jobResult = await apiPost(`${appOrigin}/api/admin/catalog-seed`, {
     confirm: true,
     source: "apple",
     trigger: "script",
     mode: "additive",
-  }, clerkSecret);
+  }, clerkSecret, scriptToken);
 
   const jobId = jobResult.jobId;
   if (!jobId) {
@@ -299,7 +299,8 @@ async function main() {
       const result = await apiPost(
         `${appOrigin}/api/admin/catalog-seed/${jobId}/ingest`,
         { podcasts: chunk, final: isLast },
-        clerkSecret
+        clerkSecret,
+        scriptToken
       );
       totalIngested += chunk.length;
       console.log(` OK (created=${result.created ?? 0}, updated=${result.updated ?? 0})`);

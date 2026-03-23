@@ -139,17 +139,6 @@ app.use("/api/*", async (c, next) => {
     if (token === c.env.CLERK_SECRET_KEY) {
       return next();
     }
-    // Debug: log fingerprints on mismatch for admin routes
-    if (c.req.path.includes("/admin/")) {
-      console.log(JSON.stringify({
-        level: "warn",
-        action: "bearer_mismatch",
-        tokenPrefix: token.slice(0, 8),
-        tokenLen: token.length,
-        envPrefix: c.env.CLERK_SECRET_KEY?.slice(0, 8),
-        envLen: c.env.CLERK_SECRET_KEY?.length,
-      }));
-    }
   }
   return clerkMiddleware()(c, next);
 });
