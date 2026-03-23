@@ -787,7 +787,7 @@ export default function EpisodeRefreshPage() {
       </div>
 
       {/* Feed Refresh Card (compact) */}
-      <FeedRefreshCard compact onRefresh={fetchJobs} />
+      <FeedRefreshCard compact />
 
       {/* Bulk archive row */}
       {(hasCompleted || hasFailed) && (
