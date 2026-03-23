@@ -47,10 +47,7 @@ vi.mock("../../lib/ai-usage", () => ({
 
 const mockPutWorkProduct = vi.fn().mockResolvedValue(undefined);
 vi.mock("../../lib/work-products", () => ({
-  wpKey: vi.fn(({ type, episodeId }: any) => {
-    if (type === "SOURCE_AUDIO") return `wp/source-audio/${episodeId}.bin`;
-    return `wp/transcript/${episodeId}.txt`;
-  }),
+  wpKey: vi.fn(({ episodeId }: any) => `wp/transcript/${episodeId}.txt`),
   putWorkProduct: (...args: any[]) => mockPutWorkProduct(...args),
 }));
 

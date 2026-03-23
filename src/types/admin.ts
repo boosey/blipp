@@ -620,8 +620,7 @@ export type WorkProductType =
   | "CLAIMS"
   | "NARRATIVE"
   | "AUDIO_CLIP"
-  | "BRIEFING_AUDIO"
-  | "SOURCE_AUDIO";
+  | "BRIEFING_AUDIO";
 
 export interface WorkProductSummary {
   id: string;

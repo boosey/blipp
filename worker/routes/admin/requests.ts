@@ -222,7 +222,7 @@ requestsRoutes.get("/work-product/:id/preview", async (c) => {
     return c.json({ data: { id: wp.id, type: wp.type, r2Key: wp.r2Key, content: null, message: "Object not found in R2" } });
   }
 
-  const isAudio = wp.type === "AUDIO_CLIP" || wp.type === "BRIEFING_AUDIO" || wp.type === "SOURCE_AUDIO";
+  const isAudio = wp.type === "AUDIO_CLIP" || wp.type === "BRIEFING_AUDIO";
   if (isAudio) {
     // For audio, return metadata only (no inline content)
     return c.json({
@@ -266,7 +266,7 @@ requestsRoutes.get("/work-product/:id/audio", async (c) => {
   });
   if (!wp) return c.json({ error: "Work product not found" }, 404);
 
-  const isAudio = wp.type === "AUDIO_CLIP" || wp.type === "BRIEFING_AUDIO" || wp.type === "SOURCE_AUDIO";
+  const isAudio = wp.type === "AUDIO_CLIP" || wp.type === "BRIEFING_AUDIO";
   if (!isAudio) return c.json({ error: "Not an audio work product" }, 400);
 
   const obj = await c.env.R2.get(wp.r2Key);
@@ -276,6 +276,27 @@ requestsRoutes.get("/work-product/:id/audio", async (c) => {
     headers: {
       "Content-Type": "audio/mpeg",
       "Content-Length": String(obj.size),
+      "Cache-Control": "private, max-age=3600",
+    },
+  });
+});
+
+// GET /episode/:id/source-audio — Proxy episode source audio from podcast CDN
+requestsRoutes.get("/episode/:id/source-audio", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const episode = await prisma.episode.findUnique({
+    where: { id: c.req.param("id") },
+    select: { audioUrl: true },
+  });
+  if (!episode?.audioUrl) return c.json({ error: "Episode not found or no audio URL" }, 404);
+
+  const audioRes = await fetch(episode.audioUrl);
+  if (!audioRes.ok) return c.json({ error: `Source audio unavailable: ${audioRes.status}` }, 502);
+
+  return new Response(audioRes.body, {
+    headers: {
+      "Content-Type": audioRes.headers.get("content-type") || "audio/mpeg",
+      ...(audioRes.headers.get("content-length") ? { "Content-Length": audioRes.headers.get("content-length")! } : {}),
       "Cache-Control": "private, max-age=3600",
     },
   });
