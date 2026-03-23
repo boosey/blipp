@@ -10,7 +10,6 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Loader2,
   Check,
@@ -19,14 +18,12 @@ import {
   Clock,
   Radio,
   Podcast,
-  FileText,
   ChevronDown,
-  Pause,
-  Play,
   Ban,
   Archive,
   Activity,
   Trash2,
+  ArrowRight,
 } from "lucide-react";
 import {
   AlertDialog,
@@ -39,6 +36,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
+import { Link } from "react-router-dom";
 import type {
   CatalogSeedJob,
   CatalogSeedJobList,
@@ -84,59 +82,27 @@ function formatTime(iso: string): string {
 }
 
 function isActive(status: string): boolean {
-  return ["pending", "discovering", "upserting", "feed_refresh"].includes(status);
+  return ["pending", "discovering", "upserting"].includes(status);
 }
 
 function isTerminal(status: string): boolean {
   return ["complete", "failed", "cancelled"].includes(status);
 }
 
-type PhaseStatus = "pending" | "active" | "complete" | "failed" | "paused" | "cancelled";
-
-function getPhaseStatuses(status: string, feedsTotal?: number): [PhaseStatus, PhaseStatus, PhaseStatus] {
-  if (status === "pending") return ["pending", "pending", "pending"];
-  if (status === "discovering" || status === "upserting") return ["active", "pending", "pending"];
-  if (status === "feed_refresh") return ["complete", "active", "active"];
-  if (status === "complete") return ["complete", "complete", "complete"];
-  if (status === "failed") return ["failed", "failed", "failed"];
-  if (status === "paused") {
-    return (feedsTotal ?? 0) > 0 ? ["complete", "paused", "paused"] : ["paused", "paused", "paused"];
-  }
-  if (status === "cancelled") {
-    return (feedsTotal ?? 0) > 0 ? ["complete", "cancelled", "cancelled"] : ["cancelled", "cancelled", "cancelled"];
-  }
-  return ["pending", "pending", "pending"];
-}
-
 function StatusIcon({ status }: { status: string }) {
   if (isActive(status)) return <Loader2 className="h-4 w-4 text-[#3B82F6] animate-spin" />;
   if (status === "complete") return <div className="h-4 w-4 rounded-full bg-[#10B981] flex items-center justify-center"><Check className="h-2.5 w-2.5 text-white" /></div>;
   if (status === "failed") return <div className="h-4 w-4 rounded-full bg-[#EF4444] flex items-center justify-center"><X className="h-2.5 w-2.5 text-white" /></div>;
-  if (status === "paused") return <div className="h-4 w-4 rounded-full bg-[#F59E0B] flex items-center justify-center"><Pause className="h-2.5 w-2.5 text-white" /></div>;
   if (status === "cancelled") return <div className="h-4 w-4 rounded-full bg-[#6B7280] flex items-center justify-center"><Ban className="h-2.5 w-2.5 text-white" /></div>;
   return <div className="h-4 w-4 rounded-full border-2 border-[#9CA3AF]/30" />;
 }
 
-function PhaseIndicator({ status }: { status: PhaseStatus }) {
-  if (status === "active") return <Loader2 className="h-5 w-5 text-[#3B82F6] animate-spin" />;
-  if (status === "complete") return <div className="h-5 w-5 rounded-full bg-[#10B981] flex items-center justify-center"><Check className="h-3 w-3 text-white" /></div>;
-  if (status === "failed") return <div className="h-5 w-5 rounded-full bg-[#EF4444] flex items-center justify-center"><X className="h-3 w-3 text-white" /></div>;
-  if (status === "paused") return <div className="h-5 w-5 rounded-full bg-[#F59E0B] flex items-center justify-center"><Pause className="h-3 w-3 text-white" /></div>;
-  if (status === "cancelled") return <div className="h-5 w-5 rounded-full bg-[#6B7280] flex items-center justify-center"><X className="h-3 w-3 text-white" /></div>;
-  return <div className="h-5 w-5 rounded-full border-2 border-[#9CA3AF]/30" />;
-}
-
-function overallProgress(job: CatalogSeedJob): number {
-  const discoveryWeight = 0.2;
-  const feedWeight = 0.5;
-  const prefetchWeight = 0.3;
-  const discoveryPct = job.podcastsDiscovered > 0 ? 100 : 0;
-  const feedPct = job.feedsTotal > 0 ? (job.feedsCompleted / job.feedsTotal) * 100 : 0;
-  const prefetchPct = job.prefetchTotal > 0 ? (job.prefetchCompleted / job.prefetchTotal) * 100 : 0;
-  if (["pending", "discovering", "upserting"].includes(job.status)) {
-    return discoveryPct * discoveryWeight;
-  }
-  return discoveryPct * discoveryWeight + feedPct * feedWeight + prefetchPct * prefetchWeight;
+function discoveryProgress(job: CatalogSeedJob): number {
+  if (job.status === "complete") return 100;
+  if (job.status === "upserting") return 80;
+  if (job.status === "discovering") return job.podcastsDiscovered > 0 ? 50 : 20;
+  if (job.status === "pending") return 5;
+  return 0;
 }
 
 // ── Elapsed Timer ──
@@ -157,16 +123,13 @@ function JobDetail({ jobId }: { jobId: string }) {
   const [detail, setDetail] = useState<CatalogSeedProgress | null>(null);
   const [errors, setErrors] = useState<CatalogJobError[]>([]);
   const [errorsTotal, setErrorsTotal] = useState(0);
-  const [errorPhase, setErrorPhase] = useState("all");
   const [errorPage, setErrorPage] = useState(1);
   const [loadingErrors, setLoadingErrors] = useState(false);
 
-  // Accumulated lists
+  // Accumulated podcast list
   const [allPodcasts, setAllPodcasts] = useState<CatalogSeedProgress["recentPodcasts"]>([]);
-  const [allEpisodes, setAllEpisodes] = useState<CatalogSeedProgress["recentEpisodes"]>([]);
-  const [allPrefetch, setAllPrefetch] = useState<CatalogSeedProgress["recentPrefetch"]>([]);
-  const [pages, setPages] = useState({ podcast: 1, episode: 1, prefetch: 1 });
-  const [loadingMore, setLoadingMore] = useState({ podcast: false, episode: false, prefetch: false });
+  const [podcastPage, setPodcastPage] = useState(1);
+  const [loadingMorePodcasts, setLoadingMorePodcasts] = useState(false);
   const initialLoad = useRef(true);
 
   const fetchDetail = useCallback(async () => {
@@ -175,27 +138,24 @@ function JobDetail({ jobId }: { jobId: string }) {
       setDetail(result);
       if (initialLoad.current) {
         setAllPodcasts(result.recentPodcasts ?? []);
-        setAllEpisodes(result.recentEpisodes ?? []);
-        setAllPrefetch(result.recentPrefetch ?? []);
         initialLoad.current = false;
-      } else if (pages.podcast === 1) {
+      } else if (podcastPage === 1) {
         setAllPodcasts(result.recentPodcasts ?? []);
       }
     } catch {
       // Silently fail on detail polling
     }
-  }, [apiFetch, jobId, pages.podcast]);
+  }, [apiFetch, jobId, podcastPage]);
 
   useEffect(() => { fetchDetail(); }, []);
 
   const jobActive = detail?.job && isActive(detail.job.status);
   usePolling(fetchDetail, 3000, !!jobActive);
 
-  const fetchErrors = useCallback(async (phase: string, page: number) => {
+  const fetchErrors = useCallback(async (page: number) => {
     setLoadingErrors(true);
     try {
-      const params = new URLSearchParams({ page: String(page), pageSize: "50" });
-      if (phase !== "all") params.set("phase", phase);
+      const params = new URLSearchParams({ page: String(page), pageSize: "50", phase: "discovery" });
       const result = await apiFetch<{ data: CatalogJobError[]; total: number }>(
         `/catalog-seed/${jobId}/errors?${params.toString()}`
       );
@@ -212,24 +172,20 @@ function JobDetail({ jobId }: { jobId: string }) {
     }
   }, [apiFetch, jobId]);
 
-  const loadMore = useCallback(async (type: "podcast" | "episode" | "prefetch") => {
-    const nextPage = pages[type] + 1;
-    setLoadingMore((prev) => ({ ...prev, [type]: true }));
+  const loadMorePodcasts = useCallback(async () => {
+    const nextPage = podcastPage + 1;
+    setLoadingMorePodcasts(true);
     try {
-      const params = new URLSearchParams();
-      const key = type === "podcast" ? "podcastPage" : type === "episode" ? "episodePage" : "prefetchPage";
-      params.set(key, String(nextPage));
+      const params = new URLSearchParams({ podcastPage: String(nextPage) });
       const result = await apiFetch<CatalogSeedProgress>(`/catalog-seed/${jobId}?${params.toString()}`);
-      if (type === "podcast") setAllPodcasts((prev) => [...prev, ...(result.recentPodcasts ?? [])]);
-      else if (type === "episode") setAllEpisodes((prev) => [...prev, ...(result.recentEpisodes ?? [])]);
-      else setAllPrefetch((prev) => [...prev, ...(result.recentPrefetch ?? [])]);
-      setPages((prev) => ({ ...prev, [type]: nextPage }));
+      setAllPodcasts((prev) => [...prev, ...(result.recentPodcasts ?? [])]);
+      setPodcastPage(nextPage);
     } catch {
       // Revert silently
     } finally {
-      setLoadingMore((prev) => ({ ...prev, [type]: false }));
+      setLoadingMorePodcasts(false);
     }
-  }, [apiFetch, jobId, pages]);
+  }, [apiFetch, jobId, podcastPage]);
 
   if (!detail) {
     return (
@@ -242,30 +198,25 @@ function JobDetail({ jobId }: { jobId: string }) {
   const job = detail.job;
   if (!job) return null;
 
-  const [p1Status, p2Status, p3Status] = getPhaseStatuses(job.status, job.feedsTotal);
-  const errorCounts = detail.errorCounts ?? { discovery: 0, feed_refresh: 0, prefetch: 0, total: 0 };
+  const errorCounts = detail.errorCounts ?? { discovery: 0, total: 0 };
 
   return (
     <div className="border-t border-white/5 px-4 pb-4 pt-3">
-      {/* Phase stepper */}
-      <div className="flex items-center justify-between max-w-xs mx-auto mb-4">
-        <div className="flex flex-col items-center gap-1">
-          <PhaseIndicator status={p1Status} />
-          <span className="text-[10px] text-[#9CA3AF]">Discovery</span>
-        </div>
-        <div className="flex-1 h-px bg-white/10 mx-2 mt-[-10px]" />
-        <div className="flex flex-col items-center gap-1">
-          <PhaseIndicator status={p2Status} />
-          <span className="text-[10px] text-[#9CA3AF]">Feeds</span>
-        </div>
-        <div className="flex-1 h-px bg-white/10 mx-2 mt-[-10px]" />
-        <div className="flex flex-col items-center gap-1">
-          <PhaseIndicator status={p3Status} />
-          <span className="text-[10px] text-[#9CA3AF]">Prefetch</span>
-        </div>
-      </div>
+      {/* Refresh job link */}
+      {isTerminal(job.status) && detail.refreshJob && (
+        <Link
+          to="/admin/episode-refresh"
+          className="flex items-center gap-2 mb-3 rounded-lg border border-[#3B82F6]/20 bg-[#3B82F6]/5 p-2.5 text-sm text-[#3B82F6] hover:bg-[#3B82F6]/10 transition-colors"
+        >
+          <span>Episode refresh started</span>
+          <Badge variant="outline" className="text-[10px] text-[#3B82F6] border-[#3B82F6]/30">
+            {detail.refreshJob.status}
+          </Badge>
+          <ArrowRight className="h-3.5 w-3.5 ml-auto" />
+        </Link>
+      )}
 
-      <Accordion type="multiple" defaultValue={p1Status === "active" ? ["discovery"] : p2Status === "active" ? ["feed-refresh"] : ["discovery"]} className="space-y-2">
+      <Accordion type="multiple" defaultValue={["discovery"]} className="space-y-2">
         {/* Discovery */}
         <AccordionItem value="discovery" className="rounded-lg border border-white/5 bg-[#0F1D32] overflow-hidden">
           <AccordionTrigger className="px-3 py-2 hover:no-underline">
@@ -310,143 +261,9 @@ function JobDetail({ jobId }: { jobId: string }) {
                   ))}
                 </div>
                 {detail.pagination && allPodcasts.length < detail.pagination.podcastTotal && (
-                  <Button variant="ghost" size="sm" className="w-full text-[#9CA3AF] hover:text-white text-xs h-7" onClick={() => loadMore("podcast")} disabled={loadingMore.podcast}>
-                    {loadingMore.podcast ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <ChevronDown className="h-3 w-3 mr-1" />}
+                  <Button variant="ghost" size="sm" className="w-full text-[#9CA3AF] hover:text-white text-xs h-7" onClick={loadMorePodcasts} disabled={loadingMorePodcasts}>
+                    {loadingMorePodcasts ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <ChevronDown className="h-3 w-3 mr-1" />}
                     Load more ({detail.pagination.podcastTotal - allPodcasts.length})
-                  </Button>
-                )}
-              </div>
-            )}
-          </AccordionContent>
-        </AccordionItem>
-
-        {/* Feed Refresh */}
-        <AccordionItem value="feed-refresh" className="rounded-lg border border-white/5 bg-[#0F1D32] overflow-hidden">
-          <AccordionTrigger className="px-3 py-2 hover:no-underline">
-            <div className="flex items-center gap-2 flex-1 text-left">
-              <Radio className="h-3.5 w-3.5 text-[#F59E0B]" />
-              <span className="text-sm font-medium">Feed Refresh</span>
-              <Badge variant="outline" className="ml-auto mr-2 text-[#9CA3AF] border-white/10 text-[10px]">
-                {job.feedsCompleted}/{job.feedsTotal}
-              </Badge>
-            </div>
-          </AccordionTrigger>
-          <AccordionContent className="px-3 pb-3 space-y-2">
-            <div className="space-y-1">
-              <div className="flex justify-between text-xs text-[#9CA3AF]">
-                <span>Feeds processed</span>
-                <span>{job.feedsCompleted.toLocaleString()} / {job.feedsTotal.toLocaleString()}</span>
-              </div>
-              <Progress value={job.feedsTotal > 0 ? (job.feedsCompleted / job.feedsTotal) * 100 : 0} />
-            </div>
-            <p className="text-[10px] text-[#9CA3AF]">
-              Episodes found: {detail.episodesDiscovered?.toLocaleString() ?? 0}
-            </p>
-            {allEpisodes.length > 0 && (
-              <div className="space-y-1">
-                <p className="text-[10px] text-[#9CA3AF] font-medium">
-                  Episodes ({allEpisodes.length} of {detail.pagination?.episodeTotal ?? allEpisodes.length})
-                </p>
-                <div className="max-h-[300px] overflow-y-auto space-y-1 pr-1">
-                  {allEpisodes.map((ep) => (
-                    <div key={ep.id} className="flex items-center gap-2 rounded p-1.5 bg-white/[0.02]">
-                      {ep.podcast.imageUrl ? (
-                        <img src={ep.podcast.imageUrl} alt="" className="h-7 w-7 rounded object-cover shrink-0" />
-                      ) : (
-                        <div className="h-7 w-7 rounded bg-white/5 flex items-center justify-center shrink-0">
-                          <Radio className="h-3.5 w-3.5 text-[#9CA3AF]/50" />
-                        </div>
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <p className="text-xs truncate">
-                          <span className="text-[#9CA3AF]">{ep.podcast.title}</span> &rsaquo; {ep.title}
-                        </p>
-                        <p className="text-[10px] text-[#9CA3AF]">
-                          {ep.publishedAt ? new Date(ep.publishedAt).toLocaleDateString() : "No date"}
-                          {ep.durationSeconds != null && ` · ${Math.floor(ep.durationSeconds / 60)}:${String(ep.durationSeconds % 60).padStart(2, "0")}`}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                {detail.pagination && allEpisodes.length < detail.pagination.episodeTotal && (
-                  <Button variant="ghost" size="sm" className="w-full text-[#9CA3AF] hover:text-white text-xs h-7" onClick={() => loadMore("episode")} disabled={loadingMore.episode}>
-                    {loadingMore.episode ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <ChevronDown className="h-3 w-3 mr-1" />}
-                    Load more ({detail.pagination.episodeTotal - allEpisodes.length})
-                  </Button>
-                )}
-              </div>
-            )}
-          </AccordionContent>
-        </AccordionItem>
-
-        {/* Content Prefetch */}
-        <AccordionItem value="prefetch" className="rounded-lg border border-white/5 bg-[#0F1D32] overflow-hidden">
-          <AccordionTrigger className="px-3 py-2 hover:no-underline">
-            <div className="flex items-center gap-2 flex-1 text-left">
-              <FileText className="h-3.5 w-3.5 text-[#8B5CF6]" />
-              <span className="text-sm font-medium">Content Prefetch</span>
-              <Badge variant="outline" className="ml-auto mr-2 text-[#9CA3AF] border-white/10 text-[10px]">
-                {job.prefetchCompleted}/{job.prefetchTotal}
-              </Badge>
-            </div>
-          </AccordionTrigger>
-          <AccordionContent className="px-3 pb-3 space-y-2">
-            <div className="space-y-1">
-              <div className="flex justify-between text-xs text-[#9CA3AF]">
-                <span>Prefetched</span>
-                <span>{job.prefetchCompleted.toLocaleString()} / {job.prefetchTotal.toLocaleString()}</span>
-              </div>
-              <Progress value={job.prefetchTotal > 0 ? (job.prefetchCompleted / job.prefetchTotal) * 100 : 0} />
-            </div>
-            {detail.prefetchBreakdown && Object.keys(detail.prefetchBreakdown).length > 0 && (
-              <div className="flex gap-3 text-[10px] text-[#9CA3AF]">
-                {Object.entries(detail.prefetchBreakdown).map(([status, count]) => (
-                  <span key={status}>
-                    {status === "HAS_TRANSCRIPT" ? "Transcripts" : status === "HAS_AUDIO" ? "Audio" : status}: {count}
-                  </span>
-                ))}
-              </div>
-            )}
-            {allPrefetch.length > 0 && (
-              <div className="space-y-1">
-                <p className="text-[10px] text-[#9CA3AF] font-medium">
-                  Results ({allPrefetch.length} of {detail.pagination?.prefetchTotal ?? allPrefetch.length})
-                </p>
-                <div className="max-h-[300px] overflow-y-auto space-y-1 pr-1">
-                  {allPrefetch.map((ep) => (
-                    <div key={ep.id} className="flex items-center gap-2 rounded p-1.5 bg-white/[0.02]">
-                      {ep.podcast.imageUrl ? (
-                        <img src={ep.podcast.imageUrl} alt="" className="h-7 w-7 rounded object-cover shrink-0" />
-                      ) : (
-                        <div className="h-7 w-7 rounded bg-white/5 flex items-center justify-center shrink-0">
-                          <FileText className="h-3.5 w-3.5 text-[#9CA3AF]/50" />
-                        </div>
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <p className="text-xs truncate">
-                          <span className="text-[#9CA3AF]">{ep.podcast.title}</span> &rsaquo; {ep.title}
-                        </p>
-                      </div>
-                      <Badge
-                        variant="outline"
-                        className={`text-[10px] ${
-                          ep.contentStatus === "HAS_TRANSCRIPT"
-                            ? "text-[#10B981] border-[#10B981]/30"
-                            : ep.contentStatus === "HAS_AUDIO"
-                              ? "text-[#3B82F6] border-[#3B82F6]/30"
-                              : "text-[#9CA3AF] border-white/10"
-                        }`}
-                      >
-                        {ep.contentStatus === "HAS_TRANSCRIPT" ? "Transcript" : ep.contentStatus === "HAS_AUDIO" ? "Audio" : ep.contentStatus}
-                      </Badge>
-                    </div>
-                  ))}
-                </div>
-                {detail.pagination && allPrefetch.length < detail.pagination.prefetchTotal && (
-                  <Button variant="ghost" size="sm" className="w-full text-[#9CA3AF] hover:text-white text-xs h-7" onClick={() => loadMore("prefetch")} disabled={loadingMore.prefetch}>
-                    {loadingMore.prefetch ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <ChevronDown className="h-3 w-3 mr-1" />}
-                    Load more ({detail.pagination.prefetchTotal - allPrefetch.length})
                   </Button>
                 )}
               </div>
@@ -458,7 +275,7 @@ function JobDetail({ jobId }: { jobId: string }) {
         <AccordionItem value="errors" className="rounded-lg border border-white/5 bg-[#0F1D32] overflow-hidden">
           <AccordionTrigger
             className="px-3 py-2 hover:no-underline"
-            onClick={() => { if (errors.length === 0 && errorCounts.total > 0) fetchErrors("all", 1); }}
+            onClick={() => { if (errors.length === 0 && errorCounts.total > 0) fetchErrors(1); }}
           >
             <div className="flex items-center gap-2 flex-1 text-left">
               <AlertCircle className={`h-3.5 w-3.5 ${errorCounts.total > 0 ? "text-[#EF4444]" : "text-[#9CA3AF]"}`} />
@@ -476,14 +293,6 @@ function JobDetail({ jobId }: { jobId: string }) {
               <p className="text-xs text-[#9CA3AF] text-center py-2">No errors recorded</p>
             ) : (
               <>
-                <Tabs value={errorPhase} onValueChange={(v) => { setErrorPhase(v); setErrorPage(1); fetchErrors(v, 1); }}>
-                  <TabsList className="h-7">
-                    <TabsTrigger value="all" className="text-[10px] h-5 px-2">All ({errorCounts.total})</TabsTrigger>
-                    <TabsTrigger value="discovery" className="text-[10px] h-5 px-2">Discovery ({errorCounts.discovery})</TabsTrigger>
-                    <TabsTrigger value="feed_refresh" className="text-[10px] h-5 px-2">Feeds ({errorCounts.feed_refresh})</TabsTrigger>
-                    <TabsTrigger value="prefetch" className="text-[10px] h-5 px-2">Prefetch ({errorCounts.prefetch})</TabsTrigger>
-                  </TabsList>
-                </Tabs>
                 {loadingErrors && errors.length === 0 ? (
                   <div className="flex justify-center py-4"><Loader2 className="h-4 w-4 animate-spin text-[#9CA3AF]" /></div>
                 ) : (
@@ -509,7 +318,7 @@ function JobDetail({ jobId }: { jobId: string }) {
                   </div>
                 )}
                 {errors.length < errorsTotal && (
-                  <Button variant="ghost" size="sm" className="w-full text-[#9CA3AF] hover:text-white text-xs h-7" onClick={() => { const next = errorPage + 1; setErrorPage(next); fetchErrors(errorPhase, next); }} disabled={loadingErrors}>
+                  <Button variant="ghost" size="sm" className="w-full text-[#9CA3AF] hover:text-white text-xs h-7" onClick={() => { const next = errorPage + 1; setErrorPage(next); fetchErrors(next); }} disabled={loadingErrors}>
                     {loadingErrors ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <ChevronDown className="h-3 w-3 mr-1" />}
                     Load more ({errorsTotal - errors.length})
                   </Button>
@@ -541,7 +350,7 @@ function JobCard({
     : 0;
 
   const active = isActive(job.status);
-  const pct = overallProgress(job);
+  const pct = discoveryProgress(job);
 
   return (
     <div className="rounded-lg border border-white/5 bg-[#1A2942] overflow-hidden">
@@ -582,25 +391,10 @@ function JobCard({
 
         {/* Action buttons */}
         <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-          {job.status === "feed_refresh" && (
-            <>
-              <Button variant="ghost" size="sm" className="h-6 px-2 text-[#F59E0B] hover:bg-[#F59E0B]/10" onClick={() => onAction("pause", job.id)}>
-                <Pause className="h-3 w-3" />
-              </Button>
-              <Button variant="ghost" size="sm" className="h-6 px-2 text-[#EF4444] hover:bg-[#EF4444]/10" onClick={() => onAction("cancel", job.id)}>
-                <Ban className="h-3 w-3" />
-              </Button>
-            </>
-          )}
-          {job.status === "paused" && (
-            <>
-              <Button variant="ghost" size="sm" className="h-6 px-2 text-[#10B981] hover:bg-[#10B981]/10" onClick={() => onAction("resume", job.id)}>
-                <Play className="h-3 w-3" />
-              </Button>
-              <Button variant="ghost" size="sm" className="h-6 px-2 text-[#EF4444] hover:bg-[#EF4444]/10" onClick={() => onAction("cancel", job.id)}>
-                <Ban className="h-3 w-3" />
-              </Button>
-            </>
+          {active && (
+            <Button variant="ghost" size="sm" className="h-6 px-2 text-[#EF4444] hover:bg-[#EF4444]/10" onClick={() => onAction("cancel", job.id)}>
+              <Ban className="h-3 w-3" />
+            </Button>
           )}
           {isTerminal(job.status) && (
             <Button variant="ghost" size="sm" className="h-6 px-2 text-[#9CA3AF] hover:bg-white/5" onClick={() => onAction("archive", job.id)}>
@@ -614,7 +408,7 @@ function JobCard({
 
       {/* Stats row */}
       <div className="px-4 pb-2 text-[10px] text-[#9CA3AF]">
-        {job.podcastsDiscovered} discovered · {job.feedsCompleted}/{job.feedsTotal} feeds · {job.prefetchCompleted}/{job.prefetchTotal} prefetch
+        {job.podcastsDiscovered} discovered
       </div>
 
       {/* Progress bar for active jobs */}
@@ -639,7 +433,7 @@ function JobCard({
 
 // ── Main Page ──
 
-export default function CatalogSeed() {
+export default function CatalogDiscoveryPage() {
   const apiFetch = useAdminFetch();
   const [jobs, setJobs] = useState<CatalogSeedJob[]>([]);
   const [total, setTotal] = useState(0);
@@ -672,7 +466,7 @@ export default function CatalogSeed() {
 
   useEffect(() => { fetchJobs(); }, [page]);
 
-  const hasActiveJobs = jobs.some((j) => isActive(j.status) || j.status === "paused");
+  const hasActiveJobs = jobs.some((j) => isActive(j.status));
   usePolling(fetchJobs, 5000, hasActiveJobs);
 
   const hasCompleted = jobs.some((j) => j.status === "complete");
@@ -683,7 +477,6 @@ export default function CatalogSeed() {
     setActionLoading("apple");
     try {
       await apiFetch("/catalog-seed/trigger-apple", { method: "POST" });
-      // Start polling for new job to appear
       const pollEnd = Date.now() + 60000;
       const poll = setInterval(async () => {
         if (Date.now() > pollEnd) { clearInterval(poll); return; }
@@ -788,7 +581,7 @@ export default function CatalogSeed() {
     <div className="space-y-4 max-w-4xl">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold">Catalog Jobs</h2>
+        <h2 className="text-xl font-semibold">Catalog Discovery</h2>
         <div className="flex items-center gap-2">
           <Button
             size="sm"
@@ -947,7 +740,7 @@ export default function CatalogSeed() {
           <AlertDialogHeader>
             <AlertDialogTitle>Cancel Job</AlertDialogTitle>
             <AlertDialogDescription>
-              This will stop all remaining feed refresh and prefetch processing for this job. Data already processed will be kept. This cannot be undone.
+              This will stop all remaining discovery processing for this job. Data already processed will be kept. This cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

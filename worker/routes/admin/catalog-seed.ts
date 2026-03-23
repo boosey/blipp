@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { Env } from "../../types";
 import { parsePagination, paginatedResponse } from "../../lib/admin-helpers";
 
-const ACTIVE_STATUSES = ["pending", "discovering", "upserting", "feed_refresh", "paused"];
+const ACTIVE_STATUSES = ["pending", "discovering", "upserting"];
 
 const catalogSeedRoutes = new Hono<{ Bindings: Env }>();
 
@@ -52,10 +52,6 @@ catalogSeedRoutes.get("/", async (c) => {
     trigger: j.trigger,
     status: j.status,
     podcastsDiscovered: j.podcastsDiscovered,
-    feedsTotal: j.feedsTotal,
-    feedsCompleted: j.feedsCompleted,
-    prefetchTotal: j.prefetchTotal,
-    prefetchCompleted: j.prefetchCompleted,
     error: j.error,
     archivedAt: j.archivedAt?.toISOString() ?? null,
     startedAt: j.startedAt.toISOString(),
@@ -99,7 +95,7 @@ catalogSeedRoutes.get("/:id/errors", async (c) => {
   const prisma = c.get("prisma") as any;
   const { id } = c.req.param();
   const { page, pageSize, skip } = parsePagination(c);
-  const phaseFilter = c.req.query("phase"); // optional: "discovery" | "feed_refresh" | "prefetch"
+  const phaseFilter = c.req.query("phase"); // optional: "discovery"
 
   const where: Record<string, unknown> = { jobId: id };
   if (phaseFilter) where.phase = phaseFilter;
@@ -331,7 +327,7 @@ catalogSeedRoutes.post("/:id/ingest", async (c) => {
     },
   });
 
-  // If final chunk: transition to feed_refresh and queue all podcasts created since job start
+  // If final chunk: mark seed complete, create EpisodeRefreshJob, queue feed refresh
   if (final) {
     const allPodcasts = await prisma.podcast.findMany({
       where: { createdAt: { gte: job.startedAt } },
@@ -339,9 +335,25 @@ catalogSeedRoutes.post("/:id/ingest", async (c) => {
     });
     const allIds = allPodcasts.map((p: any) => p.id);
 
+    // Create EpisodeRefreshJob to track feed refresh progress
+    let refreshJobId: string | undefined;
+    if (allIds.length > 0) {
+      const refreshJob = await prisma.episodeRefreshJob.create({
+        data: {
+          trigger: "seed",
+          scope: "seed",
+          status: "refreshing",
+          podcastsTotal: allIds.length,
+          catalogSeedJobId: id,
+        },
+      });
+      refreshJobId = refreshJob.id;
+    }
+
+    // Mark CatalogSeedJob as complete (discovery is done)
     await prisma.catalogSeedJob.update({
       where: { id },
-      data: { status: "feed_refresh", feedsTotal: allIds.length },
+      data: { status: "complete", completedAt: new Date() },
     });
 
     // Queue feed refresh in batches
@@ -350,16 +362,23 @@ catalogSeedRoutes.post("/:id/ingest", async (c) => {
       const batch = allIds.slice(i, i + BATCH_SIZE);
       await c.env.FEED_REFRESH_QUEUE.sendBatch(
         batch.map((podcastId: string) => ({
-          body: { podcastId, type: "manual" as const, seedJobId: id },
+          body: { podcastId, type: "manual" as const, ...(refreshJobId && { refreshJobId }) },
         }))
       );
     }
+
+    return c.json({
+      upserted: chunkUpsertedCount,
+      errors: errors.length,
+      final: true,
+      refreshJobId: refreshJobId ?? null,
+    });
   }
 
   return c.json({
     upserted: chunkUpsertedCount,
     errors: errors.length,
-    final: !!final,
+    final: false,
   });
 });
 
@@ -400,33 +419,14 @@ catalogSeedRoutes.post("/:id/archive", async (c) => {
   return c.json({ job: updated });
 });
 
-// ── POST /:id/pause — Pause an active seed job ──
-catalogSeedRoutes.post("/:id/pause", async (c) => {
-  const prisma = c.get("prisma") as any;
-  const { id } = c.req.param();
-
-  const job = await prisma.catalogSeedJob.findUnique({ where: { id } });
-  if (!job) return c.json({ error: "Job not found" }, 404);
-  if (job.status !== "feed_refresh") {
-    return c.json({ error: `Cannot pause job in '${job.status}' status` }, 409);
-  }
-
-  const updated = await prisma.catalogSeedJob.update({
-    where: { id },
-    data: { status: "paused" },
-  });
-
-  return c.json({ job: updated });
-});
-
-// ── POST /:id/cancel — Cancel an active or paused seed job ──
+// ── POST /:id/cancel — Cancel an active seed job ──
 catalogSeedRoutes.post("/:id/cancel", async (c) => {
   const prisma = c.get("prisma") as any;
   const { id } = c.req.param();
 
   const job = await prisma.catalogSeedJob.findUnique({ where: { id } });
   if (!job) return c.json({ error: "Job not found" }, 404);
-  if (!["feed_refresh", "paused"].includes(job.status)) {
+  if (!["discovering", "upserting"].includes(job.status)) {
     return c.json({ error: `Cannot cancel job in '${job.status}' status` }, 409);
   }
 
@@ -434,63 +434,6 @@ catalogSeedRoutes.post("/:id/cancel", async (c) => {
     where: { id },
     data: { status: "cancelled", completedAt: new Date() },
   });
-
-  return c.json({ job: updated });
-});
-
-// ── POST /:id/resume — Resume a paused seed job ──
-catalogSeedRoutes.post("/:id/resume", async (c) => {
-  const prisma = c.get("prisma") as any;
-  const { id } = c.req.param();
-
-  const job = await prisma.catalogSeedJob.findUnique({ where: { id } });
-  if (!job) return c.json({ error: "Job not found" }, 404);
-  if (job.status !== "paused") {
-    return c.json({ error: `Cannot resume job in '${job.status}' status` }, 409);
-  }
-
-  const watermark = job.startedAt;
-
-  const podcasts = await prisma.podcast.findMany({
-    where: { createdAt: { gte: watermark } },
-    select: { id: true },
-  });
-  const pendingEpisodes = await prisma.episode.findMany({
-    where: { createdAt: { gte: watermark }, contentStatus: "PENDING" },
-    select: { id: true },
-  });
-
-  const updated = await prisma.catalogSeedJob.update({
-    where: { id },
-    data: {
-      status: "feed_refresh",
-      feedsCompleted: 0,
-      feedsTotal: podcasts.length,
-      prefetchCompleted: 0,
-      prefetchTotal: pendingEpisodes.length,
-    },
-  });
-
-  const podcastIds = podcasts.map((p: any) => p.id);
-  const BATCH_SIZE = 100;
-  for (let i = 0; i < podcastIds.length; i += BATCH_SIZE) {
-    const batch = podcastIds.slice(i, i + BATCH_SIZE);
-    await c.env.FEED_REFRESH_QUEUE.sendBatch(
-      batch.map((podcastId: string) => ({
-        body: { podcastId, seedJobId: id },
-      }))
-    );
-  }
-
-  const pendingIds = pendingEpisodes.map((e: any) => e.id);
-  for (let i = 0; i < pendingIds.length; i += BATCH_SIZE) {
-    const batch = pendingIds.slice(i, i + BATCH_SIZE);
-    await c.env.CONTENT_PREFETCH_QUEUE.sendBatch(
-      batch.map((episodeId: string) => ({
-        body: { episodeId, seedJobId: id },
-      }))
-    );
-  }
 
   return c.json({ job: updated });
 });
@@ -554,99 +497,50 @@ catalogSeedRoutes.delete("/catalog", async (c) => {
 async function getJobDetail(c: any, prisma: any, jobId: string) {
   const PAGE_SIZE = 50;
   const podcastPage = Math.max(1, parseInt(c.req.query("podcastPage") ?? "1", 10) || 1);
-  const episodePage = Math.max(1, parseInt(c.req.query("episodePage") ?? "1", 10) || 1);
-  const prefetchPage = Math.max(1, parseInt(c.req.query("prefetchPage") ?? "1", 10) || 1);
 
-  let job = await prisma.catalogSeedJob.findUnique({ where: { id: jobId } });
+  const job = await prisma.catalogSeedJob.findUnique({ where: { id: jobId } });
   if (!job) return c.json({ error: "Job not found" }, 404);
-
-  // Lazy completion detection
-  if (
-    ACTIVE_STATUSES.includes(job.status) &&
-    job.status === "feed_refresh" &&
-    job.feedsTotal > 0 &&
-    job.feedsCompleted >= job.feedsTotal &&
-    job.prefetchCompleted >= job.prefetchTotal
-  ) {
-    job = await prisma.catalogSeedJob.update({
-      where: { id: job.id },
-      data: { status: "complete", completedAt: new Date() },
-    });
-  }
 
   const watermark = job.startedAt;
 
-  // Derived counts + error counts
-  const [podcastsInserted, episodesDiscovered, prefetchBreakdown, prefetchTotal, errorCounts] =
+  // Derived counts + error counts + linked refresh job
+  const [podcastsInserted, errorCounts, refreshJob] =
     await Promise.all([
       prisma.podcast.count({ where: { createdAt: { gte: watermark } } }),
-      prisma.episode.count({ where: { createdAt: { gte: watermark } } }),
-      prisma.episode.groupBy({
-        by: ["contentStatus"],
-        where: { createdAt: { gte: watermark }, contentStatus: { not: "PENDING" } },
-        _count: true,
-      }),
-      prisma.episode.count({
-        where: { createdAt: { gte: watermark }, contentStatus: { not: "PENDING" } },
-      }),
       prisma.catalogJobError.groupBy({
         by: ["phase"],
         where: { jobId: job.id },
         _count: true,
       }),
+      prisma.episodeRefreshJob.findFirst({
+        where: { catalogSeedJobId: job.id },
+        orderBy: { createdAt: "desc" },
+        select: { id: true, status: true },
+      }),
     ]);
 
   // Build error counts object
-  const errorCountsObj: Record<string, number> = { discovery: 0, feed_refresh: 0, prefetch: 0, total: 0 };
+  const errorCountsObj: Record<string, number> = { discovery: 0, total: 0 };
   for (const g of errorCounts) {
     errorCountsObj[g.phase] = g._count;
     errorCountsObj.total += g._count;
   }
 
-  // Paginated items for accordions
-  const [recentPodcasts, recentEpisodes, recentPrefetch] = await Promise.all([
-    prisma.podcast.findMany({
-      where: { createdAt: { gte: watermark } },
-      orderBy: { createdAt: "desc" },
-      skip: (podcastPage - 1) * PAGE_SIZE,
-      take: PAGE_SIZE,
-      select: {
-        id: true,
-        title: true,
-        author: true,
-        imageUrl: true,
-        categories: true,
-        createdAt: true,
-      },
-    }),
-    prisma.episode.findMany({
-      where: { createdAt: { gte: watermark } },
-      orderBy: { createdAt: "desc" },
-      skip: (episodePage - 1) * PAGE_SIZE,
-      take: PAGE_SIZE,
-      select: {
-        id: true,
-        title: true,
-        publishedAt: true,
-        durationSeconds: true,
-        createdAt: true,
-        podcast: { select: { title: true, imageUrl: true } },
-      },
-    }),
-    prisma.episode.findMany({
-      where: { createdAt: { gte: watermark }, contentStatus: { not: "PENDING" } },
-      orderBy: { updatedAt: "desc" },
-      skip: (prefetchPage - 1) * PAGE_SIZE,
-      take: PAGE_SIZE,
-      select: {
-        id: true,
-        title: true,
-        contentStatus: true,
-        updatedAt: true,
-        podcast: { select: { title: true, imageUrl: true } },
-      },
-    }),
-  ]);
+  // Paginated podcast list
+  const recentPodcasts = await prisma.podcast.findMany({
+    where: { createdAt: { gte: watermark } },
+    orderBy: { createdAt: "desc" },
+    skip: (podcastPage - 1) * PAGE_SIZE,
+    take: PAGE_SIZE,
+    select: {
+      id: true,
+      title: true,
+      author: true,
+      imageUrl: true,
+      categories: true,
+      createdAt: true,
+    },
+  });
 
   return c.json({
     job: {
@@ -656,44 +550,20 @@ async function getJobDetail(c: any, prisma: any, jobId: string) {
       trigger: job.trigger,
       status: job.status,
       podcastsDiscovered: job.podcastsDiscovered,
-      feedsTotal: job.feedsTotal,
-      feedsCompleted: job.feedsCompleted,
-      prefetchTotal: job.prefetchTotal,
-      prefetchCompleted: job.prefetchCompleted,
       error: job.error,
       archivedAt: job.archivedAt?.toISOString() ?? null,
       startedAt: job.startedAt.toISOString(),
       completedAt: job.completedAt?.toISOString() ?? null,
     },
     podcastsInserted,
-    episodesDiscovered,
-    prefetchBreakdown: prefetchBreakdown.reduce(
-      (acc: Record<string, number>, g: any) => {
-        acc[g.contentStatus] = g._count;
-        return acc;
-      },
-      {} as Record<string, number>
-    ),
     errorCounts: errorCountsObj,
+    refreshJob: refreshJob ? { id: refreshJob.id, status: refreshJob.status } : null,
     pagination: {
       pageSize: PAGE_SIZE,
       podcastPage,
       podcastTotal: podcastsInserted,
-      episodePage,
-      episodeTotal: episodesDiscovered,
-      prefetchPage,
-      prefetchTotal,
     },
     recentPodcasts,
-    recentEpisodes: recentEpisodes.map((e: any) => ({
-      ...e,
-      publishedAt: e.publishedAt?.toISOString() ?? null,
-      createdAt: e.createdAt.toISOString(),
-    })),
-    recentPrefetch: recentPrefetch.map((e: any) => ({
-      ...e,
-      updatedAt: e.updatedAt.toISOString(),
-    })),
   });
 }
 

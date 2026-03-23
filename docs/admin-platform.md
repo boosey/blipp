@@ -35,6 +35,10 @@ Pipeline job browser with filters (stage, status, requestId, search). Job detail
 
 Podcast management: searchable/filterable/sortable list with feed health monitoring. Add, edit, and archive podcasts. Clicking a podcast opens a wide detail modal with podcast info, stats, and action buttons. Episodes are shown in an accordion list; expanding an episode reveals Overview (metadata, cost, transcript/audio links) and Clips tabs. The Clips tab shows each clip with duration tier, status, inline audio player, and expandable feed items with request traceability.
 
+### Catalog Discovery (`/admin/catalog-discovery`)
+
+Catalog discovery for finding new podcasts to add. Triggers Apple top 100 or Podcast Index trending discovery. Job list tracks discovery/upsert progress with a single Discovery accordion showing newly inserted podcasts with images, titles, categories. When discovery completes, an EpisodeRefreshJob is auto-created for the new podcasts — a link navigates to the Episode Refresh page. Controls: cancel, archive, delete. Bulk archive. Delete Catalog with type-to-confirm.
+
 ### Episode Refresh (`/admin/episode-refresh`)
 
 Formalized episode refresh job tracking. Trigger manual refreshes ("Refresh Subscribed" or "Refresh All") and monitor cron-triggered refreshes. Each job tracks progress through feed scanning and content prefetch phases. Job cards show scope/trigger badges, progress bars, and stats (podcasts checked, podcasts with updates, new episodes, prefetch progress). Job detail expands into 3 accordion sections: Podcasts (with new episode counts), Episodes (newly discovered), and Content Prefetch (status breakdown). Errors accordion with phase-based tabs. Controls: pause, resume, cancel, archive, delete. Bulk archive. FeedRefreshCard reused for summary stats.

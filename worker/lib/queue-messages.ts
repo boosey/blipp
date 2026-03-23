@@ -69,7 +69,6 @@ export interface BriefingAssemblyMessage {
 export interface FeedRefreshMessage {
   podcastId?: string;
   type?: "manual" | "cron";
-  seedJobId?: string;
   refreshJobId?: string;
 }
 

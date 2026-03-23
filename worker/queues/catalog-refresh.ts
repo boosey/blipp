@@ -69,8 +69,25 @@ export async function handleCatalogRefresh(
           await markPendingDeletion(prisma, upsertedIds);
         }
 
-        if (seedJobId) await updateSeedJob(prisma, seedJobId, { status: "feed_refresh", feedsTotal: upsertedIds.length });
-        await queueFeedRefresh(env, upsertedIds, seedJobId);
+        // Create an EpisodeRefreshJob to track feed refresh progress
+        let refreshJobId: string | undefined;
+        if (upsertedIds.length > 0) {
+          const refreshJob = await prisma.episodeRefreshJob.create({
+            data: {
+              trigger: "seed",
+              scope: "seed",
+              status: "refreshing",
+              podcastsTotal: upsertedIds.length,
+              catalogSeedJobId: seedJobId,
+            },
+          });
+          refreshJobId = refreshJob.id;
+        }
+
+        // Mark CatalogSeedJob as complete (discovery is done)
+        if (seedJobId) await updateSeedJob(prisma, seedJobId, { status: "complete", completedAt: new Date() });
+
+        await queueFeedRefresh(env, upsertedIds, refreshJobId);
 
         await updateStatus(prisma, "complete");
         console.log(`[catalog-refresh] ${action} (${seedMode}, ${sourceId}) complete. ${upsertedIds.length} podcasts processed.`);
@@ -387,10 +404,10 @@ async function markPendingDeletion(prisma: any, chartPodcastIds: string[]): Prom
   }
 }
 
-async function queueFeedRefresh(env: Env, podcastIds: string[], seedJobId?: string): Promise<void> {
+async function queueFeedRefresh(env: Env, podcastIds: string[], refreshJobId?: string): Promise<void> {
   if (podcastIds.length === 0) return;
   const messages = podcastIds.map((podcastId) => ({
-    body: { podcastId, type: "manual" as const, ...(seedJobId && { seedJobId }) },
+    body: { podcastId, type: "manual" as const, ...(refreshJobId && { refreshJobId }) },
   }));
   const BATCH_SIZE = 100;
   for (let i = 0; i < messages.length; i += BATCH_SIZE) {

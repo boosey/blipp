@@ -937,12 +937,8 @@ model CatalogSeedJob {
   mode                String             @default("additive")
   source              String             @default("apple")   // "apple" | "podcast-index" | "manual"
   trigger             String             @default("admin")   // "admin" | "script" | "cron"
-  status              String             @default("pending")
+  status              String             @default("pending") // pending | discovering | upserting | complete | failed | cancelled
   podcastsDiscovered  Int                @default(0)
-  feedsTotal          Int                @default(0)
-  feedsCompleted      Int                @default(0)
-  prefetchTotal       Int                @default(0)
-  prefetchCompleted   Int                @default(0)
   error               String?
   archivedAt          DateTime?
   startedAt           DateTime           @default(now())
@@ -958,7 +954,7 @@ model CatalogJobError {
   id         String          @id @default(cuid())
   jobId      String
   job        CatalogSeedJob  @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  phase      String          // "discovery" | "feed_refresh" | "prefetch"
+  phase      String          // "discovery"
   message    String
   podcastId  String?
   episodeId  String?
@@ -972,8 +968,9 @@ model CatalogJobError {
 
 model EpisodeRefreshJob {
   id                       String                @id @default(cuid())
-  scope                    String                @default("subscribed") // "subscribed" | "all"
-  trigger                  String                @default("admin")      // "admin" | "cron"
+  scope                    String                @default("subscribed") // "subscribed" | "all" | "seed"
+  trigger                  String                @default("admin")      // "admin" | "cron" | "seed"
+  catalogSeedJobId         String?
   status                   String                @default("pending")    // pending | refreshing | paused | cancelled | complete | failed
   podcastsTotal            Int                   @default(0)
   podcastsCompleted        Int                   @default(0)

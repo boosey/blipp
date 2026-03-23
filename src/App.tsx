@@ -37,7 +37,7 @@ const AdminAuditLog = lazy(() => import("./pages/admin/audit-log"));
 const AdminAiErrors = lazy(() => import("./pages/admin/ai-errors"));
 const AdminAds = lazy(() => import("./pages/admin/ads"));
 const AdminRecommendations = lazy(() => import("./pages/admin/recommendations"));
-const CatalogSeed = lazy(() => import("./pages/admin/catalog-seed"));
+const CatalogDiscovery = lazy(() => import("./pages/admin/catalog-discovery"));
 const PodcastSources = lazy(() => import("./pages/admin/podcast-sources"));
 const ScheduledJobs = lazy(() => import("./pages/admin/scheduled-jobs"));
 const DlqMonitor = lazy(() => import("./pages/admin/dlq"));
@@ -117,7 +117,8 @@ export default function App() {
         <Route path="command-center" element={<Suspense fallback={<AdminLoading />}><CommandCenter /></Suspense>} />
         <Route path="pipeline" element={<Suspense fallback={<AdminLoading />}><Pipeline /></Suspense>} />
         <Route path="catalog" element={<Suspense fallback={<AdminLoading />}><Catalog /></Suspense>} />
-        <Route path="catalog-seed" element={<Suspense fallback={<AdminLoading />}><CatalogSeed /></Suspense>} />
+        <Route path="catalog-discovery" element={<Suspense fallback={<AdminLoading />}><CatalogDiscovery /></Suspense>} />
+        <Route path="catalog-seed" element={<Navigate to="/admin/catalog-discovery" replace />} />
         <Route path="podcast-sources" element={<Suspense fallback={<AdminLoading />}><PodcastSources /></Suspense>} />
         <Route path="briefings" element={<Suspense fallback={<AdminLoading />}><Briefings /></Suspense>} />
         <Route path="users" element={<Suspense fallback={<AdminLoading />}><AdminUsers /></Suspense>} />

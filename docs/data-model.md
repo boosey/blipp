@@ -1015,13 +1015,14 @@ Structured log entry for a cron run execution.
 
 ### EpisodeRefreshJob
 
-Tracks episode refresh operations (checking RSS feeds for new episodes). Created by admin triggers and cron jobs.
+Tracks episode refresh operations (checking RSS feeds for new episodes). Created by admin triggers, cron jobs, or auto-spawned after catalog discovery.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | id | String | `cuid()` | Primary key |
-| scope | String | `"subscribed"` | Target scope: "subscribed" or "all" |
-| trigger | String | `"admin"` | Trigger source: "admin" or "cron" |
+| scope | String | `"subscribed"` | Target scope: "subscribed", "all", or "seed" |
+| trigger | String | `"admin"` | Trigger source: "admin", "cron", or "seed" |
+| catalogSeedJobId | String? | -- | Links to originating CatalogSeedJob (if spawned by discovery) |
 | status | String | `"pending"` | pending / refreshing / paused / cancelled / complete / failed |
 | podcastsTotal | Int | `0` | Total podcasts to check |
 | podcastsCompleted | Int | `0` | Podcasts checked so far |

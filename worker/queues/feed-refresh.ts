@@ -3,7 +3,7 @@ import { getConfig } from "../lib/config";
 import { createPipelineLogger } from "../lib/logger";
 import { parseRssFeed, type ParsedEpisode } from "../lib/rss-parser";
 import type { FeedRefreshMessage } from "../lib/queue-messages";
-import { isSeedJobActive, isRefreshJobActive } from "../lib/queue-helpers";
+import { isRefreshJobActive } from "../lib/queue-helpers";
 import type { Env } from "../types";
 
 /**
@@ -48,7 +48,6 @@ export async function handleFeedRefresh(
     // Collect specific podcast IDs from messages, if any
     const podcastIds = new Set<string>();
     let fetchAll = false;
-    let seedJobId: string | undefined;
     let refreshJobId: string | undefined;
     for (const msg of batch.messages) {
       const body = msg.body;
@@ -57,7 +56,6 @@ export async function handleFeedRefresh(
       } else {
         fetchAll = true;
       }
-      if (body.seedJobId) seedJobId = body.seedJobId;
       if (body.refreshJobId) refreshJobId = body.refreshJobId;
     }
 
@@ -96,16 +94,6 @@ export async function handleFeedRefresh(
     for (const podcast of podcasts) {
       let processed = false;
       try {
-        // Cooperative pause/cancel: skip processing if seed job is no longer active
-        if (seedJobId) {
-          const active = await isSeedJobActive(prisma, seedJobId);
-          if (!active) {
-            log.info("seed_job_inactive", { podcastId: podcast.id, seedJobId });
-            continue; // Skip this podcast — don't increment feedsCompleted
-          }
-          processed = true; // Mark here so non-English skips still count toward feedsCompleted
-        }
-
         // Cooperative pause/cancel: skip processing if refresh job is no longer active
         if (refreshJobId) {
           const active = await isRefreshJobActive(prisma, refreshJobId);
@@ -204,17 +192,10 @@ export async function handleFeedRefresh(
             newEpisodeIds.map((id) => ({
               body: {
                 episodeId: id,
-                ...(seedJobId && { seedJobId }),
                 ...(refreshJobId && { refreshJobId }),
               },
             }))
           );
-          if (seedJobId) {
-            await prisma.catalogSeedJob.update({
-              where: { id: seedJobId },
-              data: { prefetchTotal: { increment: newEpisodeIds.length } },
-            });
-          }
         }
 
         log.info("podcast_refreshed", {
@@ -334,18 +315,6 @@ export async function handleFeedRefresh(
         // Log and continue — don't let one failed feed block others
         log.error("podcast_error", { podcastId: podcast.id }, err);
 
-        // Record error to CatalogJobError if this is part of a seed job
-        if (seedJobId) {
-          await prisma.catalogJobError.create({
-            data: {
-              jobId: seedJobId,
-              phase: "feed_refresh",
-              message: err instanceof Error ? err.message : String(err),
-              podcastId: podcast.id,
-            },
-          }).catch(() => {});
-        }
-
         // Record error for episode refresh job
         if (refreshJobId) {
           await prisma.episodeRefreshError.create({
@@ -358,12 +327,6 @@ export async function handleFeedRefresh(
           }).catch(() => {});
         }
       } finally {
-        if (seedJobId && processed) {
-          await prisma.catalogSeedJob.update({
-            where: { id: seedJobId },
-            data: { feedsCompleted: { increment: 1 } },
-          }).catch(() => {});
-        }
         if (refreshJobId && processed) {
           await prisma.episodeRefreshJob.update({
             where: { id: refreshJobId },

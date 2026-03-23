@@ -1,11 +1,10 @@
 import { createPrismaClient } from "../lib/db";
 import { prefetchEpisodeContent } from "../lib/content-prefetch";
-import { isSeedJobActive, isRefreshJobActive } from "../lib/queue-helpers";
+import { isRefreshJobActive } from "../lib/queue-helpers";
 import type { Env } from "../types";
 
 export interface ContentPrefetchMessage {
   episodeId: string;
-  seedJobId?: string;
   refreshJobId?: string;
 }
 
@@ -26,15 +25,6 @@ export async function handleContentPrefetch(
       const { episodeId } = msg.body;
 
       try {
-        // Cooperative pause/cancel: skip if seed job is no longer active
-        if (msg.body.seedJobId) {
-          const active = await isSeedJobActive(prisma, msg.body.seedJobId);
-          if (!active) {
-            msg.ack();
-            continue;
-          }
-        }
-
         // Cooperative pause/cancel: skip if refresh job is no longer active
         if (msg.body.refreshJobId) {
           const active = await isRefreshJobActive(prisma, msg.body.refreshJobId);
@@ -93,13 +83,6 @@ export async function handleContentPrefetch(
           ts: new Date().toISOString(),
         }));
 
-        if (msg.body.seedJobId) {
-          await prisma.catalogSeedJob.update({
-            where: { id: msg.body.seedJobId },
-            data: { prefetchCompleted: { increment: 1 } },
-          }).catch(() => {});
-        }
-
         if (msg.body.refreshJobId) {
           await prisma.episodeRefreshJob.update({
             where: { id: msg.body.refreshJobId },
@@ -116,18 +99,6 @@ export async function handleContentPrefetch(
           error: err instanceof Error ? err.message : String(err),
           ts: new Date().toISOString(),
         }));
-
-        // Record error to CatalogJobError if this is part of a seed job
-        if (msg.body.seedJobId) {
-          await prisma.catalogJobError.create({
-            data: {
-              jobId: msg.body.seedJobId,
-              phase: "prefetch",
-              message: err instanceof Error ? err.message : String(err),
-              episodeId,
-            },
-          }).catch(() => {});
-        }
 
         // Record error for episode refresh job
         if (msg.body.refreshJobId) {

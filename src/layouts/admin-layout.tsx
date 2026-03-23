@@ -71,7 +71,7 @@ const sidebarEntries: SidebarEntry[] = [
     children: [
       { path: "catalog", label: "Catalog", icon: Library },
       { path: "podcast-sources", label: "Sources", icon: Boxes },
-      { path: "catalog-seed", label: "Seed", icon: Sprout },
+      { path: "catalog-discovery", label: "Discovery", icon: Sprout },
       { path: "episode-refresh", label: "Refresh", icon: RefreshCw },
       { path: "podcast-settings", label: "Settings", icon: Settings },
     ],

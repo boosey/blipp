@@ -990,21 +990,18 @@ export interface CatalogSeedJob {
   mode: "destructive" | "additive";
   source: string; // "apple" | "podcast-index" | "manual"
   trigger: string; // "admin" | "script" | "cron"
-  status: string; // pending | discovering | upserting | feed_refresh | paused | cancelled | complete | failed
+  status: string; // pending | discovering | upserting | complete | failed | cancelled
   podcastsDiscovered: number;
-  feedsTotal: number;
-  feedsCompleted: number;
-  prefetchTotal: number;
-  prefetchCompleted: number;
   error: string | null;
   archivedAt: string | null;
   startedAt: string;
   completedAt: string | null;
+  _count?: { errors: number };
 }
 
 export interface CatalogJobError {
   id: string;
-  phase: string; // "discovery" | "feed_refresh" | "prefetch"
+  phase: string; // "discovery"
   message: string;
   podcastId: string | null;
   episodeId: string | null;
@@ -1023,17 +1020,11 @@ export interface CatalogSeedJobList {
 export interface CatalogSeedProgress {
   job: CatalogSeedJob | null;
   podcastsInserted: number;
-  episodesDiscovered: number;
-  prefetchBreakdown: Record<string, number>;
-  errorCounts: { discovery: number; feed_refresh: number; prefetch: number; total: number };
+  errorCounts: { discovery: number; total: number };
   pagination: {
     pageSize: number;
     podcastPage: number;
     podcastTotal: number;
-    episodePage: number;
-    episodeTotal: number;
-    prefetchPage: number;
-    prefetchTotal: number;
   };
   recentPodcasts: {
     id: string;
@@ -1043,21 +1034,7 @@ export interface CatalogSeedProgress {
     categories: string[];
     createdAt: string;
   }[];
-  recentEpisodes: {
-    id: string;
-    title: string;
-    publishedAt: string | null;
-    durationSeconds: number | null;
-    createdAt: string;
-    podcast: { title: string; imageUrl: string | null };
-  }[];
-  recentPrefetch: {
-    id: string;
-    title: string;
-    contentStatus: string;
-    updatedAt: string;
-    podcast: { title: string; imageUrl: string | null };
-  }[];
+  refreshJob?: { id: string; status: string } | null;
 }
 
 // ── Voice Presets ──
@@ -1111,6 +1088,7 @@ export interface EpisodeRefreshJob {
   archivedAt: string | null;
   startedAt: string;
   completedAt: string | null;
+  catalogSeedJobId?: string | null;
   _count?: { errors: number };
 }
 
