@@ -314,8 +314,8 @@ describe("handleCatalogRefresh", () => {
     const batch = createBatch("refresh");
     await handleCatalogRefresh(batch, mockEnv, mockCtx);
 
-    // Apple failure is caught — should still ack since we proceed with empty results
-    expect(batch.messages[0].ack).toHaveBeenCalled();
+    // Source failure should retry the message
+    expect(batch.messages[0].retry).toHaveBeenCalled();
   });
 
   it("updates status through lifecycle stages", async () => {
