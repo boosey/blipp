@@ -167,14 +167,16 @@ async function handleEvaluate(
     const voiceTag = resolved.voicePresetId ?? "default";
 
     // Check cached work products from DB (reverse order: final product first)
-    const products = existingProducts.filter(wp => wp.episodeId === episodeId);
+    type WpRow = { type: string; episodeId: string; durationTier: number | null; voice: string | null };
+    type ClipRow = { id: string; episodeId: string; durationTier: number; voicePresetId: string | null };
+    const products = (existingProducts as WpRow[]).filter((wp) => wp.episodeId === episodeId);
     let entryStage: string = "TRANSCRIPTION";
     let clipId: string | null = null;
 
     // 1. Audio clip exists + Clip record is COMPLETED → skip to assembly
-    const hasAudio = products.some(wp => wp.type === "AUDIO_CLIP" && wp.durationTier === durationTier && (wp.voice ?? "default") === voiceTag);
+    const hasAudio = products.some((wp) => wp.type === "AUDIO_CLIP" && wp.durationTier === durationTier && (wp.voice ?? "default") === voiceTag);
     if (hasAudio) {
-      const completedClip = completedClips.find(c =>
+      const completedClip = (completedClips as ClipRow[]).find((c) =>
         c.episodeId === episodeId && c.durationTier === durationTier && (c.voicePresetId ?? null) === (resolved.voicePresetId ?? null)
       );
       if (completedClip) {
@@ -187,21 +189,21 @@ async function handleEvaluate(
 
     // 2. Narrative exists → start at audio generation
     if (entryStage === "TRANSCRIPTION") {
-      if (products.some(wp => wp.type === "NARRATIVE" && wp.durationTier === durationTier)) {
+      if (products.some((wp) => wp.type === "NARRATIVE" && wp.durationTier === durationTier)) {
         entryStage = "AUDIO_GENERATION";
       }
     }
 
     // 3. Claims exist → start at narrative generation
     if (entryStage === "TRANSCRIPTION") {
-      if (products.some(wp => wp.type === "CLAIMS")) {
+      if (products.some((wp) => wp.type === "CLAIMS")) {
         entryStage = "NARRATIVE_GENERATION";
       }
     }
 
     // 4. Transcript exists → start at distillation
     if (entryStage === "TRANSCRIPTION") {
-      if (products.some(wp => wp.type === "TRANSCRIPT")) {
+      if (products.some((wp) => wp.type === "TRANSCRIPT")) {
         entryStage = "DISTILLATION";
       }
     }
