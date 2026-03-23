@@ -51,12 +51,21 @@
         args.forEach(function(arg) {
           if (arg && typeof arg === 'object') {
             try {
-              _origError('CLERK_DEBUG:', arg.message || JSON.stringify(arg, Object.getOwnPropertyNames(arg)));
+              _origError('DEBUG_ERR:', typeof arg, arg.message || '', arg.name || '');
+              if (arg.stack) _origError('DEBUG_STACK:', arg.stack.substring(0, 300));
             } catch(e) {}
+          } else {
+            _origError('DEBUG_ERR_VAL:', typeof arg, String(arg).substring(0, 300));
           }
         });
         _origError.apply(null, arguments);
       };
+      window.onerror = function(msg, url, line, col, err) {
+        _origError('GLOBAL_ERR:', msg, url, line, err && err.message);
+      };
+      window.addEventListener('unhandledrejection', function(e) {
+        _origError('UNHANDLED:', e.reason && e.reason.message || e.reason);
+      });
     </script>
     <script src="https://imasdk.googleapis.com/js/sdkloader/ima3.js" async></script>
     <script type="module" src="/src/main.tsx"></script>
