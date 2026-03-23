@@ -439,7 +439,7 @@ catalogSeedRoutes.post("/:id/cancel", async (c) => {
 
   const job = await prisma.catalogSeedJob.findUnique({ where: { id } });
   if (!job) return c.json({ error: "Job not found" }, 404);
-  if (!["discovering", "upserting"].includes(job.status)) {
+  if (!["pending", "discovering", "upserting"].includes(job.status)) {
     return c.json({ error: `Cannot cancel job in '${job.status}' status` }, 409);
   }
 
