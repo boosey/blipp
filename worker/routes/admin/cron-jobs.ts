@@ -7,8 +7,8 @@ const VALID_INTERVALS = [15, 30, 60, 120, 360, 720, 1440, 10080];
 const JOB_DEFINITIONS = [
   {
     jobKey: "pipeline-trigger",
-    label: "Pipeline Trigger",
-    description: "Enqueues feed refresh cycle (respects pipeline.enabled)",
+    label: "Fetch New Episodes",
+    description: "Checks all podcast feeds for new episodes and enqueues them for processing",
     defaultIntervalMinutes: 15,
   },
   {

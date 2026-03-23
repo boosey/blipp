@@ -1,18 +1,16 @@
-import { getConfig } from "../config";
 import type { CronLogger } from "./runner";
 import type { Env } from "../../types";
 
 type PrismaLike = {
   platformConfig: { upsert: (args: any) => Promise<any> };
-  subscription: { findMany: (args: any) => Promise<any[]> };
   podcast: { findMany: (args: any) => Promise<any[]> };
   episodeRefreshJob: { create: (args: any) => Promise<any> };
 };
 
 /**
- * Pipeline Trigger job: enqueues a feed refresh cycle.
- * Respects the master pipeline.enabled flag independently of the cron-level enabled toggle.
- * Also updates pipeline.lastAutoRunAt for backward compatibility with the pipeline controls page.
+ * Fetch New Episodes job: checks all podcast feeds for new episodes.
+ * Refreshes all non-archived podcasts regardless of subscription status.
+ * Updates pipeline.lastAutoRunAt for backward compatibility with the pipeline controls page.
  * Creates an EpisodeRefreshJob to track progress.
  */
 export async function runPipelineTriggerJob(
@@ -20,37 +18,17 @@ export async function runPipelineTriggerJob(
   env: Env,
   logger: CronLogger
 ): Promise<Record<string, unknown>> {
-  const pipelineEnabled = await getConfig(prisma as any, "pipeline.enabled", true);
-  if (!pipelineEnabled) {
-    await logger.info("pipeline_disabled", { skipped: true });
-    return { skipped: true, reason: "pipeline_disabled" };
-  }
-
-  // Determine target podcasts
-  const refreshAll = await getConfig(prisma as any, "catalog.refreshAllPodcasts", false);
-  let podcastIds: string[];
-
-  if (refreshAll) {
-    const podcasts = await prisma.podcast.findMany({
-      where: { status: { not: "archived" } },
-      select: { id: true },
-    });
-    podcastIds = podcasts.map((p: any) => p.id);
-  } else {
-    const subscribedPodcastIds = await prisma.subscription.findMany({
-      select: { podcastId: true },
-      distinct: ["podcastId"],
-    });
-    podcastIds = subscribedPodcastIds.map((s: any) => s.podcastId);
-  }
-
-  const scope = refreshAll ? "all" : "subscribed";
+  const podcasts = await prisma.podcast.findMany({
+    where: { status: { not: "archived" } },
+    select: { id: true },
+  });
+  const podcastIds = podcasts.map((p: any) => p.id);
 
   // Create tracking job
   const job = await prisma.episodeRefreshJob.create({
     data: {
       trigger: "cron",
-      scope,
+      scope: "all",
       status: "refreshing",
       podcastsTotal: podcastIds.length,
     },
@@ -82,7 +60,7 @@ export async function runPipelineTriggerJob(
     trigger: "cron",
     refreshJobId: job.id,
     podcastsTotal: podcastIds.length,
-    scope,
+    scope: "all",
   });
   return { enqueued: true, trigger: "cron", refreshJobId: job.id, podcastsTotal: podcastIds.length };
 }
