@@ -59,6 +59,9 @@ app.notFound((c) => {
   return c.json({ error: "Not found", code: "ROUTE_NOT_FOUND" }, 404);
 });
 
+// Clerk FAPI proxy for Capacitor native apps — before any /api middleware
+app.route("/api/__clerk", clerkProxy);
+
 // Request ID — must be first so all other middleware can access it
 app.use("/api/*", requestIdMiddleware);
 
@@ -133,9 +136,6 @@ app.use("/api/health/deep", cacheResponse({ maxAge: 30 }));
 
 // Security headers — CSP, X-Frame-Options, etc. for all responses
 app.use("/*", securityHeaders);
-
-// Clerk FAPI proxy for Capacitor native apps
-app.route("/api/__clerk", clerkProxy);
 
 // Mount all API routes under /api
 app.route("/api", routes);
