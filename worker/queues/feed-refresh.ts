@@ -3,7 +3,7 @@ import { getConfig } from "../lib/config";
 import { createPipelineLogger } from "../lib/logger";
 import { parseRssFeed, type ParsedEpisode } from "../lib/rss-parser";
 import type { FeedRefreshMessage } from "../lib/queue-messages";
-import { isSeedJobActive } from "../lib/queue-helpers";
+import { isSeedJobActive, isRefreshJobActive } from "../lib/queue-helpers";
 import type { Env } from "../types";
 
 /**
@@ -49,6 +49,7 @@ export async function handleFeedRefresh(
     const podcastIds = new Set<string>();
     let fetchAll = false;
     let seedJobId: string | undefined;
+    let refreshJobId: string | undefined;
     for (const msg of batch.messages) {
       const body = msg.body;
       if (body.podcastId) {
@@ -57,6 +58,7 @@ export async function handleFeedRefresh(
         fetchAll = true;
       }
       if (body.seedJobId) seedJobId = body.seedJobId;
+      if (body.refreshJobId) refreshJobId = body.refreshJobId;
     }
 
     log.debug("podcast_filter", { fetchAll, podcastIds: [...podcastIds] });
@@ -102,6 +104,16 @@ export async function handleFeedRefresh(
             continue; // Skip this podcast — don't increment feedsCompleted
           }
           processed = true; // Mark here so non-English skips still count toward feedsCompleted
+        }
+
+        // Cooperative pause/cancel: skip processing if refresh job is no longer active
+        if (refreshJobId) {
+          const active = await isRefreshJobActive(prisma, refreshJobId);
+          if (!active) {
+            log.info("refresh_job_inactive", { podcastId: podcast.id, refreshJobId });
+            continue;
+          }
+          processed = true;
         }
 
         console.log(`[feed-refresh] GET RSS feed: ${podcast.feedUrl} (podcast: ${podcast.title})`);
@@ -174,10 +186,28 @@ export async function handleFeedRefresh(
           }
         }
 
+        // Track new episodes for refresh job
+        if (refreshJobId && newEpisodeIds.length > 0) {
+          await prisma.episodeRefreshJob.update({
+            where: { id: refreshJobId },
+            data: {
+              podcastsWithNewEpisodes: { increment: 1 },
+              episodesDiscovered: { increment: newEpisodeIds.length },
+              prefetchTotal: { increment: newEpisodeIds.length },
+            },
+          }).catch(() => {});
+        }
+
         // Queue content prefetch for new episodes (runs slowly at concurrency=1)
         if (newEpisodeIds.length > 0) {
           await env.CONTENT_PREFETCH_QUEUE.sendBatch(
-            newEpisodeIds.map((id) => ({ body: { episodeId: id, ...(seedJobId && { seedJobId }) } }))
+            newEpisodeIds.map((id) => ({
+              body: {
+                episodeId: id,
+                ...(seedJobId && { seedJobId }),
+                ...(refreshJobId && { refreshJobId }),
+              },
+            }))
           );
           if (seedJobId) {
             await prisma.catalogSeedJob.update({
@@ -315,11 +345,29 @@ export async function handleFeedRefresh(
             },
           }).catch(() => {});
         }
+
+        // Record error for episode refresh job
+        if (refreshJobId) {
+          await prisma.episodeRefreshError.create({
+            data: {
+              jobId: refreshJobId,
+              phase: "feed_scan",
+              message: err instanceof Error ? err.message : String(err),
+              podcastId: podcast.id,
+            },
+          }).catch(() => {});
+        }
       } finally {
         if (seedJobId && processed) {
           await prisma.catalogSeedJob.update({
             where: { id: seedJobId },
             data: { feedsCompleted: { increment: 1 } },
+          }).catch(() => {});
+        }
+        if (refreshJobId && processed) {
+          await prisma.episodeRefreshJob.update({
+            where: { id: refreshJobId },
+            data: { podcastsCompleted: { increment: 1 } },
           }).catch(() => {});
         }
       }

@@ -1013,6 +1013,55 @@ Structured log entry for a cron run execution.
 
 ---
 
+### EpisodeRefreshJob
+
+Tracks episode refresh operations (checking RSS feeds for new episodes). Created by admin triggers and cron jobs.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| id | String | `cuid()` | Primary key |
+| scope | String | `"subscribed"` | Target scope: "subscribed" or "all" |
+| trigger | String | `"admin"` | Trigger source: "admin" or "cron" |
+| status | String | `"pending"` | pending / refreshing / paused / cancelled / complete / failed |
+| podcastsTotal | Int | `0` | Total podcasts to check |
+| podcastsCompleted | Int | `0` | Podcasts checked so far |
+| podcastsWithNewEpisodes | Int | `0` | Podcasts that had new episodes |
+| episodesDiscovered | Int | `0` | Total new episodes found |
+| prefetchTotal | Int | `0` | Episodes to prefetch |
+| prefetchCompleted | Int | `0` | Episodes prefetched |
+| error | String? | -- | Error message if failed |
+| archivedAt | DateTime? | -- | When archived |
+| startedAt | DateTime | `now()` | Job start time |
+| completedAt | DateTime? | -- | Job completion time |
+
+**Relations:**
+- `errors` -> EpisodeRefreshError[] (one-to-many, cascade delete)
+
+**Constraints:**
+- `@@index([status])`, `@@index([archivedAt])`
+
+### EpisodeRefreshError
+
+Per-error records for episode refresh jobs, separated by phase.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| id | String | `cuid()` | Primary key |
+| jobId | String | -- | FK to EpisodeRefreshJob |
+| phase | String | -- | "feed_scan" or "prefetch" |
+| message | String | -- | Error message |
+| podcastId | String? | -- | Related podcast (if applicable) |
+| episodeId | String? | -- | Related episode (if applicable) |
+| createdAt | DateTime | `now()` | Error timestamp |
+
+**Relations:**
+- `job` -> EpisodeRefreshJob (many-to-one, cascade delete)
+
+**Constraints:**
+- `@@index([jobId])`, `@@index([jobId, phase])`
+
+---
+
 ### PlatformConfig
 
 Key-value runtime configuration for the platform (pipeline toggles, intervals, etc.).
@@ -1239,5 +1288,6 @@ All foreign key relations use `onDelete: Cascade`. Deleting a parent record remo
 | SttExperiment | SttBenchmarkResults |
 | Category | PodcastCategories |
 | CronRun | CronRunLogs |
+| EpisodeRefreshJob | EpisodeRefreshErrors |
 
 Note: WorkProduct deletion does NOT cascade to PipelineSteps (the FK is nullable).

@@ -1,11 +1,12 @@
 import { createPrismaClient } from "../lib/db";
 import { prefetchEpisodeContent } from "../lib/content-prefetch";
-import { isSeedJobActive } from "../lib/queue-helpers";
+import { isSeedJobActive, isRefreshJobActive } from "../lib/queue-helpers";
 import type { Env } from "../types";
 
 export interface ContentPrefetchMessage {
   episodeId: string;
   seedJobId?: string;
+  refreshJobId?: string;
 }
 
 /**
@@ -28,6 +29,15 @@ export async function handleContentPrefetch(
         // Cooperative pause/cancel: skip if seed job is no longer active
         if (msg.body.seedJobId) {
           const active = await isSeedJobActive(prisma, msg.body.seedJobId);
+          if (!active) {
+            msg.ack();
+            continue;
+          }
+        }
+
+        // Cooperative pause/cancel: skip if refresh job is no longer active
+        if (msg.body.refreshJobId) {
+          const active = await isRefreshJobActive(prisma, msg.body.refreshJobId);
           if (!active) {
             msg.ack();
             continue;
@@ -90,6 +100,13 @@ export async function handleContentPrefetch(
           }).catch(() => {});
         }
 
+        if (msg.body.refreshJobId) {
+          await prisma.episodeRefreshJob.update({
+            where: { id: msg.body.refreshJobId },
+            data: { prefetchCompleted: { increment: 1 } },
+          }).catch(() => {});
+        }
+
         msg.ack();
       } catch (err) {
         console.error(JSON.stringify({
@@ -105,6 +122,18 @@ export async function handleContentPrefetch(
           await prisma.catalogJobError.create({
             data: {
               jobId: msg.body.seedJobId,
+              phase: "prefetch",
+              message: err instanceof Error ? err.message : String(err),
+              episodeId,
+            },
+          }).catch(() => {});
+        }
+
+        // Record error for episode refresh job
+        if (msg.body.refreshJobId) {
+          await prisma.episodeRefreshError.create({
+            data: {
+              jobId: msg.body.refreshJobId,
               phase: "prefetch",
               message: err instanceof Error ? err.message : String(err),
               episodeId,

@@ -1094,6 +1094,80 @@ export interface VoicePresetOption {
   isSystem: boolean;
 }
 
+// ── Episode Refresh Jobs ──
+
+export interface EpisodeRefreshJob {
+  id: string;
+  scope: string;
+  trigger: string;
+  status: string;
+  podcastsTotal: number;
+  podcastsCompleted: number;
+  podcastsWithNewEpisodes: number;
+  episodesDiscovered: number;
+  prefetchTotal: number;
+  prefetchCompleted: number;
+  error: string | null;
+  archivedAt: string | null;
+  startedAt: string;
+  completedAt: string | null;
+  _count?: { errors: number };
+}
+
+export interface EpisodeRefreshError {
+  id: string;
+  phase: string;
+  message: string;
+  podcastId: string | null;
+  episodeId: string | null;
+  podcastTitle?: string;
+  episodeTitle?: string;
+  createdAt: string;
+}
+
+export interface EpisodeRefreshJobList {
+  data: EpisodeRefreshJob[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface EpisodeRefreshProgress {
+  job: EpisodeRefreshJob | null;
+  podcastsWithNewEpisodesDetail: {
+    id: string;
+    title: string;
+    imageUrl: string | null;
+    newEpisodeCount: number;
+  }[];
+  recentEpisodes: {
+    id: string;
+    title: string;
+    publishedAt: string | null;
+    durationSeconds: number | null;
+    createdAt: string;
+    podcast: { title: string; imageUrl: string | null };
+  }[];
+  recentPrefetch: {
+    id: string;
+    title: string;
+    contentStatus: string;
+    updatedAt: string;
+    podcast: { title: string; imageUrl: string | null };
+  }[];
+  prefetchBreakdown: Record<string, number>;
+  errorCounts: { feed_scan: number; prefetch: number; total: number };
+  pagination: {
+    pageSize: number;
+    podcastPage: number;
+    podcastTotal: number;
+    episodePage: number;
+    episodeTotal: number;
+    prefetchPage: number;
+    prefetchTotal: number;
+  };
+}
+
 // ── Prompt Versioning ──
 
 export interface PromptVersionEntry {

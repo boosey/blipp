@@ -967,3 +967,40 @@ model CatalogJobError {
   @@index([jobId])
   @@index([jobId, phase])
 }
+
+// ── Episode Refresh Jobs ──
+
+model EpisodeRefreshJob {
+  id                       String                @id @default(cuid())
+  scope                    String                @default("subscribed") // "subscribed" | "all"
+  trigger                  String                @default("admin")      // "admin" | "cron"
+  status                   String                @default("pending")    // pending | refreshing | paused | cancelled | complete | failed
+  podcastsTotal            Int                   @default(0)
+  podcastsCompleted        Int                   @default(0)
+  podcastsWithNewEpisodes  Int                   @default(0)
+  episodesDiscovered       Int                   @default(0)
+  prefetchTotal            Int                   @default(0)
+  prefetchCompleted        Int                   @default(0)
+  error                    String?
+  archivedAt               DateTime?
+  startedAt                DateTime              @default(now())
+  completedAt              DateTime?
+  errors                   EpisodeRefreshError[]
+
+  @@index([status])
+  @@index([archivedAt])
+}
+
+model EpisodeRefreshError {
+  id         String             @id @default(cuid())
+  jobId      String
+  job        EpisodeRefreshJob  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  phase      String             // "feed_scan" | "prefetch"
+  message    String
+  podcastId  String?
+  episodeId  String?
+  createdAt  DateTime           @default(now())
+
+  @@index([jobId])
+  @@index([jobId, phase])
+}

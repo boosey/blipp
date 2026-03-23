@@ -9,7 +9,6 @@ import {
   ChevronRight,
   ExternalLink,
   Copy,
-  RefreshCw,
   Pause,
   Archive,
   Trash2,
@@ -57,7 +56,6 @@ import {
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { useAdminFetch } from "@/lib/admin-api";
 import { useFetch } from "@/lib/use-fetch";
-import { FeedRefreshCard } from "@/components/admin/feed-refresh-card";
 import type {
   AdminPodcast,
   AdminPodcastDetail,
@@ -681,7 +679,6 @@ function PodcastDetailModal({
   const apiFetch = useAdminFetch();
   const [detail, setDetail] = useState<AdminPodcastDetail | null>(null);
   const [loading, setLoading] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     if (!podcastId || !open) { setDetail(null); return; }
@@ -758,27 +755,6 @@ function PodcastDetailModal({
 
               {/* Quick actions */}
               <div className="flex gap-2 pb-3 border-b border-white/5">
-                <Button
-                  size="xs"
-                  className="bg-[#3B82F6] hover:bg-[#3B82F6]/80 text-white text-[10px]"
-                  disabled={refreshing}
-                  onClick={async () => {
-                    if (!podcastId) return;
-                    setRefreshing(true);
-                    try {
-                      await apiFetch(`/podcasts/${podcastId}/refresh`, { method: "POST" });
-                      const r = await apiFetch<{ data: AdminPodcastDetail }>(`/podcasts/${podcastId}`);
-                      setDetail(r.data);
-                    } catch (e) {
-                      console.error("Failed to refresh podcast:", e);
-                    } finally {
-                      setRefreshing(false);
-                    }
-                  }}
-                >
-                  {refreshing ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-                  {refreshing ? "Refreshing..." : "Refresh"}
-                </Button>
                 <Button size="xs" variant="ghost" className="text-[#9CA3AF] hover:text-[#F9FAFB] text-[10px]">
                   <Pause className="h-3 w-3" />
                   Pause
@@ -1243,11 +1219,6 @@ export default function Catalog() {
             </AccordionContent>
           </AccordionItem>
         </Accordion>
-
-        {/* Feed Refresh Status Bar */}
-        <div className="mb-3">
-          <FeedRefreshCard compact onRefresh={load} />
-        </div>
 
         {/* Toolbar */}
         <div className="flex items-center justify-between mb-3 gap-3">

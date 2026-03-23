@@ -24,6 +24,7 @@ import { claimsBenchmarkRoutes } from "./claims-benchmark";
 import { promptsRoutes } from "./prompts";
 import { voicePresetsRoutes } from "./voice-presets";
 import { storageRoutes } from "./storage";
+import { episodeRefreshRoutes } from "./episode-refresh";
 
 /**
  * Admin route tree. All routes require admin authentication.
@@ -58,5 +59,6 @@ adminRoutes.route("/claims-benchmark", claimsBenchmarkRoutes);
 adminRoutes.route("/prompts", promptsRoutes);
 adminRoutes.route("/voice-presets", voicePresetsRoutes);
 adminRoutes.route("/storage", storageRoutes);
+adminRoutes.route("/episode-refresh", episodeRefreshRoutes);
 
 export { adminRoutes };

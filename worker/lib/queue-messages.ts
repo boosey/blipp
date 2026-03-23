@@ -70,6 +70,7 @@ export interface FeedRefreshMessage {
   podcastId?: string;
   type?: "manual" | "cron";
   seedJobId?: string;
+  refreshJobId?: string;
 }
 
 /** Catalog refresh queue. */

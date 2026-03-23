@@ -29,6 +29,7 @@ import {
   MessageSquare,
   Inbox,
   Sprout,
+  RefreshCw,
   Mic,
   ExternalLink,
 } from "lucide-react";
@@ -71,6 +72,7 @@ const sidebarEntries: SidebarEntry[] = [
       { path: "catalog", label: "Catalog", icon: Library },
       { path: "podcast-sources", label: "Sources", icon: Boxes },
       { path: "catalog-seed", label: "Seed", icon: Sprout },
+      { path: "episode-refresh", label: "Refresh", icon: RefreshCw },
       { path: "podcast-settings", label: "Settings", icon: Settings },
     ],
   },
