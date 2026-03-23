@@ -6,11 +6,10 @@ const config: CapacitorConfig = {
   webDir: "dist/client",
   ios: {
     contentInset: "automatic",
-    // Use https scheme so Clerk accepts the Origin header
-    scheme: "https",
   },
   server: {
-    // Match the production domain so Clerk Origin validation passes
+    // Use https scheme + production hostname so Origin header is https://podblipp.com
+    iosScheme: "https",
     hostname: "podblipp.com",
     // Allow mixed content (capacitor:// loading from https API)
     allowNavigation: [
