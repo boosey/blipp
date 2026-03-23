@@ -138,9 +138,13 @@ app.all("/__clerk/*", async (c) => {
 const scriptOrClerkAuth = createMiddleware<{ Bindings: Env }>(async (c, next) => {
   // Script token bypass (GH Actions, CI)
   const scriptToken = c.req.header("X-Script-Token");
-  if (scriptToken && c.env.SCRIPT_TOKEN && scriptToken === c.env.SCRIPT_TOKEN) {
-    c.set("scriptAuth", true);
-    return next();
+  if (scriptToken) {
+    if (c.env.SCRIPT_TOKEN && scriptToken === c.env.SCRIPT_TOKEN) {
+      c.set("scriptAuth", true);
+      return next();
+    }
+    // Script token present but invalid — reject immediately
+    return c.json({ error: "Invalid script token" }, 401);
   }
   // Bearer secret bypass
   const authHeader = c.req.header("Authorization");
