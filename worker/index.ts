@@ -164,8 +164,12 @@ for (const path of ["/api/admin/catalog-seed", "/api/admin/catalog-seed/*"] as c
 app.route("/api/admin/catalog-seed", catalogSeedRoutes);
 
 // Clerk auth middleware — populates auth context for all API routes
-// Skip Clerk for server-to-server requests using Bearer CLERK_SECRET_KEY
+// Skip Clerk for server-to-server requests already authenticated via scriptOrClerkAuth,
+// or using Bearer CLERK_SECRET_KEY
 app.use("/api/*", async (c, next) => {
+  // Already authenticated by scriptOrClerkAuth middleware (catalog-seed routes)
+  if (c.get("scriptAuth")) return next();
+  // Bearer secret bypass (server-to-server)
   const authHeader = c.req.header("Authorization");
   if (authHeader?.startsWith("Bearer ")) {
     const token = authHeader.slice(7);

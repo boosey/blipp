@@ -48,18 +48,17 @@ const APP_ORIGINS = {
 function getConfig() {
   // In CI (GitHub Actions), read from environment variables
   if (process.env.GITHUB_ACTIONS) {
-    const clerkSecret = process.env.CLERK_SECRET_KEY;
     const appOrigin = process.env.APP_ORIGIN;
-    const scriptToken = process.env.SCRIPT_TOKEN || undefined;
-    if (!clerkSecret) throw new Error("CLERK_SECRET_KEY env var not set");
+    const scriptToken = process.env.SCRIPT_TOKEN;
     if (!appOrigin) throw new Error("APP_ORIGIN env var not set");
-    return { clerkSecret, appOrigin, scriptToken };
+    if (!scriptToken) throw new Error("SCRIPT_TOKEN env var not set");
+    return { appOrigin, scriptToken };
   }
 
-  // Locally, read from files
+  // Locally, read from files — use CLERK_SECRET_KEY as Bearer fallback
   const clerkSecret = readEnvFile(".dev.vars", "CLERK_SECRET_KEY");
   const appOrigin = APP_ORIGINS[env];
-  return { clerkSecret, appOrigin, scriptToken: undefined };
+  return { appOrigin, scriptToken: undefined, clerkSecret };
 }
 
 function readEnvFile(filePath, key) {
@@ -190,12 +189,15 @@ async function lookupBatch(appleIds) {
 
 const INGEST_CHUNK_SIZE = 50;
 
-async function apiPost(url, body, clerkSecret, scriptToken) {
+async function apiPost(url, body, { scriptToken, clerkSecret } = {}) {
   const headers = {
     "Content-Type": "application/json",
-    "Authorization": `Bearer ${clerkSecret}`,
   };
-  if (scriptToken) headers["X-Script-Token"] = scriptToken;
+  if (scriptToken) {
+    headers["X-Script-Token"] = scriptToken;
+  } else if (clerkSecret) {
+    headers["Authorization"] = `Bearer ${clerkSecret}`;
+  }
 
   const res = await fetch(url, {
     method: "POST",
@@ -266,7 +268,9 @@ async function main() {
   }
 
   // Step 4: Create catalog seed job via API
-  const { clerkSecret, appOrigin, scriptToken } = getConfig();
+  const config = getConfig();
+  const { appOrigin } = config;
+  const auth = { scriptToken: config.scriptToken, clerkSecret: config.clerkSecret };
   console.log(`\nCreating catalog seed job at ${appOrigin}...`);
 
   const jobResult = await apiPost(`${appOrigin}/api/admin/catalog-seed`, {
@@ -274,7 +278,7 @@ async function main() {
     source: "apple",
     trigger: "script",
     mode: "additive",
-  }, clerkSecret, scriptToken);
+  }, auth);
 
   const jobId = jobResult.jobId;
   if (!jobId) {
@@ -299,8 +303,7 @@ async function main() {
       const result = await apiPost(
         `${appOrigin}/api/admin/catalog-seed/${jobId}/ingest`,
         { podcasts: chunk, final: isLast },
-        clerkSecret,
-        scriptToken
+        auth
       );
       totalIngested += chunk.length;
       console.log(` OK (created=${result.created ?? 0}, updated=${result.updated ?? 0})`);
