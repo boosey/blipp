@@ -10,7 +10,7 @@ export function AppClerkProvider({ children }: { children: React.ReactNode }) {
     <ClerkProvider
       publishableKey={import.meta.env.VITE_CLERK_PUBLISHABLE_KEY}
       {...(isNative && {
-        proxyUrl: "https://podblipp.com/__clerk",
+        proxyUrl: "https://blipp-staging.boosey-boudreaux.workers.dev/__clerk",
         allowedRedirectOrigins: ["capacitor://podblipp.com", "capacitor://localhost"],
       })}
     >

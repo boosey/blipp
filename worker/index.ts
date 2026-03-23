@@ -73,6 +73,7 @@ app.use("/api/*", cors({
           "https://podblipp.com",
           "https://www.podblipp.com",
           "capacitor://localhost",
+          "capacitor://podblipp.com",
           "ionic://localhost",
         ];
     return allowedOrigins.includes(origin) ? origin : "";
