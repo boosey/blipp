@@ -466,13 +466,13 @@ async function getJobDetail(c: any, prisma: any, jobId: string) {
       prefetchPage,
       prefetchTotal,
     },
-    podcastsWithNewEpisodes: podcastsWithNewEpisodesData,
-    newEpisodes: newEpisodes.map((e: any) => ({
+    podcastsWithNewEpisodesDetail: podcastsWithNewEpisodesData,
+    recentEpisodes: newEpisodes.map((e: any) => ({
       ...e,
       publishedAt: e.publishedAt?.toISOString() ?? null,
       createdAt: e.createdAt.toISOString(),
     })),
-    prefetchEpisodes: prefetchEpisodes.map((e: any) => ({
+    recentPrefetch: prefetchEpisodes.map((e: any) => ({
       ...e,
       updatedAt: e.updatedAt.toISOString(),
     })),

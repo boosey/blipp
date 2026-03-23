@@ -82,7 +82,7 @@ function formatTime(iso: string): string {
 }
 
 function isActive(status: string): boolean {
-  return ["pending", "scanning", "prefetching"].includes(status);
+  return ["pending", "refreshing"].includes(status);
 }
 
 function isTerminal(status: string): boolean {
@@ -91,13 +91,18 @@ function isTerminal(status: string): boolean {
 
 type PhaseStatus = "pending" | "active" | "complete" | "failed" | "paused" | "cancelled";
 
-function getPhaseStatuses(status: string): [PhaseStatus, PhaseStatus] {
-  if (status === "pending" || status === "scanning") return ["active", "pending"];
-  if (status === "prefetching") return ["complete", "active"];
-  if (status === "complete") return ["complete", "complete"];
-  if (status === "failed") return ["failed", "failed"];
-  if (status === "paused") return ["paused", "paused"];
-  if (status === "cancelled") return ["cancelled", "cancelled"];
+function getPhaseStatuses(job: EpisodeRefreshJob): [PhaseStatus, PhaseStatus] {
+  if (job.status === "pending") return ["pending", "pending"];
+  if (job.status === "refreshing") {
+    // Feed scan active until all podcasts completed; then prefetch is active
+    const scanDone = job.podcastsTotal > 0 && job.podcastsCompleted >= job.podcastsTotal;
+    if (scanDone) return ["complete", "active"];
+    return ["active", "pending"];
+  }
+  if (job.status === "complete") return ["complete", "complete"];
+  if (job.status === "failed") return ["failed", "failed"];
+  if (job.status === "paused") return ["paused", "paused"];
+  if (job.status === "cancelled") return ["cancelled", "cancelled"];
   return ["pending", "pending"];
 }
 
@@ -230,7 +235,7 @@ function JobDetail({ jobId }: { jobId: string }) {
   const job = detail.job;
   if (!job) return null;
 
-  const [p1Status, p2Status] = getPhaseStatuses(job.status);
+  const [p1Status, p2Status] = getPhaseStatuses(job);
   const errorCounts = detail.errorCounts ?? { feed_scan: 0, prefetch: 0, total: 0 };
 
   return (
@@ -255,22 +260,24 @@ function JobDetail({ jobId }: { jobId: string }) {
             <div className="flex items-center gap-2 flex-1 text-left">
               <Podcast className="h-3.5 w-3.5 text-[#3B82F6]" />
               <span className="text-sm font-medium">Podcasts</span>
-              <Badge variant="outline" className="ml-auto mr-2 text-[#9CA3AF] border-white/10 text-[10px]">
-                {job.podcastsCompleted}/{job.podcastsTotal}
-              </Badge>
+              <span className="text-[10px] text-[#9CA3AF] ml-1">
+                {job.podcastsCompleted.toLocaleString()} / {job.podcastsTotal.toLocaleString()} scanned
+              </span>
+              {job.podcastsWithNewEpisodes > 0 && (
+                <Badge variant="outline" className="ml-auto mr-2 text-[10px] text-[#10B981] border-[#10B981]/30">
+                  {job.podcastsWithNewEpisodes} with new episodes
+                </Badge>
+              )}
             </div>
           </AccordionTrigger>
           <AccordionContent className="px-3 pb-3 space-y-2">
             <div className="space-y-1">
               <div className="flex justify-between text-xs text-[#9CA3AF]">
-                <span>Scanned</span>
+                <span>Feeds scanned</span>
                 <span>{job.podcastsCompleted.toLocaleString()} / {job.podcastsTotal.toLocaleString()}</span>
               </div>
               <Progress value={job.podcastsTotal > 0 ? (job.podcastsCompleted / job.podcastsTotal) * 100 : 0} />
             </div>
-            <p className="text-[10px] text-[#9CA3AF]">
-              Podcasts with new episodes: {job.podcastsWithNewEpisodes.toLocaleString()}
-            </p>
             {allPodcasts.length > 0 && (
               <div className="space-y-1">
                 <p className="text-[10px] text-[#9CA3AF] font-medium">
@@ -311,16 +318,16 @@ function JobDetail({ jobId }: { jobId: string }) {
           <AccordionTrigger className="px-3 py-2 hover:no-underline">
             <div className="flex items-center gap-2 flex-1 text-left">
               <Radio className="h-3.5 w-3.5 text-[#F59E0B]" />
-              <span className="text-sm font-medium">Episodes</span>
-              <Badge variant="outline" className="ml-auto mr-2 text-[#9CA3AF] border-white/10 text-[10px]">
-                {job.episodesDiscovered}
+              <span className="text-sm font-medium">Episodes Discovered</span>
+              <Badge variant="outline" className="ml-auto mr-2 text-[10px] text-[#F59E0B] border-[#F59E0B]/30">
+                {job.episodesDiscovered.toLocaleString()}
               </Badge>
             </div>
           </AccordionTrigger>
           <AccordionContent className="px-3 pb-3 space-y-2">
-            <p className="text-[10px] text-[#9CA3AF]">
-              New episodes discovered: {job.episodesDiscovered.toLocaleString()}
-            </p>
+            <div className="flex items-center gap-3 text-xs text-[#9CA3AF]">
+              <span>{job.episodesDiscovered.toLocaleString()} new episodes found across {job.podcastsWithNewEpisodes.toLocaleString()} podcasts</span>
+            </div>
             {allEpisodes.length > 0 && (
               <div className="space-y-1">
                 <p className="text-[10px] text-[#9CA3AF] font-medium">
