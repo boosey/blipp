@@ -9,6 +9,16 @@ import type { Env } from "../types";
  */
 export const requireAdmin = createMiddleware<{ Bindings: Env }>(
   async (c, next) => {
+    // Allow server-to-server auth via Bearer CLERK_SECRET_KEY (scripts, CI)
+    const authHeader = c.req.header("Authorization");
+    if (authHeader?.startsWith("Bearer ")) {
+      const token = authHeader.slice(7);
+      if (token === c.env.CLERK_SECRET_KEY) {
+        await next();
+        return;
+      }
+    }
+
     const auth = getAuth(c);
     if (!auth?.userId) {
       return c.json({ error: "Unauthorized" }, 401);

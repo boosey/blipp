@@ -218,13 +218,8 @@ catalogSeedRoutes.post("/trigger-apple", async (c) => {
 });
 
 // ── POST /:id/ingest — Accept chunked discovered podcasts from external script ──
+// Auth handled by requireAdmin middleware (Bearer CLERK_SECRET_KEY or admin session)
 catalogSeedRoutes.post("/:id/ingest", async (c) => {
-  // Auth: Bearer CLERK_SECRET_KEY (server-to-server, same as bulk-refresh)
-  const authHeader = c.req.header("Authorization");
-  const token = authHeader?.replace("Bearer ", "");
-  if (!token || token !== c.env.CLERK_SECRET_KEY) {
-    return c.json({ error: "Unauthorized" }, 401);
-  }
 
   const prisma = c.get("prisma") as any;
   const { id } = c.req.param();
