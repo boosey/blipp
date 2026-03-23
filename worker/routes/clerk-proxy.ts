@@ -25,7 +25,7 @@ clerkProxy.use(
 );
 
 clerkProxy.all("/*", async (c) => {
-  const path = c.req.path.replace(/^\/__clerk/, "");
+  const path = c.req.path.replace(/^\/api\/__clerk/, "");
   const url = new URL(path + "?" + new URL(c.req.url).searchParams, CLERK_FAPI);
 
   const headers = new Headers(c.req.raw.headers);

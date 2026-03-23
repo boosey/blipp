@@ -134,8 +134,8 @@ app.use("/api/health/deep", cacheResponse({ maxAge: 30 }));
 // Security headers — CSP, X-Frame-Options, etc. for all responses
 app.use("/*", securityHeaders);
 
-// Clerk FAPI proxy for Capacitor native apps (before /api routes)
-app.route("/__clerk", clerkProxy);
+// Clerk FAPI proxy for Capacitor native apps
+app.route("/api/__clerk", clerkProxy);
 
 // Mount all API routes under /api
 app.route("/api", routes);
