@@ -256,13 +256,23 @@ catalogSeedRoutes.post("/:id/ingest", async (c) => {
   // Upsert categories from this chunk
   const categoryIdMap = await upsertCategories(prisma, podcasts);
 
+  // Check which podcasts already exist (batch lookup)
+  const feedUrls = podcasts.map((p) => p.feedUrl).filter(Boolean);
+  const existingPods = await prisma.podcast.findMany({
+    where: { feedUrl: { in: feedUrls } },
+    select: { feedUrl: true },
+  });
+  const existingFeedUrls = new Set(existingPods.map((p: any) => p.feedUrl));
+
   // Additive upsert of podcasts
-  let chunkUpsertedCount = 0;
+  let chunkCreatedCount = 0;
+  let chunkUpdatedCount = 0;
   const errors: Array<{ message: string; podcastTitle?: string }> = [];
 
   for (const podcast of podcasts) {
     if (!podcast.feedUrl) continue;
 
+    const isNew = !existingFeedUrls.has(podcast.feedUrl);
     const categoryNames = (podcast.categories ?? [])
       .filter((cat) => cat.genreId !== "26")
       .map((cat) => cat.name);
@@ -300,7 +310,8 @@ catalogSeedRoutes.post("/:id/ingest", async (c) => {
         await prisma.podcastCategory.createMany({ data: catJoins, skipDuplicates: true });
       }
 
-      chunkUpsertedCount++;
+      if (isNew) chunkCreatedCount++;
+      else chunkUpdatedCount++;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       errors.push({ message: msg, podcastTitle: podcast.title });
@@ -318,12 +329,12 @@ catalogSeedRoutes.post("/:id/ingest", async (c) => {
     });
   }
 
-  // Update discovered count
+  // Update discovered count (only new podcasts, not updates)
   await prisma.catalogSeedJob.update({
     where: { id },
     data: {
       status: "upserting",
-      podcastsDiscovered: { increment: podcasts.length },
+      podcastsDiscovered: { increment: chunkCreatedCount },
     },
   });
 
@@ -368,7 +379,8 @@ catalogSeedRoutes.post("/:id/ingest", async (c) => {
     }
 
     return c.json({
-      upserted: chunkUpsertedCount,
+      created: chunkCreatedCount,
+      updated: chunkUpdatedCount,
       errors: errors.length,
       final: true,
       refreshJobId: refreshJobId ?? null,
@@ -376,7 +388,8 @@ catalogSeedRoutes.post("/:id/ingest", async (c) => {
   }
 
   return c.json({
-    upserted: chunkUpsertedCount,
+    created: chunkCreatedCount,
+    updated: chunkUpdatedCount,
     errors: errors.length,
     final: false,
   });

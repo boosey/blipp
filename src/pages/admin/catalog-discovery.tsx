@@ -231,15 +231,14 @@ function JobDetail({ jobId }: { jobId: string }) {
           <AccordionContent className="px-3 pb-3 space-y-2">
             <div className="space-y-1">
               <div className="flex justify-between text-xs text-[#9CA3AF]">
-                <span>Discovered</span>
+                <span>New podcasts</span>
                 <span>{job.podcastsDiscovered.toLocaleString()}</span>
               </div>
-              <Progress value={job.podcastsDiscovered > 0 ? 100 : 0} />
             </div>
-            {allPodcasts.length > 0 && (
+            {allPodcasts.length > 0 ? (
               <div className="space-y-1">
                 <p className="text-[10px] text-[#9CA3AF] font-medium">
-                  Podcasts ({allPodcasts.length} of {detail.pagination?.podcastTotal ?? allPodcasts.length})
+                  New ({allPodcasts.length} of {detail.pagination?.podcastTotal ?? allPodcasts.length})
                 </p>
                 <div className="max-h-[300px] overflow-y-auto space-y-1 pr-1">
                   {allPodcasts.map((p) => (
@@ -267,7 +266,14 @@ function JobDetail({ jobId }: { jobId: string }) {
                   </Button>
                 )}
               </div>
-            )}
+            ) : isTerminal(job.status) ? (
+              <p className="text-xs text-[#9CA3AF] text-center py-3">No new podcasts found — all already in catalog</p>
+            ) : jobActive ? (
+              <div className="flex items-center justify-center gap-2 py-3">
+                <Loader2 className="h-3 w-3 animate-spin text-[#9CA3AF]" />
+                <span className="text-xs text-[#9CA3AF]">Processing…</span>
+              </div>
+            ) : null}
           </AccordionContent>
         </AccordionItem>
 
@@ -406,17 +412,19 @@ function JobCard({
         <ChevronDown className={`h-4 w-4 text-[#9CA3AF] transition-transform ${expanded ? "rotate-180" : ""}`} />
       </button>
 
-      {/* Stats row */}
-      <div className="px-4 pb-2 text-[10px] text-[#9CA3AF]">
-        {job.podcastsDiscovered} discovered
-      </div>
-
-      {/* Progress bar for active jobs */}
-      {active && (
-        <div className="px-4 pb-3">
-          <Progress value={pct} className="h-1.5" />
+      {/* Stats row + progress */}
+      <div className="px-4 pb-3">
+        <div className="text-[10px] text-[#9CA3AF] mb-1">
+          {active ? (
+            <span>Processing…</span>
+          ) : job.podcastsDiscovered > 0 ? (
+            <span>{job.podcastsDiscovered} new</span>
+          ) : isTerminal(job.status) ? (
+            <span>No new podcasts</span>
+          ) : null}
         </div>
-      )}
+        {active && <Progress value={pct} className="h-1.5" />}
+      </div>
 
       {/* Error banner */}
       {job.error && (

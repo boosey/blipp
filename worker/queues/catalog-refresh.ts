@@ -37,8 +37,6 @@ export async function handleCatalogRefresh(
         const discovered = await catalogSource.discover(discoverCount, env);
         console.log(`[catalog-refresh] ${catalogSource.name}: discovered ${discovered.length} podcasts`);
 
-        if (seedJobId) await updateSeedJob(prisma, seedJobId, { podcastsDiscovered: discovered.length });
-
         // ── Upsert categories ──
         await updateStatus(prisma, "resolving_metadata");
         const categoryIdMap = await upsertCategories(prisma, discovered);
@@ -68,6 +66,9 @@ export async function handleCatalogRefresh(
             : [];
           await markPendingDeletion(prisma, upsertedIds);
         }
+
+        // Update podcastsDiscovered with only NEW podcasts (not total discovered)
+        if (seedJobId) await updateSeedJob(prisma, seedJobId, { podcastsDiscovered: upsertedIds.length });
 
         // Create an EpisodeRefreshJob to track feed refresh progress
         let refreshJobId: string | undefined;
