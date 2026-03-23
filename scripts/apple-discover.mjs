@@ -198,8 +198,12 @@ async function apiPost(url, body, clerkSecret) {
     },
     body: JSON.stringify(body),
   });
-  const data = await res.json().catch(() => ({}));
+  const text = await res.text();
+  let data = {};
+  try { data = JSON.parse(text); } catch {}
   if (!res.ok) {
+    console.error(`  API error: ${res.status} ${res.statusText}`);
+    console.error(`  Response body: ${text.slice(0, 500)}`);
     const msg = data.error || data.message || `${res.status} ${res.statusText}`;
     throw new Error(msg);
   }
