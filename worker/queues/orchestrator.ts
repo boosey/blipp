@@ -145,31 +145,130 @@ async function handleEvaluate(
   });
   log.info("request_status_transition", { requestId: request.id, from: request.status, to: "PROCESSING" });
 
-  // Create PipelineJobs and dispatch to transcription
+  // Create PipelineJobs — query DB to find optimal entry stage per item,
+  // avoiding unnecessary queue hops for cached work products.
+  // Two batch queries replace up to N*4 sequential R2 HEAD calls.
+  const episodeIds = resolvedItems.map(r => r.episodeId);
+
+  const [existingProducts, completedClips] = await Promise.all([
+    prisma.workProduct.findMany({
+      where: { episodeId: { in: episodeIds }, type: { in: ["AUDIO_CLIP", "NARRATIVE", "CLAIMS", "TRANSCRIPT"] } },
+      select: { type: true, episodeId: true, durationTier: true, voice: true },
+    }),
+    prisma.clip.findMany({
+      where: { episodeId: { in: episodeIds }, status: "COMPLETED" },
+      select: { id: true, episodeId: true, durationTier: true, voicePresetId: true },
+    }),
+  ]);
+
+  let assemblyReadyCount = 0;
   for (const resolved of resolvedItems) {
-    const job = await prisma.pipelineJob.create({
-      data: {
-        requestId: request.id,
-        episodeId: resolved.episodeId,
-        durationTier: resolved.durationTier,
-        voicePresetId: resolved.voicePresetId ?? null,
-        status: "PENDING",
-        currentStage: "TRANSCRIPTION",
-      },
-    });
+    const { episodeId, durationTier } = resolved;
+    const voiceTag = resolved.voicePresetId ?? "default";
 
-    await env.TRANSCRIPTION_QUEUE.send({
-      jobId: job.id,
-      episodeId: resolved.episodeId,
-      correlationId: request.id,
-    });
+    // Check cached work products from DB (reverse order: final product first)
+    const products = existingProducts.filter(wp => wp.episodeId === episodeId);
+    let entryStage: string = "TRANSCRIPTION";
+    let clipId: string | null = null;
 
-    log.info("job_created_and_dispatched", {
-      jobId: job.id,
-      episodeId: resolved.episodeId,
-      durationTier: resolved.durationTier,
-      stage: "TRANSCRIPTION",
-    });
+    // 1. Audio clip exists + Clip record is COMPLETED → skip to assembly
+    const hasAudio = products.some(wp => wp.type === "AUDIO_CLIP" && wp.durationTier === durationTier && (wp.voice ?? "default") === voiceTag);
+    if (hasAudio) {
+      const completedClip = completedClips.find(c =>
+        c.episodeId === episodeId && c.durationTier === durationTier && (c.voicePresetId ?? null) === (resolved.voicePresetId ?? null)
+      );
+      if (completedClip) {
+        entryStage = "BRIEFING_ASSEMBLY";
+        clipId = completedClip.id;
+      } else {
+        entryStage = "AUDIO_GENERATION";
+      }
+    }
+
+    // 2. Narrative exists → start at audio generation
+    if (entryStage === "TRANSCRIPTION") {
+      if (products.some(wp => wp.type === "NARRATIVE" && wp.durationTier === durationTier)) {
+        entryStage = "AUDIO_GENERATION";
+      }
+    }
+
+    // 3. Claims exist → start at narrative generation
+    if (entryStage === "TRANSCRIPTION") {
+      if (products.some(wp => wp.type === "CLAIMS")) {
+        entryStage = "NARRATIVE_GENERATION";
+      }
+    }
+
+    // 4. Transcript exists → start at distillation
+    if (entryStage === "TRANSCRIPTION") {
+      if (products.some(wp => wp.type === "TRANSCRIPT")) {
+        entryStage = "DISTILLATION";
+      }
+    }
+
+    if (entryStage === "BRIEFING_ASSEMBLY") {
+      // Fully cached — mark job as assembly-ready immediately
+      const job = await prisma.pipelineJob.create({
+        data: {
+          requestId: request.id,
+          episodeId,
+          durationTier,
+          voicePresetId: resolved.voicePresetId ?? null,
+          status: "PENDING",
+          currentStage: "BRIEFING_ASSEMBLY",
+          clipId,
+        },
+      });
+      assemblyReadyCount++;
+
+      log.info("job_created_cache_hit", {
+        jobId: job.id,
+        episodeId,
+        durationTier,
+        entryStage,
+      });
+    } else {
+      // Dispatch to the earliest stage that needs work
+      const job = await prisma.pipelineJob.create({
+        data: {
+          requestId: request.id,
+          episodeId,
+          durationTier,
+          voicePresetId: resolved.voicePresetId ?? null,
+          status: "PENDING",
+          currentStage: entryStage,
+        },
+      });
+
+      const queueBinding = STAGE_QUEUE_MAP[entryStage];
+      const message: Record<string, any> = {
+        jobId: job.id,
+        episodeId,
+        correlationId: request.id,
+      };
+      if (entryStage === "NARRATIVE_GENERATION" || entryStage === "AUDIO_GENERATION") {
+        message.durationTier = durationTier;
+      }
+      if (entryStage === "AUDIO_GENERATION") {
+        message.voicePresetId = resolved.voicePresetId ?? null;
+      }
+
+      await env[queueBinding].send(message);
+
+      log.info("job_created_and_dispatched", {
+        jobId: job.id,
+        episodeId,
+        durationTier,
+        stage: entryStage,
+      });
+    }
+  }
+
+  // If every job is already assembly-ready, dispatch assembly now
+  // (no stage-complete messages will arrive to trigger it otherwise)
+  if (assemblyReadyCount === resolvedItems.length) {
+    await env.BRIEFING_ASSEMBLY_QUEUE.send({ requestId: request.id, correlationId: request.id });
+    log.info("assembly_dispatched_all_cached", { requestId: request.id, jobCount: assemblyReadyCount });
   }
 
   msg.ack();
