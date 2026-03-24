@@ -465,8 +465,8 @@ export function PodcastDetail({ podcastId: propPodcastId, scrollToEpisodeId }: {
                 className={`bg-card border rounded-lg p-3 ${scrollToEpisodeId === ep.id ? "border-primary/50 ring-1 ring-primary/30" : "border-border"}`}
               >
                 {/* Title — full width, expandable */}
-                <button
-                  className="w-full text-left"
+                <div
+                  className="w-full cursor-pointer"
                   onClick={() => setExpandedEpisodeId(
                     expandedEpisodeId === ep.id ? null : ep.id
                   )}
@@ -474,7 +474,7 @@ export function PodcastDetail({ podcastId: propPodcastId, scrollToEpisodeId }: {
                   <p className={`font-medium text-sm text-violet-600 dark:text-violet-300 break-words ${expandedEpisodeId === ep.id ? "" : "line-clamp-2"}`}>
                     {ep.title}
                   </p>
-                </button>
+                </div>
                 {/* Meta */}
                 <div className="flex gap-2 text-xs text-muted-foreground mt-1">
                   <span>{new Date(ep.publishedAt).toLocaleDateString()}</span>
@@ -482,8 +482,8 @@ export function PodcastDetail({ podcastId: propPodcastId, scrollToEpisodeId }: {
                 </div>
                 {/* Description — expandable */}
                 {ep.description && (
-                  <button
-                    className="w-full text-left mt-1.5 overflow-hidden"
+                  <div
+                    className="w-full cursor-pointer mt-1.5"
                     onClick={() => setExpandedEpisodeId(
                       expandedEpisodeId === ep.id ? null : ep.id
                     )}
@@ -491,7 +491,7 @@ export function PodcastDetail({ podcastId: propPodcastId, scrollToEpisodeId }: {
                     <p className={`text-xs text-muted-foreground break-words ${expandedEpisodeId === ep.id ? "" : "line-clamp-5"}`}>
                       {ep.description.replace(/<[^>]*>/g, "")}
                     </p>
-                  </button>
+                  </div>
                 )}
                 {/* Action row: thumbs left, blipp right */}
                 <div className="flex items-center justify-between mt-2">
