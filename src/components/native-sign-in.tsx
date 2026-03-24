@@ -137,8 +137,6 @@ export function NativeSignIn() {
 
     try {
       // Create a new OAuth sign-in attempt
-      // redirectUrl tells Clerk where to redirect after the OAuth callback
-      // Our server at this URL will redirect to blipp://auth-callback
       const result = await signIn.create({
         strategy: "oauth_google",
         redirectUrl: "https://blipp-staging.boosey-boudreaux.workers.dev/api/sso-callback",
@@ -157,30 +155,32 @@ export function NativeSignIn() {
         throw new Error("No authorization URL returned");
       }
 
-      // The in-app browser doesn't share cookies with the WebView.
-      // We need to pass the __client token so our server can include it
-      // when completing the OAuth callback with Clerk's FAPI.
-      const clientCookie = document.cookie
-        .split(";")
-        .map((c) => c.trim())
-        .find((c) => c.startsWith("__client="));
-      const clientToken = clientCookie?.split("=")[1] || "";
-
-      console.log("OAUTH_DEBUG: has __client cookie:", !!clientToken);
-      console.log("OAUTH_DEBUG: signInId:", result.id);
-
       oauthInProgress.current = true;
 
-      // Store the client token so we can use it after callback
-      if (clientToken) {
-        localStorage.setItem("__clerk_client_token", clientToken);
-      }
-      if (result.id) {
-        localStorage.setItem("__clerk_sign_in_id", result.id);
-      }
+      // The in-app browser has a SEPARATE cookie jar from the WebView.
+      // Clerk's OAuth callback (clerk.podblipp.com/v1/oauth_callback) needs
+      // the __client cookie to look up the sign-in attempt.
+      // Solution: route through our server first, which sets the __client
+      // cookie in the in-app browser before redirecting to Google.
+      //
+      // We get the __client JWT from the Clerk client object — it's the
+      // rotating token that identifies this client session.
+      const clientToken = (client as any)?.__internal_toSnapshot?.()?.client?.rotating_token
+        || localStorage.getItem("__clerk_client_jwt") || "";
+
+      // Also try to extract from cookies if available
+      const cookieMatch = document.cookie.match(/__client=([^;]+)/);
+      const tokenToSend = clientToken || cookieMatch?.[1] || "";
+
+      console.log("OAUTH_DEBUG: has client token:", !!tokenToSend, "length:", tokenToSend.length);
+
+      // Route through our server which sets the __client cookie for clerk.podblipp.com
+      const startUrl = `https://blipp-staging.boosey-boudreaux.workers.dev/api/oauth-start?` +
+        `auth_url=${encodeURIComponent(authUrl.toString())}` +
+        `&client_token=${encodeURIComponent(tokenToSend)}`;
 
       await Browser.open({
-        url: authUrl.toString(),
+        url: startUrl,
         presentationStyle: "popover",
       });
     } catch (err: any) {

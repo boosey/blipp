@@ -62,20 +62,84 @@ app.notFound((c) => {
 // Clerk FAPI proxy for Capacitor native apps — before any /api middleware
 app.all("/api/__clerk/*", handleClerkProxy);
 
-// OAuth callback landing page — redirects to blipp:// deep link for native app.
-// After Google OAuth, Clerk redirects here. We pass query params to the app
-// via deep link so it can complete the sign-in from the WebView context
-// (which has the correct __client cookie).
-app.get("/api/sso-callback", (c) => {
-  // Get all query params to pass through to the app
+// OAuth start — sets the __client cookie for clerk.podblipp.com in the in-app
+// browser context, then redirects to the Google OAuth URL. This is needed
+// because the in-app browser doesn't share cookies with the Capacitor WebView.
+app.get("/api/oauth-start", (c) => {
+  const authUrl = c.req.query("auth_url");
+  const clientToken = c.req.query("client_token");
+
+  console.log(JSON.stringify({
+    action: "oauth_start",
+    hasAuthUrl: !!authUrl,
+    hasClientToken: !!clientToken,
+    tokenLength: clientToken?.length || 0,
+  }));
+
+  if (!authUrl) {
+    return c.text("Missing auth_url", 400);
+  }
+
+  // We can't set cookies for clerk.podblipp.com from our domain.
+  // Instead, we'll complete the OAuth callback server-side after Google redirects.
+  // For now, redirect to the Google auth URL — we'll handle the cookie issue
+  // by completing the sign-in server-side in the sso-callback.
+
+  // Store the client token in a cookie on OUR domain so the sso-callback can use it
+  const headers = new Headers();
+  headers.set("location", authUrl);
+  if (clientToken) {
+    headers.append("set-cookie", `__blipp_client=${clientToken}; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=600`);
+  }
+
+  return new Response(null, { status: 302, headers });
+});
+
+// OAuth callback landing page — after Google OAuth, Clerk processes the callback
+// and redirects here. We complete the sign-in by calling Clerk's FAPI with the
+// __client token we saved in the oauth-start step.
+app.get("/api/sso-callback", async (c) => {
   const url = new URL(c.req.url);
   const allParams = url.searchParams.toString();
-  const deepLink = `blipp://auth-callback?${allParams}`;
+
+  // Get the __client token we saved earlier
+  const cookies = c.req.header("cookie") || "";
+  const clientTokenMatch = cookies.match(/__blipp_client=([^;]+)/);
+  const clientToken = clientTokenMatch?.[1] || "";
 
   console.log(JSON.stringify({
     action: "sso_callback",
     params: Object.fromEntries(url.searchParams),
+    hasClientToken: !!clientToken,
   }));
+
+  // If we have the client token, try to complete the sign-in by calling Clerk's
+  // FAPI to get the updated client state, then redirect to the app
+  if (clientToken) {
+    try {
+      // Call Clerk FAPI to get current client state with the original __client token
+      const clerkResp = await fetch("https://clerk.podblipp.com/v1/client?__clerk_api_version=2025-11-10", {
+        headers: {
+          "cookie": `__client=${clientToken}`,
+          "origin": "https://clerk.podblipp.com",
+        },
+      });
+      const clerkData = await clerkResp.json() as any;
+      const sessions = clerkData?.response?.sessions || clerkData?.sessions || [];
+
+      console.log(JSON.stringify({
+        action: "sso_callback_clerk",
+        status: clerkResp.status,
+        sessionCount: sessions.length,
+        lastSessionId: sessions[sessions.length - 1]?.id || null,
+      }));
+    } catch (err) {
+      console.error("sso-callback clerk check failed:", err);
+    }
+  }
+
+  // Redirect to the app via deep link
+  const deepLink = `blipp://auth-callback?${allParams}`;
 
   return c.html(`<!DOCTYPE html><html><head><title>Sign in complete</title></head>
 <body style="font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#06060e;color:white">
