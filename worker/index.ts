@@ -60,6 +60,7 @@ app.notFound((c) => {
 });
 
 // Clerk FAPI proxy for Capacitor native apps — before any /api middleware
+app.get("/api/__clerk_test", (c) => c.json({ ok: true }));
 app.all("/api/__clerk/*", handleClerkProxy);
 
 // Request ID — must be first so all other middleware can access it
