@@ -303,7 +303,7 @@ async function main() {
       stage: "tts", modelId: "gpt-4o-mini-tts", label: "GPT-4o Mini TTS", developer: "openai",
       notes: "Recommended default. Instruction-steerable voice (tone, pacing, emotion). 6 voices. Excellent podcast-quality output. Best overall TTS.",
       providers: [
-        { provider: "openai", providerLabel: "OpenAI", isDefault: true, pricePerMinute: 0.015, limits: { maxInputChars: 40000 } },
+        { provider: "openai", providerLabel: "OpenAI", isDefault: true, pricePerMinute: 0.015, limits: { maxInputChars: 7000 } },
       ],
     },
     {
@@ -324,28 +324,28 @@ async function main() {
       stage: "tts", modelId: "orpheus-v1-english", label: "Orpheus v1 English", developer: "canopylabs",
       notes: "Expressive TTS with emotion tags ([cheerful], [whisper]). English-only. 6 voices. Ultra-cheap on Groq. Great value but less natural than GPT-4o-mini.",
       providers: [
-        { provider: "groq", providerModelId: "canopylabs/orpheus-v1-english", providerLabel: "Groq", isDefault: true, pricePerKChars: 0.022, limits: { maxInputChars: 10000 } },
+        { provider: "groq", providerModelId: "canopylabs/orpheus-v1-english", providerLabel: "Groq", isDefault: true, pricePerKChars: 0.022, limits: { maxInputChars: 4000 } },
       ],
     },
     {
       stage: "tts", modelId: "melotts", label: "MeloTTS", developer: "myshell-ai",
       notes: "Multilingual (EN, ES, FR, ZH, JP, KR). Extremely cheap on CF. Robotic quality — acceptable for testing or non-English content, not for production podcasts.",
       providers: [
-        { provider: "cloudflare", providerModelId: "@cf/myshell-ai/melotts", providerLabel: "Cloudflare Workers AI", isDefault: true, pricePerMinute: 0.000205, limits: { maxInputChars: 5000 } },
+        { provider: "cloudflare", providerModelId: "@cf/myshell-ai/melotts", providerLabel: "Cloudflare Workers AI", isDefault: true, pricePerMinute: 0.000205, limits: { maxInputChars: 2000 } },
       ],
     },
     {
       stage: "tts", modelId: "aura-1", label: "Aura 1", developer: "deepgram",
       notes: "Deepgram's first-gen TTS. English-only. Natural conversational tone. Low latency via CF. Good value mid-tier option.",
       providers: [
-        { provider: "cloudflare", providerModelId: "@cf/deepgram/aura-1", providerLabel: "Cloudflare Workers AI", isDefault: true, pricePerKChars: 0.015, limits: { maxInputChars: 5000 } },
+        { provider: "cloudflare", providerModelId: "@cf/deepgram/aura-1", providerLabel: "Cloudflare Workers AI", isDefault: true, pricePerKChars: 0.015, limits: { maxInputChars: 2000 } },
       ],
     },
     {
       stage: "tts", modelId: "aura-2-en", label: "Aura 2 English", developer: "deepgram",
       notes: "Deepgram's latest TTS. English-only. Improved naturalness and prosody over Aura 1. Multiple voices. Good quality at reasonable cost via CF.",
       providers: [
-        { provider: "cloudflare", providerModelId: "@cf/deepgram/aura-2-en", providerLabel: "Cloudflare Workers AI", isDefault: true, pricePerKChars: 0.030, limits: { maxInputChars: 5000 } },
+        { provider: "cloudflare", providerModelId: "@cf/deepgram/aura-2-en", providerLabel: "Cloudflare Workers AI", isDefault: true, pricePerKChars: 0.030, limits: { maxInputChars: 2000 } },
       ],
     },
   ];

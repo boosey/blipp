@@ -158,14 +158,18 @@ export async function handleAudioGeneration(
           const maxInputChars = (resolved.limits?.maxInputChars as number) ?? DEFAULT_TTS_MAX_INPUT_CHARS;
           const textChunks = chunkNarrativeText(narrative, maxInputChars);
 
-          await writeEvent(prisma, step.id, "INFO", `Generating audio via ${tier}: ${tts.name} (${resolved.providerModelId})`, {
-            tier,
-            narrativeBytes: narrative.length,
-            narrativeWords: narrative.split(/\s+/).length,
-            model: resolved.providerModelId,
-            provider: resolved.provider,
-            chunks: textChunks.length,
-          });
+          await writeEvent(prisma, step.id, "INFO",
+            textChunks.length > 1
+              ? `Generating audio via ${tier} chunked: ${tts.name} (${resolved.providerModelId})`
+              : `Generating audio via ${tier}: ${tts.name} (${resolved.providerModelId})`,
+            {
+              tier,
+              narrativeChars: narrative.length,
+              narrativeWords: narrative.split(/\s+/).length,
+              model: resolved.providerModelId,
+              provider: resolved.provider,
+              ...(textChunks.length > 1 && { chunks: textChunks.length, maxInputChars }),
+            });
 
           try {
             const ttsTimer = log.timer("tts_generation");
@@ -186,7 +190,9 @@ export async function handleAudioGeneration(
               let totalCost: number | null = 0;
 
               for (let c = 0; c < textChunks.length; c++) {
-                await writeEvent(prisma, step.id, "DEBUG", `Generating chunk ${c + 1}/${textChunks.length} (${textChunks[c].length} chars)`);
+                await writeEvent(prisma, step.id, "DEBUG", `Generating chunk ${c + 1}/${textChunks.length} (${textChunks[c].length} chars)`, {
+                  chunk: c + 1, totalChunks: textChunks.length, chunkChars: textChunks[c].length,
+                });
                 const result = await generateSpeech(
                   tts, textChunks[c], voiceConfig.voice, resolved.providerModelId, env,
                   resolved.pricing, voiceConfig.instructions, voiceConfig.speed
@@ -196,6 +202,9 @@ export async function handleAudioGeneration(
                 totalCost = totalCost !== null && result.usage.cost !== null
                   ? totalCost + result.usage.cost
                   : null;
+                await writeEvent(prisma, step.id, "DEBUG", `Chunk ${c + 1}/${textChunks.length} complete`, {
+                  chunk: c + 1, chunkChars: textChunks[c].length, chunkAudioBytes: result.audio.byteLength,
+                });
               }
 
               const silence = createSilenceFrame();
@@ -211,12 +220,16 @@ export async function handleAudioGeneration(
             recordSuccess(resolved.provider);
             ttsTimer();
 
-            await writeEvent(prisma, step.id, "INFO", `Audio generated via ${tier} ${tts.name}`, {
-              tier,
-              sizeBytes: audio.byteLength,
-              attemptNumber: i + 1,
-              chunks: textChunks.length,
-            });
+            await writeEvent(prisma, step.id, "INFO",
+              textChunks.length > 1
+                ? `Audio generated via ${tier} chunked ${tts.name} (${textChunks.length} chunks)`
+                : `Audio generated via ${tier} ${tts.name}`,
+              {
+                tier,
+                sizeBytes: audio.byteLength,
+                attemptNumber: i + 1,
+                ...(textChunks.length > 1 && { chunks: textChunks.length, maxInputChars }),
+              });
             break; // Success — stop trying
           } catch (chainErr) {
             const errMsg = chainErr instanceof Error ? chainErr.message : String(chainErr);
