@@ -30,10 +30,17 @@ export function NativeSignIn() {
         socialLoginRef.current = SocialLogin;
         return SocialLogin.initialize({
           google: {
-            iOSClientId:
-              "774074678441-o78mvmtptb57ofinl1m49f8ttj1po850.apps.googleusercontent.com",
+            iOSClientId: "774074678441-o78mvmtptb57ofinl1m49f8ttj1po850.apps.googleusercontent.com",
+            // Web client ID — needed for server-side token verification
+            iOSServerClientId: "774074678441-msdfel83984fpirbqg73nm2fv440a26t.apps.googleusercontent.com",
+          },
+          apple: {
+            clientId: "com.blipp.app",
           },
         });
+      })
+      .then(() => {
+        console.log("SocialLogin initialized successfully");
       })
       .catch((err: any) => {
         console.error("SocialLogin init error:", JSON.stringify(err), err?.message, err?.code);

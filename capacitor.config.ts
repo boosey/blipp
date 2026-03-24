@@ -10,8 +10,11 @@ const config: CapacitorConfig = {
       enabled: true,
     },
     SocialLogin: {
-      google: {
-        iOSClientId: "774074678441-o78mvmtptb57ofinl1m49f8ttj1po850.apps.googleusercontent.com",
+      providers: {
+        google: true,
+        apple: true,
+        facebook: false,
+        twitter: false,
       },
     },
   },
