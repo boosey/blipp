@@ -44,7 +44,7 @@ export function Discover() {
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
-  const [browseTab, setBrowseTab] = useState<"episodes" | "podcasts">("episodes");
+  const [browseTab, setBrowseTab] = useState<"episodes" | "podcasts">("podcasts");
 
   // Dynamic category pills from API
   const { data: categoryData } = useFetch<{
@@ -368,18 +368,8 @@ export function Discover() {
           )}
       </div>
 
-      {/* Tab switcher: Episodes / Podcasts */}
+      {/* Tab switcher: Podcasts / Episodes */}
       <div className="flex gap-2 pt-2">
-        <button
-          onClick={() => setBrowseTab("episodes")}
-          className={`px-4 py-1.5 rounded-full text-xs font-medium transition-colors ${
-            browseTab === "episodes"
-              ? "bg-primary text-primary-foreground"
-              : "bg-muted text-muted-foreground hover:bg-accent"
-          }`}
-        >
-          Episodes
-        </button>
         <button
           onClick={() => setBrowseTab("podcasts")}
           className={`px-4 py-1.5 rounded-full text-xs font-medium transition-colors ${
@@ -389,6 +379,16 @@ export function Discover() {
           }`}
         >
           Podcasts
+        </button>
+        <button
+          onClick={() => setBrowseTab("episodes")}
+          className={`px-4 py-1.5 rounded-full text-xs font-medium transition-colors ${
+            browseTab === "episodes"
+              ? "bg-primary text-primary-foreground"
+              : "bg-muted text-muted-foreground hover:bg-accent"
+          }`}
+        >
+          Episodes
         </button>
       </div>
 
