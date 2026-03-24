@@ -11,7 +11,6 @@ import {
   DollarSign,
   CheckCircle2,
   XCircle,
-  X,
   Loader2,
   RefreshCw,
   ChevronRight,
@@ -164,11 +163,13 @@ function StageHeader({
   meta,
   stats,
   stageToggle,
+  activeCount,
   pendingCount,
 }: {
   meta: (typeof STAGE_META)[number];
   stats: PipelineStageStats | undefined;
   stageToggle?: React.ReactNode;
+  activeCount?: number;
   pendingCount?: number;
 }) {
   const Icon = meta.icon;
@@ -182,6 +183,11 @@ function StageHeader({
           <Icon className="h-3.5 w-3.5" />
         </span>
         <span className="text-xs font-semibold">{meta.name}</span>
+        {activeCount != null && activeCount > 0 && (
+          <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-mono font-medium bg-[#F59E0B]/10 text-[#F59E0B]">
+            {activeCount} active
+          </span>
+        )}
         {pendingCount != null && pendingCount > 0 && (
           <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-mono font-medium bg-[#9CA3AF]/10 text-[#9CA3AF]">
             {pendingCount} queued
@@ -227,31 +233,18 @@ function StageHeader({
   );
 }
 
-function JobCard({ job, onClick, onDismiss, onDoubleClick }: { job: PipelineJob; onClick: () => void; onDismiss?: () => void; onDoubleClick?: () => void }) {
+function JobCard({ job, onClick, onDoubleClick }: { job: PipelineJob; onClick: () => void; onDoubleClick?: () => void }) {
   return (
     <button
       onClick={onClick}
       onDoubleClick={onDoubleClick}
-      className={cn(
-        "w-full text-left rounded-md border border-white/5 bg-[#0F1D32] p-2.5 hover:border-white/10 transition-all duration-300 group animate-in fade-in slide-in-from-top-2 relative",
-        job.status === "FAILED" && "border-l-2 border-l-[#EF4444]"
-      )}
+      className="w-full text-left rounded-md border border-white/5 bg-[#0F1D32] p-2.5 hover:border-white/10 transition-all duration-300 group animate-in fade-in slide-in-from-top-2"
     >
-      {job.status === "FAILED" && onDismiss && (
-        <span
-          role="button"
-          className="absolute top-1.5 right-1.5 p-0.5 rounded hover:bg-white/10 text-[#9CA3AF] hover:text-[#F9FAFB] transition-colors z-10"
-          onClick={(e) => { e.stopPropagation(); onDismiss(); }}
-          title="Dismiss"
-        >
-          <X className="h-3 w-3" />
-        </span>
-      )}
       <div className="flex items-start justify-between gap-1.5 mb-1.5">
         <span className="text-[11px] font-medium text-[#F9FAFB] truncate flex-1 leading-tight">
           {job.episodeTitle ?? job.episodeId}
         </span>
-        <ChevronRight className={cn("h-3 w-3 text-[#9CA3AF]/0 group-hover:text-[#9CA3AF]/60 transition-colors shrink-0 mt-0.5", job.status === "FAILED" && "mr-4")} />
+        <ChevronRight className="h-3 w-3 text-[#9CA3AF]/0 group-hover:text-[#9CA3AF]/60 transition-colors shrink-0 mt-0.5" />
       </div>
       {job.podcastTitle && (
         <div className="flex items-center gap-1.5 mb-1.5">
@@ -291,53 +284,6 @@ function FlowArrow({ color }: { color: string }) {
   );
 }
 
-function PipelineSummaryBar({
-  jobs,
-  onFilter,
-  activeFilter,
-}: {
-  jobs: PipelineJob[];
-  onFilter: (status: PipelineJobStatus | null) => void;
-  activeFilter: PipelineJobStatus | null;
-}) {
-  const counts: Record<PipelineJobStatus, number> = {
-    PENDING: jobs.filter((j) => j.status === "PENDING").length,
-    IN_PROGRESS: jobs.filter((j) => j.status === "IN_PROGRESS").length,
-    COMPLETED: jobs.filter((j) => j.status === "COMPLETED").length,
-    FAILED: jobs.filter((j) => j.status === "FAILED").length,
-  };
-
-  const badges: { status: PipelineJobStatus; label: string; color: string }[] = [
-    { status: "PENDING", label: "Queued", color: "#9CA3AF" },
-    { status: "IN_PROGRESS", label: "Processing", color: "#F59E0B" },
-    { status: "COMPLETED", label: "Completed", color: "#10B981" },
-    { status: "FAILED", label: "Failed", color: "#EF4444" },
-  ];
-
-  return (
-    <div className="flex items-center gap-1.5" data-testid="pipeline-summary-bar">
-      {badges.map(({ status, label, color }) => (
-        <button
-          key={status}
-          onClick={() => onFilter(activeFilter === status ? null : status)}
-          className={cn(
-            "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors",
-            activeFilter === status
-              ? "ring-1 ring-white/20"
-              : "hover:ring-1 hover:ring-white/10"
-          )}
-          style={{
-            backgroundColor: `${color}${activeFilter === status ? "25" : "10"}`,
-            color,
-          }}
-        >
-          <span className="font-mono tabular-nums">{counts[status]}</span>
-          {label}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 function StepRow({ step }: { step: PipelineStep }) {
   const meta = STAGE_META.find((m) => m.stage === step.stage);
@@ -677,7 +623,6 @@ export default function Pipeline() {
   const [requests, setRequests] = useState<{ id: string; status: string }[]>([]);
   const [requestFilter, setRequestFilter] = useState<string>("all");
   const [stageFilter, setStageFilter] = useState<string>("all");
-  const [statusFilter, setStatusFilter] = useState<PipelineJobStatus | null>(null);
 
   // Transcript inspector
   const [transcriptOpen, setTranscriptOpen] = useState(false);
@@ -697,13 +642,12 @@ export default function Pipeline() {
   const load = useCallback((silent = false) => {
     if (!silent) setLoading(true);
     const requestParam = requestFilter !== "all" ? `&requestId=${requestFilter}` : "";
-    const statusParam = statusFilter ? `&status=${statusFilter}` : "";
     Promise.all([
       apiFetch<{ data: PipelineStageStats[] }>("/pipeline/stages")
         .then((r) => setStageStats(r.data))
         .catch(console.error),
       ...STAGE_META.map((m) =>
-        apiFetch<{ data: PipelineJob[] }>(`/pipeline/jobs?currentStage=${m.stage}&pageSize=20${requestParam}${statusParam}${stageFilter !== "all" && stageFilter !== m.stage ? "&skip=true" : ""}`)
+        apiFetch<{ data: PipelineJob[] }>(`/pipeline/jobs?currentStage=${m.stage}&pageSize=20${requestParam}${stageFilter !== "all" && stageFilter !== m.stage ? "&skip=true" : ""}`)
           .then((r) => setStageJobs((prev) => ({ ...prev, [m.stage]: r.data })))
           .catch(console.error)
       ),
@@ -711,7 +655,7 @@ export default function Pipeline() {
       setLoading(false);
       setRefreshing(false);
     });
-  }, [apiFetch, requestFilter, stageFilter, statusFilter]);
+  }, [apiFetch, requestFilter, stageFilter]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -732,28 +676,13 @@ export default function Pipeline() {
     navigate(`/admin/requests?requestId=${job.requestId}&jobId=${job.id}`);
   };
 
-  const handleDismissJob = useCallback(async (job: PipelineJob) => {
-    // Optimistic: remove from local state
-    const stage = job.currentStage;
-    const prev = stageJobs[stage] ?? [];
-    setStageJobs((s) => ({ ...s, [stage]: prev.filter((j) => j.id !== job.id) }));
-    try {
-      await apiFetch(`/pipeline/jobs/${job.id}/dismiss`, { method: "PATCH" });
-    } catch {
-      // Restore on failure
-      setStageJobs((s) => ({ ...s, [stage]: prev }));
-      toast.error("Failed to dismiss job");
-    }
-  }, [apiFetch, stageJobs]);
 
   const allJobs = Object.values(stageJobs).flat();
 
   const sortedFilteredJobs = (stage: PipelineStage): PipelineJob[] => {
     const jobs = stageJobs[stage] ?? [];
-    // When no status filter active, hide completed jobs from flow columns
-    const filtered = statusFilter
-      ? jobs.filter((j) => j.status === statusFilter)
-      : jobs.filter((j) => j.status !== "COMPLETED");
+    // Only show active work: IN_PROGRESS first, then PENDING
+    const filtered = jobs.filter((j) => j.status === "IN_PROGRESS" || j.status === "PENDING");
     return filtered.sort(
       (a, b) => (STATUS_PRIORITY[a.status] ?? 9) - (STATUS_PRIORITY[b.status] ?? 9)
     );
@@ -828,19 +757,13 @@ export default function Pipeline() {
         </div>
       </div>
 
-      {/* Summary Bar */}
-      <PipelineSummaryBar
-        jobs={allJobs}
-        onFilter={setStatusFilter}
-        activeFilter={statusFilter}
-      />
-
       {/* Stage Columns — 3 columns: Transcription, Distillation, Clip Generation */}
       <div className="flex gap-0 flex-1 min-h-0" data-testid="pipeline-columns">
         {STAGE_META.map((meta, idx) => {
           const stats = stageStats.find((s) => s.stage === meta.stage);
           const jobs = sortedFilteredJobs(meta.stage);
           const rawJobs = stageJobs[meta.stage] ?? [];
+          const activeCount = rawJobs.filter((j) => j.status === "IN_PROGRESS").length;
           const pendingCount = rawJobs.filter((j) => j.status === "PENDING").length;
 
           // If stage filter is active and doesn't match, hide this column
@@ -853,6 +776,7 @@ export default function Pipeline() {
                 <StageHeader
                   meta={meta}
                   stats={stats}
+                  activeCount={activeCount}
                   pendingCount={pendingCount}
                   stageToggle={
                     <PipelineControls
@@ -874,7 +798,6 @@ export default function Pipeline() {
                         key={job.id}
                         job={job}
                         onClick={() => handleJobClick(job)}
-                        onDismiss={job.status === "FAILED" ? () => handleDismissJob(job) : undefined}
                         onDoubleClick={() => handleJobDoubleClick(job)}
                       />
                     ))}
