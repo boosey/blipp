@@ -231,6 +231,7 @@ A podcast feed tracked by the platform.
 | feedError | String? | -- | Last feed fetch error |
 | episodeCount | Int | `0` | Cached episode count |
 | status | String | `"active"` | Podcast status ("active"/"paused"/"archived") |
+| deliverable | Boolean | `true` | False when no deliverable episodes exist; hidden from users |
 | source | String? | -- | How podcast was added ("trending"/"user_request"/"manual") |
 | createdAt | DateTime | `now()` | Record creation timestamp |
 | updatedAt | DateTime | `@updatedAt` | Last update timestamp |
