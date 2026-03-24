@@ -1,7 +1,7 @@
 import { useSignIn, useSignUp, useClerk } from "@clerk/clerk-react";
 import { Browser } from "@capacitor/browser";
 import { App } from "@capacitor/app";
-import { useEffect, useCallback, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 /**
@@ -17,61 +17,49 @@ export function NativeSignIn() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Track whether we initiated an OAuth flow
+  const oauthInProgress = useRef(false);
 
-  // After OAuth completes, check the sign-in/sign-up status
-  const handleOAuthCallback = useCallback(async () => {
-    if (!signIn || !signUp) return;
-
-    try {
-      // Reload to get latest state
-      const si = await signIn.reload();
-
-      if (si.status === "complete" && si.createdSessionId) {
-        await setActive({ session: si.createdSessionId });
-        navigate("/home", { replace: true });
-        return;
-      }
-
-      // Check sign-up (new user via OAuth)
-      const su = await signUp.reload();
-      if (su.status === "complete" && su.createdSessionId) {
-        await setActive({ session: su.createdSessionId });
-        navigate("/home", { replace: true });
-        return;
-      }
-
-      // Transfer from sign-in to sign-up if needed
-      if (si.firstFactorVerification?.status === "transferable") {
-        const transferred = await signUp.create({ transfer: true });
-        if (transferred.status === "complete" && transferred.createdSessionId) {
-          await setActive({ session: transferred.createdSessionId });
-          navigate("/home", { replace: true });
-        }
-      }
-    } catch (err: any) {
-      console.error("OAuth callback error:", err);
-      setError(err.message || "Sign-in failed");
-    } finally {
-      setLoading(false);
-    }
-  }, [signIn, signUp, setActive, navigate]);
-
-  // Listen for app resume (when in-app browser closes)
+  // Listen for app resume — only process if we started an OAuth flow
   useEffect(() => {
-    const onResume = App.addListener("resume", () => {
-      handleOAuthCallback();
-    });
+    const onResume = App.addListener("resume", async () => {
+      if (!oauthInProgress.current || !signIn || !signUp) return;
+      oauthInProgress.current = false;
 
-    const onUrlOpen = App.addListener("appUrlOpen", async () => {
-      await Browser.close().catch(() => {});
-      handleOAuthCallback();
+      try {
+        // Reload the sign-in to get the latest status after OAuth
+        const si = await signIn.reload();
+        console.log("OAUTH_RESUME: signIn status", si.status);
+
+        if (si.status === "complete" && si.createdSessionId) {
+          await setActive({ session: si.createdSessionId });
+          navigate("/home", { replace: true });
+          return;
+        }
+
+        // If the user is new, Clerk may need a sign-up transfer
+        if (si.firstFactorVerification?.status === "transferable" && signUp) {
+          const su = await signUp.create({ transfer: true });
+          if (su.status === "complete" && su.createdSessionId) {
+            await setActive({ session: su.createdSessionId });
+            navigate("/home", { replace: true });
+            return;
+          }
+        }
+
+        setError("Sign-in was not completed. Please try again.");
+      } catch (err: any) {
+        console.error("OAuth resume error:", err);
+        setError("Sign-in failed. Please try again.");
+      } finally {
+        setLoading(false);
+      }
     });
 
     return () => {
       onResume.then((l) => l.remove());
-      onUrlOpen.then((l) => l.remove());
     };
-  }, [handleOAuthCallback]);
+  }, [signIn, signUp, setActive, navigate]);
 
   const handleGoogleSignIn = async () => {
     if (!signIn) return;
@@ -79,48 +67,35 @@ export function NativeSignIn() {
     setError(null);
 
     try {
-      // Reset any stuck sign-in state from a previous attempt
-      if (signIn.status && signIn.status !== "complete") {
-        try {
-          await signIn.create({ strategy: "oauth_google", redirectUrl: "https://blipp-staging.boosey-boudreaux.workers.dev/sso-callback" });
-        } catch {
-          // Ignore — will be recreated below
-        }
-      }
-
-      // Create OAuth sign-in and get the authorization URL
+      // Create a new OAuth sign-in attempt
       const result = await signIn.create({
         strategy: "oauth_google",
-        // After Google auth, Clerk redirects here. We use the staging
-        // URL which will serve the SPA — the app will detect the session
-        // when the in-app browser closes.
         redirectUrl: "https://blipp-staging.boosey-boudreaux.workers.dev/sso-callback",
       });
-
-      console.log("OAUTH_DEBUG: status", result.status);
-      console.log("OAUTH_DEBUG: firstFactor", JSON.stringify(result.firstFactorVerification));
 
       const authUrl =
         result.firstFactorVerification?.externalVerificationRedirectURL;
 
+      console.log("OAUTH_DEBUG: status", result.status);
+      console.log("OAUTH_DEBUG: authUrl", authUrl?.toString());
+
       if (!authUrl) {
-        throw new Error(
-          "No authorization URL returned. Status: " +
-            result.status +
-            ", verification: " +
-            JSON.stringify(result.firstFactorVerification)
-        );
+        throw new Error("No authorization URL returned");
       }
 
-      // Open in-app browser (ASWebAuthenticationSession on iOS)
+      // Mark that we started an OAuth flow
+      oauthInProgress.current = true;
+
+      // Open in-app browser
       await Browser.open({
         url: authUrl.toString(),
         presentationStyle: "popover",
       });
     } catch (err: any) {
       console.error("Google sign-in error:", err);
-      setError(err.message || "Failed to start sign-in");
+      setError(err.errors?.[0]?.longMessage || err.message || "Failed to start sign-in");
       setLoading(false);
+      oauthInProgress.current = false;
     }
   };
 
