@@ -129,6 +129,110 @@ app.get("/api/sso-callback", async (c) => {
 </body></html>`);
 });
 
+// Create a sign-in ticket for the user who just completed Google OAuth.
+// Uses the Clerk Backend API (secret key) to create a ticket that the
+// WebView can use to sign in without needing the OAuth session.
+app.get("/api/oauth-ticket", async (c) => {
+  const state = c.req.query("state") || "";
+  const cookies = c.req.header("cookie") || "";
+  const clientMatch = cookies.match(/__client=([^;]+)/);
+  let clientToken = clientMatch?.[1] || "";
+
+  // Try KV if not in cookies
+  if (!clientToken && state && c.env.RATE_LIMIT_KV) {
+    clientToken = await c.env.RATE_LIMIT_KV.get(`oauth_client:${state}`) || "";
+  }
+
+  console.log(JSON.stringify({
+    action: "oauth_ticket",
+    state,
+    hasClientToken: !!clientToken,
+  }));
+
+  if (!clientToken) {
+    const headers = new Headers({ "content-type": "application/json" });
+    headers.set("access-control-allow-origin", c.req.header("origin") || "*");
+    headers.set("access-control-allow-credentials", "true");
+    return new Response(JSON.stringify({ error: "No client token found. Please try signing in again." }), {
+      status: 400, headers,
+    });
+  }
+
+  try {
+    // Use Clerk Backend API to get the most recently active user
+    // The CLERK_SECRET_KEY is needed for Backend API calls
+    const secretKey = c.env.CLERK_SECRET_KEY;
+    if (!secretKey) {
+      throw new Error("CLERK_SECRET_KEY not configured");
+    }
+
+    // First, get the most recent sessions to find the user
+    const sessionsResp = await fetch("https://api.clerk.com/v1/sessions?limit=5&order_by=-created_at", {
+      headers: {
+        "Authorization": `Bearer ${secretKey}`,
+        "Content-Type": "application/json",
+      },
+    });
+    const sessionsData = await sessionsResp.json() as any;
+    const sessions = sessionsData?.data || sessionsData || [];
+
+    console.log(JSON.stringify({
+      action: "oauth_ticket_sessions",
+      count: sessions.length,
+      firstUserId: sessions[0]?.user_id,
+    }));
+
+    if (sessions.length === 0) {
+      throw new Error("No recent sessions found");
+    }
+
+    // Get the most recent session's user ID
+    const userId = sessions[0]?.user_id;
+    if (!userId) {
+      throw new Error("No user ID in session");
+    }
+
+    // Create a sign-in token (ticket) for this user
+    const tokenResp = await fetch("https://api.clerk.com/v1/sign_in_tokens", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${secretKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        user_id: userId,
+        expires_in_seconds: 300,
+      }),
+    });
+    const tokenData = await tokenResp.json() as any;
+
+    console.log(JSON.stringify({
+      action: "oauth_ticket_created",
+      status: tokenResp.status,
+      hasToken: !!tokenData?.token,
+      userId,
+    }));
+
+    const headers = new Headers({ "content-type": "application/json" });
+    headers.set("access-control-allow-origin", c.req.header("origin") || "*");
+    headers.set("access-control-allow-credentials", "true");
+
+    if (tokenData?.token) {
+      return new Response(JSON.stringify({ ticket: tokenData.token, userId }), { headers });
+    } else {
+      return new Response(JSON.stringify({ error: "Failed to create ticket", details: tokenData }), {
+        status: 500, headers,
+      });
+    }
+  } catch (err: any) {
+    console.error("oauth-ticket error:", err);
+    const headers = new Headers({ "content-type": "application/json" });
+    headers.set("access-control-allow-origin", c.req.header("origin") || "*");
+    headers.set("access-control-allow-credentials", "true");
+    return new Response(JSON.stringify({ error: err.message }), { status: 500, headers });
+  }
+});
+
 // CORS preflight for oauth-complete
 app.options("/api/oauth-complete", (c) => {
   return new Response(null, {
