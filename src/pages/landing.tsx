@@ -1,7 +1,6 @@
-import { SignInButton, useClerk } from "@clerk/clerk-react";
+import { SignInButton } from "@clerk/clerk-react";
 import { Capacitor } from "@capacitor/core";
-import { Link } from "react-router-dom";
-import { useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { Search, Clock, Podcast } from "lucide-react";
 
 const features = [
@@ -26,21 +25,8 @@ const features = [
 ];
 
 export function Landing() {
-  const { client } = useClerk();
-
-  // When returning from OAuth in Safari, re-fetch the Clerk client
-  // to pick up the session that was created externally.
-  useEffect(() => {
-    if (!Capacitor.isNativePlatform()) return;
-    const onVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        // Force Clerk to re-check session state
-        client?.fetch().catch(() => {});
-      }
-    };
-    document.addEventListener("visibilitychange", onVisibilityChange);
-    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
-  }, [client]);
+  const isNative = Capacitor.isNativePlatform();
+  const navigate = useNavigate();
 
   return (
     <div className="min-h-screen bg-[#06060e] text-white overflow-hidden">
@@ -172,8 +158,9 @@ export function Landing() {
 
           {/* CTA */}
           <div className="animate-fade-up delay-400 mt-10">
-            <SignInButton mode="modal" fallbackRedirectUrl="/home">
+            {isNative ? (
               <button
+                onClick={() => navigate("/home")}
                 className="font-sora relative px-8 py-4 rounded-xl text-base font-700 text-white transition-all duration-300 hover:scale-105 active:scale-[0.98]"
                 style={{
                   background: "linear-gradient(135deg, #7c3aed, #a855f7, #f97316)",
@@ -183,7 +170,20 @@ export function Landing() {
               >
                 Start Blipping
               </button>
-            </SignInButton>
+            ) : (
+              <SignInButton mode="modal" fallbackRedirectUrl="/home">
+                <button
+                  className="font-sora relative px-8 py-4 rounded-xl text-base font-700 text-white transition-all duration-300 hover:scale-105 active:scale-[0.98]"
+                  style={{
+                    background: "linear-gradient(135deg, #7c3aed, #a855f7, #f97316)",
+                    backgroundSize: "200% 200%",
+                    animation: "gradient-shift 4s ease infinite, pulse-glow 3s ease-in-out infinite",
+                  }}
+                >
+                  Start Blipping
+                </button>
+              </SignInButton>
+            )}
           </div>
         </div>
 
