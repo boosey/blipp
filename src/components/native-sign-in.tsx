@@ -101,8 +101,8 @@ export function NativeSignIn() {
         throw new Error(data.error || `Server error: ${resp.status}`);
       }
 
-      const { ticket } = (await resp.json()) as { ticket: string; userId: string };
-      console.log("NATIVE_AUTH: got ticket from server");
+      const { ticket, userId: serverUserId } = (await resp.json()) as { ticket: string; userId: string };
+      console.log("NATIVE_AUTH: got ticket from server, ticket prefix:", ticket?.substring(0, 20), "userId:", serverUserId);
 
       // Step 3: Use the ticket to sign in via Clerk JS SDK (in WebView)
       const result = await signIn.create({

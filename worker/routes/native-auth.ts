@@ -129,6 +129,18 @@ async function createSignInTicket(
   }
 
   const data = (await resp.json()) as any;
+
+  console.log(JSON.stringify({
+    action: "sign_in_token_response",
+    status: resp.status,
+    hasToken: !!data.token,
+    tokenPrefix: data.token?.substring(0, 20),
+    url: data.url,
+    keys: Object.keys(data),
+  }));
+
+  // The Clerk API returns { token, url, ... }
+  // The `token` is what the frontend needs for signIn.create({ strategy: "ticket", ticket })
   return data.token;
 }
 
