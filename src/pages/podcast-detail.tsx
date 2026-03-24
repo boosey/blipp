@@ -32,6 +32,8 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
   const [expandedEpisodeId, setExpandedEpisodeId] = useState<string | null>(null);
   const [episodeSearch, setEpisodeSearch] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
+  const [titleExpanded, setTitleExpanded] = useState(false);
+  const [descExpanded, setDescExpanded] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const planUsage = usePlan();
   const { showUpgrade, UpgradeModalElement } = useUpgradeModal();
@@ -294,7 +296,12 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
 
         {/* Title + meta — full width */}
         <div>
-          <h1 className="text-base font-bold break-words">{podcast.title}</h1>
+          <h1
+            className={`text-base font-bold break-words cursor-pointer ${titleExpanded ? "" : "line-clamp-2"}`}
+            onClick={() => setTitleExpanded(!titleExpanded)}
+          >
+            {podcast.title}
+          </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
             {[podcast.author, `${podcast.episodeCount} episodes`].filter(Boolean).join(" · ")}
           </p>
@@ -382,7 +389,10 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
 
         {/* Description */}
         {podcast.description && (
-          <p className="text-sm text-muted-foreground line-clamp-3 break-words">
+          <p
+            className={`text-sm text-muted-foreground break-words cursor-pointer ${descExpanded ? "" : "line-clamp-3"}`}
+            onClick={() => setDescExpanded(!descExpanded)}
+          >
             {podcast.description.replace(/<[^>]*>/g, "")}
           </p>
         )}

@@ -703,10 +703,11 @@ podcasts.get("/:id", async (c) => {
   const prisma = c.get("prisma") as any;
   const user = await getCurrentUser(c, prisma);
 
-  const [podcast, subscription, vote] = await Promise.all([
+  const [podcast, subscription, vote, episodeCount] = await Promise.all([
     prisma.podcast.findUniqueOrThrow({ where: { id: podcastId } }),
     prisma.subscription.findFirst({ where: { userId: user.id, podcastId } }),
     prisma.podcastVote.findUnique({ where: { userId_podcastId: { userId: user.id, podcastId } } }),
+    prisma.episode.count({ where: { podcastId } }),
   ]);
 
   return c.json({
@@ -718,7 +719,7 @@ podcasts.get("/:id", async (c) => {
       imageUrl: podcast.imageUrl,
       author: podcast.author,
       podcastIndexId: podcast.podcastIndexId,
-      episodeCount: podcast.episodeCount,
+      episodeCount,
       isSubscribed: !!subscription,
       subscriptionDurationTier: subscription?.durationTier ?? null,
       subscriptionVoicePresetId: subscription?.voicePresetId ?? null,
