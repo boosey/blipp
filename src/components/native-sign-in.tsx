@@ -66,6 +66,7 @@ export function NativeSignIn() {
           provider: "google",
           options: {
             scopes: ["email", "profile"],
+            forcePrompt: true,
           },
         });
         console.log("NATIVE_AUTH: Google sign-in result:", JSON.stringify(result).substring(0, 200));
