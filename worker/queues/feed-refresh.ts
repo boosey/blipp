@@ -39,6 +39,9 @@ async function processPodcast(
   let xml: string;
   try {
     const response = await fetch(podcast.feedUrl, { signal: controller.signal });
+    if (!response.ok) {
+      throw new Error(`RSS feed returned HTTP ${response.status} ${response.statusText}: ${podcast.feedUrl}`);
+    }
     xml = await response.text();
   } catch (err) {
     if (err instanceof DOMException && err.name === "AbortError") {
