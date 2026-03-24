@@ -1,5 +1,5 @@
 import { Routes, Route, Navigate } from "react-router-dom";
-import { SignedIn, SignedOut, RedirectToSignIn } from "@clerk/clerk-react";
+import { SignedIn, SignedOut, SignIn } from "@clerk/clerk-react";
 import { lazy, Suspense } from "react";
 import { MobileLayout } from "./layouts/mobile-layout";
 import { AdminLayout } from "./layouts/admin-layout";
@@ -83,7 +83,9 @@ export default function App() {
               <MobileLayout />
             </SignedIn>
             <SignedOut>
-              <RedirectToSignIn signInFallbackRedirectUrl="/home" />
+              <div className="flex justify-center items-center min-h-screen">
+                <SignIn fallbackRedirectUrl="/home" />
+              </div>
             </SignedOut>
           </>
         }

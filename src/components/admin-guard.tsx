@@ -1,4 +1,4 @@
-import { useUser, SignedIn, SignedOut, RedirectToSignIn } from "@clerk/clerk-react";
+import { useUser, SignedIn, SignedOut, SignIn } from "@clerk/clerk-react";
 import { useEffect, useState } from "react";
 import { useApiFetch } from "@/lib/api";
 
@@ -47,7 +47,9 @@ export function AdminGuard({ children }: { children: React.ReactNode }) {
         {isAdmin === true && children}
       </SignedIn>
       <SignedOut>
-        <RedirectToSignIn signInFallbackRedirectUrl="/home" />
+        <div className="flex justify-center items-center min-h-screen">
+          <SignIn fallbackRedirectUrl="/home" />
+        </div>
       </SignedOut>
     </>
   );
