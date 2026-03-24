@@ -1,4 +1,5 @@
 import { getConfig } from "./config";
+import type { FeedRefreshMessage } from "./queue-messages";
 
 /**
  * Check if a pipeline stage is enabled. Returns true if enabled or if any
@@ -55,4 +56,31 @@ export async function isRefreshJobActive(prisma: any, refreshJobId: string): Pro
   });
   if (!job) return false;
   return !["paused", "cancelled", "complete", "failed"].includes(job.status);
+}
+
+/**
+ * Chunks podcast IDs by batchConcurrency and sends one queue message per chunk.
+ * Each message body contains `podcastIds: string[]`.
+ * CF sendBatch limit is 100 messages per call.
+ */
+export async function sendBatchedFeedRefresh(
+  queue: { sendBatch(messages: { body: FeedRefreshMessage }[]): Promise<void> },
+  podcastIds: string[],
+  batchConcurrency: number,
+  extra?: Omit<FeedRefreshMessage, "podcastId" | "podcastIds">
+): Promise<void> {
+  if (podcastIds.length === 0) return;
+
+  const messages: { body: FeedRefreshMessage }[] = [];
+  for (let i = 0; i < podcastIds.length; i += batchConcurrency) {
+    const chunk = podcastIds.slice(i, i + batchConcurrency);
+    messages.push({
+      body: { podcastIds: chunk, ...extra },
+    });
+  }
+
+  const CF_SEND_BATCH_LIMIT = 100;
+  for (let i = 0; i < messages.length; i += CF_SEND_BATCH_LIMIT) {
+    await queue.sendBatch(messages.slice(i, i + CF_SEND_BATCH_LIMIT));
+  }
 }
