@@ -471,7 +471,7 @@ export function PodcastDetail({ podcastId: propPodcastId, scrollToEpisodeId }: {
                     expandedEpisodeId === ep.id ? null : ep.id
                   )}
                 >
-                  <p className={`font-medium text-sm text-violet-300 break-words ${expandedEpisodeId === ep.id ? "" : "line-clamp-2"}`}>
+                  <p className={`font-medium text-sm text-violet-600 dark:text-violet-300 break-words ${expandedEpisodeId === ep.id ? "" : "line-clamp-2"}`}>
                     {ep.title}
                   </p>
                 </button>
@@ -483,12 +483,12 @@ export function PodcastDetail({ podcastId: propPodcastId, scrollToEpisodeId }: {
                 {/* Description — expandable */}
                 {ep.description && (
                   <button
-                    className="w-full text-left mt-1.5"
+                    className="w-full text-left mt-1.5 overflow-hidden"
                     onClick={() => setExpandedEpisodeId(
                       expandedEpisodeId === ep.id ? null : ep.id
                     )}
                   >
-                    <p className={`text-xs text-muted-foreground break-words ${expandedEpisodeId === ep.id ? "" : "line-clamp-2"}`}>
+                    <p className={`text-xs text-muted-foreground break-words ${expandedEpisodeId === ep.id ? "" : "line-clamp-5"}`}>
                       {ep.description.replace(/<[^>]*>/g, "")}
                     </p>
                   </button>
