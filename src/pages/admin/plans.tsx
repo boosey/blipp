@@ -40,26 +40,6 @@ function formatDollars(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
-function limitsText(plan: AdminPlan): string {
-  const parts: string[] = [];
-  if (plan.briefingsPerWeek != null) {
-    parts.push(`${plan.briefingsPerWeek}/wk`);
-  } else {
-    parts.push("Unlim/wk");
-  }
-  parts.push(`${plan.maxDurationMinutes}m max`);
-  if (plan.maxPodcastSubscriptions != null) {
-    parts.push(`${plan.maxPodcastSubscriptions} pods`);
-  } else {
-    parts.push("Unlim pods");
-  }
-  if (plan.pastEpisodesLimit != null) {
-    parts.push(`${plan.pastEpisodesLimit} past eps`);
-  } else {
-    parts.push("Unlim past eps");
-  }
-  return parts.join(" · ");
-}
 
 function formatCost(n: number): string {
   return "$" + n.toFixed(2);
@@ -551,6 +531,7 @@ export default function PlansPage() {
 
   // Toggle saving state per plan id
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [deactivatePlan, setDeactivatePlan] = useState<AdminPlan | null>(null);
 
   // Duration tiers
   const [durationTiers, setDurationTiers] = useState<DurationTier[]>([]);
@@ -643,20 +624,49 @@ export default function PlansPage() {
       .finally(() => setDeleting(false));
   }, [apiFetch, deletePlan, loadPlans]);
 
-  // Inline toggle active
+  // Inline toggle active — deactivation requires confirmation
   const handleToggleActive = useCallback(
     (plan: AdminPlan, active: boolean) => {
+      if (!active) {
+        // Deactivating → show confirmation dialog
+        setDeactivatePlan(plan);
+        return;
+      }
+      // Activating → go straight through
       setTogglingId(plan.id);
       apiFetch(`/plans/${plan.id}`, {
         method: "PATCH",
-        body: JSON.stringify({ active }),
+        body: JSON.stringify({ active: true }),
       })
-        .then(() => loadPlans())
-        .catch(console.error)
+        .then(() => {
+          toast.success(`Plan "${plan.name}" activated`);
+          loadPlans();
+        })
+        .catch((e) => {
+          toast.error(e instanceof Error ? e.message : "Failed to activate plan");
+        })
         .finally(() => setTogglingId(null));
     },
     [apiFetch, loadPlans]
   );
+
+  const confirmDeactivate = useCallback(() => {
+    if (!deactivatePlan) return;
+    setTogglingId(deactivatePlan.id);
+    apiFetch(`/plans/${deactivatePlan.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ active: false }),
+    })
+      .then(() => {
+        toast.success(`Plan "${deactivatePlan.name}" deactivated`);
+        setDeactivatePlan(null);
+        loadPlans();
+      })
+      .catch((e) => {
+        toast.error(e instanceof Error ? e.message : "Failed to deactivate plan");
+      })
+      .finally(() => setTogglingId(null));
+  }, [apiFetch, deactivatePlan, loadPlans]);
 
   if (loading && plans.length === 0) return <PlansSkeleton />;
 
@@ -680,113 +690,69 @@ export default function PlansPage() {
         </Button>
       </div>
 
-      {/* Table */}
-      <div className="rounded-lg bg-[#0F1D32] border border-white/5 overflow-hidden">
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="border-b border-white/5">
-              <th className="text-left px-3 py-2.5 text-[10px] uppercase text-[#9CA3AF] font-medium">Name</th>
-              <th className="text-left px-3 py-2.5 text-[10px] uppercase text-[#9CA3AF] font-medium">Slug</th>
-              <th className="text-right px-3 py-2.5 text-[10px] uppercase text-[#9CA3AF] font-medium">Monthly</th>
-              <th className="text-right px-3 py-2.5 text-[10px] uppercase text-[#9CA3AF] font-medium">Annual</th>
-              <th className="text-center px-3 py-2.5 text-[10px] uppercase text-[#9CA3AF] font-medium">Users</th>
-              <th className="text-left px-3 py-2.5 text-[10px] uppercase text-[#9CA3AF] font-medium">Limits</th>
-              <th className="text-center px-3 py-2.5 text-[10px] uppercase text-[#9CA3AF] font-medium">Voices</th>
-              <th className="text-center px-3 py-2.5 text-[10px] uppercase text-[#9CA3AF] font-medium">Active</th>
-              <th className="text-center px-3 py-2.5 text-[10px] uppercase text-[#9CA3AF] font-medium">Order</th>
-              <th className="text-right px-3 py-2.5 text-[10px] uppercase text-[#9CA3AF] font-medium">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {plans.map((plan) => (
-              <tr
+      {/* Plan cards */}
+      {plans.length === 0 && !loading && (
+        <div className="flex flex-col items-center justify-center py-16 text-[#9CA3AF]">
+          <CreditCard className="h-8 w-8 mb-2 opacity-40" />
+          <span className="text-xs">No plans configured</span>
+          <Button
+            size="sm"
+            onClick={handleCreate}
+            className="mt-3 bg-[#3B82F6] hover:bg-[#3B82F6]/80 text-white text-xs gap-1.5"
+          >
+            <Plus className="h-3 w-3" />
+            Create First Plan
+          </Button>
+        </div>
+      )}
+
+      {plans.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+          {plans.map((plan) => {
+            const featureFlags = [
+              plan.adFree && "Ad-Free",
+              plan.priorityProcessing && "Priority",
+              plan.earlyAccess && "Early Access",
+              plan.researchMode && "Research",
+              plan.crossPodcastSynthesis && "Synthesis",
+            ].filter((f): f is string => Boolean(f));
+
+            return (
+              <div
                 key={plan.id}
-                className="border-b border-white/5 last:border-0 hover:bg-white/[0.03] transition-colors"
+                className={cn(
+                  "bg-[#0F1D32] border rounded-lg p-4 transition-colors",
+                  !plan.active && "opacity-50",
+                  plan.highlighted ? "border-[#F59E0B]/30" : "border-white/5"
+                )}
               >
-                {/* Name */}
-                <td className="px-3 py-2.5">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[#F9FAFB] font-medium">{plan.name}</span>
-                    {plan.isDefault && (
-                      <Badge className="bg-[#3B82F6]/15 text-[#3B82F6] border-[#3B82F6]/30 text-[9px]">
-                        DEFAULT
-                      </Badge>
-                    )}
-                    {plan.highlighted && (
-                      <Badge className="bg-[#F59E0B]/15 text-[#F59E0B] border-[#F59E0B]/30 text-[9px]">
-                        FEATURED
-                      </Badge>
-                    )}
-                  </div>
-                </td>
-
-                {/* Slug */}
-                <td className="px-3 py-2.5">
-                  <span className="font-mono text-[#9CA3AF]">{plan.slug}</span>
-                </td>
-
-                {/* Monthly Price */}
-                <td className="px-3 py-2.5 text-right">
-                  <span className="font-mono tabular-nums text-[#F9FAFB]">
-                    {formatDollars(plan.priceCentsMonthly)}
-                  </span>
-                </td>
-
-                {/* Annual Price */}
-                <td className="px-3 py-2.5 text-right">
-                  <span className="font-mono tabular-nums text-[#9CA3AF]">
-                    {plan.priceCentsAnnual != null ? formatDollars(plan.priceCentsAnnual) : "-"}
-                  </span>
-                </td>
-
-                {/* User Count */}
-                <td className="px-3 py-2.5 text-center">
-                  <Badge className="bg-white/5 text-[#9CA3AF] border-white/10 text-[10px]">
-                    {plan.userCount}
-                  </Badge>
-                </td>
-
-                {/* Limits */}
-                <td className="px-3 py-2.5">
-                  <span className="text-[#9CA3AF] text-[10px]">{limitsText(plan)}</span>
-                </td>
-
-                {/* Voices */}
-                <td className="px-3 py-2.5 text-center">
-                  {(plan.allowedVoicePresetIds?.length ?? 0) > 0 ? (
-                    <div className="flex flex-wrap gap-0.5 justify-center">
-                      {plan.allowedVoicePresetIds.map((vpId) => {
-                        const vp = voicePresets.find((v) => v.id === vpId);
-                        return (
-                          <Badge key={vpId} className="bg-white/5 text-[#9CA3AF] border-white/10 text-[9px]">
-                            {vp?.name ?? vpId.slice(0, 6)}
-                          </Badge>
-                        );
-                      })}
+                {/* Header: name + badges + actions */}
+                <div className="flex items-start gap-2 mb-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-xs font-semibold text-[#F9FAFB]">{plan.name}</span>
+                      {plan.isDefault && (
+                        <Badge className="bg-[#3B82F6]/15 text-[#3B82F6] border-[#3B82F6]/30 text-[9px]">
+                          DEFAULT
+                        </Badge>
+                      )}
+                      {plan.highlighted && (
+                        <Badge className="bg-[#F59E0B]/15 text-[#F59E0B] border-[#F59E0B]/30 text-[9px]">
+                          FEATURED
+                        </Badge>
+                      )}
                     </div>
-                  ) : (
-                    <span className="text-[10px] text-[#9CA3AF]/50">-</span>
-                  )}
-                </td>
-
-                {/* Active Toggle */}
-                <td className="px-3 py-2.5 text-center">
-                  <Switch
-                    checked={plan.active}
-                    onCheckedChange={(v) => handleToggleActive(plan, v)}
-                    disabled={togglingId === plan.id}
-                    className="data-[state=checked]:bg-[#10B981]"
-                  />
-                </td>
-
-                {/* Sort Order */}
-                <td className="px-3 py-2.5 text-center">
-                  <span className="font-mono tabular-nums text-[#9CA3AF]">{plan.sortOrder}</span>
-                </td>
-
-                {/* Actions */}
-                <td className="px-3 py-2.5 text-right">
-                  <div className="flex items-center justify-end gap-1">
+                    <span className="text-[10px] font-mono text-[#9CA3AF]">{plan.slug}</span>
+                  </div>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <div title={plan.isDefault ? "Cannot disable the default plan" : undefined}>
+                      <Switch
+                        checked={plan.active}
+                        onCheckedChange={(v) => handleToggleActive(plan, v)}
+                        disabled={togglingId === plan.id || plan.isDefault}
+                        className="data-[state=checked]:bg-[#10B981]"
+                      />
+                    </div>
                     <Button
                       variant="ghost"
                       size="icon-xs"
@@ -799,109 +765,100 @@ export default function PlansPage() {
                       variant="ghost"
                       size="icon-xs"
                       onClick={() => setDeletePlan(plan)}
-                      className="text-[#9CA3AF] hover:text-[#EF4444]"
+                      disabled={plan.isDefault || plan.userCount > 0}
+                      title={
+                        plan.isDefault
+                          ? "Cannot delete the default plan"
+                          : plan.userCount > 0
+                            ? `Cannot delete — ${plan.userCount} active user${plan.userCount !== 1 ? "s" : ""}`
+                            : undefined
+                      }
+                      className="text-[#9CA3AF] hover:text-[#EF4444] disabled:opacity-30 disabled:hover:text-[#9CA3AF]"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        {plans.length === 0 && !loading && (
-          <div className="flex flex-col items-center justify-center py-16 text-[#9CA3AF]">
-            <CreditCard className="h-8 w-8 mb-2 opacity-40" />
-            <span className="text-xs">No plans configured</span>
-            <Button
-              size="sm"
-              onClick={handleCreate}
-              className="mt-3 bg-[#3B82F6] hover:bg-[#3B82F6]/80 text-white text-xs gap-1.5"
-            >
-              <Plus className="h-3 w-3" />
-              Create First Plan
-            </Button>
-          </div>
-        )}
-      </div>
-
-      {/* Feature summary cards */}
-      {plans.length > 0 && (
-        <div className="grid grid-cols-3 gap-3">
-          {plans
-            .filter((p) => p.active)
-            .slice(0, 3)
-            .map((plan) => {
-              const featureFlags = [
-                plan.adFree && "Ad-Free",
-                plan.priorityProcessing && "Priority",
-                plan.earlyAccess && "Early Access",
-                plan.researchMode && "Research",
-                plan.crossPodcastSynthesis && "Synthesis",
-              ].filter((f): f is string => Boolean(f));
-
-              return (
-                <div
-                  key={plan.id}
-                  className={cn(
-                    "bg-[#0F1D32] border rounded-lg p-4 hover:border-white/10 transition-colors",
-                    plan.highlighted ? "border-[#F59E0B]/30" : "border-white/5"
-                  )}
-                >
-                  <div className="flex items-center gap-2 mb-2">
-                    <CreditCard className="h-4 w-4 text-[#3B82F6]" />
-                    <span className="text-xs font-semibold text-[#F9FAFB]">{plan.name}</span>
-                    <span className="ml-auto text-sm font-mono tabular-nums text-[#F9FAFB]">
-                      {formatDollars(plan.priceCentsMonthly)}
-                      <span className="text-[10px] text-[#9CA3AF]">/mo</span>
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2 text-[10px] mb-2">
-                    <div>
-                      <span className="text-[#9CA3AF]">Briefings/wk</span>
-                      <div className="text-xs text-[#F9FAFB] font-mono">
-                        {plan.briefingsPerWeek != null ? plan.briefingsPerWeek : (
-                          <Infinity className="h-3 w-3 inline" />
-                        )}
-                      </div>
-                    </div>
-                    <div>
-                      <span className="text-[#9CA3AF]">Max duration</span>
-                      <div className="text-xs text-[#F9FAFB] font-mono">{plan.maxDurationMinutes}m</div>
-                    </div>
-                  </div>
-
-                  {featureFlags.length > 0 && (
-                    <div className="flex flex-wrap gap-1">
-                      {featureFlags.map((f) => (
-                        <Badge
-                          key={f}
-                          className="bg-white/5 text-[#F9FAFB]/80 text-[9px] font-normal"
-                        >
-                          <Check className="h-2.5 w-2.5 text-[#10B981] mr-0.5" />
-                          {f}
-                        </Badge>
-                      ))}
-                    </div>
-                  )}
-
-                  {(plan.allowedVoicePresetIds?.length ?? 0) > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-2">
-                      {plan.allowedVoicePresetIds.map((vpId) => {
-                        const vp = voicePresets.find((v) => v.id === vpId);
-                        return (
-                          <Badge key={vpId} className="bg-[#3B82F6]/10 text-[#3B82F6] text-[9px] font-normal">
-                            {vp?.name ?? vpId.slice(0, 6)}
-                          </Badge>
-                        );
-                      })}
-                    </div>
-                  )}
                 </div>
-              );
-            })}
+
+                {/* Pricing */}
+                <div className="flex items-baseline gap-2 mb-3">
+                  <span className="text-sm font-mono tabular-nums text-[#F9FAFB]">
+                    {formatDollars(plan.priceCentsMonthly)}
+                    <span className="text-[10px] text-[#9CA3AF]">/mo</span>
+                  </span>
+                  {plan.priceCentsAnnual != null && (
+                    <span className="text-[10px] font-mono tabular-nums text-[#9CA3AF]">
+                      {formatDollars(plan.priceCentsAnnual)}/yr
+                    </span>
+                  )}
+                  <Badge className="bg-white/5 text-[#9CA3AF] border-white/10 text-[10px] ml-auto">
+                    {plan.userCount} user{plan.userCount !== 1 ? "s" : ""}
+                  </Badge>
+                </div>
+
+                {/* Limits */}
+                <div className="grid grid-cols-2 gap-2 text-[10px] mb-2">
+                  <div>
+                    <span className="text-[#9CA3AF]">Briefings/wk</span>
+                    <div className="text-xs text-[#F9FAFB] font-mono">
+                      {plan.briefingsPerWeek != null ? plan.briefingsPerWeek : (
+                        <Infinity className="h-3 w-3 inline" />
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-[#9CA3AF]">Max duration</span>
+                    <div className="text-xs text-[#F9FAFB] font-mono">{plan.maxDurationMinutes}m</div>
+                  </div>
+                  <div>
+                    <span className="text-[#9CA3AF]">Subscriptions</span>
+                    <div className="text-xs text-[#F9FAFB] font-mono">
+                      {plan.maxPodcastSubscriptions != null ? plan.maxPodcastSubscriptions : (
+                        <Infinity className="h-3 w-3 inline" />
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-[#9CA3AF]">Past episodes</span>
+                    <div className="text-xs text-[#F9FAFB] font-mono">
+                      {plan.pastEpisodesLimit != null ? plan.pastEpisodesLimit : (
+                        <Infinity className="h-3 w-3 inline" />
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Feature flags */}
+                {featureFlags.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {featureFlags.map((f) => (
+                      <Badge
+                        key={f}
+                        className="bg-white/5 text-[#F9FAFB]/80 text-[9px] font-normal"
+                      >
+                        <Check className="h-2.5 w-2.5 text-[#10B981] mr-0.5" />
+                        {f}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+
+                {/* Voice presets */}
+                {(plan.allowedVoicePresetIds?.length ?? 0) > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {plan.allowedVoicePresetIds.map((vpId) => {
+                      const vp = voicePresets.find((v) => v.id === vpId);
+                      return (
+                        <Badge key={vpId} className="bg-[#3B82F6]/10 text-[#3B82F6] text-[9px] font-normal">
+                          {vp?.name ?? vpId.slice(0, 6)}
+                        </Badge>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -1032,6 +989,56 @@ export default function PlansPage() {
         onConfirm={submitDelete}
         deleting={deleting}
       />
+
+      {/* Deactivate Confirmation Dialog */}
+      <Dialog open={!!deactivatePlan} onOpenChange={(v) => { if (!v) setDeactivatePlan(null); }}>
+        <DialogContent className="bg-[#1A2942] border-white/10 text-[#F9FAFB] max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-sm">Deactivate Plan</DialogTitle>
+            <DialogDescription className="text-xs text-[#9CA3AF]">
+              Are you sure you want to deactivate "{deactivatePlan?.name}"?
+            </DialogDescription>
+          </DialogHeader>
+
+          {deactivatePlan && deactivatePlan.userCount > 0 && (
+            <div className="rounded-md bg-[#EF4444]/10 border border-[#EF4444]/20 p-3 flex items-start gap-2">
+              <AlertTriangle className="h-4 w-4 text-[#EF4444] shrink-0 mt-0.5" />
+              <div className="text-xs text-[#EF4444] space-y-1">
+                <p className="font-medium">
+                  {deactivatePlan.userCount} active user{deactivatePlan.userCount !== 1 ? "s" : ""} on this plan
+                </p>
+                <p className="text-[#EF4444]/80">
+                  Deactivating will hide this plan from new signups. Existing users will remain on the plan but it will no longer be selectable.
+                </p>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => setDeactivatePlan(null)}
+              className="text-[#9CA3AF]"
+            >
+              Cancel
+            </Button>
+            <Button
+              className="bg-[#F59E0B] hover:bg-[#F59E0B]/80 text-white"
+              disabled={togglingId === deactivatePlan?.id}
+              onClick={confirmDeactivate}
+            >
+              {togglingId === deactivatePlan?.id ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Deactivating...
+                </>
+              ) : (
+                "Deactivate"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
