@@ -672,7 +672,8 @@ function ExpandableStepRow({
 }) {
   const events = step.events ?? [];
   const wps = step.workProducts ?? [];
-  const hasContent = events.length > 0 || wps.length > 0;
+  const isTranscription = step.stage === "TRANSCRIPTION";
+  const hasContent = events.length > 0 || wps.length > 0 || isTranscription;
 
   const [expanded, setExpanded] = useState(
     step.status === "FAILED" || step.status === "IN_PROGRESS"
@@ -775,7 +776,7 @@ function ExpandableStepRow({
             </div>
           )}
 
-          {wps.length > 0 && (
+          {(wps.length > 0 || isTranscription) && (
             <div>
               <button
                 className="flex items-center gap-1.5 text-[10px] text-[#9CA3AF] hover:text-[#F9FAFB] py-0.5 transition-colors w-full text-left"
@@ -788,25 +789,25 @@ function ExpandableStepRow({
                 )}
                 <HardDrive className="h-2.5 w-2.5" />
                 <span>Work Products</span>
-                <span className="text-[#6B7280]">({wps.length})</span>
+                <span className="text-[#6B7280]">({wps.length + (isTranscription ? 1 : 0)})</span>
               </button>
               {showWps && (
                 <div className="pl-5 space-y-1">
+                  {isTranscription && (
+                    <div className="rounded-md bg-[#0A1628] border border-white/5 overflow-hidden">
+                      <div className="flex items-center gap-2 px-2.5 py-1 bg-[#0F1D32] border-b border-white/5">
+                        <FileAudio className="h-2.5 w-2.5" style={{ color: "#F97316" }} />
+                        <span className="text-[8px] font-medium" style={{ color: "#F97316" }}>Source Audio</span>
+                        <span className="text-[8px] text-[#9CA3AF]">(streamed from source)</span>
+                      </div>
+                      <SourceAudioPlayer episodeId={episodeId} />
+                    </div>
+                  )}
                   {wps.map((wp) => (
                     <StepWorkProductPanel key={wp.id} wp={wp} />
                   ))}
                 </div>
               )}
-            </div>
-          )}
-          {step.stage === "TRANSCRIPTION" && (
-            <div className="mt-1 rounded-md bg-[#0A1628] border border-white/5 overflow-hidden">
-              <div className="flex items-center gap-2 px-2.5 py-1 bg-[#0F1D32] border-b border-white/5">
-                <FileAudio className="h-2.5 w-2.5" style={{ color: "#F97316" }} />
-                <span className="text-[8px] font-medium" style={{ color: "#F97316" }}>Source Audio</span>
-                <span className="text-[8px] text-[#9CA3AF]">(streamed from source)</span>
-              </div>
-              <SourceAudioPlayer episodeId={episodeId} />
             </div>
           )}
         </div>
