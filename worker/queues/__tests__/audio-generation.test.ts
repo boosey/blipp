@@ -356,7 +356,9 @@ describe("handleAudioGeneration", () => {
 
   describe("stage-enabled check", () => {
     it("ACKs without processing when stage is disabled", async () => {
-      (getConfig as any).mockResolvedValueOnce(false);
+      (getConfig as any)
+        .mockResolvedValueOnce(true)   // pipeline.enabled
+        .mockResolvedValueOnce(false); // stage enabled
 
       const { mockMsg, mockBatch } = makeBatch(msgBody);
       await handleAudioGeneration(mockBatch, mockEnv, mockCtx);

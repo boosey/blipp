@@ -68,17 +68,13 @@ describe("scheduled", () => {
   });
 
   it("migrates legacy config keys when they exist", async () => {
-    // cron.pipeline-trigger.lastRunAt does NOT exist, but legacy key DOES
+    // cron.monitoring.lastRunAt does NOT exist, but legacy key DOES
     mockPrisma.platformConfig.findUnique
-      .mockResolvedValueOnce(null) // cron.pipeline-trigger.lastRunAt
-      .mockResolvedValueOnce({ key: "pipeline.lastAutoRunAt", value: "2026-01-01T00:00:00Z" })
-      // Remaining migration pairs: new key exists or no legacy
       .mockResolvedValueOnce(null) // cron.monitoring.lastRunAt
-      .mockResolvedValueOnce(null) // pricing.lastRefreshedAt (no legacy)
+      .mockResolvedValueOnce({ key: "pricing.lastRefreshedAt", value: "2026-01-01T00:00:00Z" })
+      // Remaining migration pair: new key exists or no legacy
       .mockResolvedValueOnce(null) // cron.recommendations.lastRunAt
-      .mockResolvedValueOnce(null) // recommendations.lastProfileRefresh (no legacy)
-      .mockResolvedValueOnce(null) // cron.data-retention.lastRunAt
-      .mockResolvedValueOnce(null); // requests.archiving.lastRunAt (no legacy)
+      .mockResolvedValueOnce(null); // recommendations.lastProfileRefresh (no legacy)
 
     mockPrisma.platformConfig.create.mockResolvedValue({});
 
@@ -86,9 +82,9 @@ describe("scheduled", () => {
 
     expect(mockPrisma.platformConfig.create).toHaveBeenCalledWith({
       data: {
-        key: "cron.pipeline-trigger.lastRunAt",
+        key: "cron.monitoring.lastRunAt",
         value: "2026-01-01T00:00:00Z",
-        description: "Migrated from pipeline.lastAutoRunAt",
+        description: "Migrated from pricing.lastRefreshedAt",
       },
     });
   });
