@@ -61,11 +61,24 @@ async function processEpisode(
     },
   });
 
+  // Recompute podcast deliverability after each episode status change
+  const hasDeliverable = await prisma.episode.count({
+    where: {
+      podcastId: episode.podcastId,
+      contentStatus: { not: "NOT_DELIVERABLE" },
+    },
+  });
+  await prisma.podcast.update({
+    where: { id: episode.podcastId },
+    data: { deliverable: hasDeliverable > 0 },
+  });
+
   console.log(JSON.stringify({
     level: "info",
     action: "content_prefetch",
     episodeId,
     contentStatus: result.contentStatus,
+    podcastDeliverable: hasDeliverable > 0,
     ts: new Date().toISOString(),
   }));
 
