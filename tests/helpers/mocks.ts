@@ -89,7 +89,7 @@ export function createMockEnv(): Env {
     OPENAI_API_KEY: "sk-mock",
     PODCAST_INDEX_KEY: "mock-key",
     PODCAST_INDEX_SECRET: "mock-secret",
-    FEED_REFRESH_QUEUE: { send: vi.fn().mockResolvedValue(undefined) } as unknown as Queue,
+    FEED_REFRESH_QUEUE: { send: vi.fn().mockResolvedValue(undefined), sendBatch: vi.fn().mockResolvedValue(undefined) } as unknown as Queue,
     DISTILLATION_QUEUE: { send: vi.fn().mockResolvedValue(undefined) } as unknown as Queue,
     NARRATIVE_GENERATION_QUEUE: { send: vi.fn().mockResolvedValue(undefined) } as unknown as Queue,
     AUDIO_GENERATION_QUEUE: { send: vi.fn().mockResolvedValue(undefined) } as unknown as Queue,

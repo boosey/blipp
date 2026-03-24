@@ -282,10 +282,16 @@ describe("handleCatalogRefresh", () => {
 
     expect((mockEnv.FEED_REFRESH_QUEUE as any).sendBatch).toHaveBeenCalled();
     const sendBatchCall = (mockEnv.FEED_REFRESH_QUEUE as any).sendBatch.mock.calls[0][0];
+    // With batched helper, podcasts are grouped into podcastIds arrays
     expect(sendBatchCall).toEqual(
       expect.arrayContaining([
-        { body: { podcastId: "pod-1", type: "manual", refreshJobId: "refresh-job-1" } },
-        { body: { podcastId: "pod-2", type: "manual", refreshJobId: "refresh-job-1" } },
+        expect.objectContaining({
+          body: expect.objectContaining({
+            podcastIds: expect.arrayContaining(["pod-1", "pod-2"]),
+            type: "manual",
+            refreshJobId: "refresh-job-1",
+          }),
+        }),
       ])
     );
   });
@@ -359,7 +365,7 @@ describe("handleCatalogRefresh", () => {
     expect(mockPrisma.podcast.upsert).not.toHaveBeenCalled();
   });
 
-  it("batches feed refresh queue messages in groups of 100", async () => {
+  it("batches feed refresh queue messages by batchConcurrency", async () => {
     const largeBatch: DiscoveredPodcast[] = Array.from({ length: 150 }, (_, i) => ({
       feedUrl: `https://example.com/feed${i}.xml`,
       title: `Podcast ${i}`,
@@ -374,7 +380,11 @@ describe("handleCatalogRefresh", () => {
     const batch = createBatch("refresh");
     await handleCatalogRefresh(batch, mockEnv, mockCtx);
 
-    // Should be called twice: batch of 100 + batch of 50
-    expect((mockEnv.FEED_REFRESH_QUEUE as any).sendBatch).toHaveBeenCalledTimes(2);
+    // With batchConcurrency=10 (default), 150 podcasts = 15 messages, sent in 1 sendBatch call
+    expect((mockEnv.FEED_REFRESH_QUEUE as any).sendBatch).toHaveBeenCalled();
+    const firstCall = (mockEnv.FEED_REFRESH_QUEUE as any).sendBatch.mock.calls[0][0];
+    expect(firstCall.length).toBe(15);
+    // Each message should have a podcastIds array of 10
+    expect(firstCall[0].body.podcastIds).toHaveLength(10);
   });
 });
