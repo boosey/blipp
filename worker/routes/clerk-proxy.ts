@@ -63,8 +63,32 @@ export async function handleClerkProxy(c: Context<{ Bindings: Env }>) {
     }));
   }
 
-  // Copy response and add CORS headers
-  const respHeaders = new Headers(resp.headers);
+  // Copy response and add CORS headers.
+  // Rewrite set-cookie headers so cookies are stored for OUR domain,
+  // not clerk.podblipp.com (which the browser won't accept from our proxy).
+  const respHeaders = new Headers();
+
+  // Copy all non-set-cookie headers
+  for (const [key, value] of resp.headers.entries()) {
+    if (key.toLowerCase() !== "set-cookie") {
+      respHeaders.append(key, value);
+    }
+  }
+
+  // Rewrite set-cookie: remove domain restriction so it defaults to our proxy domain.
+  // Also ensure SameSite=None and Secure for cross-origin cookie access.
+  const cookies = resp.headers.getSetCookie?.() || [];
+  for (const cookie of cookies) {
+    const rewritten = cookie
+      // Remove any explicit domain= so it defaults to the proxy host
+      .replace(/;\s*domain=[^;]*/gi, "")
+      // Ensure the cookie works cross-origin
+      .replace(/;\s*samesite=[^;]*/gi, "")
+      + "; SameSite=None; Secure";
+    respHeaders.append("set-cookie", rewritten);
+    console.log(JSON.stringify({ action: "clerk_proxy_cookie", original: cookie.substring(0, 100), rewritten: rewritten.substring(0, 100) }));
+  }
+
   respHeaders.set("access-control-allow-origin", requestOrigin);
   respHeaders.set("access-control-allow-credentials", "true");
 
