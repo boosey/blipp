@@ -6,9 +6,8 @@ const config: CapacitorConfig = {
   webDir: "dist/client",
   plugins: {
     CapacitorHttp: {
-      // Disabled — using server-side proxy for CORS instead.
-      // Native HTTP breaks cookie sharing between WebView and fetch.
-      enabled: false,
+      // Enable native HTTP — needed for cookie handling with Clerk proxy
+      enabled: true,
     },
   },
   ios: {
