@@ -9,6 +9,11 @@ const config: CapacitorConfig = {
       // Enable native HTTP — needed for cookie handling with Clerk proxy
       enabled: true,
     },
+    SocialLogin: {
+      google: {
+        iOSClientId: "774074678441-o78mvmtptb57ofinl1m49f8ttj1po850.apps.googleusercontent.com",
+      },
+    },
   },
   ios: {
     contentInset: "automatic",
