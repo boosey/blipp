@@ -37,6 +37,48 @@ export async function checkStageEnabled(
   return true;
 }
 
+/**
+ * Cascading completion check for EpisodeRefreshJob.
+ *
+ * A job is complete when:
+ * 1. Feed scan stage is done (podcastsCompleted >= podcastsTotal)
+ * 2. Prefetch stage is done (prefetchCompleted >= prefetchTotal)
+ *
+ * The prefetch stage can only be "done" once the feed scan is done,
+ * because the feed scan is what produces prefetch messages.
+ * If no episodes were discovered, the job completes as soon as the feed scan finishes.
+ *
+ * Returns true if the job was marked complete.
+ */
+export async function tryCompleteRefreshJob(prisma: any, refreshJobId: string): Promise<boolean> {
+  const job = await prisma.episodeRefreshJob.findUnique({
+    where: { id: refreshJobId },
+    select: {
+      status: true,
+      podcastsTotal: true,
+      podcastsCompleted: true,
+      prefetchTotal: true,
+      prefetchCompleted: true,
+    },
+  });
+
+  if (!job || job.status !== "refreshing") return false;
+  if (job.podcastsTotal <= 0) return false;
+
+  const feedScanDone = job.podcastsCompleted >= job.podcastsTotal;
+  if (!feedScanDone) return false;
+
+  const prefetchDone = job.prefetchCompleted >= job.prefetchTotal;
+  if (!prefetchDone) return false;
+
+  await prisma.episodeRefreshJob.update({
+    where: { id: refreshJobId },
+    data: { status: "complete", completedAt: new Date() },
+  });
+
+  return true;
+}
+
 /** Acknowledge all messages in a batch. */
 export function ackAll(
   messages: readonly { ack(): void }[]

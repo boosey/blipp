@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { Env } from "../../types";
 import { parsePagination, paginatedResponse } from "../../lib/admin-helpers";
 import { getConfig } from "../../lib/config";
-import { sendBatchedFeedRefresh } from "../../lib/queue-helpers";
+import { sendBatchedFeedRefresh, tryCompleteRefreshJob } from "../../lib/queue-helpers";
 
 const ACTIVE_STATUSES = ["pending", "refreshing", "paused"];
 
@@ -319,17 +319,12 @@ async function getJobDetail(c: any, prisma: any, jobId: string) {
   let job = await prisma.episodeRefreshJob.findUnique({ where: { id: jobId } });
   if (!job) return c.json({ error: "Job not found" }, 404);
 
-  // Lazy completion detection
-  if (
-    job.status === "refreshing" &&
-    job.podcastsTotal > 0 &&
-    job.podcastsCompleted >= job.podcastsTotal &&
-    job.prefetchCompleted >= job.prefetchTotal
-  ) {
-    job = await prisma.episodeRefreshJob.update({
-      where: { id: job.id },
-      data: { status: "complete", completedAt: new Date() },
-    });
+  // Lazy completion detection (fallback — queue handlers do this proactively)
+  if (job.status === "refreshing") {
+    const completed = await tryCompleteRefreshJob(prisma, jobId);
+    if (completed) {
+      job = await prisma.episodeRefreshJob.findUnique({ where: { id: jobId } });
+    }
   }
 
   const watermark = job.startedAt;

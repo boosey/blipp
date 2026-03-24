@@ -1,7 +1,7 @@
 import { createPrismaClient } from "../lib/db";
 import { getConfig } from "../lib/config";
 import { prefetchEpisodeContent } from "../lib/content-prefetch";
-import { isRefreshJobActive } from "../lib/queue-helpers";
+import { isRefreshJobActive, tryCompleteRefreshJob } from "../lib/queue-helpers";
 import type { Env } from "../types";
 
 export interface ContentPrefetchMessage {
@@ -82,12 +82,6 @@ async function processEpisode(
     ts: new Date().toISOString(),
   }));
 
-  if (refreshJobId) {
-    await prisma.episodeRefreshJob.update({
-      where: { id: refreshJobId },
-      data: { prefetchCompleted: { increment: 1 } },
-    }).catch(() => {});
-  }
 }
 
 /**
@@ -106,12 +100,27 @@ export async function handleContentPrefetch(
   try {
     const fetchTimeoutMs = (await getConfig(prisma, "pipeline.contentPrefetch.fetchTimeoutMs", 15000)) as number;
 
+    // Collect refresh job IDs from this batch for completion check
+    const refreshJobIds = new Set<string>();
+
     await Promise.allSettled(
       batch.messages.map(async (msg) => {
         const { episodeId } = msg.body;
+        if (msg.body.refreshJobId) refreshJobIds.add(msg.body.refreshJobId);
 
         try {
           await processEpisode(episodeId, msg.body.refreshJobId, prisma, env, fetchTimeoutMs);
+
+          // Always increment prefetchCompleted on ack — even if the episode was
+          // skipped (already processed). This keeps the counter in sync with
+          // prefetchTotal which was incremented when the message was queued.
+          if (msg.body.refreshJobId) {
+            await prisma.episodeRefreshJob.update({
+              where: { id: msg.body.refreshJobId },
+              data: { prefetchCompleted: { increment: 1 } },
+            }).catch(() => {});
+          }
+
           msg.ack();
         } catch (err) {
           console.error(JSON.stringify({
@@ -137,6 +146,11 @@ export async function handleContentPrefetch(
         }
       })
     );
+
+    // Proactive completion: check if any refresh jobs are now done
+    for (const jobId of refreshJobIds) {
+      await tryCompleteRefreshJob(prisma, jobId).catch(() => {});
+    }
   } finally {
     ctx.waitUntil(prisma.$disconnect());
   }

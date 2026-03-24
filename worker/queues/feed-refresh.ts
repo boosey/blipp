@@ -3,7 +3,7 @@ import { getConfig } from "../lib/config";
 import { createPipelineLogger } from "../lib/logger";
 import { parseRssFeed, type ParsedEpisode } from "../lib/rss-parser";
 import type { FeedRefreshMessage } from "../lib/queue-messages";
-import { isRefreshJobActive } from "../lib/queue-helpers";
+import { isRefreshJobActive, tryCompleteRefreshJob } from "../lib/queue-helpers";
 import type { Env } from "../types";
 
 /**
@@ -375,6 +375,13 @@ export async function handleFeedRefresh(
     );
 
     log.info("batch_complete", { podcastCount: podcasts.length });
+
+    // Proactive completion: if all podcasts are scanned and no episodes were
+    // discovered (prefetchTotal=0), the job is done now. Otherwise content-prefetch
+    // will mark it complete when the last prefetch message is processed.
+    if (refreshJobId) {
+      await tryCompleteRefreshJob(prisma, refreshJobId).catch(() => {});
+    }
 
     // Ack all messages in the batch
     for (const msg of batch.messages) {
