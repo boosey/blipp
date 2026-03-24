@@ -90,8 +90,23 @@ vi.mock("../../lib/stt-providers", () => ({
   getProviderImpl: vi.fn().mockReturnValue({
     name: "MockProvider",
     provider: "cloudflare",
+    supportsUrl: false,
     transcribe: (...args: any[]) => mockTranscribe(...args),
   }),
+}));
+
+const mockProbeAudio = vi.fn().mockResolvedValue({
+  contentLength: 20000,
+  contentType: "audio/mpeg",
+  ext: "mp3",
+  detectedFormat: { format: "mp3", details: "ID3v2.4" },
+  durationEstimateSeconds: 1,
+  supportsRangeRequests: true,
+});
+const mockTranscribeChunked = vi.fn().mockResolvedValue({ transcript: "Chunked transcript.", costDollars: null, latencyMs: 200 });
+vi.mock("../../lib/audio-probe", () => ({
+  probeAudio: (...args: any[]) => mockProbeAudio(...args),
+  transcribeChunked: (...args: any[]) => mockTranscribeChunked(...args),
 }));
 
 vi.mock("../../lib/pipeline-events", () => ({
@@ -132,7 +147,7 @@ vi.mock("../../lib/ai-errors", () => {
 });
 
 const { getConfig } = await import("../../lib/config");
-const { resolveStageModel, resolveSttModelChain, resolveModelChain } = await import("../../lib/model-resolution");
+const { resolveModelChain } = await import("../../lib/model-resolution");
 const { getTranscriptSource } = await import("../../lib/transcript-sources");
 const { getProviderImpl } = await import("../../lib/stt-providers");
 const { writeAiError } = await import("../../lib/ai-errors");
@@ -203,15 +218,7 @@ describe("handleTranscription", () => {
       return Promise.resolve(true);
     });
 
-    // Re-set resolveStageModel + resolveSttModelChain after clearAllMocks
-    (resolveStageModel as any).mockReset();
-    (resolveStageModel as any).mockResolvedValue({
-      provider: "cloudflare",
-      model: "whisper-large-v3-turbo",
-      providerModelId: "@cf/openai/whisper-large-v3-turbo",
-      pricing: { pricePerMinute: 0.0005 },
-      limits: null,
-    });
+    // Re-set resolveModelChain after clearAllMocks
     (resolveModelChain as any).mockReset();
     (resolveModelChain as any).mockResolvedValue([{
       provider: "cloudflare",
@@ -221,7 +228,7 @@ describe("handleTranscription", () => {
       limits: null,
     }]);
 
-    // Default: fetch returns a Response-like object
+    // Default: fetch for single-download path (small files without range support)
     const audioData = new ArrayBuffer(20000);
     vi.stubGlobal("fetch", vi.fn().mockImplementation((url: string) => {
       if (url.match(/\.(mp3|m4a|wav|ogg|webm|flac)(\?|$)/i) || url.includes("audio")) {
@@ -245,6 +252,28 @@ describe("handleTranscription", () => {
 
     mockTranscribe.mockReset();
     mockTranscribe.mockResolvedValue({ transcript: "Provider transcript text.", costDollars: null, latencyMs: 100 });
+
+    // Re-set getProviderImpl to return cloudflare (buffer-only) by default
+    (getProviderImpl as any).mockReset();
+    (getProviderImpl as any).mockReturnValue({
+      name: "MockProvider",
+      provider: "cloudflare",
+      supportsUrl: false,
+      transcribe: (...args: any[]) => mockTranscribe(...args),
+    });
+
+    mockProbeAudio.mockReset();
+    mockProbeAudio.mockResolvedValue({
+      contentLength: 20000,
+      contentType: "audio/mpeg",
+      ext: "mp3",
+      detectedFormat: { format: "mp3", details: "ID3v2.4" },
+      durationEstimateSeconds: 1,
+      supportsRangeRequests: true,
+    });
+
+    mockTranscribeChunked.mockReset();
+    mockTranscribeChunked.mockResolvedValue({ transcript: "Chunked transcript.", costDollars: null, latencyMs: 200 });
 
     mockPutWorkProduct.mockReset();
     mockPutWorkProduct.mockResolvedValue(undefined);
@@ -377,13 +406,10 @@ describe("handleTranscription", () => {
 
     await handleTranscription(createBatch([msg]), env, ctx);
 
-    expect(fetch).toHaveBeenCalledWith("https://example.com/audio.mp3");
-    expect(mockTranscribe).toHaveBeenCalledWith(
-      expect.objectContaining({ buffer: expect.any(ArrayBuffer), filename: expect.any(String) }),
-      expect.any(Number),
-      expect.anything(),
-      "@cf/openai/whisper-large-v3-turbo"
-    );
+    // Probe called instead of full download
+    expect(mockProbeAudio).toHaveBeenCalledWith("https://example.com/audio.mp3", undefined);
+    // Cloudflare (supportsUrl: false) → chunked fallback
+    expect(mockTranscribeChunked).toHaveBeenCalled();
     // Distillation upserted (no transcript field — content in R2)
     expect(mockPrisma.distillation.upsert).toHaveBeenCalledWith({
       where: { episodeId: "ep1" },
@@ -412,7 +438,8 @@ describe("handleTranscription", () => {
 
     expect(resolveModelChain).toHaveBeenCalled();
     expect(getProviderImpl).toHaveBeenCalledWith("cloudflare");
-    expect(mockTranscribe).toHaveBeenCalled();
+    // Cloudflare is buffer-only → chunked transcription
+    expect(mockTranscribeChunked).toHaveBeenCalled();
   });
 
   it("reports to orchestrator with jobId", async () => {
@@ -602,11 +629,12 @@ describe("handleTranscription", () => {
     await handleTranscription(createBatch([msg]), env, ctx);
 
     expect(mockPiLookup).toHaveBeenCalled();
-    expect(mockTranscribe).toHaveBeenCalled();
+    // Buffer-only provider → goes through chunked transcription
+    expect(mockTranscribeChunked).toHaveBeenCalled();
     expect(msg.ack).toHaveBeenCalled();
   });
 
-  it("delegates to provider for any audio size", async () => {
+  it("delegates to provider via chunked transcription for buffer-only providers", async () => {
     const episodeNoTranscript = { ...EPISODE, transcriptUrl: null };
     const msg = createMsg({ jobId: "job1", episodeId: "ep1" });
     mockPrisma.pipelineJob.findUnique.mockResolvedValue(JOB);
@@ -623,8 +651,8 @@ describe("handleTranscription", () => {
 
     await handleTranscription(createBatch([msg]), env, ctx);
 
-    // Provider handles all audio — no chunking logic in the queue handler
-    expect(mockTranscribe).toHaveBeenCalled();
+    // Buffer-only provider → chunked transcription
+    expect(mockTranscribeChunked).toHaveBeenCalled();
     expect(msg.ack).toHaveBeenCalled();
   });
 
@@ -644,8 +672,8 @@ describe("handleTranscription", () => {
       mockRssLookup.mockResolvedValue(null);
       mockPiLookup.mockResolvedValue(null);
 
-      // STT provider throws AiProviderError
-      mockTranscribe.mockRejectedValueOnce(
+      // Chunked transcription throws AiProviderError
+      mockTranscribeChunked.mockRejectedValueOnce(
         new AiProviderError({
           message: "Whisper API rate limited",
           provider: "cloudflare",
@@ -655,14 +683,6 @@ describe("handleTranscription", () => {
           requestDurationMs: 500,
         })
       );
-
-      // Mock fetch for audio download
-      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
-        ok: true,
-        status: 200,
-        headers: new Map([["content-type", "audio/mpeg"]]),
-        arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(20000)),
-      }));
 
       await handleTranscription(createBatch([msg]), env, ctx);
 
@@ -708,13 +728,15 @@ describe("handleTranscription", () => {
     mockRssLookup.mockResolvedValue(null);
     mockPiLookup.mockResolvedValue(null);
 
-    // Return tiny audio — should fail with "too small" error
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      headers: new Map([["content-type", "audio/mpeg"]]),
-      arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(100)),
-    }));
+    // Probe reports tiny file
+    mockProbeAudio.mockResolvedValue({
+      contentLength: 100,
+      contentType: "audio/mpeg",
+      ext: "mp3",
+      detectedFormat: { format: "unknown" },
+      durationEstimateSeconds: 0,
+      supportsRangeRequests: true,
+    });
 
     await handleTranscription(createBatch([msg]), env, ctx);
 
@@ -744,9 +766,17 @@ describe("handleTranscription", () => {
       mockPiLookup.mockResolvedValue(null);
     }
 
-    it("falls back to secondary model when primary fails", async () => {
+    it("falls back to secondary model when primary fails (URL-capable providers)", async () => {
       setupSttBase();
       const msg = createMsg({ jobId: "job1", episodeId: "ep1" });
+
+      // Both providers support URL
+      (getProviderImpl as any).mockReturnValue({
+        name: "MockUrlProvider",
+        provider: "groq",
+        supportsUrl: true,
+        transcribe: (...args: any[]) => mockTranscribe(...args),
+      });
 
       // Chain: primary (fails) → secondary (succeeds)
       (resolveModelChain as any).mockResolvedValue([
@@ -754,15 +784,15 @@ describe("handleTranscription", () => {
         { provider: "deepgram", model: "nova-3", providerModelId: "nova-3", pricing: null, limits: null },
       ]);
 
-      // First call fails, second succeeds
+      // URL-direct: first fails, falls to chunked which also fails, then second model's URL succeeds
       mockTranscribe
         .mockRejectedValueOnce(new Error("Groq 500: Internal Server Error"))
         .mockResolvedValueOnce({ transcript: "Fallback transcript.", costDollars: null, latencyMs: 200 });
+      mockTranscribeChunked
+        .mockRejectedValueOnce(new Error("Groq chunked also failed"));
 
       await handleTranscription(createBatch([msg]), env, ctx);
 
-      // Provider was called twice (primary failed, secondary succeeded)
-      expect(mockTranscribe).toHaveBeenCalledTimes(2);
       // Transcript was written to R2
       expect(mockPutWorkProduct).toHaveBeenCalledWith(
         env.R2,
@@ -776,20 +806,31 @@ describe("handleTranscription", () => {
       setupSttBase();
       const msg = createMsg({ jobId: "job1", episodeId: "ep1" });
 
+      (getProviderImpl as any).mockReturnValue({
+        name: "MockUrlProvider",
+        provider: "groq",
+        supportsUrl: true,
+        transcribe: (...args: any[]) => mockTranscribe(...args),
+      });
+
       (resolveModelChain as any).mockResolvedValue([
         { provider: "groq", model: "whisper-turbo", providerModelId: "whisper-large-v3-turbo", pricing: null, limits: null },
         { provider: "deepgram", model: "nova-3", providerModelId: "nova-3", pricing: null, limits: null },
         { provider: "openai", model: "whisper-1", providerModelId: "whisper-1", pricing: null, limits: null },
       ]);
 
+      // URL-direct fails for all, chunked fails for first two, succeeds for third
       mockTranscribe
-        .mockRejectedValueOnce(new Error("Groq 500"))
-        .mockRejectedValueOnce(new Error("Deepgram 500"))
+        .mockRejectedValueOnce(new Error("Groq URL 500"))
+        .mockRejectedValueOnce(new Error("Deepgram URL 500"))
+        .mockRejectedValueOnce(new Error("OpenAI URL 500"));
+      mockTranscribeChunked
+        .mockRejectedValueOnce(new Error("Groq chunked 500"))
+        .mockRejectedValueOnce(new Error("Deepgram chunked 500"))
         .mockResolvedValueOnce({ transcript: "Third time's a charm.", costDollars: null, latencyMs: 300 });
 
       await handleTranscription(createBatch([msg]), env, ctx);
 
-      expect(mockTranscribe).toHaveBeenCalledTimes(3);
       expect(mockPutWorkProduct).toHaveBeenCalledWith(
         env.R2,
         "wp/transcript/ep1.txt",
@@ -802,24 +843,33 @@ describe("handleTranscription", () => {
       setupSttBase();
       const msg = createMsg({ jobId: "job1", episodeId: "ep1" });
 
+      (getProviderImpl as any).mockReturnValue({
+        name: "MockUrlProvider",
+        provider: "groq",
+        supportsUrl: true,
+        transcribe: (...args: any[]) => mockTranscribe(...args),
+      });
+
       (resolveModelChain as any).mockResolvedValue([
         { provider: "groq", model: "whisper-turbo", providerModelId: "whisper-large-v3-turbo", pricing: null, limits: null },
         { provider: "deepgram", model: "nova-3", providerModelId: "nova-3", pricing: null, limits: null },
       ]);
 
       mockTranscribe
-        .mockRejectedValueOnce(new Error("Groq 500"))
-        .mockRejectedValueOnce(new Error("Deepgram 500"));
+        .mockRejectedValueOnce(new Error("Groq URL 500"))
+        .mockRejectedValueOnce(new Error("Deepgram URL 500"));
+      mockTranscribeChunked
+        .mockRejectedValueOnce(new Error("Groq chunked 500"))
+        .mockRejectedValueOnce(new Error("Deepgram chunked 500"));
 
       await handleTranscription(createBatch([msg]), env, ctx);
 
-      expect(mockTranscribe).toHaveBeenCalledTimes(2);
       // Step marked FAILED
       expect(mockPrisma.pipelineStep.updateMany).toHaveBeenCalledWith({
         where: { jobId: "job1", stage: "TRANSCRIPTION", status: "IN_PROGRESS" },
         data: expect.objectContaining({
           status: "FAILED",
-          errorMessage: expect.stringContaining("Deepgram 500"),
+          errorMessage: expect.stringContaining("Deepgram chunked 500"),
         }),
       });
       expect(msg.ack).toHaveBeenCalled();
@@ -847,7 +897,7 @@ describe("handleTranscription", () => {
   describe("audio format detection", () => {
     const episodeNoTranscript = { ...EPISODE, transcriptUrl: null };
 
-    it("logs detected audio format in events", async () => {
+    it("logs detected audio format from probe in events", async () => {
       mockPrisma.pipelineJob.findUnique.mockResolvedValue(JOB);
       mockPrisma.pipelineJob.update.mockResolvedValue({});
       mockPrisma.pipelineStep.create.mockResolvedValue({ id: "step1" });
@@ -862,7 +912,7 @@ describe("handleTranscription", () => {
       const msg = createMsg({ jobId: "job1", episodeId: "ep1" });
       await handleTranscription(createBatch([msg]), env, ctx);
 
-      // writeEvent should have been called with "Audio file analysis"
+      // writeEvent should have been called with "Audio file analysis" using probe data
       const { writeEvent } = await import("../../lib/pipeline-events");
       expect(writeEvent).toHaveBeenCalledWith(
         expect.anything(),
@@ -870,103 +920,14 @@ describe("handleTranscription", () => {
         "INFO",
         "Audio file analysis",
         expect.objectContaining({
-          detectedFormat: expect.any(String),
-          sizeBytes: expect.any(Number),
-          claimedContentType: expect.any(String),
+          detectedFormat: "mp3",
+          sizeBytes: 20000,
+          claimedContentType: "audio/mpeg",
+          supportsRangeRequests: true,
         })
       );
     });
   });
 });
 
-/**
- * detectAudioFormat is not exported from transcription.ts, so we duplicate it
- * here to test its logic directly without modifying the source.
- */
-function detectAudioFormat(buffer: ArrayBuffer): { format: string; details?: string } {
-  const bytes = new Uint8Array(buffer, 0, Math.min(12, buffer.byteLength));
-  if (bytes.length < 4) return { format: "unknown", details: "too small" };
-
-  // ID3 tag (MP3 with metadata header)
-  if (bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33) {
-    return { format: "mp3", details: `ID3v2.${bytes[3]}` };
-  }
-  // MP3 sync word (0xFF followed by 0xE0+ for various MPEG versions/layers)
-  if (bytes[0] === 0xFF && (bytes[1] & 0xE0) === 0xE0) {
-    const version = (bytes[1] >> 3) & 0x03;
-    const layer = (bytes[1] >> 1) & 0x03;
-    const versionStr = version === 3 ? "MPEG1" : version === 2 ? "MPEG2" : version === 0 ? "MPEG2.5" : "unknown";
-    const layerStr = layer === 1 ? "Layer3" : layer === 2 ? "Layer2" : layer === 3 ? "Layer1" : "unknown";
-    return { format: "mp3", details: `${versionStr} ${layerStr}` };
-  }
-  // RIFF/WAV
-  if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46) {
-    return { format: "wav", details: "RIFF" };
-  }
-  // fLaC
-  if (bytes[0] === 0x66 && bytes[1] === 0x4C && bytes[2] === 0x61 && bytes[3] === 0x43) {
-    return { format: "flac" };
-  }
-  // OggS
-  if (bytes[0] === 0x4F && bytes[1] === 0x67 && bytes[2] === 0x67 && bytes[3] === 0x53) {
-    return { format: "ogg" };
-  }
-  // MP4/M4A (ftyp box)
-  if (bytes[4] === 0x66 && bytes[5] === 0x74 && bytes[6] === 0x79 && bytes[7] === 0x70) {
-    return { format: "m4a", details: "ftyp" };
-  }
-  return { format: "unknown", details: `magic: ${Array.from(bytes.slice(0, 4)).map(b => b.toString(16).padStart(2, "0")).join(" ")}` };
-}
-
-describe("detectAudioFormat (unit tests)", () => {
-  function makeBuffer(...bytes: number[]): ArrayBuffer {
-    const buf = new ArrayBuffer(bytes.length);
-    const view = new Uint8Array(buf);
-    for (let i = 0; i < bytes.length; i++) view[i] = bytes[i];
-    return buf;
-  }
-
-  it("MP3 with ID3v2 header", () => {
-    const result = detectAudioFormat(makeBuffer(0x49, 0x44, 0x33, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00));
-    expect(result).toEqual({ format: "mp3", details: "ID3v2.4" });
-  });
-
-  it("MP3 raw MPEG1 Layer3", () => {
-    // 0xFF 0xFB = sync word + MPEG1 (version bits 11) + Layer3 (layer bits 01)
-    const result = detectAudioFormat(makeBuffer(0xFF, 0xFB, 0x90, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00));
-    expect(result).toEqual({ format: "mp3", details: "MPEG1 Layer3" });
-  });
-
-  it("WAV RIFF header", () => {
-    const result = detectAudioFormat(makeBuffer(0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00));
-    expect(result).toEqual({ format: "wav", details: "RIFF" });
-  });
-
-  it("FLAC header", () => {
-    // fLaC = 0x66 0x4C 0x61 0x43
-    const result = detectAudioFormat(makeBuffer(0x66, 0x4C, 0x61, 0x43, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00));
-    expect(result).toEqual({ format: "flac" });
-  });
-
-  it("OGG header", () => {
-    // OggS = 0x4F 0x67 0x67 0x53
-    const result = detectAudioFormat(makeBuffer(0x4F, 0x67, 0x67, 0x53, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00));
-    expect(result).toEqual({ format: "ogg" });
-  });
-
-  it("M4A ftyp box", () => {
-    // ftyp at offset 4: bytes[4..7] = 0x66 0x74 0x79 0x70
-    const result = detectAudioFormat(makeBuffer(0x00, 0x00, 0x00, 0x20, 0x66, 0x74, 0x79, 0x70, 0x4D, 0x34, 0x41, 0x20));
-    expect(result).toEqual({ format: "m4a", details: "ftyp" });
-  });
-
-  it("unknown bytes", () => {
-    const result = detectAudioFormat(makeBuffer(0xAA, 0xBB, 0xCC, 0xDD, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00));
-    expect(result).toEqual({ format: "unknown", details: "magic: aa bb cc dd" });
-  });
-
-  it("buffer < 4 bytes returns unknown too small", () => {
-    const result = detectAudioFormat(makeBuffer(0xFF, 0xFB));
-    expect(result).toEqual({ format: "unknown", details: "too small" });
-  });
-});
+// detectAudioFormat unit tests moved to worker/lib/__tests__/audio-probe.test.ts

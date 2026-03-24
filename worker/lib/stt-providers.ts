@@ -23,6 +23,8 @@ export type AudioInput = { url: string } | { buffer: ArrayBuffer; filename: stri
 export interface SttProvider {
   name: string;
   provider: string;
+  /** Whether this provider can accept a URL directly (no audio download needed). */
+  supportsUrl: boolean;
   transcribe(audio: AudioInput, durationSeconds: number, env: Env, providerModelId: string): Promise<SttResult>;
   poll?(jobId: string, env: Env): Promise<SttPollResult>;
 }
@@ -70,6 +72,7 @@ const WHISPER_CHUNK_SIZE = 15 * 1024 * 1024;
 const OpenAIProvider: SttProvider = {
   name: "OpenAI",
   provider: "openai",
+  supportsUrl: false,
 
   async transcribe(audio: AudioInput, _durationSeconds: number, env: Env, providerModelId: string): Promise<SttResult> {
     const start = Date.now();
@@ -147,6 +150,7 @@ async function openaiSingleRequest(
 const DeepgramProvider: SttProvider = {
   name: "Deepgram",
   provider: "deepgram",
+  supportsUrl: true,
 
   async transcribe(audio: AudioInput, _durationSeconds: number, env: Env, providerModelId: string): Promise<SttResult> {
     const start = Date.now();
@@ -206,6 +210,7 @@ const DeepgramProvider: SttProvider = {
 const AssemblyAIProvider: SttProvider = {
   name: "AssemblyAI",
   provider: "assemblyai",
+  supportsUrl: true,
 
   async transcribe(audio: AudioInput, _durationSeconds: number, env: Env, _providerModelId: string): Promise<SttResult> {
     const start = Date.now();
@@ -311,6 +316,7 @@ const AssemblyAIProvider: SttProvider = {
 const GoogleSttProvider: SttProvider = {
   name: "Google Cloud STT",
   provider: "google",
+  supportsUrl: false,
 
   async transcribe(audio: AudioInput, _durationSeconds: number, env: Env, providerModelId: string): Promise<SttResult> {
     const start = Date.now();
@@ -402,61 +408,18 @@ const GoogleSttProvider: SttProvider = {
 const GroqProvider: SttProvider = {
   name: "Groq",
   provider: "groq",
+  supportsUrl: true,
 
   async transcribe(audio: AudioInput, _durationSeconds: number, env: Env, providerModelId: string): Promise<SttResult> {
     const start = Date.now();
 
-    // Prefer URL-based transcription — avoids file upload size limits entirely
-    const sourceUrl = "url" in audio ? audio.url : audio.sourceUrl;
-    if (sourceUrl) {
-      try {
-        return await groqUrlRequest(sourceUrl, env, providerModelId, start);
-      } catch (urlErr) {
-        // URL-based failed — fall back to chunked upload
-        const urlErrMsg = urlErr instanceof Error ? urlErr.message : String(urlErr);
-        const urlHttpStatus = (urlErr as any)?.httpStatus;
-        console.log(JSON.stringify({
-          level: "warn", stage: "transcription", provider: "groq",
-          action: "url_transcription_failed_falling_back",
-          error: urlErrMsg.slice(0, 500),
-          httpStatus: urlHttpStatus,
-          ts: new Date().toISOString(),
-        }));
-      }
+    // URL-based transcription (handler passes { url } when appropriate)
+    if ("url" in audio) {
+      return groqUrlRequest(audio.url, env, providerModelId, start);
     }
 
-    // Fallback: chunked file upload
-    const audioBuffer = await resolveAudioBuffer(audio);
-    const filename = "buffer" in audio ? audio.filename : "audio.mp3";
-    const totalBytes = audioBuffer.byteLength;
-
-    if (totalBytes <= WHISPER_CHUNK_SIZE) {
-      return groqSingleRequest(audioBuffer, filename, env, providerModelId, start);
-    }
-
-    const totalChunks = Math.ceil(totalBytes / WHISPER_CHUNK_SIZE);
-    const chunks: string[] = [];
-    for (let i = 0; i < totalChunks; i++) {
-      const offset = i * WHISPER_CHUNK_SIZE;
-      const slice = audioBuffer.slice(offset, Math.min(offset + WHISPER_CHUNK_SIZE, totalBytes));
-      try {
-        const result = await groqSingleRequest(slice, `chunk-${i + 1}.mp3`, env, providerModelId, start);
-        if (result.transcript) chunks.push(result.transcript);
-      } catch (chunkErr) {
-        // Re-throw with chunk context so the handler can log which chunk failed
-        const msg = chunkErr instanceof Error ? chunkErr.message : String(chunkErr);
-        throw new AiProviderError({
-          message: `Groq STT chunk ${i + 1}/${totalChunks} failed (bytes ${offset}-${Math.min(offset + WHISPER_CHUNK_SIZE, totalBytes) - 1}): ${msg.slice(0, 500)}`,
-          provider: "groq",
-          model: providerModelId,
-          httpStatus: (chunkErr as any)?.httpStatus,
-          rawResponse: (chunkErr as any)?.rawResponse,
-          requestDurationMs: Date.now() - start,
-        });
-      }
-    }
-
-    return { transcript: chunks.join(" "), costDollars: null, latencyMs: Date.now() - start };
+    // Buffer-based transcription (handler passes { buffer } chunks)
+    return groqSingleRequest(audio.buffer, audio.filename, env, providerModelId, start);
   },
 };
 
@@ -533,6 +496,7 @@ async function groqSingleRequest(
 const CloudflareProvider: SttProvider = {
   name: "Cloudflare Workers AI",
   provider: "cloudflare",
+  supportsUrl: false,
 
   async transcribe(audio: AudioInput, _durationSeconds: number, env: Env, providerModelId: string): Promise<SttResult> {
     const start = Date.now();
