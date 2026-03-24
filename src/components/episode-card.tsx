@@ -43,7 +43,7 @@ export function EpisodeCard({ episode, podcast, reason, variant = "full" }: Epis
   if (variant === "compact") {
     return (
       <button
-        onClick={() => open(podcast.id)}
+        onClick={() => open(podcast.id, episode.id)}
         className="w-[180px] flex-shrink-0 snap-start bg-card border border-border rounded-lg overflow-hidden text-left active:scale-[0.98] transition-transform duration-75"
       >
         {podcast.imageUrl ? (
@@ -80,7 +80,7 @@ export function EpisodeCard({ episode, podcast, reason, variant = "full" }: Epis
   // Full variant — horizontal layout
   return (
     <button
-      onClick={() => open(podcast.id)}
+      onClick={() => open(podcast.id, episode.id)}
       className="w-full flex gap-3 bg-card border border-border rounded-lg p-3 text-left active:scale-[0.98] transition-transform duration-75"
     >
       {podcast.imageUrl ? (

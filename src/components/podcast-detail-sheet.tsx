@@ -1,15 +1,24 @@
-import { useRef, useCallback } from "react";
+import { useRef, useCallback, useEffect } from "react";
 import { X } from "lucide-react";
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from "./ui/sheet";
 import { usePodcastSheet } from "../contexts/podcast-sheet-context";
 import { PodcastDetail } from "../pages/podcast-detail";
 
 export function PodcastDetailSheet() {
-  const { podcastId, close } = usePodcastSheet();
+  const { podcastId, episodeId, close } = usePodcastSheet();
   const startY = useRef(0);
   const currentY = useRef(0);
   const sheetRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Lock body scroll when sheet is open to prevent background scrolling on mobile
+  useEffect(() => {
+    if (podcastId !== null) {
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      return () => { document.body.style.overflow = prev; };
+    }
+  }, [podcastId]);
 
   const onTouchStart = useCallback((e: React.TouchEvent) => {
     startY.current = e.touches[0].clientY;
@@ -67,7 +76,7 @@ export function PodcastDetailSheet() {
         </div>
         {/* Scrollable content */}
         <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 pb-8">
-          {podcastId && <PodcastDetail podcastId={podcastId} />}
+          {podcastId && <PodcastDetail podcastId={podcastId} scrollToEpisodeId={episodeId} />}
         </div>
       </SheetContent>
     </Sheet>

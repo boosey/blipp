@@ -14,7 +14,7 @@ import { ThumbButtons } from "../components/thumb-buttons";
 import type { PodcastDetail as PodcastDetailType, EpisodeSummary } from "../types/user";
 import type { DurationTier } from "../lib/duration-tiers";
 
-export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string } = {}) {
+export function PodcastDetail({ podcastId: propPodcastId, scrollToEpisodeId }: { podcastId?: string; scrollToEpisodeId?: string | null } = {}) {
   const { podcastId: routePodcastId } = useParams<{ podcastId: string }>();
   const podcastId = propPodcastId || routePodcastId;
   const navigate = useNavigate();
@@ -42,6 +42,7 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
   const defaultTier = (meData?.user?.defaultDurationTier ?? 5) as DurationTier;
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const didLongPressRef = useRef(false);
+  const episodeRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   const fetchData = useCallback(async () => {
     if (!podcastId) return;
@@ -64,6 +65,16 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Scroll to target episode after data loads
+  useEffect(() => {
+    if (!scrollToEpisodeId || loading || episodes.length === 0) return;
+    const el = episodeRefs.current.get(scrollToEpisodeId);
+    if (el) {
+      // Small delay to ensure the sheet animation has settled
+      setTimeout(() => el.scrollIntoView({ behavior: "smooth", block: "center" }), 300);
+    }
+  }, [scrollToEpisodeId, loading, episodes]);
 
   async function handleSubscribeWithTier(tier: DurationTier) {
     if (!podcast) return;
@@ -450,38 +461,45 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
               .map((ep) => (
               <div
                 key={ep.id}
-                className="bg-card border border-border rounded-lg p-3"
+                ref={(el) => { if (el) episodeRefs.current.set(ep.id, el); }}
+                className={`bg-card border rounded-lg p-3 ${scrollToEpisodeId === ep.id ? "border-primary/50 ring-1 ring-primary/30" : "border-border"}`}
               >
-                <div className="flex items-start justify-between gap-2">
+                {/* Title — full width, expandable */}
+                <button
+                  className="w-full text-left"
+                  onClick={() => setExpandedEpisodeId(
+                    expandedEpisodeId === ep.id ? null : ep.id
+                  )}
+                >
+                  <p className={`font-medium text-sm text-violet-300 break-words ${expandedEpisodeId === ep.id ? "" : "line-clamp-2"}`}>
+                    {ep.title}
+                  </p>
+                </button>
+                {/* Meta */}
+                <div className="flex gap-2 text-xs text-muted-foreground mt-1">
+                  <span>{new Date(ep.publishedAt).toLocaleDateString()}</span>
+                  {ep.durationSeconds && <span>{formatDuration(ep.durationSeconds)}</span>}
+                </div>
+                {/* Description — expandable */}
+                {ep.description && (
                   <button
-                    className="min-w-0 flex-1 text-left"
+                    className="w-full text-left mt-1.5"
                     onClick={() => setExpandedEpisodeId(
                       expandedEpisodeId === ep.id ? null : ep.id
                     )}
                   >
-                    <p className="font-medium text-sm text-violet-300 break-words">{ep.title}</p>
-                    <div className="flex gap-2 text-xs text-muted-foreground mt-1">
-                      <span>
-                        {new Date(ep.publishedAt).toLocaleDateString()}
-                      </span>
-                      {ep.durationSeconds && (
-                        <span>{formatDuration(ep.durationSeconds)}</span>
-                      )}
-                    </div>
-                    {ep.description && (
-                      <p className={`text-xs text-muted-foreground mt-2 break-words ${
-                        expandedEpisodeId === ep.id ? "" : "line-clamp-2"
-                      }`}>
-                        {ep.description.replace(/<[^>]*>/g, "")}
-                      </p>
-                    )}
+                    <p className={`text-xs text-muted-foreground break-words ${expandedEpisodeId === ep.id ? "" : "line-clamp-2"}`}>
+                      {ep.description.replace(/<[^>]*>/g, "")}
+                    </p>
                   </button>
-                  <div className="flex items-center gap-1.5 flex-shrink-0">
-                    <ThumbButtons
-                      vote={ep.userVote}
-                      onVote={(v) => handleEpisodeVote(ep.id, v)}
-                    />
-                    <div className="relative">
+                )}
+                {/* Action row: thumbs left, blipp right */}
+                <div className="flex items-center justify-between mt-2">
+                  <ThumbButtons
+                    vote={ep.userVote}
+                    onVote={(v) => handleEpisodeVote(ep.id, v)}
+                  />
+                  <div className="relative">
                     {requestingEpisodeId === ep.id ? (
                       <span className="text-xs text-muted-foreground px-3 py-1.5">
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -576,7 +594,6 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
                       </>
                     )}
                   </div>
-                </div>
                 </div>
               </div>
             ))}
