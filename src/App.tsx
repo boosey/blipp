@@ -1,9 +1,11 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import { SignedIn, SignedOut, SignIn } from "@clerk/clerk-react";
+import { Capacitor } from "@capacitor/core";
 import { lazy, Suspense } from "react";
 import { MobileLayout } from "./layouts/mobile-layout";
 import { AdminLayout } from "./layouts/admin-layout";
 import { AdminGuard } from "./components/admin-guard";
+import { NativeSignIn } from "./components/native-sign-in";
 import { Landing } from "./pages/landing";
 import { Pricing } from "./pages/pricing";
 import { About } from "./pages/about";
@@ -83,9 +85,13 @@ export default function App() {
               <MobileLayout />
             </SignedIn>
             <SignedOut>
-              <div className="flex justify-center items-center min-h-screen">
-                <SignIn fallbackRedirectUrl="/home" />
-              </div>
+              {Capacitor.isNativePlatform() ? (
+                <NativeSignIn />
+              ) : (
+                <div className="flex justify-center items-center min-h-screen">
+                  <SignIn fallbackRedirectUrl="/home" />
+                </div>
+              )}
             </SignedOut>
           </>
         }
