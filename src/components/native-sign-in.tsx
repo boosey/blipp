@@ -31,31 +31,14 @@ export function NativeSignIn() {
       // Close the in-app browser
       try { await Browser.close(); } catch (e) { /* may already be closed */ }
 
-      // Parse the rotating token from the URL
-      const url = new URL(event.url);
-      const rotatingToken = url.searchParams.get("rotating_token");
-      console.log("OAUTH_DEEPLINK: rotating_token present:", !!rotatingToken);
-
       try {
-        // Touch the client to pick up the new session
-        // The rotating token from the OAuth callback proves auth completed
-        if (rotatingToken && client) {
-          // Fetch the updated client state which should now have an active session
-          const updatedClient = await client.fetch();
-          console.log("OAUTH_DEEPLINK: sessions:", updatedClient?.sessions?.length);
-
-          const lastSession = updatedClient?.sessions?.[updatedClient.sessions.length - 1];
-          if (lastSession) {
-            await setActive({ session: lastSession.id });
-            navigate("/home", { replace: true });
-            return;
-          }
-        }
-
-        // Fallback: try reloading the signIn
-        if (signIn && signInIdRef.current) {
+        // The OAuth completed in the in-app browser. Clerk's callback
+        // set the rotating token on the server side. Now reload the
+        // signIn from the WebView which has the __client cookie.
+        if (signIn) {
           const si = await signIn.reload();
           console.log("OAUTH_DEEPLINK: signIn status:", si.status);
+          console.log("OAUTH_DEEPLINK: verification:", si.firstFactorVerification?.status);
 
           if (si.status === "complete" && si.createdSessionId) {
             await setActive({ session: si.createdSessionId });
@@ -63,7 +46,7 @@ export function NativeSignIn() {
             return;
           }
 
-          // Handle transferable (new user via OAuth)
+          // Handle transferable (new user needs signUp)
           if (si.firstFactorVerification?.status === "transferable" && signUp) {
             const su = await signUp.create({ transfer: true } as any);
             if (su.status === "complete" && su.createdSessionId) {
@@ -72,9 +55,16 @@ export function NativeSignIn() {
               return;
             }
           }
-        }
 
-        setError("Sign-in was not completed. Please try again.");
+          // If verification is still unverified, the OAuth may not have completed
+          if (si.firstFactorVerification?.status === "unverified") {
+            setError("Sign-in was cancelled. Please try again.");
+          } else {
+            setError(`Sign-in incomplete (status: ${si.status}). Please try again.`);
+          }
+        } else {
+          setError("Sign-in not initialized. Please try again.");
+        }
       } catch (err: any) {
         console.error("OAuth callback error:", err);
         setError(err.errors?.[0]?.longMessage || err.message || "Sign-in failed");
@@ -125,7 +115,27 @@ export function NativeSignIn() {
         throw new Error("No authorization URL returned");
       }
 
+      // The in-app browser doesn't share cookies with the WebView.
+      // We need to pass the __client token so our server can include it
+      // when completing the OAuth callback with Clerk's FAPI.
+      const clientCookie = document.cookie
+        .split(";")
+        .map((c) => c.trim())
+        .find((c) => c.startsWith("__client="));
+      const clientToken = clientCookie?.split("=")[1] || "";
+
+      console.log("OAUTH_DEBUG: has __client cookie:", !!clientToken);
+      console.log("OAUTH_DEBUG: signInId:", result.id);
+
       oauthInProgress.current = true;
+
+      // Store the client token so we can use it after callback
+      if (clientToken) {
+        localStorage.setItem("__clerk_client_token", clientToken);
+      }
+      if (result.id) {
+        localStorage.setItem("__clerk_sign_in_id", result.id);
+      }
 
       await Browser.open({
         url: authUrl.toString(),

@@ -62,26 +62,26 @@ app.notFound((c) => {
 // Clerk FAPI proxy for Capacitor native apps — before any /api middleware
 app.all("/api/__clerk/*", handleClerkProxy);
 
-// OAuth callback landing page — redirects to blipp:// deep link for native app
+// OAuth callback landing page — redirects to blipp:// deep link for native app.
+// After Google OAuth, Clerk redirects here. We pass query params to the app
+// via deep link so it can complete the sign-in from the WebView context
+// (which has the correct __client cookie).
 app.get("/api/sso-callback", (c) => {
-  // Extract the rotating token from Clerk's callback
-  const rotatingToken = c.req.query("__clerk_created_session") ||
-    c.req.query("__clerk_status") || "";
-
-  // Get all query params to pass through
+  // Get all query params to pass through to the app
   const url = new URL(c.req.url);
   const allParams = url.searchParams.toString();
-
-  // Redirect to custom URL scheme so the native app catches it
   const deepLink = `blipp://auth-callback?${allParams}`;
+
+  console.log(JSON.stringify({
+    action: "sso_callback",
+    params: Object.fromEntries(url.searchParams),
+  }));
 
   return c.html(`<!DOCTYPE html><html><head><title>Sign in complete</title></head>
 <body style="font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#06060e;color:white">
 <p>Returning to Blipp...</p>
 <script>
-  // Redirect to the app via custom URL scheme
   window.location.href = ${JSON.stringify(deepLink)};
-  // Fallback message if deep link doesn't work
   setTimeout(function() {
     document.querySelector('p').textContent = 'Sign in complete. Please return to the Blipp app.';
   }, 2000);
