@@ -83,7 +83,6 @@ export function NativeSignIn() {
       const result = await signIn.create({
         strategy: "oauth_google",
         redirectUrl: "https://podblipp.com/sso-callback",
-        redirectUrlComplete: "/home",
       });
 
       console.log("OAUTH_DEBUG: status", result.status);
