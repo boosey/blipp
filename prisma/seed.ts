@@ -106,6 +106,7 @@ async function main() {
     priceInputPerMToken?: number;
     priceOutputPerMToken?: number;
     pricePerKChars?: number;
+    limits?: Record<string, unknown>;
   };
 
   type ModelSeed = {
@@ -123,28 +124,28 @@ async function main() {
       stage: "stt", modelId: "whisper-1", label: "Whisper 1", developer: "openai",
       notes: "Legacy model. Multilingual. Adequate accuracy but superseded by v3 variants. High cost vs alternatives — only use if locked to OpenAI.",
       providers: [
-        { provider: "openai", providerModelId: "whisper-1", providerLabel: "OpenAI", isDefault: true, pricePerMinute: 0.006 },
+        { provider: "openai", providerModelId: "whisper-1", providerLabel: "OpenAI", isDefault: true, pricePerMinute: 0.006, limits: { maxFileSizeBytes: 26214400 } },
       ],
     },
     {
       stage: "stt", modelId: "whisper-large-v3-turbo", label: "Whisper Large v3 Turbo", developer: "openai",
       notes: "Best value STT. Multilingual, near-v3 accuracy at 3-4x speed. Groq is fastest provider. Recommended default.",
       providers: [
-        { provider: "groq", providerModelId: "whisper-large-v3-turbo", providerLabel: "Groq", isDefault: true, pricePerMinute: 0.000667 },
+        { provider: "groq", providerModelId: "whisper-large-v3-turbo", providerLabel: "Groq", isDefault: true, pricePerMinute: 0.000667, limits: { maxFileSizeBytes: 26214400 } },
       ],
     },
     {
       stage: "stt", modelId: "whisper-large-v3", label: "Whisper Large v3", developer: "openai",
       notes: "Highest accuracy Whisper variant. Multilingual. Slower than turbo but better on accents and noisy audio. Use for quality-critical transcription.",
       providers: [
-        { provider: "groq", providerModelId: "whisper-large-v3", providerLabel: "Groq", isDefault: true, pricePerMinute: 0.000667 },
+        { provider: "groq", providerModelId: "whisper-large-v3", providerLabel: "Groq", isDefault: true, pricePerMinute: 0.000667, limits: { maxFileSizeBytes: 26214400 } },
       ],
     },
     {
       stage: "stt", modelId: "distil-whisper-large-v3-en", label: "Distil Whisper Large v3 (EN)", developer: "openai",
       notes: "English-only, distilled for speed. ~2x faster than full v3 with minimal accuracy loss. Cheapest option. Not suitable for multilingual content.",
       providers: [
-        { provider: "groq", providerModelId: "distil-whisper-large-v3-en", providerLabel: "Groq", isDefault: true, pricePerMinute: 0.0002 },
+        { provider: "groq", providerModelId: "distil-whisper-large-v3-en", providerLabel: "Groq", isDefault: true, pricePerMinute: 0.0002, limits: { maxFileSizeBytes: 26214400 } },
       ],
     },
     {
@@ -302,49 +303,49 @@ async function main() {
       stage: "tts", modelId: "gpt-4o-mini-tts", label: "GPT-4o Mini TTS", developer: "openai",
       notes: "Recommended default. Instruction-steerable voice (tone, pacing, emotion). 6 voices. Excellent podcast-quality output. Best overall TTS.",
       providers: [
-        { provider: "openai", providerLabel: "OpenAI", isDefault: true, pricePerMinute: 0.015 },
+        { provider: "openai", providerLabel: "OpenAI", isDefault: true, pricePerMinute: 0.015, limits: { maxInputChars: 40000 } },
       ],
     },
     {
       stage: "tts", modelId: "tts-1", label: "TTS-1", developer: "openai",
       notes: "Standard quality, low latency. 6 voices. No instruction control. Noticeable artifacts on longer text. Cheaper than gpt-4o-mini-tts but audibly worse.",
       providers: [
-        { provider: "openai", providerLabel: "OpenAI", isDefault: true, pricePerKChars: 15.0 },
+        { provider: "openai", providerLabel: "OpenAI", isDefault: true, pricePerKChars: 15.0, limits: { maxInputChars: 4096 } },
       ],
     },
     {
       stage: "tts", modelId: "tts-1-hd", label: "TTS-1 HD", developer: "openai",
       notes: "High-definition variant of TTS-1. 6 voices. Smoother output, fewer artifacts. No instruction control. 2x cost of standard — marginal improvement.",
       providers: [
-        { provider: "openai", providerLabel: "OpenAI", isDefault: true, pricePerKChars: 30.0 },
+        { provider: "openai", providerLabel: "OpenAI", isDefault: true, pricePerKChars: 30.0, limits: { maxInputChars: 4096 } },
       ],
     },
     {
       stage: "tts", modelId: "orpheus-v1-english", label: "Orpheus v1 English", developer: "canopylabs",
       notes: "Expressive TTS with emotion tags ([cheerful], [whisper]). English-only. 6 voices. Ultra-cheap on Groq. Great value but less natural than GPT-4o-mini.",
       providers: [
-        { provider: "groq", providerModelId: "canopylabs/orpheus-v1-english", providerLabel: "Groq", isDefault: true, pricePerKChars: 0.022 },
+        { provider: "groq", providerModelId: "canopylabs/orpheus-v1-english", providerLabel: "Groq", isDefault: true, pricePerKChars: 0.022, limits: { maxInputChars: 10000 } },
       ],
     },
     {
       stage: "tts", modelId: "melotts", label: "MeloTTS", developer: "myshell-ai",
       notes: "Multilingual (EN, ES, FR, ZH, JP, KR). Extremely cheap on CF. Robotic quality — acceptable for testing or non-English content, not for production podcasts.",
       providers: [
-        { provider: "cloudflare", providerModelId: "@cf/myshell-ai/melotts", providerLabel: "Cloudflare Workers AI", isDefault: true, pricePerMinute: 0.000205 },
+        { provider: "cloudflare", providerModelId: "@cf/myshell-ai/melotts", providerLabel: "Cloudflare Workers AI", isDefault: true, pricePerMinute: 0.000205, limits: { maxInputChars: 5000 } },
       ],
     },
     {
       stage: "tts", modelId: "aura-1", label: "Aura 1", developer: "deepgram",
       notes: "Deepgram's first-gen TTS. English-only. Natural conversational tone. Low latency via CF. Good value mid-tier option.",
       providers: [
-        { provider: "cloudflare", providerModelId: "@cf/deepgram/aura-1", providerLabel: "Cloudflare Workers AI", isDefault: true, pricePerKChars: 0.015 },
+        { provider: "cloudflare", providerModelId: "@cf/deepgram/aura-1", providerLabel: "Cloudflare Workers AI", isDefault: true, pricePerKChars: 0.015, limits: { maxInputChars: 5000 } },
       ],
     },
     {
       stage: "tts", modelId: "aura-2-en", label: "Aura 2 English", developer: "deepgram",
       notes: "Deepgram's latest TTS. English-only. Improved naturalness and prosody over Aura 1. Multiple voices. Good quality at reasonable cost via CF.",
       providers: [
-        { provider: "cloudflare", providerModelId: "@cf/deepgram/aura-2-en", providerLabel: "Cloudflare Workers AI", isDefault: true, pricePerKChars: 0.030 },
+        { provider: "cloudflare", providerModelId: "@cf/deepgram/aura-2-en", providerLabel: "Cloudflare Workers AI", isDefault: true, pricePerKChars: 0.030, limits: { maxInputChars: 5000 } },
       ],
     },
   ];
@@ -361,6 +362,7 @@ async function main() {
         update: {
           providerModelId: p.providerModelId ?? null,
           providerLabel: p.providerLabel,
+          limits: p.limits ?? undefined,
           pricePerMinute: p.pricePerMinute ?? null,
           priceInputPerMToken: p.priceInputPerMToken ?? null,
           priceOutputPerMToken: p.priceOutputPerMToken ?? null,
@@ -372,6 +374,7 @@ async function main() {
           provider: p.provider,
           providerModelId: p.providerModelId ?? null,
           providerLabel: p.providerLabel,
+          limits: p.limits ?? undefined,
           pricePerMinute: p.pricePerMinute ?? null,
           priceInputPerMToken: p.priceInputPerMToken ?? null,
           priceOutputPerMToken: p.priceOutputPerMToken ?? null,

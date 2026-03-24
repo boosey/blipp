@@ -1,6 +1,9 @@
 /** Default max chunk size for STT byte-range downloads (25MB). */
 export const DEFAULT_STT_CHUNK_SIZE = 25 * 1024 * 1024;
 
+/** Default max input characters for TTS providers (conservative fallback). */
+export const DEFAULT_TTS_MAX_INPUT_CHARS = 4096;
+
 /** Minimum audio file size to be considered valid (10KB). */
 export const MIN_AUDIO_SIZE_BYTES = 10_000;
 

@@ -40,7 +40,7 @@ aiModelsRoutes.post("/:id/providers", async (c) => {
   const aiModelId = c.req.param("id");
   const body = await c.req.json();
   const { provider, providerLabel, pricePerMinute, priceInputPerMToken,
-          priceOutputPerMToken, pricePerKChars, isDefault } = body;
+          priceOutputPerMToken, pricePerKChars, isDefault, limits } = body;
   if (!provider || !providerLabel) {
     return c.json({ error: "provider and providerLabel are required" }, 400);
   }
@@ -52,6 +52,7 @@ aiModelsRoutes.post("/:id/providers", async (c) => {
       priceOutputPerMToken: priceOutputPerMToken ?? null,
       pricePerKChars: pricePerKChars ?? null,
       isDefault: isDefault ?? false,
+      ...(limits !== undefined && { limits }),
     },
   });
   return c.json({ data }, 201);
@@ -88,6 +89,7 @@ aiModelsRoutes.patch("/:id/providers/:providerId", async (c) => {
       ...("pricePerKChars" in body && { pricePerKChars: body.pricePerKChars }),
       ...("isDefault" in body && { isDefault: body.isDefault }),
       ...("isAvailable" in body && { isAvailable: body.isAvailable }),
+      ...("limits" in body && { limits: body.limits }),
     },
   });
   return c.json({ data });

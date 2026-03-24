@@ -10,6 +10,8 @@ import { wpKey, putWorkProduct, getWorkProduct } from "../lib/work-products";
 import { writeEvent } from "../lib/pipeline-events";
 import { writeAiError, classifyAiError, AiProviderError } from "../lib/ai-errors";
 import { recordSuccess, recordFailure } from "../lib/circuit-breaker";
+import { chunkNarrativeText, createSilenceFrame, concatenateAudioChunks } from "../lib/tts-chunking";
+import { DEFAULT_TTS_MAX_INPUT_CHARS } from "../lib/constants";
 import type { AudioGenerationMessage } from "../lib/queue-messages";
 import type { Env } from "../types";
 
@@ -152,30 +154,68 @@ export async function handleAudioGeneration(
           audioModel = resolved.providerModelId;
           audioProvider = resolved.provider;
 
+          // Determine chunk size from model limits
+          const maxInputChars = (resolved.limits?.maxInputChars as number) ?? DEFAULT_TTS_MAX_INPUT_CHARS;
+          const textChunks = chunkNarrativeText(narrative, maxInputChars);
+
           await writeEvent(prisma, step.id, "INFO", `Generating audio via ${tier}: ${tts.name} (${resolved.providerModelId})`, {
             tier,
             narrativeBytes: narrative.length,
             narrativeWords: narrative.split(/\s+/).length,
             model: resolved.providerModelId,
             provider: resolved.provider,
+            chunks: textChunks.length,
           });
 
           try {
             const ttsTimer = log.timer("tts_generation");
             const voiceConfig = extractProviderConfig(presetConfig, resolved.provider);
-            const result = await generateSpeech(
-              tts, narrative, voiceConfig.voice, resolved.providerModelId, env,
-              resolved.pricing, voiceConfig.instructions, voiceConfig.speed
-            );
+
+            if (textChunks.length <= 1) {
+              // Single-shot: no chunking needed
+              const result = await generateSpeech(
+                tts, narrative, voiceConfig.voice, resolved.providerModelId, env,
+                resolved.pricing, voiceConfig.instructions, voiceConfig.speed
+              );
+              audio = result.audio;
+              ttsUsage = result.usage;
+            } else {
+              // Chunked TTS: generate each chunk, concatenate with silence
+              const audioChunks: ArrayBuffer[] = [];
+              let totalInputTokens = 0;
+              let totalCost: number | null = 0;
+
+              for (let c = 0; c < textChunks.length; c++) {
+                await writeEvent(prisma, step.id, "DEBUG", `Generating chunk ${c + 1}/${textChunks.length} (${textChunks[c].length} chars)`);
+                const result = await generateSpeech(
+                  tts, textChunks[c], voiceConfig.voice, resolved.providerModelId, env,
+                  resolved.pricing, voiceConfig.instructions, voiceConfig.speed
+                );
+                audioChunks.push(result.audio);
+                totalInputTokens += result.usage.inputTokens;
+                totalCost = totalCost !== null && result.usage.cost !== null
+                  ? totalCost + result.usage.cost
+                  : null;
+              }
+
+              const silence = createSilenceFrame();
+              audio = concatenateAudioChunks(audioChunks, silence);
+              ttsUsage = {
+                model: resolved.providerModelId,
+                inputTokens: totalInputTokens,
+                outputTokens: 0,
+                cost: totalCost,
+              };
+            }
+
             recordSuccess(resolved.provider);
-            audio = result.audio;
-            ttsUsage = result.usage;
             ttsTimer();
 
             await writeEvent(prisma, step.id, "INFO", `Audio generated via ${tier} ${tts.name}`, {
               tier,
               sizeBytes: audio.byteLength,
               attemptNumber: i + 1,
+              chunks: textChunks.length,
             });
             break; // Success — stop trying
           } catch (chainErr) {
