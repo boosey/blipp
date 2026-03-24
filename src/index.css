@@ -117,7 +117,7 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
-    touch-action: manipulation;
+    touch-action: pan-x pan-y;
     }
   body {
     @apply bg-background text-foreground;
