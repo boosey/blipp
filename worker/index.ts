@@ -62,84 +62,60 @@ app.notFound((c) => {
 // Clerk FAPI proxy for Capacitor native apps — before any /api middleware
 app.all("/api/__clerk/*", handleClerkProxy);
 
-// OAuth start — sets the __client cookie for clerk.podblipp.com in the in-app
-// browser context, then redirects to the Google OAuth URL. This is needed
-// because the in-app browser doesn't share cookies with the Capacitor WebView.
-app.get("/api/oauth-start", (c) => {
+// OAuth start — called from the WebView via fetch (which includes CapacitorHttp
+// cookies). Extracts the __client cookie, stores it in KV keyed by the OAuth
+// state param, and returns the auth URL for the in-app browser.
+app.get("/api/oauth-start", async (c) => {
   const authUrl = c.req.query("auth_url");
-  const clientToken = c.req.query("client_token");
+  const cookies = c.req.header("cookie") || "";
+  const clientMatch = cookies.match(/__client=([^;]+)/);
+  const clientToken = clientMatch?.[1] || "";
+
+  if (!authUrl) {
+    return c.json({ error: "Missing auth_url" }, 400);
+  }
+
+  // Extract the state param from the auth URL — this is Clerk's unique
+  // identifier for this OAuth flow that will come back in the callback
+  const authUrlObj = new URL(authUrl);
+  const state = authUrlObj.searchParams.get("state") || "";
 
   console.log(JSON.stringify({
     action: "oauth_start",
-    hasAuthUrl: !!authUrl,
     hasClientToken: !!clientToken,
     tokenLength: clientToken?.length || 0,
+    state,
   }));
 
-  if (!authUrl) {
-    return c.text("Missing auth_url", 400);
+  // Store the client token keyed by state — the sso-callback will retrieve
+  // it to complete the OAuth flow with Clerk's FAPI server-side
+  if (clientToken && state && c.env.RATE_LIMIT_KV) {
+    await c.env.RATE_LIMIT_KV.put(`oauth_client:${state}`, clientToken, { expirationTtl: 600 });
   }
 
-  // We can't set cookies for clerk.podblipp.com from our domain.
-  // Instead, we'll complete the OAuth callback server-side after Google redirects.
-  // For now, redirect to the Google auth URL — we'll handle the cookie issue
-  // by completing the sign-in server-side in the sso-callback.
+  const headers = new Headers({
+    "content-type": "application/json",
+    "access-control-allow-origin": c.req.header("origin") || "*",
+    "access-control-allow-credentials": "true",
+  });
 
-  // Store the client token in a cookie on OUR domain so the sso-callback can use it
-  const headers = new Headers();
-  headers.set("location", authUrl);
-  if (clientToken) {
-    headers.append("set-cookie", `__blipp_client=${clientToken}; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=600`);
-  }
-
-  return new Response(null, { status: 302, headers });
+  return new Response(JSON.stringify({ url: authUrl }), { headers });
 });
 
-// OAuth callback landing page — after Google OAuth, Clerk processes the callback
-// and redirects here. We complete the sign-in by calling Clerk's FAPI with the
-// __client token we saved in the oauth-start step.
+// OAuth callback — Clerk redirects here after the OAuth callback completes (or fails).
+// We DON'T rely on this hitting successfully because Clerk's oauth_callback may fail
+// to redirect here if it can't find the __client cookie.
+// The real sign-in completion happens in the app via signIn.reload().
+// This page just redirects to the app via deep link.
 app.get("/api/sso-callback", async (c) => {
   const url = new URL(c.req.url);
   const allParams = url.searchParams.toString();
-
-  // Get the __client token we saved earlier
-  const cookies = c.req.header("cookie") || "";
-  const clientTokenMatch = cookies.match(/__blipp_client=([^;]+)/);
-  const clientToken = clientTokenMatch?.[1] || "";
+  const deepLink = `blipp://auth-callback?${allParams}`;
 
   console.log(JSON.stringify({
     action: "sso_callback",
     params: Object.fromEntries(url.searchParams),
-    hasClientToken: !!clientToken,
   }));
-
-  // If we have the client token, try to complete the sign-in by calling Clerk's
-  // FAPI to get the updated client state, then redirect to the app
-  if (clientToken) {
-    try {
-      // Call Clerk FAPI to get current client state with the original __client token
-      const clerkResp = await fetch("https://clerk.podblipp.com/v1/client?__clerk_api_version=2025-11-10", {
-        headers: {
-          "cookie": `__client=${clientToken}`,
-          "origin": "https://clerk.podblipp.com",
-        },
-      });
-      const clerkData = await clerkResp.json() as any;
-      const sessions = clerkData?.response?.sessions || clerkData?.sessions || [];
-
-      console.log(JSON.stringify({
-        action: "sso_callback_clerk",
-        status: clerkResp.status,
-        sessionCount: sessions.length,
-        lastSessionId: sessions[sessions.length - 1]?.id || null,
-      }));
-    } catch (err) {
-      console.error("sso-callback clerk check failed:", err);
-    }
-  }
-
-  // Redirect to the app via deep link
-  const deepLink = `blipp://auth-callback?${allParams}`;
 
   return c.html(`<!DOCTYPE html><html><head><title>Sign in complete</title></head>
 <body style="font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#06060e;color:white">
@@ -151,6 +127,85 @@ app.get("/api/sso-callback", async (c) => {
   }, 2000);
 </script>
 </body></html>`);
+});
+
+// CORS preflight for oauth-complete
+app.options("/api/oauth-complete", (c) => {
+  return new Response(null, {
+    status: 204,
+    headers: {
+      "access-control-allow-origin": c.req.header("origin") || "*",
+      "access-control-allow-methods": "POST, OPTIONS",
+      "access-control-allow-headers": "Content-Type",
+      "access-control-allow-credentials": "true",
+    },
+  });
+});
+
+// Server-side OAuth completion — called from the WebView after the user completes
+// Google sign-in in the in-app browser. Uses the stored __client token to call
+// Clerk's FAPI and complete the sign-in server-side.
+app.post("/api/oauth-complete", async (c) => {
+  const { signInId, state } = await c.req.json() as any;
+  const cookies = c.req.header("cookie") || "";
+  const clientMatch = cookies.match(/__client=([^;]+)/);
+  let clientToken = clientMatch?.[1] || "";
+
+  // Try to get the token from KV if not in cookies
+  if (!clientToken && state && c.env.RATE_LIMIT_KV) {
+    clientToken = await c.env.RATE_LIMIT_KV.get(`oauth_client:${state}`) || "";
+  }
+
+  console.log(JSON.stringify({
+    action: "oauth_complete",
+    signInId,
+    state,
+    hasClientToken: !!clientToken,
+  }));
+
+  if (!clientToken || !signInId) {
+    return c.json({ error: "Missing client token or sign-in ID" }, 400);
+  }
+
+  try {
+    // Call Clerk FAPI to get the sign-in status
+    const clerkResp = await fetch(
+      `https://clerk.podblipp.com/v1/client/sign_ins/${signInId}?__clerk_api_version=2025-11-10`,
+      {
+        headers: {
+          "cookie": `__client=${clientToken}`,
+          "origin": "https://clerk.podblipp.com",
+        },
+      }
+    );
+    const data = await clerkResp.json();
+
+    console.log(JSON.stringify({
+      action: "oauth_complete_result",
+      status: clerkResp.status,
+      data: JSON.stringify(data).substring(0, 500),
+    }));
+
+    const respHeaders = new Headers({ "content-type": "application/json" });
+    respHeaders.set("access-control-allow-origin", c.req.header("origin") || "*");
+    respHeaders.set("access-control-allow-credentials", "true");
+
+    // Forward any set-cookie from Clerk
+    const setCookies = clerkResp.headers.getSetCookie?.() || [];
+    for (const cookie of setCookies) {
+      const rewritten = cookie.replace(/;\s*domain=[^;]*/gi, "")
+        .replace(/;\s*samesite=[^;]*/gi, "") + "; SameSite=None; Secure";
+      respHeaders.append("set-cookie", rewritten);
+    }
+
+    return new Response(JSON.stringify(data), {
+      status: clerkResp.status,
+      headers: respHeaders,
+    });
+  } catch (err: any) {
+    console.error("oauth-complete error:", err);
+    return c.json({ error: err.message }, 500);
+  }
 });
 
 // Request ID — must be first so all other middleware can access it

@@ -18,6 +18,7 @@ export function NativeSignIn() {
   const [error, setError] = useState<string | null>(null);
   const oauthInProgress = useRef(false);
   const signInIdRef = useRef<string | null>(null);
+  const oauthStateRef = useRef<string | null>(null);
 
   // Listen for deep link callback (blipp://auth-callback)
   useEffect(() => {
@@ -74,8 +75,9 @@ export function NativeSignIn() {
     });
 
     // Handle browser close — this fires when user dismisses the in-app browser.
-    // Since the deep link may not fire (Clerk shows error instead of redirecting
-    // to our sso-callback), we try to complete the sign-in here.
+    // Clerk's OAuth callback may have completed server-side even though the
+    // browser showed an error. We call our server-side completion endpoint
+    // which has the __client token to check the sign-in status with Clerk.
     const browserFinished = Browser.addListener("browserFinished", async () => {
       console.log("OAUTH: browser closed, oauthInProgress:", oauthInProgress.current);
       if (!oauthInProgress.current) return;
@@ -87,12 +89,47 @@ export function NativeSignIn() {
       }
 
       try {
-        // Reload the signIn from the WebView context which has the __client cookie.
-        // Even though the in-app browser showed an error, Clerk may have already
-        // processed the OAuth callback server-side.
+        // First try: call our server which has the __client token stored
+        // and can check the sign-in status with Clerk's FAPI
+        const signInId = signInIdRef.current;
+        const state = oauthStateRef.current;
+
+        if (signInId) {
+          console.log("OAUTH_RESUME: calling oauth-complete, signInId:", signInId, "state:", state);
+
+          const resp = await fetch("https://blipp-staging.boosey-boudreaux.workers.dev/api/oauth-complete", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ signInId, state }),
+          });
+          const data = await resp.json() as any;
+          console.log("OAUTH_RESUME: server response status:", resp.status);
+          console.log("OAUTH_RESUME: sign-in status:", data?.response?.status || data?.status);
+
+          const responseData = data?.response || data;
+          if (responseData?.status === "complete" && responseData?.created_session_id) {
+            console.log("OAUTH_RESUME: sign-in complete! sessionId:", responseData.created_session_id);
+            await setActive({ session: responseData.created_session_id });
+            navigate("/home", { replace: true });
+            return;
+          }
+
+          // Check if transferable (new user)
+          if (responseData?.first_factor_verification?.status === "transferable" && signUp) {
+            console.log("OAUTH_RESUME: transferable, creating signUp");
+            const su = await signUp.create({ transfer: true } as any);
+            if (su.status === "complete" && su.createdSessionId) {
+              await setActive({ session: su.createdSessionId });
+              navigate("/home", { replace: true });
+              return;
+            }
+          }
+        }
+
+        // Fallback: try signIn.reload() from the WebView
         const si = await signIn.reload();
-        console.log("OAUTH_RESUME: signIn status:", si.status);
-        console.log("OAUTH_RESUME: verification:", si.firstFactorVerification?.status);
+        console.log("OAUTH_RESUME: fallback reload status:", si.status);
 
         if (si.status === "complete" && si.createdSessionId) {
           await setActive({ session: si.createdSessionId });
@@ -100,25 +137,10 @@ export function NativeSignIn() {
           return;
         }
 
-        // Handle transferable (new user needs signUp)
-        if (si.firstFactorVerification?.status === "transferable" && signUp) {
-          console.log("OAUTH_RESUME: creating signUp from transfer");
-          const su = await signUp.create({ transfer: true } as any);
-          if (su.status === "complete" && su.createdSessionId) {
-            await setActive({ session: su.createdSessionId });
-            navigate("/home", { replace: true });
-            return;
-          }
-        }
-
-        if (si.firstFactorVerification?.status === "unverified") {
-          setError("Sign-in was cancelled. Please try again.");
-        } else {
-          setError(`Sign-in incomplete (${si.status}). Please try again.`);
-        }
+        setError("Sign-in was not completed. Please try again.");
       } catch (err: any) {
         console.error("OAuth resume error:", err);
-        setError(err.errors?.[0]?.longMessage || "Sign-in failed. Please try again.");
+        setError(err.errors?.[0]?.longMessage || err.message || "Sign-in failed. Please try again.");
       } finally {
         setLoading(false);
       }
@@ -155,34 +177,40 @@ export function NativeSignIn() {
         throw new Error("No authorization URL returned");
       }
 
+      // Store the OAuth state for the server-side completion
+      try {
+        const authUrlObj = new URL(authUrl.toString());
+        oauthStateRef.current = authUrlObj.searchParams.get("state");
+      } catch (e) { /* ignore */ }
+
       oauthInProgress.current = true;
 
       // The in-app browser has a SEPARATE cookie jar from the WebView.
-      // Clerk's OAuth callback (clerk.podblipp.com/v1/oauth_callback) needs
-      // the __client cookie to look up the sign-in attempt.
-      // Solution: route through our server first, which sets the __client
-      // cookie in the in-app browser before redirecting to Google.
-      //
-      // We get the __client JWT from the Clerk client object — it's the
-      // rotating token that identifies this client session.
-      const clientToken = (client as any)?.__internal_toSnapshot?.()?.client?.rotating_token
-        || localStorage.getItem("__clerk_client_jwt") || "";
+      // CapacitorHttp stores cookies in the native cookie jar (not document.cookie).
+      // We route through our server's oauth-start endpoint using fetch (which sends
+      // CapacitorHttp cookies), get back the auth URL with the client token embedded,
+      // then open THAT URL in the in-app browser.
+      try {
+        const startResp = await fetch(
+          `https://blipp-staging.boosey-boudreaux.workers.dev/api/oauth-start?auth_url=${encodeURIComponent(authUrl.toString())}`,
+          { credentials: "include", redirect: "manual" }
+        );
+        // The server responds with a redirect URL that has the client token baked in
+        const startData = await startResp.json() as any;
+        const browserUrl = startData.url || authUrl.toString();
+        console.log("OAUTH_DEBUG: browser URL from server:", browserUrl.substring(0, 100));
 
-      // Also try to extract from cookies if available
-      const cookieMatch = document.cookie.match(/__client=([^;]+)/);
-      const tokenToSend = clientToken || cookieMatch?.[1] || "";
-
-      console.log("OAUTH_DEBUG: has client token:", !!tokenToSend, "length:", tokenToSend.length);
-
-      // Route through our server which sets the __client cookie for clerk.podblipp.com
-      const startUrl = `https://blipp-staging.boosey-boudreaux.workers.dev/api/oauth-start?` +
-        `auth_url=${encodeURIComponent(authUrl.toString())}` +
-        `&client_token=${encodeURIComponent(tokenToSend)}`;
-
-      await Browser.open({
-        url: startUrl,
-        presentationStyle: "popover",
-      });
+        await Browser.open({
+          url: browserUrl,
+          presentationStyle: "popover",
+        });
+      } catch (e) {
+        console.error("OAUTH_DEBUG: oauth-start fetch failed, using direct URL:", e);
+        await Browser.open({
+          url: authUrl.toString(),
+          presentationStyle: "popover",
+        });
+      }
     } catch (err: any) {
       console.error("Google sign-in error:", err);
       setError(err.errors?.[0]?.longMessage || err.message || "Failed to start sign-in");
