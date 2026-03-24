@@ -387,7 +387,7 @@ export async function scoreRecommendations(
   // Cold start: if user has fewer than minSubs subscriptions, return popular
   if (subscribedIds.size < (minSubs as number)) {
     const popular = await prisma.podcastProfile.findMany({
-      where: { podcastId: { notIn: [...excludeIds] } },
+      where: { podcastId: { notIn: [...excludeIds] }, podcast: { deliverable: true } },
       orderBy: { popularity: "desc" },
       take: limit,
       include: { podcast: { select: { id: true, title: true, author: true, description: true, imageUrl: true, feedUrl: true, categories: true, episodeCount: true } } },
@@ -415,7 +415,7 @@ export async function scoreRecommendations(
   }
 
   const podcastProfiles = await prisma.podcastProfile.findMany({
-    where: { podcastId: { notIn: [...excludeIds] } },
+    where: { podcastId: { notIn: [...excludeIds] }, podcast: { deliverable: true } },
     include: { podcast: { select: { subscriptions: { select: { userId: true } } } } },
   });
 

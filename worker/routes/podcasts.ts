@@ -65,14 +65,13 @@ podcasts.get("/catalog", async (c) => {
   const pageSize = Math.min(100, Math.max(1, parseInt(c.req.query("pageSize") || "50")));
   const skip = (page - 1) * pageSize;
 
-  const where = q
-    ? {
-        OR: [
-          { title: { contains: q, mode: "insensitive" } },
-          { author: { contains: q, mode: "insensitive" } },
-        ],
-      }
-    : {};
+  const where: any = { deliverable: true };
+  if (q) {
+    where.OR = [
+      { title: { contains: q, mode: "insensitive" } },
+      { author: { contains: q, mode: "insensitive" } },
+    ];
+  }
 
   const [podcasts, total] = await Promise.all([
     prisma.podcast.findMany({
@@ -746,7 +745,7 @@ podcasts.get("/:id/episodes", async (c) => {
   });
 
   const episodes = await prisma.episode.findMany({
-    where: { podcastId },
+    where: { podcastId, contentStatus: { not: "NOT_DELIVERABLE" } },
     orderBy: { publishedAt: "desc" },
     take: 50,
     select: {

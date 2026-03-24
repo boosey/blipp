@@ -73,6 +73,9 @@ beforeEach(() => {
     return fallback !== undefined ? fallback : true;
   });
   mockFetch.mockResolvedValue({
+    ok: true,
+    status: 200,
+    statusText: "OK",
     text: vi.fn().mockResolvedValue("<rss></rss>"),
   });
   mockLogger.info.mockReset();
@@ -145,6 +148,9 @@ describe("handleFeedRefresh", () => {
     mockFetch
       .mockRejectedValueOnce(new Error("Network error"))
       .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        statusText: "OK",
         text: vi.fn().mockResolvedValue("<rss></rss>"),
       });
 
@@ -662,7 +668,7 @@ describe("handleFeedRefresh", () => {
       const abortError = new DOMException("The operation was aborted", "AbortError");
       mockFetch
         .mockRejectedValueOnce(abortError)
-        .mockResolvedValueOnce({ text: vi.fn().mockResolvedValue("<rss></rss>") });
+        .mockResolvedValueOnce({ ok: true, status: 200, statusText: "OK", text: vi.fn().mockResolvedValue("<rss></rss>") });
 
       const mockMsg = {
         body: { podcastIds: ["pod-1", "pod-2"] },

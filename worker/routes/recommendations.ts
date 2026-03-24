@@ -154,7 +154,7 @@ async function generateCuratedRows(
         // Hydrate podcast data
         const podcastIds = result.recommendations.map((r) => r.podcastId);
         const podcasts = await prisma.podcast.findMany({
-          where: { id: { in: podcastIds } },
+          where: { id: { in: podcastIds }, deliverable: true },
           select: { id: true, title: true, author: true, description: true, imageUrl: true, feedUrl: true, categories: true, episodeCount: true, _count: { select: { subscriptions: true } } },
         });
         const podcastMap = new Map(podcasts.map((p: any) => [p.id, { ...p, subscriberCount: p._count.subscriptions, _count: undefined }]));
@@ -324,7 +324,7 @@ recommendations.get("/", async (c) => {
         .filter((r: any) => !dismissedIds.has(r.podcastId))
         .map((r: any) => r.podcastId);
       const podcasts = await prisma.podcast.findMany({
-        where: { id: { in: podcastIds } },
+        where: { id: { in: podcastIds }, deliverable: true },
         select: { id: true, title: true, author: true, description: true, imageUrl: true, feedUrl: true, categories: true, episodeCount: true, _count: { select: { subscriptions: true } } },
       });
       const podcastMap = new Map(podcasts.map((p: any) => [p.id, { ...p, subscriberCount: p._count.subscriptions, _count: undefined }]));
@@ -354,7 +354,7 @@ recommendations.get("/", async (c) => {
   // Hydrate with podcast data
   const podcastIds = result.recommendations.map((r) => r.podcastId);
   const podcasts = await prisma.podcast.findMany({
-    where: { id: { in: podcastIds } },
+    where: { id: { in: podcastIds }, deliverable: true },
     select: { id: true, title: true, author: true, description: true, imageUrl: true, feedUrl: true, categories: true, episodeCount: true, _count: { select: { subscriptions: true } } },
   });
   const podcastMap = new Map(podcasts.map((p: any) => [p.id, { ...p, subscriberCount: p._count.subscriptions, _count: undefined }]));
