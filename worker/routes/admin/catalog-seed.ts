@@ -1,6 +1,8 @@
 import { Hono } from "hono";
 import type { Env } from "../../types";
 import { parsePagination, paginatedResponse } from "../../lib/admin-helpers";
+import { getConfig } from "../../lib/config";
+import { sendBatchedFeedRefresh } from "../../lib/queue-helpers";
 
 const ACTIVE_STATUSES = ["pending", "discovering", "upserting"];
 
@@ -367,16 +369,12 @@ catalogSeedRoutes.post("/:id/ingest", async (c) => {
       data: { status: "complete", completedAt: new Date() },
     });
 
-    // Queue feed refresh in batches
-    const BATCH_SIZE = 100;
-    for (let i = 0; i < allIds.length; i += BATCH_SIZE) {
-      const batch = allIds.slice(i, i + BATCH_SIZE);
-      await c.env.FEED_REFRESH_QUEUE.sendBatch(
-        batch.map((podcastId: string) => ({
-          body: { podcastId, type: "manual" as const, ...(refreshJobId && { refreshJobId }) },
-        }))
-      );
-    }
+    // Queue feed refresh in batched chunks
+    const batchConcurrency = (await getConfig(prisma, "pipeline.feedRefresh.batchConcurrency", 10)) as number;
+    await sendBatchedFeedRefresh(c.env.FEED_REFRESH_QUEUE, allIds, batchConcurrency, {
+      type: "manual",
+      ...(refreshJobId && { refreshJobId }),
+    });
 
     return c.json({
       created: chunkCreatedCount,

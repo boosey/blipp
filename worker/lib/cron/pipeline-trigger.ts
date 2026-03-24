@@ -1,9 +1,12 @@
 import type { CronLogger } from "./runner";
 import type { Env } from "../../types";
+import { getConfig } from "../config";
+import { sendBatchedFeedRefresh } from "../queue-helpers";
 
 type PrismaLike = {
   podcast: { findMany: (args: any) => Promise<any[]> };
   episodeRefreshJob: { create: (args: any) => Promise<any> };
+  platformConfig: { findUnique: (args: any) => Promise<any> };
 };
 
 /**
@@ -32,16 +35,9 @@ export async function runPipelineTriggerJob(
     },
   });
 
-  // Queue feed refresh in batches of 100
-  const BATCH_SIZE = 100;
-  for (let i = 0; i < podcastIds.length; i += BATCH_SIZE) {
-    const batch = podcastIds.slice(i, i + BATCH_SIZE);
-    await env.FEED_REFRESH_QUEUE.sendBatch(
-      batch.map((podcastId: string) => ({
-        body: { podcastId, type: "cron" as const, refreshJobId: job.id },
-      }))
-    );
-  }
+  // Queue feed refresh in batched chunks
+  const batchConcurrency = (await getConfig(prisma, "pipeline.feedRefresh.batchConcurrency", 10)) as number;
+  await sendBatchedFeedRefresh(env.FEED_REFRESH_QUEUE, podcastIds, batchConcurrency, { type: "cron", refreshJobId: job.id });
 
   await logger.info("feed_refresh_enqueued", {
     trigger: "cron",

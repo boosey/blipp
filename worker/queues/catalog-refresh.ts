@@ -88,7 +88,7 @@ export async function handleCatalogRefresh(
         // Mark CatalogSeedJob as complete (discovery is done)
         if (seedJobId) await updateSeedJob(prisma, seedJobId, { status: "complete", completedAt: new Date() });
 
-        await queueFeedRefresh(env, upsertedIds, refreshJobId);
+        await queueFeedRefresh(env, prisma, upsertedIds, refreshJobId);
 
         await updateStatus(prisma, "complete");
         console.log(`[catalog-refresh] ${action} (${seedMode}, ${sourceId}) complete. ${upsertedIds.length} podcasts processed.`);
@@ -405,13 +405,13 @@ async function markPendingDeletion(prisma: any, chartPodcastIds: string[]): Prom
   }
 }
 
-async function queueFeedRefresh(env: Env, podcastIds: string[], refreshJobId?: string): Promise<void> {
+async function queueFeedRefresh(env: Env, prisma: any, podcastIds: string[], refreshJobId?: string): Promise<void> {
   if (podcastIds.length === 0) return;
-  const messages = podcastIds.map((podcastId) => ({
-    body: { podcastId, type: "manual" as const, ...(refreshJobId && { refreshJobId }) },
-  }));
-  const BATCH_SIZE = 100;
-  for (let i = 0; i < messages.length; i += BATCH_SIZE) {
-    await env.FEED_REFRESH_QUEUE.sendBatch(messages.slice(i, i + BATCH_SIZE));
-  }
+  const { getConfig: gc } = await import("../lib/config");
+  const { sendBatchedFeedRefresh } = await import("../lib/queue-helpers");
+  const batchConcurrency = (await gc(prisma, "pipeline.feedRefresh.batchConcurrency", 10)) as number;
+  await sendBatchedFeedRefresh(env.FEED_REFRESH_QUEUE, podcastIds, batchConcurrency, {
+    type: "manual",
+    ...(refreshJobId && { refreshJobId }),
+  });
 }

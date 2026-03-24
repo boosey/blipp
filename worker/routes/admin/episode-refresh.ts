@@ -1,6 +1,8 @@
 import { Hono } from "hono";
 import type { Env } from "../../types";
 import { parsePagination, paginatedResponse } from "../../lib/admin-helpers";
+import { getConfig } from "../../lib/config";
+import { sendBatchedFeedRefresh } from "../../lib/queue-helpers";
 
 const ACTIVE_STATUSES = ["pending", "refreshing", "paused"];
 
@@ -149,15 +151,8 @@ episodeRefreshRoutes.post("/", async (c) => {
     },
   });
 
-  const BATCH_SIZE = 100;
-  for (let i = 0; i < podcastIds.length; i += BATCH_SIZE) {
-    const batch = podcastIds.slice(i, i + BATCH_SIZE);
-    await c.env.FEED_REFRESH_QUEUE.sendBatch(
-      batch.map((podcastId: string) => ({
-        body: { podcastId, refreshJobId: job.id },
-      }))
-    );
-  }
+  const batchConcurrency = (await getConfig(prisma, "pipeline.feedRefresh.batchConcurrency", 10)) as number;
+  await sendBatchedFeedRefresh(c.env.FEED_REFRESH_QUEUE, podcastIds, batchConcurrency, { refreshJobId: job.id });
 
   return c.json({ status: "queued", jobId: job.id, podcastsTotal: podcastIds.length });
 });
@@ -245,19 +240,13 @@ episodeRefreshRoutes.post("/:id/resume", async (c) => {
     },
   });
 
-  const BATCH_SIZE = 100;
-  for (let i = 0; i < targetPodcastIds.length; i += BATCH_SIZE) {
-    const batch = targetPodcastIds.slice(i, i + BATCH_SIZE);
-    await c.env.FEED_REFRESH_QUEUE.sendBatch(
-      batch.map((podcastId: string) => ({
-        body: { podcastId, refreshJobId: id },
-      }))
-    );
-  }
+  const batchConcurrency = (await getConfig(prisma, "pipeline.feedRefresh.batchConcurrency", 10)) as number;
+  await sendBatchedFeedRefresh(c.env.FEED_REFRESH_QUEUE, targetPodcastIds, batchConcurrency, { refreshJobId: id });
 
   const pendingIds = pendingEpisodes.map((e: any) => e.id);
-  for (let i = 0; i < pendingIds.length; i += BATCH_SIZE) {
-    const batch = pendingIds.slice(i, i + BATCH_SIZE);
+  const CF_BATCH_LIMIT = 100;
+  for (let i = 0; i < pendingIds.length; i += CF_BATCH_LIMIT) {
+    const batch = pendingIds.slice(i, i + CF_BATCH_LIMIT);
     await c.env.CONTENT_PREFETCH_QUEUE.sendBatch(
       batch.map((episodeId: string) => ({
         body: { episodeId, refreshJobId: id },

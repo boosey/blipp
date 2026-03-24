@@ -1,5 +1,7 @@
 import { Hono } from "hono";
 import type { Env } from "../../types";
+import { getConfig } from "../../lib/config";
+import { sendBatchedFeedRefresh } from "../../lib/queue-helpers";
 
 const cleanR2Routes = new Hono<{ Bindings: Env }>();
 
@@ -46,19 +48,14 @@ cleanR2Routes.post("/bulk-refresh", async (c) => {
     return c.json({ error: "podcastIds (string[]) required" }, 400);
   }
 
-  const BATCH_SIZE = 100;
-  let queued = 0;
-  for (let i = 0; i < podcastIds.length; i += BATCH_SIZE) {
-    const batch = podcastIds.slice(i, i + BATCH_SIZE);
-    await c.env.FEED_REFRESH_QUEUE.sendBatch(
-      batch.map((podcastId: string) => ({
-        body: { podcastId, type: "manual" as const, ...(refreshJobId && { refreshJobId }) },
-      }))
-    );
-    queued += batch.length;
-  }
+  const prisma = c.get("prisma") as any;
+  const batchConcurrency = (await getConfig(prisma, "pipeline.feedRefresh.batchConcurrency", 10)) as number;
+  await sendBatchedFeedRefresh(c.env.FEED_REFRESH_QUEUE, podcastIds, batchConcurrency, {
+    type: "manual",
+    ...(refreshJobId && { refreshJobId }),
+  });
 
-  return c.json({ data: { queued } });
+  return c.json({ data: { queued: podcastIds.length } });
 });
 
 export { cleanR2Routes };

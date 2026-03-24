@@ -2,6 +2,8 @@ import { Hono } from "hono";
 import type { Env } from "../../types";
 import { PIPELINE_STAGE_NAMES } from "../../lib/constants";
 import { parsePagination, paginatedResponse } from "../../lib/admin-helpers";
+import { getConfig } from "../../lib/config";
+import { sendBatchedFeedRefresh } from "../../lib/queue-helpers";
 
 const STAGE_ICONS: Record<string, string> = {
   TRANSCRIPTION: "file-audio",
@@ -373,9 +375,9 @@ pipelineRoutes.post("/trigger/feed-refresh", async (c) => {
     select: { id: true },
   });
 
-  for (const p of podcasts) {
-    await c.env.FEED_REFRESH_QUEUE.send({ type: "manual", podcastId: p.id });
-  }
+  const podcastIds = podcasts.map((p: any) => p.id);
+  const batchConcurrency = (await getConfig(prisma, "pipeline.feedRefresh.batchConcurrency", 10)) as number;
+  await sendBatchedFeedRefresh(c.env.FEED_REFRESH_QUEUE, podcastIds, batchConcurrency, { type: "manual" });
 
   return c.json({
     data: { enqueued: podcasts.length, skipped: 0, message: `Feed refresh enqueued for ${podcasts.length} podcasts` },

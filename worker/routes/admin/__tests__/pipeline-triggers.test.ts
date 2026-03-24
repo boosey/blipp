@@ -103,7 +103,7 @@ describe("Pipeline Trigger Routes", () => {
       expect(res.status).toBe(200);
       const body: any = await res.json();
       expect(body.data.enqueued).toBe(2);
-      expect(env.FEED_REFRESH_QUEUE.send).toHaveBeenCalledTimes(2);
+      expect(env.FEED_REFRESH_QUEUE.sendBatch).toHaveBeenCalled();
     });
   });
 
