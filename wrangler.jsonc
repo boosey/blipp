@@ -16,7 +16,8 @@
 	"vars": {
 		"ENVIRONMENT": "staging",
 		"APP_ORIGIN": "https://blipp-staging.boosey-boudreaux.workers.dev",
-		"ALLOWED_ORIGINS": "http://localhost:8787,http://localhost:5173,https://blipp-staging.boosey-boudreaux.workers.dev,capacitor://localhost,capacitor://podblipp.com,ionic://localhost"
+		"ALLOWED_ORIGINS": "http://localhost:8787,http://localhost:5173,https://blipp-staging.boosey-boudreaux.workers.dev,capacitor://localhost,capacitor://podblipp.com,ionic://localhost",
+		"CLERK_FAPI_URL": "https://living-skunk-81.clerk.accounts.dev"
 	},
 	"hyperdrive": [
 		{
