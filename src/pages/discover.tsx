@@ -53,7 +53,8 @@ export function Discover() {
 
   const categoryNames = useMemo(() => {
     if (!categoryData?.categories) return ["All"];
-    return ["All", ...categoryData.categories.map((c) => c.name)];
+    const unique = [...new Set(categoryData.categories.map((c) => c.name))];
+    return ["All", ...unique];
   }, [categoryData?.categories]);
 
   // Reset selection if selected category disappears from the list

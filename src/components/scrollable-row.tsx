@@ -32,6 +32,9 @@ export function ScrollableRow({ children, className = "" }: ScrollableRowProps) 
     };
   }, [updateScrollState]);
 
+  // Re-check overflow when children change (e.g. async data loads)
+  useEffect(updateScrollState);
+
   function scroll(direction: "left" | "right") {
     const el = scrollRef.current;
     if (!el) return;
