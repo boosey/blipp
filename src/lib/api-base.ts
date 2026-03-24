@@ -7,7 +7,8 @@ import { Capacitor } from "@capacitor/core";
  */
 export function getApiBase(): string {
   if (Capacitor.isNativePlatform()) {
-    return "https://podblipp.com";
+    // TODO: switch to https://podblipp.com for production
+    return "https://blipp-staging.boosey-boudreaux.workers.dev";
   }
   return "";
 }
