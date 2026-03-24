@@ -14,6 +14,9 @@ interface CatalogConfigDef {
   default: number | boolean;
 }
 
+// Mirrors FEED_REFRESH_MAX_CONSUMERS in worker/lib/constants.ts — requires redeploy to change
+const FEED_REFRESH_MAX_CONSUMERS = 50;
+
 const CATALOG_CONFIGS: CatalogConfigDef[] = [
   { key: "catalog.seedSize", label: "Catalog Seed Size", type: "number", description: "Podcasts to fetch during catalog-refresh", default: 200 },
   { key: "catalog.refreshAllPodcasts", label: "Refresh All Podcasts", type: "boolean", description: "Refresh all catalog podcasts (not just subscribed)", default: false },
@@ -23,6 +26,8 @@ const CATALOG_CONFIGS: CatalogConfigDef[] = [
   { key: "episodes.aging.enabled", label: "Episode Aging Enabled", type: "boolean", description: "Enable episode aging deletion", default: false },
   { key: "episodes.aging.maxAgeDays", label: "Episode Max Age", type: "number", description: "Days before episodes are deletion candidates", default: 180 },
   { key: "pipeline.feedRefresh.maxEpisodesPerPodcast", label: "Max Episodes per Podcast", type: "number", description: "Episodes ingested per podcast during feed refresh", default: 5 },
+  { key: "pipeline.feedRefresh.batchConcurrency", label: "Batch Concurrency", type: "number", description: "Podcasts processed in parallel per queue message", default: 10 },
+  { key: "pipeline.feedRefresh.fetchTimeoutMs", label: "RSS Fetch Timeout (ms)", type: "number", description: "Timeout for each RSS feed request", default: 10000 },
 ];
 
 function PodcastSettingsSkeleton() {
@@ -129,6 +134,16 @@ export default function PodcastSettings() {
             </div>
           );
         })}
+
+        <div className="bg-[#0F1D32] border border-white/5 rounded-lg p-4">
+          <div className="flex items-center justify-between">
+            <div className="min-w-0 flex-1 mr-4">
+              <Label className="text-xs text-[#F9FAFB]">Max Concurrent Consumers</Label>
+              <p className="text-[10px] text-[#9CA3AF] mt-0.5">Max parallel queue workers (deploy-time setting, requires redeploy to change)</p>
+            </div>
+            <span className="text-xs font-mono text-[#9CA3AF] tabular-nums">{FEED_REFRESH_MAX_CONSUMERS}</span>
+          </div>
+        </div>
       </div>
     </div>
   );
