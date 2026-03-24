@@ -26,7 +26,7 @@ const dbOnly = process.argv.includes("--db-only");
 
 const APP_ORIGINS = {
   production: "https://podblipp.com",
-  staging: "https://blipp-staging.boosey-boudreaux.workers.dev",
+  staging: "https://staging.podblipp.com",
   local: "http://localhost:8787",
 };
 

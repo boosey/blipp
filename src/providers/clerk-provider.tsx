@@ -27,7 +27,7 @@ export function AppClerkProvider({ children }: { children: React.ReactNode }) {
       routerPush={(to) => navigate(sanitizeUrl(to))}
       routerReplace={(to) => navigate(sanitizeUrl(to), { replace: true })}
       {...(isNative && {
-        proxyUrl: "https://blipp-staging.boosey-boudreaux.workers.dev/api/__clerk",
+        proxyUrl: "https://staging.podblipp.com/api/__clerk",
         // Load Clerk JS from the production CDN directly (not through our proxy)
         clerkJSUrl: "https://clerk.podblipp.com/npm/@clerk/clerk-js@5/dist/clerk.browser.js",
         allowedRedirectOrigins: ["capacitor://podblipp.com", "capacitor://localhost"],
