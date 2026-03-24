@@ -47,5 +47,24 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>blipp</string>
+			</array>
+			<key>CFBundleURLName</key>
+			<string>com.blipp.app</string>
+		</dict>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.774074678441-o78mvmtptb57ofinl1m49f8ttj1po850</string>
+			</array>
+			<key>CFBundleURLName</key>
+			<string>com.blipp.app.google</string>
+		</dict>
+	</array>
 </dict>
 </plist>
