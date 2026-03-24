@@ -82,20 +82,28 @@ export function NativeSignIn() {
       // Create OAuth sign-in and get the authorization URL
       const result = await signIn.create({
         strategy: "oauth_google",
-        redirectUrl: "https://blipp-staging.boosey-boudreaux.workers.dev/api/__clerk/v1/verify",
-        actionCompleteRedirectUrl: "/home",
+        redirectUrl: "https://podblipp.com/sso-callback",
+        redirectUrlComplete: "/home",
       });
+
+      console.log("OAUTH_DEBUG: status", result.status);
+      console.log("OAUTH_DEBUG: firstFactor", JSON.stringify(result.firstFactorVerification));
 
       const authUrl =
         result.firstFactorVerification?.externalVerificationRedirectURL;
 
       if (!authUrl) {
-        throw new Error("No authorization URL returned");
+        throw new Error(
+          "No authorization URL returned. Status: " +
+            result.status +
+            ", verification: " +
+            JSON.stringify(result.firstFactorVerification)
+        );
       }
 
       // Open in-app browser (ASWebAuthenticationSession on iOS)
       await Browser.open({
-        url: authUrl,
+        url: authUrl.toString(),
         presentationStyle: "popover",
       });
     } catch (err: any) {
