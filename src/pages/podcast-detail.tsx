@@ -228,17 +228,14 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
   if (loading) {
     return (
       <div className="space-y-6 min-w-0 overflow-hidden">
-        <div className="flex gap-4">
-          <Skeleton className="w-24 h-24 rounded-lg flex-shrink-0" />
-          <div className="flex-1 space-y-2">
-            <Skeleton className="h-5 w-3/4" />
-            <Skeleton className="h-4 w-1/2" />
-            <Skeleton className="h-3 w-20" />
-            <Skeleton className="h-8 w-24 rounded-full mt-2" />
-          </div>
+        <div className="space-y-3">
+          <Skeleton className="w-24 h-24 rounded-lg" />
+          <Skeleton className="h-5 w-3/4" />
+          <Skeleton className="h-3 w-1/2" />
+          <Skeleton className="h-8 w-24 rounded-full" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-2/3" />
         </div>
-        <Skeleton className="h-4 w-full" />
-        <Skeleton className="h-4 w-2/3" />
         <div className="space-y-2">
           <Skeleton className="h-5 w-20" />
           {Array.from({ length: 5 }, (_, i) => (
@@ -269,127 +266,127 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
     <div className="space-y-6 min-w-0 overflow-hidden">
       {UpgradeModalElement}
       {/* Podcast header */}
-      <div className="flex gap-4">
-        {podcast.imageUrl ? (
-          <img
-            src={podcast.imageUrl}
-            alt={podcast.title}
-            className="w-24 h-24 rounded-lg object-cover flex-shrink-0"
-          />
-        ) : (
-          <div className="w-24 h-24 rounded-lg bg-muted flex-shrink-0" />
-        )}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-2">
-            <h1 className="text-lg font-bold min-w-0 break-words">{podcast.title}</h1>
-            <div className="flex items-center gap-1 flex-shrink-0">
-              <ThumbButtons vote={podcast.userVote} onVote={handlePodcastVote} />
-              <button
-                onClick={toggleFavorite}
-                className="p-1.5 rounded-full hover:bg-muted transition-colors"
-                title={isFavorited ? "Remove from favorites" : "Add to favorites"}
-              >
-                <Heart
-                  className={`w-4 h-4 transition-colors ${isFavorited ? "fill-red-500 text-red-500" : "text-muted-foreground"}`}
-                />
-              </button>
-            </div>
-          </div>
-          {podcast.author && (
-            <p className="text-sm text-muted-foreground">{podcast.author}</p>
+      <div className="space-y-3">
+        {/* Image row: artwork + action buttons */}
+        <div className="flex items-start gap-4">
+          {podcast.imageUrl ? (
+            <img
+              src={podcast.imageUrl}
+              alt={podcast.title}
+              className="w-24 h-24 rounded-lg object-cover flex-shrink-0"
+            />
+          ) : (
+            <div className="w-24 h-24 rounded-lg bg-muted flex-shrink-0" />
           )}
-          <p className="text-xs text-muted-foreground mt-1">
-            {podcast.episodeCount} episodes
-          </p>
+          <div className="flex items-center gap-0.5 ml-auto pt-1">
+            <ThumbButtons vote={podcast.userVote} onVote={handlePodcastVote} />
+            <button
+              onClick={toggleFavorite}
+              className="p-1.5 rounded-full hover:bg-muted transition-colors"
+              title={isFavorited ? "Remove from favorites" : "Add to favorites"}
+            >
+              <Heart
+                className={`w-4 h-4 transition-colors ${isFavorited ? "fill-red-500 text-red-500" : "text-muted-foreground"}`}
+              />
+            </button>
+          </div>
+        </div>
 
-          {/* Subscribe / Unsubscribe + tier */}
-          {podcast.isSubscribed ? (
-            <div className="mt-2 space-y-2">
-              <div className="flex items-center gap-2">
+        {/* Title + meta — full width */}
+        <div>
+          <h1 className="text-base font-bold break-words">{podcast.title}</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            {[podcast.author, `${podcast.episodeCount} episodes`].filter(Boolean).join(" · ")}
+          </p>
+        </div>
+
+        {/* Subscribe / Unsubscribe + tier */}
+        {podcast.isSubscribed ? (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleUnsubscribe}
+                disabled={subscribing}
+                className="px-4 py-1.5 rounded-full text-xs font-medium bg-muted text-red-400 hover:bg-red-500/20 transition-colors disabled:opacity-50"
+              >
+                {subscribing ? "..." : "Unsubscribe"}
+              </button>
+              {podcast.subscriptionDurationTier && (
                 <button
-                  onClick={handleUnsubscribe}
-                  disabled={subscribing}
-                  className="px-4 py-1.5 rounded-full text-xs font-medium bg-muted text-red-400 hover:bg-red-500/20 transition-colors disabled:opacity-50"
-                >
-                  {subscribing ? "..." : "Unsubscribe"}
-                </button>
-                {podcast.subscriptionDurationTier && (
-                  <button
-                    onClick={() => { setShowChangeTierPicker(!showChangeTierPicker); setShowChangeVoicePicker(false); }}
-                    className="text-[10px] font-medium text-muted-foreground bg-muted hover:bg-accent px-1.5 py-0.5 rounded transition-colors"
-                  >
-                    {podcast.subscriptionDurationTier}m
-                  </button>
-                )}
-                <button
-                  onClick={() => { setShowChangeVoicePicker(!showChangeVoicePicker); setShowChangeTierPicker(false); }}
+                  onClick={() => { setShowChangeTierPicker(!showChangeTierPicker); setShowChangeVoicePicker(false); }}
                   className="text-[10px] font-medium text-muted-foreground bg-muted hover:bg-accent px-1.5 py-0.5 rounded transition-colors"
                 >
-                  Voice
+                  {podcast.subscriptionDurationTier}m
                 </button>
+              )}
+              <button
+                onClick={() => { setShowChangeVoicePicker(!showChangeVoicePicker); setShowChangeTierPicker(false); }}
+                className="text-[10px] font-medium text-muted-foreground bg-muted hover:bg-accent px-1.5 py-0.5 rounded transition-colors"
+              >
+                Voice
+              </button>
+            </div>
+            {showChangeTierPicker && (
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">Change briefing length:</p>
+                <TierPicker
+                  selected={(podcast.subscriptionDurationTier as DurationTier) ?? null}
+                  onSelect={handleChangeTier}
+                  maxDurationMinutes={planUsage.maxDurationMinutes}
+                  onUpgrade={showUpgrade}
+                />
               </div>
-              {showChangeTierPicker && (
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Change briefing length:</p>
-                  <TierPicker
-                    selected={(podcast.subscriptionDurationTier as DurationTier) ?? null}
-                    onSelect={handleChangeTier}
-                    maxDurationMinutes={planUsage.maxDurationMinutes}
-                    onUpgrade={showUpgrade}
-                  />
-                </div>
-              )}
-              {showChangeVoicePicker && (
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Change voice:</p>
-                  <VoicePresetPicker
-                    selected={podcast.subscriptionVoicePresetId}
-                    onSelect={handleChangeVoice}
-                  />
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="mt-2">
-              {planUsage.subscriptions.limit !== null &&
-                planUsage.subscriptions.remaining !== null &&
-                planUsage.subscriptions.remaining <= 0 ? (
-                <button
-                  onClick={() => { closeSheet(); navigate("/settings"); }}
-                  className="px-4 py-1.5 rounded-full text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
-                >
-                  Upgrade to Subscribe
-                </button>
-              ) : showSubscribeTierPicker ? (
-                <div className="space-y-2">
-                  <p className="text-xs text-muted-foreground">Briefing length:</p>
-                  <TierPicker
-                    selected={null}
-                    onSelect={handleSubscribeWithTier}
-                    maxDurationMinutes={planUsage.maxDurationMinutes}
-                    onUpgrade={showUpgrade}
-                  />
-                </div>
-              ) : (
-                <button
-                  onClick={() => setShowSubscribeTierPicker(true)}
-                  disabled={subscribing}
-                  className="px-4 py-1.5 rounded-full text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
-                >
-                  {subscribing ? "..." : "Subscribe"}
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
+            )}
+            {showChangeVoicePicker && (
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">Change voice:</p>
+                <VoicePresetPicker
+                  selected={podcast.subscriptionVoicePresetId}
+                  onSelect={handleChangeVoice}
+                />
+              </div>
+            )}
+          </div>
+        ) : (
+          <div>
+            {planUsage.subscriptions.limit !== null &&
+              planUsage.subscriptions.remaining !== null &&
+              planUsage.subscriptions.remaining <= 0 ? (
+              <button
+                onClick={() => { closeSheet(); navigate("/settings"); }}
+                className="px-4 py-1.5 rounded-full text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+              >
+                Upgrade to Subscribe
+              </button>
+            ) : showSubscribeTierPicker ? (
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground">Briefing length:</p>
+                <TierPicker
+                  selected={null}
+                  onSelect={handleSubscribeWithTier}
+                  maxDurationMinutes={planUsage.maxDurationMinutes}
+                  onUpgrade={showUpgrade}
+                />
+              </div>
+            ) : (
+              <button
+                onClick={() => setShowSubscribeTierPicker(true)}
+                disabled={subscribing}
+                className="px-4 py-1.5 rounded-full text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+              >
+                {subscribing ? "..." : "Subscribe"}
+              </button>
+            )}
+          </div>
+        )}
 
-      {/* Description */}
-      {podcast.description && (
-        <p className="text-sm text-muted-foreground line-clamp-4 break-words">
-          {podcast.description.replace(/<[^>]*>/g, "")}
-        </p>
-      )}
+        {/* Description */}
+        {podcast.description && (
+          <p className="text-sm text-muted-foreground line-clamp-3 break-words">
+            {podcast.description.replace(/<[^>]*>/g, "")}
+          </p>
+        )}
+      </div>
 
       {/* Episodes */}
       <div>
