@@ -16,7 +16,7 @@ import { useNavigate } from "react-router-dom";
 // which Vite can't bundle (it's a native-only module)
 const SocialLoginPlugin: any = registerPlugin("SocialLogin");
 
-const API_BASE = "https://blipp-staging.boosey-boudreaux.workers.dev";
+const API_BASE = "https://staging.podblipp.com";
 
 export function NativeSignIn() {
   const { signIn, isLoaded: signInLoaded } = useSignIn();
