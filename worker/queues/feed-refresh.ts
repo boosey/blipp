@@ -21,14 +21,249 @@ function latestEpisodes(episodes: ParsedEpisode[], max: number): ParsedEpisode[]
 }
 
 /**
+ * Process a single podcast: fetch RSS, parse, upsert episodes, notify subscribers.
+ */
+async function processPodcast(
+  podcast: any,
+  prisma: any,
+  env: Env,
+  log: any,
+  maxEpisodes: number,
+  fetchTimeoutMs: number,
+  refreshJobId?: string
+): Promise<void> {
+  // Fetch RSS with timeout — covers both headers and body streaming
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), fetchTimeoutMs);
+
+  let xml: string;
+  try {
+    const response = await fetch(podcast.feedUrl, { signal: controller.signal });
+    xml = await response.text();
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      log.error("feed_fetch_timeout", {
+        podcastId: podcast.id,
+        title: podcast.title,
+        feedUrl: podcast.feedUrl,
+        timeoutMs: fetchTimeoutMs,
+      });
+      throw new Error(`RSS fetch timed out after ${fetchTimeoutMs}ms: ${podcast.feedUrl}`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  const feed = parseRssFeed(xml);
+
+  // Write the RSS language tag to the podcast record
+  if (feed.language) {
+    await prisma.podcast.update({
+      where: { id: podcast.id },
+      data: { language: feed.language },
+    });
+
+    // Mark non-English podcasts as pending_deletion
+    const lang = feed.language.toLowerCase();
+    if (!lang.startsWith("en")) {
+      await prisma.podcast.update({
+        where: { id: podcast.id },
+        data: { status: "pending_deletion" },
+      });
+      log.info("non_english_podcast", {
+        podcastId: podcast.id,
+        language: feed.language,
+        title: podcast.title,
+      });
+      return;
+    }
+  }
+
+  const recent = latestEpisodes(feed.episodes, maxEpisodes);
+  const newEpisodeIds: string[] = [];
+
+  // Collect existing GUIDs for this podcast to detect truly new episodes
+  const existingEpisodes = await prisma.episode.findMany({
+    where: { podcastId: podcast.id },
+    select: { guid: true },
+  });
+  const existingGuids = new Set(existingEpisodes.map((e: any) => e.guid));
+
+  for (const ep of recent) {
+    // Belt-and-suspenders: parser already filters these, but guard against malformed input
+    if (!ep.guid || !ep.audioUrl) continue;
+
+    const episode = await prisma.episode.upsert({
+      where: {
+        podcastId_guid: {
+          podcastId: podcast.id,
+          guid: ep.guid,
+        },
+      },
+      update: {},
+      create: {
+        podcastId: podcast.id,
+        title: ep.title,
+        description: ep.description,
+        audioUrl: ep.audioUrl,
+        publishedAt: ep.publishedAt ? new Date(ep.publishedAt) : null,
+        durationSeconds: ep.durationSeconds,
+        guid: ep.guid,
+        transcriptUrl: ep.transcriptUrl,
+      },
+    });
+
+    // New episode = GUID wasn't in the database before this refresh
+    if (!existingGuids.has(ep.guid)) {
+      newEpisodeIds.push(episode.id);
+    }
+  }
+
+  // Track new episodes for refresh job
+  if (refreshJobId && newEpisodeIds.length > 0) {
+    await prisma.episodeRefreshJob.update({
+      where: { id: refreshJobId },
+      data: {
+        podcastsWithNewEpisodes: { increment: 1 },
+        episodesDiscovered: { increment: newEpisodeIds.length },
+        prefetchTotal: { increment: newEpisodeIds.length },
+      },
+    }).catch(() => {});
+  }
+
+  // Queue content prefetch for new episodes (runs slowly at concurrency=1)
+  if (newEpisodeIds.length > 0) {
+    await env.CONTENT_PREFETCH_QUEUE.sendBatch(
+      newEpisodeIds.map((id) => ({
+        body: {
+          episodeId: id,
+          ...(refreshJobId && { refreshJobId }),
+        },
+      }))
+    );
+  }
+
+  log.info("podcast_refreshed", {
+    podcastId: podcast.id,
+    episodesProcessed: recent.length,
+    newEpisodes: newEpisodeIds.length,
+  });
+
+  // Auto-create FeedItems for subscribers of new episodes
+  if (newEpisodeIds.length > 0) {
+    const subscriptions = await prisma.subscription.findMany({
+      where: { podcastId: podcast.id },
+      include: { user: { select: { defaultVoicePresetId: true } } },
+    });
+
+    if (subscriptions.length > 0) {
+      // Group subscribers by (durationTier, resolvedVoicePresetId)
+      // voicePresetId: subscription-level > user default > null
+      const groupKey = (tier: number, vpId: string | null) => `${tier}:${vpId ?? ""}`;
+      const tierVoiceGroups = new Map<string, { durationTier: number; voicePresetId: string | null; userIds: string[] }>();
+
+      for (const sub of subscriptions) {
+        const resolvedVoicePresetId = sub.voicePresetId ?? sub.user?.defaultVoicePresetId ?? null;
+        const key = groupKey(sub.durationTier, resolvedVoicePresetId);
+        if (!tierVoiceGroups.has(key)) {
+          tierVoiceGroups.set(key, {
+            durationTier: sub.durationTier,
+            voicePresetId: resolvedVoicePresetId,
+            userIds: [],
+          });
+        }
+        tierVoiceGroups.get(key)!.userIds.push(sub.userId);
+      }
+
+      for (const episodeId of newEpisodeIds) {
+        for (const [, group] of tierVoiceGroups) {
+          const { durationTier, voicePresetId, userIds } = group;
+
+          // Create FeedItems for all subscribers in this group
+          for (const userId of userIds) {
+            await prisma.feedItem.upsert({
+              where: {
+                userId_episodeId_durationTier: {
+                  userId,
+                  episodeId,
+                  durationTier,
+                },
+              },
+              create: {
+                userId,
+                episodeId,
+                podcastId: podcast.id,
+                durationTier,
+                source: "SUBSCRIPTION",
+                status: "PENDING",
+              },
+              update: {},
+            });
+          }
+
+          // Create one BriefingRequest per (episode, tier, voice) — the clip is shared
+          const request = await prisma.briefingRequest.create({
+            data: {
+              userId: userIds[0], // Anchor to first subscriber
+              targetMinutes: durationTier,
+              items: [{
+                podcastId: podcast.id,
+                episodeId,
+                durationTier,
+                voicePresetId: voicePresetId ?? undefined,
+                useLatest: false,
+              }],
+              isTest: false,
+              status: "PENDING",
+            },
+          });
+
+          // Link all FeedItems in this group to the request
+          await prisma.feedItem.updateMany({
+            where: {
+              episodeId,
+              durationTier,
+              userId: { in: userIds },
+              status: "PENDING",
+              requestId: null,
+            },
+            data: {
+              requestId: request.id,
+              status: "PROCESSING",
+            },
+          });
+
+          await env.ORCHESTRATOR_QUEUE.send({
+            requestId: request.id,
+            action: "evaluate",
+          });
+
+          log.info("subscriber_pipeline_dispatched", {
+            podcastId: podcast.id,
+            episodeId,
+            durationTier,
+            voicePresetId,
+            subscriberCount: userIds.length,
+            requestId: request.id,
+          });
+        }
+      }
+    }
+  }
+
+  // Update last fetched timestamp
+  await prisma.podcast.update({
+    where: { id: podcast.id },
+    data: { lastFetchedAt: new Date() },
+  });
+}
+
+/**
  * Queue consumer for feed-refresh jobs.
  *
- * Fetches podcasts from the database, polls each RSS feed for new episodes,
- * creates episode records, and auto-creates FeedItems + BriefingRequests
- * for subscribers when new episodes are detected.
- *
- * When fetchAll is true, only refreshes podcasts with at least one subscriber.
- * Per-podcast messages refresh that specific podcast regardless of subscribers.
+ * Processes podcasts in parallel using Promise.allSettled.
+ * Supports both single podcastId (backward compat) and batched podcastIds messages.
  *
  * @param batch - Cloudflare Queue message batch
  * @param env - Worker environment bindings
@@ -45,13 +280,15 @@ export async function handleFeedRefresh(
     const log = await createPipelineLogger({ stage: "feed-refresh", prisma });
     log.info("batch_start", { messageCount: batch.messages.length });
 
-    // Collect specific podcast IDs from messages, if any
+    // Collect podcast IDs from all messages (supports both singular and plural)
     const podcastIds = new Set<string>();
     let fetchAll = false;
     let refreshJobId: string | undefined;
     for (const msg of batch.messages) {
       const body = msg.body;
-      if (body.podcastId) {
+      if (body.podcastIds) {
+        for (const id of body.podcastIds) podcastIds.add(id);
+      } else if (body.podcastId) {
         podcastIds.add(body.podcastId);
       } else {
         fetchAll = true;
@@ -59,7 +296,7 @@ export async function handleFeedRefresh(
       if (body.refreshJobId) refreshJobId = body.refreshJobId;
     }
 
-    log.debug("podcast_filter", { fetchAll, podcastIds: [...podcastIds] });
+    log.debug("podcast_filter", { fetchAll, podcastIdCount: podcastIds.size });
 
     // Fetch podcasts — only those with subscribers when fetchAll (unless config overrides)
     let podcasts;
@@ -90,251 +327,49 @@ export async function handleFeedRefresh(
     log.debug("podcasts_loaded", { count: podcasts.length });
 
     const maxEpisodes = (await getConfig(prisma, "pipeline.feedRefresh.maxEpisodesPerPodcast", 5)) as number;
+    const fetchTimeoutMs = (await getConfig(prisma, "pipeline.feedRefresh.fetchTimeoutMs", 10000)) as number;
 
-    for (const podcast of podcasts) {
-      let processed = false;
-      try {
-        // Cooperative pause/cancel: skip processing if refresh job is no longer active
+    // Process all podcasts in parallel
+    await Promise.allSettled(
+      podcasts.map(async (podcast: any) => {
+        // Cooperative pause/cancel: skip if refresh job is no longer active
+        let processed = false;
         if (refreshJobId) {
           const active = await isRefreshJobActive(prisma, refreshJobId);
           if (!active) {
             log.info("refresh_job_inactive", { podcastId: podcast.id, refreshJobId });
-            continue;
+            return;
           }
           processed = true;
         }
 
-        console.log(`[feed-refresh] GET RSS feed: ${podcast.feedUrl} (podcast: ${podcast.title})`);
-        const response = await fetch(podcast.feedUrl);
-        console.log(`[feed-refresh] RSS response: ${response.status} ${response.statusText} (${podcast.title})`);
-        const xml = await response.text();
-        const feed = parseRssFeed(xml);
-        console.log(`[feed-refresh] Parsed ${feed.episodes.length} episodes from ${podcast.title}`);
+        try {
+          await processPodcast(podcast, prisma, env, log, maxEpisodes, fetchTimeoutMs, refreshJobId);
+        } catch (err) {
+          // Log and continue — don't let one failed feed block others
+          log.error("podcast_error", { podcastId: podcast.id }, err);
 
-        // Write the RSS language tag to the podcast record
-        if (feed.language) {
-          await prisma.podcast.update({
-            where: { id: podcast.id },
-            data: { language: feed.language },
-          });
-
-          // Mark non-English podcasts as pending_deletion
-          const lang = feed.language.toLowerCase();
-          if (!lang.startsWith("en")) {
-            await prisma.podcast.update({
-              where: { id: podcast.id },
-              data: { status: "pending_deletion" },
-            });
-            log.info("non_english_podcast", {
-              podcastId: podcast.id,
-              language: feed.language,
-              title: podcast.title,
-            });
-            continue; // Skip episode processing
-          }
-        }
-
-        const recent = latestEpisodes(feed.episodes, maxEpisodes);
-        const newEpisodeIds: string[] = [];
-
-        // Collect existing GUIDs for this podcast to detect truly new episodes
-        const existingEpisodes = await prisma.episode.findMany({
-          where: { podcastId: podcast.id },
-          select: { guid: true },
-        });
-        const existingGuids = new Set(existingEpisodes.map((e: any) => e.guid));
-
-        for (const ep of recent) {
-          // Belt-and-suspenders: parser already filters these, but guard against malformed input
-          if (!ep.guid || !ep.audioUrl) continue;
-
-          const episode = await prisma.episode.upsert({
-            where: {
-              podcastId_guid: {
+          // Record error for episode refresh job
+          if (refreshJobId) {
+            await prisma.episodeRefreshError.create({
+              data: {
+                jobId: refreshJobId,
+                phase: "feed_scan",
+                message: err instanceof Error ? err.message : String(err),
                 podcastId: podcast.id,
-                guid: ep.guid,
               },
-            },
-            update: {},
-            create: {
-              podcastId: podcast.id,
-              title: ep.title,
-              description: ep.description,
-              audioUrl: ep.audioUrl,
-              publishedAt: ep.publishedAt ? new Date(ep.publishedAt) : null,
-              durationSeconds: ep.durationSeconds,
-              guid: ep.guid,
-              transcriptUrl: ep.transcriptUrl,
-            },
-          });
-
-          // New episode = GUID wasn't in the database before this refresh
-          if (!existingGuids.has(ep.guid)) {
-            newEpisodeIds.push(episode.id);
+            }).catch(() => {});
+          }
+        } finally {
+          if (refreshJobId && processed) {
+            await prisma.episodeRefreshJob.update({
+              where: { id: refreshJobId },
+              data: { podcastsCompleted: { increment: 1 } },
+            }).catch(() => {});
           }
         }
-
-        // Track new episodes for refresh job
-        if (refreshJobId && newEpisodeIds.length > 0) {
-          await prisma.episodeRefreshJob.update({
-            where: { id: refreshJobId },
-            data: {
-              podcastsWithNewEpisodes: { increment: 1 },
-              episodesDiscovered: { increment: newEpisodeIds.length },
-              prefetchTotal: { increment: newEpisodeIds.length },
-            },
-          }).catch(() => {});
-        }
-
-        // Queue content prefetch for new episodes (runs slowly at concurrency=1)
-        if (newEpisodeIds.length > 0) {
-          await env.CONTENT_PREFETCH_QUEUE.sendBatch(
-            newEpisodeIds.map((id) => ({
-              body: {
-                episodeId: id,
-                ...(refreshJobId && { refreshJobId }),
-              },
-            }))
-          );
-        }
-
-        log.info("podcast_refreshed", {
-          podcastId: podcast.id,
-          episodesProcessed: recent.length,
-          newEpisodes: newEpisodeIds.length,
-        });
-
-        // Auto-create FeedItems for subscribers of new episodes
-        if (newEpisodeIds.length > 0) {
-          const subscriptions = await prisma.subscription.findMany({
-            where: { podcastId: podcast.id },
-            include: { user: { select: { defaultVoicePresetId: true } } },
-          });
-
-          if (subscriptions.length > 0) {
-            // Group subscribers by (durationTier, resolvedVoicePresetId)
-            // voicePresetId: subscription-level > user default > null
-            const groupKey = (tier: number, vpId: string | null) => `${tier}:${vpId ?? ""}`;
-            const tierVoiceGroups = new Map<string, { durationTier: number; voicePresetId: string | null; userIds: string[] }>();
-
-            for (const sub of subscriptions) {
-              const resolvedVoicePresetId = sub.voicePresetId ?? sub.user?.defaultVoicePresetId ?? null;
-              const key = groupKey(sub.durationTier, resolvedVoicePresetId);
-              if (!tierVoiceGroups.has(key)) {
-                tierVoiceGroups.set(key, {
-                  durationTier: sub.durationTier,
-                  voicePresetId: resolvedVoicePresetId,
-                  userIds: [],
-                });
-              }
-              tierVoiceGroups.get(key)!.userIds.push(sub.userId);
-            }
-
-            for (const episodeId of newEpisodeIds) {
-              for (const [, group] of tierVoiceGroups) {
-                const { durationTier, voicePresetId, userIds } = group;
-
-                // Create FeedItems for all subscribers in this group
-                for (const userId of userIds) {
-                  await prisma.feedItem.upsert({
-                    where: {
-                      userId_episodeId_durationTier: {
-                        userId,
-                        episodeId,
-                        durationTier,
-                      },
-                    },
-                    create: {
-                      userId,
-                      episodeId,
-                      podcastId: podcast.id,
-                      durationTier,
-                      source: "SUBSCRIPTION",
-                      status: "PENDING",
-                    },
-                    update: {},
-                  });
-                }
-
-                // Create one BriefingRequest per (episode, tier, voice) — the clip is shared
-                const request = await prisma.briefingRequest.create({
-                  data: {
-                    userId: userIds[0], // Anchor to first subscriber
-                    targetMinutes: durationTier,
-                    items: [{
-                      podcastId: podcast.id,
-                      episodeId,
-                      durationTier,
-                      voicePresetId: voicePresetId ?? undefined,
-                      useLatest: false,
-                    }],
-                    isTest: false,
-                    status: "PENDING",
-                  },
-                });
-
-                // Link all FeedItems in this group to the request
-                await prisma.feedItem.updateMany({
-                  where: {
-                    episodeId,
-                    durationTier,
-                    userId: { in: userIds },
-                    status: "PENDING",
-                    requestId: null,
-                  },
-                  data: {
-                    requestId: request.id,
-                    status: "PROCESSING",
-                  },
-                });
-
-                await env.ORCHESTRATOR_QUEUE.send({
-                  requestId: request.id,
-                  action: "evaluate",
-                });
-
-                log.info("subscriber_pipeline_dispatched", {
-                  podcastId: podcast.id,
-                  episodeId,
-                  durationTier,
-                  voicePresetId,
-                  subscriberCount: userIds.length,
-                  requestId: request.id,
-                });
-              }
-            }
-          }
-        }
-
-        // Update last fetched timestamp
-        await prisma.podcast.update({
-          where: { id: podcast.id },
-          data: { lastFetchedAt: new Date() },
-        });
-      } catch (err) {
-        // Log and continue — don't let one failed feed block others
-        log.error("podcast_error", { podcastId: podcast.id }, err);
-
-        // Record error for episode refresh job
-        if (refreshJobId) {
-          await prisma.episodeRefreshError.create({
-            data: {
-              jobId: refreshJobId,
-              phase: "feed_scan",
-              message: err instanceof Error ? err.message : String(err),
-              podcastId: podcast.id,
-            },
-          }).catch(() => {});
-        }
-      } finally {
-        if (refreshJobId && processed) {
-          await prisma.episodeRefreshJob.update({
-            where: { id: refreshJobId },
-            data: { podcastsCompleted: { increment: 1 } },
-          }).catch(() => {});
-        }
-      }
-    }
+      })
+    );
 
     log.info("batch_complete", { podcastCount: podcasts.length });
 

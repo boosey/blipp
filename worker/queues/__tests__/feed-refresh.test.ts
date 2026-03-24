@@ -69,7 +69,8 @@ beforeEach(() => {
   (getConfig as any).mockImplementation(async (_p: any, key: string, fallback: any) => {
     if (key === "catalog.refreshAllPodcasts") return false;
     if (key === "pipeline.feedRefresh.maxEpisodesPerPodcast") return 5;
-    return fallback !== undefined ? true : true;
+    if (key === "pipeline.feedRefresh.fetchTimeoutMs") return 10000;
+    return fallback !== undefined ? fallback : true;
   });
   mockFetch.mockResolvedValue({
     text: vi.fn().mockResolvedValue("<rss></rss>"),
@@ -109,8 +110,11 @@ describe("handleFeedRefresh", () => {
 
     await handleFeedRefresh(mockBatch, mockEnv, mockCtx);
 
-    // Verify podcast feed was fetched
-    expect(mockFetch).toHaveBeenCalledWith("https://example.com/feed.xml");
+    // Verify podcast feed was fetched with abort signal
+    expect(mockFetch).toHaveBeenCalledWith(
+      "https://example.com/feed.xml",
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
 
     // Verify episode was created
     expect(mockPrisma.episode.upsert).toHaveBeenCalled();
@@ -612,6 +616,75 @@ describe("handleFeedRefresh", () => {
         { podcastId: "pod-1" },
         expect.any(Error)
       );
+    });
+  });
+
+  describe("batched podcastIds message format", () => {
+    it("processes multiple podcasts from podcastIds array", async () => {
+      const podcast1 = { id: "pod-1", feedUrl: "https://example.com/feed1.xml", title: "Pod 1" };
+      const podcast2 = { id: "pod-2", feedUrl: "https://example.com/feed2.xml", title: "Pod 2" };
+      mockPrisma.podcast.findMany.mockResolvedValue([podcast1, podcast2]);
+      mockPrisma.episode.findMany.mockResolvedValue([{ guid: "guid-1" }]);
+      mockPrisma.episode.upsert.mockResolvedValue({ id: "ep-1", podcastId: "pod-1", guid: "guid-1" });
+      mockPrisma.podcast.update.mockResolvedValue(podcast1);
+
+      const mockMsg = {
+        body: { podcastIds: ["pod-1", "pod-2"] },
+        ack: vi.fn(),
+        retry: vi.fn(),
+      };
+      const mockBatch = {
+        messages: [mockMsg],
+        queue: "feed-refresh",
+      } as unknown as MessageBatch<any>;
+
+      await handleFeedRefresh(mockBatch, mockEnv, mockCtx);
+
+      // Both feeds fetched in parallel
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(mockPrisma.podcast.findMany).toHaveBeenCalledWith({
+        where: { id: { in: ["pod-1", "pod-2"] } },
+      });
+      expect(mockMsg.ack).toHaveBeenCalled();
+    });
+  });
+
+  describe("fetch timeout", () => {
+    it("logs timeout and continues processing other podcasts", async () => {
+      const podcast1 = { id: "pod-1", feedUrl: "https://slow.example.com/feed.xml", title: "Slow Pod" };
+      const podcast2 = { id: "pod-2", feedUrl: "https://fast.example.com/feed.xml", title: "Fast Pod" };
+      mockPrisma.podcast.findMany.mockResolvedValue([podcast1, podcast2]);
+      mockPrisma.episode.findMany.mockResolvedValue([{ guid: "guid-1" }]);
+      mockPrisma.episode.upsert.mockResolvedValue({ id: "ep-1" });
+      mockPrisma.podcast.update.mockResolvedValue(podcast2);
+
+      // First fetch aborts (simulate timeout), second succeeds
+      const abortError = new DOMException("The operation was aborted", "AbortError");
+      mockFetch
+        .mockRejectedValueOnce(abortError)
+        .mockResolvedValueOnce({ text: vi.fn().mockResolvedValue("<rss></rss>") });
+
+      const mockMsg = {
+        body: { podcastIds: ["pod-1", "pod-2"] },
+        ack: vi.fn(),
+        retry: vi.fn(),
+      };
+      const mockBatch = {
+        messages: [mockMsg],
+        queue: "feed-refresh",
+      } as unknown as MessageBatch<any>;
+
+      await handleFeedRefresh(mockBatch, mockEnv, mockCtx);
+
+      // Timeout logged as error
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        "podcast_error",
+        { podcastId: "pod-1" },
+        expect.any(Error)
+      );
+
+      // Second podcast still processed
+      expect(mockMsg.ack).toHaveBeenCalled();
     });
   });
 });
