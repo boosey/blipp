@@ -74,7 +74,7 @@ export function NativeSignIn() {
       // Create a new OAuth sign-in attempt
       const result = await signIn.create({
         strategy: "oauth_google",
-        redirectUrl: "https://blipp-staging.boosey-boudreaux.workers.dev/sso-callback",
+        redirectUrl: "https://blipp-staging.boosey-boudreaux.workers.dev/api/sso-callback",
       });
 
       const authUrl =

@@ -62,6 +62,18 @@ app.notFound((c) => {
 // Clerk FAPI proxy for Capacitor native apps — before any /api middleware
 app.all("/api/__clerk/*", handleClerkProxy);
 
+// OAuth callback landing page — returns a simple page that auto-closes
+app.get("/api/sso-callback", (c) => {
+  return c.html(`<!DOCTYPE html><html><head><title>Sign in complete</title></head>
+<body style="font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#06060e;color:white">
+<p>Sign in complete. You can close this window.</p>
+<script>
+  // Try to close the in-app browser automatically
+  try { window.close(); } catch(e) {}
+</script>
+</body></html>`);
+});
+
 // Request ID — must be first so all other middleware can access it
 app.use("/api/*", requestIdMiddleware);
 
