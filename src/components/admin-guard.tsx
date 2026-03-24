@@ -47,7 +47,7 @@ export function AdminGuard({ children }: { children: React.ReactNode }) {
         {isAdmin === true && children}
       </SignedIn>
       <SignedOut>
-        <RedirectToSignIn />
+        <RedirectToSignIn signInFallbackRedirectUrl="/home" />
       </SignedOut>
     </>
   );

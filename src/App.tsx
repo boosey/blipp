@@ -83,7 +83,7 @@ export default function App() {
               <MobileLayout />
             </SignedIn>
             <SignedOut>
-              <RedirectToSignIn />
+              <RedirectToSignIn signInFallbackRedirectUrl="/home" />
             </SignedOut>
           </>
         }
