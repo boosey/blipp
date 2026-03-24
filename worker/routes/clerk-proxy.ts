@@ -37,11 +37,31 @@ export async function handleClerkProxy(c: Context<{ Bindings: Env }>) {
   headers.set("origin", CLERK_FAPI);
   headers.delete("host");
 
+  // Log for debugging
+  console.log(JSON.stringify({
+    action: "clerk_proxy",
+    method: c.req.method,
+    path,
+    hasCookie: !!headers.get("cookie"),
+    hasAuth: !!headers.get("authorization"),
+  }));
+
   const resp = await fetch(targetUrl, {
     method: c.req.method,
     headers,
     body: c.req.method !== "GET" && c.req.method !== "HEAD" ? c.req.raw.body : undefined,
   });
+
+  // Log response status for debugging
+  if (resp.status >= 400) {
+    const body = await resp.clone().text();
+    console.log(JSON.stringify({
+      action: "clerk_proxy_error",
+      status: resp.status,
+      path,
+      body: body.substring(0, 500),
+    }));
+  }
 
   // Copy response and add CORS headers
   const respHeaders = new Headers(resp.headers);
