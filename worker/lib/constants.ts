@@ -1,3 +1,9 @@
+/** Default max chunk size for STT byte-range downloads (25MB). */
+export const DEFAULT_STT_CHUNK_SIZE = 25 * 1024 * 1024;
+
+/** Minimum audio file size to be considered valid (10KB). */
+export const MIN_AUDIO_SIZE_BYTES = 10_000;
+
 /** Available duration tiers in minutes for episode clips. */
 export const DURATION_TIERS = [2, 5, 10, 15, 30] as const;
 
@@ -22,3 +28,9 @@ export const PIPELINE_STAGE_NAMES: Record<string, string> = {
   AUDIO_GENERATION: "Audio Generation",
   BRIEFING_ASSEMBLY: "Briefing Assembly",
 };
+
+/**
+ * Max concurrent feed-refresh queue consumers (mirrors wrangler.jsonc max_concurrency).
+ * Displayed read-only in admin UI. Change requires redeploy.
+ */
+export const FEED_REFRESH_MAX_CONSUMERS = 50;
