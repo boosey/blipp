@@ -73,11 +73,53 @@ export function NativeSignIn() {
       }
     });
 
-    // Also handle browser close without deep link (user cancelled)
-    const browserFinished = Browser.addListener("browserFinished", () => {
-      console.log("OAUTH: browser closed");
-      if (oauthInProgress.current) {
-        oauthInProgress.current = false;
+    // Handle browser close — this fires when user dismisses the in-app browser.
+    // Since the deep link may not fire (Clerk shows error instead of redirecting
+    // to our sso-callback), we try to complete the sign-in here.
+    const browserFinished = Browser.addListener("browserFinished", async () => {
+      console.log("OAUTH: browser closed, oauthInProgress:", oauthInProgress.current);
+      if (!oauthInProgress.current) return;
+      oauthInProgress.current = false;
+
+      if (!signIn) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        // Reload the signIn from the WebView context which has the __client cookie.
+        // Even though the in-app browser showed an error, Clerk may have already
+        // processed the OAuth callback server-side.
+        const si = await signIn.reload();
+        console.log("OAUTH_RESUME: signIn status:", si.status);
+        console.log("OAUTH_RESUME: verification:", si.firstFactorVerification?.status);
+
+        if (si.status === "complete" && si.createdSessionId) {
+          await setActive({ session: si.createdSessionId });
+          navigate("/home", { replace: true });
+          return;
+        }
+
+        // Handle transferable (new user needs signUp)
+        if (si.firstFactorVerification?.status === "transferable" && signUp) {
+          console.log("OAUTH_RESUME: creating signUp from transfer");
+          const su = await signUp.create({ transfer: true } as any);
+          if (su.status === "complete" && su.createdSessionId) {
+            await setActive({ session: su.createdSessionId });
+            navigate("/home", { replace: true });
+            return;
+          }
+        }
+
+        if (si.firstFactorVerification?.status === "unverified") {
+          setError("Sign-in was cancelled. Please try again.");
+        } else {
+          setError(`Sign-in incomplete (${si.status}). Please try again.`);
+        }
+      } catch (err: any) {
+        console.error("OAuth resume error:", err);
+        setError(err.errors?.[0]?.longMessage || "Sign-in failed. Please try again.");
+      } finally {
         setLoading(false);
       }
     });
