@@ -79,10 +79,22 @@ export function NativeSignIn() {
     setError(null);
 
     try {
+      // Reset any stuck sign-in state from a previous attempt
+      if (signIn.status && signIn.status !== "complete") {
+        try {
+          await signIn.create({ strategy: "oauth_google", redirectUrl: "https://blipp-staging.boosey-boudreaux.workers.dev/sso-callback" });
+        } catch {
+          // Ignore — will be recreated below
+        }
+      }
+
       // Create OAuth sign-in and get the authorization URL
       const result = await signIn.create({
         strategy: "oauth_google",
-        redirectUrl: "https://podblipp.com/sso-callback",
+        // After Google auth, Clerk redirects here. We use the staging
+        // URL which will serve the SPA — the app will detect the session
+        // when the in-app browser closes.
+        redirectUrl: "https://blipp-staging.boosey-boudreaux.workers.dev/sso-callback",
       });
 
       console.log("OAUTH_DEBUG: status", result.status);
