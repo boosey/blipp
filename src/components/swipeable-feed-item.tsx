@@ -1,11 +1,11 @@
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useEffect } from "react";
 import { Check, CheckCheck, Trash2 } from "lucide-react";
 import { FeedItemCard } from "./feed-item";
 import type { FeedItem } from "../types/feed";
 
-const SWIPE_THRESHOLD = 10; // px to distinguish swipe from tap
-const LISTENED_THRESHOLD = 0.3; // 30% of card width (right swipe)
-const REMOVE_THRESHOLD = 0.8; // 80% of card width (left swipe)
+const SWIPE_THRESHOLD = 10;
+const LISTENED_THRESHOLD = 0.3;
+const REMOVE_THRESHOLD = 0.8;
 
 interface SwipeableFeedItemProps {
   item: FeedItem;
@@ -23,23 +23,81 @@ export function SwipeableFeedItem({
   onEpisodeVote,
 }: SwipeableFeedItemProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const leftZoneRef = useRef<HTMLDivElement>(null);
+  const rightZoneRef = useRef<HTMLDivElement>(null);
+  const leftIconRef = useRef<HTMLDivElement>(null);
+  const rightIconRef = useRef<HTMLDivElement>(null);
   const startXRef = useRef(0);
   const startYRef = useRef(0);
   const swipingRef = useRef(false);
-  const [offset, setOffset] = useState(0);
+  const offsetRef = useRef(0);
   const [removing, setRemoving] = useState(false);
+
+  // Store callbacks in refs to avoid stale closures
+  const callbacksRef = useRef({ onToggleListened, onRemove });
+  useEffect(() => {
+    callbacksRef.current = { onToggleListened, onRemove };
+  }, [onToggleListened, onRemove]);
+
+  const applyTransform = useCallback((dx: number) => {
+    const card = cardRef.current;
+    const container = containerRef.current;
+    if (!card || !container) return;
+
+    const cardWidth = container.offsetWidth;
+    const ratio = Math.abs(dx) / cardWidth;
+
+    // Card position — no transition during gesture
+    card.style.transform = dx !== 0 ? `translateX(${dx}px)` : "";
+    card.style.pointerEvents = dx !== 0 ? "none" : "";
+
+    // Left zone (delete, right side)
+    const leftZone = leftZoneRef.current;
+    const leftIcon = leftIconRef.current;
+    if (leftZone) {
+      if (dx < 0) {
+        leftZone.style.display = "flex";
+        leftZone.style.width = `${Math.abs(dx)}px`;
+        const inZone = ratio >= REMOVE_THRESHOLD;
+        leftZone.style.backgroundColor = inZone ? "rgba(239,68,68,0.3)" : "var(--color-muted)";
+        leftZone.style.color = inZone ? "rgb(248,113,113)" : "var(--color-muted-foreground)";
+        if (leftIcon) leftIcon.style.display = inZone ? "block" : "none";
+      } else {
+        leftZone.style.display = "none";
+      }
+    }
+
+    // Right zone (listened, left side)
+    const rightZone = rightZoneRef.current;
+    const rightIcon = rightIconRef.current;
+    if (rightZone) {
+      if (dx > 0) {
+        rightZone.style.display = "flex";
+        rightZone.style.width = `${dx}px`;
+        const inZone = ratio >= LISTENED_THRESHOLD;
+        rightZone.style.backgroundColor = inZone ? "rgba(59,130,246,0.3)" : "var(--color-muted)";
+        rightZone.style.color = inZone ? "rgb(96,165,250)" : "var(--color-muted-foreground)";
+        if (rightIcon) rightIcon.style.display = inZone ? "block" : "none";
+      } else {
+        rightZone.style.display = "none";
+      }
+    }
+  }, []);
 
   const onTouchStart = useCallback((e: React.TouchEvent) => {
     startXRef.current = e.touches[0].clientX;
     startYRef.current = e.touches[0].clientY;
     swipingRef.current = false;
+    offsetRef.current = 0;
+    // Remove snap-back transition during active gesture
+    if (cardRef.current) cardRef.current.style.transition = "none";
   }, []);
 
   const onTouchMove = useCallback((e: React.TouchEvent) => {
     const deltaX = e.touches[0].clientX - startXRef.current;
     const deltaY = e.touches[0].clientY - startYRef.current;
 
-    // If vertical movement is greater, let the scroll happen
     if (!swipingRef.current && Math.abs(deltaY) > Math.abs(deltaX)) {
       startXRef.current = 0;
       return;
@@ -48,33 +106,37 @@ export function SwipeableFeedItem({
     if (Math.abs(deltaX) > SWIPE_THRESHOLD) {
       swipingRef.current = true;
       e.preventDefault();
-      setOffset(deltaX);
+      offsetRef.current = deltaX;
+      applyTransform(deltaX);
     }
-  }, []);
+  }, [applyTransform]);
 
   const onTouchEnd = useCallback(() => {
-    if (!swipingRef.current || !containerRef.current) {
-      setOffset(0);
+    const container = containerRef.current;
+    if (!swipingRef.current || !container) {
+      applyTransform(0);
       startXRef.current = 0;
       return;
     }
 
-    const cardWidth = containerRef.current.offsetWidth;
-    const swipeRatio = Math.abs(offset) / cardWidth;
+    const dx = offsetRef.current;
+    const cardWidth = container.offsetWidth;
+    const swipeRatio = Math.abs(dx) / cardWidth;
 
-    if (offset < 0 && swipeRatio >= REMOVE_THRESHOLD) {
-      // Left swipe past 80% — remove
+    if (dx < 0 && swipeRatio >= REMOVE_THRESHOLD) {
       setRemoving(true);
-      onRemove(item.id);
-    } else if (offset > 0 && swipeRatio >= LISTENED_THRESHOLD) {
-      // Right swipe past 30% — toggle listened
-      onToggleListened(item.id, !item.listened);
+      callbacksRef.current.onRemove(item.id);
+    } else if (dx > 0 && swipeRatio >= LISTENED_THRESHOLD) {
+      callbacksRef.current.onToggleListened(item.id, !item.listened);
     }
 
-    setOffset(0);
+    // Animate snap-back
+    if (cardRef.current) cardRef.current.style.transition = "transform 0.2s ease-out";
+    applyTransform(0);
     startXRef.current = 0;
+    offsetRef.current = 0;
     swipingRef.current = false;
-  }, [offset, item.id, item.listened, onToggleListened, onRemove]);
+  }, [item.id, item.listened, applyTransform]);
 
   if (removing) {
     return (
@@ -85,14 +147,6 @@ export function SwipeableFeedItem({
     );
   }
 
-  const cardWidth = containerRef.current?.offsetWidth ?? 300;
-  const swipeRatio = Math.abs(offset) / cardWidth;
-
-  // Left swipe: delete zone
-  const isRemoveZone = offset < 0 && swipeRatio >= REMOVE_THRESHOLD;
-  // Right swipe: listened zone
-  const isListenedZone = offset > 0 && swipeRatio >= LISTENED_THRESHOLD;
-
   return (
     <div
       ref={containerRef}
@@ -101,52 +155,20 @@ export function SwipeableFeedItem({
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
     >
-      {/* Left swipe action zone — delete (right side, behind card) */}
-      {offset < 0 && (
-        <div className="absolute inset-0 flex items-center justify-end">
-          <div
-            className={`h-full flex items-center justify-center px-6 transition-colors ${
-              isRemoveZone
-                ? "bg-red-500/30 text-red-400"
-                : "bg-muted text-muted-foreground"
-            }`}
-            style={{ width: Math.abs(offset) }}
-          >
-            {isRemoveZone && <Trash2 className="w-5 h-5" />}
-          </div>
-        </div>
-      )}
+      {/* Left swipe action zone — delete (right side) */}
+      <div className="absolute inset-y-0 right-0 items-center justify-center px-6" style={{ display: "none" }} ref={leftZoneRef}>
+        <div ref={leftIconRef} style={{ display: "none" }}><Trash2 className="w-5 h-5" /></div>
+      </div>
 
-      {/* Right swipe action zone — listened toggle (left side, behind card) */}
-      {offset > 0 && (
-        <div className="absolute inset-0 flex items-center justify-start">
-          <div
-            className={`h-full flex items-center justify-center px-6 transition-colors ${
-              isListenedZone
-                ? "bg-blue-500/30 text-blue-400"
-                : "bg-muted text-muted-foreground"
-            }`}
-            style={{ width: offset }}
-          >
-            {isListenedZone && (
-              item.listened ? (
-                <Check className="w-5 h-5" />
-              ) : (
-                <CheckCheck className="w-5 h-5" />
-              )
-            )}
-          </div>
+      {/* Right swipe action zone — listened toggle (left side) */}
+      <div className="absolute inset-y-0 left-0 items-center justify-center px-6" style={{ display: "none" }} ref={rightZoneRef}>
+        <div ref={rightIconRef} style={{ display: "none" }}>
+          {item.listened ? <Check className="w-5 h-5" /> : <CheckCheck className="w-5 h-5" />}
         </div>
-      )}
+      </div>
 
-      {/* Card — transforms on swipe */}
-      <div
-        className="relative transition-transform duration-75"
-        style={{
-          transform: offset !== 0 ? `translateX(${offset}px)` : undefined,
-          pointerEvents: offset !== 0 ? "none" : undefined,
-        }}
-      >
+      {/* Card */}
+      <div ref={cardRef} className="relative will-change-transform">
         <FeedItemCard item={item} onPlay={onPlay} onEpisodeVote={onEpisodeVote} />
       </div>
     </div>
