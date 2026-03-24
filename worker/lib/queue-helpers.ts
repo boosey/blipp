@@ -15,6 +15,14 @@ export async function checkStageEnabled(
   );
   if (hasManual) return true;
 
+  // Global kill switch
+  const pipelineEnabled = await getConfig(prisma, "pipeline.enabled", true);
+  if (!pipelineEnabled) {
+    log.info("pipeline_disabled", { stage: stageName });
+    for (const msg of batch.messages) msg.ack();
+    return false;
+  }
+
   const enabled = await getConfig(
     prisma,
     `pipeline.stage.${stageName}.enabled`,

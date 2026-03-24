@@ -40,7 +40,9 @@ describe("checkStageEnabled", () => {
   });
 
   it("returns false and acks all messages when stage is disabled", async () => {
-    (getConfig as any).mockResolvedValue(false);
+    (getConfig as any)
+      .mockResolvedValueOnce(true)   // pipeline.enabled
+      .mockResolvedValueOnce(false); // stage enabled
     const ackFn = vi.fn();
 
     const batch = {
@@ -56,7 +58,23 @@ describe("checkStageEnabled", () => {
     expect(mockLog.info).toHaveBeenCalledWith("stage_disabled", { stage: "DISTILLATION" });
   });
 
-  it("queries correct config key for stage", async () => {
+  it("returns false and acks all when pipeline.enabled is false", async () => {
+    (getConfig as any).mockResolvedValueOnce(false); // pipeline.enabled
+    const ackFn = vi.fn();
+
+    const batch = {
+      messages: [
+        { body: { type: "cron" }, ack: ackFn },
+      ],
+    } as unknown as MessageBatch;
+
+    const result = await checkStageEnabled({}, batch, "TRANSCRIPTION", mockLog);
+    expect(result).toBe(false);
+    expect(ackFn).toHaveBeenCalledTimes(1);
+    expect(mockLog.info).toHaveBeenCalledWith("pipeline_disabled", { stage: "TRANSCRIPTION" });
+  });
+
+  it("queries correct config keys for pipeline and stage", async () => {
     (getConfig as any).mockResolvedValue(true);
 
     const batch = {
@@ -64,6 +82,11 @@ describe("checkStageEnabled", () => {
     } as unknown as MessageBatch;
 
     await checkStageEnabled({ prisma: true }, batch, "AUDIO_GENERATION", mockLog);
+    expect(getConfig).toHaveBeenCalledWith(
+      { prisma: true },
+      "pipeline.enabled",
+      true
+    );
     expect(getConfig).toHaveBeenCalledWith(
       { prisma: true },
       "pipeline.stage.AUDIO_GENERATION.enabled",

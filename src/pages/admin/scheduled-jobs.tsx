@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { RefreshCw, ChevronDown, ChevronUp, Loader2 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -75,6 +76,21 @@ const LOG_LEVEL_COLORS: Record<CronRunLogLevel, string> = {
   INFO: "text-[#3B82F6]",
   WARN: "text-[#F59E0B]",
   ERROR: "text-[#EF4444]",
+};
+
+type JobSettingDef = {
+  key: string;
+  label: string;
+  type: "boolean" | "number";
+  description: string;
+  default: boolean | number;
+};
+
+const JOB_SETTINGS: Record<string, JobSettingDef[]> = {
+  "data-retention": [
+    { key: "requests.archiving.enabled", label: "Request Archiving", type: "boolean", description: "Delete completed/failed requests older than retention period", default: false },
+    { key: "requests.archiving.maxAgeDays", label: "Retention Days", type: "number", description: "Requests older than this are permanently deleted", default: 30 },
+  ],
 };
 
 // ---------------------------------------------------------------------------
@@ -254,6 +270,31 @@ export default function ScheduledJobs() {
   const [saving, setSaving] = useState<string | null>(null);
   const adminFetch = useAdminFetch();
 
+  // Platform config entries for job-specific settings
+  const [configEntries, setConfigEntries] = useState<{ key: string; value: unknown }[]>([]);
+  const loadConfigs = useCallback(async () => {
+    try {
+      const res = await adminFetch<{ data: { category: string; entries: { key: string; value: unknown }[] }[] }>("/config");
+      setConfigEntries(res.data.flatMap((g) => g.entries));
+    } catch {
+      // ignore
+    }
+  }, [adminFetch]);
+  useEffect(() => { loadConfigs(); }, [loadConfigs]);
+
+  async function patchConfig(key: string, value: unknown) {
+    setSaving(key);
+    try {
+      await adminFetch(`/config/${key}`, {
+        method: "PATCH",
+        body: JSON.stringify({ value }),
+      });
+      await loadConfigs();
+    } finally {
+      setSaving(null);
+    }
+  }
+
   // Seed local state when data loads
   useEffect(() => {
     if (jobs.length > 0) {
@@ -409,6 +450,40 @@ export default function ScheduledJobs() {
                 </Button>
               </div>
             </div>
+
+            {/* Job-specific settings */}
+            {JOB_SETTINGS[selectedJob.jobKey] && (
+              <div className="px-6 py-3 border-b border-white/5 space-y-3">
+                <p className="text-[10px] text-[#6B7280] uppercase tracking-wider font-semibold">Settings</p>
+                {JOB_SETTINGS[selectedJob.jobKey].map((setting) => {
+                  const value = configEntries.find((c) => c.key === setting.key)?.value;
+                  return (
+                    <div key={setting.key} className="flex items-center justify-between">
+                      <div>
+                        <span className="text-xs text-[#F9FAFB]">{setting.label}</span>
+                        <p className="text-[10px] text-[#6B7280] mt-0.5">{setting.description}</p>
+                      </div>
+                      {setting.type === "boolean" ? (
+                        <Switch
+                          checked={Boolean(value ?? setting.default)}
+                          onCheckedChange={(v) => patchConfig(setting.key, v)}
+                          disabled={saving === setting.key}
+                          className="data-[state=checked]:bg-[#10B981]"
+                        />
+                      ) : (
+                        <Input
+                          type="number"
+                          value={value != null ? Number(value) : Number(setting.default)}
+                          onChange={(e) => patchConfig(setting.key, Number(e.target.value))}
+                          disabled={saving === setting.key}
+                          className="w-20 h-7 text-xs bg-[#1A2942] border-white/10 text-[#F9FAFB] font-mono text-center"
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
             {/* Run history */}
             <div className="flex-1 overflow-y-auto">

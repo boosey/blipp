@@ -521,8 +521,6 @@ export interface FeatureFlag {
 
 export interface PipelineConfig {
   enabled: boolean;
-  minIntervalMinutes: number;
-  lastAutoRunAt: string | null;
   stages: Record<string, { enabled: boolean; name: string }>;
 }
 

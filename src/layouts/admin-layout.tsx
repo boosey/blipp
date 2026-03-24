@@ -20,7 +20,6 @@ import {
   ScrollText,
   AlertTriangle,
   Brain,
-  Zap,
   Sparkles,
   Flag,
   Megaphone,
@@ -32,6 +31,7 @@ import {
   RefreshCw,
   Mic,
   ExternalLink,
+  Settings2,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
@@ -86,7 +86,6 @@ const sidebarEntries: SidebarEntry[] = [
       { path: "pipeline", label: "Monitor", icon: GitBranch },
       { path: "requests", label: "Requests", icon: ClipboardList },
       { path: "briefings", label: "Briefings", icon: Radio },
-      { path: "pipeline-controls", label: "Controls", icon: Zap },
       { path: "dlq", label: "Dead Letters", icon: Inbox },
     ],
   },
@@ -130,6 +129,7 @@ const sidebarEntries: SidebarEntry[] = [
       { path: "audit-log", label: "Audit Log", icon: ScrollText },
       { path: "ads", label: "Advertisements", icon: Megaphone },
       { path: "scheduled-jobs", label: "Scheduled Jobs", icon: Clock },
+      { path: "system-settings", label: "System", icon: Settings2 },
     ],
   },
 ];

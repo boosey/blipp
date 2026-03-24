@@ -3,41 +3,42 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useAdminFetch } from "@/lib/admin-api";
 import type { PlatformConfigEntry } from "@/types/admin";
 
-interface CatalogConfigDef {
+interface SystemConfigDef {
   key: string;
   label: string;
-  type: "number" | "boolean";
+  type: "number" | "boolean" | "select";
   description: string;
-  default: number | boolean;
+  default: number | boolean | string;
+  options?: string[];
 }
 
-const CATALOG_CONFIGS: CatalogConfigDef[] = [
-  { key: "catalog.seedSize", label: "Catalog Seed Size", type: "number", description: "Podcasts to fetch during catalog-refresh", default: 200 },
-  { key: "catalog.refreshAllPodcasts", label: "Refresh All Podcasts", type: "boolean", description: "Refresh all catalog podcasts (not just subscribed)", default: false },
-  { key: "catalog.requests.enabled", label: "User Requests Enabled", type: "boolean", description: "Allow users to request new podcasts", default: true },
-  { key: "catalog.requests.maxPerUser", label: "Max Requests Per User", type: "number", description: "Maximum pending requests per user", default: 5 },
-  { key: "catalog.cleanup.inactivityThresholdDays", label: "Cleanup Inactivity Threshold", type: "number", description: "Days inactive before suggesting removal", default: 90 },
-  { key: "episodes.aging.enabled", label: "Episode Aging Enabled", type: "boolean", description: "Enable episode aging deletion", default: false },
-  { key: "episodes.aging.maxAgeDays", label: "Episode Max Age", type: "number", description: "Days before episodes are deletion candidates", default: 180 },
-  { key: "pipeline.feedRefresh.maxEpisodesPerPodcast", label: "Max Episodes per Podcast", type: "number", description: "Episodes ingested per podcast during feed refresh", default: 5 },
+const SYSTEM_CONFIGS: SystemConfigDef[] = [
+  { key: "pipeline.logLevel", label: "Pipeline Log Level", type: "select", description: "Controls verbosity of pipeline console output", default: "info", options: ["error", "info", "debug"] },
 ];
 
-function PodcastSettingsSkeleton() {
+function SystemSettingsSkeleton() {
   return (
     <div className="space-y-4 p-6">
       <Skeleton className="h-6 w-48 bg-white/5" />
       <Skeleton className="h-4 w-80 bg-white/5" />
-      {[1, 2, 3, 4, 5].map((i) => (
+      {[1, 2, 3].map((i) => (
         <Skeleton key={i} className="h-16 bg-white/5 rounded-lg" />
       ))}
     </div>
   );
 }
 
-export default function PodcastSettings() {
+export default function SystemSettings() {
   const apiFetch = useAdminFetch();
   const [configs, setConfigs] = useState<PlatformConfigEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -75,24 +76,25 @@ export default function PodcastSettings() {
     [apiFetch, load]
   );
 
-  function getConfigValue(key: string, defaultValue: number | boolean): number | boolean {
+  function getConfigValue(key: string, defaultValue: number | boolean | string): number | boolean | string {
     const entry = configs.find((c) => c.key === key);
     if (entry?.value == null) return defaultValue;
     if (typeof defaultValue === "boolean") return entry.value === true || entry.value === "true";
-    return Number(entry.value);
+    if (typeof defaultValue === "number") return Number(entry.value);
+    return String(entry.value);
   }
 
-  if (loading && configs.length === 0) return <PodcastSettingsSkeleton />;
+  if (loading && configs.length === 0) return <SystemSettingsSkeleton />;
 
   return (
     <div className="space-y-4 p-6">
       <div>
-        <h2 className="text-lg font-semibold text-[#F9FAFB]">Catalog & Episodes</h2>
-        <p className="text-xs text-[#9CA3AF] mt-0.5">Catalog refresh, user requests, and episode lifecycle settings</p>
+        <h2 className="text-lg font-semibold text-[#F9FAFB]">System Settings</h2>
+        <p className="text-xs text-[#9CA3AF] mt-0.5">Global system configuration</p>
       </div>
 
       <div className="space-y-2">
-        {CATALOG_CONFIGS.map((cfg) => {
+        {SYSTEM_CONFIGS.map((cfg) => {
           const currentValue = getConfigValue(cfg.key, cfg.default);
           return (
             <div
@@ -112,6 +114,23 @@ export default function PodcastSettings() {
                     disabled={saving === cfg.key}
                     className="data-[state=checked]:bg-[#14B8A6]"
                   />
+                ) : cfg.type === "select" && cfg.options ? (
+                  <Select
+                    value={String(currentValue)}
+                    onValueChange={(v) => updateConfig(cfg.key, v)}
+                    disabled={saving === cfg.key}
+                  >
+                    <SelectTrigger className="w-28 h-8 text-xs bg-[#1A2942] border-white/10 text-[#F9FAFB]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-[#1A2942] border-white/10 text-[#F9FAFB]">
+                      {cfg.options.map((opt) => (
+                        <SelectItem key={opt} value={opt} className="text-xs">
+                          {opt}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 ) : (
                   <Input
                     type="number"

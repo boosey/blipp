@@ -198,10 +198,8 @@ async function migrateLegacyConfigKeys(prisma: {
   };
 }) {
   const migrations = [
-    { from: "pipeline.lastAutoRunAt", to: "cron.pipeline-trigger.lastRunAt" },
     { from: "pricing.lastRefreshedAt", to: "cron.monitoring.lastRunAt" },
     { from: "recommendations.lastProfileRefresh", to: "cron.recommendations.lastRunAt" },
-    { from: "requests.archiving.lastRunAt", to: "cron.data-retention.lastRunAt" },
   ];
 
   for (const { from, to } of migrations) {

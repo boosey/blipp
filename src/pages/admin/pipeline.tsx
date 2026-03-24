@@ -599,10 +599,8 @@ export default function Pipeline() {
   const {
     config: pipelineConfig,
     saving: pipelineSaving,
-    triggering: pipelineTriggering,
     togglePipeline,
     toggleStage,
-    triggerFeedRefresh,
   } = usePipelineConfig();
 
   const [stageStats, setStageStats] = useState<PipelineStageStats[]>([]);
@@ -708,10 +706,8 @@ export default function Pipeline() {
               variant="master-only"
               config={pipelineConfig}
               saving={pipelineSaving}
-              triggering={pipelineTriggering}
               onTogglePipeline={togglePipeline}
               onToggleStage={toggleStage}
-              onTriggerFeedRefresh={triggerFeedRefresh}
             />
           </div>
         </div>
@@ -784,10 +780,8 @@ export default function Pipeline() {
                       stage={meta.stage}
                       config={pipelineConfig}
                       saving={pipelineSaving}
-                      triggering={pipelineTriggering}
                       onTogglePipeline={togglePipeline}
                       onToggleStage={toggleStage}
-                      onTriggerFeedRefresh={triggerFeedRefresh}
                     />
                   }
                 />

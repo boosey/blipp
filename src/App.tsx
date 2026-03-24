@@ -29,7 +29,6 @@ const Catalog = lazy(() => import("./pages/admin/catalog"));
 const Briefings = lazy(() => import("./pages/admin/briefings"));
 const AdminUsers = lazy(() => import("./pages/admin/users"));
 const Analytics = lazy(() => import("./pages/admin/analytics"));
-const PipelineControls = lazy(() => import("./pages/admin/pipeline-controls"));
 const StageConfiguration = lazy(() => import("./pages/admin/stage-configuration"));
 const FeatureFlags = lazy(() => import("./pages/admin/feature-flags"));
 const PodcastSettings = lazy(() => import("./pages/admin/podcast-settings"));
@@ -46,6 +45,7 @@ const AdminRecommendations = lazy(() => import("./pages/admin/recommendations"))
 const CatalogDiscovery = lazy(() => import("./pages/admin/catalog-discovery"));
 const PodcastSources = lazy(() => import("./pages/admin/podcast-sources"));
 const ScheduledJobs = lazy(() => import("./pages/admin/scheduled-jobs"));
+const SystemSettings = lazy(() => import("./pages/admin/system-settings"));
 const DlqMonitor = lazy(() => import("./pages/admin/dlq"));
 const VoicePresets = lazy(() => import("./pages/admin/voice-presets"));
 const EpisodeRefresh = lazy(() => import("./pages/admin/episode-refresh"));
@@ -137,12 +137,11 @@ export default function App() {
         <Route path="users" element={<Suspense fallback={<AdminLoading />}><AdminUsers /></Suspense>} />
         <Route path="plans" element={<Suspense fallback={<AdminLoading />}><Plans /></Suspense>} />
         <Route path="analytics" element={<Suspense fallback={<AdminLoading />}><Analytics /></Suspense>} />
-        <Route path="pipeline-controls" element={<Suspense fallback={<AdminLoading />}><PipelineControls /></Suspense>} />
         <Route path="stage-configuration" element={<Suspense fallback={<AdminLoading />}><StageConfiguration /></Suspense>} />
         <Route path="stage-models" element={<Navigate to="/admin/stage-configuration" replace />} />
         <Route path="feature-flags" element={<Suspense fallback={<AdminLoading />}><FeatureFlags /></Suspense>} />
         <Route path="podcast-settings" element={<Suspense fallback={<AdminLoading />}><PodcastSettings /></Suspense>} />
-        <Route path="configuration" element={<Navigate to="pipeline-controls" replace />} />
+        <Route path="system-settings" element={<Suspense fallback={<AdminLoading />}><SystemSettings /></Suspense>} />
         <Route path="requests" element={<Suspense fallback={<AdminLoading />}><Requests /></Suspense>} />
         <Route path="stt-benchmark" element={<Suspense fallback={<AdminLoading />}><SttBenchmark /></Suspense>} />
         <Route path="claims-benchmark" element={<Suspense fallback={<AdminLoading />}><ClaimsBenchmark /></Suspense>} />

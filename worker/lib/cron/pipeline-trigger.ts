@@ -2,7 +2,6 @@ import type { CronLogger } from "./runner";
 import type { Env } from "../../types";
 
 type PrismaLike = {
-  platformConfig: { upsert: (args: any) => Promise<any> };
   podcast: { findMany: (args: any) => Promise<any[]> };
   episodeRefreshJob: { create: (args: any) => Promise<any> };
 };
@@ -10,7 +9,6 @@ type PrismaLike = {
 /**
  * Fetch New Episodes job: checks all podcast feeds for new episodes.
  * Refreshes all non-archived podcasts regardless of subscription status.
- * Updates pipeline.lastAutoRunAt for backward compatibility with the pipeline controls page.
  * Creates an EpisodeRefreshJob to track progress.
  */
 export async function runPipelineTriggerJob(
@@ -44,17 +42,6 @@ export async function runPipelineTriggerJob(
       }))
     );
   }
-
-  // Keep pipeline.lastAutoRunAt in sync for the Pipeline Controls page
-  await prisma.platformConfig.upsert({
-    where: { key: "pipeline.lastAutoRunAt" },
-    update: { value: new Date().toISOString() },
-    create: {
-      key: "pipeline.lastAutoRunAt",
-      value: new Date().toISOString(),
-      description: "Timestamp of last automatic pipeline run",
-    },
-  });
 
   await logger.info("feed_refresh_enqueued", {
     trigger: "cron",

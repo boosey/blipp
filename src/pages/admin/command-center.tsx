@@ -774,10 +774,8 @@ export default function CommandCenter() {
                 className="h-full overflow-auto"
                 config={pipeline.config}
                 saving={pipeline.saving}
-                triggering={pipeline.triggering}
                 onTogglePipeline={pipeline.togglePipeline}
                 onToggleStage={pipeline.toggleStage}
-                onTriggerFeedRefresh={pipeline.triggerFeedRefresh}
               />
             )}
           </div>

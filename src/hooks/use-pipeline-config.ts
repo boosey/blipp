@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import { useAdminFetch } from "@/lib/admin-api";
-import type { PlatformConfigEntry, PipelineConfig, PipelineTriggerResult } from "@/types/admin";
+import type { PlatformConfigEntry, PipelineConfig } from "@/types/admin";
 
 export const STAGE_NAMES: Record<string, string> = {
   TRANSCRIPTION: "Transcription",
@@ -19,8 +19,6 @@ export function buildPipelineConfig(configs: PlatformConfigEntry[]): PipelineCon
   }
   return {
     enabled: get("pipeline.enabled") === true || get("pipeline.enabled") === "true",
-    minIntervalMinutes: Number(get("pipeline.minIntervalMinutes")) || 60,
-    lastAutoRunAt: (get("pipeline.lastAutoRunAt") as string) ?? null,
     stages,
   };
 }
@@ -74,17 +72,6 @@ export function usePipelineConfig() {
     [updateConfig]
   );
 
-  const triggerFeedRefresh = useCallback(async () => {
-    setTriggering(true);
-    try {
-      await apiFetch<PipelineTriggerResult>("/pipeline/trigger/feed-refresh", { method: "POST" });
-    } catch (e) {
-      console.error("Failed to trigger pipeline:", e);
-    } finally {
-      setTriggering(false);
-    }
-  }, [apiFetch]);
-
   const triggerTestBriefing = useCallback(
     async (podcastIds: string[], targetMinutes: number) => {
       setTriggering(true);
@@ -113,7 +100,6 @@ export function usePipelineConfig() {
     updateConfig, // generic (for Configuration page interval selector)
     togglePipeline,
     toggleStage,
-    triggerFeedRefresh,
     triggerTestBriefing,
     reload: load,
   };

@@ -1,7 +1,6 @@
-import { Zap, Play, Loader2 } from "lucide-react";
+import { Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
-import { Button } from "@/components/ui/button";
 import type { PipelineConfig } from "@/types/admin";
 
 const STAGE_COLORS: Record<string, string> = {
@@ -23,10 +22,8 @@ const STAGE_NAMES: Record<string, string> = {
 interface PipelineControlsProps {
   config: PipelineConfig;
   saving: string | null;
-  triggering: boolean;
   onTogglePipeline: (v: boolean) => void;
   onToggleStage: (stage: string, v: boolean) => void;
-  onTriggerFeedRefresh: () => void;
   variant: "full" | "master-only" | "stage-only";
   /** Required when variant is "stage-only" */
   stage?: string;
@@ -73,9 +70,9 @@ function MasterPipelineToggle({
   );
 }
 
-/** Full variant — master toggle + 5 stage toggles + Run Now. Used on Command Center. */
+/** Full variant — master toggle + 5 stage toggles. Used on Command Center. */
 function FullControls({
-  config, saving, triggering, onTogglePipeline, onToggleStage, onTriggerFeedRefresh, className,
+  config, saving, onTogglePipeline, onToggleStage, className,
 }: Omit<PipelineControlsProps, "variant" | "stage">) {
   return (
     <div className={cn("rounded-lg bg-[#1A2942] border border-white/5 p-4 space-y-3", className)}>
@@ -114,16 +111,6 @@ function FullControls({
         })}
       </div>
 
-      {/* Run Now */}
-      <Button
-        size="sm"
-        onClick={onTriggerFeedRefresh}
-        disabled={triggering || !config.enabled}
-        className="w-full bg-[#3B82F6] hover:bg-[#3B82F6]/80 text-white text-xs gap-1.5"
-      >
-        {triggering ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
-        {triggering ? "Running..." : "Run Now"}
-      </Button>
     </div>
   );
 }
