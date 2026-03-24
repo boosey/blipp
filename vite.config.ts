@@ -41,13 +41,6 @@ export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
   },
-  build: {
-    rollupOptions: {
-      // Capacitor native plugins are resolved at runtime on the device,
-      // not at build time. Externalize them so Rollup doesn't error.
-      external: ["@capgo/capacitor-social-login"],
-    },
-  },
   resolve: {
     alias: {
       "@": "/src",
