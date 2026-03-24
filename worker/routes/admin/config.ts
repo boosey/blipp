@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { getAuth } from "../../middleware/auth";
 import type { Env } from "../../types";
 import { writeAuditLog } from "../../lib/audit-log";
+import { DURATION_TIERS } from "../../lib/constants";
 
 const configRoutes = new Hono<{ Bindings: Env }>();
 
@@ -102,16 +103,13 @@ configRoutes.patch("/:key", async (c) => {
 // GET /tiers/duration - Duration tier configuration
 configRoutes.get("/tiers/duration", async (c) => {
   const prisma = c.get("prisma") as any;
-  const defaults = [
-    { minutes: 1, cacheHitRate: 0, clipsGenerated: 0, storageCost: 0, usageFrequency: 0 },
-    { minutes: 2, cacheHitRate: 0, clipsGenerated: 0, storageCost: 0, usageFrequency: 0 },
-    { minutes: 3, cacheHitRate: 0, clipsGenerated: 0, storageCost: 0, usageFrequency: 0 },
-    { minutes: 5, cacheHitRate: 0, clipsGenerated: 0, storageCost: 0, usageFrequency: 0 },
-    { minutes: 7, cacheHitRate: 0, clipsGenerated: 0, storageCost: 0, usageFrequency: 0 },
-    { minutes: 10, cacheHitRate: 0, clipsGenerated: 0, storageCost: 0, usageFrequency: 0 },
-    { minutes: 15, cacheHitRate: 0, clipsGenerated: 0, storageCost: 0, usageFrequency: 0 },
-    { minutes: 30, cacheHitRate: 0, clipsGenerated: 0, storageCost: 0, usageFrequency: 0 },
-  ];
+  const defaults = DURATION_TIERS.map((minutes) => ({
+    minutes,
+    cacheHitRate: 0,
+    clipsGenerated: 0,
+    storageCost: 0,
+    usageFrequency: 0,
+  }));
 
   try {
     const config = await prisma.platformConfig.findUnique({
