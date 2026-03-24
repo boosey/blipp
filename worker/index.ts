@@ -101,6 +101,7 @@ app.all("/__clerk/*", async (c) => {
   const allowedOrigins = [
     "https://podblipp.com",
     "https://www.podblipp.com",
+    "https://staging.podblipp.com",
     "capacitor://localhost",
     "ionic://localhost",
     "http://localhost:8787",
