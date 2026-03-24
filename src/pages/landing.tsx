@@ -154,7 +154,7 @@ export function Landing() {
 
           {/* CTA */}
           <div className="animate-fade-up delay-400 mt-10">
-            <SignInButton>
+            <SignInButton mode="modal" fallbackRedirectUrl="/home">
               <button
                 className="font-sora relative px-8 py-4 rounded-xl text-base font-700 text-white transition-all duration-300 hover:scale-105 active:scale-[0.98]"
                 style={{
@@ -248,7 +248,7 @@ export function Landing() {
             Don't binge. Just Blipp.
           </p>
           <div className="animate-fade-up delay-200">
-            <SignInButton>
+            <SignInButton mode="modal" fallbackRedirectUrl="/home">
               <button
                 className="font-sora relative px-10 py-4 rounded-xl text-lg font-700 text-white transition-all duration-300 hover:scale-105 active:scale-[0.98]"
                 style={{
