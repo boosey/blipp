@@ -28,6 +28,7 @@ const CATALOG_CONFIGS: CatalogConfigDef[] = [
   { key: "pipeline.feedRefresh.maxEpisodesPerPodcast", label: "Max Episodes per Podcast", type: "number", description: "Episodes ingested per podcast during feed refresh", default: 5 },
   { key: "pipeline.feedRefresh.batchConcurrency", label: "Batch Concurrency", type: "number", description: "Podcasts processed in parallel per queue message", default: 10 },
   { key: "pipeline.feedRefresh.fetchTimeoutMs", label: "RSS Fetch Timeout (ms)", type: "number", description: "Timeout for each RSS feed request", default: 10000 },
+  { key: "pipeline.contentPrefetch.fetchTimeoutMs", label: "Content Prefetch Timeout (ms)", type: "number", description: "Timeout for transcript/audio validation requests", default: 15000 },
 ];
 
 function PodcastSettingsSkeleton() {

@@ -387,6 +387,7 @@ Stored in the `PlatformConfig` table, accessed via `getConfig(prisma, key, fallb
 | `pipeline.feedRefresh.maxEpisodesPerPodcast` | number | `10` | Episode cap per podcast per refresh |
 | `pipeline.feedRefresh.batchConcurrency` | number | `10` | Podcasts processed in parallel per queue message |
 | `pipeline.feedRefresh.fetchTimeoutMs` | number | `10000` | RSS fetch timeout per podcast (ms) |
+| `pipeline.contentPrefetch.fetchTimeoutMs` | number | `15000` | Transcript/audio validation timeout (ms) |
 | `ai.stt.model` | JSON | `null` | STT model+provider config: `{provider, model}` |
 | `ai.stt.model.secondary` | JSON | `null` | STT secondary fallback |
 | `ai.stt.model.tertiary` | JSON | `null` | STT tertiary fallback |

@@ -125,9 +125,9 @@
 			},
 			{
 				"queue": "content-prefetch-staging",
-				"max_batch_size": 1,
+				"max_batch_size": 10,
 				"max_retries": 2,
-				"max_concurrency": 1
+				"max_concurrency": 20
 			}
 		]
 	},
@@ -292,9 +292,9 @@
 					},
 					{
 						"queue": "content-prefetch",
-						"max_batch_size": 1,
+						"max_batch_size": 10,
 						"max_retries": 2,
-						"max_concurrency": 1
+						"max_concurrency": 20
 					}
 				]
 			},

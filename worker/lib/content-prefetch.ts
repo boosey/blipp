@@ -27,7 +27,8 @@ export async function prefetchEpisodeContent(
     podcastIndexId: string | null;
   },
   env: Env,
-  r2: R2Bucket
+  r2: R2Bucket,
+  fetchTimeoutMs = 15000
 ): Promise<{
   contentStatus: "TRANSCRIPT_READY" | "AUDIO_READY" | "NOT_DELIVERABLE";
   transcriptR2Key: string | null;
@@ -35,7 +36,7 @@ export async function prefetchEpisodeContent(
   // Step 1: Try RSS transcript URL (direct fetch, no API call)
   if (episode.transcriptUrl) {
     console.log(`[content-prefetch] GET transcript (RSS): ${episode.transcriptUrl} (episode: ${episode.title})`);
-    const result = await tryFetchTranscript(episode.transcriptUrl, episode.id, r2);
+    const result = await tryFetchTranscript(episode.transcriptUrl, episode.id, r2, fetchTimeoutMs);
     if (result) {
       console.log(`[content-prefetch] Transcript fetched OK → ${result.contentStatus} (episode: ${episode.title})`);
       return result;
@@ -56,7 +57,7 @@ export async function prefetchEpisodeContent(
       );
       if (piUrl) {
         console.log(`[content-prefetch] GET transcript (PI): ${piUrl} (episode: ${episode.title})`);
-        const result = await tryFetchTranscript(piUrl, episode.id, r2);
+        const result = await tryFetchTranscript(piUrl, episode.id, r2, fetchTimeoutMs);
         if (result) {
           console.log(`[content-prefetch] PI transcript fetched OK → ${result.contentStatus} (episode: ${episode.title})`);
           return result;
@@ -74,7 +75,10 @@ export async function prefetchEpisodeContent(
   // Step 3: HEAD the audio URL
   console.log(`[content-prefetch] HEAD audio: ${episode.audioUrl} (episode: ${episode.title})`);
   try {
-    const headRes = await fetch(episode.audioUrl, { method: "HEAD" });
+    const audioController = new AbortController();
+    const audioTimeout = setTimeout(() => audioController.abort(), fetchTimeoutMs);
+    const headRes = await fetch(episode.audioUrl, { method: "HEAD", signal: audioController.signal });
+    clearTimeout(audioTimeout);
     console.log(`[content-prefetch] Audio HEAD response: ${headRes.status} ${headRes.statusText} (episode: ${episode.title})`);
     if (headRes.ok) {
       const contentType =
@@ -99,15 +103,19 @@ export async function prefetchEpisodeContent(
 async function tryFetchTranscript(
   url: string,
   episodeId: string,
-  r2: R2Bucket
+  r2: R2Bucket,
+  fetchTimeoutMs = 15000
 ): Promise<{
   contentStatus: "TRANSCRIPT_READY";
   transcriptR2Key: string;
 } | null> {
   try {
-    const res = await fetch(url);
-    if (!res.ok) return null;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), fetchTimeoutMs);
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok) { clearTimeout(timeout); return null; }
     const transcript = await res.text();
+    clearTimeout(timeout);
     if (transcript.length < 100) return null;
 
     const r2Key = wpKey({ type: "TRANSCRIPT", episodeId });
