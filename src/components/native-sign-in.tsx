@@ -35,8 +35,8 @@ export function NativeSignIn() {
           },
         });
       })
-      .catch((err) => {
-        console.error("SocialLogin init error:", err);
+      .catch((err: any) => {
+        console.error("SocialLogin init error:", JSON.stringify(err), err?.message, err?.code);
       });
   }, []);
 
@@ -112,7 +112,7 @@ export function NativeSignIn() {
         throw new Error(`Unexpected sign-in status: ${result.status}`);
       }
     } catch (err: any) {
-      console.error("NATIVE_AUTH error:", err);
+      console.error("NATIVE_AUTH error:", JSON.stringify(err), err?.message, err?.code);
       // Don't show error if user cancelled
       if (err.message?.includes("cancel") || err.message?.includes("Cancel")) {
         setLoading(null);
