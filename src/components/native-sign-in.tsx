@@ -6,64 +6,97 @@ import { useNavigate } from "react-router-dom";
 
 /**
  * Native sign-in component for Capacitor.
- * Implements custom OAuth flow using in-app browser
- * (ASWebAuthenticationSession on iOS) so the callback
- * returns to the app properly.
+ * Uses custom URL scheme (blipp://) to receive OAuth callback.
+ * Flow: App → in-app browser → Google → Clerk callback → server redirect → blipp://auth-callback → App
  */
 export function NativeSignIn() {
   const { signIn, isLoaded: signInLoaded } = useSignIn();
   const { signUp, isLoaded: signUpLoaded } = useSignUp();
-  const { setActive } = useClerk();
+  const { setActive, client } = useClerk();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Track whether we initiated an OAuth flow
   const oauthInProgress = useRef(false);
+  const signInIdRef = useRef<string | null>(null);
 
-  // Listen for browser close and app resume
+  // Listen for deep link callback (blipp://auth-callback)
   useEffect(() => {
-    const onBrowserFinished = Browser.addListener("browserFinished", async () => {
-      console.log("OAUTH: browser closed");
+    const appUrlListener = App.addListener("appUrlOpen", async (event) => {
+      console.log("OAUTH_DEEPLINK:", event.url);
+
+      if (!event.url.startsWith("blipp://auth-callback")) return;
       if (!oauthInProgress.current) return;
       oauthInProgress.current = false;
 
-      if (!signIn || !signUp) {
-        setLoading(false);
-        return;
-      }
+      // Close the in-app browser
+      try { await Browser.close(); } catch (e) { /* may already be closed */ }
+
+      // Parse the rotating token from the URL
+      const url = new URL(event.url);
+      const rotatingToken = url.searchParams.get("rotating_token");
+      console.log("OAUTH_DEEPLINK: rotating_token present:", !!rotatingToken);
 
       try {
-        const si = await signIn.reload();
-        console.log("OAUTH_RESUME: signIn status", si.status);
+        // Touch the client to pick up the new session
+        // The rotating token from the OAuth callback proves auth completed
+        if (rotatingToken && client) {
+          // Fetch the updated client state which should now have an active session
+          const updatedClient = await client.fetch();
+          console.log("OAUTH_DEEPLINK: sessions:", updatedClient?.sessions?.length);
 
-        if (si.status === "complete" && si.createdSessionId) {
-          await setActive({ session: si.createdSessionId });
-          navigate("/home", { replace: true });
-          return;
-        }
-
-        if (si.firstFactorVerification?.status === "transferable" && signUp) {
-          const su = await signUp.create({ transfer: true });
-          if (su.status === "complete" && su.createdSessionId) {
-            await setActive({ session: su.createdSessionId });
+          const lastSession = updatedClient?.sessions?.[updatedClient.sessions.length - 1];
+          if (lastSession) {
+            await setActive({ session: lastSession.id });
             navigate("/home", { replace: true });
             return;
           }
         }
 
+        // Fallback: try reloading the signIn
+        if (signIn && signInIdRef.current) {
+          const si = await signIn.reload();
+          console.log("OAUTH_DEEPLINK: signIn status:", si.status);
+
+          if (si.status === "complete" && si.createdSessionId) {
+            await setActive({ session: si.createdSessionId });
+            navigate("/home", { replace: true });
+            return;
+          }
+
+          // Handle transferable (new user via OAuth)
+          if (si.firstFactorVerification?.status === "transferable" && signUp) {
+            const su = await signUp.create({ transfer: true } as any);
+            if (su.status === "complete" && su.createdSessionId) {
+              await setActive({ session: su.createdSessionId });
+              navigate("/home", { replace: true });
+              return;
+            }
+          }
+        }
+
         setError("Sign-in was not completed. Please try again.");
       } catch (err: any) {
-        console.error("OAuth resume error:", err);
-        setError("Sign-in failed. Please try again.");
+        console.error("OAuth callback error:", err);
+        setError(err.errors?.[0]?.longMessage || err.message || "Sign-in failed");
       } finally {
         setLoading(false);
       }
     });
 
+    // Also handle browser close without deep link (user cancelled)
+    const browserFinished = Browser.addListener("browserFinished", () => {
+      console.log("OAUTH: browser closed");
+      if (oauthInProgress.current) {
+        oauthInProgress.current = false;
+        setLoading(false);
+      }
+    });
+
     return () => {
-      onBrowserFinished.then((l) => l.remove());
+      appUrlListener.then((l) => l.remove());
+      browserFinished.then((l) => l.remove());
     };
-  }, [signIn, signUp, setActive, navigate]);
+  }, [signIn, signUp, setActive, client, navigate]);
 
   const handleGoogleSignIn = async () => {
     if (!signIn) return;
@@ -72,25 +105,28 @@ export function NativeSignIn() {
 
     try {
       // Create a new OAuth sign-in attempt
+      // redirectUrl tells Clerk where to redirect after the OAuth callback
+      // Our server at this URL will redirect to blipp://auth-callback
       const result = await signIn.create({
         strategy: "oauth_google",
         redirectUrl: "https://blipp-staging.boosey-boudreaux.workers.dev/api/sso-callback",
       });
 
+      signInIdRef.current = result.id ?? null;
+
       const authUrl =
         result.firstFactorVerification?.externalVerificationRedirectURL;
 
       console.log("OAUTH_DEBUG: status", result.status);
+      console.log("OAUTH_DEBUG: signInId", result.id);
       console.log("OAUTH_DEBUG: authUrl", authUrl?.toString());
 
       if (!authUrl) {
         throw new Error("No authorization URL returned");
       }
 
-      // Mark that we started an OAuth flow
       oauthInProgress.current = true;
 
-      // Open in-app browser
       await Browser.open({
         url: authUrl.toString(),
         presentationStyle: "popover",
