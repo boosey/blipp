@@ -4,6 +4,12 @@ const config: CapacitorConfig = {
   appId: "com.blipp.app",
   appName: "Blipp",
   webDir: "dist/client",
+  plugins: {
+    CapacitorHttp: {
+      // Use native HTTP for all requests — bypasses WebView CORS
+      enabled: true,
+    },
+  },
   ios: {
     contentInset: "automatic",
     scheme: "https",
