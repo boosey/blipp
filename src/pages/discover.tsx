@@ -305,9 +305,14 @@ export function Discover() {
         ))}
       </ScrollableRow>
 
-      {/* Curated rows — hidden when searching */}
-      {!debouncedSearch.trim() && (
-        <>
+      {/* Curated rows — smoothly hidden when searching */}
+      <div
+        className={`transition-all duration-300 ease-in-out overflow-hidden ${
+          debouncedSearch.trim()
+            ? "max-h-0 opacity-0"
+            : "max-h-[2000px] opacity-100"
+        }`}
+      >
           {curatedLoading && !curatedData && (
             <div className="space-y-6">
               {[1, 2].map((i) => (
@@ -361,8 +366,7 @@ export function Discover() {
               </ScrollableRow>
             </section>
           )}
-        </>
-      )}
+      </div>
 
       {/* Tab switcher: Episodes / Podcasts */}
       <div className="flex gap-2 pt-2">
