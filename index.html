@@ -8,6 +8,29 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <script>
+      // Patch location.protocol for Clerk compatibility in Capacitor WebView
+      if (window.location.protocol === 'capacitor:') {
+        Object.defineProperty(window, '__clerk_nav', { value: window.location });
+        var fakeUrl = 'https://' + window.location.host + window.location.pathname + window.location.search + window.location.hash;
+        var parsed = new URL(fakeUrl);
+        var locProps = {
+          protocol: { get: function() { return 'https:'; } },
+          origin: { get: function() { return 'https://' + window.location.host; } },
+          href: { get: function() { return fakeUrl; }, set: function(v) { window.__clerk_nav.href = v; } },
+          hostname: { get: function() { return parsed.hostname; } },
+          host: { get: function() { return parsed.host; } },
+          pathname: { get: function() { return window.__clerk_nav.pathname; } },
+          search: { get: function() { return window.__clerk_nav.search; } },
+          hash: { get: function() { return window.__clerk_nav.hash; } },
+          port: { get: function() { return ''; } },
+          assign: { value: function(u) { window.__clerk_nav.assign(u); } },
+          replace: { value: function(u) { window.__clerk_nav.replace(u); } },
+          reload: { value: function() { window.__clerk_nav.reload(); } },
+          toString: { value: function() { return fakeUrl; } },
+        };
+        Object.defineProperty(window, 'location', { configurable: true, value: Object.create({}, locProps) });
+        console.log('CAPACITOR_PATCH: location.protocol patched to https:');
+      }
       (function(){
         var t = localStorage.getItem('blipp-theme');
         var dark = t === 'dark' || (!t || t === 'system') && matchMedia('(prefers-color-scheme: dark)').matches;
