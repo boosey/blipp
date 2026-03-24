@@ -7,8 +7,8 @@ function SSOCallback() {
 }
 import { lazy, Suspense } from "react";
 import { MobileLayout } from "./layouts/mobile-layout";
-import { AdminLayout } from "./layouts/admin-layout";
-import { AdminGuard } from "./components/admin-guard";
+const AdminLayout = lazy(() => import("./layouts/admin-layout").then(m => ({ default: m.AdminLayout })));
+const AdminGuard = lazy(() => import("./components/admin-guard").then(m => ({ default: m.AdminGuard })));
 import { NativeSignIn } from "./components/native-sign-in";
 import { Landing } from "./pages/landing";
 import { Pricing } from "./pages/pricing";
@@ -119,11 +119,11 @@ export default function App() {
       <Route
         path="/admin"
         element={
-          <AdminGuard>
-            <Suspense fallback={<AdminLoading />}>
+          <Suspense fallback={<AdminLoading />}>
+            <AdminGuard>
               <AdminLayout />
-            </Suspense>
-          </AdminGuard>
+            </AdminGuard>
+          </Suspense>
         }
       >
         <Route index element={<Navigate to="command-center" replace />} />
