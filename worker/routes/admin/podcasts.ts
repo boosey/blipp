@@ -11,9 +11,9 @@ podcastsRoutes.get("/health", (c) => c.json({ status: "ok" }));
 // GET /stats - Podcast catalog stats
 podcastsRoutes.get("/stats", async (c) => {
   const prisma = c.get("prisma") as any;
-  let total, byHealth, byStatus, needsAttention;
+  let total, byHealth, byStatus, bySource, needsAttention;
   try {
-    [total, byHealth, byStatus, needsAttention] = await Promise.all([
+    [total, byHealth, byStatus, bySource, needsAttention] = await Promise.all([
       prisma.podcast.count({ where: { status: { not: "archived" } } }),
       prisma.podcast.groupBy({
         by: ["feedHealth"],
@@ -23,6 +23,11 @@ podcastsRoutes.get("/stats", async (c) => {
       prisma.podcast.groupBy({
         by: ["status"],
         _count: true,
+      }),
+      prisma.podcast.groupBy({
+        by: ["source"],
+        _count: true,
+        where: { status: { not: "archived" } },
       }),
       prisma.podcast.count({
         where: {
@@ -37,7 +42,7 @@ podcastsRoutes.get("/stats", async (c) => {
   } catch {
     // feedHealth/feedError columns may not exist
     return c.json({
-      data: { total: 0, byHealth: { excellent: 0, good: 0, fair: 0, poor: 0, broken: 0 }, byStatus: { active: 0, paused: 0, archived: 0 }, needsAttention: 0 },
+      data: { total: 0, byHealth: { excellent: 0, good: 0, fair: 0, poor: 0, broken: 0 }, byStatus: { active: 0, paused: 0, archived: 0 }, bySource: {}, needsAttention: 0 },
     });
   }
 
@@ -51,8 +56,14 @@ podcastsRoutes.get("/stats", async (c) => {
     statusMap[row.status] = row._count;
   }
 
+  const sourceMap: Record<string, number> = {};
+  for (const row of bySource) {
+    const key = row.source ?? "unknown";
+    sourceMap[key] = row._count;
+  }
+
   return c.json({
-    data: { total, byHealth: healthMap, byStatus: statusMap, needsAttention },
+    data: { total, byHealth: healthMap, byStatus: statusMap, bySource: sourceMap, needsAttention },
   });
 });
 
@@ -66,6 +77,7 @@ podcastsRoutes.get("/", async (c) => {
   const health = c.req.query("health");
   const status = c.req.query("status");
   const language = c.req.query("language");
+  const source = c.req.query("source");
   const orderBy = parseSort(c, "createdAt", ["createdAt", "title", "episodeCount", "status", "lastFetchedAt"]);
 
   const where: Record<string, unknown> = {};
@@ -79,6 +91,7 @@ podcastsRoutes.get("/", async (c) => {
   if (health) where.feedHealth = health;
   if (status) where.status = status;
   if (language) where.language = language;
+  if (source) where.source = source;
 
   const [podcasts, total] = await Promise.all([
     prisma.podcast.findMany({
@@ -106,12 +119,85 @@ podcastsRoutes.get("/", async (c) => {
     feedError: p.feedError,
     episodeCount: p._count.episodes,
     status: p.status,
+    source: p.source,
     subscriberCount: p._count.subscriptions,
     createdAt: p.createdAt.toISOString(),
     updatedAt: p.updatedAt.toISOString(),
   }));
 
   return c.json(paginatedResponse(data, total, page, pageSize));
+});
+
+// GET /sources - Per-source stats for the podcast sources page
+podcastsRoutes.get("/sources", async (c) => {
+  const prisma = c.get("prisma") as any;
+
+  try {
+    const [bySource, bySourceHealth, bySourceEpisodes, lastRefresh] = await Promise.all([
+      // Count by source
+      prisma.podcast.groupBy({
+        by: ["source"],
+        _count: true,
+        where: { status: { not: "archived" } },
+      }),
+      // Health breakdown by source
+      prisma.podcast.groupBy({
+        by: ["source", "feedHealth"],
+        _count: true,
+        where: { status: { not: "archived" } },
+      }),
+      // Episode count by source
+      prisma.$queryRaw`
+        SELECT p.source, COUNT(e.id)::int as "episodeCount"
+        FROM "Podcast" p
+        LEFT JOIN "Episode" e ON e."podcastId" = p.id
+        WHERE p.status != 'archived'
+        GROUP BY p.source
+      `,
+      // Last catalog refresh time
+      prisma.platformConfig.findUnique({
+        where: { key: "catalogRefresh.status" },
+      }),
+    ]);
+
+    const total = bySource.reduce((sum: number, r: any) => sum + r._count, 0);
+
+    // Build per-source health maps
+    const sourceHealthMap: Record<string, Record<string, number>> = {};
+    for (const row of bySourceHealth) {
+      const src = row.source ?? "unknown";
+      if (!sourceHealthMap[src]) sourceHealthMap[src] = { excellent: 0, good: 0, fair: 0, poor: 0, broken: 0 };
+      if (row.feedHealth) sourceHealthMap[src][row.feedHealth] = row._count;
+    }
+
+    // Build episode count map
+    const episodeMap: Record<string, number> = {};
+    for (const row of bySourceEpisodes as any[]) {
+      episodeMap[row.source ?? "unknown"] = row.episodeCount;
+    }
+
+    const sources = bySource.map((row: any) => {
+      const src = row.source ?? "unknown";
+      return {
+        identifier: src,
+        name: src === "apple" ? "Apple Podcasts" : src === "podcast-index" ? "Podcast Index" : src === "manual" ? "Manual" : src,
+        podcastCount: row._count,
+        percentage: total > 0 ? Math.round((row._count / total) * 1000) / 10 : 0,
+        episodeCount: episodeMap[src] ?? 0,
+        byHealth: sourceHealthMap[src] ?? { excellent: 0, good: 0, fair: 0, poor: 0, broken: 0 },
+        status: "active",
+      };
+    });
+
+    // Sort: apple first, then podcast-index, then others
+    const order: Record<string, number> = { apple: 0, "podcast-index": 1, manual: 2 };
+    sources.sort((a: any, b: any) => (order[a.identifier] ?? 99) - (order[b.identifier] ?? 99));
+
+    return c.json({ data: { sources, lastRefresh: lastRefresh?.updatedAt?.toISOString() } });
+  } catch (err) {
+    console.error("[admin/podcasts/sources] Error:", err);
+    return c.json({ data: { sources: [], lastRefresh: null } });
+  }
 });
 
 // POST /catalog-seed - Wipe and reseed the catalog

@@ -31,7 +31,10 @@ export interface FeedRefreshSummary {
   lastRunAt: string | null;
   podcastsRefreshed: number;
   totalPodcasts: number;
+  totalEpisodes: number;
   recentEpisodes: number;
+  prefetchedTranscripts: number;
+  prefetchedAudio: number;
   feedErrors: number;
 }
 
@@ -206,6 +209,7 @@ export interface AdminPodcast {
   feedError?: string;
   episodeCount: number;
   status: PodcastStatus;
+  source?: string;
   subscriberCount: number;
   appleId?: string;
   language?: string;
@@ -222,6 +226,7 @@ export interface AdminPodcastDetail extends AdminPodcast {
 export interface CatalogFilters {
   health?: FeedHealth[];
   status?: PodcastStatus[];
+  source?: string;
   transcriptAvailability?: "has_transcript" | "needs_transcription" | "mixed";
   activity?: "today" | "this_week" | "stale" | "inactive";
   categories?: string[];
@@ -233,7 +238,18 @@ export interface CatalogStats {
   total: number;
   byHealth: Record<FeedHealth, number>;
   byStatus: Record<PodcastStatus, number>;
+  bySource: Record<string, number>;
   needsAttention: number;
+}
+
+export interface PodcastSourceStats {
+  identifier: string;
+  name: string;
+  podcastCount: number;
+  percentage: number;
+  episodeCount: number;
+  byHealth: Record<string, number>;
+  status: string;
 }
 
 // ── Episodes ──
@@ -604,8 +620,7 @@ export type WorkProductType =
   | "CLAIMS"
   | "NARRATIVE"
   | "AUDIO_CLIP"
-  | "BRIEFING_AUDIO"
-  | "SOURCE_AUDIO";
+  | "BRIEFING_AUDIO";
 
 export interface WorkProductSummary {
   id: string;
@@ -802,6 +817,7 @@ export interface AdminPlan {
   briefingsPerWeek: number | null;
   maxDurationMinutes: number;
   maxPodcastSubscriptions: number | null;
+  pastEpisodesLimit: number | null;
   adFree: boolean;
   priorityProcessing: boolean;
   earlyAccess: boolean;
@@ -813,6 +829,7 @@ export interface AdminPlan {
   stripePriceIdAnnual: string | null;
   stripeProductId: string | null;
   trialDays: number;
+  allowedVoicePresetIds: string[];
   features: string[];
   highlighted: boolean;
   active: boolean;
@@ -970,30 +987,44 @@ export interface AdminPodcastProfile {
 
 export interface CatalogSeedJob {
   id: string;
-  status: string; // pending | discovering | upserting | feed_refresh | paused | cancelled | complete | failed
+  mode: "destructive" | "additive";
+  source: string; // "apple" | "podcast-index" | "manual"
+  trigger: string; // "admin" | "script" | "cron"
+  status: string; // pending | discovering | upserting | complete | failed | cancelled
   podcastsDiscovered: number;
-  feedsTotal: number;
-  feedsCompleted: number;
-  prefetchTotal: number;
-  prefetchCompleted: number;
   error: string | null;
+  archivedAt: string | null;
   startedAt: string;
   completedAt: string | null;
+  _count?: { errors: number };
+}
+
+export interface CatalogJobError {
+  id: string;
+  phase: string; // "discovery"
+  message: string;
+  podcastId: string | null;
+  episodeId: string | null;
+  podcastTitle?: string;
+  episodeTitle?: string;
+  createdAt: string;
+}
+
+export interface CatalogSeedJobList {
+  data: CatalogSeedJob[];
+  total: number;
+  page: number;
+  pageSize: number;
 }
 
 export interface CatalogSeedProgress {
   job: CatalogSeedJob | null;
   podcastsInserted: number;
-  episodesDiscovered: number;
-  prefetchBreakdown: Record<string, number>;
+  errorCounts: { discovery: number; total: number };
   pagination: {
     pageSize: number;
     podcastPage: number;
     podcastTotal: number;
-    episodePage: number;
-    episodeTotal: number;
-    prefetchPage: number;
-    prefetchTotal: number;
   };
   recentPodcasts: {
     id: string;
@@ -1002,6 +1033,90 @@ export interface CatalogSeedProgress {
     imageUrl: string | null;
     categories: string[];
     createdAt: string;
+  }[];
+  refreshJob?: { id: string; status: string } | null;
+}
+
+// ── Voice Presets ──
+
+export interface VoicePresetProviderConfig {
+  voice?: string;
+  instructions?: string;
+  speed?: number;
+}
+
+export interface VoicePresetConfig {
+  openai?: VoicePresetProviderConfig;
+  groq?: { voice?: string };
+  cloudflare?: Record<string, unknown>;
+  [provider: string]: unknown;
+}
+
+export interface VoicePresetEntry {
+  id: string;
+  name: string;
+  description: string | null;
+  isSystem: boolean;
+  isActive: boolean;
+  config: VoicePresetConfig;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Slim shape returned by GET /api/voice-presets (public endpoint). */
+export interface VoicePresetOption {
+  id: string;
+  name: string;
+  description: string | null;
+  isSystem: boolean;
+}
+
+// ── Episode Refresh Jobs ──
+
+export interface EpisodeRefreshJob {
+  id: string;
+  scope: string;
+  trigger: string;
+  status: string;
+  podcastsTotal: number;
+  podcastsCompleted: number;
+  podcastsWithNewEpisodes: number;
+  episodesDiscovered: number;
+  prefetchTotal: number;
+  prefetchCompleted: number;
+  error: string | null;
+  archivedAt: string | null;
+  startedAt: string;
+  completedAt: string | null;
+  catalogSeedJobId?: string | null;
+  _count?: { errors: number };
+}
+
+export interface EpisodeRefreshError {
+  id: string;
+  phase: string;
+  message: string;
+  podcastId: string | null;
+  episodeId: string | null;
+  podcastTitle?: string;
+  episodeTitle?: string;
+  createdAt: string;
+}
+
+export interface EpisodeRefreshJobList {
+  data: EpisodeRefreshJob[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface EpisodeRefreshProgress {
+  job: EpisodeRefreshJob | null;
+  podcastsWithNewEpisodesDetail: {
+    id: string;
+    title: string;
+    imageUrl: string | null;
+    newEpisodeCount: number;
   }[];
   recentEpisodes: {
     id: string;
@@ -1018,4 +1133,29 @@ export interface CatalogSeedProgress {
     updatedAt: string;
     podcast: { title: string; imageUrl: string | null };
   }[];
+  prefetchBreakdown: Record<string, number>;
+  errorCounts: { feed_scan: number; prefetch: number; total: number };
+  pagination: {
+    pageSize: number;
+    podcastPage: number;
+    podcastTotal: number;
+    episodePage: number;
+    episodeTotal: number;
+    prefetchPage: number;
+    prefetchTotal: number;
+  };
+}
+
+// ── Prompt Versioning ──
+
+export interface PromptVersionEntry {
+  id: string;
+  stage: string;
+  version: number;
+  label: string | null;
+  values: Record<string, string>;
+  notes: string | null;
+  createdAt: string;
+  createdBy: string | null;
+  isActive: boolean;
 }

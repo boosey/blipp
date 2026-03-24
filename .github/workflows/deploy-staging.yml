@@ -12,10 +12,10 @@ jobs:
     if: "!contains(github.event.head_commit.message, '[version-bump]')"
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: '22'
           cache: 'npm'
@@ -26,6 +26,16 @@ jobs:
           mkdir -p src/generated/prisma
           echo 'export { PrismaClient } from "./client";' > src/generated/prisma/index.ts
           echo 'export * from "./enums";' >> src/generated/prisma/index.ts
+
+      - name: Push schema to staging database
+        run: |
+          npx prisma db push 2>&1 || {
+            echo "::error::prisma db push failed — likely a destructive schema change."
+            echo "::error::Run manually with --accept-data-loss, then re-run this workflow."
+            exit 1
+          }
+        env:
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
 
       - name: Bump patch version
         run: npm version patch --no-git-tag-version

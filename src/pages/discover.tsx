@@ -304,59 +304,63 @@ export function Discover() {
         ))}
       </ScrollableRow>
 
-      {/* Curated rows */}
-      {curatedLoading && !curatedData && (
-        <div className="space-y-6">
-          {[1, 2].map((i) => (
-            <div key={i} className="space-y-2">
-              <div className="h-4 w-40 bg-muted rounded animate-pulse" />
-              <div className="flex gap-3 overflow-hidden">
-                {[1, 2, 3].map((j) => (
-                  <div key={j} className="w-[180px] h-[180px] bg-muted rounded-lg animate-pulse flex-shrink-0" />
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-      {curatedData?.rows.map((row, i) => (
-        <CuratedRow key={`${row.title}-${i}`} row={row} />
-      ))}
-
-      {/* Podcast suggestions from curated */}
-      {curatedData?.podcastSuggestions && curatedData.podcastSuggestions.length > 0 && (
-        <section className="space-y-2">
-          <h2 className="text-sm font-semibold">You might want to subscribe</h2>
-          <ScrollableRow className="gap-3 pb-2">
-            {curatedData.podcastSuggestions.map((suggestion) => (
-              <button
-                key={suggestion.podcast.id}
-                onClick={() => openPodcast(suggestion.podcast.id)}
-                className="flex-shrink-0 w-28 snap-start text-left"
-              >
-                {suggestion.podcast.imageUrl ? (
-                  <img
-                    src={suggestion.podcast.imageUrl}
-                    className="w-28 h-28 rounded-lg object-cover"
-                    alt=""
-                  />
-                ) : (
-                  <div className="w-28 h-28 rounded-lg bg-muted flex items-center justify-center">
-                    <span className="text-2xl font-bold text-muted-foreground">
-                      {suggestion.podcast.title.charAt(0).toUpperCase()}
-                    </span>
+      {/* Curated rows — hidden when searching */}
+      {!debouncedSearch.trim() && (
+        <>
+          {curatedLoading && !curatedData && (
+            <div className="space-y-6">
+              {[1, 2].map((i) => (
+                <div key={i} className="space-y-2">
+                  <div className="h-4 w-40 bg-muted rounded animate-pulse" />
+                  <div className="flex gap-3 overflow-hidden">
+                    {[1, 2, 3].map((j) => (
+                      <div key={j} className="w-[180px] h-[180px] bg-muted rounded-lg animate-pulse flex-shrink-0" />
+                    ))}
                   </div>
-                )}
-                <p className="text-xs font-medium mt-1.5 truncate">{suggestion.podcast.title}</p>
-                {suggestion.topReasons[0] && (
-                  <span className="text-[10px] text-muted-foreground truncate block">
-                    {suggestion.topReasons[0]}
-                  </span>
-                )}
-              </button>
-            ))}
-          </ScrollableRow>
-        </section>
+                </div>
+              ))}
+            </div>
+          )}
+          {curatedData?.rows.map((row, i) => (
+            <CuratedRow key={`${row.title}-${i}`} row={row} />
+          ))}
+
+          {/* Podcast suggestions from curated */}
+          {curatedData?.podcastSuggestions && curatedData.podcastSuggestions.length > 0 && (
+            <section className="space-y-2">
+              <h2 className="text-sm font-semibold">You might want to subscribe</h2>
+              <ScrollableRow className="gap-3 pb-2">
+                {curatedData.podcastSuggestions.map((suggestion) => (
+                  <button
+                    key={suggestion.podcast.id}
+                    onClick={() => openPodcast(suggestion.podcast.id)}
+                    className="flex-shrink-0 w-28 snap-start text-left"
+                  >
+                    {suggestion.podcast.imageUrl ? (
+                      <img
+                        src={suggestion.podcast.imageUrl}
+                        className="w-28 h-28 rounded-lg object-cover"
+                        alt=""
+                      />
+                    ) : (
+                      <div className="w-28 h-28 rounded-lg bg-muted flex items-center justify-center">
+                        <span className="text-2xl font-bold text-muted-foreground">
+                          {suggestion.podcast.title.charAt(0).toUpperCase()}
+                        </span>
+                      </div>
+                    )}
+                    <p className="text-xs font-medium mt-1.5 truncate">{suggestion.podcast.title}</p>
+                    {suggestion.topReasons[0] && (
+                      <span className="text-[10px] text-muted-foreground truncate block">
+                        {suggestion.topReasons[0]}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </ScrollableRow>
+            </section>
+          )}
+        </>
       )}
 
       {/* Tab switcher: Episodes / Podcasts */}

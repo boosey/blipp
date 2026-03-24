@@ -198,9 +198,9 @@ describe("Apple Podcasts Client", () => {
       expect(url).toContain("entity=podcast");
     });
 
-    it("should chunk IDs into groups of 150", async () => {
-      // Create 300 IDs — should result in 2 fetch calls
-      const ids = Array.from({ length: 300 }, (_, i) => i + 1);
+    it("should chunk IDs into groups of 10", async () => {
+      // Create 30 IDs — should result in 3 fetch calls
+      const ids = Array.from({ length: 30 }, (_, i) => i + 1);
 
       mockFetch.mockImplementation(() =>
         Promise.resolve(lookupResponse([]))
@@ -210,17 +210,14 @@ describe("Apple Podcasts Client", () => {
       await vi.runAllTimersAsync();
       await promise;
 
-      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(mockFetch).toHaveBeenCalledTimes(3);
 
-      // First call should have 150 IDs
-      const url1 = mockFetch.mock.calls[0][0];
-      const idParam1 = new URL(url1).searchParams.get("id")!;
-      expect(idParam1.split(",")).toHaveLength(150);
-
-      // Second call should have 150 IDs
-      const url2 = mockFetch.mock.calls[1][0];
-      const idParam2 = new URL(url2).searchParams.get("id")!;
-      expect(idParam2.split(",")).toHaveLength(150);
+      // Each call should have 10 IDs
+      for (let i = 0; i < 3; i++) {
+        const url = mockFetch.mock.calls[i][0];
+        const idParam = new URL(url).searchParams.get("id")!;
+        expect(idParam.split(",")).toHaveLength(10);
+      }
     });
 
     it("should retry on 429 with exponential backoff", async () => {

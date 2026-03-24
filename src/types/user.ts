@@ -10,6 +10,7 @@ export interface PodcastDetail {
   episodeCount: number;
   isSubscribed: boolean;
   subscriptionDurationTier: number | null;
+  subscriptionVoicePresetId: string | null;
   userVote: number; // 1 = up, -1 = down, 0 = none
 }
 
@@ -21,4 +22,5 @@ export interface EpisodeSummary {
   publishedAt: string;
   durationSeconds: number | null;
   userVote: number; // 1 = up, -1 = down, 0 = none
+  blippStatus: { status: "PENDING" | "PROCESSING" | "READY" | "FAILED"; listened: boolean } | null;
 }

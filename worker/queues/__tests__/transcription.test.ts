@@ -47,10 +47,7 @@ vi.mock("../../lib/ai-usage", () => ({
 
 const mockPutWorkProduct = vi.fn().mockResolvedValue(undefined);
 vi.mock("../../lib/work-products", () => ({
-  wpKey: vi.fn(({ type, episodeId }: any) => {
-    if (type === "SOURCE_AUDIO") return `wp/source-audio/${episodeId}.bin`;
-    return `wp/transcript/${episodeId}.txt`;
-  }),
+  wpKey: vi.fn(({ episodeId }: any) => `wp/transcript/${episodeId}.txt`),
   putWorkProduct: (...args: any[]) => mockPutWorkProduct(...args),
 }));
 
@@ -697,85 +694,6 @@ describe("handleTranscription", () => {
     });
   });
 
-  describe("source audio work product", () => {
-    const episodeNoTranscript = { ...EPISODE, transcriptUrl: null };
-
-    function setupSttMocks() {
-      mockPrisma.pipelineJob.findUnique.mockResolvedValue(JOB);
-      mockPrisma.pipelineJob.update.mockResolvedValue({});
-      mockPrisma.pipelineStep.create.mockResolvedValue({ id: "step1" });
-      mockPrisma.episode.findUnique.mockResolvedValue(episodeNoTranscript);
-      mockPrisma.podcast.findUnique.mockResolvedValue(PODCAST);
-      mockPrisma.distillation.upsert.mockResolvedValue({ id: "dist1", episodeId: "ep1" });
-      mockPrisma.workProduct.upsert.mockResolvedValue({ id: "wp1" });
-      mockPrisma.pipelineStep.update.mockResolvedValue({});
-      mockRssLookup.mockResolvedValue(null);
-      mockPiLookup.mockResolvedValue(null);
-    }
-
-    it("stores source audio to R2 before STT when no existing source", async () => {
-      setupSttMocks();
-      const msg = createMsg({ jobId: "job1", episodeId: "ep1" });
-
-      await handleTranscription(createBatch([msg]), env, ctx);
-
-      // R2.head called for source audio key
-      expect(env.R2.head).toHaveBeenCalledWith("wp/source-audio/ep1.bin");
-
-      // putWorkProduct called with audio buffer
-      expect(mockPutWorkProduct).toHaveBeenCalledWith(
-        env.R2,
-        "wp/source-audio/ep1.bin",
-        expect.any(ArrayBuffer),
-        { contentType: "audio/mpeg" }
-      );
-
-      // WorkProduct DB row upserted
-      expect(mockPrisma.workProduct.upsert).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { r2Key: "wp/source-audio/ep1.bin" },
-          create: expect.objectContaining({
-            episodeId: "ep1",
-            type: "SOURCE_AUDIO",
-            r2Key: "wp/source-audio/ep1.bin",
-            sizeBytes: 20000,
-          }),
-          update: {},
-        })
-      );
-    });
-
-    it("skips source audio storage when R2 key already exists (idempotency)", async () => {
-      setupSttMocks();
-      const msg = createMsg({ jobId: "job1", episodeId: "ep1" });
-
-      // R2.head: null for transcript cache check, object for source audio check
-      (env.R2.head as any)
-        .mockResolvedValueOnce(null)  // transcript cache check
-        .mockResolvedValueOnce({ size: 50000 });  // source audio already exists
-
-      await handleTranscription(createBatch([msg]), env, ctx);
-
-      // Should NOT call putWorkProduct for source audio
-      expect(mockPutWorkProduct).not.toHaveBeenCalledWith(
-        env.R2,
-        "wp/source-audio/ep1.bin",
-        expect.anything(),
-        expect.anything()
-      );
-
-      // Should NOT upsert SOURCE_AUDIO work product
-      expect(mockPrisma.workProduct.upsert).not.toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { r2Key: "wp/source-audio/ep1.bin" },
-        })
-      );
-
-      // STT should still proceed
-      expect(mockTranscribe).toHaveBeenCalled();
-      expect(msg.ack).toHaveBeenCalled();
-    });
-  });
 
   it("fails gracefully when audio is too small", async () => {
     const episodeNoTranscript = { ...EPISODE, transcriptUrl: null };

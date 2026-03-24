@@ -31,6 +31,7 @@ const generateSchema = z.object({
   durationTier: z.number().refine((v) => DURATION_TIERS.includes(v as any), {
     message: `Must be one of: ${DURATION_TIERS.join(", ")}`,
   }),
+  voicePresetId: z.string().nullable().optional(),
 });
 
 briefings.post("/generate", async (c) => {
@@ -95,6 +96,11 @@ briefings.post("/generate", async (c) => {
     feedItem.status = "PENDING";
   }
 
+  // Resolve voice preset: explicit param > user default > null
+  const voicePresetId = body.voicePresetId !== undefined
+    ? body.voicePresetId
+    : user.defaultVoicePresetId ?? null;
+
   // Only dispatch pipeline if not already processed
   if (feedItem.status === "PENDING") {
     const request = await prisma.briefingRequest.create({
@@ -105,6 +111,7 @@ briefings.post("/generate", async (c) => {
           podcastId,
           episodeId,
           durationTier: body.durationTier,
+          voicePresetId: voicePresetId ?? undefined,
           useLatest: false,
         }],
         isTest: false,

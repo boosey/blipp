@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="1024" height="1024">
+  <defs>
+    <!-- Background: soft lavender-to-rose -->
+    <linearGradient id="bg" x1="128" y1="0" x2="128" y2="256" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#f3f0ff"/>
+      <stop offset="100%" stop-color="#fef1f7"/>
+    </linearGradient>
+
+    <!-- B fill: deep violet → purple → magenta-pink -->
+    <linearGradient id="b-grad" x1="48" y1="32" x2="210" y2="224" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#7C3AED"/>
+      <stop offset="40%" stop-color="#9333EA"/>
+      <stop offset="100%" stop-color="#EC4899"/>
+    </linearGradient>
+
+    <!-- Subtle top-center highlight -->
+    <radialGradient id="highlight" cx="120" cy="80" r="90" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="white" stop-opacity="0.1"/>
+      <stop offset="100%" stop-color="white" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- === ICON BACKGROUND === -->
+  <rect width="256" height="256" rx="56" fill="url(#bg)"/>
+  <rect width="256" height="256" rx="56" fill="none" stroke="#d8d0ea" stroke-width="0.5" stroke-opacity="0.35"/>
+
+  <!--
+    === B LETTERFORM ===
+    Constructed on 8px grid. Elliptical arcs for smooth bowl curves.
+    Bowl wall thickness: ~24px consistent.
+    Stem width: 36px (x=48..84).
+    Upper bowl rx=60 ry=48, lower bowl rx=68 ry=48.
+  -->
+  <path
+    fill-rule="evenodd"
+    fill="url(#b-grad)"
+    d="
+      M 66 32
+      Q 48 32, 48 50
+      L 48 206
+      Q 48 224, 66 224
+      L 140 224
+      C 177 224, 208 202, 208 176
+      C 208 150, 177 128, 140 128
+      L 132 128
+      C 165 128, 192 106, 192 80
+      C 192 54, 165 32, 132 32
+      Z
+
+      M 84 56
+      L 124 56
+      C 149 56, 168 68, 168 82
+      C 168 96, 149 108, 124 108
+      L 84 108
+      Z
+
+      M 84 150
+      L 132 150
+      C 157 150, 178 164, 178 178
+      C 178 192, 157 206, 132 206
+      L 116 206
+      L 102 218
+      L 110 206
+      L 84 206
+      Z
+    "
+  />
+
+  <!-- Subtle highlight overlay -->
+  <path
+    fill-rule="evenodd"
+    fill="url(#highlight)"
+    d="
+      M 66 32 Q 48 32, 48 50 L 48 206 Q 48 224, 66 224
+      L 140 224 C 177 224, 208 202, 208 176 C 208 150, 177 128, 140 128
+      L 132 128 C 165 128, 192 106, 192 80 C 192 54, 165 32, 132 32 Z
+      M 84 56 L 124 56 C 149 56, 168 68, 168 82 C 168 96, 149 108, 124 108 L 84 108 Z
+      M 84 150 L 132 150 C 157 150, 178 164, 178 178 C 178 192, 157 206, 132 206
+      L 116 206 L 102 218 L 110 206 L 84 206 Z
+    "
+  />
+
+  <!--
+    === WAVEFORM: 3 vertical bars ===
+    Center bar tallest. Rounded caps. Even 16px spacing.
+    Positioned at B crossbar junction (y≈108..150).
+  -->
+  <rect x="104" y="114" width="8" height="32" rx="4" fill="white" opacity="0.85"/>
+  <rect x="120" y="102" width="8" height="56" rx="4" fill="white" opacity="0.85"/>
+  <rect x="136" y="110" width="8" height="40" rx="4" fill="white" opacity="0.85"/>
+</svg>

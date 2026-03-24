@@ -61,9 +61,10 @@ function createCronLogger(runId: string, prisma: PrismaLike): CronLogger {
 export async function runJob(params: {
   jobKey: string;
   prisma: PrismaLike;
+  defaultIntervalMinutes?: number;
   execute: (logger: CronLogger) => Promise<Record<string, unknown>>;
 }): Promise<void> {
-  const { jobKey, prisma, execute } = params;
+  const { jobKey, prisma, defaultIntervalMinutes = 60, execute } = params;
 
   // Check enabled (cached is fine — manual change, 60s lag acceptable)
   const enabled = await getConfig(prisma as any, `cron.${jobKey}.enabled`, true);
@@ -73,7 +74,7 @@ export async function runJob(params: {
   const intervalMinutes = await getConfig<number>(
     prisma as any,
     `cron.${jobKey}.intervalMinutes`,
-    60
+    defaultIntervalMinutes
   );
   const lastRunConfig = await prisma.platformConfig.findUnique({
     where: { key: `cron.${jobKey}.lastRunAt` },

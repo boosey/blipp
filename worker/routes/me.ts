@@ -8,6 +8,7 @@ import { getActiveFlags } from "../lib/feature-flags";
 import { getUserUsage } from "../lib/plan-limits";
 import { validateBody } from "../lib/validation";
 import { DURATION_TIERS } from "../lib/constants";
+import { checkVoicePresetAccess } from "../lib/voice-presets";
 
 const OnboardingCompleteSchema = z.object({
   reset: z.boolean().optional(),
@@ -18,7 +19,9 @@ const PreferencesSchema = z.object({
     .number()
     .refine((n) => (DURATION_TIERS as readonly number[]).includes(n), {
       message: `Must be one of: ${DURATION_TIERS.join(", ")}`,
-    }),
+    })
+    .optional(),
+  defaultVoicePresetId: z.string().nullable().optional(),
 });
 
 const DeleteAccountSchema = z.object({
@@ -74,6 +77,7 @@ me.get("/", async (c) => {
       isAdmin: fullUser.isAdmin,
       onboardingComplete: fullUser.onboardingComplete,
       defaultDurationTier: fullUser.defaultDurationTier,
+      defaultVoicePresetId: fullUser.defaultVoicePresetId,
       featureFlags: flags,
     },
   });
@@ -100,19 +104,34 @@ me.patch("/onboarding-complete", async (c) => {
 
 /**
  * PATCH /preferences — Update user preferences.
- * Body: { defaultDurationTier?: number }
+ * Body: { defaultDurationTier?: number, defaultVoicePresetId?: string | null }
  */
 me.patch("/preferences", async (c) => {
   const prisma = c.get("prisma") as any;
   const user = await getCurrentUser(c, prisma);
   const body = await validateBody(c, PreferencesSchema);
 
-  await prisma.user.update({
+  // Enforce plan access for voice preset
+  if (body.defaultVoicePresetId !== undefined && body.defaultVoicePresetId !== null) {
+    const voiceError = await checkVoicePresetAccess(prisma, user.planId, body.defaultVoicePresetId);
+    if (voiceError) return c.json({ error: voiceError }, 403);
+  }
+
+  const data: any = {};
+  if (body.defaultDurationTier !== undefined) data.defaultDurationTier = body.defaultDurationTier;
+  if (body.defaultVoicePresetId !== undefined) data.defaultVoicePresetId = body.defaultVoicePresetId;
+
+  const updated = await prisma.user.update({
     where: { id: user.id },
-    data: { defaultDurationTier: body.defaultDurationTier },
+    data,
   });
 
-  return c.json({ data: { defaultDurationTier: body.defaultDurationTier } });
+  return c.json({
+    data: {
+      defaultDurationTier: updated.defaultDurationTier,
+      defaultVoicePresetId: updated.defaultVoicePresetId,
+    },
+  });
 });
 
 /**

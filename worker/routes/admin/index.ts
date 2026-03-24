@@ -17,11 +17,14 @@ import { aiErrorsRoutes } from "./ai-errors";
 import { auditLogRoutes } from "./audit-log";
 import { apiKeysRoutes } from "./api-keys";
 import { adsRoutes } from "./ads";
-import { catalogSeedRoutes } from "./catalog-seed";
+// catalogSeedRoutes mounted in worker/index.ts (before Clerk middleware)
 import { recommendationsRoutes } from "./recommendations";
 import { cronJobsRoutes } from "./cron-jobs";
 import { claimsBenchmarkRoutes } from "./claims-benchmark";
 import { promptsRoutes } from "./prompts";
+import { voicePresetsRoutes } from "./voice-presets";
+import { storageRoutes } from "./storage";
+import { episodeRefreshRoutes } from "./episode-refresh";
 
 /**
  * Admin route tree. All routes require admin authentication.
@@ -48,10 +51,14 @@ adminRoutes.route("/ai-errors", aiErrorsRoutes);
 adminRoutes.route("/audit-log", auditLogRoutes);
 adminRoutes.route("/api-keys", apiKeysRoutes);
 adminRoutes.route("/ads", adsRoutes);
-adminRoutes.route("/catalog-seed", catalogSeedRoutes);
+// catalog-seed routes are mounted separately in index.ts (before Clerk middleware)
+// to allow script-token auth from GH Actions without Clerk context
 adminRoutes.route("/recommendations", recommendationsRoutes);
 adminRoutes.route("/cron-jobs", cronJobsRoutes);
 adminRoutes.route("/claims-benchmark", claimsBenchmarkRoutes);
 adminRoutes.route("/prompts", promptsRoutes);
+adminRoutes.route("/voice-presets", voicePresetsRoutes);
+adminRoutes.route("/storage", storageRoutes);
+adminRoutes.route("/episode-refresh", episodeRefreshRoutes);
 
 export { adminRoutes };

@@ -134,6 +134,7 @@ describe("GET /podcasts/:id/episodes", () => {
       },
     ]);
     mockPrisma.episodeVote.findMany.mockResolvedValue([]);
+    mockPrisma.feedItem.findMany.mockResolvedValue([]);
 
     const res = await app.request("/podcasts/pod_1/episodes", {}, env, mockExCtx);
     const body: any = await res.json();
@@ -142,5 +143,6 @@ describe("GET /podcasts/:id/episodes", () => {
     expect(body.episodes).toHaveLength(1);
     expect(body.episodes[0].title).toBe("Episode 1");
     expect(body.episodes[0].userVote).toBe(0);
+    expect(body.episodes[0].blippStatus).toBeNull();
   });
 });

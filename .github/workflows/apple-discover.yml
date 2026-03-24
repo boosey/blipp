@@ -1,0 +1,42 @@
+name: Apple Podcasts Discovery
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        type: choice
+        options:
+          - staging
+          - production
+        default: staging
+      country:
+        description: iTunes chart country code
+        type: string
+        default: us
+      limit:
+        description: Chart size limit
+        type: number
+        default: 200
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - name: Run Apple discovery (staging)
+        if: inputs.environment == 'staging'
+        run: node scripts/apple-discover.mjs --country=${{ inputs.country }} --limit=${{ inputs.limit }}
+        env:
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          APP_ORIGIN: ${{ secrets.STAGING_ORIGIN }}
+          SCRIPT_TOKEN: ${{ secrets.SCRIPT_TOKEN }}
+      - name: Run Apple discovery (production)
+        if: inputs.environment == 'production'
+        run: node scripts/apple-discover.mjs --production --country=${{ inputs.country }} --limit=${{ inputs.limit }}
+        env:
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY_PROD }}
+          APP_ORIGIN: ${{ secrets.PROD_ORIGIN }}
+          SCRIPT_TOKEN: ${{ secrets.SCRIPT_TOKEN }}

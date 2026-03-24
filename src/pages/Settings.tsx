@@ -10,6 +10,7 @@ import { useFetch } from "../lib/use-fetch";
 import { Skeleton } from "../components/ui/skeleton";
 import { PlanComparison, type PlanDetail } from "../components/plan-comparison";
 import { TierPicker } from "../components/tier-picker";
+import { VoicePresetPicker } from "../components/voice-preset-picker";
 import { useTheme, type Theme } from "../contexts/theme-context";
 import { usePlan } from "../contexts/plan-context";
 import type { DurationTier } from "../lib/duration-tiers";
@@ -32,6 +33,7 @@ interface UserInfo {
   plan: { id: string; name: string; slug: string };
   isAdmin: boolean;
   defaultDurationTier: number;
+  defaultVoicePresetId: string | null;
 }
 
 interface UsageData {
@@ -63,15 +65,19 @@ export function Settings() {
   const { data: usageData, loading: usageLoading } = useFetch<{ data: UsageData }>("/me/usage");
   const planUsage = usePlan();
   const [defaultTier, setDefaultTier] = useState<number | null>(null);
+  const [defaultVoicePresetId, setDefaultVoicePresetId] = useState<string | null>(null);
 
   const user = userData?.user ?? null;
 
-  // Sync default tier from user data
+  // Sync defaults from user data
   useEffect(() => {
     if (user && defaultTier === null) {
       setDefaultTier(user.defaultDurationTier);
     }
-  }, [user, defaultTier]);
+    if (user && defaultVoicePresetId === null) {
+      setDefaultVoicePresetId(user.defaultVoicePresetId ?? null);
+    }
+  }, [user, defaultTier, defaultVoicePresetId]);
   const usage = usageData?.data ?? null;
 
   // Check push state on mount
@@ -340,6 +346,33 @@ export function Settings() {
               }
             }}
             maxDurationMinutes={planUsage.maxDurationMinutes}
+          />
+        </div>
+      </section>
+
+      {/* Default Voice */}
+      <section className="space-y-4">
+        <h2 className="text-lg font-semibold">Default Voice</h2>
+        <div className="bg-card border border-border rounded-xl p-4 space-y-2">
+          <p className="text-xs text-muted-foreground">
+            Choose the default voice style for your briefings.
+          </p>
+          <VoicePresetPicker
+            selected={defaultVoicePresetId}
+            onSelect={async (presetId) => {
+              const prev = defaultVoicePresetId;
+              setDefaultVoicePresetId(presetId);
+              try {
+                await apiFetch("/me/preferences", {
+                  method: "PATCH",
+                  body: JSON.stringify({ defaultVoicePresetId: presetId }),
+                });
+                toast.success("Default voice updated");
+              } catch {
+                setDefaultVoicePresetId(prev);
+                toast.error("Failed to update preference");
+              }
+            }}
           />
         </div>
       </section>

@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="512" height="512">
+  <!--
+    OPTION A: "Cut-Through Waveform"
+    The 3 waveform bars physically slice through the B as negative space,
+    creating transparent gaps where they intersect the letter form.
+    Bold and dramatic — the B is literally interrupted by audio.
+
+    Grid: 8px base grid, 256x256 coordinate space
+    Stem width: 32px (x=48 to x=80)
+    Stroke consistency: ~24px bowl walls
+  -->
+  <defs>
+    <linearGradient id="grad-a" x1="32" y1="24" x2="208" y2="232" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#8B5CF6"/>
+      <stop offset="100%" stop-color="#EC4899"/>
+    </linearGradient>
+    <!-- Mask: white = visible, black = cut out -->
+    <mask id="waveform-cuts">
+      <rect width="256" height="256" fill="white"/>
+      <!-- Left bar (shortest) -->
+      <rect x="96" y="100" width="10" height="56" rx="5" fill="black"/>
+      <!-- Center bar (tallest) -->
+      <rect x="114" y="86" width="10" height="84" rx="5" fill="black"/>
+      <!-- Right bar (medium) -->
+      <rect x="132" y="94" width="10" height="68" rx="5" fill="black"/>
+    </mask>
+  </defs>
+
+  <!-- B letterform with waveform cut through via mask -->
+  <path
+    mask="url(#waveform-cuts)"
+    fill-rule="evenodd"
+    fill="url(#grad-a)"
+    d="
+      M 48 44
+      Q 48 28 64 28
+      L 140 28
+      C 166 28 184 50 184 78
+      C 184 106 166 124 140 128
+      C 166 132 196 152 196 182
+      C 196 212 170 228 140 228
+      L 64 228
+      Q 48 228 48 212
+      Z
+
+      M 80 52
+      L 128 52
+      C 148 52 164 68 164 82
+      C 164 96 148 108 128 108
+      L 80 108
+      Z
+
+      M 80 152
+      L 132 152
+      C 156 152 172 168 172 184
+      C 172 200 156 212 132 212
+      L 114 212
+      L 98 224
+      L 106 212
+      L 80 212
+      Z
+    "
+  />
+</svg>

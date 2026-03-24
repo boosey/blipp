@@ -1,7 +1,6 @@
 import { StrictMode, Component, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
-import { Capacitor } from "@capacitor/core";
 import { AppClerkProvider } from "./providers/clerk-provider";
 import { ThemeProvider } from "./contexts/theme-context";
 import App from "./App";
@@ -26,12 +25,6 @@ class DebugErrorBoundary extends Component<
     }
     return this.props.children;
   }
-}
-
-if ("serviceWorker" in navigator && import.meta.env.PROD && !Capacitor.isNativePlatform()) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js").catch(() => {});
-  });
 }
 
 createRoot(document.getElementById("root")!).render(

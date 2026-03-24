@@ -336,16 +336,52 @@ npx prisma db seed
 <td>Type check (<code>tsc --noEmit</code>)</td>
 </tr>
 <tr>
-<td><code>npm run clean:requests</code></td>
-<td>Clean BriefingRequest data (uses raw <code>pg</code>, not Prisma)</td>
-</tr>
-<tr>
 <td><code>npm run clean:pipeline</code></td>
 <td>Clean pipeline data (uses raw <code>pg</code>)</td>
 </tr>
 <tr>
+<td><code>npm run clean:pipeline:dry</code></td>
+<td>Dry-run pipeline clean (preview only)</td>
+</tr>
+<tr>
+<td><code>npm run clean:pipeline:staging</code></td>
+<td>Clean pipeline data on staging</td>
+</tr>
+<tr>
+<td><code>npm run clean:pipeline:production</code></td>
+<td>Clean pipeline data on production</td>
+</tr>
+<tr>
+<td><code>npm run clean:stt-benchmark</code></td>
+<td>Clean STT benchmark data</td>
+</tr>
+<tr>
 <td><code>npm run db:check</code></td>
 <td>Database health check (uses raw <code>pg</code>)</td>
+</tr>
+<tr>
+<td><code>npm run db:push</code></td>
+<td>Push Prisma schema to database</td>
+</tr>
+<tr>
+<td><code>npm run db:studio</code></td>
+<td>Open Prisma Studio</td>
+</tr>
+<tr>
+<td><code>npm run deploy</code></td>
+<td>Build + deploy to staging</td>
+</tr>
+<tr>
+<td><code>npm run deploy:production</code></td>
+<td>Build + deploy to production</td>
+</tr>
+<tr>
+<td><code>npm run deploy:quick</code></td>
+<td>Deploy to staging (skip build)</td>
+</tr>
+<tr>
+<td><code>npm run deploy:quick:production</code></td>
+<td>Deploy to production (skip build)</td>
 </tr>
 </tbody>
 </table>
@@ -447,7 +483,7 @@ routes.<span class="hljs-title function_">get</span>(<span class="hljs-string">&
 <li>Do <strong>not</strong> duplicate <code>clerkMiddleware()</code> in admin route files -- it is applied globally in <code>worker/index.ts</code></li>
 <li>Admin routes use the <code>requireAdmin</code> middleware from <code>worker/middleware/admin.ts</code></li>
 <li>Admin auth checks the <code>isAdmin</code> boolean on the User model</li>
-<li>Import <code>STAGE_NAMES</code> or <code>STAGE_DISPLAY_NAMES</code> from <code>worker/lib/config.ts</code> — do not define locally</li>
+<li>Import <code>PIPELINE_STAGE_NAMES</code> from <code>worker/lib/constants.ts</code> — do not define stage name mappings locally</li>
 </ul>
 <h3 id="frontend-structure">Frontend Structure</h3>
 <ul>
@@ -525,7 +561,7 @@ npx vitest run worker/queues/__tests__/feed-refresh.test.ts
 <li>Use <code>var(--color-*)</code> instead of <code>theme()</code> for color references</li>
 </ul>
 <h3 id="pre-existing-test-failures">Pre-existing test failures</h3>
-<p><code>src/__tests__/discover.test.tsx</code> and <code>src/__tests__/settings.test.tsx</code> have 2 known failures unrelated to pipeline work. These can be ignored during development.</p>
+<p>All previously known test failures have been resolved. If you encounter test failures, they should be investigated rather than ignored.</p>
 <h3 id="clerk-compatibility-shim">Clerk compatibility shim</h3>
 <p><code>src/shims/clerk-load-script.ts</code> handles a version mismatch between <code>@clerk/clerk-react</code> and <code>@hono/clerk-auth</code>. See <code>docs/plans/phase0-decisions.md</code> for details.</p>
 <h3 id="wranglerjsonc-hyperdrive-placeholder">wrangler.jsonc Hyperdrive placeholder</h3>

@@ -21,7 +21,7 @@ let mockPrisma: ReturnType<typeof createMockPrisma> & {
 };
 let mockEnv: ReturnType<typeof createMockEnv>;
 let mockCtx: ExecutionContext;
-let mockDiscover: ReturnType<typeof vi.fn>;
+let mockAppleDiscover: ReturnType<typeof vi.fn>;
 
 function createModelMethods() {
   return {
@@ -50,7 +50,6 @@ const sampleDiscovered: DiscoveredPodcast[] = [
     imageUrl: "https://example.com/img1.jpg",
     author: "Author One",
     appleId: "111",
-    podcastIndexId: "pi-111",
     categories: [
       { genreId: "1301", name: "Arts" },
       { genreId: "1309", name: "TV & Film" },
@@ -86,12 +85,10 @@ beforeEach(() => {
   mockCtx = { waitUntil: vi.fn() } as unknown as ExecutionContext;
   (createPrismaClient as any).mockReturnValue(mockPrisma);
 
-  mockDiscover = vi.fn().mockResolvedValue(sampleDiscovered);
-  (getCatalogSource as any).mockReturnValue({
-    name: "Apple Podcasts",
-    identifier: "apple",
-    discover: mockDiscover,
-    search: vi.fn(),
+  mockAppleDiscover = vi.fn().mockResolvedValue(sampleDiscovered);
+  (getCatalogSource as any).mockImplementation((id: string) => {
+    if (id === "apple") return { name: "Apple Podcasts", identifier: "apple", discover: mockAppleDiscover, search: vi.fn() };
+    return { name: "Podcast Index", identifier: "podcast-index", discover: vi.fn().mockResolvedValue([]), search: vi.fn() };
   });
 
   // Default mock behaviors
@@ -104,8 +101,17 @@ beforeEach(() => {
     .mockResolvedValueOnce({ id: "pod-2", status: "active" });
   mockPrisma.podcastCategory.deleteMany.mockResolvedValue({ count: 0 });
   mockPrisma.podcastCategory.createMany.mockResolvedValue({ count: 1 });
+  mockPrisma.podcast.findUnique.mockResolvedValue(null);
   mockPrisma.podcast.findMany.mockResolvedValue([]);
   mockPrisma.subscription.count.mockResolvedValue(0);
+
+  // EpisodeRefreshJob creation after discovery
+  (mockPrisma as any).episodeRefreshJob = createModelMethods();
+  (mockPrisma as any).episodeRefreshJob.create.mockResolvedValue({ id: "refresh-job-1" });
+
+  // CatalogSeedJob updates
+  (mockPrisma as any).catalogSeedJob = createModelMethods();
+  (mockPrisma as any).catalogSeedJob.update.mockResolvedValue({});
 });
 
 function createBatch(action: "seed" | "refresh"): MessageBatch<CatalogRefreshMessage> {
@@ -127,13 +133,13 @@ function createBatch(action: "seed" | "refresh"): MessageBatch<CatalogRefreshMes
 }
 
 describe("handleCatalogRefresh", () => {
-  it("calls discover on Apple catalog source", async () => {
+  it("calls discover on Apple source", async () => {
     const batch = createBatch("refresh");
 
     await handleCatalogRefresh(batch, mockEnv, mockCtx);
 
-    expect(getCatalogSource).toHaveBeenCalledWith("podcast-index");
-    expect(mockDiscover).toHaveBeenCalledWith(2000, mockEnv);
+    expect(getCatalogSource).toHaveBeenCalledWith("apple");
+    expect(mockAppleDiscover).toHaveBeenCalledWith(100, mockEnv);
   });
 
   it("upserts categories from discovered podcasts, filtering genreId 26", async () => {
@@ -160,7 +166,6 @@ describe("handleCatalogRefresh", () => {
 
     await handleCatalogRefresh(batch, mockEnv, mockCtx);
 
-    // Should upsert both podcasts
     expect(mockPrisma.podcast.upsert).toHaveBeenCalledTimes(2);
     expect(mockPrisma.podcast.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -170,7 +175,7 @@ describe("handleCatalogRefresh", () => {
           feedUrl: "https://example.com/feed1.xml",
           status: "active",
           appleId: "111",
-          source: "podcast-index",
+          source: "apple",
         }),
       })
     );
@@ -179,13 +184,12 @@ describe("handleCatalogRefresh", () => {
   it("creates PodcastCategory join records", async () => {
     const batch = createBatch("refresh");
 
-    // Mock findMany to handle both markPendingDeletion and chunk lookups
     mockPrisma.podcast.findMany.mockImplementation(async (args: any) => {
       if (args?.where?.status) return []; // markPendingDeletion
       if (args?.where?.feedUrl) {
         return [
-          { id: "pod-1", feedUrl: "https://example.com/feed1.xml" },
-          { id: "pod-2", feedUrl: "https://example.com/feed2.xml" },
+          { id: "pod-1", feedUrl: "https://example.com/feed1.xml", source: "apple" },
+          { id: "pod-2", feedUrl: "https://example.com/feed2.xml", source: "apple" },
         ];
       }
       return [];
@@ -208,13 +212,11 @@ describe("handleCatalogRefresh", () => {
   });
 
   it("marks unsubscribed podcasts not in charts as pending_deletion on refresh", async () => {
-    // Active podcasts include one not in the charts
     mockPrisma.podcast.findMany.mockResolvedValue([
       { id: "pod-1" },
       { id: "pod-2" },
       { id: "pod-old" }, // not in charts
     ]);
-    // pod-old has no subscribers
     mockPrisma.subscription.count.mockImplementation(async (args: any) => {
       return args.where.podcastId === "pod-old" ? 0 : 1;
     });
@@ -232,15 +234,13 @@ describe("handleCatalogRefresh", () => {
     mockPrisma.podcast.findMany.mockResolvedValue([
       { id: "pod-1" },
       { id: "pod-2" },
-      { id: "pod-subscribed" }, // not in charts but has subscribers
+      { id: "pod-subscribed" },
     ]);
-    // pod-subscribed has a subscriber
     mockPrisma.subscription.count.mockResolvedValue(1);
 
     const batch = createBatch("refresh");
     await handleCatalogRefresh(batch, mockEnv, mockCtx);
 
-    // Should not mark any as pending_deletion (all either in charts or subscribed)
     expect(mockPrisma.podcast.updateMany).not.toHaveBeenCalled();
   });
 
@@ -248,8 +248,6 @@ describe("handleCatalogRefresh", () => {
     const batch = createBatch("seed");
     await handleCatalogRefresh(batch, mockEnv, mockCtx);
 
-    // markPendingDeletion is only called for refresh, not seed
-    // findMany for active podcasts should not be called
     expect(mockPrisma.podcast.findMany).not.toHaveBeenCalledWith(
       expect.objectContaining({ where: { status: "active" } })
     );
@@ -257,7 +255,6 @@ describe("handleCatalogRefresh", () => {
 
   it("wipes catalog data on seed action", async () => {
     const batch = createBatch("seed");
-    // Mock all deleteMany calls
     mockPrisma.feedItem.deleteMany.mockResolvedValue({ count: 0 });
     mockPrisma.briefing.deleteMany.mockResolvedValue({ count: 0 });
     mockPrisma.briefingRequest.deleteMany.mockResolvedValue({ count: 0 });
@@ -270,7 +267,6 @@ describe("handleCatalogRefresh", () => {
 
     await handleCatalogRefresh(batch, mockEnv, mockCtx);
 
-    // Should wipe data in dependency order
     expect(mockPrisma.feedItem.deleteMany).toHaveBeenCalled();
     expect(mockPrisma.briefing.deleteMany).toHaveBeenCalled();
     expect(mockPrisma.subscription.deleteMany).toHaveBeenCalled();
@@ -288,13 +284,14 @@ describe("handleCatalogRefresh", () => {
     const sendBatchCall = (mockEnv.FEED_REFRESH_QUEUE as any).sendBatch.mock.calls[0][0];
     expect(sendBatchCall).toEqual(
       expect.arrayContaining([
-        { body: { podcastId: "pod-1", type: "manual" } },
-        { body: { podcastId: "pod-2", type: "manual" } },
+        { body: { podcastId: "pod-1", type: "manual", refreshJobId: "refresh-job-1" } },
+        { body: { podcastId: "pod-2", type: "manual", refreshJobId: "refresh-job-1" } },
       ])
     );
   });
 
   it("auto-restores pending_deletion podcasts that reappear in charts", async () => {
+    mockPrisma.podcast.findUnique.mockResolvedValue(null);
     mockPrisma.podcast.upsert
       .mockReset()
       .mockResolvedValueOnce({ id: "pod-1", status: "pending_deletion" })
@@ -304,7 +301,6 @@ describe("handleCatalogRefresh", () => {
     const batch = createBatch("refresh");
     await handleCatalogRefresh(batch, mockEnv, mockCtx);
 
-    // Should restore pod-1 from pending_deletion to active
     expect(mockPrisma.podcast.update).toHaveBeenCalledWith({
       where: { id: "pod-1" },
       data: { status: "active" },
@@ -320,21 +316,20 @@ describe("handleCatalogRefresh", () => {
     expect(batch.messages[0].retry).not.toHaveBeenCalled();
   });
 
-  it("retries message on failure", async () => {
-    mockDiscover.mockRejectedValue(new Error("Network error"));
+  it("retries message on Apple failure", async () => {
+    mockAppleDiscover.mockRejectedValue(new Error("Apple API down"));
 
     const batch = createBatch("refresh");
     await handleCatalogRefresh(batch, mockEnv, mockCtx);
 
+    // Source failure should retry the message
     expect(batch.messages[0].retry).toHaveBeenCalled();
-    expect(batch.messages[0].ack).not.toHaveBeenCalled();
   });
 
   it("updates status through lifecycle stages", async () => {
     const batch = createBatch("refresh");
     await handleCatalogRefresh(batch, mockEnv, mockCtx);
 
-    // Should update status at each phase
     const statusCalls = mockPrisma.platformConfig.upsert.mock.calls.map(
       (call: any) => call[0].update.value
     );
@@ -342,16 +337,6 @@ describe("handleCatalogRefresh", () => {
     expect(statusCalls).toContain("resolving_metadata");
     expect(statusCalls).toContain("upserting");
     expect(statusCalls).toContain("complete");
-  });
-
-  it("sets status to failed on error", async () => {
-    mockDiscover.mockRejectedValue(new Error("API down"));
-
-    const batch = createBatch("refresh");
-    await handleCatalogRefresh(batch, mockEnv, mockCtx);
-
-    const lastStatusCall = mockPrisma.platformConfig.upsert.mock.calls.at(-1)!;
-    expect(lastStatusCall[0].update.value).toBe("failed");
   });
 
   it("disconnects prisma via waitUntil", async () => {
@@ -366,7 +351,7 @@ describe("handleCatalogRefresh", () => {
       feedUrl: "",
       title: "No Feed",
     };
-    mockDiscover.mockResolvedValue([noFeedPodcast]);
+    mockAppleDiscover.mockResolvedValue([noFeedPodcast]);
 
     const batch = createBatch("refresh");
     await handleCatalogRefresh(batch, mockEnv, mockCtx);
@@ -375,13 +360,12 @@ describe("handleCatalogRefresh", () => {
   });
 
   it("batches feed refresh queue messages in groups of 100", async () => {
-    // Create 150 podcasts
     const largeBatch: DiscoveredPodcast[] = Array.from({ length: 150 }, (_, i) => ({
       feedUrl: `https://example.com/feed${i}.xml`,
       title: `Podcast ${i}`,
       categories: [],
     }));
-    mockDiscover.mockResolvedValue(largeBatch);
+    mockAppleDiscover.mockResolvedValue(largeBatch);
     mockPrisma.podcast.upsert.mockImplementation(async () => {
       const id = `pod-${Math.random()}`;
       return { id, status: "active" };

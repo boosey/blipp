@@ -36,13 +36,13 @@ export function ackAll(
 }
 
 /**
- * Check if a catalog seed job is still in an active (processable) state.
+ * Check if an episode refresh job is still in an active (processable) state.
  * Queue consumers call this before processing each message to support
  * cooperative pause/cancel.
  */
-export async function isSeedJobActive(prisma: any, seedJobId: string): Promise<boolean> {
-  const job = await prisma.catalogSeedJob.findUnique({
-    where: { id: seedJobId },
+export async function isRefreshJobActive(prisma: any, refreshJobId: string): Promise<boolean> {
+  const job = await prisma.episodeRefreshJob.findUnique({
+    where: { id: refreshJobId },
     select: { status: true },
   });
   if (!job) return false;

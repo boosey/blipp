@@ -1,8 +1,11 @@
 import type { Env } from "../types";
 import type { CatalogRefreshMessage } from "../lib/queue-messages";
 import { createPrismaClient } from "../lib/db";
+import { getConfig } from "../lib/config";
 import { getCatalogSource } from "../lib/catalog-sources";
 import type { DiscoveredPodcast } from "../lib/catalog-sources";
+
+const DEFAULT_DISCOVER_COUNT = 2000;
 
 export async function handleCatalogRefresh(
   batch: MessageBatch<CatalogRefreshMessage>,
@@ -13,42 +16,82 @@ export async function handleCatalogRefresh(
 
   try {
     for (const msg of batch.messages) {
-      const { action, seedJobId } = msg.body;
-      console.log(`[catalog-refresh] Starting ${action}...`);
+      const { action, mode, source, seedJobId } = msg.body;
+      const seedMode = mode ?? "destructive";
+      const sourceId = source ?? "apple";
+      console.log(`[catalog-refresh] Starting ${action} (mode: ${seedMode}, source: ${sourceId})...`);
 
       try {
         await updateStatus(prisma, "fetching_charts");
         if (seedJobId) await updateSeedJob(prisma, seedJobId, { status: "discovering" });
 
-        if (action === "seed") {
+        if (action === "seed" && seedMode === "destructive") {
           await wipeCatalogData(prisma, env.R2);
         }
 
-        const source = getCatalogSource("podcast-index");
-        const discovered = await source.discover(2000, env);
-        console.log(`[catalog-refresh] Discovered ${discovered.length} unique podcasts`);
-        if (seedJobId) await updateSeedJob(prisma, seedJobId, { podcastsDiscovered: discovered.length });
+        // ── Discover from the requested source ──
+        const catalogSource = getCatalogSource(sourceId);
+        const discoverCount = sourceId === "apple"
+          ? 100
+          : Number(await getConfig(prisma, "catalog.seedSize", DEFAULT_DISCOVER_COUNT));
+        const discovered = await catalogSource.discover(discoverCount, env);
+        console.log(`[catalog-refresh] ${catalogSource.name}: discovered ${discovered.length} podcasts`);
 
+        // ── Upsert categories ──
         await updateStatus(prisma, "resolving_metadata");
         const categoryIdMap = await upsertCategories(prisma, discovered);
 
+        // ── Upsert podcasts ──
         await updateStatus(prisma, "upserting");
         if (seedJobId) await updateSeedJob(prisma, seedJobId, { status: "upserting" });
         let upsertedIds: string[];
 
-        if (action === "seed") {
-          // Bulk insert — DB was just wiped so no conflicts
-          upsertedIds = await bulkInsertPodcasts(prisma, discovered, categoryIdMap);
+        if (action === "seed" && seedMode === "destructive") {
+          upsertedIds = discovered.length > 0
+            ? await bulkInsertPodcasts(prisma, discovered, categoryIdMap, sourceId)
+            : [];
+        } else if (action === "seed" && seedMode === "additive") {
+          let newIds: string[] = [];
+          if (discovered.length > 0) {
+            const newPodcasts = await filterNewPodcasts(prisma, discovered);
+            if (newPodcasts.length > 0) {
+              newIds = await bulkInsertPodcasts(prisma, newPodcasts, categoryIdMap, sourceId);
+            }
+            console.log(`[catalog-refresh] Additive ${catalogSource.name}: ${newIds.length} new of ${discovered.length}`);
+          }
+          upsertedIds = newIds;
         } else {
-          upsertedIds = await upsertPodcasts(prisma, discovered, categoryIdMap);
+          upsertedIds = discovered.length > 0
+            ? await upsertPodcasts(prisma, discovered, categoryIdMap, sourceId)
+            : [];
           await markPendingDeletion(prisma, upsertedIds);
         }
 
-        if (seedJobId) await updateSeedJob(prisma, seedJobId, { status: "feed_refresh", feedsTotal: upsertedIds.length });
-        await queueFeedRefresh(env, upsertedIds, seedJobId);
+        // Update podcastsDiscovered with only NEW podcasts (not total discovered)
+        if (seedJobId) await updateSeedJob(prisma, seedJobId, { podcastsDiscovered: upsertedIds.length });
+
+        // Create an EpisodeRefreshJob to track feed refresh progress
+        let refreshJobId: string | undefined;
+        if (upsertedIds.length > 0) {
+          const refreshJob = await prisma.episodeRefreshJob.create({
+            data: {
+              trigger: "seed",
+              scope: "seed",
+              status: "refreshing",
+              podcastsTotal: upsertedIds.length,
+              catalogSeedJobId: seedJobId,
+            },
+          });
+          refreshJobId = refreshJob.id;
+        }
+
+        // Mark CatalogSeedJob as complete (discovery is done)
+        if (seedJobId) await updateSeedJob(prisma, seedJobId, { status: "complete", completedAt: new Date() });
+
+        await queueFeedRefresh(env, upsertedIds, refreshJobId);
 
         await updateStatus(prisma, "complete");
-        console.log(`[catalog-refresh] ${action} complete. ${upsertedIds.length} podcasts processed.`);
+        console.log(`[catalog-refresh] ${action} (${seedMode}, ${sourceId}) complete. ${upsertedIds.length} podcasts processed.`);
         msg.ack();
       } catch (err) {
         console.error(`[catalog-refresh] ${action} failed:`, err);
@@ -57,6 +100,15 @@ export async function handleCatalogRefresh(
           await updateSeedJob(prisma, seedJobId, {
             status: "failed",
             error: err instanceof Error ? err.message : String(err),
+          }).catch(() => {});
+
+          // Record error to CatalogJobError
+          await prisma.catalogJobError.create({
+            data: {
+              jobId: seedJobId,
+              phase: "discovery",
+              message: err instanceof Error ? err.message : String(err),
+            },
           }).catch(() => {});
         }
         msg.retry();
@@ -105,6 +157,23 @@ async function wipeCatalogData(prisma: any, r2: R2Bucket): Promise<void> {
   console.log(`[catalog-refresh] Deleted ${totalDeleted} R2 objects`);
 }
 
+async function filterNewPodcasts(prisma: any, discovered: DiscoveredPodcast[]): Promise<DiscoveredPodcast[]> {
+  const feedUrls = discovered.filter((p) => p.feedUrl).map((p) => p.feedUrl);
+  const BATCH = 500;
+  const existingUrls = new Set<string>();
+
+  for (let i = 0; i < feedUrls.length; i += BATCH) {
+    const batch = feedUrls.slice(i, i + BATCH);
+    const existing = await prisma.podcast.findMany({
+      where: { feedUrl: { in: batch } },
+      select: { feedUrl: true },
+    });
+    for (const p of existing) existingUrls.add(p.feedUrl);
+  }
+
+  return discovered.filter((p) => p.feedUrl && !existingUrls.has(p.feedUrl));
+}
+
 async function upsertCategories(prisma: any, discovered: DiscoveredPodcast[]): Promise<Map<string, string>> {
   const genreMap = new Map<string, string>();
   for (const podcast of discovered) {
@@ -134,7 +203,8 @@ async function upsertCategories(prisma: any, discovered: DiscoveredPodcast[]): P
 async function bulkInsertPodcasts(
   prisma: any,
   discovered: DiscoveredPodcast[],
-  categoryIdMap: Map<string, string>
+  categoryIdMap: Map<string, string>,
+  sourceId: string
 ): Promise<string[]> {
   const BATCH = 500;
   const valid = discovered.filter((p) => p.feedUrl);
@@ -152,13 +222,13 @@ async function bulkInsertPodcasts(
         podcastIndexId: p.podcastIndexId,
         categories: (p.categories ?? []).filter((c) => c.genreId !== "26").map((c) => c.name),
         language: "en",
-        source: "podcast-index",
+        source: sourceId,
         feedUrl: p.feedUrl,
         status: "active",
       })),
       skipDuplicates: true,
     });
-    console.log(`[catalog-refresh] Inserted ${Math.min(i + BATCH, valid.length)}/${valid.length} podcasts`);
+    console.log(`[catalog-refresh] [${sourceId}] Inserted ${Math.min(i + BATCH, valid.length)}/${valid.length} podcasts`);
   }
 
   // Fetch all created podcast IDs
@@ -196,7 +266,8 @@ async function bulkInsertPodcasts(
 async function upsertPodcasts(
   prisma: any,
   discovered: DiscoveredPodcast[],
-  categoryIdMap: Map<string, string>
+  categoryIdMap: Map<string, string>,
+  sourceId: string
 ): Promise<string[]> {
   const upsertedIds: string[] = [];
   const CHUNK = 100;
@@ -212,58 +283,90 @@ async function upsertPodcasts(
         .filter((c) => c.genreId !== "26")
         .map((c) => c.name);
 
-      const data = {
-        title: podcast.title,
-        description: podcast.description,
-        imageUrl: podcast.imageUrl,
-        author: podcast.author,
-        appleId: podcast.appleId,
-        podcastIndexId: podcast.podcastIndexId,
-        categories: categoryNames,
-        appleMetadata: podcast.appleMetadata ?? undefined,
-        language: "en",
-        source: "podcast-index",
-      };
-
       try {
-        const upserted = await prisma.podcast.upsert({
+        // Check if podcast already exists
+        const existing = await prisma.podcast.findUnique({
           where: { feedUrl: podcast.feedUrl },
-          update: { ...data, status: undefined },
-          create: { ...data, feedUrl: podcast.feedUrl, status: "active" },
         });
 
-        if (upserted.status === "pending_deletion") {
-          await prisma.podcast.update({
-            where: { id: upserted.id },
-            data: { status: "active" },
-          });
-        }
+        if (existing && existing.source === "apple" && sourceId === "podcast-index") {
+          // Apple is authoritative — PI only fills null fields
+          const nullFills: Record<string, unknown> = {};
+          if (!existing.description && podcast.description) nullFills.description = podcast.description;
+          if (!existing.imageUrl && podcast.imageUrl) nullFills.imageUrl = podcast.imageUrl;
+          if (!existing.author && podcast.author) nullFills.author = podcast.author;
+          if (!existing.podcastIndexId && podcast.podcastIndexId) nullFills.podcastIndexId = podcast.podcastIndexId;
+          if ((!existing.categories || existing.categories.length === 0) && categoryNames.length > 0) {
+            nullFills.categories = categoryNames;
+          }
 
-        upsertedIds.push(upserted.id);
+          if (Object.keys(nullFills).length > 0) {
+            await prisma.podcast.update({ where: { id: existing.id }, data: nullFills });
+          }
+
+          if (existing.status === "pending_deletion") {
+            await prisma.podcast.update({ where: { id: existing.id }, data: { status: "active" } });
+          }
+
+          upsertedIds.push(existing.id);
+        } else {
+          // Full upsert — either new podcast, or this source owns it
+          const data = {
+            title: podcast.title,
+            description: podcast.description,
+            imageUrl: podcast.imageUrl,
+            author: podcast.author,
+            appleId: podcast.appleId,
+            podcastIndexId: podcast.podcastIndexId,
+            categories: categoryNames,
+            appleMetadata: podcast.appleMetadata ?? undefined,
+            language: "en",
+            source: sourceId,
+          };
+
+          const upserted = await prisma.podcast.upsert({
+            where: { feedUrl: podcast.feedUrl },
+            update: { ...data, status: undefined },
+            create: { ...data, feedUrl: podcast.feedUrl, status: "active" },
+          });
+
+          if (upserted.status === "pending_deletion") {
+            await prisma.podcast.update({ where: { id: upserted.id }, data: { status: "active" } });
+          }
+
+          upsertedIds.push(upserted.id);
+        }
       } catch (err) {
-        console.warn(`[catalog-refresh] Failed to upsert "${podcast.title}":`, err);
+        console.warn(`[catalog-refresh] [${sourceId}] Failed to upsert "${podcast.title}":`, err);
       }
     }
 
-    console.log(`[catalog-refresh] Upserted ${Math.min(i + CHUNK, discovered.length)}/${discovered.length} podcasts`);
+    console.log(`[catalog-refresh] [${sourceId}] Upserted ${Math.min(i + CHUNK, discovered.length)}/${discovered.length} podcasts`);
 
     // Batch PodcastCategory joins per chunk
     const joinRecords: { podcastId: string; categoryId: string }[] = [];
     const podcastsInChunk = await prisma.podcast.findMany({
       where: { feedUrl: { in: chunk.filter((p) => p.feedUrl).map((p) => p.feedUrl) } },
-      select: { id: true, feedUrl: true },
+      select: { id: true, feedUrl: true, source: true },
     });
     const feedToId = new Map<string, string>(podcastsInChunk.map((p: any) => [p.feedUrl, p.id]));
+    const feedToSource = new Map<string, string>(podcastsInChunk.map((p: any) => [p.feedUrl, p.source]));
 
-    // Clear old joins for this chunk
-    const chunkIds = podcastsInChunk.map((p: any) => p.id);
-    if (chunkIds.length > 0) {
-      await prisma.podcastCategory.deleteMany({ where: { podcastId: { in: chunkIds } } });
+    // Only clear+replace category joins if this source owns the podcast
+    const ownedChunkIds = podcastsInChunk
+      .filter((p: any) => p.source !== "apple" || sourceId === "apple")
+      .map((p: any) => p.id);
+    if (ownedChunkIds.length > 0) {
+      await prisma.podcastCategory.deleteMany({ where: { podcastId: { in: ownedChunkIds } } });
     }
 
     for (const podcast of chunk) {
       const podcastId = feedToId.get(podcast.feedUrl);
       if (!podcastId) continue;
+      // Skip category replacement for Apple-sourced pods when PI is running
+      const existingSource = feedToSource.get(podcast.feedUrl);
+      if (existingSource === "apple" && sourceId === "podcast-index") continue;
+
       for (const cat of podcast.categories ?? []) {
         if (cat.genreId === "26") continue;
         const categoryId = categoryIdMap.get(cat.genreId);
@@ -302,10 +405,10 @@ async function markPendingDeletion(prisma: any, chartPodcastIds: string[]): Prom
   }
 }
 
-async function queueFeedRefresh(env: Env, podcastIds: string[], seedJobId?: string): Promise<void> {
+async function queueFeedRefresh(env: Env, podcastIds: string[], refreshJobId?: string): Promise<void> {
   if (podcastIds.length === 0) return;
   const messages = podcastIds.map((podcastId) => ({
-    body: { podcastId, type: "manual" as const, ...(seedJobId && { seedJobId }) },
+    body: { podcastId, type: "manual" as const, ...(refreshJobId && { refreshJobId }) },
   }));
   const BATCH_SIZE = 100;
   for (let i = 0; i < messages.length; i += BATCH_SIZE) {

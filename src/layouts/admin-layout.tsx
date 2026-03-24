@@ -29,6 +29,9 @@ import {
   MessageSquare,
   Inbox,
   Sprout,
+  RefreshCw,
+  Mic,
+  ExternalLink,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
@@ -67,7 +70,9 @@ const sidebarEntries: SidebarEntry[] = [
     icon: Library,
     children: [
       { path: "catalog", label: "Catalog", icon: Library },
-      { path: "catalog-seed", label: "Catalog Seed", icon: Sprout },
+      { path: "podcast-sources", label: "Sources", icon: Boxes },
+      { path: "catalog-discovery", label: "Discovery", icon: Sprout },
+      { path: "episode-refresh", label: "Refresh", icon: RefreshCw },
       { path: "podcast-settings", label: "Settings", icon: Settings },
     ],
   },
@@ -97,6 +102,7 @@ const sidebarEntries: SidebarEntry[] = [
       { path: "stt-benchmark", label: "STT Benchmark", icon: FlaskConical },
       { path: "claims-benchmark", label: "Claims Benchmark", icon: Scale },
       { path: "ai-errors", label: "Errors", icon: AlertTriangle },
+      { path: "voice-presets", label: "Voice Presets", icon: Mic },
     ],
   },
 
@@ -387,8 +393,20 @@ export function AdminLayout() {
             })}
           </nav>
 
-          {/* Collapse button */}
-          <div className="p-2 border-t border-white/5">
+          {/* Footer buttons */}
+          <div className="p-2 border-t border-white/5 flex flex-col gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => window.open("/", "blipp-user")}
+              className={cn(
+                "text-[#9CA3AF] hover:text-[#F9FAFB] hover:bg-white/5",
+                collapsed ? "w-full justify-center" : "w-full justify-start gap-2"
+              )}
+            >
+              <ExternalLink className="h-4 w-4 shrink-0" />
+              {!collapsed && <span className="text-xs">User App</span>}
+            </Button>
             <Button
               variant="ghost"
               size="sm"

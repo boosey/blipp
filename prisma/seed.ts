@@ -65,6 +65,32 @@ async function main() {
 
   console.log("Seeded plans.");
 
+  // ── Voice Presets ──
+
+  await prisma.voicePreset.upsert({
+    where: { name: "System Default" },
+    update: {},
+    create: {
+      name: "System Default",
+      description: "The default Blipp voice — warm, professional podcast briefing tone.",
+      isSystem: true,
+      isActive: true,
+      config: {
+        openai: {
+          voice: "coral",
+          instructions:
+            "Speak in a warm, professional tone suitable for a daily podcast briefing. " +
+            "Maintain a steady, engaging pace. Pause naturally between topics.",
+          speed: 1.0,
+        },
+        groq: { voice: "austin" },
+        cloudflare: {},
+      },
+    },
+  });
+
+  console.log("Seeded voice presets.");
+
   // ── Platform Config ──
 
   console.log("Seeded platform config.");
@@ -357,6 +383,59 @@ async function main() {
   }
 
   console.log("Seeded AI model registry.");
+
+  // ── Prompt Versions (stage-level) ──
+  // Clean up any old per-key prompt versions (pre-stage schema)
+  await prisma.promptVersion.deleteMany({
+    where: { stage: "" },
+  });
+
+  // Seed v1 defaults for each stage
+  const {
+    DEFAULT_CLAIMS_SYSTEM_PROMPT,
+    DEFAULT_NARRATIVE_SYSTEM_PROMPT_WITH_EXCERPTS,
+    DEFAULT_NARRATIVE_SYSTEM_PROMPT_NO_EXCERPTS,
+    DEFAULT_NARRATIVE_USER_TEMPLATE,
+    DEFAULT_NARRATIVE_METADATA_INTRO,
+    PROMPT_CONFIG_KEYS,
+  } = await import("../worker/lib/prompt-defaults");
+
+  const stageSeeds = [
+    {
+      stage: "distillation",
+      values: {
+        [PROMPT_CONFIG_KEYS.claimsSystem]: DEFAULT_CLAIMS_SYSTEM_PROMPT,
+      },
+    },
+    {
+      stage: "narrative",
+      values: {
+        [PROMPT_CONFIG_KEYS.narrativeSystemWithExcerpts]: DEFAULT_NARRATIVE_SYSTEM_PROMPT_WITH_EXCERPTS,
+        [PROMPT_CONFIG_KEYS.narrativeSystemNoExcerpts]: DEFAULT_NARRATIVE_SYSTEM_PROMPT_NO_EXCERPTS,
+        [PROMPT_CONFIG_KEYS.narrativeUserTemplate]: DEFAULT_NARRATIVE_USER_TEMPLATE,
+        [PROMPT_CONFIG_KEYS.narrativeMetadataIntro]: DEFAULT_NARRATIVE_METADATA_INTRO,
+      },
+    },
+  ];
+
+  for (const s of stageSeeds) {
+    const existing = await prisma.promptVersion.findUnique({
+      where: { stage_version: { stage: s.stage, version: 1 } },
+    });
+    if (!existing) {
+      await prisma.promptVersion.create({
+        data: {
+          stage: s.stage,
+          version: 1,
+          label: "Default",
+          values: s.values,
+          notes: "Initial default prompts",
+        },
+      });
+    }
+  }
+
+  console.log("Seeded prompt versions.");
 }
 
 main()

@@ -9,7 +9,6 @@ import {
   ChevronRight,
   ExternalLink,
   Copy,
-  RefreshCw,
   Pause,
   Archive,
   Trash2,
@@ -57,7 +56,6 @@ import {
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { useAdminFetch } from "@/lib/admin-api";
 import { useFetch } from "@/lib/use-fetch";
-import { FeedRefreshCard } from "@/components/admin/feed-refresh-card";
 import type {
   AdminPodcast,
   AdminPodcastDetail,
@@ -123,6 +121,24 @@ function StatusBadge({ status }: { status: PodcastStatus }) {
       style={{ backgroundColor: `${color}15`, color }}
     >
       {STATUS_LABELS[status]}
+    </span>
+  );
+}
+
+const SOURCE_CONFIG: Record<string, { color: string; label: string }> = {
+  apple: { color: "#A855F7", label: "Apple" },
+  "podcast-index": { color: "#3B82F6", label: "PI" },
+  manual: { color: "#F59E0B", label: "Manual" },
+};
+
+function SourceBadge({ source }: { source: string | undefined }) {
+  const cfg = SOURCE_CONFIG[source ?? ""] ?? { color: "#6B7280", label: source ?? "?" };
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium"
+      style={{ backgroundColor: `${cfg.color}15`, color: cfg.color }}
+    >
+      {cfg.label}
     </span>
   );
 }
@@ -280,6 +296,35 @@ function FilterSidebar({
 
               <Separator className="bg-white/5" />
 
+              {/* Source */}
+              {stats && Object.keys(stats.bySource ?? {}).length > 0 && (
+                <div>
+                  <span className="text-[10px] uppercase tracking-wider text-[#9CA3AF] font-medium">Source</span>
+                  <div className="mt-2 space-y-1">
+                    {Object.entries(stats.bySource).map(([src, count]) => {
+                      const cfg = SOURCE_CONFIG[src] ?? { color: "#6B7280", label: src };
+                      const active = filters.source === src;
+                      return (
+                        <button
+                          key={src}
+                          onClick={() => onFilterChange({ ...filters, source: active ? undefined : src })}
+                          className={cn(
+                            "flex items-center gap-2 w-full text-left rounded px-1.5 py-1 text-[11px] transition-colors",
+                            active ? "bg-white/5 text-[#F9FAFB]" : "text-[#9CA3AF] hover:bg-white/[0.03]"
+                          )}
+                        >
+                          <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: cfg.color }} />
+                          <span className="flex-1">{cfg.label}</span>
+                          <span className="ml-auto font-mono text-[10px]">{count}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <Separator className="bg-white/5" />
+
               {/* Activity */}
               <div>
                 <span className="text-[10px] uppercase tracking-wider text-[#9CA3AF] font-medium">Activity</span>
@@ -431,6 +476,7 @@ function PodcastCard({
                   {podcast.language}
                 </span>
               )}
+              <SourceBadge source={podcast.source} />
               <HealthBadge health={podcast.feedHealth} />
               <Switch
                 checked={podcast.status === "active"}
@@ -448,7 +494,7 @@ function PodcastCard({
           )}
           <div className="flex gap-1 mt-1">
             {podcast.categories?.slice(0, 3).map((cat) => (
-              <span key={cat} className="px-1.5 py-0.5 bg-zinc-800 text-zinc-500 text-[10px] rounded">
+              <span key={cat} className="px-1.5 py-0.5 bg-zinc-800 text-zinc-500 text-[10px] rounded-full">
                 {cat}
               </span>
             ))}
@@ -521,6 +567,7 @@ function PodcastRow({
       )}
       <span className="w-14 text-right font-mono tabular-nums text-[#9CA3AF]">{podcast.episodeCount}</span>
       <span className="w-12 text-right font-mono tabular-nums text-[#9CA3AF]">{podcast.subscriberCount}</span>
+      <span className="w-14 text-center"><SourceBadge source={podcast.source} /></span>
       <span className="w-20 text-center"><HealthBadge health={podcast.feedHealth} /></span>
       <span className="w-16 text-center"><StatusBadge status={podcast.status} /></span>
       <span className="w-16 text-right text-[10px] text-[#9CA3AF]">{relativeTime(podcast.lastFetchedAt)}</span>
@@ -632,7 +679,6 @@ function PodcastDetailModal({
   const apiFetch = useAdminFetch();
   const [detail, setDetail] = useState<AdminPodcastDetail | null>(null);
   const [loading, setLoading] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     if (!podcastId || !open) { setDetail(null); return; }
@@ -709,27 +755,6 @@ function PodcastDetailModal({
 
               {/* Quick actions */}
               <div className="flex gap-2 pb-3 border-b border-white/5">
-                <Button
-                  size="xs"
-                  className="bg-[#3B82F6] hover:bg-[#3B82F6]/80 text-white text-[10px]"
-                  disabled={refreshing}
-                  onClick={async () => {
-                    if (!podcastId) return;
-                    setRefreshing(true);
-                    try {
-                      await apiFetch(`/podcasts/${podcastId}/refresh`, { method: "POST" });
-                      const r = await apiFetch<{ data: AdminPodcastDetail }>(`/podcasts/${podcastId}`);
-                      setDetail(r.data);
-                    } catch (e) {
-                      console.error("Failed to refresh podcast:", e);
-                    } finally {
-                      setRefreshing(false);
-                    }
-                  }}
-                >
-                  {refreshing ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-                  {refreshing ? "Refreshing..." : "Refresh"}
-                </Button>
                 <Button size="xs" variant="ghost" className="text-[#9CA3AF] hover:text-[#F9FAFB] text-[10px]">
                   <Pause className="h-3 w-3" />
                   Pause
@@ -1095,7 +1120,6 @@ export default function Catalog() {
   const [totalResults, setTotalResults] = useState(0);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [selectedPodcasts, setSelectedPodcasts] = useState<string[]>([]);
-  const [showSeedConfirm, setShowSeedConfirm] = useState(false);
   const totalPages = Math.ceil(totalResults / pageSize);
 
   // Fetch language + category filter options
@@ -1109,6 +1133,7 @@ export default function Catalog() {
     if (filters.health?.length) params.set("health", filters.health.join(","));
     if (filters.status?.length) params.set("status", filters.status.join(","));
     if (filters.activity) params.set("activity", filters.activity);
+    if (filters.source) params.set("source", filters.source);
     if (filters.language) params.set("language", filters.language);
     if (filters.categories?.length) params.set("categories", filters.categories.join(","));
     params.set("sort", sort);
@@ -1194,40 +1219,6 @@ export default function Catalog() {
             </AccordionContent>
           </AccordionItem>
         </Accordion>
-
-        {/* Feed Refresh Status Bar */}
-        <div className="mb-3">
-          <FeedRefreshCard compact onRefresh={load} />
-          <div className="flex items-center gap-2 mt-2">
-            <button onClick={() => setShowSeedConfirm(true)} className="text-xs text-red-400 hover:text-red-300">
-              Seed (Reset)
-            </button>
-          </div>
-          {showSeedConfirm && (
-            <div className="bg-red-950/50 border border-red-800 rounded-lg p-3 mt-2">
-              <p className="text-xs text-red-300 mb-2">This will delete all existing catalog data including subscriptions, feed items, and briefings. Continue?</p>
-              <div className="flex gap-2">
-                <button onClick={async () => {
-                  try {
-                    await apiFetch("/podcasts/catalog-seed", {
-                      method: "POST",
-                      body: JSON.stringify({ confirm: true }),
-                    });
-                    toast.success("Catalog seed started");
-                    setShowSeedConfirm(false);
-                  } catch {
-                    toast.error("Failed to start seed");
-                  }
-                }} className="px-3 py-1 bg-red-600 hover:bg-red-500 text-white text-xs rounded">
-                  Yes, Reset Catalog
-                </button>
-                <button onClick={() => setShowSeedConfirm(false)} className="px-3 py-1 bg-zinc-800 text-zinc-300 text-xs rounded">
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
 
         {/* Toolbar */}
         <div className="flex items-center justify-between mb-3 gap-3">

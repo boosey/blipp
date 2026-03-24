@@ -70,7 +70,7 @@ Blipp uses a **demand-driven pipeline** to transform podcast episodes into audio
 | 1. Transcription | `transcription` | `TRANSCRIPTION` | Three-tier waterfall: RSS feed URL -> Podcast Index API -> Whisper STT (with chunking for >25MB) |
 | 2. Distillation | `distillation` | `DISTILLATION` | Uses LLM (multi-provider) to extract scored claims from transcript. Prompt configurable via Admin > AI > Prompts. |
 | 3. Narrative Generation | `narrative-generation` | `NARRATIVE_GENERATION` | Generates narrative text from distillation claims using LLM (multi-provider). Prompt configurable via Admin > AI > Prompts. |
-| 4. Audio Generation | `clip-generation` (legacy name) | `AUDIO_GENERATION` | Converts narrative text to MP3 audio via TTS (multi-provider) |
+| 4. Audio Generation | `clip-generation` (legacy name) | `AUDIO_GENERATION` | Converts narrative text to MP3 audio via TTS (multi-provider). Uses `voicePresetId` from PipelineJob for voice selection. |
 | 5. Briefing Assembly | `briefing-assembly` | `BRIEFING_ASSEMBLY` | Creates per-user Briefing records wrapping shared Clips, updates FeedItems to READY with briefingId |
 
 ---
@@ -145,7 +145,8 @@ Briefings created, FeedItems READY
 ```
 
 - **Created by:** Subscription auto (feed refresh), on-demand (`POST /api/briefings/generate`), or admin test (`POST /api/admin/requests/test-briefing`)
-- **Evaluate:** Orchestrator resolves request items (`useLatest` becomes actual `episodeId`), creates PipelineJobs
+- **Evaluate:** Orchestrator resolves request items (`useLatest` becomes actual `episodeId`), creates PipelineJobs. Each job carries `voicePresetId` from the subscription or user default.
+- **Voice Preset Resolution:** When the orchestrator creates a PipelineJob, it resolves the voice preset: subscription `voicePresetId` takes priority, then user `defaultVoicePresetId`, then null (system default). The `voicePresetId` is stored on PipelineJob and passed through to `AudioGenerationMessage`. The audio generation queue handler loads the preset config and extracts provider-specific voice settings.
 - **Completion:** When all jobs finish (or fail), assembly is dispatched
 - **Assembly:** Creates per-user Briefing records (upsert on `userId + clipId`) wrapping shared Clips, then updates linked FeedItems to READY with `briefingId` on success, FAILED on failure
 

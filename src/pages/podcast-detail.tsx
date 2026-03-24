@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { Heart, Search, X } from "lucide-react";
+import { Heart, Search, X, Loader2, Check, Headphones } from "lucide-react";
 import { useApiFetch } from "../lib/api";
 import { useFetch } from "../lib/use-fetch";
 import { Skeleton } from "../components/ui/skeleton";
@@ -9,6 +9,7 @@ import { usePlan } from "../contexts/plan-context";
 import { useUpgradeModal } from "../components/upgrade-prompt";
 import { usePodcastSheet } from "../contexts/podcast-sheet-context";
 import { TierPicker } from "../components/tier-picker";
+import { VoicePresetPicker } from "../components/voice-preset-picker";
 import { ThumbButtons } from "../components/thumb-buttons";
 import type { PodcastDetail as PodcastDetailType, EpisodeSummary } from "../types/user";
 import type { DurationTier } from "../lib/duration-tiers";
@@ -25,6 +26,7 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
   const [requestingEpisodeId, setRequestingEpisodeId] = useState<string | null>(null);
   const [showSubscribeTierPicker, setShowSubscribeTierPicker] = useState(false);
   const [showChangeTierPicker, setShowChangeTierPicker] = useState(false);
+  const [showChangeVoicePicker, setShowChangeVoicePicker] = useState(false);
   const [briefTierPickerEpisodeId, setBriefTierPickerEpisodeId] = useState<string | null>(null);
   const [isFavorited, setIsFavorited] = useState(false);
   const [expandedEpisodeId, setExpandedEpisodeId] = useState<string | null>(null);
@@ -81,7 +83,7 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
       toast.success(`Subscribed to ${podcast.title}`);
       setPodcast((prev) =>
         prev
-          ? { ...prev, isSubscribed: true, subscriptionDurationTier: tier }
+          ? { ...prev, isSubscribed: true, subscriptionDurationTier: tier, subscriptionVoicePresetId: null }
           : prev
       );
     } catch (e) {
@@ -99,7 +101,7 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
       toast.success(`Unsubscribed from ${podcast.title}`);
       setPodcast((prev) =>
         prev
-          ? { ...prev, isSubscribed: false, subscriptionDurationTier: null }
+          ? { ...prev, isSubscribed: false, subscriptionDurationTier: null, subscriptionVoicePresetId: null }
           : prev
       );
     } catch (e) {
@@ -126,6 +128,23 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
     }
   }
 
+  async function handleChangeVoice(voicePresetId: string | null) {
+    if (!podcast) return;
+    setShowChangeVoicePicker(false);
+    try {
+      await apiFetch(`/podcasts/subscribe/${podcast.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ voicePresetId }),
+      });
+      toast.success(voicePresetId ? "Voice updated" : "Voice reset to default");
+      setPodcast((prev) =>
+        prev ? { ...prev, subscriptionVoicePresetId: voicePresetId } : prev
+      );
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to update");
+    }
+  }
+
   async function handleCreateBriefing(episodeId: string, tier: DurationTier, silent = false) {
     setRequestingEpisodeId(episodeId);
     setBriefTierPickerEpisodeId(null);
@@ -134,6 +153,14 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
         method: "POST",
         body: JSON.stringify({ podcastId, episodeId, durationTier: tier }),
       });
+      // Optimistically mark episode as having a pending blipp
+      setEpisodes((eps) =>
+        eps.map((e) =>
+          e.id === episodeId
+            ? { ...e, blippStatus: { status: "PENDING" as const, listened: false } }
+            : e
+        )
+      );
       if (!silent) {
         toast(`${tier}m Blipp requested — usually ready in 2-5 minutes`, { duration: 4000 });
       }
@@ -288,12 +315,18 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
                 </button>
                 {podcast.subscriptionDurationTier && (
                   <button
-                    onClick={() => setShowChangeTierPicker(!showChangeTierPicker)}
+                    onClick={() => { setShowChangeTierPicker(!showChangeTierPicker); setShowChangeVoicePicker(false); }}
                     className="text-[10px] font-medium text-muted-foreground bg-muted hover:bg-accent px-1.5 py-0.5 rounded transition-colors"
                   >
                     {podcast.subscriptionDurationTier}m
                   </button>
                 )}
+                <button
+                  onClick={() => { setShowChangeVoicePicker(!showChangeVoicePicker); setShowChangeTierPicker(false); }}
+                  className="text-[10px] font-medium text-muted-foreground bg-muted hover:bg-accent px-1.5 py-0.5 rounded transition-colors"
+                >
+                  Voice
+                </button>
               </div>
               {showChangeTierPicker && (
                 <div className="space-y-1">
@@ -303,6 +336,15 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
                     onSelect={handleChangeTier}
                     maxDurationMinutes={planUsage.maxDurationMinutes}
                     onUpgrade={showUpgrade}
+                  />
+                </div>
+              )}
+              {showChangeVoicePicker && (
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Change voice:</p>
+                  <VoicePresetPicker
+                    selected={podcast.subscriptionVoicePresetId}
+                    onSelect={handleChangeVoice}
                   />
                 </div>
               )}
@@ -435,8 +477,41 @@ export function PodcastDetail({ podcastId: propPodcastId }: { podcastId?: string
                     <div className="relative">
                     {requestingEpisodeId === ep.id ? (
                       <span className="text-xs text-muted-foreground px-3 py-1.5">
-                        ...
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
                       </span>
+                    ) : ep.blippStatus?.status === "PENDING" || ep.blippStatus?.status === "PROCESSING" ? (
+                      <span className="flex items-center gap-1 px-3 py-1.5 rounded text-xs font-medium bg-yellow-500/15 text-yellow-400">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        Creating
+                      </span>
+                    ) : ep.blippStatus?.status === "READY" ? (
+                      <span className={`flex items-center gap-1 px-3 py-1.5 rounded text-xs font-medium ${
+                        ep.blippStatus.listened
+                          ? "bg-muted text-muted-foreground"
+                          : "bg-green-500/15 text-green-400"
+                      }`}>
+                        {ep.blippStatus.listened
+                          ? <><Check className="w-3 h-3" /> Listened</>
+                          : <><Headphones className="w-3 h-3" /> In Feed</>
+                        }
+                      </span>
+                    ) : ep.blippStatus?.status === "FAILED" ? (
+                      <button
+                        onClick={() => {
+                          if (defaultTier > planUsage.maxDurationMinutes) {
+                            showUpgrade(`Your plan supports briefings up to ${planUsage.maxDurationMinutes} minutes. Upgrade for longer briefings.`);
+                            return;
+                          }
+                          handleCreateBriefing(ep.id, defaultTier, true);
+                          toast(`${defaultTier}m Blipp requested — usually ready in 2-5 minutes`, {
+                            description: "Tip: long-press Blipp to pick a different duration",
+                            duration: 5000,
+                          });
+                        }}
+                        className="flex items-center gap-1 px-3 py-1.5 rounded text-xs font-medium bg-red-500/15 text-red-400 hover:bg-red-500/25 transition-colors"
+                      >
+                        Retry
+                      </button>
                     ) : (
                       <button
                         onPointerDown={() => {

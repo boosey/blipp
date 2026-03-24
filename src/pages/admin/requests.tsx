@@ -155,7 +155,6 @@ const WP_TYPE_CONFIG: Record<
   NARRATIVE: { icon: FileText, label: "Narrative", color: "#F59E0B" },
   AUDIO_CLIP: { icon: FileAudio, label: "Audio Clip", color: "#10B981" },
   BRIEFING_AUDIO: { icon: FileAudio, label: "Briefing", color: "#EC4899" },
-  SOURCE_AUDIO: { icon: FileAudio, label: "Source Audio", color: "#F97316" },
 };
 
 function formatBytes(bytes: number): string {
@@ -263,6 +262,76 @@ function AudioPlayer({ wpId, sizeBytes }: { wpId: string; sizeBytes?: number }) 
   );
 }
 
+/** Audio player that streams source audio from the episode's podcast CDN via proxy. */
+function SourceAudioPlayer({ episodeId }: { episodeId: string }) {
+  const { getToken } = useAuth();
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const loadAudio = useCallback(async () => {
+    if (audioUrl || isLoading) return;
+    setIsLoading(true);
+    setLoadError(null);
+    try {
+      const token = await getToken();
+      const res = await fetch(`${getApiBase()}/api/admin/requests/episode/${episodeId}/source-audio`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error(res.statusText);
+      const blob = await res.blob();
+      setAudioUrl(URL.createObjectURL(blob));
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setIsLoading(false);
+    }
+  }, [getToken, episodeId, audioUrl, isLoading]);
+
+  useEffect(() => {
+    return () => {
+      if (audioUrl) URL.revokeObjectURL(audioUrl);
+    };
+  }, [audioUrl]);
+
+  if (loadError) {
+    return (
+      <div className="px-2.5 py-2 text-[10px] text-[#EF4444]">
+        Failed to load source audio: {loadError}
+      </div>
+    );
+  }
+
+  if (!audioUrl) {
+    return (
+      <div className="px-2.5 py-2 flex items-center gap-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={loadAudio}
+          disabled={isLoading}
+          className="h-6 text-[10px] text-[#F97316] hover:text-[#F97316] hover:bg-[#F97316]/10"
+        >
+          {isLoading ? (
+            <Loader2 className="h-3 w-3 animate-spin mr-1" />
+          ) : (
+            <FileAudio className="h-3 w-3 mr-1" />
+          )}
+          {isLoading ? "Loading..." : "Load source audio"}
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="px-2.5 py-2">
+      <audio controls className="w-full h-8" style={{ filter: "invert(0.85) hue-rotate(180deg)" }}>
+        <source src={audioUrl} type="audio/mpeg" />
+      </audio>
+    </div>
+  );
+}
+
 interface WorkProductPreview {
   id: string;
   type: WorkProductType;
@@ -281,7 +350,7 @@ function StepWorkProductPanel({ wp }: { wp: WorkProductSummary }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const isAudio = wp.type === "AUDIO_CLIP" || wp.type === "BRIEFING_AUDIO" || wp.type === "SOURCE_AUDIO";
+  const isAudio = wp.type === "AUDIO_CLIP" || wp.type === "BRIEFING_AUDIO";
 
   useEffect(() => {
     if (isAudio) {
@@ -592,17 +661,17 @@ function EventTimeline({
 
 function ExpandableStepRow({
   step,
+  episodeId,
   showDebug,
   showDetails,
 }: {
   step: StepProgress;
+  episodeId: string;
   showDebug: boolean;
   showDetails: boolean;
 }) {
   const events = step.events ?? [];
-  const wps = [...(step.workProducts ?? [])].sort((a, b) =>
-    a.type === "SOURCE_AUDIO" ? -1 : b.type === "SOURCE_AUDIO" ? 1 : 0
-  );
+  const wps = step.workProducts ?? [];
   const hasContent = events.length > 0 || wps.length > 0;
 
   const [expanded, setExpanded] = useState(
@@ -730,6 +799,16 @@ function ExpandableStepRow({
               )}
             </div>
           )}
+          {step.stage === "TRANSCRIPTION" && (
+            <div className="mt-1 rounded-md bg-[#0A1628] border border-white/5 overflow-hidden">
+              <div className="flex items-center gap-2 px-2.5 py-1 bg-[#0F1D32] border-b border-white/5">
+                <FileAudio className="h-2.5 w-2.5" style={{ color: "#F97316" }} />
+                <span className="text-[8px] font-medium" style={{ color: "#F97316" }}>Source Audio</span>
+                <span className="text-[8px] text-[#9CA3AF]">(streamed from source)</span>
+              </div>
+              <SourceAudioPlayer episodeId={episodeId} />
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -805,7 +884,7 @@ function JobProgressTree({ jobs, highlightJobId, jobRef, showDebug, showDetails 
             </div>
           )}
           {job.steps.map((step) => (
-            <ExpandableStepRow key={`${job.jobId}-${step.stage}`} step={step} showDebug={showDebug} showDetails={showDetails} />
+            <ExpandableStepRow key={`${job.jobId}-${step.stage}`} step={step} episodeId={job.episodeId} showDebug={showDebug} showDetails={showDetails} />
           ))}
         </div>
       ))}

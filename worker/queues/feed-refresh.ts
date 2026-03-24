@@ -3,7 +3,7 @@ import { getConfig } from "../lib/config";
 import { createPipelineLogger } from "../lib/logger";
 import { parseRssFeed, type ParsedEpisode } from "../lib/rss-parser";
 import type { FeedRefreshMessage } from "../lib/queue-messages";
-import { isSeedJobActive } from "../lib/queue-helpers";
+import { isRefreshJobActive } from "../lib/queue-helpers";
 import type { Env } from "../types";
 
 /**
@@ -48,7 +48,7 @@ export async function handleFeedRefresh(
     // Collect specific podcast IDs from messages, if any
     const podcastIds = new Set<string>();
     let fetchAll = false;
-    let seedJobId: string | undefined;
+    let refreshJobId: string | undefined;
     for (const msg of batch.messages) {
       const body = msg.body;
       if (body.podcastId) {
@@ -56,7 +56,7 @@ export async function handleFeedRefresh(
       } else {
         fetchAll = true;
       }
-      if (body.seedJobId) seedJobId = body.seedJobId;
+      if (body.refreshJobId) refreshJobId = body.refreshJobId;
     }
 
     log.debug("podcast_filter", { fetchAll, podcastIds: [...podcastIds] });
@@ -94,19 +94,22 @@ export async function handleFeedRefresh(
     for (const podcast of podcasts) {
       let processed = false;
       try {
-        // Cooperative pause/cancel: skip processing if seed job is no longer active
-        if (seedJobId) {
-          const active = await isSeedJobActive(prisma, seedJobId);
+        // Cooperative pause/cancel: skip processing if refresh job is no longer active
+        if (refreshJobId) {
+          const active = await isRefreshJobActive(prisma, refreshJobId);
           if (!active) {
-            log.info("seed_job_inactive", { podcastId: podcast.id, seedJobId });
-            continue; // Skip this podcast — don't increment feedsCompleted
+            log.info("refresh_job_inactive", { podcastId: podcast.id, refreshJobId });
+            continue;
           }
-          processed = true; // Mark here so non-English skips still count toward feedsCompleted
+          processed = true;
         }
 
+        console.log(`[feed-refresh] GET RSS feed: ${podcast.feedUrl} (podcast: ${podcast.title})`);
         const response = await fetch(podcast.feedUrl);
+        console.log(`[feed-refresh] RSS response: ${response.status} ${response.statusText} (${podcast.title})`);
         const xml = await response.text();
         const feed = parseRssFeed(xml);
+        console.log(`[feed-refresh] Parsed ${feed.episodes.length} episodes from ${podcast.title}`);
 
         // Write the RSS language tag to the podcast record
         if (feed.language) {
@@ -171,17 +174,28 @@ export async function handleFeedRefresh(
           }
         }
 
+        // Track new episodes for refresh job
+        if (refreshJobId && newEpisodeIds.length > 0) {
+          await prisma.episodeRefreshJob.update({
+            where: { id: refreshJobId },
+            data: {
+              podcastsWithNewEpisodes: { increment: 1 },
+              episodesDiscovered: { increment: newEpisodeIds.length },
+              prefetchTotal: { increment: newEpisodeIds.length },
+            },
+          }).catch(() => {});
+        }
+
         // Queue content prefetch for new episodes (runs slowly at concurrency=1)
         if (newEpisodeIds.length > 0) {
           await env.CONTENT_PREFETCH_QUEUE.sendBatch(
-            newEpisodeIds.map((id) => ({ body: { episodeId: id, ...(seedJobId && { seedJobId }) } }))
+            newEpisodeIds.map((id) => ({
+              body: {
+                episodeId: id,
+                ...(refreshJobId && { refreshJobId }),
+              },
+            }))
           );
-          if (seedJobId) {
-            await prisma.catalogSeedJob.update({
-              where: { id: seedJobId },
-              data: { prefetchTotal: { increment: newEpisodeIds.length } },
-            });
-          }
         }
 
         log.info("podcast_refreshed", {
@@ -194,20 +208,33 @@ export async function handleFeedRefresh(
         if (newEpisodeIds.length > 0) {
           const subscriptions = await prisma.subscription.findMany({
             where: { podcastId: podcast.id },
+            include: { user: { select: { defaultVoicePresetId: true } } },
           });
 
           if (subscriptions.length > 0) {
-            // Group subscribers by durationTier for efficient pipeline requests
-            const tierGroups = new Map<number, string[]>();
+            // Group subscribers by (durationTier, resolvedVoicePresetId)
+            // voicePresetId: subscription-level > user default > null
+            const groupKey = (tier: number, vpId: string | null) => `${tier}:${vpId ?? ""}`;
+            const tierVoiceGroups = new Map<string, { durationTier: number; voicePresetId: string | null; userIds: string[] }>();
+
             for (const sub of subscriptions) {
-              const tier = sub.durationTier;
-              if (!tierGroups.has(tier)) tierGroups.set(tier, []);
-              tierGroups.get(tier)!.push(sub.userId);
+              const resolvedVoicePresetId = sub.voicePresetId ?? sub.user?.defaultVoicePresetId ?? null;
+              const key = groupKey(sub.durationTier, resolvedVoicePresetId);
+              if (!tierVoiceGroups.has(key)) {
+                tierVoiceGroups.set(key, {
+                  durationTier: sub.durationTier,
+                  voicePresetId: resolvedVoicePresetId,
+                  userIds: [],
+                });
+              }
+              tierVoiceGroups.get(key)!.userIds.push(sub.userId);
             }
 
             for (const episodeId of newEpisodeIds) {
-              for (const [durationTier, userIds] of tierGroups) {
-                // Create FeedItems for all subscribers at this tier
+              for (const [, group] of tierVoiceGroups) {
+                const { durationTier, voicePresetId, userIds } = group;
+
+                // Create FeedItems for all subscribers in this group
                 for (const userId of userIds) {
                   await prisma.feedItem.upsert({
                     where: {
@@ -229,7 +256,7 @@ export async function handleFeedRefresh(
                   });
                 }
 
-                // Create one BriefingRequest per (episode, tier) — the clip is shared
+                // Create one BriefingRequest per (episode, tier, voice) — the clip is shared
                 const request = await prisma.briefingRequest.create({
                   data: {
                     userId: userIds[0], // Anchor to first subscriber
@@ -238,6 +265,7 @@ export async function handleFeedRefresh(
                       podcastId: podcast.id,
                       episodeId,
                       durationTier,
+                      voicePresetId: voicePresetId ?? undefined,
                       useLatest: false,
                     }],
                     isTest: false,
@@ -245,11 +273,12 @@ export async function handleFeedRefresh(
                   },
                 });
 
-                // Link all FeedItems at this tier to the request
+                // Link all FeedItems in this group to the request
                 await prisma.feedItem.updateMany({
                   where: {
                     episodeId,
                     durationTier,
+                    userId: { in: userIds },
                     status: "PENDING",
                     requestId: null,
                   },
@@ -268,6 +297,7 @@ export async function handleFeedRefresh(
                   podcastId: podcast.id,
                   episodeId,
                   durationTier,
+                  voicePresetId,
                   subscriberCount: userIds.length,
                   requestId: request.id,
                 });
@@ -284,11 +314,23 @@ export async function handleFeedRefresh(
       } catch (err) {
         // Log and continue — don't let one failed feed block others
         log.error("podcast_error", { podcastId: podcast.id }, err);
+
+        // Record error for episode refresh job
+        if (refreshJobId) {
+          await prisma.episodeRefreshError.create({
+            data: {
+              jobId: refreshJobId,
+              phase: "feed_scan",
+              message: err instanceof Error ? err.message : String(err),
+              podcastId: podcast.id,
+            },
+          }).catch(() => {});
+        }
       } finally {
-        if (seedJobId && processed) {
-          await prisma.catalogSeedJob.update({
-            where: { id: seedJobId },
-            data: { feedsCompleted: { increment: 1 } },
+        if (refreshJobId && processed) {
+          await prisma.episodeRefreshJob.update({
+            where: { id: refreshJobId },
+            data: { podcastsCompleted: { increment: 1 } },
           }).catch(() => {});
         }
       }

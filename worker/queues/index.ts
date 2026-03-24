@@ -154,26 +154,31 @@ export async function scheduled(
       runJob({
         jobKey: "pipeline-trigger",
         prisma: prisma as any,
+        defaultIntervalMinutes: 15,
         execute: (logger) => runPipelineTriggerJob(prisma as any, env, logger),
       }),
       runJob({
         jobKey: "monitoring",
         prisma: prisma as any,
+        defaultIntervalMinutes: 60,
         execute: (logger) => runMonitoringJob(prisma as any, logger),
       }),
       runJob({
         jobKey: "user-lifecycle",
         prisma: prisma as any,
+        defaultIntervalMinutes: 360,
         execute: (logger) => runUserLifecycleJob(prisma as any, logger),
       }),
       runJob({
         jobKey: "data-retention",
         prisma: prisma as any,
+        defaultIntervalMinutes: 1440,
         execute: (logger) => runDataRetentionJob(prisma as any, logger),
       }),
       runJob({
         jobKey: "recommendations",
         prisma: prisma as any,
+        defaultIntervalMinutes: 10080,
         execute: (logger) => runRecommendationsJob(prisma as any, logger, env),
       }),
     ]);

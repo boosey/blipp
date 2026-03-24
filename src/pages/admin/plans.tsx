@@ -31,7 +31,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { useAdminFetch } from "@/lib/admin-api";
-import type { AdminPlan, DurationTier, PaginatedResponse } from "@/types/admin";
+import type { AdminPlan, DurationTier, PaginatedResponse, VoicePresetEntry } from "@/types/admin";
 
 // ── Helpers ──
 
@@ -52,6 +52,11 @@ function limitsText(plan: AdminPlan): string {
   } else {
     parts.push("Unlim pods");
   }
+  if (plan.pastEpisodesLimit != null) {
+    parts.push(`${plan.pastEpisodesLimit} past eps`);
+  } else {
+    parts.push("Unlim past eps");
+  }
   return parts.join(" · ");
 }
 
@@ -68,6 +73,7 @@ interface PlanFormData {
   briefingsPerWeek: string;
   maxDurationMinutes: string;
   maxPodcastSubscriptions: string;
+  pastEpisodesLimit: string;
   adFree: boolean;
   priorityProcessing: boolean;
   earlyAccess: boolean;
@@ -76,6 +82,7 @@ interface PlanFormData {
   priceCentsMonthly: string;
   priceCentsAnnual: string;
   trialDays: string;
+  allowedVoicePresetIds: string[];
   features: string;
   highlighted: boolean;
   sortOrder: string;
@@ -90,6 +97,7 @@ function emptyForm(): PlanFormData {
     briefingsPerWeek: "",
     maxDurationMinutes: "5",
     maxPodcastSubscriptions: "",
+    pastEpisodesLimit: "",
     adFree: false,
     priorityProcessing: false,
     earlyAccess: false,
@@ -98,6 +106,7 @@ function emptyForm(): PlanFormData {
     priceCentsMonthly: "0",
     priceCentsAnnual: "",
     trialDays: "0",
+    allowedVoicePresetIds: [],
     features: "",
     highlighted: false,
     sortOrder: "0",
@@ -113,6 +122,7 @@ function planToForm(plan: AdminPlan): PlanFormData {
     briefingsPerWeek: plan.briefingsPerWeek != null ? String(plan.briefingsPerWeek) : "",
     maxDurationMinutes: String(plan.maxDurationMinutes),
     maxPodcastSubscriptions: plan.maxPodcastSubscriptions != null ? String(plan.maxPodcastSubscriptions) : "",
+    pastEpisodesLimit: plan.pastEpisodesLimit != null ? String(plan.pastEpisodesLimit) : "",
     adFree: plan.adFree,
     priorityProcessing: plan.priorityProcessing,
     earlyAccess: plan.earlyAccess,
@@ -121,6 +131,7 @@ function planToForm(plan: AdminPlan): PlanFormData {
     priceCentsMonthly: String(plan.priceCentsMonthly),
     priceCentsAnnual: plan.priceCentsAnnual != null ? String(plan.priceCentsAnnual) : "",
     trialDays: String(plan.trialDays),
+    allowedVoicePresetIds: plan.allowedVoicePresetIds ?? [],
     features: plan.features.join(", "),
     highlighted: plan.highlighted,
     sortOrder: String(plan.sortOrder),
@@ -136,6 +147,7 @@ function formToPayload(form: PlanFormData) {
     briefingsPerWeek: form.briefingsPerWeek ? Number(form.briefingsPerWeek) : null,
     maxDurationMinutes: Number(form.maxDurationMinutes),
     maxPodcastSubscriptions: form.maxPodcastSubscriptions ? Number(form.maxPodcastSubscriptions) : null,
+    pastEpisodesLimit: form.pastEpisodesLimit ? Number(form.pastEpisodesLimit) : null,
     adFree: form.adFree,
     priorityProcessing: form.priorityProcessing,
     earlyAccess: form.earlyAccess,
@@ -144,6 +156,7 @@ function formToPayload(form: PlanFormData) {
     priceCentsMonthly: Number(form.priceCentsMonthly),
     priceCentsAnnual: form.priceCentsAnnual ? Number(form.priceCentsAnnual) : null,
     trialDays: Number(form.trialDays),
+    allowedVoicePresetIds: form.allowedVoicePresetIds,
     features: form.features
       .split(",")
       .map((s) => s.trim())
@@ -164,6 +177,7 @@ function PlanFormDialog({
   setForm,
   onSubmit,
   saving,
+  voicePresets,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -172,8 +186,16 @@ function PlanFormDialog({
   setForm: (f: PlanFormData) => void;
   onSubmit: () => void;
   saving: boolean;
+  voicePresets: VoicePresetEntry[];
 }) {
   const update = (patch: Partial<PlanFormData>) => setForm({ ...form, ...patch });
+
+  const toggleVoicePreset = (id: string) => {
+    const ids = form.allowedVoicePresetIds.includes(id)
+      ? form.allowedVoicePresetIds.filter((v) => v !== id)
+      : [...form.allowedVoicePresetIds, id];
+    update({ allowedVoicePresetIds: ids });
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -224,7 +246,7 @@ function PlanFormDialog({
             {/* Limits */}
             <div className="space-y-3">
               <span className="text-xs font-semibold text-[#9CA3AF] uppercase tracking-wider">Limits</span>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label className="text-xs text-[#F9FAFB]">Briefings/week</Label>
                   <Input
@@ -251,6 +273,17 @@ function PlanFormDialog({
                     type="number"
                     value={form.maxPodcastSubscriptions}
                     onChange={(e) => update({ maxPodcastSubscriptions: e.target.value })}
+                    placeholder="Unlimited"
+                    className="h-8 text-xs bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono"
+                  />
+                  <span className="text-[10px] text-[#9CA3AF]">Empty = unlimited</span>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-[#F9FAFB]">Past episodes</Label>
+                  <Input
+                    type="number"
+                    value={form.pastEpisodesLimit}
+                    onChange={(e) => update({ pastEpisodesLimit: e.target.value })}
                     placeholder="Unlimited"
                     className="h-8 text-xs bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono"
                   />
@@ -283,6 +316,31 @@ function PlanFormDialog({
                 ))}
               </div>
             </div>
+
+            <Separator className="bg-white/5" />
+
+            {/* Voice Presets */}
+            {voicePresets.length > 0 && (
+              <div className="space-y-3">
+                <span className="text-xs font-semibold text-[#9CA3AF] uppercase tracking-wider">Voice Presets</span>
+                <p className="text-[10px] text-[#9CA3AF]">Select which voice presets this plan grants access to.</p>
+                <div className="grid grid-cols-2 gap-y-2 gap-x-6">
+                  {voicePresets.map((vp) => (
+                    <div key={vp.id} className="flex items-center justify-between">
+                      <Label className="text-xs text-[#F9FAFB]">
+                        {vp.name}
+                        {vp.isSystem && <span className="text-[10px] text-[#9CA3AF] ml-1">(system)</span>}
+                      </Label>
+                      <Switch
+                        checked={form.allowedVoicePresetIds.includes(vp.id)}
+                        onCheckedChange={() => toggleVoicePreset(vp.id)}
+                        className="data-[state=checked]:bg-[#10B981]"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <Separator className="bg-white/5" />
 
@@ -498,6 +556,9 @@ export default function PlansPage() {
   const [tiersLoading, setTiersLoading] = useState(true);
   const [tiersOpen, setTiersOpen] = useState(false);
 
+  // Voice presets (for plan configuration)
+  const [voicePresets, setVoicePresets] = useState<VoicePresetEntry[]>([]);
+
   const loadPlans = useCallback(() => {
     setLoading(true);
     apiFetch<PaginatedResponse<AdminPlan>>("/plans?pageSize=50&sort=sortOrder&direction=asc")
@@ -509,6 +570,12 @@ export default function PlansPage() {
   useEffect(() => {
     loadPlans();
   }, [loadPlans]);
+
+  useEffect(() => {
+    apiFetch<{ data: VoicePresetEntry[] }>("/voice-presets?includeInactive=true")
+      .then((r) => setVoicePresets(r.data ?? []))
+      .catch(() => {});
+  }, [apiFetch]);
 
   useEffect(() => {
     setTiersLoading(true);
@@ -620,6 +687,7 @@ export default function PlansPage() {
               <th className="text-right px-3 py-2.5 text-[10px] uppercase text-[#9CA3AF] font-medium">Annual</th>
               <th className="text-center px-3 py-2.5 text-[10px] uppercase text-[#9CA3AF] font-medium">Users</th>
               <th className="text-left px-3 py-2.5 text-[10px] uppercase text-[#9CA3AF] font-medium">Limits</th>
+              <th className="text-center px-3 py-2.5 text-[10px] uppercase text-[#9CA3AF] font-medium">Voices</th>
               <th className="text-center px-3 py-2.5 text-[10px] uppercase text-[#9CA3AF] font-medium">Active</th>
               <th className="text-center px-3 py-2.5 text-[10px] uppercase text-[#9CA3AF] font-medium">Order</th>
               <th className="text-right px-3 py-2.5 text-[10px] uppercase text-[#9CA3AF] font-medium">Actions</th>
@@ -677,6 +745,24 @@ export default function PlansPage() {
                 {/* Limits */}
                 <td className="px-3 py-2.5">
                   <span className="text-[#9CA3AF] text-[10px]">{limitsText(plan)}</span>
+                </td>
+
+                {/* Voices */}
+                <td className="px-3 py-2.5 text-center">
+                  {(plan.allowedVoicePresetIds?.length ?? 0) > 0 ? (
+                    <div className="flex flex-wrap gap-0.5 justify-center">
+                      {plan.allowedVoicePresetIds.map((vpId) => {
+                        const vp = voicePresets.find((v) => v.id === vpId);
+                        return (
+                          <Badge key={vpId} className="bg-white/5 text-[#9CA3AF] border-white/10 text-[9px]">
+                            {vp?.name ?? vpId.slice(0, 6)}
+                          </Badge>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <span className="text-[10px] text-[#9CA3AF]/50">-</span>
+                  )}
                 </td>
 
                 {/* Active Toggle */}
@@ -796,6 +882,19 @@ export default function PlansPage() {
                       ))}
                     </div>
                   )}
+
+                  {(plan.allowedVoicePresetIds?.length ?? 0) > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {plan.allowedVoicePresetIds.map((vpId) => {
+                        const vp = voicePresets.find((v) => v.id === vpId);
+                        return (
+                          <Badge key={vpId} className="bg-[#3B82F6]/10 text-[#3B82F6] text-[9px] font-normal">
+                            {vp?.name ?? vpId.slice(0, 6)}
+                          </Badge>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -906,6 +1005,7 @@ export default function PlansPage() {
         setForm={setForm}
         onSubmit={submitCreate}
         saving={saving}
+        voicePresets={voicePresets}
       />
 
       {/* Edit Dialog */}
@@ -917,6 +1017,7 @@ export default function PlansPage() {
         setForm={setForm}
         onSubmit={submitEdit}
         saving={saving}
+        voicePresets={voicePresets}
       />
 
       {/* Delete Dialog */}

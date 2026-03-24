@@ -20,6 +20,7 @@ export interface BriefingRequestItem {
   episodeId: string | null;
   durationTier: number;
   useLatest: boolean;
+  voicePresetId?: string;
 }
 
 /** Transcription queue. */
@@ -52,6 +53,7 @@ export interface AudioGenerationMessage {
   jobId: string;
   episodeId: string;
   durationTier: number;
+  voicePresetId?: string | null;
   correlationId?: string;
   type?: "manual";
 }
@@ -67,11 +69,13 @@ export interface BriefingAssemblyMessage {
 export interface FeedRefreshMessage {
   podcastId?: string;
   type?: "manual" | "cron";
-  seedJobId?: string;
+  refreshJobId?: string;
 }
 
 /** Catalog refresh queue. */
 export interface CatalogRefreshMessage {
   action: "seed" | "refresh";
+  mode?: "destructive" | "additive";
+  source?: "apple" | "podcast-index";
   seedJobId?: string;
 }

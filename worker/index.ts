@@ -8,6 +8,7 @@
  */
 import * as Sentry from "@sentry/cloudflare";
 import { Hono } from "hono";
+import { createMiddleware } from "hono/factory";
 import { cors } from "hono/cors";
 import { clerkMiddleware } from "./middleware/auth";
 import { prismaMiddleware } from "./middleware/prisma";
@@ -25,6 +26,7 @@ import { rateLimit } from "./middleware/rate-limit";
 import { securityHeaders } from "./middleware/security-headers";
 import { cacheResponse } from "./middleware/cache";
 import { deepHealthCheck } from "./lib/health";
+import { catalogSeedRoutes } from "./routes/admin/catalog-seed";
 import type { Env } from "./types";
 
 const app = new Hono<{ Bindings: Env }>();
@@ -91,8 +93,106 @@ app.use("/api/*", cors({
   allowHeaders: ["Content-Type", "Authorization"],
 }));
 
+// Clerk Frontend API proxy — routes Clerk SDK requests through our domain
+// so native apps (capacitor://localhost) don't hit CORS issues on clerk.podblipp.com.
+// Must be before Clerk auth middleware since these are Clerk's own API calls.
+app.all("/__clerk/*", async (c) => {
+  const origin = c.req.header("origin") ?? "";
+  const allowedOrigins = [
+    "https://podblipp.com",
+    "https://www.podblipp.com",
+    "capacitor://localhost",
+    "ionic://localhost",
+    "http://localhost:8787",
+    "http://localhost:5173",
+  ];
+  const corsOrigin = allowedOrigins.includes(origin) ? origin : "";
+
+  // Handle CORS preflight
+  if (c.req.method === "OPTIONS") {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": corsOrigin,
+        "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+        "Access-Control-Allow-Headers": c.req.header("access-control-request-headers") ?? "*",
+        "Access-Control-Allow-Credentials": "true",
+        "Access-Control-Max-Age": "86400",
+      },
+    });
+  }
+
+  // Proxy to Clerk's Frontend API
+  const url = new URL(c.req.url);
+  const clerkPath = url.pathname.replace("/__clerk", "");
+  const targetUrl = `https://clerk.podblipp.com${clerkPath}${url.search}`;
+
+  const headers = new Headers(c.req.raw.headers);
+  headers.delete("host");
+
+  const resp = await fetch(targetUrl, {
+    method: c.req.method,
+    headers,
+    body: c.req.method !== "GET" && c.req.method !== "HEAD" ? c.req.raw.body : undefined,
+  });
+
+  const proxyResp = new Response(resp.body, resp);
+  proxyResp.headers.set("Access-Control-Allow-Origin", corsOrigin);
+  proxyResp.headers.set("Access-Control-Allow-Credentials", "true");
+  return proxyResp;
+});
+
+// ── Catalog-seed routes: script-token OR Clerk session ──
+// Script/CI requests bypass Clerk entirely via X-Script-Token or Bearer CLERK_SECRET_KEY.
+// Browser admin requests fall through to Clerk + requireAdmin (normal admin flow).
+const scriptOrClerkAuth = createMiddleware<{ Bindings: Env }>(async (c, next) => {
+  // Script token bypass (GH Actions, CI)
+  const scriptToken = c.req.header("X-Script-Token");
+  if (scriptToken) {
+    if (c.env.SCRIPT_TOKEN && scriptToken === c.env.SCRIPT_TOKEN) {
+      c.set("scriptAuth", true);
+      return next();
+    }
+    // Script token present but invalid — reject immediately
+    return c.json({ error: "Invalid script token" }, 401);
+  }
+  // Bearer secret bypass
+  const authHeader = c.req.header("Authorization");
+  if (authHeader?.startsWith("Bearer ")) {
+    const token = authHeader.slice(7);
+    if (token === c.env.CLERK_SECRET_KEY) {
+      c.set("scriptAuth", true);
+      return next();
+    }
+  }
+  // Browser request — run Clerk middleware, then requireAdmin
+  return clerkMiddleware()(c, async () => {
+    const { requireAdmin } = await import("./middleware/admin");
+    await requireAdmin(c, next);
+  });
+});
+for (const path of ["/api/admin/catalog-seed", "/api/admin/catalog-seed/*"] as const) {
+  app.use(path, prismaMiddleware);
+  app.use(path, scriptOrClerkAuth);
+}
+app.route("/api/admin/catalog-seed", catalogSeedRoutes);
+
 // Clerk auth middleware — populates auth context for all API routes
-app.use("/api/*", clerkMiddleware());
+// Skip Clerk for server-to-server requests already authenticated via scriptOrClerkAuth,
+// or using Bearer CLERK_SECRET_KEY
+app.use("/api/*", async (c, next) => {
+  // Already authenticated by scriptOrClerkAuth middleware (catalog-seed routes)
+  if (c.get("scriptAuth")) return next();
+  // Bearer secret bypass (server-to-server)
+  const authHeader = c.req.header("Authorization");
+  if (authHeader?.startsWith("Bearer ")) {
+    const token = authHeader.slice(7);
+    if (token === c.env.CLERK_SECRET_KEY) {
+      return next();
+    }
+  }
+  return clerkMiddleware()(c, next);
+});
 
 // Request logger — after auth so userId is available
 app.use("/api/*", requestLogger);

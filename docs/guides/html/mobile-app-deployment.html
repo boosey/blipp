@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <title>Mobile App Deployment Guide</title>
+            <style>
+/* From extension vscode.github */
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+.vscode-dark img[src$=\#gh-light-mode-only],
+.vscode-light img[src$=\#gh-dark-mode-only],
+.vscode-high-contrast:not(.vscode-high-contrast-light) img[src$=\#gh-light-mode-only],
+.vscode-high-contrast-light img[src$=\#gh-dark-mode-only] {
+	display: none;
+}
+
+</style>
+            <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex/dist/katex.min.css">
+<link href="https://cdn.jsdelivr.net/npm/katex-copytex@latest/dist/katex-copytex.min.css" rel="stylesheet" type="text/css">
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Microsoft/vscode/extensions/markdown-language-features/media/markdown.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Microsoft/vscode/extensions/markdown-language-features/media/highlight.css">
+<style>
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe WPC', 'Segoe UI', system-ui, 'Ubuntu', 'Droid Sans', sans-serif;
+                font-size: 14px;
+                line-height: 1.6;
+            }
+        </style>
+        <style>
+.task-list-item {
+    list-style-type: none;
+}
+
+.task-list-item-checkbox {
+    margin-left: -20px;
+    vertical-align: middle;
+    pointer-events: none;
+}
+</style>
+<style>
+:root {
+  --color-note: #0969da;
+  --color-tip: #1a7f37;
+  --color-warning: #9a6700;
+  --color-severe: #bc4c00;
+  --color-caution: #d1242f;
+  --color-important: #8250df;
+}
+
+</style>
+<style>
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-note: #2f81f7;
+    --color-tip: #3fb950;
+    --color-warning: #d29922;
+    --color-severe: #db6d28;
+    --color-caution: #f85149;
+    --color-important: #a371f7;
+  }
+}
+
+</style>
+<style>
+.markdown-alert {
+  padding: 0.5rem 1rem;
+  margin-bottom: 16px;
+  color: inherit;
+  border-left: .25em solid #888;
+}
+
+.markdown-alert>:first-child {
+  margin-top: 0
+}
+
+.markdown-alert>:last-child {
+  margin-bottom: 0
+}
+
+.markdown-alert .markdown-alert-title {
+  display: flex;
+  font-weight: 500;
+  align-items: center;
+  line-height: 1
+}
+
+.markdown-alert .markdown-alert-title .octicon {
+  margin-right: 0.5rem;
+  display: inline-block;
+  overflow: visible !important;
+  vertical-align: text-bottom;
+  fill: currentColor;
+}
+
+.markdown-alert.markdown-alert-note {
+  border-left-color: var(--color-note);
+}
+
+.markdown-alert.markdown-alert-note .markdown-alert-title {
+  color: var(--color-note);
+}
+
+.markdown-alert.markdown-alert-important {
+  border-left-color: var(--color-important);
+}
+
+.markdown-alert.markdown-alert-important .markdown-alert-title {
+  color: var(--color-important);
+}
+
+.markdown-alert.markdown-alert-warning {
+  border-left-color: var(--color-warning);
+}
+
+.markdown-alert.markdown-alert-warning .markdown-alert-title {
+  color: var(--color-warning);
+}
+
+.markdown-alert.markdown-alert-tip {
+  border-left-color: var(--color-tip);
+}
+
+.markdown-alert.markdown-alert-tip .markdown-alert-title {
+  color: var(--color-tip);
+}
+
+.markdown-alert.markdown-alert-caution {
+  border-left-color: var(--color-caution);
+}
+
+.markdown-alert.markdown-alert-caution .markdown-alert-title {
+  color: var(--color-caution);
+}
+
+</style>
+        
+        </head>
+        <body class="vscode-body vscode-light">
+            <h1 id="mobile-app-deployment-guide">Mobile App Deployment Guide</h1>
+<p>Complete step-by-step guide for building and deploying Blipp as a native iOS app via Capacitor, and optionally adding Android support.</p>
+<hr>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ol>
+<li><a href="#1-prerequisites--critical-constraints">Prerequisites &amp; Critical Constraints</a></li>
+<li><a href="#2-option-a-personal-device-testing-free-no-apple-account">Option A: Personal Device Testing (Free, No Apple Account)</a></li>
+<li><a href="#3-option-b-testflight-beta-distribution">Option B: TestFlight Beta Distribution</a></li>
+<li><a href="#4-option-c-app-store-public-release">Option C: App Store Public Release</a></li>
+<li><a href="#5-apple-developer-account-setup">Apple Developer Account Setup</a></li>
+<li><a href="#6-building-the-ios-app">Building the iOS App</a></li>
+<li><a href="#7-configuring-signing--capabilities-in-xcode">Configuring Signing &amp; Capabilities in Xcode</a></li>
+<li><a href="#8-installing-on-your-iphone-development">Installing on Your iPhone (Development)</a></li>
+<li><a href="#9-testflight-distribution">TestFlight Distribution</a></li>
+<li><a href="#10-app-store-submission">App Store Submission</a></li>
+<li><a href="#11-adding-android-support">Adding Android Support</a></li>
+<li><a href="#12-ongoing-maintenance">Ongoing Maintenance</a></li>
+<li><a href="#13-troubleshooting">Troubleshooting</a></li>
+</ol>
+<hr>
+<h2 id="1-prerequisites--critical-constraints">1. Prerequisites &amp; Critical Constraints</h2>
+<h3 id="you-need-a-mac">You Need a Mac</h3>
+<p><strong>This is non-negotiable for iOS.</strong> Apple requires Xcode, which only runs on macOS. Your options:</p>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Cost</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Mac hardware</strong> (Mac Mini, MacBook, etc.)</td>
+<td>$599+</td>
+<td>Most reliable. Mac Mini M2 is the cheapest option.</td>
+</tr>
+<tr>
+<td><strong>macOS VM</strong> (via UTM on Apple Silicon, or cloud)</td>
+<td>Free–$50/mo</td>
+<td>Apple's EULA requires Apple hardware for macOS VMs.</td>
+</tr>
+<tr>
+<td><strong>Cloud Mac service</strong> (MacStadium, AWS EC2 Mac)</td>
+<td>$30–90/mo</td>
+<td>Remote Mac you SSH/VNC into.</td>
+</tr>
+<tr>
+<td><strong>GitHub Actions macOS runner</strong></td>
+<td>Free (2000 min/mo)</td>
+<td>For CI/CD builds only, not interactive Xcode work.</td>
+</tr>
+<tr>
+<td><strong>Borrow a Mac</strong></td>
+<td>Free</td>
+<td>Just need it for the build + deploy steps.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Recommendation for getting started:</strong> Borrow a Mac or use a cloud Mac service for the initial setup. Once you have signing configured, you can automate builds with GitHub Actions.</p>
+<h3 id="software-requirements-on-the-mac">Software Requirements (on the Mac)</h3>
+<ul>
+<li><strong>Xcode 15+</strong> — Download from the Mac App Store (free, ~12 GB)</li>
+<li><strong>Xcode Command Line Tools</strong> — Run: <code>xcode-select --install</code></li>
+<li><strong>Node.js 18+</strong> — Same version you use for development</li>
+<li><strong>CocoaPods</strong> (may not be needed since project uses SPM, but good to have): <code>sudo gem install cocoapods</code></li>
+</ul>
+<h3 id="decide-your-distribution-path">Decide Your Distribution Path</h3>
+<table>
+<thead>
+<tr>
+<th>Path</th>
+<th>Cost</th>
+<th>Apple Account Needed</th>
+<th>Time to Install</th>
+<th>Audience</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Personal device (free provisioning)</strong></td>
+<td>Free</td>
+<td>Free Apple ID</td>
+<td>Minutes</td>
+<td>Just you, 1 device</td>
+</tr>
+<tr>
+<td><strong>Ad Hoc (direct install)</strong></td>
+<td>$99/year</td>
+<td>Apple Developer Program</td>
+<td>Hours (first time)</td>
+<td>Up to 100 registered devices</td>
+</tr>
+<tr>
+<td><strong>TestFlight</strong></td>
+<td>$99/year</td>
+<td>Apple Developer Program</td>
+<td>1–2 days (first review)</td>
+<td>Up to 10,000 testers</td>
+</tr>
+<tr>
+<td><strong>App Store</strong></td>
+<td>$99/year</td>
+<td>Apple Developer Program</td>
+<td>1–7 days (review)</td>
+<td>Public</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="2-option-a-personal-device-testing-free-no-apple-account">2. Option A: Personal Device Testing (Free, No Apple Account)</h2>
+<p>This is the fastest path to get Blipp on YOUR iPhone. No cost, no approvals.</p>
+<p><strong>Limitations:</strong></p>
+<ul>
+<li>App expires after <strong>7 days</strong> (must reinstall)</li>
+<li>Only <strong>3 apps</strong> can be sideloaded at a time</li>
+<li>Only works on devices physically connected to the Mac</li>
+<li>Cannot use push notifications or some entitlements</li>
+<li>Cannot distribute to others</li>
+</ul>
+<p>If these limits are fine for personal use, skip to <a href="#6-building-the-ios-app">Section 6: Building the iOS App</a> — you just need a free Apple ID.</p>
+<hr>
+<h2 id="3-option-b-testflight-beta-distribution">3. Option B: TestFlight Beta Distribution</h2>
+<p>Best for sharing with friends, testers, or a small audience before going public.</p>
+<p><strong>What you get:</strong></p>
+<ul>
+<li>Install via TestFlight app (no cable needed)</li>
+<li>Up to 10,000 external testers</li>
+<li>Builds expire after 90 days</li>
+<li>Apple does a lightweight review (usually 24–48 hours for first build)</li>
+</ul>
+<p><strong>Required:</strong> Apple Developer Program ($99/year). See <a href="#5-apple-developer-account-setup">Section 5</a>.</p>
+<hr>
+<h2 id="4-option-c-app-store-public-release">4. Option C: App Store Public Release</h2>
+<p>Full public release. Requires the most preparation.</p>
+<p><strong>Additional requirements beyond TestFlight:</strong></p>
+<ul>
+<li>App Store listing (screenshots, description, keywords, etc.)</li>
+<li>Privacy policy URL (required by Apple)</li>
+<li>App review (1–7 days, can be rejected)</li>
+<li>App icons in all required sizes (Capacitor handles this with one 1024x1024 image)</li>
+<li>Must comply with App Store Review Guidelines</li>
+</ul>
+<hr>
+<h2 id="5-apple-developer-account-setup">5. Apple Developer Account Setup</h2>
+<h3 id="step-1-create-an-apple-id-if-you-dont-have-one">Step 1: Create an Apple ID (if you don't have one)</h3>
+<ol>
+<li>Go to <a href="https://appleid.apple.com">https://appleid.apple.com</a></li>
+<li>Click &quot;Create Your Apple ID&quot;</li>
+<li>Use a real email — this becomes your developer identity</li>
+<li>Enable <strong>two-factor authentication</strong> (required for developer accounts)</li>
+</ol>
+<h3 id="step-2-enroll-in-the-apple-developer-program">Step 2: Enroll in the Apple Developer Program</h3>
+<blockquote>
+<p>Skip this step if you're only doing free personal device testing (Option A).</p>
+</blockquote>
+<ol>
+<li>Go to <a href="https://developer.apple.com/programs/enroll/">https://developer.apple.com/programs/enroll/</a></li>
+<li>Sign in with your Apple ID</li>
+<li>Choose <strong>Individual</strong> enrollment (vs. Organization)
+<ul>
+<li>Individual: Just your name. Simpler, faster.</li>
+<li>Organization: Requires a D-U-N-S number (takes 1–2 weeks to get). Use this if you want &quot;PodBlipp LLC&quot; or similar as the publisher name.</li>
+</ul>
+</li>
+<li>Pay the <strong>$99/year</strong> fee</li>
+<li>Wait for Apple to process enrollment — <strong>usually 24–48 hours</strong>, sometimes up to a week</li>
+</ol>
+<h3 id="step-3-accept-agreements">Step 3: Accept Agreements</h3>
+<p>Once enrolled:</p>
+<ol>
+<li>Log in at <a href="https://developer.apple.com">https://developer.apple.com</a></li>
+<li>Go to <strong>Account</strong> &gt; <strong>Agreements, Tax, and Banking</strong></li>
+<li>Accept the <strong>Apple Developer Agreement</strong></li>
+<li>If you plan to sell the app or use in-app purchases, complete the <strong>Paid Apps</strong> agreement (requires bank account + tax info)</li>
+</ol>
+<h3 id="step-4-register-your-app-id">Step 4: Register Your App ID</h3>
+<ol>
+<li>Go to <a href="https://developer.apple.com/account/resources/identifiers/list">https://developer.apple.com/account/resources/identifiers/list</a></li>
+<li>Click <strong>+</strong> to register a new identifier</li>
+<li>Select <strong>App IDs</strong> &gt; <strong>App</strong></li>
+<li>Enter:
+<ul>
+<li><strong>Description:</strong> Blipp</li>
+<li><strong>Bundle ID:</strong> Select &quot;Explicit&quot; and enter <code>com.blipp.app</code></li>
+</ul>
+</li>
+<li>Under <strong>Capabilities</strong>, enable what you need:
+<ul>
+<li><strong>Associated Domains</strong> (if using universal links)</li>
+<li><strong>Push Notifications</strong> (if adding later)</li>
+<li>Leave others off unless needed</li>
+</ul>
+</li>
+<li>Click <strong>Continue</strong> &gt; <strong>Register</strong></li>
+</ol>
+<h3 id="step-5-create-a-provisioning-profile-for-ad-hoc--app-store">Step 5: Create a Provisioning Profile (for Ad Hoc / App Store)</h3>
+<blockquote>
+<p>For free personal testing with automatic signing, Xcode handles this — skip this step.</p>
+</blockquote>
+<p><strong>For TestFlight / App Store:</strong></p>
+<ol>
+<li>Go to <a href="https://developer.apple.com/account/resources/profiles/list">https://developer.apple.com/account/resources/profiles/list</a></li>
+<li>Click <strong>+</strong></li>
+<li>Select <strong>App Store Connect</strong> (for TestFlight + App Store)</li>
+<li>Select your App ID (<code>com.blipp.app</code>)</li>
+<li>Select your <strong>Distribution Certificate</strong> (create one if prompted — Xcode can do this automatically)</li>
+<li>Name it (e.g., &quot;Blipp App Store&quot;)</li>
+<li>Download and double-click to install</li>
+</ol>
+<hr>
+<h2 id="6-building-the-ios-app">6. Building the iOS App</h2>
+<p>These steps happen on the Mac.</p>
+<h3 id="step-1-clone-and-install-dependencies">Step 1: Clone and Install Dependencies</h3>
+<pre><code class="language-bash">git <span class="hljs-built_in">clone</span> https://github.com/PodBlipp/blipp.git
+<span class="hljs-built_in">cd</span> blipp
+npm install --legacy-peer-deps
+</code></pre>
+<h3 id="step-2-set-up-environment-files">Step 2: Set Up Environment Files</h3>
+<p>Copy your environment files to the Mac. You need at minimum:</p>
+<ul>
+<li><code>.dev.vars</code> (for local dev, optional)</li>
+<li>The app builds from the Vite output, so env vars baked into the frontend build are what matter</li>
+</ul>
+<p>Since the frontend talks to <code>https://podblipp.com</code> when running natively (see <code>src/lib/api-base.ts</code>), you don't need backend env vars for the build itself.</p>
+<h3 id="step-3-build-the-web-app">Step 3: Build the Web App</h3>
+<pre><code class="language-bash">npm run build
+</code></pre>
+<p>This outputs to <code>dist/client/</code> — the directory Capacitor is configured to serve.</p>
+<h3 id="step-4-sync-to-ios">Step 4: Sync to iOS</h3>
+<pre><code class="language-bash">npx <span class="hljs-built_in">cap</span> <span class="hljs-built_in">sync</span> ios
+</code></pre>
+<p>This:</p>
+<ul>
+<li>Copies <code>dist/client/</code> into the iOS project's <code>public/</code> folder</li>
+<li>Resolves any Capacitor plugin dependencies</li>
+<li>Updates the native project configuration</li>
+</ul>
+<h3 id="step-5-open-in-xcode">Step 5: Open in Xcode</h3>
+<pre><code class="language-bash">npx <span class="hljs-built_in">cap</span> open ios
+</code></pre>
+<p>This opens <code>ios/App/App.xcodeproj</code> in Xcode.</p>
+<hr>
+<h2 id="7-configuring-signing--capabilities-in-xcode">7. Configuring Signing &amp; Capabilities in Xcode</h2>
+<h3 id="for-free-personal-testing">For Free Personal Testing</h3>
+<ol>
+<li>In Xcode, select the <strong>App</strong> target in the left sidebar</li>
+<li>Go to the <strong>Signing &amp; Capabilities</strong> tab</li>
+<li>Check <strong>Automatically manage signing</strong></li>
+<li>Under <strong>Team</strong>, select your Apple ID
+<ul>
+<li>If not listed: Xcode menu &gt; <strong>Settings</strong> &gt; <strong>Accounts</strong> &gt; <strong>+</strong> &gt; sign in with your Apple ID</li>
+</ul>
+</li>
+<li>Xcode will auto-create a provisioning profile. The <strong>Bundle Identifier</strong> should already be <code>com.blipp.app</code>
+<ul>
+<li>If you see an error about the bundle ID being taken (because someone else registered it on the App Store), change it temporarily to something unique like <code>com.yourname.blipp</code></li>
+</ul>
+</li>
+</ol>
+<h3 id="for-developer-program-testflight--app-store">For Developer Program (TestFlight / App Store)</h3>
+<ol>
+<li>Same steps as above, but select your <strong>paid Developer Team</strong> instead of personal team</li>
+<li>Ensure the Bundle Identifier matches your registered App ID: <code>com.blipp.app</code></li>
+<li>Xcode will manage certificates and provisioning profiles automatically</li>
+</ol>
+<hr>
+<h2 id="8-installing-on-your-iphone-development">8. Installing on Your iPhone (Development)</h2>
+<h3 id="step-1-connect-your-iphone">Step 1: Connect Your iPhone</h3>
+<ol>
+<li>Plug your iPhone into the Mac via USB/USB-C cable</li>
+<li>On your iPhone: <strong>Trust This Computer</strong> when prompted</li>
+<li>On your iPhone: Go to <strong>Settings &gt; Privacy &amp; Security &gt; Developer Mode</strong> and enable it (iOS 16+)
+<ul>
+<li>Your phone will restart</li>
+</ul>
+</li>
+</ol>
+<h3 id="step-2-select-your-device-in-xcode">Step 2: Select Your Device in Xcode</h3>
+<ol>
+<li>In Xcode's toolbar, click the device dropdown (next to the scheme name &quot;App&quot;)</li>
+<li>Select your iPhone from the list
+<ul>
+<li>If it says &quot;Unavailable&quot;, wait — Xcode is processing the device's symbols (can take several minutes the first time)</li>
+</ul>
+</li>
+</ol>
+<h3 id="step-3-build-and-run">Step 3: Build and Run</h3>
+<ol>
+<li>Click the <strong>Play</strong> button (or <code>Cmd + R</code>)</li>
+<li>First build takes a few minutes (resolving SPM packages, compiling)</li>
+<li>If you see <strong>&quot;Could not launch App&quot;</strong> with a trust error:
+<ul>
+<li>On your iPhone: <strong>Settings &gt; General &gt; VPN &amp; Device Management</strong></li>
+<li>Find your developer certificate and tap <strong>Trust</strong></li>
+<li>Try building again</li>
+</ul>
+</li>
+<li>Blipp should launch on your phone!</li>
+</ol>
+<h3 id="what-to-verify">What to Verify</h3>
+<ul>
+<li>App loads and shows the login screen</li>
+<li>Clerk authentication works (login/signup)</li>
+<li>API calls reach <code>https://podblipp.com</code> successfully</li>
+<li>Audio playback works</li>
+<li>Safe area insets look correct (no content under the notch/Dynamic Island)</li>
+</ul>
+<hr>
+<h2 id="9-testflight-distribution">9. TestFlight Distribution</h2>
+<h3 id="step-1-create-an-app-in-app-store-connect">Step 1: Create an App in App Store Connect</h3>
+<ol>
+<li>Go to <a href="https://appstoreconnect.apple.com">https://appstoreconnect.apple.com</a></li>
+<li>Click <strong>My Apps</strong> &gt; <strong>+</strong> &gt; <strong>New App</strong></li>
+<li>Fill in:
+<ul>
+<li><strong>Platform:</strong> iOS</li>
+<li><strong>Name:</strong> Blipp (must be unique on the App Store — if taken, try &quot;Blipp - Podcast Briefings&quot;)</li>
+<li><strong>Primary Language:</strong> English (U.S.)</li>
+<li><strong>Bundle ID:</strong> Select <code>com.blipp.app</code> from dropdown</li>
+<li><strong>SKU:</strong> <code>com.blipp.app</code> (any unique string)</li>
+<li><strong>User Access:</strong> Full Access</li>
+</ul>
+</li>
+<li>Click <strong>Create</strong></li>
+</ol>
+<h3 id="step-2-archive-the-app-in-xcode">Step 2: Archive the App in Xcode</h3>
+<ol>
+<li>In Xcode, set the device to <strong>Any iOS Device (arm64)</strong> (not a simulator or specific device)</li>
+<li>Go to <strong>Product &gt; Archive</strong></li>
+<li>Wait for the archive to build (a few minutes)</li>
+<li>The <strong>Organizer</strong> window opens when done</li>
+</ol>
+<h3 id="step-3-upload-to-app-store-connect">Step 3: Upload to App Store Connect</h3>
+<ol>
+<li>In the Organizer, select your archive</li>
+<li>Click <strong>Distribute App</strong></li>
+<li>Select <strong>App Store Connect</strong> &gt; <strong>Upload</strong></li>
+<li>Follow the prompts:
+<ul>
+<li><strong>App Store Connect distribution options:</strong> Leave defaults (strip Swift symbols, upload symbols)</li>
+<li><strong>Signing:</strong> Automatic (let Xcode handle it)</li>
+</ul>
+</li>
+<li>Click <strong>Upload</strong></li>
+<li>Wait for processing (5–30 minutes; you'll get an email when ready)</li>
+</ol>
+<h3 id="step-4-set-up-testflight">Step 4: Set Up TestFlight</h3>
+<ol>
+<li>Back in App Store Connect, go to your app &gt; <strong>TestFlight</strong> tab</li>
+<li>The build should appear (status: &quot;Processing&quot; then &quot;Ready to Submit&quot; or &quot;Approved&quot;)</li>
+</ol>
+<p><strong>Internal Testing (immediate, no review):</strong></p>
+<ol>
+<li>Under <strong>Internal Group</strong>, add yourself and up to 100 internal testers (must be App Store Connect users)</li>
+<li>Testers get an email invite to install via the TestFlight app</li>
+</ol>
+<p><strong>External Testing (requires review):</strong></p>
+<ol>
+<li>Click <strong>+</strong> next to &quot;External Groups&quot; to create a group</li>
+<li>Add the build to the group</li>
+<li>Fill in:
+<ul>
+<li><strong>What to Test:</strong> Brief description for testers</li>
+<li><strong>Contact info and privacy policy URL</strong></li>
+</ul>
+</li>
+<li>Submit for <strong>Beta App Review</strong> (usually approved within 24–48 hours)</li>
+<li>Once approved, add testers by email — they get an invite to install via TestFlight</li>
+</ol>
+<h3 id="step-5-installing-via-testflight">Step 5: Installing via TestFlight</h3>
+<p>Testers (including you) do this:</p>
+<ol>
+<li>Install the <strong>TestFlight</strong> app from the App Store (free)</li>
+<li>Open the invite email on the iPhone and tap <strong>View in TestFlight</strong></li>
+<li>Tap <strong>Install</strong></li>
+<li>Blipp is now on the home screen</li>
+</ol>
+<hr>
+<h2 id="10-app-store-submission">10. App Store Submission</h2>
+<h3 id="step-1-prepare-app-store-listing">Step 1: Prepare App Store Listing</h3>
+<p>In App Store Connect, go to your app's <strong>App Information</strong> and <strong>Prepare for Submission</strong> sections. You'll need:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>What to Provide</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>App Name</strong></td>
+<td>Blipp (or &quot;Blipp - Podcast Briefings&quot;)</td>
+</tr>
+<tr>
+<td><strong>Subtitle</strong></td>
+<td>Your podcasts, distilled to fit your time</td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>News or Entertainment</td>
+</tr>
+<tr>
+<td><strong>Description</strong></td>
+<td>1–2 paragraphs about what Blipp does</td>
+</tr>
+<tr>
+<td><strong>Keywords</strong></td>
+<td>podcast, briefing, summary, audio, news, short</td>
+</tr>
+<tr>
+<td><strong>Support URL</strong></td>
+<td>A webpage or GitHub link</td>
+</tr>
+<tr>
+<td><strong>Privacy Policy URL</strong></td>
+<td><strong>Required.</strong> A hosted privacy policy page.</td>
+</tr>
+<tr>
+<td><strong>Screenshots</strong></td>
+<td>At least 3 screenshots for iPhone 6.7&quot; and 6.5&quot; (see below)</td>
+</tr>
+<tr>
+<td><strong>App Icon</strong></td>
+<td>Auto-uploaded from your binary</td>
+</tr>
+<tr>
+<td><strong>Age Rating</strong></td>
+<td>Fill out the questionnaire (likely 4+ or 12+)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="step-2-take-screenshots">Step 2: Take Screenshots</h3>
+<p>You need screenshots for at least these device sizes:</p>
+<ul>
+<li><strong>6.7&quot; Display</strong> (iPhone 15 Pro Max) — required</li>
+<li><strong>6.5&quot; Display</strong> (iPhone 11 Pro Max) — required</li>
+</ul>
+<p><strong>Easy way:</strong> Run on the iOS Simulator in Xcode at these sizes, then use <code>Cmd + S</code> to save screenshots.</p>
+<p><strong>Sizes (in pixels):</strong></p>
+<ul>
+<li>6.7&quot;: 1290 x 2796</li>
+<li>6.5&quot;: 1284 x 2778</li>
+</ul>
+<p>You need 3–10 screenshots per size.</p>
+<h3 id="step-3-privacy-policy">Step 3: Privacy Policy</h3>
+<p>Apple requires a privacy policy URL. At minimum, create a page that covers:</p>
+<ul>
+<li>What data you collect (email via Clerk, listening history, podcast preferences)</li>
+<li>How you use it (personalization, not sold to third parties)</li>
+<li>Data retention and deletion (user can delete account)</li>
+<li>Contact information</li>
+</ul>
+<p>Host it at something like <code>https://podblipp.com/privacy</code> or a simple GitHub Pages site.</p>
+<h3 id="step-4-submit-for-review">Step 4: Submit for Review</h3>
+<ol>
+<li>In App Store Connect, go to your app version</li>
+<li>Under <strong>Build</strong>, click <strong>+</strong> and select your uploaded build</li>
+<li>Fill in all required fields (version info, contact info, review notes)</li>
+<li>Under <strong>App Review Information</strong>, provide:
+<ul>
+<li><strong>Demo account:</strong> If login is required, provide test credentials for the reviewer</li>
+<li><strong>Notes:</strong> Explain what the app does and how to test it</li>
+</ul>
+</li>
+<li>Click <strong>Submit for Review</strong></li>
+</ol>
+<h3 id="step-5-app-review">Step 5: App Review</h3>
+<ul>
+<li><strong>Timeline:</strong> 1–7 days (most apps reviewed within 24–48 hours)</li>
+<li><strong>Common rejection reasons:</strong>
+<ul>
+<li>Missing privacy policy</li>
+<li>Broken login/signup flow</li>
+<li>Crashes or blank screens</li>
+<li>Incomplete or placeholder content</li>
+<li>Missing demo account credentials</li>
+<li>In-app purchases not using Apple's IAP system (if you have Stripe subscriptions visible in the app, this is a risk — see Troubleshooting)</li>
+</ul>
+</li>
+<li>If rejected, you'll get specific feedback. Fix and resubmit.</li>
+</ul>
+<h3 id="step-6-release">Step 6: Release</h3>
+<p>Once approved, you can:</p>
+<ul>
+<li><strong>Release immediately</strong></li>
+<li><strong>Release on a specific date</strong></li>
+<li><strong>Manually release</strong> when you're ready</li>
+</ul>
+<hr>
+<h2 id="11-adding-android-support">11. Adding Android Support</h2>
+<p>The Capacitor code is iOS-only right now. To add Android:</p>
+<h3 id="step-1-install-the-android-platform">Step 1: Install the Android Platform</h3>
+<pre><code class="language-bash">npm install @capacitor/android --legacy-peer-deps
+npx <span class="hljs-built_in">cap</span> add android
+</code></pre>
+<p>This creates the <code>android/</code> directory with a full Android Studio project.</p>
+<h3 id="step-2-build-and-sync">Step 2: Build and Sync</h3>
+<pre><code class="language-bash">npm run build
+npx <span class="hljs-built_in">cap</span> <span class="hljs-built_in">sync</span> android
+npx <span class="hljs-built_in">cap</span> open android   <span class="hljs-comment"># Opens in Android Studio</span>
+</code></pre>
+<h3 id="step-3-google-play-developer-account">Step 3: Google Play Developer Account</h3>
+<ol>
+<li>Go to <a href="https://play.google.com/console">https://play.google.com/console</a></li>
+<li>Pay the <strong>one-time $25 fee</strong></li>
+<li>Complete identity verification (1–3 days)</li>
+<li>Create your app listing</li>
+</ol>
+<h3 id="step-4-sideloading-no-account-needed">Step 4: Sideloading (No Account Needed)</h3>
+<p>For personal testing without a Play Store account:</p>
+<ol>
+<li>Build an APK from Android Studio: <strong>Build &gt; Build Bundle(s) / APK(s) &gt; Build APK</strong></li>
+<li>Transfer the APK to your phone (USB, email, Drive, etc.)</li>
+<li>On your phone: <strong>Settings &gt; Security &gt; Install from unknown sources</strong> (enable for your file manager)</li>
+<li>Open the APK and install</li>
+</ol>
+<hr>
+<h2 id="12-ongoing-maintenance">12. Ongoing Maintenance</h2>
+<h3 id="updating-the-app">Updating the App</h3>
+<p>Every time you update Blipp's frontend:</p>
+<pre><code class="language-bash">npm run build           <span class="hljs-comment"># Build latest web code</span>
+npx <span class="hljs-built_in">cap</span> <span class="hljs-built_in">sync</span> ios        <span class="hljs-comment"># Sync to iOS project</span>
+<span class="hljs-comment"># Open Xcode, bump version number if needed, archive and upload</span>
+</code></pre>
+<h3 id="version-numbering">Version Numbering</h3>
+<p>In Xcode (or in <code>ios/App/App.xcodeproj</code>):</p>
+<ul>
+<li><strong>MARKETING_VERSION</strong> (e.g., <code>1.0</code>, <code>1.1</code>, <code>2.0</code>) — what users see</li>
+<li><strong>CURRENT_PROJECT_VERSION</strong> (e.g., <code>1</code>, <code>2</code>, <code>3</code>) — must increment with every upload to App Store Connect</li>
+</ul>
+<h3 id="capacitor-updates">Capacitor Updates</h3>
+<pre><code class="language-bash">npm install @capacitor/cli@latest @capacitor/core@latest @capacitor/ios@latest --legacy-peer-deps
+npx <span class="hljs-built_in">cap</span> <span class="hljs-built_in">sync</span> ios
+</code></pre>
+<p>Then test thoroughly — major Capacitor updates can change native project structure.</p>
+<hr>
+<h2 id="13-troubleshooting">13. Troubleshooting</h2>
+<h3 id="the-certificate-is-not-trusted-on-iphone">&quot;The certificate is not trusted&quot; on iPhone</h3>
+<p>Go to <strong>Settings &gt; General &gt; VPN &amp; Device Management</strong>, find your developer profile, tap <strong>Trust</strong>.</p>
+<h3 id="xcode-says-bundle-id-is-already-taken">Xcode says bundle ID is already taken</h3>
+<p>Someone else registered <code>com.blipp.app</code> on the App Store. For personal testing, change to <code>com.yourname.blipp</code> temporarily. For App Store, you'll need a unique ID — consider <code>app.podblipp.blipp</code> or similar.</p>
+<h3 id="build-fails-with-spm-package-resolution-errors">Build fails with SPM package resolution errors</h3>
+<p>In Xcode: <strong>File &gt; Packages &gt; Reset Package Caches</strong>, then try building again.</p>
+<h3 id="clerk-login-doesnt-work-on-device">Clerk login doesn't work on device</h3>
+<p>The <code>allowNavigation</code> in <code>capacitor.config.ts</code> must include your Clerk domain. Currently set to <code>*.clerk.accounts.dev</code>. If you've moved to a production Clerk domain, update this.</p>
+<h3 id="api-calls-fail-on-device">API calls fail on device</h3>
+<p>The app uses <code>https://podblipp.com</code> as the API base on native (see <code>src/lib/api-base.ts</code>). Ensure:</p>
+<ul>
+<li>Your production deployment is running</li>
+<li>CORS allows the Capacitor origin (<code>capacitor://localhost</code> on iOS)</li>
+</ul>
+<p>If CORS is blocking, add <code>capacitor://localhost</code> to your allowed origins in the worker.</p>
+<h3 id="app-store-rejection-for-payment-related-issues">App Store rejection for payment-related issues</h3>
+<p>If Blipp shows Stripe subscription options in the iOS app, Apple may reject it. Apple requires apps to use <strong>In-App Purchase (IAP)</strong> for digital subscriptions sold within iOS apps (and takes a 15–30% cut). Options:</p>
+<ul>
+<li>Remove subscription UI from the native app (let users subscribe via web)</li>
+<li>Implement Apple IAP alongside Stripe</li>
+<li>Use the &quot;reader app&quot; exemption if applicable</li>
+</ul>
+<h3 id="whiteblank-screen-on-device">White/blank screen on device</h3>
+<p>Run <code>npx cap sync ios</code> again. The <code>ios/App/App/public/</code> folder may be empty — it's gitignored and must be populated by cap sync.</p>
+<h3 id="safe-area-issues-content-under-notch">Safe area issues (content under notch)</h3>
+<p>Already handled — your <code>index.html</code> has <code>viewport-fit=cover</code> and Capacitor config has <code>contentInset: &quot;automatic&quot;</code>. If you still see issues, use CSS <code>env(safe-area-inset-top)</code> etc.</p>
+
+            <script async src="https://cdn.jsdelivr.net/npm/katex-copytex@latest/dist/katex-copytex.min.js"></script>
+            
+        </body>
+        </html>

@@ -1,0 +1,17 @@
+{
+  "name": "Blipp",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:22",
+  "hostRequirements": {
+    "cpus": 2,
+    "memory": "4gb"
+  },
+  "postCreateCommand": "bash .devcontainer/setup.sh",
+  "postStartCommand": "ttyd -p 7681 -W bash &",
+  "forwardPorts": [7681, 8787, 5174],
+  "portsAttributes": {
+    "7681": {
+      "label": "Terminal",
+      "onAutoForward": "notify"
+    }
+  }
+}

@@ -201,42 +201,38 @@ const PodcastIndexSource: CatalogSource = {
   },
 };
 
-// Apple Podcasts implementation (uses Apple charts + PI for feed URL resolution)
+// Apple Podcasts implementation (uses Apple charts + iTunes Lookup for feed URLs)
 const ApplePodcastsSource: CatalogSource = {
   name: "Apple Podcasts",
   identifier: "apple",
 
   async discover(count, env) {
     const { ApplePodcastsClient } = await import("./apple-podcasts");
-    const { PodcastIndexClient } = await import("./podcast-index");
     const appleClient = new ApplePodcastsClient();
-    const piClient = new PodcastIndexClient(
-      env.PODCAST_INDEX_KEY,
-      env.PODCAST_INDEX_SECRET
-    );
 
-    // Apple genre filtering is broken — only fetches global top 100
-    const chartEntries = await appleClient.topByGenre("", 100, "us");
+    // Step 1: Get top 200 chart from iTunes RSS
+    const chartEntries = await appleClient.top200("us");
     if (chartEntries.length === 0) return [];
 
+    // Step 2: Batch lookup via iTunes API to get feed URLs (2 calls for 200 IDs)
     const appleIds = chartEntries.map((e) => Number(e.id));
-    const feedMap = await piClient.batchByItunesId(appleIds);
+    const lookupResults = await appleClient.lookupBatch(appleIds);
+    const lookupMap = new Map(lookupResults.map((r) => [String(r.collectionId), r]));
     console.log(
-      `[Apple] Resolved ${feedMap.size}/${chartEntries.length} chart entries via Podcast Index`
+      `[Apple] Resolved ${lookupMap.size}/${chartEntries.length} chart entries via iTunes Lookup`
     );
 
     const discovered: DiscoveredPodcast[] = [];
     for (const entry of chartEntries) {
-      const piFeed = feedMap.get(Number(entry.id));
-      if (!piFeed?.url) continue;
+      const lookup = lookupMap.get(entry.id);
+      if (!lookup?.feedUrl) continue;
 
       discovered.push({
-        feedUrl: piFeed.url,
-        title: piFeed.title || entry.name,
-        imageUrl: piFeed.image || entry.artworkUrl100,
-        author: piFeed.author || entry.artistName,
+        feedUrl: lookup.feedUrl,
+        title: lookup.collectionName || entry.name,
+        imageUrl: lookup.artworkUrl600 || entry.artworkUrl100,
+        author: lookup.artistName || entry.artistName,
         appleId: entry.id,
-        podcastIndexId: String(piFeed.id),
         categories: entry.genres.map((g) => ({
           genreId: g.genreId,
           name: g.name,

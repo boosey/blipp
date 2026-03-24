@@ -68,6 +68,17 @@ export const PROMPT_CONFIG_KEYS = {
   narrativeMetadataIntro: "prompt.narrative.metadata_intro",
 } as const;
 
+/** Prompt keys grouped by stage — used for atomic stage-level versioning. */
+export const PROMPT_STAGES: Record<string, string[]> = {
+  distillation: [PROMPT_CONFIG_KEYS.claimsSystem],
+  narrative: [
+    PROMPT_CONFIG_KEYS.narrativeSystemWithExcerpts,
+    PROMPT_CONFIG_KEYS.narrativeSystemNoExcerpts,
+    PROMPT_CONFIG_KEYS.narrativeUserTemplate,
+    PROMPT_CONFIG_KEYS.narrativeMetadataIntro,
+  ],
+};
+
 /** Prompt metadata for admin display. */
 export const PROMPT_METADATA: Record<string, { label: string; description: string; stage: string }> = {
   [PROMPT_CONFIG_KEYS.claimsSystem]: {

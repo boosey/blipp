@@ -176,6 +176,11 @@ beforeEach(() => {
     podcast: { title: "Test Podcast" },
   });
 
+  // Clip lookups for voice-preset-aware findFirst + create/update
+  mockPrisma.clip.findFirst.mockResolvedValue(null);
+  mockPrisma.clip.create.mockResolvedValue({ id: "clip-1" });
+  mockPrisma.clip.update.mockResolvedValue({ id: "clip-1" });
+
   // Distillation record for clip upsert
   mockPrisma.distillation.findUnique.mockResolvedValue({ id: "dist-1", episodeId: "ep-1" });
   mockPrisma.clip.upsert.mockResolvedValue({ id: "clip-1", episodeId: "ep-1", durationTier: 5 });
@@ -268,17 +273,12 @@ describe("handleNarrativeGeneration", () => {
       })
     );
 
-    // Clip upserted (narrative content lives in R2 only)
-    expect(mockPrisma.clip.upsert).toHaveBeenCalledWith(
+    // Clip created or updated (narrative content lives in R2 only)
+    const clipCall = mockPrisma.clip.create.mock.calls[0]?.[0] ?? mockPrisma.clip.update.mock.calls[0]?.[0];
+    expect(clipCall).toBeDefined();
+    expect(clipCall.data).toMatchObject(
       expect.objectContaining({
-        where: { episodeId_durationTier: { episodeId: "ep-1", durationTier: 5 } },
-        update: expect.objectContaining({
-          wordCount: 6,
-        }),
-        create: expect.objectContaining({
-          durationTier: 5,
-          wordCount: 6,
-        }),
+        wordCount: 6,
       })
     );
 
