@@ -1,5 +1,7 @@
-import { SignInButton } from "@clerk/clerk-react";
+import { SignInButton, useClerk } from "@clerk/clerk-react";
+import { Capacitor } from "@capacitor/core";
 import { Link } from "react-router-dom";
+import { useEffect } from "react";
 import { Search, Clock, Podcast } from "lucide-react";
 
 const features = [
@@ -24,6 +26,22 @@ const features = [
 ];
 
 export function Landing() {
+  const { client } = useClerk();
+
+  // When returning from OAuth in Safari, re-fetch the Clerk client
+  // to pick up the session that was created externally.
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        // Force Clerk to re-check session state
+        client?.fetch().catch(() => {});
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, [client]);
+
   return (
     <div className="min-h-screen bg-[#06060e] text-white overflow-hidden">
       {/* Google Fonts */}
