@@ -158,7 +158,7 @@ describe("Config Routes", () => {
       const res = await app.request("/config/tiers/duration", {}, env, mockExCtx);
       expect(res.status).toBe(200);
       const body: any = await res.json();
-      expect(body.data).toHaveLength(8);
+      expect(body.data).toHaveLength(5);
     });
   });
 
