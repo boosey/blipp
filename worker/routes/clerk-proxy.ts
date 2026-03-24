@@ -3,14 +3,16 @@
  *
  * Capacitor WebViews use `capacitor://` as their origin, which Clerk's
  * Frontend API rejects. This proxy forwards requests from `/api/__clerk/*`
- * to `clerk.podblipp.com/*`, replacing the Origin header.
+ * to the Clerk FAPI, replacing the Origin header.
+ *
+ * The target FAPI URL is determined by CLERK_FAPI_URL env var, defaulting
+ * to the production URL. This allows staging to proxy to the dev FAPI.
  */
 import type { Context } from "hono";
 import type { Env } from "../types";
 
-const CLERK_FAPI = "https://clerk.podblipp.com";
-
 export async function handleClerkProxy(c: Context<{ Bindings: Env }>) {
+  const clerkFapi = (c.env as any).CLERK_FAPI_URL || "https://clerk.podblipp.com";
   const requestOrigin = c.req.header("origin") || "*";
 
   // Handle CORS preflight
@@ -30,11 +32,11 @@ export async function handleClerkProxy(c: Context<{ Bindings: Env }>) {
   // Strip /api/__clerk prefix to get the Clerk API path
   const path = c.req.path.replace(/^\/api\/__clerk/, "");
   const qs = new URL(c.req.url).search;
-  const targetUrl = `${CLERK_FAPI}${path}${qs}`;
+  const targetUrl = `${clerkFapi}${path}${qs}`;
 
   const headers = new Headers(c.req.raw.headers);
   headers.delete("origin");
-  headers.set("origin", CLERK_FAPI);
+  headers.set("origin", clerkFapi);
   headers.delete("host");
 
   // Log for debugging
@@ -42,6 +44,7 @@ export async function handleClerkProxy(c: Context<{ Bindings: Env }>) {
     action: "clerk_proxy",
     method: c.req.method,
     path,
+    target: clerkFapi,
     hasCookie: !!headers.get("cookie"),
     hasAuth: !!headers.get("authorization"),
   }));
@@ -65,7 +68,7 @@ export async function handleClerkProxy(c: Context<{ Bindings: Env }>) {
 
   // Copy response and add CORS headers.
   // Rewrite set-cookie headers so cookies are stored for OUR domain,
-  // not clerk.podblipp.com (which the browser won't accept from our proxy).
+  // not the Clerk FAPI domain (which the browser won't accept from our proxy).
   const respHeaders = new Headers();
 
   // Copy all non-set-cookie headers
@@ -76,17 +79,13 @@ export async function handleClerkProxy(c: Context<{ Bindings: Env }>) {
   }
 
   // Rewrite set-cookie: remove domain restriction so it defaults to our proxy domain.
-  // Also ensure SameSite=None and Secure for cross-origin cookie access.
   const cookies = resp.headers.getSetCookie?.() || [];
   for (const cookie of cookies) {
     const rewritten = cookie
-      // Remove any explicit domain= so it defaults to the proxy host
       .replace(/;\s*domain=[^;]*/gi, "")
-      // Ensure the cookie works cross-origin
       .replace(/;\s*samesite=[^;]*/gi, "")
       + "; SameSite=None; Secure";
     respHeaders.append("set-cookie", rewritten);
-    console.log(JSON.stringify({ action: "clerk_proxy_cookie", original: cookie.substring(0, 100), rewritten: rewritten.substring(0, 100) }));
   }
 
   respHeaders.set("access-control-allow-origin", requestOrigin);
