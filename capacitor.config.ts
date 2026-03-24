@@ -6,8 +6,9 @@ const config: CapacitorConfig = {
   webDir: "dist/client",
   plugins: {
     CapacitorHttp: {
-      // Use native HTTP for all requests — bypasses WebView CORS
-      enabled: true,
+      // Disabled — using server-side proxy for CORS instead.
+      // Native HTTP breaks cookie sharing between WebView and fetch.
+      enabled: false,
     },
   },
   ios: {
