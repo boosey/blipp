@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { toast } from "sonner";
 import {
   CreditCard,
   Plus,
@@ -632,10 +633,13 @@ export default function PlansPage() {
     setDeleting(true);
     apiFetch(`/plans/${deletePlan.id}`, { method: "DELETE" })
       .then(() => {
+        toast.success(`Plan "${deletePlan.name}" deactivated`);
         setDeletePlan(null);
         loadPlans();
       })
-      .catch(console.error)
+      .catch((e) => {
+        toast.error(e instanceof Error ? e.message : "Failed to delete plan");
+      })
       .finally(() => setDeleting(false));
   }, [apiFetch, deletePlan, loadPlans]);
 
