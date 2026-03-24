@@ -91,7 +91,8 @@ export function parseRssFeed(xml: string): ParsedFeed {
   const channel = parsed?.rss?.channel;
 
   if (!channel) {
-    throw new Error("Invalid RSS feed: no channel element found");
+    const preview = xml.slice(0, 200).replace(/\s+/g, " ").trim();
+    throw new Error(`Invalid RSS feed: no channel element found. Response preview: ${preview}`);
   }
 
   const items: unknown[] = channel.item ?? [];
