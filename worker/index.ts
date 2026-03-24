@@ -16,7 +16,7 @@ import { requestLogger } from "./middleware/request-logger";
 import { classifyHttpError, type ApiErrorResponse } from "./lib/errors";
 import { captureException } from "./lib/sentry";
 import { routes } from "./routes/index";
-import { clerkProxy } from "./routes/clerk-proxy";
+import { handleClerkProxy } from "./routes/clerk-proxy";
 import { handleQueue, scheduled } from "./queues/index";
 import { shimQueuesForLocalDev } from "./lib/local-queue";
 import { apiKeyAuth } from "./middleware/api-key";
@@ -60,7 +60,7 @@ app.notFound((c) => {
 });
 
 // Clerk FAPI proxy for Capacitor native apps — before any /api middleware
-app.route("/api/__clerk", clerkProxy);
+app.all("/api/__clerk/*", handleClerkProxy);
 
 // Request ID — must be first so all other middleware can access it
 app.use("/api/*", requestIdMiddleware);
