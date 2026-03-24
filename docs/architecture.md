@@ -178,6 +178,8 @@ Pipeline behavior is controlled via the `PlatformConfig` table with a 60-second 
 | `pipeline.minIntervalMinutes` | Throttle between feed refresh runs |
 | `pipeline.stage.N.enabled` | Per-stage enable/disable |
 | `pipeline.feedRefresh.maxEpisodesPerPodcast` | Cap on episodes ingested per podcast |
+| `pipeline.feedRefresh.batchConcurrency` | Podcasts processed in parallel per queue message |
+| `pipeline.feedRefresh.fetchTimeoutMs` | RSS fetch timeout per podcast (ms) |
 | `pipeline.logLevel` | Structured log verbosity (error/info/debug) |
 | `ai.stt.model` | STT model + provider config (JSON: `{provider, model}`) |
 | `ai.distillation.model` | Distillation LLM model + provider config |
