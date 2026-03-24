@@ -9,8 +9,7 @@
  * No browser popup. No cookie issues. No origin problems.
  */
 import { useSignIn, useClerk } from "@clerk/clerk-react";
-import { SocialLogin } from "@capgo/capacitor-social-login";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 
 const API_BASE = "https://blipp-staging.boosey-boudreaux.workers.dev";
@@ -21,17 +20,24 @@ export function NativeSignIn() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState<string | null>(null); // provider name or null
   const [error, setError] = useState<string | null>(null);
+  const socialLoginRef = useRef<any>(null);
 
-  // Initialize the social login plugin
+  // Dynamically import and initialize the social login plugin
+  // (it's a native Capacitor module that can't be resolved by Vite at build time)
   useEffect(() => {
-    SocialLogin.initialize({
-      google: {
-        iOSClientId:
-          "774074678441-o78mvmtptb57ofinl1m49f8ttj1po850.apps.googleusercontent.com",
-      },
-    }).catch((err) => {
-      console.error("SocialLogin init error:", err);
-    });
+    import("@capgo/capacitor-social-login")
+      .then(({ SocialLogin }) => {
+        socialLoginRef.current = SocialLogin;
+        return SocialLogin.initialize({
+          google: {
+            iOSClientId:
+              "774074678441-o78mvmtptb57ofinl1m49f8ttj1po850.apps.googleusercontent.com",
+          },
+        });
+      })
+      .catch((err) => {
+        console.error("SocialLogin init error:", err);
+      });
   }, []);
 
   const handleNativeSignIn = async (provider: "google" | "apple") => {
@@ -41,6 +47,11 @@ export function NativeSignIn() {
 
     try {
       // Step 1: Native sign-in — OS-level dialog, no browser
+      const SocialLogin = socialLoginRef.current;
+      if (!SocialLogin) {
+        throw new Error("Social login plugin not initialized");
+      }
+
       let idToken: string;
 
       if (provider === "google") {
