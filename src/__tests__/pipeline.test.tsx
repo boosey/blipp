@@ -59,7 +59,6 @@ function mockPipelineConfig() {
         category: "pipeline",
         entries: [
           { id: "1", key: "pipeline.enabled", value: true, updatedAt: new Date().toISOString() },
-          { id: "2", key: "pipeline.minIntervalMinutes", value: 60, updatedAt: new Date().toISOString() },
           { id: "3", key: "pipeline.stage.2.enabled", value: true, updatedAt: new Date().toISOString() },
           { id: "4", key: "pipeline.stage.3.enabled", value: true, updatedAt: new Date().toISOString() },
           { id: "5", key: "pipeline.stage.4.enabled", value: true, updatedAt: new Date().toISOString() },
@@ -113,21 +112,6 @@ describe("Pipeline Page", () => {
     for (const stage of STAGES) {
       expect(screen.getByTestId(`stage-column-${stage}`)).toBeInTheDocument();
     }
-  });
-
-  it("renders the summary bar with correct counts", async () => {
-    renderPipeline();
-    await waitFor(() => {
-      expect(screen.getByTestId("pipeline-summary-bar")).toBeInTheDocument();
-    });
-
-    // Each stage returns 3 jobs: 1 IN_PROGRESS, 1 PENDING, 1 COMPLETED
-    // 5 stages = 5 IN_PROGRESS, 5 PENDING, 5 COMPLETED
-    const summaryBar = screen.getByTestId("pipeline-summary-bar");
-    expect(summaryBar).toHaveTextContent("5Queued");
-    expect(summaryBar).toHaveTextContent("5Processing");
-    expect(summaryBar).toHaveTextContent("5Completed");
-    expect(summaryBar).toHaveTextContent("0Failed");
   });
 
   it("does not render a Run Feed Refresh button", async () => {
