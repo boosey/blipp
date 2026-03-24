@@ -20,14 +20,19 @@ export function NativeSignIn() {
   // Track whether we initiated an OAuth flow
   const oauthInProgress = useRef(false);
 
-  // Listen for app resume — only process if we started an OAuth flow
+  // Listen for browser close and app resume
   useEffect(() => {
-    const onResume = App.addListener("resume", async () => {
-      if (!oauthInProgress.current || !signIn || !signUp) return;
+    const onBrowserFinished = Browser.addListener("browserFinished", async () => {
+      console.log("OAUTH: browser closed");
+      if (!oauthInProgress.current) return;
       oauthInProgress.current = false;
 
+      if (!signIn || !signUp) {
+        setLoading(false);
+        return;
+      }
+
       try {
-        // Reload the sign-in to get the latest status after OAuth
         const si = await signIn.reload();
         console.log("OAUTH_RESUME: signIn status", si.status);
 
@@ -37,7 +42,6 @@ export function NativeSignIn() {
           return;
         }
 
-        // If the user is new, Clerk may need a sign-up transfer
         if (si.firstFactorVerification?.status === "transferable" && signUp) {
           const su = await signUp.create({ transfer: true });
           if (su.status === "complete" && su.createdSessionId) {
@@ -57,7 +61,7 @@ export function NativeSignIn() {
     });
 
     return () => {
-      onResume.then((l) => l.remove());
+      onBrowserFinished.then((l) => l.remove());
     };
   }, [signIn, signUp, setActive, navigate]);
 

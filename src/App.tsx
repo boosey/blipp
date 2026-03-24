@@ -1,6 +1,10 @@
 import { Routes, Route, Navigate } from "react-router-dom";
-import { SignedIn, SignedOut, SignIn } from "@clerk/clerk-react";
+import { SignedIn, SignedOut, SignIn, AuthenticateWithRedirectCallback } from "@clerk/clerk-react";
 import { Capacitor } from "@capacitor/core";
+
+function SSOCallback() {
+  return <AuthenticateWithRedirectCallback signInFallbackRedirectUrl="/home" signUpFallbackRedirectUrl="/home" />;
+}
 import { lazy, Suspense } from "react";
 import { MobileLayout } from "./layouts/mobile-layout";
 import { AdminLayout } from "./layouts/admin-layout";
@@ -67,6 +71,7 @@ export default function App() {
           <SignedOut><Landing /></SignedOut>
         </>
       } />
+      <Route path="/sso-callback" element={<SSOCallback />} />
       <Route path="/pricing" element={<Pricing />} />
       <Route path="/about" element={<About />} />
       <Route path="/contact" element={<Contact />} />
