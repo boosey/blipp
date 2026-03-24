@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Sun, Moon, Monitor, Download, Trash2, LogOut } from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { useClerk } from "@clerk/clerk-react";
+import { Capacitor } from "@capacitor/core";
+import { registerPlugin } from "@capacitor/core";
 import { useApiFetch } from "../lib/api";
 import { useFetch } from "../lib/use-fetch";
 import { Skeleton } from "../components/ui/skeleton";
@@ -431,7 +433,18 @@ export function Settings() {
       {/* Sign Out */}
       <section>
         <button
-          onClick={() => signOut({ redirectUrl: "/" })}
+          onClick={async () => {
+            // Sign out of native social login providers on mobile
+            if (Capacitor.isNativePlatform()) {
+              try {
+                const SocialLogin: any = registerPlugin("SocialLogin");
+                await SocialLogin.logout({ provider: "google" });
+              } catch (e) {
+                // Ignore — may not be signed in via Google
+              }
+            }
+            signOut({ redirectUrl: "/" });
+          }}
           className="w-full bg-card border border-border rounded-xl p-4 text-red-500 hover:text-red-400 font-medium transition-colors flex items-center justify-center gap-2"
         >
           <LogOut className="w-4 h-4" />
