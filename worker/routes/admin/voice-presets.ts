@@ -5,6 +5,23 @@ import type { Env } from "../../types";
 import { writeAuditLog } from "../../lib/audit-log";
 import { parsePagination, parseSort, paginatedResponse } from "../../lib/admin-helpers";
 import { validateBody } from "../../lib/validation";
+import { generateSpeech } from "../../lib/tts";
+import { getTtsProviderImpl } from "../../lib/tts-providers";
+import { resolveModelChain } from "../../lib/model-resolution";
+
+const PREVIEW_DEFAULT_TEXT = "Here's a quick preview of how this voice sounds for your daily briefing.";
+const PREVIEW_MAX_CHARS = 200;
+
+const PreviewSchema = z.object({
+  provider: z.string().min(1),
+  voice: z.string().min(1),
+  instructions: z.string().max(500).optional(),
+  speed: z.number().min(0.25).max(4).optional(),
+  text: z.string().max(PREVIEW_MAX_CHARS).optional(),
+});
+
+// In-memory rate limit: admin ID -> { count, resetAt }
+const adminPreviewLimits = new Map<string, { count: number; resetAt: number }>();
 
 const CreateSchema = z.object({
   name: z.string().min(1).max(100),
@@ -195,4 +212,52 @@ voicePresetsRoutes.delete("/:id", async (c) => {
   }).catch(() => {});
 
   return c.json({ data: { deleted: true } });
+});
+
+/** POST /preview — Generate a TTS audio preview for a voice configuration. */
+voicePresetsRoutes.post("/preview", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const auth = getAuth(c);
+  const adminId = auth?.userId ?? "unknown";
+
+  // Rate limit: 10 per admin per minute
+  const now = Date.now();
+  const limit = adminPreviewLimits.get(adminId);
+  if (limit && now < limit.resetAt) {
+    if (limit.count >= 10) {
+      return c.json({ error: "Rate limit exceeded — max 10 previews per minute" }, 429);
+    }
+    limit.count++;
+  } else {
+    adminPreviewLimits.set(adminId, { count: 1, resetAt: now + 60_000 });
+  }
+
+  const body = await validateBody(c, PreviewSchema);
+  const text = body.text || PREVIEW_DEFAULT_TEXT;
+
+  // Find a TTS model matching the requested provider
+  const chain = await resolveModelChain(prisma, "tts");
+  const resolved = chain.find((m) => m.provider === body.provider);
+  if (!resolved) {
+    return c.json({ error: `No TTS model configured for provider: ${body.provider}` }, 400);
+  }
+
+  const tts = getTtsProviderImpl(body.provider);
+  const { audio } = await generateSpeech(
+    tts,
+    text,
+    body.voice,
+    resolved.providerModelId,
+    c.env,
+    resolved.pricing,
+    body.instructions,
+    body.speed,
+  );
+
+  return c.body(audio, {
+    headers: {
+      "Content-Type": "audio/mpeg",
+      "Content-Length": String(audio.byteLength),
+    },
+  });
 });

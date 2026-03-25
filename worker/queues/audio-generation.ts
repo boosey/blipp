@@ -147,6 +147,7 @@ export async function handleAudioGeneration(
         // Try each model in the chain until one succeeds
         let audio: ArrayBuffer | undefined;
         let ttsUsage: { model: string; inputTokens: number; outputTokens: number; cost: number | null } | undefined;
+        let successAttemptIndex = 0;
         for (let i = 0; i < modelChain.length; i++) {
           const resolved = modelChain[i];
           const tier = ["primary", "secondary", "tertiary"][i];
@@ -230,6 +231,7 @@ export async function handleAudioGeneration(
                 attemptNumber: i + 1,
                 ...(textChunks.length > 1 && { chunks: textChunks.length, maxInputChars }),
               });
+            successAttemptIndex = i;
             break; // Success — stop trying
           } catch (chainErr) {
             const errMsg = chainErr instanceof Error ? chainErr.message : String(chainErr);
@@ -253,6 +255,14 @@ export async function handleAudioGeneration(
           }
         }
 
+        if (successAttemptIndex > 0) {
+          await writeEvent(prisma, step.id, "WARN", `Voice degraded: fell back from ${modelChain[0].provider} to ${modelChain[successAttemptIndex].provider}`, {
+            voiceDegraded: true,
+            primaryProvider: modelChain[0].provider,
+            actualProvider: modelChain[successAttemptIndex].provider,
+          });
+        }
+
         await writeEvent(prisma, step.id, "DEBUG", `Audio size: ${audio!.byteLength} bytes`, { model: ttsUsage!.model, sizeBytes: audio!.byteLength });
 
         // Write audio to R2 + index in DB
@@ -274,7 +284,7 @@ export async function handleAudioGeneration(
         if (existingClipForUpdate) {
           await prisma.clip.update({
             where: { id: existingClipForUpdate.id },
-            data: { status: "COMPLETED", audioKey },
+            data: { status: "COMPLETED", audioKey, voiceDegraded: successAttemptIndex > 0 },
           });
           finalClipId = existingClipForUpdate.id;
         } else {
@@ -292,6 +302,7 @@ export async function handleAudioGeneration(
               voicePresetId: voicePresetId ?? null,
               status: "COMPLETED",
               audioKey,
+              voiceDegraded: successAttemptIndex > 0,
             },
           });
           finalClipId = newClip.id;

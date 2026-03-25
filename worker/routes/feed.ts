@@ -67,7 +67,7 @@ feed.get("/", async (c) => {
         episode: { select: { id: true, title: true, publishedAt: true, durationSeconds: true } },
         briefing: {
           include: {
-            clip: { select: { id: true, audioKey: true, actualSeconds: true, narrativeText: true } },
+            clip: { select: { id: true, audioKey: true, actualSeconds: true, narrativeText: true, voiceDegraded: true } },
           },
         },
       },
@@ -131,7 +131,7 @@ feed.get("/shared/:briefingId", async (c) => {
   const briefing = await prisma.briefing.findUnique({
     where: { id: briefingId },
     include: {
-      clip: { select: { id: true, audioKey: true, actualSeconds: true, narrativeText: true } },
+      clip: { select: { id: true, audioKey: true, actualSeconds: true, narrativeText: true, voiceDegraded: true } },
       feedItems: {
         take: 1,
         select: {
@@ -157,7 +157,7 @@ feed.get("/shared/:briefingId", async (c) => {
       episode: { select: { id: true, title: true, publishedAt: true, durationSeconds: true } },
       briefing: {
         include: {
-          clip: { select: { id: true, audioKey: true, actualSeconds: true, narrativeText: true } },
+          clip: { select: { id: true, audioKey: true, actualSeconds: true, narrativeText: true, voiceDegraded: true } },
         },
       },
     },
@@ -179,7 +179,7 @@ feed.get("/shared/:briefingId", async (c) => {
         episode: { select: { id: true, title: true, publishedAt: true, durationSeconds: true } },
         briefing: {
           include: {
-            clip: { select: { id: true, audioKey: true, actualSeconds: true, narrativeText: true } },
+            clip: { select: { id: true, audioKey: true, actualSeconds: true, narrativeText: true, voiceDegraded: true } },
           },
         },
       },
@@ -218,7 +218,7 @@ feed.get("/:id", async (c) => {
       episode: { select: { id: true, title: true, publishedAt: true, durationSeconds: true } },
       briefing: {
         include: {
-          clip: { select: { id: true, audioKey: true, actualSeconds: true, narrativeText: true } },
+          clip: { select: { id: true, audioKey: true, actualSeconds: true, narrativeText: true, voiceDegraded: true } },
         },
       },
     },

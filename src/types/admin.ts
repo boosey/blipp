@@ -1088,6 +1088,12 @@ export interface VoicePresetConfig {
   [provider: string]: unknown;
 }
 
+export interface VoiceCharacteristics {
+  gender?: "female" | "male" | "neutral";
+  tone?: "warm" | "calm" | "energetic" | "neutral";
+  pace?: "steady" | "fast" | "slow";
+}
+
 export interface VoicePresetEntry {
   id: string;
   name: string;
@@ -1095,6 +1101,7 @@ export interface VoicePresetEntry {
   isSystem: boolean;
   isActive: boolean;
   config: VoicePresetConfig;
+  voiceCharacteristics: VoiceCharacteristics | null;
   createdAt: string;
   updatedAt: string;
 }

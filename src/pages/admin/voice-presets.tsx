@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Plus,
   Pencil,
@@ -7,6 +7,8 @@ import {
   Check,
   X,
   Shield,
+  Play,
+  Square,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -28,8 +30,14 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { useAuth } from "@clerk/clerk-react";
+import { getApiBase } from "@/lib/api-base";
 import { useAdminFetch } from "@/lib/admin-api";
-import type { VoicePresetEntry, VoicePresetConfig } from "@/types/admin";
+import type {
+  VoicePresetEntry,
+  VoicePresetConfig,
+  VoiceCharacteristics,
+} from "@/types/admin";
 
 // ── Constants ──
 
@@ -38,11 +46,9 @@ const OPENAI_VOICES = [
   "fable", "nova", "onyx", "sage", "shimmer", "verse",
 ] as const;
 
-const DEFAULT_CONFIG: VoicePresetConfig = {
-  openai: { voice: "nova", instructions: "", speed: 1.0 },
-  groq: { voice: "austin" },
-  cloudflare: {},
-};
+const GENDER_OPTIONS = ["female", "male", "neutral"] as const;
+const TONE_OPTIONS = ["warm", "calm", "energetic", "neutral"] as const;
+const PACE_OPTIONS = ["steady", "fast", "slow"] as const;
 
 // ── Main Page ──
 
@@ -235,6 +241,119 @@ export default function VoicePresetsPage() {
   );
 }
 
+// ── Audio Preview Button ──
+
+function AudioPreviewButton({
+  provider,
+  config,
+}: {
+  provider: "openai" | "groq";
+  config: VoicePresetConfig;
+}) {
+  const { getToken } = useAuth();
+  const [playing, setPlaying] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  const handlePreview = async () => {
+    if (playing && audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+      setPlaying(false);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const token = await getToken();
+      const res = await fetch(
+        `${getApiBase()}/api/admin/voice-presets/preview`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ provider, config }),
+        }
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: res.statusText }));
+        throw new Error((err as any).error || res.statusText);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audioRef.current = audio;
+      audio.onended = () => {
+        setPlaying(false);
+        URL.revokeObjectURL(url);
+        audioRef.current = null;
+      };
+      await audio.play();
+      setPlaying(true);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Preview failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      onClick={handlePreview}
+      disabled={loading}
+      className="text-[#9CA3AF] hover:text-[#F9FAFB] text-xs gap-1"
+    >
+      {loading ? (
+        <Loader2 className="h-3 w-3 animate-spin" />
+      ) : playing ? (
+        <Square className="h-3 w-3" />
+      ) : (
+        <Play className="h-3 w-3" />
+      )}
+      Preview
+    </Button>
+  );
+}
+
+// ── Characteristics Select ──
+
+function CharacteristicsSelect<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: T | undefined;
+  options: readonly T[];
+  onChange: (v: T | undefined) => void;
+}) {
+  return (
+    <div>
+      <label className="text-[10px] font-medium text-[#9CA3AF] mb-1 block">{label}</label>
+      <Select
+        value={value ?? "none"}
+        onValueChange={(v) => onChange(v === "none" ? undefined : (v as T))}
+      >
+        <SelectTrigger className="h-8 text-xs bg-[#1A2942] border-white/10 text-[#F9FAFB]">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent className="bg-[#1A2942] border-white/10 text-[#F9FAFB]">
+          <SelectItem value="none" className="text-xs text-[#9CA3AF]">--</SelectItem>
+          {options.map((o) => (
+            <SelectItem key={o} value={o} className="text-xs capitalize">{o}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
 // ── Create/Edit Dialog ──
 
 function PresetDialog({
@@ -258,6 +377,7 @@ function PresetDialog({
   const [openaiSpeed, setOpenaiSpeed] = useState("1.0");
   const [groqVoice, setGroqVoice] = useState("austin");
   const [saving, setSaving] = useState(false);
+  const [characteristics, setCharacteristics] = useState<VoiceCharacteristics>({});
 
   // Reset form when dialog opens
   useEffect(() => {
@@ -269,6 +389,7 @@ function PresetDialog({
         setOpenaiInstructions(preset.config.openai?.instructions ?? "");
         setOpenaiSpeed(String(preset.config.openai?.speed ?? 1.0));
         setGroqVoice(preset.config.groq?.voice ?? "austin");
+        setCharacteristics(preset.voiceCharacteristics ?? {});
       } else {
         setName("");
         setDescription("");
@@ -276,25 +397,35 @@ function PresetDialog({
         setOpenaiInstructions("");
         setOpenaiSpeed("1.0");
         setGroqVoice("austin");
+        setCharacteristics({});
       }
     }
   }, [open, preset]);
 
+  const isValid = name.trim() && openaiVoice.trim() && groqVoice.trim();
+
+  const currentConfig: VoicePresetConfig = {
+    openai: {
+      voice: openaiVoice,
+      instructions: openaiInstructions || undefined,
+      speed: parseFloat(openaiSpeed) || 1.0,
+    },
+    groq: { voice: groqVoice },
+    cloudflare: {},
+  };
+
   const submit = async () => {
-    if (!name.trim()) return;
+    if (!isValid) return;
     setSaving(true);
-    const config: VoicePresetConfig = {
-      openai: {
-        voice: openaiVoice,
-        instructions: openaiInstructions || undefined,
-        speed: parseFloat(openaiSpeed) || 1.0,
-      },
-      groq: { voice: groqVoice },
-      cloudflare: {},
-    };
     try {
+      const cleanCharacteristics = Object.fromEntries(
+        Object.entries(characteristics).filter(([, v]) => v != null)
+      );
       if (isEdit) {
-        const body: Record<string, unknown> = { config };
+        const body: Record<string, unknown> = {
+          config: currentConfig,
+          voiceCharacteristics: Object.keys(cleanCharacteristics).length > 0 ? cleanCharacteristics : null,
+        };
         if (!preset.isSystem) {
           body.name = name;
           body.description = description || null;
@@ -307,7 +438,12 @@ function PresetDialog({
       } else {
         await apiFetch("/voice-presets", {
           method: "POST",
-          body: JSON.stringify({ name, description: description || null, config }),
+          body: JSON.stringify({
+            name,
+            description: description || null,
+            config: currentConfig,
+            voiceCharacteristics: Object.keys(cleanCharacteristics).length > 0 ? cleanCharacteristics : null,
+          }),
         });
         toast.success("Preset created");
       }
@@ -321,7 +457,7 @@ function PresetDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="bg-[#0F1D32] border-white/10 sm:max-w-lg">
+      <DialogContent className="bg-[#0F1D32] border-white/10 sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle className="text-[#F9FAFB]">
             {isEdit ? "Edit Voice Preset" : "Create Voice Preset"}
@@ -333,7 +469,7 @@ function PresetDialog({
 
         <div className="space-y-4 py-2">
           {/* Common fields */}
-          <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-[#9CA3AF] mb-1 block">Name</label>
               <Input
@@ -356,14 +492,43 @@ function PresetDialog({
             </div>
           </div>
 
-          {/* OpenAI section */}
-          <div className="bg-[#0A1628]/50 border border-white/5 rounded-lg p-3 space-y-3">
-            <h4 className="text-xs font-semibold text-[#F9FAFB]">OpenAI</h4>
-            <div className="grid grid-cols-2 gap-3">
+          {/* Voice Characteristics */}
+          <div className="bg-[#0A1628]/50 border border-white/5 rounded-lg p-3 space-y-2">
+            <h4 className="text-xs font-semibold text-[#F9FAFB]">Voice Characteristics</h4>
+            <div className="grid grid-cols-3 gap-3">
+              <CharacteristicsSelect
+                label="Gender"
+                value={characteristics.gender}
+                options={GENDER_OPTIONS}
+                onChange={(v) => setCharacteristics((c) => ({ ...c, gender: v }))}
+              />
+              <CharacteristicsSelect
+                label="Tone"
+                value={characteristics.tone}
+                options={TONE_OPTIONS}
+                onChange={(v) => setCharacteristics((c) => ({ ...c, tone: v }))}
+              />
+              <CharacteristicsSelect
+                label="Pace"
+                value={characteristics.pace}
+                options={PACE_OPTIONS}
+                onChange={(v) => setCharacteristics((c) => ({ ...c, pace: v }))}
+              />
+            </div>
+          </div>
+
+          {/* Side-by-side provider columns */}
+          <div className="grid grid-cols-2 gap-4">
+            {/* OpenAI */}
+            <div className="bg-[#0A1628]/50 border border-white/5 rounded-lg p-3 space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-semibold text-[#F9FAFB]">OpenAI</h4>
+                <AudioPreviewButton provider="openai" config={currentConfig} />
+              </div>
               <div>
                 <label className="text-[10px] font-medium text-[#9CA3AF] mb-1 block">Voice</label>
                 <Select value={openaiVoice} onValueChange={setOpenaiVoice}>
-                  <SelectTrigger className="h-8 text-xs bg-[#1A2942] border-white/10 text-[#F9FAFB]">
+                  <SelectTrigger className={`h-8 text-xs bg-[#1A2942] border-white/10 text-[#F9FAFB] ${!openaiVoice.trim() ? "border-[#EF4444]/50" : ""}`}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="bg-[#1A2942] border-white/10 text-[#F9FAFB]">
@@ -387,36 +552,36 @@ function PresetDialog({
                   className="w-full h-1.5 rounded-full accent-[#3B82F6] mt-2"
                 />
               </div>
+              <div>
+                <label className="text-[10px] font-medium text-[#9CA3AF] mb-1 block">Instructions</label>
+                <Textarea
+                  value={openaiInstructions}
+                  onChange={(e) => setOpenaiInstructions(e.target.value)}
+                  placeholder="Optional voice personality instructions..."
+                  className="text-xs bg-[#1A2942] border-white/10 text-[#F9FAFB] min-h-[60px] resize-none"
+                />
+              </div>
             </div>
-            <div>
-              <label className="text-[10px] font-medium text-[#9CA3AF] mb-1 block">Instructions</label>
-              <Textarea
-                value={openaiInstructions}
-                onChange={(e) => setOpenaiInstructions(e.target.value)}
-                placeholder="Optional voice personality instructions..."
-                className="text-xs bg-[#1A2942] border-white/10 text-[#F9FAFB] min-h-[60px] resize-none"
-              />
-            </div>
-          </div>
 
-          {/* Groq section */}
-          <div className="bg-[#0A1628]/50 border border-white/5 rounded-lg p-3 space-y-2">
-            <h4 className="text-xs font-semibold text-[#F9FAFB]">Groq</h4>
-            <div>
-              <label className="text-[10px] font-medium text-[#9CA3AF] mb-1 block">Voice</label>
-              <Input
-                value={groqVoice}
-                onChange={(e) => setGroqVoice(e.target.value)}
-                placeholder="austin"
-                className="h-8 text-xs bg-[#1A2942] border-white/10 text-[#F9FAFB]"
-              />
+            {/* Groq */}
+            <div className="bg-[#0A1628]/50 border border-white/5 rounded-lg p-3 space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-semibold text-[#F9FAFB]">Groq</h4>
+                <AudioPreviewButton provider="groq" config={currentConfig} />
+              </div>
+              <div>
+                <label className="text-[10px] font-medium text-[#9CA3AF] mb-1 block">Voice</label>
+                <Input
+                  value={groqVoice}
+                  onChange={(e) => setGroqVoice(e.target.value)}
+                  placeholder="austin"
+                  className={`h-8 text-xs bg-[#1A2942] border-white/10 text-[#F9FAFB] ${!groqVoice.trim() ? "border-[#EF4444]/50" : ""}`}
+                />
+                {!groqVoice.trim() && (
+                  <p className="text-[10px] text-[#EF4444] mt-1">Voice is required</p>
+                )}
+              </div>
             </div>
-          </div>
-
-          {/* Cloudflare section */}
-          <div className="bg-[#0A1628]/50 border border-white/5 rounded-lg p-3">
-            <h4 className="text-xs font-semibold text-[#F9FAFB]">Cloudflare</h4>
-            <p className="text-[10px] text-[#9CA3AF] mt-1">No voice configuration available</p>
           </div>
         </div>
 
@@ -427,7 +592,7 @@ function PresetDialog({
           <Button
             size="sm"
             onClick={submit}
-            disabled={saving || !name.trim()}
+            disabled={saving || !isValid}
             className="bg-[#3B82F6] hover:bg-[#3B82F6]/80 text-white text-xs"
           >
             {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : isEdit ? "Save Changes" : "Create Preset"}

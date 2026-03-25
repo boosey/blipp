@@ -172,6 +172,106 @@ async function main() {
     },
   });
 
+  // ── Curated Personas ──
+
+  await prisma.voicePreset.upsert({
+    where: { name: "Nova" },
+    update: {},
+    create: {
+      name: "Nova",
+      description:
+        "Bright and energetic — like your favorite morning show host. Great for daily news briefings.",
+      isSystem: true,
+      isActive: true,
+      config: {
+        openai: {
+          voice: "nova",
+          instructions:
+            "Speak with bright, upbeat energy like a morning show host. " +
+            "Keep the pace lively but clear. Add natural enthusiasm when introducing new topics.",
+          speed: 1.05,
+        },
+        groq: { voice: "austin" },
+        cloudflare: {},
+      },
+      voiceCharacteristics: { gender: "female", tone: "energetic", pace: "fast" },
+    },
+  });
+
+  await prisma.voicePreset.upsert({
+    where: { name: "Sage" },
+    update: {},
+    create: {
+      name: "Sage",
+      description:
+        "Calm and authoritative — measured delivery for deep-dive analysis and long-form content.",
+      isSystem: true,
+      isActive: true,
+      config: {
+        openai: {
+          voice: "onyx",
+          instructions:
+            "Speak in a calm, measured, authoritative tone. " +
+            "Take your time with complex ideas. Pause thoughtfully between sections. " +
+            "Convey gravitas without being monotone.",
+          speed: 0.95,
+        },
+        groq: { voice: "austin" },
+        cloudflare: {},
+      },
+      voiceCharacteristics: { gender: "male", tone: "authoritative", pace: "slow" },
+    },
+  });
+
+  await prisma.voicePreset.upsert({
+    where: { name: "Spark" },
+    update: {},
+    create: {
+      name: "Spark",
+      description:
+        "Conversational and witty — casual tone perfect for entertainment and culture briefings.",
+      isSystem: true,
+      isActive: true,
+      config: {
+        openai: {
+          voice: "shimmer",
+          instructions:
+            "Speak in a friendly, conversational tone with a hint of wit. " +
+            "Sound like you're telling a friend about something interesting you just learned. " +
+            "Keep it casual and engaging.",
+          speed: 1.0,
+        },
+        groq: { voice: "austin" },
+        cloudflare: {},
+      },
+      voiceCharacteristics: { gender: "female", tone: "conversational", pace: "medium" },
+    },
+  });
+
+  // ── Backfill: add groq config to presets missing it ──
+
+  const presetsToBackfill = await prisma.voicePreset.findMany({
+    where: {
+      OR: [
+        { config: { path: ["groq"], equals: undefined as any } },
+        { config: { path: ["groq"], equals: {} } },
+      ],
+    },
+  });
+
+  for (const preset of presetsToBackfill) {
+    const cfg = preset.config as Record<string, unknown>;
+    if (!cfg.groq || (typeof cfg.groq === "object" && Object.keys(cfg.groq as any).length === 0)) {
+      await prisma.voicePreset.update({
+        where: { id: preset.id },
+        data: {
+          config: { ...cfg, groq: { voice: "austin" } },
+        },
+      });
+      console.log(`  Backfilled groq voice for preset "${preset.name}"`);
+    }
+  }
+
   console.log("Seeded voice presets.");
 
   // ── Platform Config ──

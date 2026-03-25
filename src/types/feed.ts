@@ -25,6 +25,7 @@ export interface FeedItem {
       audioUrl: string;
       actualSeconds: number | null;
       previewText: string | null;
+      voiceDegraded?: boolean;
     };
     adAudioUrl: string | null;
   } | null;

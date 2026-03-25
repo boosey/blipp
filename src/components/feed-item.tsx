@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { Share2 } from "lucide-react";
+import { Share2, Info } from "lucide-react";
 import { toast } from "sonner";
 import type { FeedItem } from "../types/feed";
 import { formatDuration } from "../lib/feed-utils";
@@ -150,6 +150,12 @@ export function FeedItemCard({
               <p className="text-xs text-muted-foreground/70 mt-1 line-clamp-2">
                 {item.briefing.clip.previewText}
               </p>
+            )}
+            {item.briefing?.clip?.voiceDegraded && (
+              <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/60 mt-1" title="This briefing used an alternate voice due to a temporary service issue">
+                <Info className="w-3 h-3" />
+                Alternate voice
+              </span>
             )}
           </>
         )}

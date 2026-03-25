@@ -120,6 +120,9 @@ export function extractProviderConfig(
 
   const providerConf = presetConfig[provider];
   if (!providerConf || typeof providerConf !== "object") {
+    if (provider === "openai" || provider === "groq") {
+      console.warn(`[voice-presets] Preset config has no mapping for provider "${provider}" — falling back to system defaults`);
+    }
     return {
       voice: SYSTEM_DEFAULT_VOICE,
       instructions: SYSTEM_DEFAULT_INSTRUCTIONS,
