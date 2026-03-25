@@ -9,6 +9,7 @@ type PrismaLike = {
   cronRun: {
     create: (args: any) => Promise<any>;
     update: (args: any) => Promise<any>;
+    findFirst: (args: any) => Promise<any>;
   };
   cronRunLog: {
     create: (args: any) => Promise<any>;
@@ -85,6 +86,43 @@ export async function runJob(params: {
     if (elapsedMs < (intervalMinutes as number) * 60_000) return;
   }
 
+  // Guard: if there's already a recent IN_PROGRESS run, skip to prevent pile-up
+  // (handles case where Worker was killed before updating status/lastRunAt)
+  const stuckRun = await prisma.cronRun.findFirst({
+    where: { jobKey, status: "IN_PROGRESS" },
+    orderBy: { startedAt: "desc" },
+  });
+  if (stuckRun) {
+    const stuckAgeMs = Date.now() - new Date(stuckRun.startedAt).getTime();
+    const staleThresholdMs = (intervalMinutes as number) * 60_000;
+    if (stuckAgeMs < staleThresholdMs) {
+      // Recent IN_PROGRESS run exists — skip this tick
+      return;
+    }
+    // Stuck run is older than the interval — mark it FAILED so it doesn't block forever
+    await prisma.cronRun.update({
+      where: { id: stuckRun.id },
+      data: {
+        status: "FAILED",
+        completedAt: new Date(),
+        durationMs: stuckAgeMs,
+        errorMessage: "Marked as failed: exceeded expected run duration (likely Worker timeout)",
+      },
+    });
+  }
+
+  // Write lastRunAt BEFORE execution so that if the Worker is killed mid-run,
+  // the next cron tick won't immediately re-trigger this job
+  await prisma.platformConfig.upsert({
+    where: { key: `cron.${jobKey}.lastRunAt` },
+    update: { value: new Date().toISOString() },
+    create: {
+      key: `cron.${jobKey}.lastRunAt`,
+      value: new Date().toISOString(),
+      description: `Last run timestamp for cron job: ${jobKey}`,
+    },
+  });
+
   // Create run record
   const run = await prisma.cronRun.create({
     data: { jobKey, status: "IN_PROGRESS" },
@@ -115,16 +153,5 @@ export async function runJob(params: {
       },
     });
     throw err;
-  } finally {
-    // Direct upsert — not via cached getConfig
-    await prisma.platformConfig.upsert({
-      where: { key: `cron.${jobKey}.lastRunAt` },
-      update: { value: new Date().toISOString() },
-      create: {
-        key: `cron.${jobKey}.lastRunAt`,
-        value: new Date().toISOString(),
-        description: `Last run timestamp for cron job: ${jobKey}`,
-      },
-    });
   }
 }
