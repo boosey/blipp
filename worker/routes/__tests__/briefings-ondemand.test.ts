@@ -18,6 +18,7 @@ vi.mock("../../lib/plan-limits", () => ({
   getUserWithPlan: vi.fn(),
   checkDurationLimit: vi.fn().mockReturnValue(null),
   checkWeeklyBriefingLimit: vi.fn().mockResolvedValue(null),
+  checkPastEpisodesLimit: vi.fn().mockResolvedValue(null),
 }));
 
 import { getUserWithPlan } from "../../lib/plan-limits";

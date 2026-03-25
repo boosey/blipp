@@ -22,18 +22,56 @@ model Plan {
   slug                    String   @unique              // "free", "pro-monthly"
   description             String?                       // Marketing copy
 
-  // Limits (null = unlimited)
+  // ── Limits (null = unlimited) ──
   briefingsPerWeek        Int?                          // null = unlimited
   maxDurationMinutes      Int      @default(5)
   maxPodcastSubscriptions Int?                          // null = unlimited
   pastEpisodesLimit       Int?                          // null = unlimited, otherwise max past episodes available
 
-  // Feature flags
+  // ── Content Delivery ──
+  onDemandRequestsPerWeek Int?                          // null = unlimited; separate cap for user-initiated requests
+  outputFormats           String[]                      // available formats: "audio", "text", "markdown", "pdf"
+  transcriptAccess        Boolean  @default(false)      // view full source transcript alongside briefing
+  refreshLatencyTier      String   @default("standard") // "standard" | "fast" | "realtime"
+  dailyDigest             Boolean  @default(false)      // combined multi-podcast morning briefing
+  weeklyRecap             Boolean  @default(false)      // auto-generated weekly summary
+  narrativeDepthTier      String   @default("standard") // "headlines" | "standard" | "deep"
+  episodeHighlightClips   Boolean  @default(false)      // auto-generate 30-60s shareable clips
+
+  // ── Pipeline & Processing ──
+  aiModelTier             String   @default("standard") // "standard" | "premium"
+  ttsModelTier            String   @default("standard") // "standard" | "premium"
+  sttModelTier            String   @default("standard") // "standard" | "premium"
+  customInstructions      Boolean  @default(false)      // per-subscription user prompts
+  retryBudget             Int      @default(1)          // max auto-retries on pipeline failure
+  concurrentPipelineJobs  Int      @default(1)          // max episodes processing simultaneously
+
+  // ── Feature Flags ──
   adFree                  Boolean  @default(false)
   priorityProcessing      Boolean  @default(false)
   earlyAccess             Boolean  @default(false)
   researchMode            Boolean  @default(false)
   crossPodcastSynthesis   Boolean  @default(false)
+
+  // ── Library & Discovery ──
+  topicTracking           Boolean  @default(false)      // follow topics across podcasts
+  customCollections       Boolean  @default(false)      // user-created playlists/folders
+  searchBriefings         Boolean  @default(false)      // full-text search across briefings
+  catalogAccess           String   @default("subscribed") // "subscribed" | "full"
+  savedSearches           Int?                          // null = unlimited; persistent topic alerts
+  rssExport               Boolean  @default(false)      // private RSS feed of briefings
+  apiAccess               Boolean  @default(false)      // programmatic API access
+
+  // ── Personalization ──
+  tonePresets             Boolean  @default(false)      // briefing tone: professional, casual, academic, humorous
+  languageSupport         String[]                      // available output languages
+  focusTopics             Boolean  @default(false)      // weight user-specified interests
+  skipTopics              Boolean  @default(false)      // exclude specific topics
+  briefingIntro           Boolean  @default(false)      // personalized intro
+  maxStorageDays          Int?                          // null = forever; briefing audio retention
+  offlineAccess           Boolean  @default(false)      // mobile offline caching
+  publicSharing           Boolean  @default(false)      // shareable briefing links
+  interactiveBriefing     Boolean  @default(false)      // follow-up Q&A about episodes
 
   // Billing — monthly
   priceCentsMonthly       Int      @default(0)          // 0 = free

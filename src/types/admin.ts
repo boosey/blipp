@@ -812,15 +812,52 @@ export interface AdminPlan {
   name: string;
   slug: string;
   description: string | null;
+  // Limits
   briefingsPerWeek: number | null;
   maxDurationMinutes: number;
   maxPodcastSubscriptions: number | null;
   pastEpisodesLimit: number | null;
+  // Content Delivery
+  onDemandRequestsPerWeek: number | null;
+  outputFormats: string[];
+  transcriptAccess: boolean;
+  refreshLatencyTier: string;
+  dailyDigest: boolean;
+  weeklyRecap: boolean;
+  narrativeDepthTier: string;
+  episodeHighlightClips: boolean;
+  // Pipeline & Processing
+  aiModelTier: string;
+  ttsModelTier: string;
+  sttModelTier: string;
+  customInstructions: boolean;
+  retryBudget: number;
+  concurrentPipelineJobs: number;
+  // Feature flags
   adFree: boolean;
   priorityProcessing: boolean;
   earlyAccess: boolean;
   researchMode: boolean;
   crossPodcastSynthesis: boolean;
+  // Library & Discovery
+  topicTracking: boolean;
+  customCollections: boolean;
+  searchBriefings: boolean;
+  catalogAccess: string;
+  savedSearches: number | null;
+  rssExport: boolean;
+  apiAccess: boolean;
+  // Personalization
+  tonePresets: boolean;
+  languageSupport: string[];
+  focusTopics: boolean;
+  skipTopics: boolean;
+  briefingIntro: boolean;
+  maxStorageDays: number | null;
+  offlineAccess: boolean;
+  publicSharing: boolean;
+  interactiveBriefing: boolean;
+  // Billing
   priceCentsMonthly: number;
   priceCentsAnnual: number | null;
   stripePriceIdMonthly: string | null;
@@ -828,6 +865,7 @@ export interface AdminPlan {
   stripeProductId: string | null;
   trialDays: number;
   allowedVoicePresetIds: string[];
+  // Display
   features: string[];
   highlighted: boolean;
   active: boolean;

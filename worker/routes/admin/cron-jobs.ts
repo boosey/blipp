@@ -6,6 +6,12 @@ const VALID_INTERVALS = [15, 30, 60, 120, 360, 720, 1440, 10080];
 
 const JOB_DEFINITIONS = [
   {
+    jobKey: "podcast-discovery",
+    label: "Podcast Discovery",
+    description: "Discovers new podcasts from catalog sources and adds them to the library",
+    defaultIntervalMinutes: 10080,
+  },
+  {
     jobKey: "pipeline-trigger",
     label: "Fetch New Episodes",
     description: "Checks all podcast feeds for new episodes and enqueues them for processing",
@@ -13,25 +19,25 @@ const JOB_DEFINITIONS = [
   },
   {
     jobKey: "monitoring",
-    label: "Monitoring",
+    label: "Update AI Models",
     description: "Refreshes AI model pricing and checks cost threshold alerts",
     defaultIntervalMinutes: 60,
   },
   {
     jobKey: "user-lifecycle",
-    label: "User Lifecycle",
+    label: "Promotion Aging",
     description: "Checks for users whose free trial has expired",
     defaultIntervalMinutes: 360,
   },
   {
     jobKey: "data-retention",
-    label: "Data Retention",
+    label: "Data Pruning",
     description: "Counts/deletes aged episodes, stale podcasts, and old requests",
     defaultIntervalMinutes: 1440,
   },
   {
     jobKey: "recommendations",
-    label: "Recommendations",
+    label: "Compute Recommendations",
     description: "Rebuilds podcast recommendation profiles for all users",
     defaultIntervalMinutes: 10080,
   },

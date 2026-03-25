@@ -77,6 +77,37 @@ export async function checkWeeklyBriefingLimit(
   return null;
 }
 
+/**
+ * Check if the requested episode is within the plan's past episodes limit.
+ * Counts the episode's position (by publishedAt desc) within its podcast.
+ * Returns an error string if beyond limit, null if OK.
+ */
+export async function checkPastEpisodesLimit(
+  episodeId: string,
+  pastEpisodesLimit: number | null,
+  prisma: any
+): Promise<string | null> {
+  if (pastEpisodesLimit === null) return null; // unlimited
+
+  const episode = await prisma.episode.findUnique({
+    where: { id: episodeId },
+    select: { podcastId: true, publishedAt: true },
+  });
+  if (!episode) return null; // let downstream handle missing episode
+
+  const position = await prisma.episode.count({
+    where: {
+      podcastId: episode.podcastId,
+      publishedAt: { gte: episode.publishedAt ?? new Date(0) },
+    },
+  });
+
+  if (position > pastEpisodesLimit) {
+    return `Your plan allows access to the ${pastEpisodesLimit} most recent episodes. Upgrade for full archive access.`;
+  }
+  return null;
+}
+
 export interface UsageData {
   period: { start: string; end: string; daysRemaining: number };
   briefings: { used: number; limit: number | null; remaining: number | null; percentUsed: number };

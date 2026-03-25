@@ -6,29 +6,66 @@ import { Label } from "@/components/ui/label";
 import { useAdminFetch } from "@/lib/admin-api";
 import type { PlatformConfigEntry } from "@/types/admin";
 
-interface CatalogConfigDef {
+interface ConfigDef {
   key: string;
   label: string;
-  type: "number" | "boolean";
+  type: "number" | "boolean" | "readonly";
   description: string;
   default: number | boolean;
+}
+
+interface ConfigGroup {
+  title: string;
+  description: string;
+  items: ConfigDef[];
 }
 
 // Mirrors FEED_REFRESH_MAX_CONSUMERS in worker/lib/constants.ts — requires redeploy to change
 const FEED_REFRESH_MAX_CONSUMERS = 50;
 
-const CATALOG_CONFIGS: CatalogConfigDef[] = [
-  { key: "catalog.seedSize", label: "Catalog Seed Size", type: "number", description: "Podcasts to fetch during catalog-refresh", default: 200 },
-  { key: "catalog.refreshAllPodcasts", label: "Refresh All Podcasts", type: "boolean", description: "Refresh all catalog podcasts (not just subscribed)", default: false },
-  { key: "catalog.requests.enabled", label: "User Requests Enabled", type: "boolean", description: "Allow users to request new podcasts", default: true },
-  { key: "catalog.requests.maxPerUser", label: "Max Requests Per User", type: "number", description: "Maximum pending requests per user", default: 5 },
-  { key: "catalog.cleanup.inactivityThresholdDays", label: "Cleanup Inactivity Threshold", type: "number", description: "Days inactive before suggesting removal", default: 90 },
-  { key: "episodes.aging.enabled", label: "Episode Aging Enabled", type: "boolean", description: "Enable episode aging deletion", default: false },
-  { key: "episodes.aging.maxAgeDays", label: "Episode Max Age", type: "number", description: "Days before episodes are deletion candidates", default: 180 },
-  { key: "pipeline.feedRefresh.maxEpisodesPerPodcast", label: "Max Episodes per Podcast", type: "number", description: "Episodes ingested per podcast during feed refresh", default: 5 },
-  { key: "pipeline.feedRefresh.batchConcurrency", label: "Batch Concurrency", type: "number", description: "Podcasts processed in parallel per queue message", default: 10 },
-  { key: "pipeline.feedRefresh.fetchTimeoutMs", label: "RSS Fetch Timeout (ms)", type: "number", description: "Timeout for each RSS feed request", default: 10000 },
-  { key: "pipeline.contentPrefetch.fetchTimeoutMs", label: "Content Prefetch Timeout (ms)", type: "number", description: "Timeout for transcript/audio validation requests", default: 15000 },
+const CONFIG_GROUPS: ConfigGroup[] = [
+  {
+    title: "Catalog Discovery",
+    description: "How new podcasts are discovered and added to the library",
+    items: [
+      { key: "catalog.seedSize", label: "Discovery Batch Size", type: "number", description: "Podcasts to fetch during catalog refresh", default: 200 },
+      { key: "catalog.refreshAllPodcasts", label: "Refresh All Podcasts", type: "boolean", description: "Refresh all catalog podcasts (not just subscribed)", default: false },
+    ],
+  },
+  {
+    title: "User Requests",
+    description: "Controls for user-submitted podcast requests",
+    items: [
+      { key: "catalog.requests.enabled", label: "Requests Enabled", type: "boolean", description: "Allow users to request new podcasts", default: true },
+      { key: "catalog.requests.maxPerUser", label: "Max Requests Per User", type: "number", description: "Maximum pending requests per user", default: 5 },
+    ],
+  },
+  {
+    title: "New Episodes Fetch",
+    description: "RSS feed polling and episode ingestion",
+    items: [
+      { key: "pipeline.feedRefresh.maxEpisodesPerPodcast", label: "Max Episodes per Podcast", type: "number", description: "Episodes ingested per podcast during feed refresh", default: 5 },
+      { key: "pipeline.feedRefresh.batchConcurrency", label: "Batch Concurrency", type: "number", description: "Podcasts processed in parallel per queue message", default: 10 },
+      { key: "pipeline.feedRefresh.fetchTimeoutMs", label: "RSS Fetch Timeout (ms)", type: "number", description: "Timeout for each RSS feed request", default: 10000 },
+      { key: "pipeline.feedRefresh.maxConcurrentConsumers", label: "Max Concurrent Consumers", type: "readonly", description: "Max parallel queue workers (deploy-time constant, requires redeploy)", default: FEED_REFRESH_MAX_CONSUMERS },
+    ],
+  },
+  {
+    title: "Content Prefetch",
+    description: "Transcript and audio validation before pipeline processing",
+    items: [
+      { key: "pipeline.contentPrefetch.fetchTimeoutMs", label: "Fetch Timeout (ms)", type: "number", description: "Timeout for transcript/audio validation requests", default: 15000 },
+    ],
+  },
+  {
+    title: "Data Lifecycle",
+    description: "Cleanup and aging rules for podcasts and episodes",
+    items: [
+      { key: "catalog.cleanup.inactivityThresholdDays", label: "Inactivity Threshold (days)", type: "number", description: "Days inactive before suggesting podcast removal", default: 90 },
+      { key: "episodes.aging.enabled", label: "Episode Aging Enabled", type: "boolean", description: "Enable automatic episode deletion by age", default: false },
+      { key: "episodes.aging.maxAgeDays", label: "Episode Max Age (days)", type: "number", description: "Days before episodes are deletion candidates", default: 180 },
+    ],
+  },
 ];
 
 function PodcastSettingsSkeleton() {
@@ -91,61 +128,59 @@ export default function PodcastSettings() {
   if (loading && configs.length === 0) return <PodcastSettingsSkeleton />;
 
   return (
-    <div className="space-y-4 p-6">
+    <div className="space-y-6 p-6">
       <div>
-        <h2 className="text-lg font-semibold text-[#F9FAFB]">Catalog & Episodes</h2>
-        <p className="text-xs text-[#9CA3AF] mt-0.5">Catalog refresh, user requests, and episode lifecycle settings</p>
+        <h2 className="text-lg font-semibold text-[#F9FAFB]">Podcast Settings</h2>
+        <p className="text-xs text-[#9CA3AF] mt-0.5">Catalog discovery, feed refresh, and data lifecycle configuration</p>
       </div>
 
-      <div className="space-y-2">
-        {CATALOG_CONFIGS.map((cfg) => {
-          const currentValue = getConfigValue(cfg.key, cfg.default);
-          return (
-            <div
-              key={cfg.key}
-              className="bg-[#0F1D32] border border-white/5 rounded-lg p-4 hover:border-white/10 transition-colors"
-            >
-              <div className="flex items-center justify-between">
-                <div className="min-w-0 flex-1 mr-4">
-                  <Label className="text-xs text-[#F9FAFB]">{cfg.label}</Label>
-                  <p className="text-[10px] text-[#9CA3AF] mt-0.5">{cfg.description}</p>
+      {CONFIG_GROUPS.map((group) => (
+        <div key={group.title} className="bg-[#0F1D32] border border-white/5 rounded-lg overflow-hidden">
+          <div className="px-4 py-3 border-b border-white/5">
+            <h3 className="text-sm font-semibold text-[#F9FAFB]">{group.title}</h3>
+            <p className="text-[10px] text-[#6B7280] mt-0.5">{group.description}</p>
+          </div>
+
+          <div className="divide-y divide-white/5">
+            {group.items.map((cfg) => {
+              const currentValue = getConfigValue(cfg.key, cfg.default);
+              return (
+                <div key={cfg.key} className="px-4 py-3 hover:bg-white/[0.02] transition-colors">
+                  <div className="flex items-center justify-between">
+                    <div className="min-w-0 flex-1 mr-4">
+                      <Label className="text-xs text-[#F9FAFB]">{cfg.label}</Label>
+                      <p className="text-[10px] text-[#9CA3AF] mt-0.5">{cfg.description}</p>
+                    </div>
+
+                    {cfg.type === "boolean" ? (
+                      <Switch
+                        checked={currentValue as boolean}
+                        onCheckedChange={(v) => updateConfig(cfg.key, v)}
+                        disabled={saving === cfg.key}
+                        className="data-[state=checked]:bg-[#14B8A6]"
+                      />
+                    ) : cfg.type === "readonly" ? (
+                      <span className="text-xs font-mono text-[#9CA3AF] tabular-nums">{cfg.default}</span>
+                    ) : (
+                      <Input
+                        type="number"
+                        min={1}
+                        value={currentValue as number}
+                        onChange={(e) => {
+                          const val = Math.max(1, Number(e.target.value));
+                          updateConfig(cfg.key, val);
+                        }}
+                        disabled={saving === cfg.key}
+                        className="w-24 h-8 text-xs bg-[#1A2942] border-white/10 text-[#F9FAFB] font-mono tabular-nums text-center"
+                      />
+                    )}
+                  </div>
                 </div>
-
-                {cfg.type === "boolean" ? (
-                  <Switch
-                    checked={currentValue as boolean}
-                    onCheckedChange={(v) => updateConfig(cfg.key, v)}
-                    disabled={saving === cfg.key}
-                    className="data-[state=checked]:bg-[#14B8A6]"
-                  />
-                ) : (
-                  <Input
-                    type="number"
-                    min={1}
-                    value={currentValue as number}
-                    onChange={(e) => {
-                      const val = Math.max(1, Number(e.target.value));
-                      updateConfig(cfg.key, val);
-                    }}
-                    disabled={saving === cfg.key}
-                    className="w-24 h-8 text-xs bg-[#1A2942] border-white/10 text-[#F9FAFB] font-mono tabular-nums text-center"
-                  />
-                )}
-              </div>
-            </div>
-          );
-        })}
-
-        <div className="bg-[#0F1D32] border border-white/5 rounded-lg p-4">
-          <div className="flex items-center justify-between">
-            <div className="min-w-0 flex-1 mr-4">
-              <Label className="text-xs text-[#F9FAFB]">Max Concurrent Consumers</Label>
-              <p className="text-[10px] text-[#9CA3AF] mt-0.5">Max parallel queue workers (deploy-time setting, requires redeploy to change)</p>
-            </div>
-            <span className="text-xs font-mono text-[#9CA3AF] tabular-nums">{FEED_REFRESH_MAX_CONSUMERS}</span>
+              );
+            })}
           </div>
         </div>
-      </div>
+      ))}
     </div>
   );
 }

@@ -52,20 +52,20 @@ export function CuratedRow({ row }: CuratedRowProps) {
                   <button
                     key={p?.id ?? i}
                     onClick={() => p?.id && open(p.id)}
-                    className="w-[180px] flex-shrink-0 snap-start bg-card border border-border rounded-lg overflow-hidden text-left active:scale-[0.98] transition-transform duration-75"
+                    className="w-[140px] flex-shrink-0 snap-start bg-card border border-border rounded-lg overflow-hidden text-left active:scale-[0.98] transition-transform duration-75"
                   >
                     {p?.imageUrl ? (
-                      <img src={p.imageUrl} alt="" className="w-full h-24 object-cover" />
+                      <img src={p.imageUrl} alt="" className="w-full h-20 object-cover" />
                     ) : (
-                      <div className="w-full h-24 bg-muted flex items-center justify-center">
+                      <div className="w-full h-20 bg-muted flex items-center justify-center">
                         <span className="text-2xl font-bold text-muted-foreground">
                           {p?.title?.charAt(0)?.toUpperCase() ?? "?"}
                         </span>
                       </div>
                     )}
-                    <div className="p-2.5 space-y-1">
-                      <p className="font-medium text-sm line-clamp-2 leading-tight">{p?.title}</p>
-                      {p?.author && <p className="text-xs text-muted-foreground truncate">{p.author}</p>}
+                    <div className="p-2 space-y-0.5">
+                      <p className="font-medium text-xs line-clamp-2 leading-tight">{p?.title}</p>
+                      {p?.author && <p className="text-[11px] text-muted-foreground truncate">{p.author}</p>}
                       {item.reasons?.[0] && (
                         <span className="inline-block text-[10px] text-primary/80 bg-primary/10 px-1.5 py-0.5 rounded-full truncate max-w-full">
                           {item.reasons[0]}

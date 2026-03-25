@@ -25,6 +25,9 @@ vi.mock("../../lib/cron/data-retention", () => ({
 vi.mock("../../lib/cron/recommendations", () => ({
   runRecommendationsJob: vi.fn(),
 }));
+vi.mock("../../lib/cron/podcast-discovery", () => ({
+  runPodcastDiscoveryJob: vi.fn(),
+}));
 
 import { createPrismaClient } from "../../lib/db";
 import { scheduled } from "../index";
@@ -47,11 +50,12 @@ beforeEach(() => {
 });
 
 describe("scheduled", () => {
-  it("dispatches all 5 cron jobs via runJob", async () => {
+  it("dispatches all 6 cron jobs via runJob", async () => {
     await scheduled(mockEvent, mockEnv, mockCtx);
 
-    expect(mockRunJob).toHaveBeenCalledTimes(5);
+    expect(mockRunJob).toHaveBeenCalledTimes(6);
     const jobKeys = mockRunJob.mock.calls.map((c: any) => c[0].jobKey);
+    expect(jobKeys).toContain("podcast-discovery");
     expect(jobKeys).toContain("pipeline-trigger");
     expect(jobKeys).toContain("monitoring");
     expect(jobKeys).toContain("user-lifecycle");
@@ -104,7 +108,7 @@ describe("scheduled", () => {
     // Should not throw — Promise.allSettled handles rejections
     await scheduled(mockEvent, mockEnv, mockCtx);
 
-    expect(mockRunJob).toHaveBeenCalledTimes(5);
+    expect(mockRunJob).toHaveBeenCalledTimes(6);
   });
 
   it("disconnects prisma in finally block", async () => {

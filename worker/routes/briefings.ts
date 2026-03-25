@@ -3,7 +3,7 @@ import { z } from "zod/v4";
 import type { Env } from "../types";
 import { requireAuth } from "../middleware/auth";
 import { getCurrentUser } from "../lib/admin-helpers";
-import { getUserWithPlan, checkDurationLimit, checkWeeklyBriefingLimit } from "../lib/plan-limits";
+import { getUserWithPlan, checkDurationLimit, checkWeeklyBriefingLimit, checkPastEpisodesLimit } from "../lib/plan-limits";
 import { DURATION_TIERS } from "../lib/constants";
 import { validateBody } from "../lib/validation";
 
@@ -66,6 +66,10 @@ briefings.post("/generate", async (c) => {
     }
     episodeId = episode.id;
   }
+
+  // Enforce past episodes limit
+  const pastError = await checkPastEpisodesLimit(episodeId!, user.plan.pastEpisodesLimit, prisma);
+  if (pastError) return c.json({ error: pastError }, 403);
 
   // Create FeedItem (upsert prevents duplicates, but re-queues failed ones)
   const feedItem = await prisma.feedItem.upsert({

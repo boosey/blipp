@@ -15,6 +15,7 @@ import { runMonitoringJob } from "../lib/cron/monitoring";
 import { runUserLifecycleJob } from "../lib/cron/user-lifecycle";
 import { runDataRetentionJob } from "../lib/cron/data-retention";
 import { runRecommendationsJob } from "../lib/cron/recommendations";
+import { runPodcastDiscoveryJob } from "../lib/cron/podcast-discovery";
 import type {
   TranscriptionMessage,
   DistillationMessage,
@@ -132,7 +133,7 @@ export async function handleQueue(
  * Cron heartbeat handler — fires every 5 minutes and dispatches all named jobs.
  * Each job manages its own enable toggle and run interval via PlatformConfig.
  *
- * Jobs: pipeline-trigger, monitoring, user-lifecycle, data-retention, recommendations
+ * Jobs: podcast-discovery, pipeline-trigger, monitoring, user-lifecycle, data-retention, recommendations
  *
  * @param event - Cloudflare scheduled event
  * @param env - Worker environment bindings
@@ -151,6 +152,12 @@ export async function scheduled(
 
     // Dispatch all jobs — each checks its own enabled flag and interval
     await Promise.allSettled([
+      runJob({
+        jobKey: "podcast-discovery",
+        prisma: prisma as any,
+        defaultIntervalMinutes: 10080,
+        execute: (logger) => runPodcastDiscoveryJob(prisma as any, logger, env),
+      }),
       runJob({
         jobKey: "pipeline-trigger",
         prisma: prisma as any,

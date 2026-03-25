@@ -51,19 +51,57 @@ interface PlanFormData {
   name: string;
   slug: string;
   description: string;
+  // Limits
   briefingsPerWeek: string;
   maxDurationMinutes: string;
   maxPodcastSubscriptions: string;
   pastEpisodesLimit: string;
+  // Content Delivery
+  onDemandRequestsPerWeek: string;
+  outputFormats: string;
+  transcriptAccess: boolean;
+  refreshLatencyTier: string;
+  dailyDigest: boolean;
+  weeklyRecap: boolean;
+  narrativeDepthTier: string;
+  episodeHighlightClips: boolean;
+  // Pipeline & Processing
+  aiModelTier: string;
+  ttsModelTier: string;
+  sttModelTier: string;
+  customInstructions: boolean;
+  retryBudget: string;
+  concurrentPipelineJobs: string;
+  // Feature flags
   adFree: boolean;
   priorityProcessing: boolean;
   earlyAccess: boolean;
   researchMode: boolean;
   crossPodcastSynthesis: boolean;
+  // Library & Discovery
+  topicTracking: boolean;
+  customCollections: boolean;
+  searchBriefings: boolean;
+  catalogAccess: string;
+  savedSearches: string;
+  rssExport: boolean;
+  apiAccess: boolean;
+  // Personalization
+  tonePresets: boolean;
+  languageSupport: string;
+  focusTopics: boolean;
+  skipTopics: boolean;
+  briefingIntro: boolean;
+  maxStorageDays: string;
+  offlineAccess: boolean;
+  publicSharing: boolean;
+  interactiveBriefing: boolean;
+  // Billing
   priceCentsMonthly: string;
   priceCentsAnnual: string;
   trialDays: string;
   allowedVoicePresetIds: string[];
+  // Display
   features: string;
   highlighted: boolean;
   sortOrder: string;
@@ -79,11 +117,41 @@ function emptyForm(): PlanFormData {
     maxDurationMinutes: "5",
     maxPodcastSubscriptions: "",
     pastEpisodesLimit: "",
+    onDemandRequestsPerWeek: "",
+    outputFormats: "audio",
+    transcriptAccess: false,
+    refreshLatencyTier: "standard",
+    dailyDigest: false,
+    weeklyRecap: false,
+    narrativeDepthTier: "standard",
+    episodeHighlightClips: false,
+    aiModelTier: "standard",
+    ttsModelTier: "standard",
+    sttModelTier: "standard",
+    customInstructions: false,
+    retryBudget: "1",
+    concurrentPipelineJobs: "1",
     adFree: false,
     priorityProcessing: false,
     earlyAccess: false,
     researchMode: false,
     crossPodcastSynthesis: false,
+    topicTracking: false,
+    customCollections: false,
+    searchBriefings: false,
+    catalogAccess: "subscribed",
+    savedSearches: "",
+    rssExport: false,
+    apiAccess: false,
+    tonePresets: false,
+    languageSupport: "",
+    focusTopics: false,
+    skipTopics: false,
+    briefingIntro: false,
+    maxStorageDays: "",
+    offlineAccess: false,
+    publicSharing: false,
+    interactiveBriefing: false,
     priceCentsMonthly: "0",
     priceCentsAnnual: "",
     trialDays: "0",
@@ -104,11 +172,41 @@ function planToForm(plan: AdminPlan): PlanFormData {
     maxDurationMinutes: String(plan.maxDurationMinutes),
     maxPodcastSubscriptions: plan.maxPodcastSubscriptions != null ? String(plan.maxPodcastSubscriptions) : "",
     pastEpisodesLimit: plan.pastEpisodesLimit != null ? String(plan.pastEpisodesLimit) : "",
+    onDemandRequestsPerWeek: plan.onDemandRequestsPerWeek != null ? String(plan.onDemandRequestsPerWeek) : "",
+    outputFormats: (plan.outputFormats ?? []).join(", "),
+    transcriptAccess: plan.transcriptAccess,
+    refreshLatencyTier: plan.refreshLatencyTier ?? "standard",
+    dailyDigest: plan.dailyDigest,
+    weeklyRecap: plan.weeklyRecap,
+    narrativeDepthTier: plan.narrativeDepthTier ?? "standard",
+    episodeHighlightClips: plan.episodeHighlightClips,
+    aiModelTier: plan.aiModelTier ?? "standard",
+    ttsModelTier: plan.ttsModelTier ?? "standard",
+    sttModelTier: plan.sttModelTier ?? "standard",
+    customInstructions: plan.customInstructions,
+    retryBudget: String(plan.retryBudget ?? 1),
+    concurrentPipelineJobs: String(plan.concurrentPipelineJobs ?? 1),
     adFree: plan.adFree,
     priorityProcessing: plan.priorityProcessing,
     earlyAccess: plan.earlyAccess,
     researchMode: plan.researchMode,
     crossPodcastSynthesis: plan.crossPodcastSynthesis,
+    topicTracking: plan.topicTracking,
+    customCollections: plan.customCollections,
+    searchBriefings: plan.searchBriefings,
+    catalogAccess: plan.catalogAccess ?? "subscribed",
+    savedSearches: plan.savedSearches != null ? String(plan.savedSearches) : "",
+    rssExport: plan.rssExport,
+    apiAccess: plan.apiAccess,
+    tonePresets: plan.tonePresets,
+    languageSupport: (plan.languageSupport ?? []).join(", "),
+    focusTopics: plan.focusTopics,
+    skipTopics: plan.skipTopics,
+    briefingIntro: plan.briefingIntro,
+    maxStorageDays: plan.maxStorageDays != null ? String(plan.maxStorageDays) : "",
+    offlineAccess: plan.offlineAccess,
+    publicSharing: plan.publicSharing,
+    interactiveBriefing: plan.interactiveBriefing,
     priceCentsMonthly: String(plan.priceCentsMonthly),
     priceCentsAnnual: plan.priceCentsAnnual != null ? String(plan.priceCentsAnnual) : "",
     trialDays: String(plan.trialDays),
@@ -125,19 +223,57 @@ function formToPayload(form: PlanFormData) {
     name: form.name,
     slug: form.slug,
     description: form.description || undefined,
+    // Limits
     briefingsPerWeek: form.briefingsPerWeek ? Number(form.briefingsPerWeek) : null,
     maxDurationMinutes: Number(form.maxDurationMinutes),
     maxPodcastSubscriptions: form.maxPodcastSubscriptions ? Number(form.maxPodcastSubscriptions) : null,
     pastEpisodesLimit: form.pastEpisodesLimit ? Number(form.pastEpisodesLimit) : null,
+    // Content Delivery
+    onDemandRequestsPerWeek: form.onDemandRequestsPerWeek ? Number(form.onDemandRequestsPerWeek) : null,
+    outputFormats: form.outputFormats.split(",").map((s) => s.trim()).filter(Boolean),
+    transcriptAccess: form.transcriptAccess,
+    refreshLatencyTier: form.refreshLatencyTier,
+    dailyDigest: form.dailyDigest,
+    weeklyRecap: form.weeklyRecap,
+    narrativeDepthTier: form.narrativeDepthTier,
+    episodeHighlightClips: form.episodeHighlightClips,
+    // Pipeline & Processing
+    aiModelTier: form.aiModelTier,
+    ttsModelTier: form.ttsModelTier,
+    sttModelTier: form.sttModelTier,
+    customInstructions: form.customInstructions,
+    retryBudget: Number(form.retryBudget),
+    concurrentPipelineJobs: Number(form.concurrentPipelineJobs),
+    // Feature flags
     adFree: form.adFree,
     priorityProcessing: form.priorityProcessing,
     earlyAccess: form.earlyAccess,
     researchMode: form.researchMode,
     crossPodcastSynthesis: form.crossPodcastSynthesis,
+    // Library & Discovery
+    topicTracking: form.topicTracking,
+    customCollections: form.customCollections,
+    searchBriefings: form.searchBriefings,
+    catalogAccess: form.catalogAccess,
+    savedSearches: form.savedSearches ? Number(form.savedSearches) : null,
+    rssExport: form.rssExport,
+    apiAccess: form.apiAccess,
+    // Personalization
+    tonePresets: form.tonePresets,
+    languageSupport: form.languageSupport.split(",").map((s) => s.trim()).filter(Boolean),
+    focusTopics: form.focusTopics,
+    skipTopics: form.skipTopics,
+    briefingIntro: form.briefingIntro,
+    maxStorageDays: form.maxStorageDays ? Number(form.maxStorageDays) : null,
+    offlineAccess: form.offlineAccess,
+    publicSharing: form.publicSharing,
+    interactiveBriefing: form.interactiveBriefing,
+    // Billing
     priceCentsMonthly: Number(form.priceCentsMonthly),
     priceCentsAnnual: form.priceCentsAnnual ? Number(form.priceCentsAnnual) : null,
     trialDays: Number(form.trialDays),
     allowedVoicePresetIds: form.allowedVoicePresetIds,
+    // Display
     features: form.features
       .split(",")
       .map((s) => s.trim())
@@ -275,7 +411,97 @@ function PlanFormDialog({
 
             <Separator className="bg-white/5" />
 
-            {/* Features */}
+            {/* Content Delivery */}
+            <div className="space-y-3">
+              <span className="text-xs font-semibold text-[#9CA3AF] uppercase tracking-wider">Content Delivery</span>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-[#F9FAFB]">On-demand requests/week</Label>
+                  <Input type="number" value={form.onDemandRequestsPerWeek} onChange={(e) => update({ onDemandRequestsPerWeek: e.target.value })} placeholder="Unlimited" className="h-8 text-xs bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono" />
+                  <span className="text-[10px] text-[#9CA3AF]">Empty = unlimited</span>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-[#F9FAFB]">Output formats</Label>
+                  <Input value={form.outputFormats} onChange={(e) => update({ outputFormats: e.target.value })} placeholder="audio, text, markdown" className="h-8 text-xs bg-[#0A1628] border-white/5 text-[#F9FAFB]" />
+                  <span className="text-[10px] text-[#9CA3AF]">Comma-separated</span>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-[#F9FAFB]">Narrative depth</Label>
+                  <select value={form.narrativeDepthTier} onChange={(e) => update({ narrativeDepthTier: e.target.value })} className="h-8 w-full text-xs bg-[#0A1628] border border-white/5 text-[#F9FAFB] rounded-md px-2">
+                    <option value="headlines">Headlines</option>
+                    <option value="standard">Standard</option>
+                    <option value="deep">Deep</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-[#F9FAFB]">Refresh latency</Label>
+                  <select value={form.refreshLatencyTier} onChange={(e) => update({ refreshLatencyTier: e.target.value })} className="h-8 w-full text-xs bg-[#0A1628] border border-white/5 text-[#F9FAFB] rounded-md px-2">
+                    <option value="standard">Standard</option>
+                    <option value="fast">Fast</option>
+                    <option value="realtime">Realtime</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-y-3 gap-x-6">
+                {([
+                  ["transcriptAccess", "Transcript Access"],
+                  ["dailyDigest", "Daily Digest"],
+                  ["weeklyRecap", "Weekly Recap"],
+                  ["episodeHighlightClips", "Highlight Clips"],
+                ] as const).map(([key, label]) => (
+                  <div key={key} className="flex items-center justify-between">
+                    <Label className="text-xs text-[#F9FAFB]">{label}</Label>
+                    <Switch checked={form[key]} onCheckedChange={(v) => update({ [key]: v })} className="data-[state=checked]:bg-[#10B981]" />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <Separator className="bg-white/5" />
+
+            {/* Pipeline & Processing */}
+            <div className="space-y-3">
+              <span className="text-xs font-semibold text-[#9CA3AF] uppercase tracking-wider">Pipeline & Processing</span>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-[#F9FAFB]">AI model tier</Label>
+                  <select value={form.aiModelTier} onChange={(e) => update({ aiModelTier: e.target.value })} className="h-8 w-full text-xs bg-[#0A1628] border border-white/5 text-[#F9FAFB] rounded-md px-2">
+                    <option value="standard">Standard</option>
+                    <option value="premium">Premium</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-[#F9FAFB]">TTS model tier</Label>
+                  <select value={form.ttsModelTier} onChange={(e) => update({ ttsModelTier: e.target.value })} className="h-8 w-full text-xs bg-[#0A1628] border border-white/5 text-[#F9FAFB] rounded-md px-2">
+                    <option value="standard">Standard</option>
+                    <option value="premium">Premium</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-[#F9FAFB]">STT model tier</Label>
+                  <select value={form.sttModelTier} onChange={(e) => update({ sttModelTier: e.target.value })} className="h-8 w-full text-xs bg-[#0A1628] border border-white/5 text-[#F9FAFB] rounded-md px-2">
+                    <option value="standard">Standard</option>
+                    <option value="premium">Premium</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-[#F9FAFB]">Retry budget</Label>
+                  <Input type="number" min={1} value={form.retryBudget} onChange={(e) => update({ retryBudget: e.target.value })} className="h-8 text-xs bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-[#F9FAFB]">Concurrent jobs</Label>
+                  <Input type="number" min={1} value={form.concurrentPipelineJobs} onChange={(e) => update({ concurrentPipelineJobs: e.target.value })} className="h-8 text-xs bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono" />
+                </div>
+                <div className="flex items-center justify-between pt-5">
+                  <Label className="text-xs text-[#F9FAFB]">Custom instructions</Label>
+                  <Switch checked={form.customInstructions} onCheckedChange={(v) => update({ customInstructions: v })} className="data-[state=checked]:bg-[#10B981]" />
+                </div>
+              </div>
+            </div>
+
+            <Separator className="bg-white/5" />
+
+            {/* Feature Flags */}
             <div className="space-y-3">
               <span className="text-xs font-semibold text-[#9CA3AF] uppercase tracking-wider">Feature Flags</span>
               <div className="grid grid-cols-2 gap-y-3 gap-x-6">
@@ -293,6 +519,76 @@ function PlanFormDialog({
                       onCheckedChange={(v) => update({ [key]: v })}
                       className="data-[state=checked]:bg-[#10B981]"
                     />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <Separator className="bg-white/5" />
+
+            {/* Library & Discovery */}
+            <div className="space-y-3">
+              <span className="text-xs font-semibold text-[#9CA3AF] uppercase tracking-wider">Library & Discovery</span>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-[#F9FAFB]">Catalog access</Label>
+                  <select value={form.catalogAccess} onChange={(e) => update({ catalogAccess: e.target.value })} className="h-8 w-full text-xs bg-[#0A1628] border border-white/5 text-[#F9FAFB] rounded-md px-2">
+                    <option value="subscribed">Subscribed only</option>
+                    <option value="full">Full catalog</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-[#F9FAFB]">Saved searches</Label>
+                  <Input type="number" value={form.savedSearches} onChange={(e) => update({ savedSearches: e.target.value })} placeholder="Unlimited" className="h-8 text-xs bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono" />
+                  <span className="text-[10px] text-[#9CA3AF]">Empty = unlimited</span>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-y-3 gap-x-6">
+                {([
+                  ["topicTracking", "Topic Tracking"],
+                  ["customCollections", "Custom Collections"],
+                  ["searchBriefings", "Search Briefings"],
+                  ["rssExport", "RSS Export"],
+                  ["apiAccess", "API Access"],
+                ] as const).map(([key, label]) => (
+                  <div key={key} className="flex items-center justify-between">
+                    <Label className="text-xs text-[#F9FAFB]">{label}</Label>
+                    <Switch checked={form[key]} onCheckedChange={(v) => update({ [key]: v })} className="data-[state=checked]:bg-[#10B981]" />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <Separator className="bg-white/5" />
+
+            {/* Personalization */}
+            <div className="space-y-3">
+              <span className="text-xs font-semibold text-[#9CA3AF] uppercase tracking-wider">Personalization</span>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-[#F9FAFB]">Languages</Label>
+                  <Input value={form.languageSupport} onChange={(e) => update({ languageSupport: e.target.value })} placeholder="en, es, fr" className="h-8 text-xs bg-[#0A1628] border-white/5 text-[#F9FAFB]" />
+                  <span className="text-[10px] text-[#9CA3AF]">Comma-separated codes</span>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-[#F9FAFB]">Storage retention (days)</Label>
+                  <Input type="number" value={form.maxStorageDays} onChange={(e) => update({ maxStorageDays: e.target.value })} placeholder="Forever" className="h-8 text-xs bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono" />
+                  <span className="text-[10px] text-[#9CA3AF]">Empty = forever</span>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-y-3 gap-x-6">
+                {([
+                  ["tonePresets", "Tone Presets"],
+                  ["focusTopics", "Focus Topics"],
+                  ["skipTopics", "Skip Topics"],
+                  ["briefingIntro", "Personalized Intro"],
+                  ["offlineAccess", "Offline Access"],
+                  ["publicSharing", "Public Sharing"],
+                  ["interactiveBriefing", "Interactive Q&A"],
+                ] as const).map(([key, label]) => (
+                  <div key={key} className="flex items-center justify-between">
+                    <Label className="text-xs text-[#F9FAFB]">{label}</Label>
+                    <Switch checked={form[key]} onCheckedChange={(v) => update({ [key]: v })} className="data-[state=checked]:bg-[#10B981]" />
                   </div>
                 ))}
               </div>
@@ -715,6 +1011,18 @@ export default function PlansPage() {
               plan.earlyAccess && "Early Access",
               plan.researchMode && "Research",
               plan.crossPodcastSynthesis && "Synthesis",
+              plan.transcriptAccess && "Transcripts",
+              plan.dailyDigest && "Daily Digest",
+              plan.weeklyRecap && "Weekly Recap",
+              plan.episodeHighlightClips && "Clips",
+              plan.customInstructions && "Custom Instructions",
+              plan.topicTracking && "Topics",
+              plan.searchBriefings && "Search",
+              plan.rssExport && "RSS",
+              plan.apiAccess && "API",
+              plan.offlineAccess && "Offline",
+              plan.publicSharing && "Sharing",
+              plan.interactiveBriefing && "Interactive Q&A",
             ].filter((f): f is string => Boolean(f));
 
             return (
