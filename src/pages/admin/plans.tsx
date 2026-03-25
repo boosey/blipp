@@ -1164,13 +1164,13 @@ export default function PlansPage() {
                     <Badge
                       key={label}
                       className={enabled
-                        ? "bg-[#10B981]/10 text-[#10B981] text-[10px] font-normal"
-                        : "bg-white/[0.03] text-[#4B5563] text-[10px] font-normal"
+                        ? "bg-[#10B981]/10 text-[#10B981] text-[14px] font-normal"
+                        : "bg-white/[0.03] text-[#4B5563] text-[14px] font-normal"
                       }
                     >
                       {enabled
-                        ? <Check className="h-2.5 w-2.5 mr-0.5" />
-                        : <X className="h-2.5 w-2.5 mr-0.5" />
+                        ? <Check className="h-3.5 w-3.5 mr-1" />
+                        : <X className="h-3.5 w-3.5 mr-1" />
                       }
                       {label}
                     </Badge>
