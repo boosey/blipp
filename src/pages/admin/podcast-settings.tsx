@@ -128,17 +128,18 @@ export default function PodcastSettings() {
   if (loading && configs.length === 0) return <PodcastSettingsSkeleton />;
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="p-6 space-y-6">
       <div>
         <h2 className="text-lg font-semibold text-[#F9FAFB]">Podcast Settings</h2>
         <p className="text-xs text-[#9CA3AF] mt-0.5">Catalog discovery, feed refresh, and data lifecycle configuration</p>
       </div>
 
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
       {CONFIG_GROUPS.map((group) => (
         <div key={group.title} className="bg-[#0F1D32] border border-white/5 rounded-lg overflow-hidden">
-          <div className="px-4 py-3 border-b border-white/5">
-            <h3 className="text-sm font-semibold text-[#F9FAFB]">{group.title}</h3>
-            <p className="text-[10px] text-[#6B7280] mt-0.5">{group.description}</p>
+          <div className="px-4 py-3 border-b border-white/10 border-l-2 border-l-[#14B8A6] bg-white/[0.03]">
+            <h3 className="text-sm font-bold text-[#F9FAFB]">{group.title}</h3>
+            <p className="text-xs text-[#6B7280] mt-0.5">{group.description}</p>
           </div>
 
           <div className="divide-y divide-white/5">
@@ -181,6 +182,7 @@ export default function PodcastSettings() {
           </div>
         </div>
       ))}
+      </div>
     </div>
   );
 }
