@@ -316,38 +316,38 @@ function PlanFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-[#1A2942] border-white/10 text-[#F9FAFB] max-w-4xl max-h-[92vh] overflow-hidden flex flex-col">
+      <DialogContent className="bg-[#1A2942] border-white/10 text-[#F9FAFB] max-w-5xl max-h-[94vh] overflow-hidden flex flex-col">
         <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
+          <DialogTitle className="text-lg">{title}</DialogTitle>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 -mx-6 px-6">
-          <div className="space-y-5 pb-4">
+        <ScrollArea className="flex-1 -mx-6 px-6 overflow-y-auto">
+          <div className="space-y-6 pb-4">
             {/* Identity */}
             <div className="space-y-3">
-              <span className="text-xs font-semibold text-[#9CA3AF] uppercase tracking-wider">Identity</span>
+              <span className="text-sm font-semibold text-[#9CA3AF] uppercase tracking-wider">Identity</span>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-[#F9FAFB]">Name</Label>
+                  <Label className="text-sm text-[#F9FAFB]">Name</Label>
                   <Input
                     value={form.name}
                     onChange={(e) => update({ name: e.target.value })}
                     placeholder="Pro"
-                    className="h-8 text-xs bg-[#0A1628] border-white/5 text-[#F9FAFB]"
+                    className="h-9 text-sm bg-[#0A1628] border-white/5 text-[#F9FAFB]"
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-[#F9FAFB]">Slug</Label>
+                  <Label className="text-sm text-[#F9FAFB]">Slug</Label>
                   <Input
                     value={form.slug}
                     onChange={(e) => update({ slug: e.target.value })}
                     placeholder="pro"
-                    className="h-8 text-xs bg-[#0A1628] border-white/5 text-[#F9FAFB]"
+                    className="h-9 text-sm bg-[#0A1628] border-white/5 text-[#F9FAFB]"
                   />
                 </div>
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs text-[#F9FAFB]">Description</Label>
+                <Label className="text-sm text-[#F9FAFB]">Description</Label>
                 <Textarea
                   value={form.description}
                   onChange={(e) => update({ description: e.target.value })}
@@ -362,49 +362,49 @@ function PlanFormDialog({
 
             {/* Limits */}
             <div className="space-y-3">
-              <span className="text-xs font-semibold text-[#9CA3AF] uppercase tracking-wider">Limits</span>
+              <span className="text-sm font-semibold text-[#9CA3AF] uppercase tracking-wider">Limits</span>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-[#F9FAFB]">Briefings/week</Label>
+                  <Label className="text-sm text-[#F9FAFB]">Briefings/week</Label>
                   <Input
                     type="number"
                     value={form.briefingsPerWeek}
                     onChange={(e) => update({ briefingsPerWeek: e.target.value })}
                     placeholder="Unlimited"
-                    className="h-8 text-xs bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono"
+                    className="h-9 text-sm bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono"
                   />
-                  <span className="text-[10px] text-[#9CA3AF]">Empty = unlimited</span>
+                  <span className="text-xs text-[#9CA3AF]">Empty = unlimited</span>
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-[#F9FAFB]">Max duration (min)</Label>
+                  <Label className="text-sm text-[#F9FAFB]">Max duration (min)</Label>
                   <Input
                     type="number"
                     value={form.maxDurationMinutes}
                     onChange={(e) => update({ maxDurationMinutes: e.target.value })}
-                    className="h-8 text-xs bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono"
+                    className="h-9 text-sm bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono"
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-[#F9FAFB]">Max podcasts</Label>
+                  <Label className="text-sm text-[#F9FAFB]">Max podcasts</Label>
                   <Input
                     type="number"
                     value={form.maxPodcastSubscriptions}
                     onChange={(e) => update({ maxPodcastSubscriptions: e.target.value })}
                     placeholder="Unlimited"
-                    className="h-8 text-xs bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono"
+                    className="h-9 text-sm bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono"
                   />
-                  <span className="text-[10px] text-[#9CA3AF]">Empty = unlimited</span>
+                  <span className="text-xs text-[#9CA3AF]">Empty = unlimited</span>
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-[#F9FAFB]">Past episodes</Label>
+                  <Label className="text-sm text-[#F9FAFB]">Past episodes</Label>
                   <Input
                     type="number"
                     value={form.pastEpisodesLimit}
                     onChange={(e) => update({ pastEpisodesLimit: e.target.value })}
                     placeholder="Unlimited"
-                    className="h-8 text-xs bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono"
+                    className="h-9 text-sm bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono"
                   />
-                  <span className="text-[10px] text-[#9CA3AF]">Empty = unlimited</span>
+                  <span className="text-xs text-[#9CA3AF]">Empty = unlimited</span>
                 </div>
               </div>
             </div>
@@ -413,29 +413,29 @@ function PlanFormDialog({
 
             {/* Content Delivery */}
             <div className="space-y-3">
-              <span className="text-xs font-semibold text-[#9CA3AF] uppercase tracking-wider">Content Delivery</span>
+              <span className="text-sm font-semibold text-[#9CA3AF] uppercase tracking-wider">Content Delivery</span>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-[#F9FAFB]">On-demand requests/week</Label>
-                  <Input type="number" value={form.onDemandRequestsPerWeek} onChange={(e) => update({ onDemandRequestsPerWeek: e.target.value })} placeholder="Unlimited" className="h-8 text-xs bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono" />
-                  <span className="text-[10px] text-[#9CA3AF]">Empty = unlimited</span>
+                  <Label className="text-sm text-[#F9FAFB]">On-demand requests/week</Label>
+                  <Input type="number" value={form.onDemandRequestsPerWeek} onChange={(e) => update({ onDemandRequestsPerWeek: e.target.value })} placeholder="Unlimited" className="h-9 text-sm bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono" />
+                  <span className="text-xs text-[#9CA3AF]">Empty = unlimited</span>
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-[#F9FAFB]">Output formats</Label>
-                  <Input value={form.outputFormats} onChange={(e) => update({ outputFormats: e.target.value })} placeholder="audio, text, markdown" className="h-8 text-xs bg-[#0A1628] border-white/5 text-[#F9FAFB]" />
-                  <span className="text-[10px] text-[#9CA3AF]">Comma-separated</span>
+                  <Label className="text-sm text-[#F9FAFB]">Output formats</Label>
+                  <Input value={form.outputFormats} onChange={(e) => update({ outputFormats: e.target.value })} placeholder="audio, text, markdown" className="h-9 text-sm bg-[#0A1628] border-white/5 text-[#F9FAFB]" />
+                  <span className="text-xs text-[#9CA3AF]">Comma-separated</span>
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-[#F9FAFB]">Narrative depth</Label>
-                  <select value={form.narrativeDepthTier} onChange={(e) => update({ narrativeDepthTier: e.target.value })} className="h-8 w-full text-xs bg-[#0A1628] border border-white/5 text-[#F9FAFB] rounded-md px-2">
+                  <Label className="text-sm text-[#F9FAFB]">Narrative depth</Label>
+                  <select value={form.narrativeDepthTier} onChange={(e) => update({ narrativeDepthTier: e.target.value })} className="h-9 w-full text-sm bg-[#0A1628] border border-white/5 text-[#F9FAFB] rounded-md px-3">
                     <option value="headlines">Headlines</option>
                     <option value="standard">Standard</option>
                     <option value="deep">Deep</option>
                   </select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-[#F9FAFB]">Refresh latency</Label>
-                  <select value={form.refreshLatencyTier} onChange={(e) => update({ refreshLatencyTier: e.target.value })} className="h-8 w-full text-xs bg-[#0A1628] border border-white/5 text-[#F9FAFB] rounded-md px-2">
+                  <Label className="text-sm text-[#F9FAFB]">Refresh latency</Label>
+                  <select value={form.refreshLatencyTier} onChange={(e) => update({ refreshLatencyTier: e.target.value })} className="h-9 w-full text-sm bg-[#0A1628] border border-white/5 text-[#F9FAFB] rounded-md px-3">
                     <option value="standard">Standard</option>
                     <option value="fast">Fast</option>
                     <option value="realtime">Realtime</option>
@@ -450,7 +450,7 @@ function PlanFormDialog({
                   ["episodeHighlightClips", "Highlight Clips"],
                 ] as const).map(([key, label]) => (
                   <div key={key} className="flex items-center justify-between">
-                    <Label className="text-xs text-[#F9FAFB]">{label}</Label>
+                    <Label className="text-sm text-[#F9FAFB]">{label}</Label>
                     <Switch checked={form[key]} onCheckedChange={(v) => update({ [key]: v })} className="data-[state=checked]:bg-[#10B981]" />
                   </div>
                 ))}
@@ -461,39 +461,39 @@ function PlanFormDialog({
 
             {/* Pipeline & Processing */}
             <div className="space-y-3">
-              <span className="text-xs font-semibold text-[#9CA3AF] uppercase tracking-wider">Pipeline & Processing</span>
+              <span className="text-sm font-semibold text-[#9CA3AF] uppercase tracking-wider">Pipeline & Processing</span>
               <div className="grid grid-cols-3 gap-3">
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-[#F9FAFB]">AI model tier</Label>
-                  <select value={form.aiModelTier} onChange={(e) => update({ aiModelTier: e.target.value })} className="h-8 w-full text-xs bg-[#0A1628] border border-white/5 text-[#F9FAFB] rounded-md px-2">
+                  <Label className="text-sm text-[#F9FAFB]">AI model tier</Label>
+                  <select value={form.aiModelTier} onChange={(e) => update({ aiModelTier: e.target.value })} className="h-9 w-full text-sm bg-[#0A1628] border border-white/5 text-[#F9FAFB] rounded-md px-3">
                     <option value="standard">Standard</option>
                     <option value="premium">Premium</option>
                   </select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-[#F9FAFB]">TTS model tier</Label>
-                  <select value={form.ttsModelTier} onChange={(e) => update({ ttsModelTier: e.target.value })} className="h-8 w-full text-xs bg-[#0A1628] border border-white/5 text-[#F9FAFB] rounded-md px-2">
+                  <Label className="text-sm text-[#F9FAFB]">TTS model tier</Label>
+                  <select value={form.ttsModelTier} onChange={(e) => update({ ttsModelTier: e.target.value })} className="h-9 w-full text-sm bg-[#0A1628] border border-white/5 text-[#F9FAFB] rounded-md px-3">
                     <option value="standard">Standard</option>
                     <option value="premium">Premium</option>
                   </select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-[#F9FAFB]">STT model tier</Label>
-                  <select value={form.sttModelTier} onChange={(e) => update({ sttModelTier: e.target.value })} className="h-8 w-full text-xs bg-[#0A1628] border border-white/5 text-[#F9FAFB] rounded-md px-2">
+                  <Label className="text-sm text-[#F9FAFB]">STT model tier</Label>
+                  <select value={form.sttModelTier} onChange={(e) => update({ sttModelTier: e.target.value })} className="h-9 w-full text-sm bg-[#0A1628] border border-white/5 text-[#F9FAFB] rounded-md px-3">
                     <option value="standard">Standard</option>
                     <option value="premium">Premium</option>
                   </select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-[#F9FAFB]">Retry budget</Label>
-                  <Input type="number" min={1} value={form.retryBudget} onChange={(e) => update({ retryBudget: e.target.value })} className="h-8 text-xs bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono" />
+                  <Label className="text-sm text-[#F9FAFB]">Retry budget</Label>
+                  <Input type="number" min={1} value={form.retryBudget} onChange={(e) => update({ retryBudget: e.target.value })} className="h-9 text-sm bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono" />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-[#F9FAFB]">Concurrent jobs</Label>
-                  <Input type="number" min={1} value={form.concurrentPipelineJobs} onChange={(e) => update({ concurrentPipelineJobs: e.target.value })} className="h-8 text-xs bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono" />
+                  <Label className="text-sm text-[#F9FAFB]">Concurrent jobs</Label>
+                  <Input type="number" min={1} value={form.concurrentPipelineJobs} onChange={(e) => update({ concurrentPipelineJobs: e.target.value })} className="h-9 text-sm bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono" />
                 </div>
                 <div className="flex items-center justify-between pt-5">
-                  <Label className="text-xs text-[#F9FAFB]">Custom instructions</Label>
+                  <Label className="text-sm text-[#F9FAFB]">Custom instructions</Label>
                   <Switch checked={form.customInstructions} onCheckedChange={(v) => update({ customInstructions: v })} className="data-[state=checked]:bg-[#10B981]" />
                 </div>
               </div>
@@ -503,7 +503,7 @@ function PlanFormDialog({
 
             {/* Feature Flags */}
             <div className="space-y-3">
-              <span className="text-xs font-semibold text-[#9CA3AF] uppercase tracking-wider">Feature Flags</span>
+              <span className="text-sm font-semibold text-[#9CA3AF] uppercase tracking-wider">Feature Flags</span>
               <div className="grid grid-cols-2 gap-y-3 gap-x-6">
                 {([
                   ["adFree", "Ad-Free"],
@@ -513,7 +513,7 @@ function PlanFormDialog({
                   ["crossPodcastSynthesis", "Cross-Podcast Synthesis"],
                 ] as const).map(([key, label]) => (
                   <div key={key} className="flex items-center justify-between">
-                    <Label className="text-xs text-[#F9FAFB]">{label}</Label>
+                    <Label className="text-sm text-[#F9FAFB]">{label}</Label>
                     <Switch
                       checked={form[key]}
                       onCheckedChange={(v) => update({ [key]: v })}
@@ -528,19 +528,19 @@ function PlanFormDialog({
 
             {/* Library & Discovery */}
             <div className="space-y-3">
-              <span className="text-xs font-semibold text-[#9CA3AF] uppercase tracking-wider">Library & Discovery</span>
+              <span className="text-sm font-semibold text-[#9CA3AF] uppercase tracking-wider">Library & Discovery</span>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-[#F9FAFB]">Catalog access</Label>
-                  <select value={form.catalogAccess} onChange={(e) => update({ catalogAccess: e.target.value })} className="h-8 w-full text-xs bg-[#0A1628] border border-white/5 text-[#F9FAFB] rounded-md px-2">
+                  <Label className="text-sm text-[#F9FAFB]">Catalog access</Label>
+                  <select value={form.catalogAccess} onChange={(e) => update({ catalogAccess: e.target.value })} className="h-9 w-full text-sm bg-[#0A1628] border border-white/5 text-[#F9FAFB] rounded-md px-3">
                     <option value="subscribed">Subscribed only</option>
                     <option value="full">Full catalog</option>
                   </select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-[#F9FAFB]">Saved searches</Label>
-                  <Input type="number" value={form.savedSearches} onChange={(e) => update({ savedSearches: e.target.value })} placeholder="Unlimited" className="h-8 text-xs bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono" />
-                  <span className="text-[10px] text-[#9CA3AF]">Empty = unlimited</span>
+                  <Label className="text-sm text-[#F9FAFB]">Saved searches</Label>
+                  <Input type="number" value={form.savedSearches} onChange={(e) => update({ savedSearches: e.target.value })} placeholder="Unlimited" className="h-9 text-sm bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono" />
+                  <span className="text-xs text-[#9CA3AF]">Empty = unlimited</span>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-y-3 gap-x-6">
@@ -552,7 +552,7 @@ function PlanFormDialog({
                   ["apiAccess", "API Access"],
                 ] as const).map(([key, label]) => (
                   <div key={key} className="flex items-center justify-between">
-                    <Label className="text-xs text-[#F9FAFB]">{label}</Label>
+                    <Label className="text-sm text-[#F9FAFB]">{label}</Label>
                     <Switch checked={form[key]} onCheckedChange={(v) => update({ [key]: v })} className="data-[state=checked]:bg-[#10B981]" />
                   </div>
                 ))}
@@ -563,17 +563,17 @@ function PlanFormDialog({
 
             {/* Personalization */}
             <div className="space-y-3">
-              <span className="text-xs font-semibold text-[#9CA3AF] uppercase tracking-wider">Personalization</span>
+              <span className="text-sm font-semibold text-[#9CA3AF] uppercase tracking-wider">Personalization</span>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-[#F9FAFB]">Languages</Label>
-                  <Input value={form.languageSupport} onChange={(e) => update({ languageSupport: e.target.value })} placeholder="en, es, fr" className="h-8 text-xs bg-[#0A1628] border-white/5 text-[#F9FAFB]" />
-                  <span className="text-[10px] text-[#9CA3AF]">Comma-separated codes</span>
+                  <Label className="text-sm text-[#F9FAFB]">Languages</Label>
+                  <Input value={form.languageSupport} onChange={(e) => update({ languageSupport: e.target.value })} placeholder="en, es, fr" className="h-9 text-sm bg-[#0A1628] border-white/5 text-[#F9FAFB]" />
+                  <span className="text-xs text-[#9CA3AF]">Comma-separated codes</span>
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-[#F9FAFB]">Storage retention (days)</Label>
-                  <Input type="number" value={form.maxStorageDays} onChange={(e) => update({ maxStorageDays: e.target.value })} placeholder="Forever" className="h-8 text-xs bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono" />
-                  <span className="text-[10px] text-[#9CA3AF]">Empty = forever</span>
+                  <Label className="text-sm text-[#F9FAFB]">Storage retention (days)</Label>
+                  <Input type="number" value={form.maxStorageDays} onChange={(e) => update({ maxStorageDays: e.target.value })} placeholder="Forever" className="h-9 text-sm bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono" />
+                  <span className="text-xs text-[#9CA3AF]">Empty = forever</span>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-y-3 gap-x-6">
@@ -587,7 +587,7 @@ function PlanFormDialog({
                   ["interactiveBriefing", "Interactive Q&A"],
                 ] as const).map(([key, label]) => (
                   <div key={key} className="flex items-center justify-between">
-                    <Label className="text-xs text-[#F9FAFB]">{label}</Label>
+                    <Label className="text-sm text-[#F9FAFB]">{label}</Label>
                     <Switch checked={form[key]} onCheckedChange={(v) => update({ [key]: v })} className="data-[state=checked]:bg-[#10B981]" />
                   </div>
                 ))}
@@ -599,14 +599,14 @@ function PlanFormDialog({
             {/* Voice Presets */}
             {voicePresets.length > 0 && (
               <div className="space-y-3">
-                <span className="text-xs font-semibold text-[#9CA3AF] uppercase tracking-wider">Voice Presets</span>
-                <p className="text-[10px] text-[#9CA3AF]">Select which voice presets this plan grants access to.</p>
+                <span className="text-sm font-semibold text-[#9CA3AF] uppercase tracking-wider">Voice Presets</span>
+                <p className="text-xs text-[#9CA3AF]">Select which voice presets this plan grants access to.</p>
                 <div className="grid grid-cols-2 gap-y-2 gap-x-6">
                   {voicePresets.map((vp) => (
                     <div key={vp.id} className="flex items-center justify-between">
-                      <Label className="text-xs text-[#F9FAFB]">
+                      <Label className="text-sm text-[#F9FAFB]">
                         {vp.name}
-                        {vp.isSystem && <span className="text-[10px] text-[#9CA3AF] ml-1">(system)</span>}
+                        {vp.isSystem && <span className="text-xs text-[#9CA3AF] ml-1">(system)</span>}
                       </Label>
                       <Switch
                         checked={form.allowedVoicePresetIds.includes(vp.id)}
@@ -623,34 +623,34 @@ function PlanFormDialog({
 
             {/* Billing */}
             <div className="space-y-3">
-              <span className="text-xs font-semibold text-[#9CA3AF] uppercase tracking-wider">Billing</span>
+              <span className="text-sm font-semibold text-[#9CA3AF] uppercase tracking-wider">Billing</span>
               <div className="grid grid-cols-3 gap-3">
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-[#F9FAFB]">Monthly price (cents)</Label>
+                  <Label className="text-sm text-[#F9FAFB]">Monthly price (cents)</Label>
                   <Input
                     type="number"
                     value={form.priceCentsMonthly}
                     onChange={(e) => update({ priceCentsMonthly: e.target.value })}
-                    className="h-8 text-xs bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono"
+                    className="h-9 text-sm bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono"
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-[#F9FAFB]">Annual price (cents)</Label>
+                  <Label className="text-sm text-[#F9FAFB]">Annual price (cents)</Label>
                   <Input
                     type="number"
                     value={form.priceCentsAnnual}
                     onChange={(e) => update({ priceCentsAnnual: e.target.value })}
                     placeholder="Optional"
-                    className="h-8 text-xs bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono"
+                    className="h-9 text-sm bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono"
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-[#F9FAFB]">Trial days</Label>
+                  <Label className="text-sm text-[#F9FAFB]">Trial days</Label>
                   <Input
                     type="number"
                     value={form.trialDays}
                     onChange={(e) => update({ trialDays: e.target.value })}
-                    className="h-8 text-xs bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono"
+                    className="h-9 text-sm bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono"
                   />
                 </div>
               </div>
@@ -660,28 +660,28 @@ function PlanFormDialog({
 
             {/* Display */}
             <div className="space-y-3">
-              <span className="text-xs font-semibold text-[#9CA3AF] uppercase tracking-wider">Display</span>
+              <span className="text-sm font-semibold text-[#9CA3AF] uppercase tracking-wider">Display</span>
               <div className="space-y-1.5">
-                <Label className="text-xs text-[#F9FAFB]">Features (comma-separated)</Label>
+                <Label className="text-sm text-[#F9FAFB]">Features (comma-separated)</Label>
                 <Input
                   value={form.features}
                   onChange={(e) => update({ features: e.target.value })}
                   placeholder="e.g. 10 briefings/week, Ad-free listening, Priority processing"
-                  className="h-8 text-xs bg-[#0A1628] border-white/5 text-[#F9FAFB]"
+                  className="h-9 text-sm bg-[#0A1628] border-white/5 text-[#F9FAFB]"
                 />
               </div>
               <div className="grid grid-cols-3 gap-3">
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-[#F9FAFB]">Sort order</Label>
+                  <Label className="text-sm text-[#F9FAFB]">Sort order</Label>
                   <Input
                     type="number"
                     value={form.sortOrder}
                     onChange={(e) => update({ sortOrder: e.target.value })}
-                    className="h-8 text-xs bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono"
+                    className="h-9 text-sm bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono"
                   />
                 </div>
                 <div className="flex items-center justify-between pt-5">
-                  <Label className="text-xs text-[#F9FAFB]">Highlighted</Label>
+                  <Label className="text-sm text-[#F9FAFB]">Highlighted</Label>
                   <Switch
                     checked={form.highlighted}
                     onCheckedChange={(v) => update({ highlighted: v })}
@@ -689,7 +689,7 @@ function PlanFormDialog({
                   />
                 </div>
                 <div className="flex items-center justify-between pt-5">
-                  <Label className="text-xs text-[#F9FAFB]">Default plan</Label>
+                  <Label className="text-sm text-[#F9FAFB]">Default plan</Label>
                   <Switch
                     checked={form.isDefault}
                     onCheckedChange={(v) => update({ isDefault: v })}
@@ -972,7 +972,7 @@ export default function PlansPage() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-sm font-semibold text-[#F9FAFB]">Subscription Plans</h2>
-          <p className="text-[10px] text-[#9CA3AF] mt-0.5">
+          <p className="text-xs text-[#9CA3AF] mt-0.5">
             {plans.length} plan{plans.length !== 1 ? "s" : ""} configured
           </p>
         </div>
@@ -1003,36 +1003,36 @@ export default function PlansPage() {
       )}
 
       {plans.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+        <div className="space-y-4">
           {plans.map((plan) => {
             return (
               <div
                 key={plan.id}
                 className={cn(
-                  "bg-[#0F1D32] border rounded-lg p-4 transition-colors",
+                  "bg-[#0F1D32] border rounded-xl p-6 transition-colors",
                   !plan.active && "opacity-50",
                   plan.highlighted ? "border-[#F59E0B]/30" : "border-white/5"
                 )}
               >
                 {/* Header: name + badges + actions */}
-                <div className="flex items-start gap-2 mb-3">
+                <div className="flex items-start gap-3 mb-4">
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="text-xs font-semibold text-[#F9FAFB]">{plan.name}</span>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-lg font-semibold text-[#F9FAFB]">{plan.name}</span>
                       {plan.isDefault && (
-                        <Badge className="bg-[#3B82F6]/15 text-[#3B82F6] border-[#3B82F6]/30 text-[9px]">
+                        <Badge className="bg-[#3B82F6]/15 text-[#3B82F6] border-[#3B82F6]/30 text-xs">
                           DEFAULT
                         </Badge>
                       )}
                       {plan.highlighted && (
-                        <Badge className="bg-[#F59E0B]/15 text-[#F59E0B] border-[#F59E0B]/30 text-[9px]">
+                        <Badge className="bg-[#F59E0B]/15 text-[#F59E0B] border-[#F59E0B]/30 text-xs">
                           FEATURED
                         </Badge>
                       )}
                     </div>
-                    <span className="text-[10px] font-mono text-[#9CA3AF]">{plan.slug}</span>
+                    <span className="text-sm font-mono text-[#9CA3AF]">{plan.slug}</span>
                   </div>
-                  <div className="flex items-center gap-1 flex-shrink-0">
+                  <div className="flex items-center gap-2 flex-shrink-0">
                     <div title={plan.isDefault ? "Cannot disable the default plan" : undefined}>
                       <Switch
                         checked={plan.active}
@@ -1047,7 +1047,7 @@ export default function PlansPage() {
                       onClick={() => handleEdit(plan)}
                       className="text-[#9CA3AF] hover:text-[#3B82F6]"
                     >
-                      <Pencil className="h-3.5 w-3.5" />
+                      <Pencil className="h-4 w-4" />
                     </Button>
                     <Button
                       variant="ghost"
@@ -1063,29 +1063,29 @@ export default function PlansPage() {
                       }
                       className="text-[#9CA3AF] hover:text-[#EF4444] disabled:opacity-30 disabled:hover:text-[#9CA3AF]"
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
+                      <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
                 </div>
 
                 {/* Pricing */}
-                <div className="flex items-baseline gap-2 mb-3">
-                  <span className="text-sm font-mono tabular-nums text-[#F9FAFB]">
+                <div className="flex items-baseline gap-3 mb-4">
+                  <span className="text-lg font-mono tabular-nums text-[#F9FAFB]">
                     {formatDollars(plan.priceCentsMonthly)}
-                    <span className="text-[10px] text-[#9CA3AF]">/mo</span>
+                    <span className="text-sm text-[#9CA3AF]">/mo</span>
                   </span>
                   {plan.priceCentsAnnual != null && (
-                    <span className="text-[10px] font-mono tabular-nums text-[#9CA3AF]">
+                    <span className="text-sm font-mono tabular-nums text-[#9CA3AF]">
                       {formatDollars(plan.priceCentsAnnual)}/yr
                     </span>
                   )}
-                  <Badge className="bg-white/5 text-[#9CA3AF] border-white/10 text-[10px] ml-auto">
+                  <Badge className="bg-white/5 text-[#9CA3AF] border-white/10 text-sm ml-auto">
                     {plan.userCount} user{plan.userCount !== 1 ? "s" : ""}
                   </Badge>
                 </div>
 
                 {/* Numeric Limits */}
-                <div className="grid grid-cols-3 gap-x-4 gap-y-2 text-xs mb-3">
+                <div className="grid grid-cols-3 sm:grid-cols-5 gap-x-6 gap-y-3 mb-4">
                   {([
                     ["Briefings/wk", plan.briefingsPerWeek],
                     ["On-demand/wk", plan.onDemandRequestsPerWeek],
@@ -1098,16 +1098,16 @@ export default function PlansPage() {
                     ["Storage", plan.maxStorageDays != null ? `${plan.maxStorageDays}d` : null],
                   ] as [string, unknown][]).map(([label, value]) => (
                     <div key={label}>
-                      <span className="text-[#6B7280]">{label}</span>
-                      <div className="text-sm text-[#F9FAFB] font-mono">
-                        {value != null ? String(value) : <Infinity className="h-3.5 w-3.5 inline" />}
+                      <span className="text-sm text-[#6B7280]">{label}</span>
+                      <div className="text-base text-[#F9FAFB] font-mono font-semibold">
+                        {value != null ? String(value) : <Infinity className="h-4 w-4 inline" />}
                       </div>
                     </div>
                   ))}
                 </div>
 
                 {/* Enum Tiers */}
-                <div className="grid grid-cols-3 gap-x-4 gap-y-2 text-xs mb-3">
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-x-6 gap-y-3 mb-4">
                   {([
                     ["Depth", plan.narrativeDepthTier],
                     ["Latency", plan.refreshLatencyTier],
@@ -1117,26 +1117,26 @@ export default function PlansPage() {
                     ["STT", plan.sttModelTier],
                   ] as [string, string][]).map(([label, value]) => (
                     <div key={label}>
-                      <span className="text-[#6B7280]">{label}</span>
-                      <div className="text-sm text-[#F9FAFB] font-mono capitalize">{value}</div>
+                      <span className="text-sm text-[#6B7280]">{label}</span>
+                      <div className="text-base text-[#F9FAFB] font-mono font-semibold capitalize">{value}</div>
                     </div>
                   ))}
                 </div>
 
                 {/* Array fields */}
-                <div className="grid grid-cols-2 gap-x-4 text-xs mb-3">
+                <div className="grid grid-cols-2 gap-x-6 mb-4">
                   <div>
-                    <span className="text-[#6B7280]">Formats</span>
-                    <div className="text-sm text-[#F9FAFB] font-mono">{plan.outputFormats?.length > 0 ? plan.outputFormats.join(", ") : "—"}</div>
+                    <span className="text-sm text-[#6B7280]">Formats</span>
+                    <div className="text-base text-[#F9FAFB] font-mono font-semibold">{plan.outputFormats?.length > 0 ? plan.outputFormats.join(", ") : "—"}</div>
                   </div>
                   <div>
-                    <span className="text-[#6B7280]">Languages</span>
-                    <div className="text-sm text-[#F9FAFB] font-mono">{plan.languageSupport?.length > 0 ? plan.languageSupport.join(", ") : "—"}</div>
+                    <span className="text-sm text-[#6B7280]">Languages</span>
+                    <div className="text-base text-[#F9FAFB] font-mono font-semibold">{plan.languageSupport?.length > 0 ? plan.languageSupport.join(", ") : "—"}</div>
                   </div>
                 </div>
 
                 {/* All boolean features — always shown */}
-                <div className="flex flex-wrap gap-1 mt-2">
+                <div className="flex flex-wrap gap-1.5 mt-3">
                   {([
                     ["Ad-Free", plan.adFree],
                     ["Priority", plan.priorityProcessing],
@@ -1163,14 +1163,16 @@ export default function PlansPage() {
                   ] as [string, boolean][]).map(([label, enabled]) => (
                     <Badge
                       key={label}
-                      className={enabled
-                        ? "bg-[#10B981]/10 text-[#10B981] text-[14px] font-normal"
-                        : "bg-white/[0.03] text-[#4B5563] text-[14px] font-normal"
-                      }
+                      className={cn(
+                        "text-sm py-1 px-2.5",
+                        enabled
+                          ? "bg-[#10B981]/10 text-[#10B981] font-medium"
+                          : "bg-white/[0.03] text-[#4B5563] font-normal"
+                      )}
                     >
                       {enabled
-                        ? <Check className="h-3.5 w-3.5 mr-1" />
-                        : <X className="h-3.5 w-3.5 mr-1" />
+                        ? <Check className="h-4 w-4 mr-1" />
+                        : <X className="h-4 w-4 mr-1" />
                       }
                       {label}
                     </Badge>
@@ -1179,11 +1181,11 @@ export default function PlansPage() {
 
                 {/* Voice presets */}
                 {(plan.allowedVoicePresetIds?.length ?? 0) > 0 && (
-                  <div className="flex flex-wrap gap-1 mt-2">
+                  <div className="flex flex-wrap gap-1.5 mt-3">
                     {plan.allowedVoicePresetIds.map((vpId) => {
                       const vp = voicePresets.find((v) => v.id === vpId);
                       return (
-                        <Badge key={vpId} className="bg-[#3B82F6]/10 text-[#3B82F6] text-[9px] font-normal">
+                        <Badge key={vpId} className="bg-[#3B82F6]/10 text-[#3B82F6] text-sm font-normal">
                           {vp?.name ?? vpId.slice(0, 6)}
                         </Badge>
                       );
