@@ -132,7 +132,9 @@ async function processPodcast(
         episodesDiscovered: { increment: newEpisodeIds.length },
         prefetchTotal: { increment: newEpisodeIds.length },
       },
-    }).catch(() => {});
+    }).catch((err) => {
+      log.error("refresh_job_tracking_failed", { refreshJobId, newEpisodes: newEpisodeIds.length }, err);
+    });
   }
 
   // Queue content prefetch for new episodes (runs slowly at concurrency=1)
@@ -368,7 +370,9 @@ export async function handleFeedRefresh(
             await prisma.episodeRefreshJob.update({
               where: { id: refreshJobId },
               data: { podcastsCompleted: { increment: 1 } },
-            }).catch(() => {});
+            }).catch((err) => {
+              log.error("podcasts_completed_increment_failed", { podcastId: podcast.id, refreshJobId }, err);
+            });
           }
         }
       })

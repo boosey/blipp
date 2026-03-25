@@ -110,18 +110,6 @@ export async function handleContentPrefetch(
 
         try {
           await processEpisode(episodeId, msg.body.refreshJobId, prisma, env, fetchTimeoutMs);
-
-          // Always increment prefetchCompleted on ack — even if the episode was
-          // skipped (already processed). This keeps the counter in sync with
-          // prefetchTotal which was incremented when the message was queued.
-          if (msg.body.refreshJobId) {
-            await prisma.episodeRefreshJob.update({
-              where: { id: msg.body.refreshJobId },
-              data: { prefetchCompleted: { increment: 1 } },
-            }).catch(() => {});
-          }
-
-          msg.ack();
         } catch (err) {
           console.error(JSON.stringify({
             level: "error",
@@ -141,9 +129,28 @@ export async function handleContentPrefetch(
               },
             }).catch(() => {});
           }
-
-          msg.retry();
         }
+
+        // Always ack + increment prefetchCompleted, even on failure.
+        // Retrying leaves the job stuck in "refreshing" forever if the
+        // message eventually dead-letters without incrementing the counter.
+        // Errors are recorded above; the episode stays PENDING for manual retry.
+        if (msg.body.refreshJobId) {
+          await prisma.episodeRefreshJob.update({
+            where: { id: msg.body.refreshJobId },
+            data: { prefetchCompleted: { increment: 1 } },
+          }).catch((err) => {
+            console.error(JSON.stringify({
+              level: "error",
+              action: "prefetch_increment_failed",
+              episodeId,
+              refreshJobId: msg.body.refreshJobId,
+              error: err instanceof Error ? err.message : String(err),
+              ts: new Date().toISOString(),
+            }));
+          });
+        }
+        msg.ack();
       })
     );
 
