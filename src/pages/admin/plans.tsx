@@ -1017,9 +1017,14 @@ export default function PlansPage() {
               plan.episodeHighlightClips && "Clips",
               plan.customInstructions && "Custom Instructions",
               plan.topicTracking && "Topics",
+              plan.customCollections && "Collections",
               plan.searchBriefings && "Search",
               plan.rssExport && "RSS",
               plan.apiAccess && "API",
+              plan.tonePresets && "Tone Presets",
+              plan.focusTopics && "Focus Topics",
+              plan.skipTopics && "Skip Topics",
+              plan.briefingIntro && "Intro",
               plan.offlineAccess && "Offline",
               plan.publicSharing && "Sharing",
               plan.interactiveBriefing && "Interactive Q&A",
@@ -1105,13 +1110,17 @@ export default function PlansPage() {
                 </div>
 
                 {/* Limits */}
-                <div className="grid grid-cols-2 gap-2 text-[10px] mb-2">
+                <div className="grid grid-cols-3 gap-x-3 gap-y-1.5 text-[10px] mb-2">
                   <div>
                     <span className="text-[#9CA3AF]">Briefings/wk</span>
                     <div className="text-xs text-[#F9FAFB] font-mono">
-                      {plan.briefingsPerWeek != null ? plan.briefingsPerWeek : (
-                        <Infinity className="h-3 w-3 inline" />
-                      )}
+                      {plan.briefingsPerWeek != null ? plan.briefingsPerWeek : <Infinity className="h-3 w-3 inline" />}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-[#9CA3AF]">On-demand/wk</span>
+                    <div className="text-xs text-[#F9FAFB] font-mono">
+                      {plan.onDemandRequestsPerWeek != null ? plan.onDemandRequestsPerWeek : <Infinity className="h-3 w-3 inline" />}
                     </div>
                   </div>
                   <div>
@@ -1121,22 +1130,84 @@ export default function PlansPage() {
                   <div>
                     <span className="text-[#9CA3AF]">Subscriptions</span>
                     <div className="text-xs text-[#F9FAFB] font-mono">
-                      {plan.maxPodcastSubscriptions != null ? plan.maxPodcastSubscriptions : (
-                        <Infinity className="h-3 w-3 inline" />
-                      )}
+                      {plan.maxPodcastSubscriptions != null ? plan.maxPodcastSubscriptions : <Infinity className="h-3 w-3 inline" />}
                     </div>
                   </div>
                   <div>
                     <span className="text-[#9CA3AF]">Past episodes</span>
                     <div className="text-xs text-[#F9FAFB] font-mono">
-                      {plan.pastEpisodesLimit != null ? plan.pastEpisodesLimit : (
-                        <Infinity className="h-3 w-3 inline" />
-                      )}
+                      {plan.pastEpisodesLimit != null ? plan.pastEpisodesLimit : <Infinity className="h-3 w-3 inline" />}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-[#9CA3AF]">Saved searches</span>
+                    <div className="text-xs text-[#F9FAFB] font-mono">
+                      {plan.savedSearches != null ? plan.savedSearches : <Infinity className="h-3 w-3 inline" />}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-[#9CA3AF]">Retry budget</span>
+                    <div className="text-xs text-[#F9FAFB] font-mono">{plan.retryBudget}</div>
+                  </div>
+                  <div>
+                    <span className="text-[#9CA3AF]">Concurrent jobs</span>
+                    <div className="text-xs text-[#F9FAFB] font-mono">{plan.concurrentPipelineJobs}</div>
+                  </div>
+                  <div>
+                    <span className="text-[#9CA3AF]">Storage</span>
+                    <div className="text-xs text-[#F9FAFB] font-mono">
+                      {plan.maxStorageDays != null ? `${plan.maxStorageDays}d` : <Infinity className="h-3 w-3 inline" />}
                     </div>
                   </div>
                 </div>
 
-                {/* Feature flags */}
+                {/* Tiers */}
+                <div className="grid grid-cols-3 gap-x-3 gap-y-1.5 text-[10px] mb-2">
+                  <div>
+                    <span className="text-[#9CA3AF]">Depth</span>
+                    <div className="text-xs text-[#F9FAFB] font-mono capitalize">{plan.narrativeDepthTier}</div>
+                  </div>
+                  <div>
+                    <span className="text-[#9CA3AF]">Latency</span>
+                    <div className="text-xs text-[#F9FAFB] font-mono capitalize">{plan.refreshLatencyTier}</div>
+                  </div>
+                  <div>
+                    <span className="text-[#9CA3AF]">Catalog</span>
+                    <div className="text-xs text-[#F9FAFB] font-mono capitalize">{plan.catalogAccess}</div>
+                  </div>
+                  <div>
+                    <span className="text-[#9CA3AF]">AI models</span>
+                    <div className="text-xs text-[#F9FAFB] font-mono capitalize">{plan.aiModelTier}</div>
+                  </div>
+                  <div>
+                    <span className="text-[#9CA3AF]">TTS</span>
+                    <div className="text-xs text-[#F9FAFB] font-mono capitalize">{plan.ttsModelTier}</div>
+                  </div>
+                  <div>
+                    <span className="text-[#9CA3AF]">STT</span>
+                    <div className="text-xs text-[#F9FAFB] font-mono capitalize">{plan.sttModelTier}</div>
+                  </div>
+                </div>
+
+                {/* Array fields */}
+                {(plan.outputFormats?.length > 0 || plan.languageSupport?.length > 0) && (
+                  <div className="grid grid-cols-2 gap-x-3 text-[10px] mb-2">
+                    {plan.outputFormats?.length > 0 && (
+                      <div>
+                        <span className="text-[#9CA3AF]">Formats</span>
+                        <div className="text-xs text-[#F9FAFB] font-mono">{plan.outputFormats.join(", ")}</div>
+                      </div>
+                    )}
+                    {plan.languageSupport?.length > 0 && (
+                      <div>
+                        <span className="text-[#9CA3AF]">Languages</span>
+                        <div className="text-xs text-[#F9FAFB] font-mono">{plan.languageSupport.join(", ")}</div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Boolean feature flags */}
                 {featureFlags.length > 0 && (
                   <div className="flex flex-wrap gap-1 mt-2">
                     {featureFlags.map((f) => (
