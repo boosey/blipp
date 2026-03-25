@@ -139,13 +139,13 @@ export async function handleContentPrefetch(
           await prisma.episodeRefreshJob.update({
             where: { id: msg.body.refreshJobId },
             data: { prefetchCompleted: { increment: 1 } },
-          }).catch((err) => {
+          }).catch((e: unknown) => {
             console.error(JSON.stringify({
               level: "error",
               action: "prefetch_increment_failed",
               episodeId,
               refreshJobId: msg.body.refreshJobId,
-              error: err instanceof Error ? err.message : String(err),
+              error: e instanceof Error ? e.message : String(e),
               ts: new Date().toISOString(),
             }));
           });
