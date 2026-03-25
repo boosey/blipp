@@ -316,9 +316,9 @@ function PlanFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-[#1A2942] border-white/10 text-[#F9FAFB] max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+      <DialogContent className="bg-[#1A2942] border-white/10 text-[#F9FAFB] max-w-4xl max-h-[92vh] overflow-hidden flex flex-col">
         <DialogHeader>
-          <DialogTitle className="text-sm">{title}</DialogTitle>
+          <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
 
         <ScrollArea className="flex-1 -mx-6 px-6">
@@ -1005,31 +1005,6 @@ export default function PlansPage() {
       {plans.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
           {plans.map((plan) => {
-            const featureFlags = [
-              plan.adFree && "Ad-Free",
-              plan.priorityProcessing && "Priority",
-              plan.earlyAccess && "Early Access",
-              plan.researchMode && "Research",
-              plan.crossPodcastSynthesis && "Synthesis",
-              plan.transcriptAccess && "Transcripts",
-              plan.dailyDigest && "Daily Digest",
-              plan.weeklyRecap && "Weekly Recap",
-              plan.episodeHighlightClips && "Clips",
-              plan.customInstructions && "Custom Instructions",
-              plan.topicTracking && "Topics",
-              plan.customCollections && "Collections",
-              plan.searchBriefings && "Search",
-              plan.rssExport && "RSS",
-              plan.apiAccess && "API",
-              plan.tonePresets && "Tone Presets",
-              plan.focusTopics && "Focus Topics",
-              plan.skipTopics && "Skip Topics",
-              plan.briefingIntro && "Intro",
-              plan.offlineAccess && "Offline",
-              plan.publicSharing && "Sharing",
-              plan.interactiveBriefing && "Interactive Q&A",
-            ].filter((f): f is string => Boolean(f));
-
             return (
               <div
                 key={plan.id}
@@ -1109,118 +1084,98 @@ export default function PlansPage() {
                   </Badge>
                 </div>
 
-                {/* Limits */}
-                <div className="grid grid-cols-3 gap-x-3 gap-y-1.5 text-[10px] mb-2">
-                  <div>
-                    <span className="text-[#9CA3AF]">Briefings/wk</span>
-                    <div className="text-xs text-[#F9FAFB] font-mono">
-                      {plan.briefingsPerWeek != null ? plan.briefingsPerWeek : <Infinity className="h-3 w-3 inline" />}
+                {/* Numeric Limits */}
+                <div className="grid grid-cols-3 gap-x-4 gap-y-2 text-xs mb-3">
+                  {([
+                    ["Briefings/wk", plan.briefingsPerWeek],
+                    ["On-demand/wk", plan.onDemandRequestsPerWeek],
+                    ["Max duration", plan.maxDurationMinutes != null ? `${plan.maxDurationMinutes}m` : null],
+                    ["Subscriptions", plan.maxPodcastSubscriptions],
+                    ["Past episodes", plan.pastEpisodesLimit],
+                    ["Saved searches", plan.savedSearches],
+                    ["Retry budget", plan.retryBudget],
+                    ["Concurrent jobs", plan.concurrentPipelineJobs],
+                    ["Storage", plan.maxStorageDays != null ? `${plan.maxStorageDays}d` : null],
+                  ] as [string, unknown][]).map(([label, value]) => (
+                    <div key={label}>
+                      <span className="text-[#6B7280]">{label}</span>
+                      <div className="text-sm text-[#F9FAFB] font-mono">
+                        {value != null ? String(value) : <Infinity className="h-3.5 w-3.5 inline" />}
+                      </div>
                     </div>
-                  </div>
-                  <div>
-                    <span className="text-[#9CA3AF]">On-demand/wk</span>
-                    <div className="text-xs text-[#F9FAFB] font-mono">
-                      {plan.onDemandRequestsPerWeek != null ? plan.onDemandRequestsPerWeek : <Infinity className="h-3 w-3 inline" />}
-                    </div>
-                  </div>
-                  <div>
-                    <span className="text-[#9CA3AF]">Max duration</span>
-                    <div className="text-xs text-[#F9FAFB] font-mono">{plan.maxDurationMinutes}m</div>
-                  </div>
-                  <div>
-                    <span className="text-[#9CA3AF]">Subscriptions</span>
-                    <div className="text-xs text-[#F9FAFB] font-mono">
-                      {plan.maxPodcastSubscriptions != null ? plan.maxPodcastSubscriptions : <Infinity className="h-3 w-3 inline" />}
-                    </div>
-                  </div>
-                  <div>
-                    <span className="text-[#9CA3AF]">Past episodes</span>
-                    <div className="text-xs text-[#F9FAFB] font-mono">
-                      {plan.pastEpisodesLimit != null ? plan.pastEpisodesLimit : <Infinity className="h-3 w-3 inline" />}
-                    </div>
-                  </div>
-                  <div>
-                    <span className="text-[#9CA3AF]">Saved searches</span>
-                    <div className="text-xs text-[#F9FAFB] font-mono">
-                      {plan.savedSearches != null ? plan.savedSearches : <Infinity className="h-3 w-3 inline" />}
-                    </div>
-                  </div>
-                  <div>
-                    <span className="text-[#9CA3AF]">Retry budget</span>
-                    <div className="text-xs text-[#F9FAFB] font-mono">{plan.retryBudget}</div>
-                  </div>
-                  <div>
-                    <span className="text-[#9CA3AF]">Concurrent jobs</span>
-                    <div className="text-xs text-[#F9FAFB] font-mono">{plan.concurrentPipelineJobs}</div>
-                  </div>
-                  <div>
-                    <span className="text-[#9CA3AF]">Storage</span>
-                    <div className="text-xs text-[#F9FAFB] font-mono">
-                      {plan.maxStorageDays != null ? `${plan.maxStorageDays}d` : <Infinity className="h-3 w-3 inline" />}
-                    </div>
-                  </div>
+                  ))}
                 </div>
 
-                {/* Tiers */}
-                <div className="grid grid-cols-3 gap-x-3 gap-y-1.5 text-[10px] mb-2">
-                  <div>
-                    <span className="text-[#9CA3AF]">Depth</span>
-                    <div className="text-xs text-[#F9FAFB] font-mono capitalize">{plan.narrativeDepthTier}</div>
-                  </div>
-                  <div>
-                    <span className="text-[#9CA3AF]">Latency</span>
-                    <div className="text-xs text-[#F9FAFB] font-mono capitalize">{plan.refreshLatencyTier}</div>
-                  </div>
-                  <div>
-                    <span className="text-[#9CA3AF]">Catalog</span>
-                    <div className="text-xs text-[#F9FAFB] font-mono capitalize">{plan.catalogAccess}</div>
-                  </div>
-                  <div>
-                    <span className="text-[#9CA3AF]">AI models</span>
-                    <div className="text-xs text-[#F9FAFB] font-mono capitalize">{plan.aiModelTier}</div>
-                  </div>
-                  <div>
-                    <span className="text-[#9CA3AF]">TTS</span>
-                    <div className="text-xs text-[#F9FAFB] font-mono capitalize">{plan.ttsModelTier}</div>
-                  </div>
-                  <div>
-                    <span className="text-[#9CA3AF]">STT</span>
-                    <div className="text-xs text-[#F9FAFB] font-mono capitalize">{plan.sttModelTier}</div>
-                  </div>
+                {/* Enum Tiers */}
+                <div className="grid grid-cols-3 gap-x-4 gap-y-2 text-xs mb-3">
+                  {([
+                    ["Depth", plan.narrativeDepthTier],
+                    ["Latency", plan.refreshLatencyTier],
+                    ["Catalog", plan.catalogAccess],
+                    ["AI models", plan.aiModelTier],
+                    ["TTS", plan.ttsModelTier],
+                    ["STT", plan.sttModelTier],
+                  ] as [string, string][]).map(([label, value]) => (
+                    <div key={label}>
+                      <span className="text-[#6B7280]">{label}</span>
+                      <div className="text-sm text-[#F9FAFB] font-mono capitalize">{value}</div>
+                    </div>
+                  ))}
                 </div>
 
                 {/* Array fields */}
-                {(plan.outputFormats?.length > 0 || plan.languageSupport?.length > 0) && (
-                  <div className="grid grid-cols-2 gap-x-3 text-[10px] mb-2">
-                    {plan.outputFormats?.length > 0 && (
-                      <div>
-                        <span className="text-[#9CA3AF]">Formats</span>
-                        <div className="text-xs text-[#F9FAFB] font-mono">{plan.outputFormats.join(", ")}</div>
-                      </div>
-                    )}
-                    {plan.languageSupport?.length > 0 && (
-                      <div>
-                        <span className="text-[#9CA3AF]">Languages</span>
-                        <div className="text-xs text-[#F9FAFB] font-mono">{plan.languageSupport.join(", ")}</div>
-                      </div>
-                    )}
+                <div className="grid grid-cols-2 gap-x-4 text-xs mb-3">
+                  <div>
+                    <span className="text-[#6B7280]">Formats</span>
+                    <div className="text-sm text-[#F9FAFB] font-mono">{plan.outputFormats?.length > 0 ? plan.outputFormats.join(", ") : "—"}</div>
                   </div>
-                )}
+                  <div>
+                    <span className="text-[#6B7280]">Languages</span>
+                    <div className="text-sm text-[#F9FAFB] font-mono">{plan.languageSupport?.length > 0 ? plan.languageSupport.join(", ") : "—"}</div>
+                  </div>
+                </div>
 
-                {/* Boolean feature flags */}
-                {featureFlags.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mt-2">
-                    {featureFlags.map((f) => (
-                      <Badge
-                        key={f}
-                        className="bg-white/5 text-[#F9FAFB]/80 text-[9px] font-normal"
-                      >
-                        <Check className="h-2.5 w-2.5 text-[#10B981] mr-0.5" />
-                        {f}
-                      </Badge>
-                    ))}
-                  </div>
-                )}
+                {/* All boolean features — always shown */}
+                <div className="flex flex-wrap gap-1 mt-2">
+                  {([
+                    ["Ad-Free", plan.adFree],
+                    ["Priority", plan.priorityProcessing],
+                    ["Early Access", plan.earlyAccess],
+                    ["Research", plan.researchMode],
+                    ["Synthesis", plan.crossPodcastSynthesis],
+                    ["Transcripts", plan.transcriptAccess],
+                    ["Daily Digest", plan.dailyDigest],
+                    ["Weekly Recap", plan.weeklyRecap],
+                    ["Clips", plan.episodeHighlightClips],
+                    ["Custom Instructions", plan.customInstructions],
+                    ["Topics", plan.topicTracking],
+                    ["Collections", plan.customCollections],
+                    ["Search", plan.searchBriefings],
+                    ["RSS", plan.rssExport],
+                    ["API", plan.apiAccess],
+                    ["Tone Presets", plan.tonePresets],
+                    ["Focus Topics", plan.focusTopics],
+                    ["Skip Topics", plan.skipTopics],
+                    ["Intro", plan.briefingIntro],
+                    ["Offline", plan.offlineAccess],
+                    ["Sharing", plan.publicSharing],
+                    ["Interactive Q&A", plan.interactiveBriefing],
+                  ] as [string, boolean][]).map(([label, enabled]) => (
+                    <Badge
+                      key={label}
+                      className={enabled
+                        ? "bg-[#10B981]/10 text-[#10B981] text-[10px] font-normal"
+                        : "bg-white/[0.03] text-[#4B5563] text-[10px] font-normal"
+                      }
+                    >
+                      {enabled
+                        ? <Check className="h-2.5 w-2.5 mr-0.5" />
+                        : <X className="h-2.5 w-2.5 mr-0.5" />
+                      }
+                      {label}
+                    </Badge>
+                  ))}
+                </div>
 
                 {/* Voice presets */}
                 {(plan.allowedVoicePresetIds?.length ?? 0) > 0 && (
