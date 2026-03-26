@@ -6,11 +6,19 @@ import {
   useRef,
   useState,
 } from "react";
+import { Capacitor } from "@capacitor/core";
+import { useAuth } from "@clerk/clerk-react";
+import type { PluginListenerHandle } from "@capacitor/core";
 import type { FeedItem } from "../types/feed";
 import type { AdConfig, AdState } from "../types/ads";
 import { useApiFetch } from "../lib/api";
 import { useImaAds } from "../hooks/use-ima-ads";
 import { getJingleUrl } from "../lib/jingle-cache";
+import { getApiBase } from "../lib/api-base";
+import { NativeAudio } from "../plugins/native-audio";
+import { NativeImaAds } from "../plugins/native-ima-ads";
+
+const isNative = Capacitor.isNativePlatform();
 
 // Minimal silent WAV (22050Hz, 16-bit mono, 2 samples) used to "unlock"
 // the HTMLAudioElement on mobile within the user-gesture context.  Mobile
@@ -60,6 +68,7 @@ export function useAudio(): AudioContextValue {
 export function AudioProvider({ children }: { children: React.ReactNode }) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const apiFetch = useApiFetch();
+  const { getToken } = useAuth();
 
   const [currentItem, setCurrentItem] = useState<FeedItem | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -79,11 +88,37 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   // Queue for Play All
   const queueRef = useRef<FeedItem[]>([]);
 
+  // Native ad state (replaces ima.* on native platform)
+  const [nativeAdPlaying, setNativeAdPlaying] = useState(false);
+  const [nativeAdProgress, setNativeAdProgress] = useState(0);
+  const [nativeAdDuration, setNativeAdDuration] = useState(0);
+  const [nativeAdCurrentTime, setNativeAdCurrentTime] = useState(0);
+
+  // Native audio listener handles
+  const nativeListenersRef = useRef<PluginListenerHandle[]>([]);
+  // Track adState in a ref so native callbacks see the latest value
+  const adStateRef = useRef<AdState>("none");
+  adStateRef.current = adState;
+
+  // --- Native audio helpers ---
+
+  const nativePlay = useCallback(
+    async (url: string, rate: number) => {
+      const token = await getToken();
+      const fullUrl = `${getApiBase()}${url}`;
+      await NativeAudio.play({
+        url: fullUrl,
+        token: token ?? undefined,
+        rate,
+      });
+    },
+    [getToken]
+  );
+
   // Begin content playback — sets src to briefing audio, fires listened PATCH
   const beginContent = useCallback(
     (item: FeedItem) => {
-      const audio = audioRef.current;
-      if (!audio || !item.briefing) return;
+      if (!item.briefing) return;
 
       setAdState("content");
       setCurrentItem(item);
@@ -92,12 +127,21 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       setCurrentTime(0);
       setDuration(0);
 
-      audio.src = `/api/briefings/${item.briefing.id}/audio`;
-      audio.playbackRate = playbackRate;
-      audio.play().catch(() => {
-        setIsLoading(false);
-        setError("Failed to play audio");
-      });
+      if (isNative) {
+        nativePlay(`/api/briefings/${item.briefing.id}/audio`, playbackRate).catch(() => {
+          setIsLoading(false);
+          setError("Failed to play audio");
+        });
+      } else {
+        const audio = audioRef.current;
+        if (!audio) return;
+        audio.src = `/api/briefings/${item.briefing.id}/audio`;
+        audio.playbackRate = playbackRate;
+        audio.play().catch(() => {
+          setIsLoading(false);
+          setError("Failed to play audio");
+        });
+      }
 
       // Fire-and-forget listened PATCH
       if (!item.listened) {
@@ -106,8 +150,8 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
         );
       }
 
-      // Media Session API
-      if ("mediaSession" in navigator) {
+      // Media Session API (web only — native handles this via MPNowPlayingInfoCenter)
+      if (!isNative && "mediaSession" in navigator) {
         navigator.mediaSession.metadata = new MediaMetadata({
           title: item.episode.title,
           artist: item.podcast.title,
@@ -123,18 +167,36 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
         });
       }
     },
-    [apiFetch, playbackRate]
+    [apiFetch, playbackRate, nativePlay]
   );
 
   // Start content playback — plays intro jingle first if available
   const startContentPlayback = useCallback(
     async (item: FeedItem) => {
-      const audio = audioRef.current;
-      if (!audio || !item.briefing) return;
+      if (!item.briefing) return;
+      if (!isNative && !audioRef.current) return;
 
       setCurrentItem(item);
       setError(null);
 
+      if (isNative) {
+        // On native, play jingle URLs via the native player too.
+        // Jingles are served from the API, so use full URL + auth.
+        const introUrl = "/api/assets/jingles/intro.mp3";
+        setAdState("intro-jingle");
+        setIsPlaying(true);
+        setIsLoading(false);
+        setCurrentTime(0);
+        setDuration(0);
+
+        nativePlay(introUrl, 1).catch(() => {
+          // Jingle failed — go straight to content
+          beginContent(item);
+        });
+        return;
+      }
+
+      // Web path
       const introUrl = await getJingleUrl("intro");
       if (introUrl) {
         setAdState("intro-jingle");
@@ -143,6 +205,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
         setCurrentTime(0);
         setDuration(0);
 
+        const audio = audioRef.current!;
         audio.playbackRate = 1;
         audio.src = introUrl;
         audio.play().catch(() => {
@@ -153,7 +216,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
 
       beginContent(item);
     },
-    [beginContent]
+    [beginContent, nativePlay]
   );
 
   // Ref to hold `play` for use in onPlaybackFinished (avoids circular dep)
@@ -209,46 +272,263 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     onAdError: handleAdError,
   });
 
+  // Check for postroll ad or end playback
+  const handlePostrollOrEnd = useCallback(() => {
+    const config = adConfigRef.current;
+    if (
+      config?.adsEnabled &&
+      config.postroll.enabled &&
+      config.postroll.vastTagUrl
+    ) {
+      setAdState("postroll");
+      setIsPlaying(true);
+      adFlowRef.current = "postroll";
+      if (isNative) {
+        NativeImaAds.requestAds({ vastUrl: config.postroll.vastTagUrl });
+      } else {
+        ima.requestAds(config.postroll.vastTagUrl);
+      }
+      return;
+    }
+    onPlaybackFinished();
+  }, [ima, onPlaybackFinished]);
+
+  // Refs for callbacks that native listeners need (avoids stale closures)
+  const beginContentRef = useRef(beginContent);
+  beginContentRef.current = beginContent;
+  const handlePostrollOrEndRef = useRef(handlePostrollOrEnd);
+  handlePostrollOrEndRef.current = handlePostrollOrEnd;
+  const handleAdCompleteRef = useRef(handleAdComplete);
+  handleAdCompleteRef.current = handleAdComplete;
+
+  // --- Native audio event listeners ---
+  useEffect(() => {
+    if (!isNative) return;
+
+    const listeners: Promise<PluginListenerHandle>[] = [];
+
+    listeners.push(
+      NativeAudio.addListener("timeUpdate", (data) => {
+        const state = adStateRef.current;
+        if (state === "intro-jingle" || state === "outro-jingle") return;
+        setCurrentTime(data.currentTime);
+        setDuration(data.duration);
+      })
+    );
+
+    listeners.push(
+      NativeAudio.addListener("loaded", (data) => {
+        const state = adStateRef.current;
+        if (state !== "intro-jingle" && state !== "outro-jingle") {
+          setDuration(data.duration);
+        }
+        setIsLoading(false);
+      })
+    );
+
+    listeners.push(
+      NativeAudio.addListener("ended", () => {
+        const state = adStateRef.current;
+
+        if (state === "intro-jingle") {
+          const item = pendingItemRef.current;
+          if (item) {
+            beginContentRef.current(item);
+          }
+          return;
+        }
+
+        if (state === "content") {
+          // Play outro jingle before postroll
+          const outroUrl = "/api/assets/jingles/outro.mp3";
+          setAdState("outro-jingle");
+          nativePlay(outroUrl, 1).catch(() => {
+            handlePostrollOrEndRef.current();
+          });
+          return;
+        }
+
+        if (state === "outro-jingle") {
+          handlePostrollOrEndRef.current();
+          return;
+        }
+      })
+    );
+
+    listeners.push(
+      NativeAudio.addListener("error", (data) => {
+        const state = adStateRef.current;
+        if (state === "intro-jingle") {
+          const item = pendingItemRef.current;
+          if (item) beginContentRef.current(item);
+          return;
+        }
+        if (state === "outro-jingle") {
+          handlePostrollOrEndRef.current();
+          return;
+        }
+        setIsPlaying(false);
+        setIsLoading(false);
+        setError(data.message || "Failed to load audio");
+      })
+    );
+
+    listeners.push(
+      NativeAudio.addListener("remotePlay", () => {
+        setIsPlaying(true);
+      })
+    );
+
+    listeners.push(
+      NativeAudio.addListener("remotePause", () => {
+        setIsPlaying(false);
+      })
+    );
+
+    listeners.push(
+      NativeAudio.addListener("interrupted", (data) => {
+        if (data.reason === "began") {
+          setIsPlaying(false);
+        } else if (data.reason === "ended-resume") {
+          setIsPlaying(true);
+        }
+      })
+    );
+
+    Promise.all(listeners).then((handles) => {
+      nativeListenersRef.current = handles;
+    });
+
+    return () => {
+      nativeListenersRef.current.forEach((h) => h.remove());
+      nativeListenersRef.current = [];
+    };
+  }, [nativePlay]);
+
+  // --- Native IMA ads event listeners ---
+  const nativeImaListenersRef = useRef<PluginListenerHandle[]>([]);
+
+  useEffect(() => {
+    if (!isNative) return;
+
+    const listeners: Promise<PluginListenerHandle>[] = [];
+
+    listeners.push(
+      NativeImaAds.addListener("adStarted", (data) => {
+        setNativeAdPlaying(true);
+        setNativeAdDuration(data.duration);
+        setNativeAdCurrentTime(0);
+        setNativeAdProgress(0);
+      })
+    );
+
+    listeners.push(
+      NativeImaAds.addListener("adCompleted", () => {
+        setNativeAdPlaying(false);
+        setNativeAdProgress(0);
+        setNativeAdDuration(0);
+        setNativeAdCurrentTime(0);
+        handleAdCompleteRef.current();
+      })
+    );
+
+    listeners.push(
+      NativeImaAds.addListener("adError", () => {
+        setNativeAdPlaying(false);
+        // Error = skip ad, handleAdComplete will advance the flow
+        handleAdCompleteRef.current();
+      })
+    );
+
+    listeners.push(
+      NativeImaAds.addListener("adProgress", (data) => {
+        setNativeAdCurrentTime(data.currentTime);
+        setNativeAdDuration(data.duration);
+        setNativeAdProgress(data.progress);
+      })
+    );
+
+    Promise.all(listeners).then((handles) => {
+      nativeImaListenersRef.current = handles;
+    });
+
+    return () => {
+      nativeImaListenersRef.current.forEach((h) => h.remove());
+      nativeImaListenersRef.current = [];
+    };
+  }, []);
+
   const pause = useCallback(() => {
-    if (ima.isAdPlaying) {
-      ima.pauseAd();
+    if (isNative ? nativeAdPlaying : ima.isAdPlaying) {
+      if (isNative) {
+        NativeImaAds.pauseAd();
+      } else {
+        ima.pauseAd();
+      }
       setIsPlaying(false);
       return;
     }
-    audioRef.current?.pause();
+    if (isNative) {
+      NativeAudio.pause();
+    } else {
+      audioRef.current?.pause();
+    }
     setIsPlaying(false);
   }, [ima]);
 
   const resume = useCallback(() => {
-    if (ima.isAdPlaying) {
-      ima.resumeAd();
+    if (isNative ? nativeAdPlaying : ima.isAdPlaying) {
+      if (isNative) {
+        NativeImaAds.resumeAd();
+      } else {
+        ima.resumeAd();
+      }
       setIsPlaying(true);
       return;
     }
-    audioRef.current?.play();
+    if (isNative) {
+      NativeAudio.resume();
+    } else {
+      audioRef.current?.play();
+    }
     setIsPlaying(true);
   }, [ima]);
 
   const seek = useCallback((time: number) => {
-    if (adState !== "content" && adState !== "none") return; // No-op during ads
-    const audio = audioRef.current;
-    if (!audio) return;
-    audio.currentTime = time;
+    if (adState !== "content" && adState !== "none") return;
+    if (isNative) {
+      NativeAudio.seek({ time });
+    } else {
+      const audio = audioRef.current;
+      if (!audio) return;
+      audio.currentTime = time;
+    }
     setCurrentTime(time);
   }, [adState]);
 
   const setRate = useCallback((rate: number) => {
     setPlaybackRate(rate);
-    if (audioRef.current && adState !== "intro-jingle" && adState !== "outro-jingle") {
+    if (isNative) {
+      if (adState !== "intro-jingle" && adState !== "outro-jingle") {
+        NativeAudio.setRate({ rate });
+      }
+    } else if (audioRef.current && adState !== "intro-jingle" && adState !== "outro-jingle") {
       audioRef.current.playbackRate = rate;
     }
   }, [adState]);
 
   const stop = useCallback(() => {
-    const audio = audioRef.current;
-    if (audio) {
-      audio.pause();
-      audio.src = "";
+    if (isNative) {
+      NativeAudio.stop();
+    } else {
+      const audio = audioRef.current;
+      if (audio) {
+        audio.pause();
+        audio.src = "";
+      }
+    }
+    if (isNative) {
+      NativeImaAds.destroy();
     }
     ima.destroy();
     setCurrentItem(null);
@@ -265,8 +545,8 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
 
   const play = useCallback(
     async (item: FeedItem) => {
-      const audio = audioRef.current;
-      if (!audio || !item.briefing) return;
+      if (!item.briefing) return;
+      if (!isNative && !audioRef.current) return;
 
       // Store the item for after preroll
       pendingItemRef.current = item;
@@ -275,13 +555,16 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       setIsLoading(true);
       setAdState("loading-ad-config");
 
-      // Mobile browsers require audio.play() within the synchronous
-      // user-gesture context.  The ad-config fetch below is async and
-      // breaks that context, so we play a tiny silent WAV first to
-      // "unlock" the audio element for all subsequent plays.
-      unlockingRef.current = true;
-      audio.src = UNLOCK_AUDIO;
-      audio.play().catch(() => {});
+      if (!isNative) {
+        // Mobile browsers require audio.play() within the synchronous
+        // user-gesture context.  The ad-config fetch below is async and
+        // breaks that context, so we play a tiny silent WAV first to
+        // "unlock" the audio element for all subsequent plays.
+        const audio = audioRef.current!;
+        unlockingRef.current = true;
+        audio.src = UNLOCK_AUDIO;
+        audio.play().catch(() => {});
+      }
 
       // Fetch ad config
       try {
@@ -313,7 +596,11 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
         setIsLoading(false);
         setIsPlaying(true);
         adFlowRef.current = "preroll";
-        ima.requestAds(config.preroll.vastTagUrl);
+        if (isNative) {
+          NativeImaAds.requestAds({ vastUrl: config.preroll.vastTagUrl });
+        } else {
+          ima.requestAds(config.preroll.vastTagUrl);
+        }
         return;
       }
 
@@ -338,25 +625,10 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     [play]
   );
 
-  // Check for postroll ad or end playback
-  const handlePostrollOrEnd = useCallback(() => {
-    const config = adConfigRef.current;
-    if (
-      config?.adsEnabled &&
-      config.postroll.enabled &&
-      config.postroll.vastTagUrl
-    ) {
-      setAdState("postroll");
-      setIsPlaying(true);
-      adFlowRef.current = "postroll";
-      ima.requestAds(config.postroll.vastTagUrl);
-      return;
-    }
-    onPlaybackFinished();
-  }, [ima, onPlaybackFinished]);
-
   // Handle audio ended — sequence: intro-jingle → content → outro-jingle → postroll
+  // (Web only — native uses event listeners above)
   const handleEnded = useCallback(async () => {
+    if (isNative) return;
     if (unlockingRef.current) return; // Ignore ended event from silent unlock WAV
     const audio = audioRef.current;
 
@@ -390,7 +662,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     }
   }, [adState, beginContent, currentItem, handlePostrollOrEnd]);
 
-  // Audio element event handlers
+  // Audio element event handlers (web only)
   const handleTimeUpdate = useCallback(() => {
     if (adState === "intro-jingle" || adState === "outro-jingle") return;
     if (audioRef.current) {
@@ -440,8 +712,9 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     setIsLoading(false);
   }, []);
 
-  // Media Session handlers — disable seek during ads
+  // Media Session handlers — disable seek during ads (web only)
   useEffect(() => {
+    if (isNative) return;
     if (!("mediaSession" in navigator)) return;
 
     const isInAd = adState === "preroll" || adState === "postroll"
@@ -465,8 +738,9 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     }
   }, [adState, pause, resume, seek]);
 
-  // Sync mediaSession position state
+  // Sync mediaSession position state (web only)
   useEffect(() => {
+    if (isNative) return;
     if ("mediaSession" in navigator && duration > 0) {
       navigator.mediaSession.setPositionState({
         duration,
@@ -486,10 +760,10 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     error,
     // Ad state
     adState,
-    isAdPlaying: ima.isAdPlaying,
-    adProgress: ima.adProgress,
-    adDuration: ima.adDuration,
-    adCurrentTime: ima.adCurrentTime,
+    isAdPlaying: isNative ? nativeAdPlaying : ima.isAdPlaying,
+    adProgress: isNative ? nativeAdProgress : ima.adProgress,
+    adDuration: isNative ? nativeAdDuration : ima.adDuration,
+    adCurrentTime: isNative ? nativeAdCurrentTime : ima.adCurrentTime,
     // Actions
     play,
     playAll,
@@ -503,18 +777,21 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   return (
     <AudioContext.Provider value={value}>
       {children}
-      <audio
-        ref={audioRef}
-        onTimeUpdate={handleTimeUpdate}
-        onLoadedMetadata={handleLoadedMetadata}
-        onEnded={handleEnded}
-        onPlay={handlePlay}
-        onError={handleError}
-        onWaiting={handleWaiting}
-        onCanPlay={handleCanPlay}
-        preload="metadata"
-        style={{ display: "none" }}
-      />
+      {/* Web audio element — not used on native */}
+      {!isNative && (
+        <audio
+          ref={audioRef}
+          onTimeUpdate={handleTimeUpdate}
+          onLoadedMetadata={handleLoadedMetadata}
+          onEnded={handleEnded}
+          onPlay={handlePlay}
+          onError={handleError}
+          onWaiting={handleWaiting}
+          onCanPlay={handleCanPlay}
+          preload="metadata"
+          style={{ display: "none" }}
+        />
+      )}
     </AudioContext.Provider>
   );
 }
