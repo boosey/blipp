@@ -19,6 +19,7 @@
     "db:check": "npx tsx prisma/check-db.ts",
     "db:studio": "npx prisma studio",
     "build:ios": "vite build --mode staging && npx cap sync ios",
+    "build:ios:production": "vite build --mode production && npx cap sync ios",
     "deploy": "vite build --mode staging && npx wrangler deploy",
     "deploy:production": "vite build --mode production && node scripts/patch-wrangler-env.mjs production && npx wrangler deploy",
     "deploy:quick": "npx wrangler deploy",
