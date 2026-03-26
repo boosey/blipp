@@ -180,7 +180,7 @@ export default function ModelRegistryPage() {
       ) : (
         <div className="border border-white/5 rounded-lg overflow-hidden">
           {/* Header row */}
-          <div className="grid grid-cols-[2fr_1fr_1fr_3fr_1fr_auto] gap-4 px-4 py-2.5 bg-[#0F1D32] text-[10px] font-medium text-[#9CA3AF] uppercase tracking-wider border-b border-white/5">
+          <div className="grid grid-cols-[2fr_80px_120px_80px_1fr_auto] gap-4 px-4 py-2.5 bg-[#0F1D32] text-[10px] font-medium text-[#9CA3AF] uppercase tracking-wider border-b border-white/5">
             <div>Model</div>
             <div>Stage</div>
             <div>Providers</div>
@@ -195,7 +195,7 @@ export default function ModelRegistryPage() {
               <div key={model.id}>
                 {/* Model row */}
                 <div
-                  className="grid grid-cols-[2fr_1fr_1fr_3fr_1fr_auto] gap-4 px-4 py-3 items-center border-b border-white/5 hover:bg-white/[0.02] cursor-pointer transition-colors"
+                  className="grid grid-cols-[2fr_80px_120px_80px_1fr_auto] gap-4 px-4 py-3 items-center border-b border-white/5 hover:bg-white/[0.02] cursor-pointer transition-colors"
                   onClick={() => setExpandedId(isExpanded ? null : model.id)}
                 >
                   <div className="flex items-center gap-2">
