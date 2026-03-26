@@ -183,9 +183,9 @@ export default function ModelRegistryPage() {
           <div className="grid grid-cols-[2fr_1fr_1fr_3fr_1fr_auto] gap-4 px-4 py-2.5 bg-[#0F1D32] text-[10px] font-medium text-[#9CA3AF] uppercase tracking-wider border-b border-white/5">
             <div>Model</div>
             <div>Stage</div>
+            <div>Providers</div>
             <div>Developer</div>
             <div>Notes</div>
-            <div>Providers</div>
             <div className="w-20 text-right">Actions</div>
           </div>
 
@@ -217,9 +217,19 @@ export default function ModelRegistryPage() {
                       {STAGE_LABELS[model.stage as AIStage] ?? model.stage}
                     </Badge>
                   </div>
+                  <div className="flex flex-col gap-0.5">
+                    {model.providers.length === 0 ? (
+                      <span className="text-xs text-[#9CA3AF]">&mdash;</span>
+                    ) : (
+                      model.providers.map((prov) => (
+                        <span key={prov.id} className="text-[11px] text-[#9CA3AF] leading-tight">
+                          {prov.providerLabel}
+                        </span>
+                      ))
+                    )}
+                  </div>
                   <div className="text-xs text-[#9CA3AF]">{model.developer}</div>
                   <div className="text-[11px] text-[#9CA3AF] leading-snug whitespace-normal">{model.notes ?? "\u2014"}</div>
-                  <div className="text-xs text-[#9CA3AF]">{model.providers.length}</div>
                   <div className="w-20 flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
                     <Button
                       variant="ghost"

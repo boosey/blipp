@@ -988,6 +988,17 @@ function RequestRow({
 
       {expanded && (
         <div className="px-3 pb-3 pl-10 bg-white/[0.01]">
+          {/* Request ID */}
+          <div className="flex items-center gap-2 py-1.5 mb-1">
+            <span className="text-[10px] text-[#9CA3AF]/60 uppercase tracking-wider">Request</span>
+            <code
+              className="text-[10px] text-[#9CA3AF] font-mono cursor-pointer hover:text-[#F9FAFB] transition-colors"
+              title="Click to copy full ID"
+              onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(request.id); }}
+            >
+              {request.id}
+            </code>
+          </div>
           {/* Items summary */}
           {detailLoading ? (
             <div className="space-y-1 py-2">
