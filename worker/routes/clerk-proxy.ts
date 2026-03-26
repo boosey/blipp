@@ -36,7 +36,7 @@ export async function handleClerkProxy(c: Context<{ Bindings: Env }>) {
 
   const headers = new Headers(c.req.raw.headers);
   headers.delete("origin");
-  headers.set("origin", clerkFapi);
+  headers.set("origin", "https://podblipp.com");
   headers.delete("host");
 
   // Log for debugging
