@@ -29,6 +29,7 @@ describe("Feed routes", () => {
 
     (getCurrentUser as any).mockResolvedValue({ id: "user1" });
     mockPrisma.episodeVote.findMany.mockResolvedValue([]);
+    mockPrisma.podcastVote.findMany.mockResolvedValue([]);
   });
 
   describe("GET /", () => {

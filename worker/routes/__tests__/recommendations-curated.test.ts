@@ -50,6 +50,8 @@ describe("Curated recommendations and episode browse", () => {
 
     // Default: user has no subscriptions
     mockPrisma.subscription.findMany.mockResolvedValue([]);
+    // Default: no downvoted podcasts
+    mockPrisma.podcastVote.findMany.mockResolvedValue([]);
     // Default: no recommendation dismissals
     mockPrisma.recommendationDismissal.findMany.mockResolvedValue([]);
     // Default: no user profile
