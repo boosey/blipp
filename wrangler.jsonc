@@ -163,7 +163,8 @@
 			"vars": {
 				"ENVIRONMENT": "production",
 				"APP_ORIGIN": "https://podblipp.com",
-				"ALLOWED_ORIGINS": "https://podblipp.com,https://www.podblipp.com,capacitor://localhost,capacitor://podblipp.com,ionic://localhost"
+				"ALLOWED_ORIGINS": "https://podblipp.com,https://www.podblipp.com,capacitor://localhost,capacitor://podblipp.com,ionic://localhost",
+				"CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsucG9kYmxpcHAuY29tJA"
 			},
 			"kv_namespaces": [
 				{
