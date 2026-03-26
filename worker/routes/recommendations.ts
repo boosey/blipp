@@ -56,19 +56,27 @@ async function generateCuratedRows(
   const rows: CuratedRow[] = [];
   const fourteenDaysAgo = new Date(Date.now() - 14 * 86400000);
 
-  // Get user's subscribed podcast IDs to exclude from discovery rows
-  const subscriptions = await prisma.subscription.findMany({
-    where: { userId },
-    select: { podcastId: true },
-  });
+  // Get user's subscribed + downvoted podcast IDs to exclude from discovery rows
+  const [subscriptions, downvotes] = await Promise.all([
+    prisma.subscription.findMany({
+      where: { userId },
+      select: { podcastId: true },
+    }),
+    prisma.podcastVote.findMany({
+      where: { userId, vote: -1 },
+      select: { podcastId: true },
+    }),
+  ]);
   const subscribedIds = new Set(subscriptions.map((s: any) => s.podcastId));
+  const downvotedIds = new Set(downvotes.map((d: any) => d.podcastId));
+  const excludeIds = new Set([...subscribedIds, ...downvotedIds]);
 
   // Row 1: "Trending in {genre}" or "Trending Now"
   {
     const where: any = {
       publishedAt: { not: null, gte: fourteenDaysAgo },
       podcast: {
-        id: { notIn: [...subscribedIds] },
+        id: { notIn: [...excludeIds] },
         ...(genre ? { categories: { has: genre } } : {}),
       },
     };
@@ -112,7 +120,7 @@ async function generateCuratedRows(
           publishedAt: { gte: fourteenDaysAgo },
           topicTags: { hasSome: topicTags },
           podcast: {
-            id: { notIn: [...subscribedIds] },
+            id: { notIn: [...excludeIds] },
             ...(genre ? { categories: { has: genre } } : {}),
           },
         };
@@ -194,7 +202,7 @@ async function generateCuratedRows(
       const where: any = {
         publishedAt: { gte: fourteenDaysAgo },
         podcast: {
-          id: { notIn: [...subscribedIds, sourcePodcast.id] },
+          id: { notIn: [...excludeIds, sourcePodcast.id] },
           categories: { hasSome: sourcePodcast.categories },
           ...(genre ? { categories: { has: genre } } : {}),
         },
@@ -243,16 +251,26 @@ recommendations.get("/curated", async (c) => {
 // GET /episodes — browse recent episodes across catalog
 recommendations.get("/episodes", async (c) => {
   const prisma = c.get("prisma") as any;
-  await getCurrentUser(c, prisma); // auth check
+  const user = await getCurrentUser(c, prisma);
   const genre = c.req.query("genre") || null;
   const search = c.req.query("search") || null;
   const page = parseInt(c.req.query("page") || "1", 10);
   const pageSize = Math.min(parseInt(c.req.query("pageSize") || "20", 10), 50);
   const skip = (page - 1) * pageSize;
 
+  // Exclude downvoted podcasts from episode browsing
+  const userDownvotes = await prisma.podcastVote.findMany({
+    where: { userId: user.id, vote: -1 },
+    select: { podcastId: true },
+  });
+  const userDownvotedIds = userDownvotes.map((d: any) => d.podcastId);
+
   const where: any = {};
   if (genre) {
-    where.podcast = { categories: { has: genre } };
+    where.podcast = { ...(where.podcast || {}), categories: { has: genre } };
+  }
+  if (userDownvotedIds.length > 0) {
+    where.podcast = { ...(where.podcast || {}), id: { notIn: userDownvotedIds } };
   }
   if (search) {
     where.OR = [

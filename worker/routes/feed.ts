@@ -44,9 +44,17 @@ feed.get("/", async (c) => {
 
   const sort = c.req.query("sort");
 
+  // Exclude feed items from downvoted podcasts
+  const downvotedPodcasts = await prisma.podcastVote.findMany({
+    where: { userId: user.id, vote: -1 },
+    select: { podcastId: true },
+  });
+  const downvotedPodcastIds = downvotedPodcasts.map((d: any) => d.podcastId);
+
   const where: any = {
     userId: user.id,
     episode: { contentStatus: { not: "NOT_DELIVERABLE" } },
+    ...(downvotedPodcastIds.length > 0 ? { podcastId: { notIn: downvotedPodcastIds } } : {}),
   };
   if (status) where.status = status;
   if (source) where.source = source;
