@@ -10,7 +10,7 @@ import { wpKey, putWorkProduct, getWorkProduct } from "../lib/work-products";
 import { writeEvent } from "../lib/pipeline-events";
 import { writeAiError, classifyAiError, AiProviderError } from "../lib/ai-errors";
 import { recordSuccess, recordFailure } from "../lib/circuit-breaker";
-import { chunkNarrativeText, createSilenceFrame, concatenateAudioChunks } from "../lib/tts-chunking";
+import { chunkNarrativeText, createSilenceFrame, concatenateAudioChunks, parseInputLimitError, limitToSafeMaxChars } from "../lib/tts-chunking";
 import { DEFAULT_TTS_MAX_INPUT_CHARS } from "../lib/constants";
 import type { AudioGenerationMessage } from "../lib/queue-messages";
 import type { Env } from "../types";
@@ -176,26 +176,26 @@ export async function handleAudioGeneration(
             const ttsTimer = log.timer("tts_generation");
             const voiceConfig = extractProviderConfig(presetConfig, resolved.provider);
 
-            if (textChunks.length <= 1) {
-              // Single-shot: no chunking needed
-              const result = await generateSpeech(
-                tts, narrative, voiceConfig.voice, resolved.providerModelId, env,
-                resolved.pricing, voiceConfig.instructions, voiceConfig.speed
-              );
-              audio = result.audio;
-              ttsUsage = result.usage;
-            } else {
-              // Chunked TTS: generate each chunk, concatenate with silence
+            // generateChunked: shared logic for single-shot and chunked TTS
+            const generateChunked = async (chunks: string[]) => {
+              if (chunks.length <= 1) {
+                const result = await generateSpeech(
+                  tts, narrative, voiceConfig.voice, resolved.providerModelId, env,
+                  resolved.pricing, voiceConfig.instructions, voiceConfig.speed
+                );
+                return { audio: result.audio, usage: result.usage };
+              }
+
               const audioChunks: ArrayBuffer[] = [];
               let totalInputTokens = 0;
               let totalCost: number | null = 0;
 
-              for (let c = 0; c < textChunks.length; c++) {
-                await writeEvent(prisma, step.id, "DEBUG", `Generating chunk ${c + 1}/${textChunks.length} (${textChunks[c].length} chars)`, {
-                  chunk: c + 1, totalChunks: textChunks.length, chunkChars: textChunks[c].length,
+              for (let c = 0; c < chunks.length; c++) {
+                await writeEvent(prisma, step.id, "DEBUG", `Generating chunk ${c + 1}/${chunks.length} (${chunks[c].length} chars)`, {
+                  chunk: c + 1, totalChunks: chunks.length, chunkChars: chunks[c].length,
                 });
                 const result = await generateSpeech(
-                  tts, textChunks[c], voiceConfig.voice, resolved.providerModelId, env,
+                  tts, chunks[c], voiceConfig.voice, resolved.providerModelId, env,
                   resolved.pricing, voiceConfig.instructions, voiceConfig.speed
                 );
                 audioChunks.push(result.audio);
@@ -203,33 +203,62 @@ export async function handleAudioGeneration(
                 totalCost = totalCost !== null && result.usage.cost !== null
                   ? totalCost + result.usage.cost
                   : null;
-                await writeEvent(prisma, step.id, "DEBUG", `Chunk ${c + 1}/${textChunks.length} complete`, {
-                  chunk: c + 1, chunkChars: textChunks[c].length, chunkAudioBytes: result.audio.byteLength,
+                await writeEvent(prisma, step.id, "DEBUG", `Chunk ${c + 1}/${chunks.length} complete`, {
+                  chunk: c + 1, chunkChars: chunks[c].length, chunkAudioBytes: result.audio.byteLength,
                 });
               }
 
               const silence = createSilenceFrame();
-              audio = concatenateAudioChunks(audioChunks, silence);
-              ttsUsage = {
-                model: resolved.providerModelId,
-                inputTokens: totalInputTokens,
-                outputTokens: 0,
-                cost: totalCost,
+              return {
+                audio: concatenateAudioChunks(audioChunks, silence),
+                usage: { model: resolved.providerModelId, inputTokens: totalInputTokens, outputTokens: 0, cost: totalCost },
               };
+            };
+
+            let activeChunks = textChunks;
+            try {
+              const gen = await generateChunked(activeChunks);
+              audio = gen.audio;
+              ttsUsage = gen.usage;
+            } catch (firstErr) {
+              // Defensive re-chunk: if the provider rejected input as too long,
+              // derive the real limit from the error and retry with smaller chunks
+              const parsedLimit = parseInputLimitError(firstErr);
+              if (!parsedLimit) throw firstErr; // not an input-size error — propagate
+
+              const safeMax = limitToSafeMaxChars(parsedLimit);
+              activeChunks = chunkNarrativeText(narrative, safeMax);
+
+              await writeEvent(prisma, step.id, "WARN",
+                `INPUT_LIMIT_MISMATCH: ${tier} ${tts.name} rejected input — provider limit is ${parsedLimit.limitValue} ${parsedLimit.limitUnit} but DB maxInputChars is ${maxInputChars}. Re-chunking at ${safeMax} chars (${activeChunks.length} chunks). Update model limits in Admin > AI Models.`,
+                {
+                  tier,
+                  provider: resolved.provider,
+                  model: resolved.providerModelId,
+                  dbMaxInputChars: maxInputChars,
+                  providerLimit: parsedLimit.limitValue,
+                  providerLimitUnit: parsedLimit.limitUnit,
+                  safeMaxChars: safeMax,
+                  rechunkedCount: activeChunks.length,
+                });
+
+              const gen = await generateChunked(activeChunks);
+              audio = gen.audio;
+              ttsUsage = gen.usage;
             }
 
             recordSuccess(resolved.provider);
             ttsTimer();
 
             await writeEvent(prisma, step.id, "INFO",
-              textChunks.length > 1
-                ? `Audio generated via ${tier} chunked ${tts.name} (${textChunks.length} chunks)`
+              activeChunks.length > 1
+                ? `Audio generated via ${tier} chunked ${tts.name} (${activeChunks.length} chunks)`
                 : `Audio generated via ${tier} ${tts.name}`,
               {
                 tier,
                 sizeBytes: audio.byteLength,
                 attemptNumber: i + 1,
-                ...(textChunks.length > 1 && { chunks: textChunks.length, maxInputChars }),
+                ...(activeChunks.length > 1 && { chunks: activeChunks.length, maxInputChars }),
               });
             successAttemptIndex = i;
             break; // Success — stop trying

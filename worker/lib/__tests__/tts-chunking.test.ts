@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { chunkNarrativeText, createSilenceFrame, concatenateAudioChunks } from "../tts-chunking";
+import { chunkNarrativeText, createSilenceFrame, concatenateAudioChunks, parseInputLimitError, limitToSafeMaxChars } from "../tts-chunking";
 
 describe("chunkNarrativeText", () => {
   it("returns single chunk when text is under limit", () => {
@@ -92,5 +92,44 @@ describe("concatenateAudioChunks", () => {
     const silence = new Uint8Array([0]).buffer;
     const result = concatenateAudioChunks([c1, c2, c3], silence);
     expect(new Uint8Array(result)).toEqual(new Uint8Array([1, 0, 2, 0, 3]));
+  });
+});
+
+describe("parseInputLimitError", () => {
+  it("parses OpenAI token limit error", () => {
+    const err = Object.assign(new Error("400 Input of 2511 tokens is over the maximum input limit of 2000 tokens. Please shorten your input."), { httpStatus: 400 });
+    expect(parseInputLimitError(err)).toEqual({ limitValue: 2000, limitUnit: "tokens" });
+  });
+
+  it("parses Groq character limit error", () => {
+    const err = Object.assign(new Error('Groq TTS API error 400: {"error":{"message":"Input must be less than 4000 characters"}}'), { httpStatus: 400 });
+    expect(parseInputLimitError(err)).toEqual({ limitValue: 4000, limitUnit: "chars" });
+  });
+
+  it("parses Cloudflare character limit error", () => {
+    const err = Object.assign(new Error("Cloudflare TTS error: 3030: Input text exceeds maximum character limit of 2000."), { httpStatus: undefined });
+    expect(parseInputLimitError(err)).toEqual({ limitValue: 2000, limitUnit: "chars" });
+  });
+
+  it("returns null for non-input errors", () => {
+    const err = Object.assign(new Error("Internal server error"), { httpStatus: 500 });
+    expect(parseInputLimitError(err)).toBeNull();
+  });
+
+  it("returns null for unrelated 400 errors", () => {
+    const err = Object.assign(new Error("Invalid voice ID"), { httpStatus: 400 });
+    expect(parseInputLimitError(err)).toBeNull();
+  });
+});
+
+describe("limitToSafeMaxChars", () => {
+  it("converts token limit to chars with margin", () => {
+    // 2000 tokens * 4 chars/token * 0.9 margin = 7200
+    expect(limitToSafeMaxChars({ limitValue: 2000, limitUnit: "tokens" })).toBe(7200);
+  });
+
+  it("applies margin to char limits", () => {
+    // 4000 * 0.9 = 3600
+    expect(limitToSafeMaxChars({ limitValue: 4000, limitUnit: "chars" })).toBe(3600);
   });
 });

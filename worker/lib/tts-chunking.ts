@@ -1,6 +1,50 @@
 import { DEFAULT_TTS_MAX_INPUT_CHARS } from "./constants";
 
 /**
+ * Detect if a TTS error is an input-too-long rejection and extract the provider's
+ * actual limit from the error message. Returns null if the error is not input-related.
+ *
+ * Known patterns:
+ * - OpenAI: "Input of 2511 tokens is over the maximum input limit of 2000 tokens"
+ * - Groq:   "Input must be less than 4000 characters"
+ * - CF:     "Input text exceeds maximum character limit of 2000"
+ */
+export function parseInputLimitError(err: unknown): { limitValue: number; limitUnit: "tokens" | "chars" } | null {
+  const msg = err instanceof Error ? err.message : String(err);
+  const status = (err as any)?.httpStatus ?? (err as any)?.status;
+
+  // Only consider 400-class errors
+  if (status != null && (status < 400 || status >= 500)) return null;
+
+  // "maximum input limit of 2000 tokens"
+  const tokenMatch = msg.match(/maximum\s+(?:input\s+)?limit\s+of\s+(\d+)\s+tokens/i);
+  if (tokenMatch) return { limitValue: parseInt(tokenMatch[1], 10), limitUnit: "tokens" };
+
+  // "less than 4000 characters" or "character limit of 2000"
+  const charMatch = msg.match(/(?:less than|limit of)\s+(\d+)\s+char/i);
+  if (charMatch) return { limitValue: parseInt(charMatch[1], 10), limitUnit: "chars" };
+
+  // "exceeds maximum character limit of 2000"
+  const exceedsMatch = msg.match(/exceeds.*?(\d+)/i);
+  if (exceedsMatch && /character|char|input|text/i.test(msg)) {
+    return { limitValue: parseInt(exceedsMatch[1], 10), limitUnit: "chars" };
+  }
+
+  return null;
+}
+
+/**
+ * Convert a provider's reported limit into a safe maxInputChars for chunking.
+ * Tokens are converted conservatively (1 token ≈ 4 chars) with 10% headroom.
+ */
+export function limitToSafeMaxChars(limit: { limitValue: number; limitUnit: "tokens" | "chars" }): number {
+  const raw = limit.limitUnit === "tokens"
+    ? limit.limitValue * 4  // conservative chars-per-token
+    : limit.limitValue;
+  return Math.floor(raw * 0.9); // 10% safety margin
+}
+
+/**
  * Split narrative text into chunks that fit within TTS provider character limits.
  * Splits on paragraph boundaries, falls back to sentences, then hard splits.
  */
