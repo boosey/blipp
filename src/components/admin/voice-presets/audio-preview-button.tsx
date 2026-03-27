@@ -7,7 +7,7 @@ import { getApiBase } from "@/lib/api-base";
 import type { VoicePresetConfig } from "@/types/admin";
 
 export interface AudioPreviewButtonProps {
-  provider: "openai" | "groq";
+  provider: string;
   config: VoicePresetConfig;
 }
 
@@ -25,9 +25,21 @@ export function AudioPreviewButton({ provider, config }: AudioPreviewButtonProps
       return;
     }
 
+    // Extract provider-specific fields for the preview API
+    const providerConfig = config[provider] as Record<string, unknown> | undefined;
+    const voice = (providerConfig?.voice as string) || "";
+    if (!voice) {
+      toast.error("Select a voice before previewing");
+      return;
+    }
+
     setLoading(true);
     try {
       const token = await getToken();
+      const body: Record<string, unknown> = { provider, voice };
+      if (providerConfig?.instructions) body.instructions = providerConfig.instructions;
+      if (providerConfig?.speed != null) body.speed = providerConfig.speed;
+
       const res = await fetch(
         `${getApiBase()}/api/admin/voice-presets/preview`,
         {
@@ -36,7 +48,7 @@ export function AudioPreviewButton({ provider, config }: AudioPreviewButtonProps
             "Content-Type": "application/json",
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
-          body: JSON.stringify({ provider, config }),
+          body: JSON.stringify(body),
         }
       );
       if (!res.ok) {

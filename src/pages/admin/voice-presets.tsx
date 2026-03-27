@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Plus } from "lucide-react";
+import { Plus, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,11 +13,12 @@ import {
 import { useAdminFetch } from "@/lib/admin-api";
 import type { VoicePresetEntry } from "@/types/admin";
 import { PresetTable } from "@/components/admin/voice-presets/preset-table";
-import { PresetDialog } from "@/components/admin/voice-presets/preset-dialog";
+import { PresetDialog, type TtsChainEntry } from "@/components/admin/voice-presets/preset-dialog";
 
 export default function VoicePresetsPage() {
   const apiFetch = useAdminFetch();
   const [presets, setPresets] = useState<VoicePresetEntry[]>([]);
+  const [ttsChain, setTtsChain] = useState<TtsChainEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingPreset, setEditingPreset] = useState<VoicePresetEntry | null>(null);
   const [showCreate, setShowCreate] = useState(false);
@@ -34,9 +35,19 @@ export default function VoicePresetsPage() {
     }
   }, [apiFetch]);
 
+  const fetchTtsChain = useCallback(async () => {
+    try {
+      const res = await apiFetch<{ data: TtsChainEntry[] }>("/voice-presets/tts-chain");
+      setTtsChain(res.data ?? []);
+    } catch {
+      /* ignore */
+    }
+  }, [apiFetch]);
+
   useEffect(() => {
     fetchPresets();
-  }, [fetchPresets]);
+    fetchTtsChain();
+  }, [fetchPresets, fetchTtsChain]);
 
   const toggleActive = async (preset: VoicePresetEntry) => {
     try {
@@ -60,6 +71,21 @@ export default function VoicePresetsPage() {
     }
   };
 
+  // Find presets missing config for active chain providers
+  const chainProviders = ttsChain.map((e) => e.provider);
+  const presetsWithWarnings = new Set<string>();
+  for (const preset of presets) {
+    if (!preset.isActive) continue;
+    const config = preset.config as Record<string, unknown>;
+    for (const provider of chainProviders) {
+      const pc = config?.[provider] as Record<string, unknown> | undefined;
+      if (!pc?.voice) {
+        presetsWithWarnings.add(preset.id);
+        break;
+      }
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -80,9 +106,22 @@ export default function VoicePresetsPage() {
         </Button>
       </div>
 
+      {/* Chain coverage warning */}
+      {presetsWithWarnings.size > 0 && (
+        <div className="bg-[#F59E0B]/10 border border-[#F59E0B]/20 rounded-lg px-4 py-3 flex items-start gap-2">
+          <AlertTriangle className="h-4 w-4 text-[#F59E0B] shrink-0 mt-0.5" />
+          <div className="text-xs text-[#F59E0B]">
+            <span className="font-medium">{presetsWithWarnings.size} active preset{presetsWithWarnings.size > 1 ? "s" : ""}</span>{" "}
+            missing voice config for one or more providers in the TTS chain ({chainProviders.join(", ")}).
+            These presets will fall back to system defaults for the unconfigured provider.
+          </div>
+        </div>
+      )}
+
       <PresetTable
         presets={presets}
         loading={loading}
+        chainProviders={chainProviders}
         onToggleActive={toggleActive}
         onEdit={setEditingPreset}
         onDelete={setDeleteConfirm}
@@ -91,6 +130,7 @@ export default function VoicePresetsPage() {
       <PresetDialog
         open={showCreate || !!editingPreset}
         preset={editingPreset}
+        ttsChain={ttsChain}
         onClose={() => { setShowCreate(false); setEditingPreset(null); }}
         onSaved={() => { setShowCreate(false); setEditingPreset(null); fetchPresets(); }}
         apiFetch={apiFetch}

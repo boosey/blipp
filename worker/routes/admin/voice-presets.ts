@@ -36,9 +36,23 @@ const UpdateSchema = z.object({
   description: z.string().max(500).nullable().optional(),
   isActive: z.boolean().optional(),
   config: z.record(z.string(), z.unknown()).optional(),
+  voiceCharacteristics: z.record(z.string(), z.unknown()).nullable().optional(),
 });
 
 export const voicePresetsRoutes = new Hono<{ Bindings: Env }>();
+
+/** GET /tts-chain — Return the active TTS provider/model chain. */
+voicePresetsRoutes.get("/tts-chain", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const chain = await resolveModelChain(prisma, "tts");
+  return c.json({
+    data: chain.map((m) => ({
+      provider: m.provider,
+      model: m.model,
+      providerModelId: m.providerModelId,
+    })),
+  });
+});
 
 /** GET / — List all voice presets with pagination and sorting. */
 voicePresetsRoutes.get("/", async (c) => {
@@ -161,6 +175,7 @@ voicePresetsRoutes.patch("/:id", async (c) => {
   if (body.description !== undefined) data.description = body.description;
   if (body.isActive !== undefined) data.isActive = body.isActive;
   if (body.config !== undefined) data.config = body.config;
+  if (body.voiceCharacteristics !== undefined) data.voiceCharacteristics = body.voiceCharacteristics;
 
   const preset = await prisma.voicePreset.update({ where: { id }, data });
 
