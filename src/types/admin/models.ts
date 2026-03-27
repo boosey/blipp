@@ -5,6 +5,7 @@ export interface AiModelProviderEntry {
   aiModelId: string;
   provider: string;
   providerLabel: string;
+  providerModelId: string | null;
   pricePerMinute: number | null;
   priceInputPerMToken: number | null;
   priceOutputPerMToken: number | null;

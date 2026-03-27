@@ -102,10 +102,11 @@ export default function StageConfiguration() {
           ? m.providers.map((p) => ({
               provider: p.provider,
               providerLabel: p.providerLabel,
+              providerModelId: p.providerModelId,
               model: m.modelId,
               label: m.label,
             }))
-          : [{ provider: m.developer, providerLabel: m.developer, model: m.modelId, label: m.label }]
+          : [{ provider: m.developer, providerLabel: m.developer, providerModelId: null, model: m.modelId, label: m.label }]
       );
   }
 

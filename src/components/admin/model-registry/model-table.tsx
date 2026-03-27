@@ -155,12 +155,17 @@ export function ModelTable({
                       ) : (
                         <div className="grid grid-cols-[2fr_2fr_1.5fr_1fr_auto] gap-4 py-2 items-center text-xs">
                           <div className="text-[#F9FAFB]">
-                            {prov.providerLabel}
-                            <span className="ml-1.5 text-[10px] font-mono text-[#9CA3AF]">({prov.provider})</span>
-                            {prov.isDefault && (
-                              <Badge className="ml-2 text-[9px] bg-[#3B82F6]/20 text-[#3B82F6] border-0 py-0">
-                                Default
-                              </Badge>
+                            <div>
+                              {prov.providerLabel}
+                              <span className="ml-1.5 text-[10px] font-mono text-[#9CA3AF]">({prov.provider})</span>
+                              {prov.isDefault && (
+                                <Badge className="ml-2 text-[9px] bg-[#3B82F6]/20 text-[#3B82F6] border-0 py-0">
+                                  Default
+                                </Badge>
+                              )}
+                            </div>
+                            {prov.providerModelId && (
+                              <div className="text-[10px] font-mono text-[#6B7280] mt-0.5">{prov.providerModelId}</div>
                             )}
                           </div>
                           <div className="text-[#9CA3AF] font-mono text-[11px]">{formatPrice(prov)}</div>

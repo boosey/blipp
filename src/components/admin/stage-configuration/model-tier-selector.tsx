@@ -10,6 +10,7 @@ import {
 export interface StageModel {
   provider: string;
   providerLabel: string;
+  providerModelId: string | null;
   model: string;
   label: string;
 }
@@ -89,7 +90,10 @@ export function ModelTierSelector({
                       value={`${m.provider}::${m.model}`}
                       className={isPrimary ? "text-xs" : "text-[10px]"}
                     >
-                      {m.label} ({m.providerLabel})
+                      <span>{m.label} ({m.providerLabel})</span>
+                      {m.providerModelId && (
+                        <span className="ml-1.5 font-mono text-[#6B7280]">{m.providerModelId}</span>
+                      )}
                     </SelectItem>
                   ))}
                 </SelectContent>
