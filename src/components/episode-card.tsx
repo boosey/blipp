@@ -1,4 +1,5 @@
 import { usePodcastSheet } from "../contexts/podcast-sheet-context";
+import { useAppConfig } from "../lib/app-config";
 
 interface EpisodeCardProps {
   episode: {
@@ -19,15 +20,17 @@ interface EpisodeCardProps {
 
 export function EpisodeCard({ episode, podcast, variant = "full" }: EpisodeCardProps) {
   const { open } = usePodcastSheet();
+  const [{ artworkSize }] = useAppConfig();
 
   if (variant === "compact") {
     return (
       <button
         onClick={() => open(podcast.id, episode.id)}
-        className="w-[140px] flex-shrink-0 snap-start bg-card border border-border rounded-lg overflow-hidden text-left active:scale-[0.98] transition-transform duration-75"
+        style={{ width: artworkSize }}
+        className="flex-shrink-0 snap-start bg-card border border-border rounded-lg overflow-hidden text-left active:scale-[0.98] transition-transform duration-75"
       >
         {podcast.imageUrl ? (
-          <div className="w-full h-[140px] bg-muted">
+          <div className="w-full bg-muted" style={{ height: artworkSize }}>
             <img
               src={podcast.imageUrl}
               alt=""
@@ -35,7 +38,7 @@ export function EpisodeCard({ episode, podcast, variant = "full" }: EpisodeCardP
             />
           </div>
         ) : (
-          <div className="w-full h-[140px] bg-muted flex items-center justify-center">
+          <div className="w-full bg-muted flex items-center justify-center" style={{ height: artworkSize }}>
             <span className="text-2xl font-bold text-muted-foreground">
               {podcast.title.charAt(0).toUpperCase()}
             </span>

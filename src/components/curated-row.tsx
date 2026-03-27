@@ -3,6 +3,7 @@ import { ChevronRightIcon } from "lucide-react";
 import { ScrollableRow } from "./scrollable-row";
 import { EpisodeCard } from "./episode-card";
 import { usePodcastSheet } from "../contexts/podcast-sheet-context";
+import { useAppConfig } from "../lib/app-config";
 import { Accordion, AccordionItem, AccordionContent } from "./ui/accordion";
 import { Accordion as AccordionPrimitive } from "radix-ui";
 import type { CuratedRow as CuratedRowType } from "../types/recommendations";
@@ -17,6 +18,7 @@ function storageKey(title: string) {
 
 export function CuratedRow({ row }: CuratedRowProps) {
   const { open } = usePodcastSheet();
+  const [{ artworkSize }] = useAppConfig();
   const [value, setValue] = useState<string[]>(() => {
     try {
       return localStorage.getItem(storageKey(row.title)) === "collapsed" ? [] : ["content"];
@@ -52,14 +54,15 @@ export function CuratedRow({ row }: CuratedRowProps) {
                   <button
                     key={p?.id ?? i}
                     onClick={() => p?.id && open(p.id)}
-                    className="w-[140px] flex-shrink-0 snap-start bg-card border border-border rounded-lg overflow-hidden text-left active:scale-[0.98] transition-transform duration-75"
+                    style={{ width: artworkSize }}
+                    className="flex-shrink-0 snap-start bg-card border border-border rounded-lg overflow-hidden text-left active:scale-[0.98] transition-transform duration-75"
                   >
                     {p?.imageUrl ? (
-                      <div className="w-full h-[140px] bg-muted">
+                      <div className="w-full bg-muted" style={{ height: artworkSize }}>
                         <img src={p.imageUrl} alt="" className="w-full h-full object-contain" />
                       </div>
                     ) : (
-                      <div className="w-full h-[140px] bg-muted flex items-center justify-center">
+                      <div className="w-full bg-muted flex items-center justify-center" style={{ height: artworkSize }}>
                         <span className="text-2xl font-bold text-muted-foreground">
                           {p?.title?.charAt(0)?.toUpperCase() ?? "?"}
                         </span>

@@ -13,6 +13,7 @@ import { TierPicker } from "../components/tier-picker";
 import { VoicePresetPicker } from "../components/voice-preset-picker";
 import { useTheme, type Theme } from "../contexts/theme-context";
 import { usePlan } from "../contexts/plan-context";
+import { useAppConfig } from "../lib/app-config";
 import type { DurationTier } from "../lib/duration-tiers";
 import {
   Dialog,
@@ -298,6 +299,9 @@ export function Settings() {
         <ThemeSelector />
       </section>
 
+      {/* App Config */}
+      <AppConfigSection />
+
       {/* Push Notifications */}
       <section className="space-y-4">
         <h2 className="text-lg font-semibold">Notifications</h2>
@@ -518,6 +522,41 @@ function UsageMeter({
         <p className="text-xs text-muted-foreground">Unlimited</p>
       )}
     </div>
+  );
+}
+
+const ARTWORK_SIZES = [100, 120, 140, 160, 180] as const;
+
+function AppConfigSection() {
+  const [config, updateConfig] = useAppConfig();
+
+  return (
+    <section className="space-y-4">
+      <h2 className="text-lg font-semibold">App Config</h2>
+      <div className="bg-card border border-border rounded-xl p-4 space-y-3">
+        <div>
+          <h3 className="text-sm font-medium">Card Artwork Size</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Adjust the artwork size on podcast and episode cards.
+          </p>
+        </div>
+        <div className="flex gap-2">
+          {ARTWORK_SIZES.map((size) => (
+            <button
+              key={size}
+              onClick={() => updateConfig({ artworkSize: size })}
+              className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
+                config.artworkSize === size
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {size}
+            </button>
+          ))}
+        </div>
+      </div>
+    </section>
   );
 }
 
