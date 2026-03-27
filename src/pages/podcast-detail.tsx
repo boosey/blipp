@@ -40,8 +40,6 @@ export function PodcastDetail({ podcastId: propPodcastId, scrollToEpisodeId }: {
   const { close: closeSheet } = usePodcastSheet();
   const { data: meData } = useFetch<{ user: { defaultDurationTier: number } }>("/me");
   const defaultTier = (meData?.user?.defaultDurationTier ?? 5) as DurationTier;
-  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const didLongPressRef = useRef(false);
   const episodeRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   const fetchData = useCallback(async () => {
@@ -529,7 +527,6 @@ export function PodcastDetail({ podcastId: propPodcastId, scrollToEpisodeId }: {
                           }
                           handleCreateBriefing(ep.id, defaultTier, true);
                           toast(`${defaultTier}m Blipp requested — usually ready in 2-5 minutes`, {
-                            description: "Tip: long-press Blipp to pick a different duration",
                             duration: 5000,
                           });
                         }}
@@ -539,41 +536,11 @@ export function PodcastDetail({ podcastId: propPodcastId, scrollToEpisodeId }: {
                       </button>
                     ) : (
                       <button
-                        onPointerDown={() => {
-                          didLongPressRef.current = false;
-                          longPressTimerRef.current = setTimeout(() => {
-                            didLongPressRef.current = true;
-                            setBriefTierPickerEpisodeId(
-                              briefTierPickerEpisodeId === ep.id ? null : ep.id
-                            );
-                          }, 500);
-                        }}
-                        onPointerUp={() => {
-                          if (longPressTimerRef.current) {
-                            clearTimeout(longPressTimerRef.current);
-                            longPressTimerRef.current = null;
-                          }
-                          if (!didLongPressRef.current) {
-                            if (defaultTier > planUsage.maxDurationMinutes) {
-                              showUpgrade(`Your plan supports briefings up to ${planUsage.maxDurationMinutes} minutes. Upgrade for longer briefings.`);
-                              return;
-                            }
-                            handleCreateBriefing(ep.id, defaultTier, true);
-                            toast(`${defaultTier}m Blipp requested — usually ready in 2-5 minutes`, {
-                              description: "Tip: long-press Blipp to pick a different duration",
-                              duration: 5000,
-                            });
-                          }
-                        }}
-                        onPointerLeave={() => {
-                          if (longPressTimerRef.current) {
-                            clearTimeout(longPressTimerRef.current);
-                            longPressTimerRef.current = null;
-                          }
-                        }}
-                        onContextMenu={(e) => e.preventDefault()}
+                        onClick={() => setBriefTierPickerEpisodeId(
+                          briefTierPickerEpisodeId === ep.id ? null : ep.id
+                        )}
                         className="px-3 py-1.5 bg-primary text-primary-foreground rounded text-xs font-medium hover:bg-primary/90 transition-colors select-none"
-                        title="Create a bite-sized briefing (long-press for duration options)"
+                        title="Create a bite-sized briefing"
                       >
                         Blipp
                       </button>
