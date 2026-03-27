@@ -24,8 +24,8 @@
 │  └──────────────────────┘          │  ├ PODCAST_INDEX_KEY  │                         │
 │                                    │  ├ PODCAST_INDEX_SEC  │                         │
 │  ┌──────────────────────┐          │  ├ DEEPGRAM_API_KEY   │                         │
-│  │  .env.production     │          │  ├ ASSEMBLYAI_API_KEY │                         │
-│  │  └ VITE_CLERK_PUB_KEY│          │  └ GROQ_API_KEY       │                         │
+│  │  .env.production     │          │  └ GROQ_API_KEY       │                         │
+│  │  └ VITE_CLERK_PUB_KEY│          └──────────────────────┘                         │
 │  │    (pk_live_...)      │         └──────────────────────┘                         │
 │  └──────────────────────┘                                                           │
 └───────────────┬───────────────────────────────┬─────────────────────────────────────┘
@@ -66,7 +66,6 @@
 │  │  CLOUDFLARE_API_TOKEN│          │  ├ OPENAI_API_KEY     │                         │
 │  └──────────────────────┘          │  ├ PODCAST_INDEX_*    │                         │
 │                                    │  ├ DEEPGRAM_API_KEY   │                         │
-│                                    │  ├ ASSEMBLYAI_API_KEY │                         │
 │                                    │  └ GROQ_API_KEY       │                         │
 │                                    └──────────────────────┘                         │
 │                                                                                     │
@@ -115,7 +114,6 @@
 │  │  PRODUCTION_DB_URL   │          │  ├ OPENAI_API_KEY     │                         │
 │  │  (for prisma db push)│          │  ├ PODCAST_INDEX_*    │                         │
 │  └──────────────────────┘          │  ├ DEEPGRAM_API_KEY   │                         │
-│                                    │  ├ ASSEMBLYAI_API_KEY │                         │
 │                                    │  └ GROQ_API_KEY       │                         │
 │                                    └──────────────────────┘                         │
 │                                                                                     │

@@ -15,7 +15,7 @@ Blipp is a podcast briefing app that distills podcast episodes into short audio 
 | Object Storage | Cloudflare R2 |
 | Task Queues | 9 Cloudflare Queues |
 | AI (LLM) | Anthropic Claude, Groq, Cloudflare Workers AI (multi-provider) |
-| AI (STT) | OpenAI Whisper, Deepgram Nova, AssemblyAI, Google Chirp, Groq, Cloudflare Workers AI (multi-provider) |
+| AI (STT) | OpenAI Whisper, Deepgram Nova, Groq, Cloudflare Workers AI (multi-provider) |
 | AI (TTS) | OpenAI TTS, Groq Orpheus, Cloudflare Workers AI (multi-provider) |
 | Podcast Discovery | Local catalog (populated via admin catalog refresh from Podcast Index) |
 
@@ -103,8 +103,6 @@ All three handlers pass the environment through `shimQueuesForLocalDev()` which 
 | `PODCAST_INDEX_KEY` | string | Podcast Index API |
 | `PODCAST_INDEX_SECRET` | string | Podcast Index API |
 | `DEEPGRAM_API_KEY` | string | Deepgram STT (Nova models) |
-| `ASSEMBLYAI_API_KEY` | string | AssemblyAI STT |
-| `GOOGLE_STT_API_KEY` | string | Google Cloud STT (Chirp) |
 | `GROQ_API_KEY` | string | Groq STT/LLM/TTS |
 | `ALLOWED_ORIGINS` | string? | Comma-separated CORS origin allowlist (optional) |
 | `APP_ORIGIN` | string? | Base URL for this environment (Stripe redirects) |
@@ -196,9 +194,9 @@ AI operations use a pluggable provider architecture with three provider registri
 
 | Registry | File | Providers |
 |----------|------|-----------|
-| STT | `worker/lib/stt-providers.ts` | OpenAI, Deepgram, AssemblyAI, Google, Groq, Cloudflare Workers AI |
+| STT | `worker/lib/stt/providers.ts` | OpenAI, Deepgram, Groq, Cloudflare Workers AI |
 | LLM | `worker/lib/llm-providers.ts` | Anthropic, Groq, Cloudflare Workers AI |
-| TTS | `worker/lib/tts-providers.ts` | OpenAI, Groq, Cloudflare Workers AI |
+| TTS | `worker/lib/tts/providers.ts` | OpenAI, Groq, Cloudflare Workers AI |
 
 Model configuration is stored in the `AiModel` and `AiModelProvider` database tables. Each model has one or more providers with pricing metadata. The active model+provider for each pipeline stage is read from `PlatformConfig` via `getModelConfig(prisma, stage)`.
 
@@ -561,8 +559,17 @@ blipp/
       plan-limits.ts      # Plan limit enforcement (duration, subscriptions, weekly briefings)
       ai-models.ts        # AI model config reader (getModelConfig, getModelRegistry)
       llm-providers.ts    # Multi-provider LLM interface (Anthropic, Groq, Cloudflare)
-      stt-providers.ts    # Multi-provider STT interface (OpenAI, Deepgram, AssemblyAI, Google, Groq, Cloudflare)
-      tts-providers.ts    # Multi-provider TTS interface (OpenAI, Groq, Cloudflare)
+      stt/                # Multi-provider STT module
+        providers.ts      # Provider interface (OpenAI, Deepgram, Groq, Cloudflare)
+        whisper-chunked.ts # Chunked Whisper for large files
+        audio-probe.ts    # Audio file probing
+        wer.ts            # Word Error Rate calculation
+        benchmark-runner.ts # STT benchmark task runner
+      tts/                # Multi-provider TTS module
+        providers.ts      # Provider interface (OpenAI, Groq, Cloudflare)
+        tts.ts            # TTS generation orchestrator
+        chunking.ts       # Text chunking for TTS
+        time-fitting.ts   # Duration tier fitting
       ai-usage.ts         # AI usage tracking helpers
       work-products.ts    # R2 key builders and storage helpers
       pipeline-events.ts  # Structured pipeline event writer (fire-and-forget)
@@ -570,19 +577,16 @@ blipp/
       logger.ts           # Structured JSON pipeline logger with configurable level
       podcast-index.ts    # Podcast Index API client
       rss-parser.ts       # RSS feed parser
-      transcript.ts       # Transcript fetching + VTT/SRT parsing
-      transcript-source.ts # Podcast Index transcript lookup
-      transcript-normalizer.ts # Transcript text normalization for WER comparison
-      whisper-chunked.ts  # Chunked Whisper for large files
+      transcript/         # Transcript module
+        parser.ts         # VTT/SRT parsing
+        sources.ts        # Multi-source transcript resolution
+        normalizer.ts     # Text normalization for WER comparison
+        podcast-index-source.ts # Podcast Index transcript lookup
       distillation.ts     # LLM summarization (claim extraction)
       clip-cache.ts       # Clip cache lookup
-      time-fitting.ts     # Duration tier fitting
-      tts.ts              # TTS generation orchestrator
       mp3-concat.ts       # Audio concatenation
       stripe.ts           # Stripe client factory
       local-queue.ts      # Local dev queue shim
-      wer.ts              # Word Error Rate calculation
-      stt-benchmark-runner.ts # STT benchmark task runner
       ai-errors.ts        # AI error classification + recording
       audit-log.ts        # Admin audit log writer
       recommendations.ts  # Recommendation profile computation
@@ -600,9 +604,7 @@ blipp/
       catalog-sources.ts  # Podcast catalog source abstractions
       content-prefetch.ts # Content prefetch logic
       apple-podcasts.ts   # Apple Podcasts API client
-      sentry.ts           # Error reporting integration
       constants.ts        # Shared constants (STAGE_NAMES, etc.)
-      transcript-sources.ts # Multi-source transcript resolution
       cron/               # Scheduled job implementations
         runner.ts         # Job framework with CronRun/CronRunLog tracking
         pipeline-trigger.ts # Feed refresh + pipeline gating

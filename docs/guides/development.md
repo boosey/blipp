@@ -8,7 +8,7 @@ Comprehensive guide for setting up, running, and developing the Blipp project lo
 - **npm** -- always use `--legacy-peer-deps` due to Clerk peer dependency conflicts
 - **Git**
 - Accounts and API keys for: Clerk, Stripe, Neon, Anthropic, OpenAI, Podcast Index
-- Optional for STT benchmarking: Deepgram, AssemblyAI, Google Cloud STT, Groq
+- Optional for STT benchmarking: OpenAI (Whisper), Deepgram, Groq, Cloudflare Workers AI
 
 ## Initial Setup
 
@@ -50,8 +50,6 @@ PODCAST_INDEX_SECRET=...
 
 # Optional — STT benchmark providers
 DEEPGRAM_API_KEY=...
-ASSEMBLYAI_API_KEY=...
-GOOGLE_STT_API_KEY=...
 GROQ_API_KEY=...
 ```
 
@@ -354,7 +352,7 @@ The `PlatformConfig` table stores runtime config as key-value pairs. Access via 
 AI models are managed via the admin Model Registry (`/admin/model-registry`). The model registry lives in the `AiModel` + `AiModelProvider` database tables. Each pipeline stage reads its model+provider config from `PlatformConfig` via `getModelConfig(prisma, stage)`.
 
 Multi-provider implementations:
-- **STT**: `worker/lib/stt-providers.ts` (OpenAI, Deepgram, AssemblyAI, Google, Groq, Cloudflare)
+- **STT**: `worker/lib/stt-providers.ts` (OpenAI, Deepgram, Groq, Cloudflare)
 - **LLM**: `worker/lib/llm-providers.ts` (Anthropic, Groq, Cloudflare)
 - **TTS**: `worker/lib/tts-providers.ts` (OpenAI, Groq, Cloudflare)
 

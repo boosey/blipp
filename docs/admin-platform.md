@@ -74,8 +74,7 @@ BriefingRequest browser with status filter. Request detail with per-job, per-ste
 
 ### 10. STT Benchmark (`/admin/stt-benchmark`)
 
-STT model benchmarking system. Create experiments comparing multiple STT models/providers across episodes at different playback speeds. Episode picker filters to episodes with official transcripts (for WER comparison ground truth). Experiment runner executes tasks one at a time (frontend-driven polling). Results grid showing WER, cost, and latency per model/provider/speed combination. Winner detection for best WER, cost, and latency. Transcript diff viewer for comparing hypothesis vs reference text. Audio proxy for CORS-free playback. R2 storage for speed-adjusted audio and transcripts. Supports async providers (AssemblyAI, Google) with polling.
-
+STT model benchmarking system. Create experiments comparing multiple STT models/providers across episodes at different playback speeds. Episode picker filters to episodes with official transcripts (for WER comparison ground truth). Experiment runner executes tasks one at a time (frontend-driven polling). Results grid showing WER, cost, and latency per model/provider/speed combination. Winner detection for best WER, cost, and latency. Transcript diff viewer for comparing hypothesis vs reference text. Audio proxy for CORS-free playback. R2 storage for speed-adjusted audio and transcripts.
 ### 11. Model Registry (`/admin/model-registry`)
 
 AI model management. Browse all models by stage (stt, distillation, narrative, tts). Add new models with developer and notes. Add/edit/remove providers per model with pricing metadata (per-minute, per-token, per-character). Toggle model active state and provider availability. Set default providers. View pricing update timestamps.

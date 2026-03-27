@@ -294,7 +294,7 @@ Pipeline stages use a pluggable provider architecture. Each stage reads its mode
 
 | Stage | Registry | Providers |
 |-------|----------|-----------|
-| STT | `worker/lib/stt-providers.ts` | OpenAI (whisper-1), Deepgram (nova-2, nova-3), AssemblyAI, Google (chirp), Groq, Cloudflare Workers AI |
+| STT | `worker/lib/stt/providers.ts` | OpenAI (Whisper), Deepgram (nova-2, nova-3), Groq, Cloudflare Workers AI |
 | LLM (distillation, narrative) | `worker/lib/llm-providers.ts` | Anthropic (Claude), Groq (Llama, Mixtral), Cloudflare Workers AI |
 | TTS | `worker/lib/tts-providers.ts` | OpenAI (gpt-4o-mini-tts, tts-1, tts-1-hd), Groq (Orpheus), Cloudflare Workers AI |
 
@@ -306,10 +306,6 @@ Models and providers are tracked in the `AiModel` and `AiModelProvider` tables:
 - **AiModelProvider**: `(aiModelId, provider)` unique — one provider entry per model
 
 Provider pricing metadata (per-minute, per-token, per-character) is stored and refreshed daily via `worker/lib/pricing-updater.ts`.
-
-### Async Providers
-
-Some STT providers (AssemblyAI, Google) are asynchronous — they return a job ID and require polling. The `SttProvider` interface supports an optional `poll()` method for this pattern.
 
 ### Model Fallback Chains (3-Tier)
 
@@ -539,7 +535,7 @@ Key behaviors:
 | `worker/queues/audio-generation.ts` | Stage 5: TTS audio rendering |
 | `worker/queues/briefing-assembly.ts` | Stage 6: Briefing creation + FeedItem linking |
 | `worker/queues/feed-refresh.ts` | Stage 1: RSS polling |
-| `worker/lib/stt-providers.ts` | Multi-provider STT interface |
+| `worker/lib/stt/providers.ts` | Multi-provider STT interface |
 | `worker/lib/llm-providers.ts` | Multi-provider LLM interface |
 | `worker/lib/tts-providers.ts` | Multi-provider TTS interface |
 | `worker/lib/ai-models.ts` | AI model config reader |
@@ -547,8 +543,8 @@ Key behaviors:
 | `worker/lib/circuit-breaker.ts` | Provider circuit breaker (tracks success/failure) |
 | `worker/lib/pipeline-events.ts` | Pipeline event writer |
 | `worker/lib/work-products.ts` | R2 key builders |
-| `worker/lib/transcript-source.ts` | Podcast Index transcript lookup helper |
-| `worker/lib/whisper-chunked.ts` | Chunked Whisper for oversized audio files |
+| `worker/lib/transcript/sources.ts` | Transcript source resolution (RSS, Podcast Index) |
+| `worker/lib/stt/whisper-chunked.ts` | Chunked Whisper for oversized audio files |
 | `worker/lib/config.ts` | Runtime config helper with TTL cache |
 | `worker/lib/logger.ts` | Structured JSON pipeline logger |
 | `worker/lib/cron/runner.ts` | Cron job runner with interval gating and CronRun lifecycle |
