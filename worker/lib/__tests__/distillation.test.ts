@@ -8,6 +8,8 @@ import {
   type EpisodeMetadata,
 } from "../distillation";
 import type { LlmProvider, LlmResult } from "../llm-providers";
+import { clearConfigCache } from "../config";
+import { PROMPT_CONFIG_KEYS } from "../prompt-defaults";
 
 function createMockLlmProvider(responseText: string): LlmProvider {
   return {
@@ -27,9 +29,29 @@ const mockPricing = {
   priceInputPerMToken: 3,
   priceOutputPerMToken: 15,
 };
-const mockPrisma = {
-  platformConfig: { findUnique: vi.fn().mockResolvedValue(null) },
+// Stub prompt values keyed by config key — tests assert these are passed through correctly
+const MOCK_PROMPTS: Record<string, string> = {
+  [PROMPT_CONFIG_KEYS.claimsSystem]: "mock claims system prompt",
+  [PROMPT_CONFIG_KEYS.narrativeSystemWithExcerpts]: "mock narrative system with excerpts",
+  [PROMPT_CONFIG_KEYS.narrativeSystemNoExcerpts]: "mock narrative system no excerpts",
+  [PROMPT_CONFIG_KEYS.narrativeUserTemplate]:
+    "TARGET: approximately {{targetWords}} words ({{durationMinutes}} minutes at {{wpm}} wpm).\n{{metadataBlock}}\n{{claimsLabel}}:\n{{claimsJson}}",
+  [PROMPT_CONFIG_KEYS.narrativeMetadataIntro]:
+    "Begin the narrative with a brief spoken introduction stating the podcast name and episode title.",
 };
+
+const mockPrisma = {
+  platformConfig: {
+    findUnique: vi.fn().mockImplementation(({ where }: any) => {
+      const value = MOCK_PROMPTS[where.key];
+      return Promise.resolve(value ? { key: where.key, value } : null);
+    }),
+  },
+};
+
+beforeEach(() => {
+  clearConfigCache();
+});
 
 describe("extractClaims", () => {
   const sampleClaims: Claim[] = [
@@ -60,15 +82,13 @@ describe("extractClaims", () => {
     expect(messages[0].content).toContain("My specific transcript");
   });
 
-  it("should pass instructions as a cached system prompt", async () => {
+  it("should pass DB system prompt as a cached system prompt", async () => {
     const llm = createMockLlmProvider(JSON.stringify(sampleClaims));
     await extractClaims(mockPrisma, llm, "My transcript", "mock-model-1", 8192, mockEnv);
 
     const call = (llm.complete as ReturnType<typeof vi.fn>).mock.calls[0];
     const options = call[4]; // 5th argument: options
-    expect(options.system).toContain("excerpt");
-    expect(options.system).toContain("verbatim");
-    expect(options.system).not.toContain("top 10");
+    expect(options.system).toBe(MOCK_PROMPTS[PROMPT_CONFIG_KEYS.claimsSystem]);
     expect(options.cacheSystemPrompt).toBe(true);
   });
 
@@ -115,16 +135,13 @@ describe("extractClaims", () => {
     await expect(extractClaims(mockPrisma, llm, "transcript", "mock-model-1", 8192, mockEnv)).rejects.toThrow("LLM output failed schema validation");
   });
 
-  it("should instruct LLM to exclude advertisements from claims", async () => {
+  it("should pass claims system prompt from DB to LLM", async () => {
     const llm = createMockLlmProvider(JSON.stringify(sampleClaims));
     await extractClaims(mockPrisma, llm, "My transcript", "mock-model-1", 8192, mockEnv);
 
     const call = (llm.complete as ReturnType<typeof vi.fn>).mock.calls[0];
-    const systemPrompt = call[4].system; // system prompt is in options
-    expect(systemPrompt).toContain("EXCLUDE ALL ADVERTISEMENTS");
-    expect(systemPrompt).toContain("sponsored segments");
-    expect(systemPrompt).toContain("ad reads");
-    expect(systemPrompt).toContain("discount codes");
+    const systemPrompt = call[4].system;
+    expect(systemPrompt).toBe(MOCK_PROMPTS[PROMPT_CONFIG_KEYS.claimsSystem]);
   });
 
   it("should throw on importance out of range", async () => {
@@ -194,7 +211,7 @@ describe("generateNarrative", () => {
 
     const call = (llm.complete as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(call[0][0].content).toContain("CLAIMS AND EXCERPTS");
-    expect(call[4].system).toContain("EXCERPT text for accurate detail");
+    expect(call[4].system).toBe(MOCK_PROMPTS[PROMPT_CONFIG_KEYS.narrativeSystemWithExcerpts]);
     expect(call[4].cacheSystemPrompt).toBe(true);
   });
 
@@ -265,7 +282,7 @@ describe("generateNarrative with metadata", () => {
     { claim: "Test", speaker: "Host", importance: 7, novelty: 5, excerpt: "Some text" },
   ];
 
-  it("includes podcast title in user message when metadata provided", async () => {
+  it("includes metadata intro in user message when metadata provided", async () => {
     const llm = createMockLlmProvider("This is a test narrative.");
     const metadata: EpisodeMetadata = {
       podcastTitle: "The Daily",
@@ -278,9 +295,7 @@ describe("generateNarrative with metadata", () => {
     await generateNarrative(mockPrisma, llm, testClaims, 5, "model", 8192, {}, null, metadata);
 
     const userContent = (llm.complete as any).mock.calls[0][0][0].content;
-    expect(userContent).toContain("The Daily");
-    expect(userContent).toContain("Election Results");
-    expect(userContent).toContain("podcast name and episode title");
+    expect(userContent).toContain(MOCK_PROMPTS[PROMPT_CONFIG_KEYS.narrativeMetadataIntro]);
   });
 
   it("omits metadata block when metadata not provided", async () => {
@@ -289,7 +304,7 @@ describe("generateNarrative with metadata", () => {
     await generateNarrative(mockPrisma, llm, testClaims, 5, "model", 8192, {});
 
     const userContent = (llm.complete as any).mock.calls[0][0][0].content;
-    expect(userContent).not.toContain("Begin the narrative with a brief spoken introduction");
+    expect(userContent).not.toContain(MOCK_PROMPTS[PROMPT_CONFIG_KEYS.narrativeMetadataIntro]);
   });
 
   it("still includes intro instructions when durationSeconds is null", async () => {
@@ -305,6 +320,6 @@ describe("generateNarrative with metadata", () => {
     await generateNarrative(mockPrisma, llm, testClaims, 3, "model", 8192, {}, null, metadata);
 
     const userContent = (llm.complete as any).mock.calls[0][0][0].content;
-    expect(userContent).toContain("podcast name and episode title");
+    expect(userContent).toContain(MOCK_PROMPTS[PROMPT_CONFIG_KEYS.narrativeMetadataIntro]);
   });
 });
