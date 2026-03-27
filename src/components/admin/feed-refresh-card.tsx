@@ -3,19 +3,8 @@ import { Rss, AlertTriangle, Clock, Podcast, FileText, Volume2, Database } from 
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAdminFetch } from "@/lib/admin-api";
+import { relativeTime } from "@/lib/admin-formatters";
 import type { FeedRefreshSummary } from "@/types/admin";
-
-function relativeTime(iso: string | null): string {
-  if (!iso) return "Never";
-  const diff = Date.now() - new Date(iso).getTime();
-  const s = Math.floor(diff / 1000);
-  if (s < 60) return `${s}s ago`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
-}
 
 export function FeedRefreshCard({ compact = false, className }: { compact?: boolean; className?: string }) {
   const apiFetch = useAdminFetch();

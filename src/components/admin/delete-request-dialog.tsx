@@ -14,6 +14,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { useAdminFetch } from "@/lib/admin-api";
+import { relativeTime } from "@/lib/admin-formatters";
 import type { DeletePreview, BriefingRequestStatus } from "@/types/admin";
 
 function statusColor(status: BriefingRequestStatus) {
@@ -23,17 +24,6 @@ function statusColor(status: BriefingRequestStatus) {
     case "FAILED": return "bg-[#EF4444]/15 text-[#EF4444]";
     default: return "bg-[#9CA3AF]/15 text-[#9CA3AF]";
   }
-}
-
-function relativeTime(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const s = Math.floor(diff / 1000);
-  if (s < 60) return `${s}s ago`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
 }
 
 interface DeleteRequestDialogProps {
