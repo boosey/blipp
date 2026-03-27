@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { relativeTime } from "@/lib/admin-formatters";
+import { toast } from "sonner";
 import type {
   BriefingRequest,
   BriefingRequestStatus,
@@ -138,7 +139,7 @@ export function RequestRow({
             <code
               className="text-[10px] text-[#9CA3AF] font-mono cursor-pointer hover:text-[#F9FAFB] transition-colors"
               title="Click to copy full ID"
-              onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(request.id); }}
+              onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(request.id); toast.success("Request ID copied"); }}
             >
               {request.id}
             </code>

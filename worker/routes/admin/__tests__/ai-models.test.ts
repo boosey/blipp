@@ -14,6 +14,7 @@ describe("GET /", () => {
   it("returns all models with providers", async () => {
     const mockPrisma = createMockPrisma();
     mockPrisma.pipelineStep.groupBy.mockResolvedValue([]);
+    mockPrisma.pipelineStep.findFirst.mockResolvedValue(null);
     mockPrisma.aiModel.findMany.mockResolvedValue([
       {
         id: "m1", stage: "stt", modelId: "whisper-1", label: "Whisper v1",
@@ -38,6 +39,7 @@ describe("GET /", () => {
   it("filters by stage query param", async () => {
     const mockPrisma = createMockPrisma();
     mockPrisma.pipelineStep.groupBy.mockResolvedValue([]);
+    mockPrisma.pipelineStep.findFirst.mockResolvedValue(null);
     mockPrisma.aiModel.findMany.mockResolvedValue([]);
     const app = buildApp(mockPrisma);
     const res = await app.request("/?stage=stt");

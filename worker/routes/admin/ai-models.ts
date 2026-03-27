@@ -1,6 +1,23 @@
 import { Hono } from "hono";
 import type { Env } from "../../types";
 
+// Maps AiModel.stage (AiStage) to PipelineStep.stage (PipelineStage)
+const STAGE_TO_PIPELINE: Record<string, string> = {
+  stt: "TRANSCRIPTION",
+  distillation: "DISTILLATION",
+  narrative: "NARRATIVE_GENERATION",
+  tts: "AUDIO_GENERATION",
+};
+
+// STT stores inputTokens as bytes/STT_BYTES_PER_TOKEN; to get audio minutes:
+// audioMinutes = inputTokens * STT_BYTES_PER_TOKEN / BITRATE / 60
+const STT_BYTES_PER_TOKEN = 16000;
+const BITRATE_BPS = 16000; // 128kbps
+
+// TTS stores inputTokens as character count; to estimate audio minutes from chars:
+// ~150 words/min spoken, ~5 chars/word => ~750 chars/min
+const TTS_CHARS_PER_MINUTE = 750;
+
 export const aiModelsRoutes = new Hono<{ Bindings: Env }>();
 
 // GET / — list models with providers, optional ?stage= and ?includeInactive=true filters
@@ -11,7 +28,8 @@ aiModelsRoutes.get("/", async (c) => {
 
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
-  const [models, costsByModel, firstSeenByModel] = await Promise.all([
+  // Fetch models and per-stage workload aggregates in parallel
+  const [models, stageWorkloads, firstStep] = await Promise.all([
     prisma.aiModel.findMany({
       where: {
         ...(stage ? { stage } : {}),
@@ -20,47 +38,100 @@ aiModelsRoutes.get("/", async (c) => {
       include: { providers: { orderBy: { isDefault: "desc" } } },
       orderBy: [{ stage: "asc" }, { label: "asc" }],
     }),
+    // Aggregate total workload per pipeline stage over last 30 days
     prisma.pipelineStep.groupBy({
-      by: ["model"],
-      where: { createdAt: { gte: thirtyDaysAgo }, model: { not: null }, cost: { not: null } },
-      _sum: { cost: true },
+      by: ["stage"],
+      where: {
+        createdAt: { gte: thirtyDaysAgo },
+        status: "COMPLETED",
+      },
+      _sum: { inputTokens: true, outputTokens: true },
     }),
-    prisma.pipelineStep.groupBy({
-      by: ["model"],
-      where: { model: { not: null } },
-      _min: { createdAt: true },
+    // Find the earliest completed step to normalize partial data periods
+    prisma.pipelineStep.findFirst({
+      where: { createdAt: { gte: thirtyDaysAgo }, status: "COMPLETED" },
+      orderBy: { createdAt: "asc" },
+      select: { createdAt: true },
     }),
   ]);
 
-  // Build cost lookup: modelId string -> total cost in last 30 days
-  const costMap = new Map<string, number>();
-  for (const r of costsByModel) {
-    if (r.model && r._sum.cost != null) costMap.set(r.model, r._sum.cost);
+  // Calculate how many days of data we have (for monthly normalization)
+  const daysOfData = firstStep?.createdAt
+    ? Math.max(1, (Date.now() - firstStep.createdAt.getTime()) / (24 * 60 * 60 * 1000))
+    : 30;
+  const monthlyMultiplier = 30 / Math.min(30, daysOfData);
+
+  // Build workload map: PipelineStage -> { inputTokens, outputTokens }
+  const workloadMap = new Map<string, { inputTokens: number; outputTokens: number }>();
+  for (const r of stageWorkloads) {
+    workloadMap.set(r.stage, {
+      inputTokens: r._sum.inputTokens ?? 0,
+      outputTokens: r._sum.outputTokens ?? 0,
+    });
   }
 
-  // Build first-seen lookup for normalization
-  const firstSeenMap = new Map<string, Date>();
-  for (const r of firstSeenByModel) {
-    if (r.model && r._min.createdAt) firstSeenMap.set(r.model, r._min.createdAt);
-  }
-
-  const now = Date.now();
   const data = models.map((m: any) => {
-    const totalCost = costMap.get(m.modelId);
+    const pipelineStage = STAGE_TO_PIPELINE[m.stage];
+    const workload = pipelineStage ? workloadMap.get(pipelineStage) : null;
     let estMonthlyCost: number | null = null;
-    if (totalCost != null && totalCost > 0) {
-      const firstSeen = firstSeenMap.get(m.modelId);
-      const daysActive = firstSeen
-        ? Math.max(1, (now - firstSeen.getTime()) / (24 * 60 * 60 * 1000))
-        : 30;
-      const daysInRange = Math.min(30, daysActive);
-      estMonthlyCost = Math.round(((totalCost / daysInRange) * 30) * 100) / 100;
+
+    if (workload && m.providers.length > 0) {
+      // Use the default provider's pricing, or first available
+      const prov = m.providers.find((p: any) => p.isDefault) ?? m.providers[0];
+      const rawCost = calculateModelCostForWorkload(m.stage, prov, workload);
+      if (rawCost != null) {
+        estMonthlyCost = Math.round(rawCost * monthlyMultiplier * 100) / 100;
+      }
     }
+
     return { ...m, estMonthlyCost };
   });
 
   return c.json({ data });
 });
+
+/**
+ * Calculate what a model's provider would cost for a given stage workload.
+ * Returns the raw cost (not yet normalized to monthly).
+ */
+function calculateModelCostForWorkload(
+  aiStage: string,
+  provider: any,
+  workload: { inputTokens: number; outputTokens: number }
+): number | null {
+  switch (aiStage) {
+    case "stt": {
+      // inputTokens = audio bytes / STT_BYTES_PER_TOKEN
+      // Recover audio minutes: tokens * STT_BYTES_PER_TOKEN / BITRATE / 60
+      if (provider.pricePerMinute == null) return null;
+      const audioMinutes = (workload.inputTokens * STT_BYTES_PER_TOKEN) / BITRATE_BPS / 60;
+      return audioMinutes * provider.pricePerMinute;
+    }
+    case "distillation":
+    case "narrative": {
+      // LLM token-based pricing
+      if (provider.priceInputPerMToken == null || provider.priceOutputPerMToken == null) return null;
+      return (
+        (workload.inputTokens / 1_000_000) * provider.priceInputPerMToken +
+        (workload.outputTokens / 1_000_000) * provider.priceOutputPerMToken
+      );
+    }
+    case "tts": {
+      // inputTokens = character count
+      if (provider.pricePerKChars != null) {
+        return (workload.inputTokens / 1000) * provider.pricePerKChars;
+      }
+      if (provider.pricePerMinute != null) {
+        // Estimate audio minutes from character count
+        const estimatedMinutes = workload.inputTokens / TTS_CHARS_PER_MINUTE;
+        return estimatedMinutes * provider.pricePerMinute;
+      }
+      return null;
+    }
+    default:
+      return null;
+  }
+}
 
 // POST / — create a new model
 aiModelsRoutes.post("/", async (c) => {
