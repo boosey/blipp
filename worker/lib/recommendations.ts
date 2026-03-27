@@ -386,19 +386,38 @@ export async function scoreRecommendations(
 
   // Cold start: if user has fewer than minSubs subscriptions, return popular
   if (subscribedIds.size < (minSubs as number)) {
-    const popular = await prisma.podcastProfile.findMany({
-      where: { podcastId: { notIn: [...excludeIds] }, podcast: { deliverable: true } },
-      orderBy: { popularity: "desc" },
+    // Prefer Apple chart rank ordering, fall back to popularity score
+    const ranked = await prisma.podcast.findMany({
+      where: { id: { notIn: [...excludeIds] }, deliverable: true, appleRank: { not: null } },
+      orderBy: { appleRank: "asc" },
       take: limit,
-      include: { podcast: { select: { id: true, title: true, author: true, description: true, imageUrl: true, feedUrl: true, categories: true, episodeCount: true } } },
+      select: { id: true, title: true, author: true, description: true, imageUrl: true, feedUrl: true, categories: true, episodeCount: true, appleRank: true },
     });
 
-    return {
-      recommendations: popular.map((p: any) => ({
+    // If not enough ranked podcasts, backfill with popularity
+    let results = ranked.map((p: any) => ({
+      podcastId: p.id,
+      score: 1 - (p.appleRank - 1) / 200,
+      reasons: [`#${p.appleRank} on Apple Podcasts`],
+    }));
+
+    if (results.length < limit) {
+      const rankedIds = new Set(ranked.map((p: any) => p.id));
+      const backfillExclude = [...excludeIds, ...rankedIds];
+      const backfill = await prisma.podcastProfile.findMany({
+        where: { podcastId: { notIn: backfillExclude }, podcast: { deliverable: true } },
+        orderBy: { popularity: "desc" },
+        take: limit - results.length,
+      });
+      results = results.concat(backfill.map((p: any) => ({
         podcastId: p.podcastId,
         score: p.popularity,
         reasons: ["Popular podcast"],
-      })),
+      })));
+    }
+
+    return {
+      recommendations: results,
       source: "popular",
     };
   }

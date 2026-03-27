@@ -53,6 +53,9 @@ export async function handleCatalogRefresh(
         } else if (action === "seed" && seedMode === "additive") {
           let newIds: string[] = [];
           if (discovered.length > 0) {
+            // Update appleRank for all discovered podcasts (existing + new)
+            await updateAppleRanks(prisma, discovered);
+
             const newPodcasts = await filterNewPodcasts(prisma, discovered);
             if (newPodcasts.length > 0) {
               newIds = await bulkInsertPodcasts(prisma, newPodcasts, categoryIdMap, sourceId);
@@ -158,6 +161,36 @@ async function wipeCatalogData(prisma: PrismaClient, r2: R2Bucket): Promise<void
   console.log(JSON.stringify({ level: "info", action: "catalog_refresh_r2_wipe", deletedCount: totalDeleted, ts: new Date().toISOString() }));
 }
 
+/**
+ * Updates appleRank for existing podcasts and clears rank for podcasts no longer in the chart.
+ */
+async function updateAppleRanks(prisma: PrismaClient, discovered: DiscoveredPodcast[]): Promise<void> {
+  const withRank = discovered.filter((p) => p.feedUrl && p.appleRank != null);
+  if (withRank.length === 0) return;
+
+  // Clear rank for all podcasts that previously had one (they may have dropped off the chart)
+  await prisma.podcast.updateMany({
+    where: { appleRank: { not: null } },
+    data: { appleRank: null },
+  });
+
+  // Set rank for current chart entries
+  const BATCH = 50;
+  for (let i = 0; i < withRank.length; i += BATCH) {
+    const chunk = withRank.slice(i, i + BATCH);
+    await Promise.all(
+      chunk.map((p) =>
+        prisma.podcast.updateMany({
+          where: { feedUrl: p.feedUrl },
+          data: { appleRank: p.appleRank },
+        })
+      )
+    );
+  }
+
+  console.log(JSON.stringify({ level: "info", action: "catalog_refresh_ranks_updated", count: withRank.length, ts: new Date().toISOString() }));
+}
+
 async function filterNewPodcasts(prisma: PrismaClient, discovered: DiscoveredPodcast[]): Promise<DiscoveredPodcast[]> {
   const feedUrls = discovered.filter((p) => p.feedUrl).map((p) => p.feedUrl);
   const BATCH = 500;
@@ -226,6 +259,7 @@ async function bulkInsertPodcasts(
         source: sourceId,
         feedUrl: p.feedUrl,
         status: "active",
+        appleRank: p.appleRank ?? null,
       })),
       skipDuplicates: true,
     });
@@ -323,6 +357,7 @@ async function upsertPodcasts(
             appleMetadata: (podcast.appleMetadata ?? undefined) as any,
             language: "en",
             source: sourceId,
+            appleRank: podcast.appleRank ?? null,
           };
 
           const upserted = await prisma.podcast.upsert({

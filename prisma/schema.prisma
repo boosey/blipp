@@ -216,6 +216,7 @@ model Podcast {
   episodeCount   Int       @default(0)
   status         String    @default("active") // "active" | "paused" | "archived"
   deliverable    Boolean   @default(true)     // false when no deliverable episodes exist
+  appleRank      Int?      // Position in Apple Top 200 chart (1-200, null if unranked)
   source         String?   // "trending" | "user_request" | "manual"
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt

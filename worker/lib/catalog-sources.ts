@@ -10,6 +10,7 @@ export interface DiscoveredPodcast {
   podcastIndexId?: string;
   categories?: { genreId: string; name: string }[];
   appleMetadata?: Record<string, unknown>;
+  appleRank?: number;
 }
 
 export interface CatalogSource {
@@ -223,7 +224,8 @@ const ApplePodcastsSource: CatalogSource = {
     );
 
     const discovered: DiscoveredPodcast[] = [];
-    for (const entry of chartEntries) {
+    for (let i = 0; i < chartEntries.length; i++) {
+      const entry = chartEntries[i];
       const lookup = lookupMap.get(entry.id);
       if (!lookup?.feedUrl) continue;
 
@@ -233,6 +235,7 @@ const ApplePodcastsSource: CatalogSource = {
         imageUrl: lookup.artworkUrl600 || entry.artworkUrl100,
         author: lookup.artistName || entry.artistName,
         appleId: entry.id,
+        appleRank: i + 1,
         categories: entry.genres.map((g) => ({
           genreId: g.genreId,
           name: g.name,

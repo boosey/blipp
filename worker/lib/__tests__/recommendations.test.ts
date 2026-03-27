@@ -342,16 +342,18 @@ describe("scoreRecommendations", () => {
     mockPrisma.subscription.findMany.mockResolvedValue([]); // 0 subscriptions < 3
     mockDefaultExclusions();
 
-    const popularProfiles = [
-      { podcastId: "pod1", popularity: 0.9, podcast: { id: "pod1", title: "Pop 1" } },
-      { podcastId: "pod2", popularity: 0.7, podcast: { id: "pod2", title: "Pop 2" } },
+    const rankedPodcasts = [
+      { id: "pod1", title: "Pop 1", author: "A", description: "D", imageUrl: null, feedUrl: "f1", categories: [], episodeCount: 10, appleRank: 1 },
+      { id: "pod2", title: "Pop 2", author: "B", description: "D", imageUrl: null, feedUrl: "f2", categories: [], episodeCount: 5, appleRank: 2 },
     ];
-    mockPrisma.podcastProfile.findMany.mockResolvedValue(popularProfiles);
+    mockPrisma.podcast.findMany.mockResolvedValue(rankedPodcasts);
+    mockPrisma.podcastProfile.findMany.mockResolvedValue([]); // no backfill needed
 
     const result = await scoreRecommendations("user1", mockPrisma);
     expect(result.source).toBe("popular");
     expect(result.recommendations).toHaveLength(2);
     expect(result.recommendations[0].podcastId).toBe("pod1");
+    expect(result.recommendations[0].reasons[0]).toContain("#1");
   });
 
   it("computes personalized recommendations for users with enough subscriptions", async () => {
