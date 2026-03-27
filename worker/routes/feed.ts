@@ -3,6 +3,8 @@ import type { Env } from "../types";
 import { requireAuth } from "../middleware/auth";
 import { getCurrentUser } from "../lib/admin-helpers";
 import { recomputeUserProfile } from "../lib/recommendations";
+import { assembleBriefings } from "../lib/briefing-assembly";
+import { createPipelineLogger } from "../lib/logger";
 
 export const feed = new Hono<{ Bindings: Env }>();
 
@@ -157,7 +159,7 @@ feed.get("/shared/:briefingId", async (c) => {
 
   const source = briefing.feedItems[0];
 
-  // Find or create a FeedItem for the recipient so it appears in their feed
+  // Check if recipient already has a feed item for this briefing
   let feedItem = await prisma.feedItem.findFirst({
     where: { userId: user.id, briefingId },
     include: {
@@ -172,16 +174,47 @@ feed.get("/shared/:briefingId", async (c) => {
   });
 
   if (!feedItem) {
-    feedItem = await prisma.feedItem.create({
+    // Create pipeline records so the share is tracked in pipeline data
+    const request = await prisma.briefingRequest.create({
+      data: {
+        userId: user.id,
+        status: "PROCESSING",
+        targetMinutes: source.durationTier,
+        items: [{ podcastId: source.podcastId, episodeId: source.episodeId, durationTier: source.durationTier }],
+      },
+    });
+
+    const job = await prisma.pipelineJob.create({
+      data: {
+        requestId: request.id,
+        episodeId: source.episodeId,
+        durationTier: source.durationTier,
+        status: "PENDING",
+        currentStage: "BRIEFING_ASSEMBLY",
+        clipId: briefing.clip.id,
+      },
+    });
+
+    // Create the feed item linked to the request (PENDING until assembly runs)
+    await prisma.feedItem.create({
       data: {
         userId: user.id,
         podcastId: source.podcastId,
         episodeId: source.episodeId,
-        briefingId,
         durationTier: source.durationTier,
+        requestId: request.id,
         source: "SHARED",
-        status: "READY",
+        status: "PENDING",
       },
+    });
+
+    // Run assembly directly — clip already exists, so this is instant
+    const log = await createPipelineLogger({ stage: "briefing-assembly", prisma });
+    await assembleBriefings(prisma, request.id, log);
+
+    // Re-fetch the now-assembled feed item
+    feedItem = await prisma.feedItem.findFirst({
+      where: { userId: user.id, requestId: request.id },
       include: {
         podcast: { select: { id: true, title: true, imageUrl: true } },
         episode: { select: { id: true, title: true, publishedAt: true, durationSeconds: true } },
@@ -192,6 +225,10 @@ feed.get("/shared/:briefingId", async (c) => {
         },
       },
     });
+
+    if (!feedItem) {
+      return c.json({ error: "Assembly failed" }, 500);
+    }
   }
 
   return c.json({
