@@ -6,20 +6,7 @@ import {
   PROMPT_CONFIG_KEYS,
   PROMPT_METADATA,
   PROMPT_STAGES,
-  DEFAULT_CLAIMS_SYSTEM_PROMPT,
-  DEFAULT_NARRATIVE_SYSTEM_PROMPT_WITH_EXCERPTS,
-  DEFAULT_NARRATIVE_SYSTEM_PROMPT_NO_EXCERPTS,
-  DEFAULT_NARRATIVE_USER_TEMPLATE,
-  DEFAULT_NARRATIVE_METADATA_INTRO,
 } from "../../lib/prompt-defaults";
-
-const DEFAULTS: Record<string, string> = {
-  [PROMPT_CONFIG_KEYS.claimsSystem]: DEFAULT_CLAIMS_SYSTEM_PROMPT,
-  [PROMPT_CONFIG_KEYS.narrativeSystemWithExcerpts]: DEFAULT_NARRATIVE_SYSTEM_PROMPT_WITH_EXCERPTS,
-  [PROMPT_CONFIG_KEYS.narrativeSystemNoExcerpts]: DEFAULT_NARRATIVE_SYSTEM_PROMPT_NO_EXCERPTS,
-  [PROMPT_CONFIG_KEYS.narrativeUserTemplate]: DEFAULT_NARRATIVE_USER_TEMPLATE,
-  [PROMPT_CONFIG_KEYS.narrativeMetadataIntro]: DEFAULT_NARRATIVE_METADATA_INTRO,
-};
 
 const VALID_STAGES = new Set(Object.keys(PROMPT_STAGES));
 
@@ -34,19 +21,14 @@ async function getNextStageVersion(prisma: any, stage: string): Promise<number> 
 
 const promptsRoutes = new Hono<{ Bindings: Env }>();
 
-/** GET / — List all prompts with current values (from config or defaults). */
+/** GET / — List all prompts with current values from DB. */
 promptsRoutes.get("/", async (c) => {
   const prisma = c.get("prisma") as any;
 
   const keys = Object.values(PROMPT_CONFIG_KEYS);
-  let configs: any[] = [];
-  try {
-    configs = await prisma.platformConfig.findMany({
-      where: { key: { in: keys } },
-    });
-  } catch {
-    // Table may not exist
-  }
+  const configs: any[] = await prisma.platformConfig.findMany({
+    where: { key: { in: keys } },
+  });
 
   const configMap = new Map(configs.map((cfg: any) => [cfg.key, cfg]));
 
@@ -58,12 +40,22 @@ promptsRoutes.get("/", async (c) => {
       label: meta?.label ?? key,
       description: meta?.description ?? "",
       stage: meta?.stage ?? "unknown",
-      value: config ? (config.value as string) : DEFAULTS[key],
-      isDefault: !config,
+      value: config ? (config.value as string) : null,
+      isMissing: !config,
       updatedAt: config?.updatedAt?.toISOString() ?? null,
       updatedBy: config?.updatedBy ?? null,
     };
   });
+
+  const missing = data.filter((d) => d.isMissing);
+  if (missing.length > 0) {
+    console.error(JSON.stringify({
+      level: "error",
+      action: "prompts_missing_from_db",
+      keys: missing.map((m) => m.key),
+      ts: new Date().toISOString(),
+    }));
+  }
 
   return c.json({ data });
 });
@@ -124,14 +116,17 @@ promptsRoutes.post("/stages/:stage", async (c) => {
       }
     }
 
-    // Build the full snapshot: for keys not in body.values, use the current config or default
+    // Build the full snapshot: for keys not in body.values, use the current config
     const fullValues: Record<string, string> = {};
     for (const key of stageKeys) {
       if (body.values[key]) {
         fullValues[key] = body.values[key];
       } else {
         const config = await prisma.platformConfig.findUnique({ where: { key } });
-        fullValues[key] = config ? (config.value as string) : DEFAULTS[key];
+        if (!config) {
+          return c.json({ error: `Prompt "${key}" not found in database. Run seed first.` }, 500);
+        }
+        fullValues[key] = config.value as string;
       }
     }
 
@@ -161,43 +156,6 @@ promptsRoutes.post("/stages/:stage", async (c) => {
   }
 });
 
-/** DELETE /stages/:stage — Reset all prompts in a stage to defaults. */
-promptsRoutes.delete("/stages/:stage", async (c) => {
-  const prisma = c.get("prisma") as any;
-  const auth = getAuth(c);
-  const stage = c.req.param("stage");
-
-  if (!VALID_STAGES.has(stage)) {
-    return c.json({ error: "Unknown stage" }, 400);
-  }
-
-  const stageKeys = PROMPT_STAGES[stage];
-
-  try {
-    for (const key of stageKeys) {
-      const existing = await prisma.platformConfig.findUnique({ where: { key } });
-      if (existing) {
-        await prisma.platformConfig.delete({ where: { key } });
-      }
-    }
-
-    writeAuditLog(prisma, {
-      actorId: auth?.userId ?? "unknown",
-      action: "prompt.reset_stage",
-      entityType: "PlatformConfig",
-      entityId: stage,
-      after: { stage, keys: stageKeys, values: "DEFAULTS" },
-    }).catch(() => {});
-
-    const defaults: Record<string, string> = {};
-    for (const key of stageKeys) defaults[key] = DEFAULTS[key];
-
-    return c.json({ data: { stage, values: defaults, isDefault: true } });
-  } catch {
-    return c.json({ error: "Failed to reset prompts" }, 503);
-  }
-});
-
 /** GET /stages/:stage/versions — List all grouped versions for a stage. */
 promptsRoutes.get("/stages/:stage/versions", async (c) => {
   const prisma = c.get("prisma") as any;
@@ -217,7 +175,7 @@ promptsRoutes.get("/stages/:stage/versions", async (c) => {
   const currentValues: Record<string, string> = {};
   for (const key of stageKeys) {
     const config = await prisma.platformConfig.findUnique({ where: { key } });
-    currentValues[key] = config ? (config.value as string) : DEFAULTS[key];
+    if (config) currentValues[key] = config.value as string;
   }
 
   const data = versions.map((v: any) => {

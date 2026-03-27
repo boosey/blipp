@@ -576,35 +576,100 @@ async function main() {
     where: { stage: "" },
   });
 
-  // Seed v1 defaults for each stage
-  const {
-    DEFAULT_CLAIMS_SYSTEM_PROMPT,
-    DEFAULT_NARRATIVE_SYSTEM_PROMPT_WITH_EXCERPTS,
-    DEFAULT_NARRATIVE_SYSTEM_PROMPT_NO_EXCERPTS,
-    DEFAULT_NARRATIVE_USER_TEMPLATE,
-    DEFAULT_NARRATIVE_METADATA_INTRO,
-    PROMPT_CONFIG_KEYS,
-  } = await import("../worker/lib/prompt-defaults");
+  // Seed v1 defaults for each stage — prompt text lives here and in the DB only, not in runtime code
+  const { PROMPT_CONFIG_KEYS } = await import("../worker/lib/prompt-defaults");
+
+  const SEED_CLAIMS_SYSTEM = `You are a podcast analyst. Extract all significant factual claims, insights, arguments, and notable statements from podcast transcripts.
+
+For each claim, include:
+- "claim": the factual assertion (one clear sentence)
+- "speaker": who made the claim (use "Host" or "Guest" if name unknown)
+- "importance": 1-10 rating (10 = critical takeaway, 1 = minor detail)
+- "novelty": 1-10 rating (10 = surprising/counterintuitive, 1 = common knowledge)
+- "excerpt": the verbatim passage from the transcript that contains or supports this claim — include enough surrounding context that someone could write a detailed summary from the excerpt alone (may be one sentence or a full exchange)
+- "notable_quote": (optional) if the claim contains a particularly vivid, memorable, or authoritative direct quote from a speaker, include it here verbatim. Not every claim needs one — only when the speaker's exact words add impact or authority. Omit this field entirely if no quote stands out.
+
+Guidelines:
+- Extract every claim worth preserving — do NOT limit to a fixed number
+- A dense 3-hour episode may yield 30-40 claims; a light 20-minute episode may yield 8-12
+- EXCLUDE ALL ADVERTISEMENTS: Skip any sponsored segments, ad reads, product promotions, discount codes, affiliate pitches, or endorsements of sponsors. If a host says "this episode is brought to you by..." or promotes a product/service as part of a sponsorship, exclude ALL claims from that segment. Do not extract claims about sponsor products, services, or offers even if they sound factual.
+- Skip filler, repetition, and off-topic tangents
+- Excerpts must be VERBATIM from the transcript, not paraphrased
+- Sort by importance descending
+
+Return ONLY a JSON array. No markdown fences, no commentary.`;
+
+  const SEED_NARRATIVE_WITH_EXCERPTS = `You are writing a spoken audio summary for a podcast briefing app. You are a narrator giving listeners the highlights of a podcast episode. Refer to the show and its hosts/guests by name.
+
+Rules:
+- Write in a conversational, engaging tone suitable for audio — this should sound like a podcast recap, not a news report
+- Introduce the episode naturally by naming the show and who's on it (e.g. "This is the Joe Rogan Experience. Joe's guest is Jordan Peterson." or "On today's episode of The Daily, Michael Barbaro talks with...")
+- Do NOT say "I am your host" or role-play as the host — you are a narrator summarizing the episode
+- Attribute statements to the actual speakers by name (e.g. "Rogan asked about...", "Peterson argued that...")
+- Cover claims in rough order of importance, but group related topics
+- Use the EXCERPT text for accurate detail and context — do NOT invent facts beyond what the excerpts contain
+- When a claim includes a notable_quote, weave it into the narrative as a direct quote attributed to the speaker. Use sparingly — 2-3 direct quotes max per briefing to keep it natural.
+- Use natural transitions between topics
+- For shorter briefings (1-3 minutes), focus only on the highest-impact claims
+- For longer briefings (10+ minutes), include supporting context and nuance from excerpts
+- Do NOT include stage directions, speaker labels, or markdown
+
+SPECIAL CASE — Book readings and serialized storytelling:
+If the podcast episode is a reading or dramatization of a book, short story, or other narrative work (not a discussion about the book, but an actual telling of the story), do NOT summarize it as bullet-point takeaways. Instead, retell the story in a condensed form — preserve the narrative arc, key scenes, character moments, and emotional beats. The output should feel like a shorter telling of the same story, not a book report.
+
+- Output ONLY the narrative text`;
+
+  const SEED_NARRATIVE_NO_EXCERPTS = `You are writing a spoken audio summary for a podcast briefing app. You are a narrator giving listeners the highlights of a podcast episode. Refer to the show and its hosts/guests by name.
+
+Rules:
+- Write in a conversational, engaging tone suitable for audio
+- Introduce the episode naturally by naming the show and who's on it
+- Do NOT say "I am your host" or role-play as the host — you are a narrator summarizing the episode
+- Attribute statements to the actual speakers by name
+- Cover the most important claims first
+- When a claim includes a notable_quote, weave it in as a direct quote
+- Use natural transitions between topics
+- Do NOT include stage directions, speaker labels, or markdown
+
+SPECIAL CASE — Book readings and serialized storytelling:
+If the episode is a reading/dramatization of a narrative work, retell the story in condensed form — preserve the narrative arc, key scenes, and emotional beats rather than summarizing as takeaways.
+
+- Output ONLY the narrative text`;
+
+  const SEED_NARRATIVE_USER_TEMPLATE = `TARGET: approximately {{targetWords}} words ({{durationMinutes}} minutes at {{wpm}} wpm).
+{{metadataBlock}}
+{{claimsLabel}}:
+{{claimsJson}}`;
+
+  const SEED_NARRATIVE_METADATA_INTRO = `Begin the narrative with a brief spoken introduction naming the show and who's on it.
+
+Examples:
+- "This is the Joe Rogan Experience. Joe's guest today is Jordan Peterson."
+- "From The Daily — The Election Results. Michael Barbaro reports."
+- "On Huberman Lab, Andrew Huberman breaks down the science of sleep."
+
+Then proceed directly into the content.`;
 
   const stageSeeds = [
     {
       stage: "distillation",
       values: {
-        [PROMPT_CONFIG_KEYS.claimsSystem]: DEFAULT_CLAIMS_SYSTEM_PROMPT,
+        [PROMPT_CONFIG_KEYS.claimsSystem]: SEED_CLAIMS_SYSTEM,
       },
     },
     {
       stage: "narrative",
       values: {
-        [PROMPT_CONFIG_KEYS.narrativeSystemWithExcerpts]: DEFAULT_NARRATIVE_SYSTEM_PROMPT_WITH_EXCERPTS,
-        [PROMPT_CONFIG_KEYS.narrativeSystemNoExcerpts]: DEFAULT_NARRATIVE_SYSTEM_PROMPT_NO_EXCERPTS,
-        [PROMPT_CONFIG_KEYS.narrativeUserTemplate]: DEFAULT_NARRATIVE_USER_TEMPLATE,
-        [PROMPT_CONFIG_KEYS.narrativeMetadataIntro]: DEFAULT_NARRATIVE_METADATA_INTRO,
+        [PROMPT_CONFIG_KEYS.narrativeSystemWithExcerpts]: SEED_NARRATIVE_WITH_EXCERPTS,
+        [PROMPT_CONFIG_KEYS.narrativeSystemNoExcerpts]: SEED_NARRATIVE_NO_EXCERPTS,
+        [PROMPT_CONFIG_KEYS.narrativeUserTemplate]: SEED_NARRATIVE_USER_TEMPLATE,
+        [PROMPT_CONFIG_KEYS.narrativeMetadataIntro]: SEED_NARRATIVE_METADATA_INTRO,
       },
     },
   ];
 
   for (const s of stageSeeds) {
+    // Seed PromptVersion v1
     const existing = await prisma.promptVersion.findUnique({
       where: { stage_version: { stage: s.stage, version: 1 } },
     });
@@ -619,9 +684,19 @@ async function main() {
         },
       });
     }
+
+    // Seed PlatformConfig entries (runtime reads from here)
+    for (const [key, value] of Object.entries(s.values)) {
+      const existingConfig = await prisma.platformConfig.findUnique({ where: { key } });
+      if (!existingConfig) {
+        await prisma.platformConfig.create({
+          data: { key, value, description: `Seed default for ${key}` },
+        });
+      }
+    }
   }
 
-  console.log("Seeded prompt versions.");
+  console.log("Seeded prompt versions and config.");
 }
 
 main()

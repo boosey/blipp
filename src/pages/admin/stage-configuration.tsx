@@ -174,17 +174,6 @@ export default function StageConfiguration() {
     finally { setSaving(null); }
   };
 
-  const handleResetStagePrompts = async (stageKey: string) => {
-    setSaving(`stage:${stageKey}`);
-    try {
-      const res = await apiFetch<{ data: { values: Record<string, string> } }>(`/prompts/stages/${stageKey}`, { method: "DELETE" });
-      toast.success("Reset to defaults");
-      setEditValues((prev) => ({ ...prev, ...res.data.values }));
-      await load();
-    } catch { toast.error("Failed to reset prompts"); }
-    finally { setSaving(null); }
-  };
-
   const loadStageVersions = useCallback(async (stageKey: string) => {
     try {
       const res = await apiFetch<{ data: PromptVersionEntry[] }>(`/prompts/stages/${stageKey}/versions`);
@@ -245,7 +234,6 @@ export default function StageConfiguration() {
           const stageModels = getStageModels(stage.key);
           const stagePrompts = prompts.filter((p) => p.stage === stage.key);
           const stageDirty = stagePrompts.some((p) => editValues[p.key] !== p.value);
-          const stageCustomized = stagePrompts.some((p) => !p.isDefault);
           const stageSaving = saving === `stage:${stage.key}`;
 
           return (
@@ -296,14 +284,12 @@ export default function StageConfiguration() {
                         setEditValues((prev) => ({ ...prev, [key]: value }))
                       }
                       stageDirty={stageDirty}
-                      stageCustomized={stageCustomized}
                       stageSaving={stageSaving}
                       changeDescription={stageChangeDescriptions[stage.key] ?? ""}
                       onChangeDescriptionUpdate={(value) =>
                         setStageChangeDescriptions((prev) => ({ ...prev, [stage.key]: value }))
                       }
                       onSave={() => handleSaveStagePrompts(stage.key)}
-                      onReset={() => handleResetStagePrompts(stage.key)}
                       expandedVersions={expandedVersions === stage.key}
                       onToggleVersionHistory={() => toggleVersionHistory(stage.key)}
                       versions={stageVersions[stage.key] ?? []}

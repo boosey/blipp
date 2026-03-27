@@ -1,5 +1,4 @@
 import {
-  RotateCcw,
   Save,
   History,
   ChevronDown,
@@ -17,7 +16,7 @@ export interface PromptEntry {
   description: string;
   stage: string;
   value: string;
-  isDefault: boolean;
+  isMissing: boolean;
   updatedAt: string | null;
   updatedBy: string | null;
 }
@@ -28,12 +27,10 @@ export interface PromptSectionProps {
   editValues: Record<string, string>;
   onEditValueChange: (key: string, value: string) => void;
   stageDirty: boolean;
-  stageCustomized: boolean;
   stageSaving: boolean;
   changeDescription: string;
   onChangeDescriptionUpdate: (value: string) => void;
   onSave: () => void;
-  onReset: () => void;
   // Version history
   expandedVersions: boolean;
   onToggleVersionHistory: () => void;
@@ -52,12 +49,10 @@ export function PromptSection({
   editValues,
   onEditValueChange,
   stageDirty,
-  stageCustomized,
   stageSaving,
   changeDescription,
   onChangeDescriptionUpdate,
   onSave,
-  onReset,
   expandedVersions,
   onToggleVersionHistory,
   versions,
@@ -74,11 +69,6 @@ export function PromptSection({
       <div className="flex items-center justify-between">
         <span className="text-xs font-semibold text-[#F9FAFB]">Prompts</span>
         <div className="flex items-center gap-1.5">
-          {stageCustomized && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#F59E0B]/20 text-[#F59E0B]">
-              customized
-            </span>
-          )}
           {stageDirty && (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#3B82F6]/20 text-[#3B82F6]">
               unsaved changes
@@ -132,21 +122,9 @@ export function PromptSection({
                   .sort((a, b) => new Date(b.updatedAt!).getTime() - new Date(a.updatedAt!).getTime())[0]
                   ?.updatedAt ?? ""
               ).toLocaleString()}`
-            : "Using defaults"}
+            : "No update history"}
         </div>
         <div className="flex items-center gap-2">
-          {stageCustomized && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onReset}
-              disabled={stageSaving}
-              className="h-7 text-xs text-[#F59E0B] hover:bg-[#F59E0B]/10 gap-1"
-            >
-              <RotateCcw className="h-3 w-3" />
-              Reset All to Default
-            </Button>
-          )}
           <Button
             size="sm"
             onClick={onSave}

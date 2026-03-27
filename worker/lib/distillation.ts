@@ -1,15 +1,8 @@
 import { z } from "zod";
 import type { LlmProvider, LlmCompletionOptions } from "./llm-providers";
 import { calculateTokenCost, type AiUsage, type ModelPricing } from "./ai-usage";
-import { getConfig } from "./config";
-import {
-  DEFAULT_CLAIMS_SYSTEM_PROMPT,
-  DEFAULT_NARRATIVE_SYSTEM_PROMPT_WITH_EXCERPTS,
-  DEFAULT_NARRATIVE_SYSTEM_PROMPT_NO_EXCERPTS,
-  DEFAULT_NARRATIVE_USER_TEMPLATE,
-  DEFAULT_NARRATIVE_METADATA_INTRO,
-  PROMPT_CONFIG_KEYS,
-} from "./prompt-defaults";
+import { getRequiredConfig } from "./config";
+import { PROMPT_CONFIG_KEYS } from "./prompt-defaults";
 
 /** Words spoken per minute for podcast-style narration. */
 export const WORDS_PER_MINUTE = 150;
@@ -56,11 +49,7 @@ export async function extractClaims(
   env: any,
   pricing: ModelPricing | null = null
 ): Promise<{ claims: Claim[]; usage: AiUsage }> {
-  const systemPrompt = await getConfig(
-    prisma,
-    PROMPT_CONFIG_KEYS.claimsSystem,
-    DEFAULT_CLAIMS_SYSTEM_PROMPT
-  );
+  const systemPrompt = await getRequiredConfig(prisma, PROMPT_CONFIG_KEYS.claimsSystem);
 
   const options: LlmCompletionOptions = {
     system: systemPrompt as string,
@@ -159,18 +148,14 @@ export async function generateNarrative(
   const hasExcerpts = claims.length > 0 && "excerpt" in claims[0];
 
   const systemPrompt = hasExcerpts
-    ? await getConfig(prisma, PROMPT_CONFIG_KEYS.narrativeSystemWithExcerpts, DEFAULT_NARRATIVE_SYSTEM_PROMPT_WITH_EXCERPTS)
-    : await getConfig(prisma, PROMPT_CONFIG_KEYS.narrativeSystemNoExcerpts, DEFAULT_NARRATIVE_SYSTEM_PROMPT_NO_EXCERPTS);
+    ? await getRequiredConfig(prisma, PROMPT_CONFIG_KEYS.narrativeSystemWithExcerpts)
+    : await getRequiredConfig(prisma, PROMPT_CONFIG_KEYS.narrativeSystemNoExcerpts);
 
   const metadataIntro = metadata
-    ? await getConfig(prisma, PROMPT_CONFIG_KEYS.narrativeMetadataIntro, DEFAULT_NARRATIVE_METADATA_INTRO)
+    ? await getRequiredConfig(prisma, PROMPT_CONFIG_KEYS.narrativeMetadataIntro)
     : "";
 
-  const userTemplate = await getConfig(
-    prisma,
-    PROMPT_CONFIG_KEYS.narrativeUserTemplate,
-    DEFAULT_NARRATIVE_USER_TEMPLATE
-  );
+  const userTemplate = await getRequiredConfig(prisma, PROMPT_CONFIG_KEYS.narrativeUserTemplate);
 
   const userContent = (userTemplate as string)
     .replace("{{targetWords}}", String(targetWords))
