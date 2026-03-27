@@ -240,6 +240,7 @@ catalogSeedRoutes.post("/:id/ingest", async (c) => {
       podcastIndexId?: string;
       categories?: { genreId: string; name: string }[];
       appleMetadata?: Record<string, unknown>;
+      appleRank?: number;
     }>;
     final: boolean;
   };
@@ -250,9 +251,14 @@ catalogSeedRoutes.post("/:id/ingest", async (c) => {
     return c.json({ error: `Cannot ingest into job in '${job.status}' status` }, 409);
   }
 
-  // Transition to discovering if pending
+  // Transition to discovering if pending; clear existing ranks on first chunk
   if (job.status === "pending") {
     await prisma.catalogSeedJob.update({ where: { id }, data: { status: "discovering" } });
+    // Clear all existing appleRank values so dropped podcasts lose their rank
+    await prisma.podcast.updateMany({
+      where: { appleRank: { not: null } },
+      data: { appleRank: null },
+    });
   }
 
   // Upsert categories from this chunk
@@ -289,6 +295,7 @@ catalogSeedRoutes.post("/:id/ingest", async (c) => {
         podcastIndexId: podcast.podcastIndexId,
         categories: categoryNames,
         appleMetadata: podcast.appleMetadata ?? undefined,
+        appleRank: podcast.appleRank ?? null,
         language: "en",
         source: job.source || "apple",
       };

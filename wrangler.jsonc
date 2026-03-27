@@ -79,7 +79,7 @@
 				"queue": "feed-refresh-staging",
 				"max_batch_size": 1,
 				"max_retries": 3,
-				"max_concurrency": 50,
+				"max_concurrency": 10,
 				"dead_letter_queue": "feed-refresh-retry-staging"
 			},
 			{
@@ -259,7 +259,7 @@
 						"queue": "feed-refresh",
 						"max_batch_size": 1,
 						"max_retries": 3,
-						"max_concurrency": 50,
+						"max_concurrency": 10,
 						"dead_letter_queue": "feed-refresh-retry"
 					},
 					{

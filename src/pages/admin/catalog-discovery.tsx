@@ -65,17 +65,29 @@ export default function CatalogDiscoveryPage() {
 
   const triggerApple = async () => {
     setActionLoading("apple");
+    const jobCountBefore = jobs.length;
     try {
       await apiFetch("/catalog-seed/trigger-apple", { method: "POST" });
-      const pollEnd = Date.now() + 60000;
+      setError(null);
+      // GitHub Action takes ~2 min (queue + run). Poll for 3 min with spinner.
+      const pollEnd = Date.now() + 180000;
       const poll = setInterval(async () => {
-        if (Date.now() > pollEnd) { clearInterval(poll); return; }
-        await fetchJobs();
-      }, 2000);
-      setTimeout(() => clearInterval(poll), 60000);
+        if (Date.now() > pollEnd) {
+          clearInterval(poll);
+          setActionLoading(null);
+          return;
+        }
+        const result = await apiFetch<CatalogSeedJobList>(`/catalog-seed?page=1&pageSize=20`);
+        setJobs(result.data);
+        setTotal(result.total);
+        // Stop polling once a new job appears
+        if (result.data.length > jobCountBefore || result.data.some((j) => isActive(j.status) && j.source === "apple")) {
+          clearInterval(poll);
+          setActionLoading(null);
+        }
+      }, 5000);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to trigger Apple refresh");
-    } finally {
       setActionLoading(null);
     }
   };

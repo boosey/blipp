@@ -38,12 +38,27 @@ async function processPodcast(
   const timeout = setTimeout(() => controller.abort(), fetchTimeoutMs);
 
   let xml: string;
+  const MAX_RETRIES = 3;
+  const RETRY_STATUSES = new Set([429, 500, 502, 503, 504]);
+
   try {
-    const response = await safeFetch(podcast.feedUrl, { signal: controller.signal });
-    if (!response.ok) {
-      throw new Error(`RSS feed returned HTTP ${response.status} ${response.statusText}: ${podcast.feedUrl}`);
+    let response: Response | undefined;
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      response = await safeFetch(podcast.feedUrl, { signal: controller.signal });
+      if (response.ok || !RETRY_STATUSES.has(response.status) || attempt === MAX_RETRIES) break;
+      const backoffMs = 1000 * Math.pow(2, attempt); // 1s, 2s, 4s
+      log.info("feed_fetch_retry", {
+        podcastId: podcast.id,
+        status: response.status,
+        attempt: attempt + 1,
+        backoffMs,
+      });
+      await new Promise((r) => setTimeout(r, backoffMs));
     }
-    xml = await response.text();
+    if (!response!.ok) {
+      throw new Error(`RSS feed returned HTTP ${response!.status} ${response!.statusText}: ${podcast.feedUrl}`);
+    }
+    xml = await response!.text();
   } catch (err) {
     if (err instanceof DOMException && err.name === "AbortError") {
       log.error("feed_fetch_timeout", {

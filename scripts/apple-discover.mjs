@@ -240,9 +240,10 @@ async function main() {
   const lookupMap = new Map(lookupResults.map((r) => [String(r.collectionId), r]));
   console.log(`\nResolved ${lookupMap.size}/${chartEntries.length} chart entries`);
 
-  // Step 3: Build discovered list
+  // Step 3: Build discovered list (preserving chart rank)
   const discovered = [];
-  for (const entry of chartEntries) {
+  for (let i = 0; i < chartEntries.length; i++) {
+    const entry = chartEntries[i];
     const lookup = lookupMap.get(entry.id);
     if (!lookup?.feedUrl) continue;
 
@@ -252,6 +253,7 @@ async function main() {
       imageUrl: lookup.artworkUrl600 || entry.artworkUrl100,
       author: lookup.artistName || entry.artistName,
       appleId: entry.id,
+      appleRank: i + 1,
       categories: entry.genres,
     });
   }
