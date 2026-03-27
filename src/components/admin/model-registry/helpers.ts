@@ -23,6 +23,12 @@ export function formatLimits(limits?: Record<string, unknown> | null): string {
     .join(", ");
 }
 
+export function formatMonthlyCost(cost: number | null): string {
+  if (cost == null) return "\u2014";
+  if (cost < 0.01) return "<$0.01/mo";
+  return `$${cost.toFixed(2)}/mo`;
+}
+
 export function buildLimitsPayload(stage: string, limitValue: string): Record<string, unknown> | undefined {
   if (!limitValue.trim()) return undefined;
   const num = parseFloat(limitValue);

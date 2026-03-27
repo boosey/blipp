@@ -13,7 +13,7 @@ import { useAdminFetch } from "@/lib/admin-api";
 import { STAGE_LABELS } from "@/lib/ai-models";
 import type { AIStage } from "@/lib/ai-models";
 import type { AiModelEntry } from "@/types/admin";
-import { formatPrice, formatLimits } from "./helpers";
+import { formatPrice, formatLimits, formatMonthlyCost } from "./helpers";
 import { AddProviderForm, EditProviderForm } from "./provider-forms";
 
 export interface ModelTableProps {
@@ -48,11 +48,12 @@ export function ModelTable({
   return (
     <div className="border border-white/5 rounded-lg overflow-hidden">
       {/* Header row */}
-      <div className="grid grid-cols-[2fr_80px_120px_80px_1fr_auto] gap-4 px-4 py-2.5 bg-[#0F1D32] text-[10px] font-medium text-[#9CA3AF] uppercase tracking-wider border-b border-white/5">
+      <div className="grid grid-cols-[2fr_1fr_1fr_80px_80px_2fr_auto] gap-4 px-4 py-2.5 bg-[#0F1D32] text-[10px] font-medium text-[#9CA3AF] uppercase tracking-wider border-b border-white/5">
         <div>Model</div>
         <div>Stage</div>
         <div>Providers</div>
         <div>Developer</div>
+        <div>Est. Cost</div>
         <div>Notes</div>
         <div className="w-20 text-right">Actions</div>
       </div>
@@ -63,7 +64,7 @@ export function ModelTable({
           <div key={model.id}>
             {/* Model row */}
             <div
-              className="grid grid-cols-[2fr_80px_120px_80px_1fr_auto] gap-4 px-4 py-3 items-center border-b border-white/5 hover:bg-white/[0.02] cursor-pointer transition-colors"
+              className="grid grid-cols-[2fr_1fr_1fr_80px_80px_2fr_auto] gap-4 px-4 py-3 items-center border-b border-white/5 hover:bg-white/[0.02] cursor-pointer transition-colors"
               onClick={() => setExpandedId(isExpanded ? null : model.id)}
             >
               <div className="flex items-center gap-2">
@@ -97,6 +98,9 @@ export function ModelTable({
                 )}
               </div>
               <div className="text-xs text-[#9CA3AF]">{model.developer}</div>
+              <div className="text-xs font-mono text-[#9CA3AF]" title="Based on last 30 days of usage">
+                {formatMonthlyCost(model.estMonthlyCost)}
+              </div>
               <div className="text-[11px] text-[#9CA3AF] leading-snug whitespace-normal">{model.notes ?? "\u2014"}</div>
               <div className="w-20 flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
                 <Button

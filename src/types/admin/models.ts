@@ -23,6 +23,7 @@ export interface AiModelEntry {
   developer: string;
   notes: string | null;
   isActive: boolean;
+  estMonthlyCost: number | null;
   providers: AiModelProviderEntry[];
 }
 

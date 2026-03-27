@@ -8,14 +8,57 @@ aiModelsRoutes.get("/", async (c) => {
   const prisma = c.get("prisma") as any;
   const stage = c.req.query("stage");
   const includeInactive = c.req.query("includeInactive") === "true";
-  const data = await prisma.aiModel.findMany({
-    where: {
-      ...(stage ? { stage } : {}),
-      ...(!includeInactive && { isActive: true }),
-    },
-    include: { providers: { orderBy: { isDefault: "desc" } } },
-    orderBy: [{ stage: "asc" }, { label: "asc" }],
+
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+  const [models, costsByModel, firstSeenByModel] = await Promise.all([
+    prisma.aiModel.findMany({
+      where: {
+        ...(stage ? { stage } : {}),
+        ...(!includeInactive && { isActive: true }),
+      },
+      include: { providers: { orderBy: { isDefault: "desc" } } },
+      orderBy: [{ stage: "asc" }, { label: "asc" }],
+    }),
+    prisma.pipelineStep.groupBy({
+      by: ["model"],
+      where: { createdAt: { gte: thirtyDaysAgo }, model: { not: null }, cost: { not: null } },
+      _sum: { cost: true },
+    }),
+    prisma.pipelineStep.groupBy({
+      by: ["model"],
+      where: { model: { not: null } },
+      _min: { createdAt: true },
+    }),
+  ]);
+
+  // Build cost lookup: modelId string -> total cost in last 30 days
+  const costMap = new Map<string, number>();
+  for (const r of costsByModel) {
+    if (r.model && r._sum.cost != null) costMap.set(r.model, r._sum.cost);
+  }
+
+  // Build first-seen lookup for normalization
+  const firstSeenMap = new Map<string, Date>();
+  for (const r of firstSeenByModel) {
+    if (r.model && r._min.createdAt) firstSeenMap.set(r.model, r._min.createdAt);
+  }
+
+  const now = Date.now();
+  const data = models.map((m: any) => {
+    const totalCost = costMap.get(m.modelId);
+    let estMonthlyCost: number | null = null;
+    if (totalCost != null && totalCost > 0) {
+      const firstSeen = firstSeenMap.get(m.modelId);
+      const daysActive = firstSeen
+        ? Math.max(1, (now - firstSeen.getTime()) / (24 * 60 * 60 * 1000))
+        : 30;
+      const daysInRange = Math.min(30, daysActive);
+      estMonthlyCost = Math.round(((totalCost / daysInRange) * 30) * 100) / 100;
+    }
+    return { ...m, estMonthlyCost };
   });
+
   return c.json({ data });
 });
 
