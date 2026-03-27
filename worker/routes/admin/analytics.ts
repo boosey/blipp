@@ -14,51 +14,93 @@ function parseDateRange(c: { req: { query: (key: string) => string | undefined }
   return { from, to };
 }
 
-function daysBetween(from: Date, to: Date): Date[] {
-  const days: Date[] = [];
-  const current = new Date(from);
-  current.setHours(0, 0, 0, 0);
-  const end = new Date(to);
-  end.setHours(23, 59, 59, 999);
-  while (current <= end) {
-    days.push(new Date(current));
-    current.setDate(current.getDate() + 1);
-  }
-  return days;
+function round(n: number, decimals = 2): number {
+  const f = Math.pow(10, decimals);
+  return Math.round(n * f) / f;
 }
 
-function dateKey(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
-
-// GET /costs - Cost data grouped by day (queries PipelineStep for cost)
+// GET /costs - Cost data grouped by day via SQL aggregation
 analyticsRoutes.get("/costs", async (c) => {
   const prisma = c.get("prisma") as any;
-  let steps: { stage: string; model: string | null; inputTokens: number | null; outputTokens: number | null; cost: number | null; createdAt: Date }[] = [];
-  let prevSteps: { cost: number | null }[] = [];
   const { from, to } = parseDateRange(c);
-  const days = daysBetween(from, to);
 
   try {
-    steps = await prisma.pipelineStep.findMany({
-      where: {
-        createdAt: { gte: from, lte: to },
-        model: { not: null },
-      },
-      select: { stage: true, model: true, inputTokens: true, outputTokens: true, cost: true, createdAt: true },
-    });
+    // Daily costs by stage — single SQL query
+    const dailyRows: { day: string; stage: string; total_cost: number }[] =
+      await prisma.$queryRawUnsafe(
+        `SELECT DATE("createdAt") as day, stage, COALESCE(SUM(cost), 0)::float as total_cost
+         FROM "PipelineStep"
+         WHERE "createdAt" >= $1 AND "createdAt" <= $2 AND model IS NOT NULL
+         GROUP BY DATE("createdAt"), stage
+         ORDER BY day`,
+        from, to,
+      );
 
-    // Previous period comparison
-    const prevFrom = new Date(from.getTime() - (to.getTime() - from.getTime()));
-    prevSteps = await prisma.pipelineStep.findMany({
-      where: {
-        createdAt: { gte: prevFrom, lt: from },
-        model: { not: null },
+    // Total cost for current period
+    const [totals]: [{ total_cost: number; unique_days: number }] =
+      await prisma.$queryRawUnsafe(
+        `SELECT COALESCE(SUM(cost), 0)::float as total_cost,
+                COUNT(DISTINCT DATE("createdAt"))::int as unique_days
+         FROM "PipelineStep"
+         WHERE "createdAt" >= $1 AND "createdAt" <= $2 AND model IS NOT NULL`,
+        from, to,
+      );
+
+    // Previous period total for comparison
+    const periodMs = to.getTime() - from.getTime();
+    const prevFrom = new Date(from.getTime() - periodMs);
+    const [prevTotals]: [{ total_cost: number }] =
+      await prisma.$queryRawUnsafe(
+        `SELECT COALESCE(SUM(cost), 0)::float as total_cost
+         FROM "PipelineStep"
+         WHERE "createdAt" >= $1 AND "createdAt" < $2 AND model IS NOT NULL`,
+        prevFrom, from,
+      );
+
+    // Build daily costs map
+    const dayMap = new Map<string, { stt: number; distillation: number; tts: number }>();
+    for (const row of dailyRows) {
+      const key = row.day;
+      const entry = dayMap.get(key) ?? { stt: 0, distillation: 0, tts: 0 };
+      if (row.stage === "TRANSCRIPTION") entry.stt = Number(row.total_cost);
+      else if (row.stage === "DISTILLATION") entry.distillation = Number(row.total_cost);
+      else if (row.stage === "AUDIO_GENERATION") entry.tts = Number(row.total_cost);
+      dayMap.set(key, entry);
+    }
+
+    const dailyCosts = Array.from(dayMap.entries()).map(([date, costs]) => ({
+      date,
+      stt: round(costs.stt),
+      distillation: round(costs.distillation),
+      tts: round(costs.tts),
+      infrastructure: 0,
+    }));
+
+    const totalCost = Number(totals.total_cost);
+    const dayCount = Math.max(1, Math.ceil(periodMs / (24 * 60 * 60 * 1000)));
+    const dailyAvg = totalCost / dayCount;
+    const prevTotal = Number(prevTotals.total_cost);
+    const comparisonAmount = totalCost - prevTotal;
+    const comparisonPct = prevTotal > 0 ? Math.round((comparisonAmount / prevTotal) * 100) : 0;
+    const perEpisode = Number(totals.unique_days) > 0 ? round(totalCost / Number(totals.unique_days)) : 0;
+
+    return c.json({
+      data: {
+        totalCost: round(totalCost),
+        comparison: {
+          amount: round(comparisonAmount),
+          percentage: comparisonPct,
+          direction: comparisonAmount >= 0 ? "up" : "down",
+        },
+        dailyCosts,
+        metrics: {
+          perEpisode,
+          dailyAvg: round(dailyAvg),
+          projectedMonthly: round(dailyAvg * 30),
+        },
       },
-      select: { cost: true },
     });
   } catch {
-    // PipelineStep table may not exist
     return c.json({
       data: {
         totalCost: 0,
@@ -68,153 +110,109 @@ analyticsRoutes.get("/costs", async (c) => {
       },
     });
   }
-
-  const dailyCosts = days.map((day) => {
-    const key = dateKey(day);
-    const daySteps = steps.filter((s) => dateKey(s.createdAt) === key);
-
-    const stt = daySteps.filter((s) => s.stage === "TRANSCRIPTION").reduce((sum, s) => sum + (s.cost ?? 0), 0);
-    const distillation = daySteps.filter((s) => s.stage === "DISTILLATION").reduce((sum, s) => sum + (s.cost ?? 0), 0);
-    const tts = daySteps.filter((s) => s.stage === "AUDIO_GENERATION").reduce((sum, s) => sum + (s.cost ?? 0), 0);
-
-    return { date: key, stt: round(stt), distillation: round(distillation), tts: round(tts), infrastructure: 0 };
-  });
-
-  const totalCost = steps.reduce((s, step) => s + (step.cost ?? 0), 0);
-  const dayCount = days.length || 1;
-  const dailyAvg = totalCost / dayCount;
-
-  const prevTotal = prevSteps.reduce((s, step) => s + (step.cost ?? 0), 0);
-  const comparisonAmount = totalCost - prevTotal;
-  const comparisonPct = prevTotal > 0 ? Math.round((comparisonAmount / prevTotal) * 100) : 0;
-
-  const episodeSteps = steps.filter((s) => s.stage === "TRANSCRIPTION" || s.stage === "DISTILLATION" || s.stage === "NARRATIVE_GENERATION" || s.stage === "AUDIO_GENERATION");
-  const uniqueDays = new Set(episodeSteps.map((s) => s.createdAt.toISOString().slice(0, 10)));
-  const perEpisode = uniqueDays.size > 0 ? round(totalCost / uniqueDays.size) : 0;
-
-  return c.json({
-    data: {
-      totalCost: round(totalCost),
-      comparison: {
-        amount: round(comparisonAmount),
-        percentage: comparisonPct,
-        direction: comparisonAmount >= 0 ? "up" : "down",
-      },
-      dailyCosts,
-      metrics: {
-        perEpisode,
-        dailyAvg: round(dailyAvg),
-        projectedMonthly: round(dailyAvg * 30),
-      },
-    },
-  });
 });
 
-// GET /costs/by-model - Cost breakdown by model and stage
+// GET /costs/by-model - Cost breakdown by model and stage (Prisma groupBy)
 analyticsRoutes.get("/costs/by-model", async (c) => {
   const prisma = c.get("prisma") as any;
   const { from, to } = parseDateRange(c);
 
-  let steps: { stage: string; model: string; inputTokens: number | null; outputTokens: number | null; cost: number | null }[] = [];
-
   try {
-    steps = await prisma.pipelineStep.findMany({
-      where: {
-        createdAt: { gte: from, lte: to },
-        model: { not: null },
-      },
-      select: { stage: true, model: true, inputTokens: true, outputTokens: true, cost: true },
-    });
+    const [byModel, byStage] = await Promise.all([
+      prisma.pipelineStep.groupBy({
+        by: ["model"],
+        where: { createdAt: { gte: from, lte: to }, model: { not: null } },
+        _sum: { cost: true, inputTokens: true, outputTokens: true },
+        _count: true,
+      }),
+      prisma.pipelineStep.groupBy({
+        by: ["stage"],
+        where: { createdAt: { gte: from, lte: to }, model: { not: null } },
+        _sum: { cost: true, inputTokens: true, outputTokens: true },
+        _count: true,
+      }),
+    ]);
+
+    const models = byModel.map((r: any) => ({
+      model: r.model,
+      totalCost: round(r._sum.cost ?? 0),
+      totalInputTokens: r._sum.inputTokens ?? 0,
+      totalOutputTokens: r._sum.outputTokens ?? 0,
+      callCount: r._count,
+    }));
+
+    const stages = byStage.map((r: any) => ({
+      stage: r.stage,
+      stageName: PIPELINE_STAGE_NAMES[r.stage] ?? r.stage,
+      totalCost: round(r._sum.cost ?? 0),
+      totalInputTokens: r._sum.inputTokens ?? 0,
+      totalOutputTokens: r._sum.outputTokens ?? 0,
+      callCount: r._count,
+    }));
+
+    return c.json({ data: { models, byStage: stages } });
   } catch {
     return c.json({ data: { models: [], byStage: [] } });
   }
-
-  // Group by model
-  const modelMap = new Map<string, { totalCost: number; totalInputTokens: number; totalOutputTokens: number; callCount: number }>();
-  for (const step of steps) {
-    const key = step.model;
-    const entry = modelMap.get(key) ?? { totalCost: 0, totalInputTokens: 0, totalOutputTokens: 0, callCount: 0 };
-    entry.totalCost += step.cost ?? 0;
-    entry.totalInputTokens += step.inputTokens ?? 0;
-    entry.totalOutputTokens += step.outputTokens ?? 0;
-    entry.callCount += 1;
-    modelMap.set(key, entry);
-  }
-
-  const models = Array.from(modelMap.entries()).map(([model, agg]) => ({
-    model,
-    totalCost: round(agg.totalCost),
-    totalInputTokens: agg.totalInputTokens,
-    totalOutputTokens: agg.totalOutputTokens,
-    callCount: agg.callCount,
-  }));
-
-  // Group by stage
-  const stageMap = new Map<string, { totalCost: number; totalInputTokens: number; totalOutputTokens: number; callCount: number }>();
-  for (const step of steps) {
-    const key = step.stage;
-    const entry = stageMap.get(key) ?? { totalCost: 0, totalInputTokens: 0, totalOutputTokens: 0, callCount: 0 };
-    entry.totalCost += step.cost ?? 0;
-    entry.totalInputTokens += step.inputTokens ?? 0;
-    entry.totalOutputTokens += step.outputTokens ?? 0;
-    entry.callCount += 1;
-    stageMap.set(key, entry);
-  }
-
-  const byStage = Array.from(stageMap.entries()).map(([stage, agg]) => ({
-    stage,
-    stageName: PIPELINE_STAGE_NAMES[stage] ?? stage,
-    totalCost: round(agg.totalCost),
-    totalInputTokens: agg.totalInputTokens,
-    totalOutputTokens: agg.totalOutputTokens,
-    callCount: agg.callCount,
-  }));
-
-  return c.json({ data: { models, byStage } });
 });
 
-// GET /usage - Usage trends
+// GET /usage - Usage trends via SQL aggregation
 analyticsRoutes.get("/usage", async (c) => {
   const prisma = c.get("prisma") as any;
   const { from, to } = parseDateRange(c);
-  const days = daysBetween(from, to);
 
-  const [feedItems, episodes, users, planCounts] = await Promise.all([
-    prisma.feedItem.findMany({
-      where: { createdAt: { gte: from, lte: to } },
-      select: { createdAt: true, durationTier: true },
-    }),
-    prisma.episode.findMany({
-      where: { createdAt: { gte: from, lte: to } },
-      select: { createdAt: true },
-    }),
-    prisma.user.findMany({
-      where: { createdAt: { gte: from, lte: to } },
-      select: { createdAt: true },
-    }),
-    prisma.user.groupBy({
-      by: ["planId"],
-      _count: true,
-    }),
+  const [feedTrends, episodeTrends, userTrends, planCounts, feedAgg, peakRows] = await Promise.all([
+    prisma.$queryRawUnsafe(
+      `SELECT DATE("createdAt") as day, COUNT(*)::int as count
+       FROM "FeedItem" WHERE "createdAt" >= $1 AND "createdAt" <= $2
+       GROUP BY DATE("createdAt") ORDER BY day`, from, to,
+    ) as Promise<{ day: string; count: number }[]>,
+
+    prisma.$queryRawUnsafe(
+      `SELECT DATE("createdAt") as day, COUNT(*)::int as count
+       FROM "Episode" WHERE "createdAt" >= $1 AND "createdAt" <= $2
+       GROUP BY DATE("createdAt") ORDER BY day`, from, to,
+    ) as Promise<{ day: string; count: number }[]>,
+
+    prisma.$queryRawUnsafe(
+      `SELECT DATE("createdAt") as day, COUNT(*)::int as count
+       FROM "User" WHERE "createdAt" >= $1 AND "createdAt" <= $2
+       GROUP BY DATE("createdAt") ORDER BY day`, from, to,
+    ) as Promise<{ day: string; count: number }[]>,
+
+    prisma.user.groupBy({ by: ["planId"], _count: true }),
+
+    prisma.$queryRawUnsafe(
+      `SELECT COUNT(*)::int as total,
+              COALESCE(AVG("durationTier"), 0)::float as avg_duration
+       FROM "FeedItem" WHERE "createdAt" >= $1 AND "createdAt" <= $2`, from, to,
+    ) as Promise<[{ total: number; avg_duration: number }]>,
+
+    prisma.$queryRawUnsafe(
+      `SELECT EXTRACT(HOUR FROM "createdAt")::int as hour, COUNT(*)::int as count
+       FROM "FeedItem" WHERE "createdAt" >= $1 AND "createdAt" <= $2
+       GROUP BY hour ORDER BY count DESC LIMIT 10`, from, to,
+    ) as Promise<{ hour: number; count: number }[]>,
   ]);
 
-  const trends = days.map((day) => {
-    const key = dateKey(day);
-    return {
-      date: key,
-      feedItems: feedItems.filter((f: any) => dateKey(f.createdAt) === key).length,
-      episodes: episodes.filter((e: any) => dateKey(e.createdAt) === key).length,
-      users: users.filter((u: any) => dateKey(u.createdAt) === key).length,
-    };
-  });
+  // Merge daily trends into a single array
+  const feedMap = new Map(feedTrends.map((r) => [r.day, Number(r.count)]));
+  const epMap = new Map(episodeTrends.map((r) => [r.day, Number(r.count)]));
+  const userMap = new Map(userTrends.map((r) => [r.day, Number(r.count)]));
+  const allDays = new Set([...feedMap.keys(), ...epMap.keys(), ...userMap.keys()]);
+  const trends = Array.from(allDays).sort().map((day) => ({
+    date: day,
+    feedItems: feedMap.get(day) ?? 0,
+    episodes: epMap.get(day) ?? 0,
+    users: userMap.get(day) ?? 0,
+  }));
 
-  // Look up plan names for the grouped planIds
+  // Plan breakdown
   const plans = await prisma.plan.findMany({
     where: { id: { in: planCounts.map((p: any) => p.planId) } },
     select: { id: true, name: true },
   });
   const planNameMap = new Map(plans.map((p: any) => [p.id, p.name]));
-
   const totalUsers = planCounts.reduce((s: number, p: any) => s + p._count, 0);
   const byPlan = planCounts.map((p: any) => ({
     plan: planNameMap.get(p.planId) ?? "Unknown",
@@ -222,136 +220,190 @@ analyticsRoutes.get("/usage", async (c) => {
     percentage: totalUsers > 0 ? Math.round((p._count / totalUsers) * 100) : 0,
   }));
 
-  // Average duration tier
-  const avgDuration = feedItems.length > 0
-    ? Math.round(feedItems.reduce((s: number, f: any) => s + (f.durationTier ?? 0), 0) / feedItems.length * 60)
-    : 0;
-
-  // Peak times - hours with most feed items
-  const hourCounts = new Map<number, number>();
-  for (const f of feedItems) {
-    const hour = f.createdAt.getHours();
-    hourCounts.set(hour, (hourCounts.get(hour) ?? 0) + 1);
-  }
-  const peakTimes = Array.from(hourCounts.entries())
-    .map(([hour, count]) => ({ hour, count }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 10);
+  const agg = feedAgg[0];
+  const feedItemCount = Number(agg.total);
+  const episodeCount = episodeTrends.reduce((s, r) => s + Number(r.count), 0);
+  const userCount = userTrends.reduce((s, r) => s + Number(r.count), 0);
 
   return c.json({
     data: {
       metrics: {
-        feedItems: feedItems.length,
-        episodes: episodes.length,
-        users: users.length,
-        avgDuration,
+        feedItems: feedItemCount,
+        episodes: episodeCount,
+        users: userCount,
+        avgDuration: Math.round(Number(agg.avg_duration) * 60),
       },
       trends,
       byPlan,
-      peakTimes,
-      topPodcasts: [], // Would need a more complex join
+      peakTimes: peakRows.map((r) => ({ hour: Number(r.hour), count: Number(r.count) })),
+      topPodcasts: [],
     },
   });
 });
 
-// GET /quality - Quality metrics
+// GET /quality - Quality metrics via SQL aggregation
 analyticsRoutes.get("/quality", async (c) => {
   const prisma = c.get("prisma") as any;
   const { from, to } = parseDateRange(c);
 
-  const [clips, distillations, episodes] = await Promise.all([
-    prisma.clip.findMany({
-      where: { createdAt: { gte: from, lte: to }, status: "COMPLETED" },
-      select: { durationTier: true, actualSeconds: true, createdAt: true },
+  const [clipAgg, distAgg, epAgg, dailyQuality, failedCount, poorFitCount] = await Promise.all([
+    // Time fitting: AVG of fit scores for clips with actual duration
+    prisma.$queryRawUnsafe(
+      `SELECT COALESCE(AVG(
+        GREATEST(0, 100 - ABS(("actualSeconds" - "durationTier" * 60.0) / ("durationTier" * 60.0)) * 100)
+      ), 100)::float as avg_fit
+       FROM "Clip"
+       WHERE "createdAt" >= $1 AND "createdAt" <= $2 AND status = 'COMPLETED'
+         AND "actualSeconds" IS NOT NULL AND "durationTier" IS NOT NULL`, from, to,
+    ) as Promise<[{ avg_fit: number }]>,
+
+    // Distillation success rate
+    prisma.$queryRawUnsafe(
+      `SELECT COUNT(*)::int as total,
+              COUNT(*) FILTER (WHERE status = 'COMPLETED')::int as completed
+       FROM "Distillation"
+       WHERE "createdAt" >= $1 AND "createdAt" <= $2`, from, to,
+    ) as Promise<[{ total: number; completed: number }]>,
+
+    // Transcription coverage
+    prisma.$queryRawUnsafe(
+      `SELECT COUNT(*)::int as total,
+              COUNT(*) FILTER (WHERE "transcriptUrl" IS NOT NULL)::int as with_transcript
+       FROM "Episode"
+       WHERE "createdAt" >= $1 AND "createdAt" <= $2`, from, to,
+    ) as Promise<[{ total: number; with_transcript: number }]>,
+
+    // Daily quality trend (time fitting per day)
+    prisma.$queryRawUnsafe(
+      `SELECT DATE("createdAt") as day,
+              COALESCE(AVG(
+                GREATEST(0, 100 - ABS(("actualSeconds" - "durationTier" * 60.0) / ("durationTier" * 60.0)) * 100)
+              ), 100)::float as score
+       FROM "Clip"
+       WHERE "createdAt" >= $1 AND "createdAt" <= $2 AND status = 'COMPLETED'
+         AND "actualSeconds" IS NOT NULL AND "durationTier" IS NOT NULL
+       GROUP BY DATE("createdAt") ORDER BY day`, from, to,
+    ) as Promise<{ day: string; score: number }[]>,
+
+    // Failed distillations count
+    prisma.distillation.count({
+      where: { createdAt: { gte: from, lte: to }, status: "FAILED" },
     }),
-    prisma.distillation.findMany({
-      where: { createdAt: { gte: from, lte: to } },
-      select: { status: true },
-    }),
-    prisma.episode.findMany({
-      where: { createdAt: { gte: from, lte: to } },
-      select: { transcriptUrl: true },
-    }),
+
+    // Poor time fit count
+    prisma.$queryRawUnsafe(
+      `SELECT COUNT(*)::int as count FROM "Clip"
+       WHERE "createdAt" >= $1 AND "createdAt" <= $2 AND status = 'COMPLETED'
+         AND "actualSeconds" IS NOT NULL AND "durationTier" IS NOT NULL
+         AND GREATEST(0, 100 - ABS(("actualSeconds" - "durationTier" * 60.0) / ("durationTier" * 60.0)) * 100) < 70`,
+      from, to,
+    ) as Promise<[{ count: number }]>,
   ]);
 
-  // Time fitting accuracy (clip actual vs target duration tier)
-  const fitScores = clips
-    .filter((cl: any) => cl.actualSeconds && cl.durationTier)
-    .map((cl: any) => Math.max(0, 100 - Math.abs((cl.actualSeconds! - cl.durationTier * 60) / (cl.durationTier * 60)) * 100));
-  const timeFitting = fitScores.length > 0 ? Math.round(fitScores.reduce((s: number, v: number) => s + v, 0) / fitScores.length) : 100;
-
-  // Distillation success rate
-  const totalDistillations = distillations.length;
-  const completedDistillations = distillations.filter((d: any) => d.status === "COMPLETED").length;
-  const claimCoverage = totalDistillations > 0 ? Math.round((completedDistillations / totalDistillations) * 100) : 100;
-
-  // Transcription coverage
-  const totalEpisodes = episodes.length;
-  const withTranscript = episodes.filter((e: any) => e.transcriptUrl).length;
-  const transcription = totalEpisodes > 0 ? Math.round((withTranscript / totalEpisodes) * 100) : 100;
-
+  const timeFitting = Math.round(Number(clipAgg[0].avg_fit));
+  const distTotal = Number(distAgg[0].total);
+  const distCompleted = Number(distAgg[0].completed);
+  const claimCoverage = distTotal > 0 ? Math.round((distCompleted / distTotal) * 100) : 100;
+  const epTotal = Number(epAgg[0].total);
+  const epWithTranscript = Number(epAgg[0].with_transcript);
+  const transcription = epTotal > 0 ? Math.round((epWithTranscript / epTotal) * 100) : 100;
   const overallScore = Math.round((timeFitting + claimCoverage + transcription) / 3);
 
-  // Daily trend
-  const days = daysBetween(from, to);
-  const trend = days.map((day) => {
-    const key = dateKey(day);
-    const dayClips = clips.filter((cl: any) => dateKey(cl.createdAt) === key && cl.actualSeconds && cl.durationTier);
-    const dayScore = dayClips.length > 0
-      ? Math.round(
-          dayClips
-            .map((cl: any) => Math.max(0, 100 - Math.abs((cl.actualSeconds! - cl.durationTier * 60) / (cl.durationTier * 60)) * 100))
-            .reduce((s: number, v: number) => s + v, 0) / dayClips.length
-        )
-      : 100;
-    return { date: key, score: dayScore };
-  });
+  const trend = dailyQuality.map((r) => ({ date: r.day, score: Math.round(Number(r.score)) }));
 
-  // Recent issues
-  const failedDistillations = distillations.filter((d: any) => d.status === "FAILED").length;
   const recentIssues: { type: string; count: number }[] = [];
-  if (failedDistillations > 0) recentIssues.push({ type: "failed_distillation", count: failedDistillations });
-  const poorFitBriefings = fitScores.filter((s: number) => s < 70).length;
-  if (poorFitBriefings > 0) recentIssues.push({ type: "poor_time_fit", count: poorFitBriefings });
+  if (failedCount > 0) recentIssues.push({ type: "failed_distillation", count: failedCount });
+  const poorFit = Number(poorFitCount[0].count);
+  if (poorFit > 0) recentIssues.push({ type: "poor_time_fit", count: poorFit });
 
   return c.json({
     data: {
       overallScore,
-      components: {
-        timeFitting,
-        claimCoverage,
-        transcription,
-      },
+      components: { timeFitting, claimCoverage, transcription },
       trend,
       recentIssues,
     },
   });
 });
 
-// GET /pipeline - Pipeline performance (queries PipelineStep for stage timing)
+// GET /pipeline - Pipeline performance via SQL aggregation
 analyticsRoutes.get("/pipeline", async (c) => {
   const prisma = c.get("prisma") as any;
   const { from, to } = parseDateRange(c);
-
-  let steps: { stage: string; status: string; durationMs: number | null; createdAt: Date }[] = [];
-  let prevStepCount = 0;
+  const periodMs = to.getTime() - from.getTime();
+  const hours = Math.max(1, periodMs / (60 * 60 * 1000));
 
   try {
-    steps = await prisma.pipelineStep.findMany({
-      where: { createdAt: { gte: from, lte: to } },
-      select: { stage: true, status: true, durationMs: true, createdAt: true },
+    const [stageRates, completedCount, prevCount, dailySpeed] = await Promise.all([
+      // Per-stage success rates
+      prisma.$queryRawUnsafe(
+        `SELECT stage,
+                COUNT(*)::int as total,
+                COUNT(*) FILTER (WHERE status = 'COMPLETED')::int as completed
+         FROM "PipelineStep"
+         WHERE "createdAt" >= $1 AND "createdAt" <= $2
+         GROUP BY stage`, from, to,
+      ) as Promise<{ stage: string; total: number; completed: number }[]>,
+
+      // Total completed for throughput
+      prisma.pipelineStep.count({
+        where: { createdAt: { gte: from, lte: to }, status: "COMPLETED" },
+      }),
+
+      // Previous period completed count for trend
+      prisma.pipelineStep.count({
+        where: {
+          createdAt: { gte: new Date(from.getTime() - periodMs), lt: from },
+          status: "COMPLETED",
+        },
+      }),
+
+      // Daily average processing speed
+      prisma.$queryRawUnsafe(
+        `SELECT DATE("createdAt") as day,
+                COALESCE(AVG("durationMs"), 0)::float as avg_ms
+         FROM "PipelineStep"
+         WHERE "createdAt" >= $1 AND "createdAt" <= $2 AND "durationMs" IS NOT NULL
+         GROUP BY DATE("createdAt") ORDER BY day`, from, to,
+      ) as Promise<{ day: string; avg_ms: number }[]>,
+    ]);
+
+    const stageKeys = ["TRANSCRIPTION", "DISTILLATION", "NARRATIVE_GENERATION", "AUDIO_GENERATION", "BRIEFING_ASSEMBLY"];
+    const rateMap = new Map(stageRates.map((r) => [r.stage, r]));
+    const successRates = stageKeys.map((stage) => {
+      const r = rateMap.get(stage);
+      return {
+        stage,
+        name: PIPELINE_STAGE_NAMES[stage] ?? stage,
+        rate: r && Number(r.total) > 0 ? Math.round((Number(r.completed) / Number(r.total)) * 100) : 100,
+      };
     });
 
-    // Previous period for trend
-    const prevFrom = new Date(from.getTime() - (to.getTime() - from.getTime()));
-    prevStepCount = await prisma.pipelineStep.count({
-      where: {
-        createdAt: { gte: prevFrom, lt: from },
-        status: "COMPLETED",
-      },
+    const episodesPerHour = round(completedCount / hours);
+    const prevHours = Math.max(1, periodMs / (60 * 60 * 1000));
+    const prevRate = prevCount / prevHours;
+    const throughputTrend = prevRate > 0 ? Math.round(((episodesPerHour - prevRate) / prevRate) * 100) : 0;
+
+    const processingSpeed = dailySpeed.map((r) => ({
+      date: r.day,
+      avgMs: Math.round(Number(r.avg_ms)),
+    }));
+
+    const bottlenecks: { stage: string; issue: string; recommendation: string }[] = [];
+    for (const sr of successRates) {
+      if (sr.rate < 90) {
+        bottlenecks.push({
+          stage: sr.name,
+          issue: `Success rate is ${sr.rate}%`,
+          recommendation: `Review failed ${sr.name.toLowerCase()} steps for common error patterns`,
+        });
+      }
+    }
+
+    return c.json({
+      data: { throughput: { episodesPerHour, trend: throughputTrend }, successRates, processingSpeed, bottlenecks },
     });
   } catch {
-    // PipelineStep table may not exist
     return c.json({
       data: {
         throughput: { episodesPerHour: 0, trend: 0 },
@@ -365,64 +417,9 @@ analyticsRoutes.get("/pipeline", async (c) => {
       },
     });
   }
-
-  const days = daysBetween(from, to);
-  const hours = Math.max(1, (to.getTime() - from.getTime()) / (60 * 60 * 1000));
-
-  // Per-stage success rates
-  const stageKeys = ["TRANSCRIPTION", "DISTILLATION", "NARRATIVE_GENERATION", "AUDIO_GENERATION", "BRIEFING_ASSEMBLY"] as const;
-  const successRates = stageKeys.map((stage) => {
-    const stageSteps = steps.filter((s) => s.stage === stage);
-    const completed = stageSteps.filter((s) => s.status === "COMPLETED").length;
-    return {
-      stage,
-      name: PIPELINE_STAGE_NAMES[stage] ?? stage,
-      rate: stageSteps.length > 0 ? Math.round((completed / stageSteps.length) * 100) : 100,
-    };
-  });
-
-  // Throughput
-  const completedSteps = steps.filter((s) => s.status === "COMPLETED").length;
-  const episodesPerHour = round(completedSteps / hours);
-
-  const prevFrom = new Date(from.getTime() - (to.getTime() - from.getTime()));
-  const prevHours = Math.max(1, (from.getTime() - prevFrom.getTime()) / (60 * 60 * 1000));
-  const prevRate = prevStepCount / prevHours;
-  const throughputTrend = prevRate > 0 ? Math.round(((episodesPerHour - prevRate) / prevRate) * 100) : 0;
-
-  // Processing speed over time
-  const processingSpeed = days.map((day) => {
-    const key = dateKey(day);
-    const daySteps = steps.filter((s) => dateKey(s.createdAt) === key && s.durationMs);
-    const avg = daySteps.length > 0
-      ? Math.round(daySteps.reduce((sum, s) => sum + (s.durationMs ?? 0), 0) / daySteps.length)
-      : 0;
-    return { date: key, avgMs: avg };
-  });
-
-  // Bottlenecks
-  const bottlenecks: { stage: string; issue: string; recommendation: string }[] = [];
-  for (const sr of successRates) {
-    if (sr.rate < 90) {
-      bottlenecks.push({
-        stage: sr.name,
-        issue: `Success rate is ${sr.rate}%`,
-        recommendation: `Review failed ${sr.name.toLowerCase()} steps for common error patterns`,
-      });
-    }
-  }
-
-  return c.json({
-    data: {
-      throughput: { episodesPerHour, trend: throughputTrend },
-      successRates,
-      processingSpeed,
-      bottlenecks,
-    },
-  });
 });
 
-// GET /revenue - Revenue metrics (MRR, user counts by plan, churn indicators)
+// GET /revenue - Revenue metrics (already uses groupBy/count, no changes needed)
 analyticsRoutes.get("/revenue", async (c) => {
   const prisma = c.get("prisma") as any;
 
@@ -435,7 +432,6 @@ analyticsRoutes.get("/revenue", async (c) => {
     prisma.plan.findMany({
       select: { id: true, name: true, slug: true, priceCentsMonthly: true, priceCentsAnnual: true },
     }) as Promise<{ id: string; name: string; slug: string; priceCentsMonthly: number; priceCentsAnnual: number | null }[]>,
-    // Users who downgraded to default plan in last 30 days (proxy for churn)
     prisma.user.count({
       where: {
         plan: { isDefault: true },
@@ -473,10 +469,5 @@ analyticsRoutes.get("/revenue", async (c) => {
     },
   });
 });
-
-function round(n: number, decimals = 2): number {
-  const f = Math.pow(10, decimals);
-  return Math.round(n * f) / f;
-}
 
 export { analyticsRoutes };

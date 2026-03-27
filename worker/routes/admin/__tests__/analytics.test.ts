@@ -45,6 +45,7 @@ describe("Analytics Routes", () => {
     app.use("/*", async (c, next) => { c.set("prisma", mockPrisma); await next(); });
     app.route("/analytics", analyticsRoutes);
 
+    // Reset all mock methods
     Object.values(mockPrisma).forEach((model) => {
       if (typeof model === "object" && model !== null) {
         Object.values(model).forEach((method) => {
@@ -55,6 +56,7 @@ describe("Analytics Routes", () => {
       }
     });
     mockPrisma.$disconnect.mockResolvedValue(undefined);
+    mockPrisma.$queryRawUnsafe.mockResolvedValue([]);
   });
 
   describe("GET /analytics/health", () => {
@@ -68,17 +70,16 @@ describe("Analytics Routes", () => {
 
   describe("GET /analytics/costs", () => {
     it("returns cost data with breakdown", async () => {
-      const now = new Date();
-      mockPrisma.pipelineStep.findMany
+      // Mock $queryRawUnsafe calls in order: dailyRows, totals, prevTotals
+      mockPrisma.$queryRawUnsafe
         .mockResolvedValueOnce([
-          { stage: "TRANSCRIPTION", model: "whisper-1", inputTokens: 100, outputTokens: 0, cost: 0.50, createdAt: now },
-          { stage: "DISTILLATION", model: "claude-sonnet", inputTokens: 200, outputTokens: 50, cost: 0.30, createdAt: now },
+          { day: "2026-03-01", stage: "TRANSCRIPTION", total_cost: 0.50 },
+          { day: "2026-03-01", stage: "DISTILLATION", total_cost: 0.30 },
         ])
-        .mockResolvedValueOnce([
-          { cost: 0.40 },
-        ]);
+        .mockResolvedValueOnce([{ total_cost: 0.80, unique_days: 1 }])
+        .mockResolvedValueOnce([{ total_cost: 0.40 }]);
 
-      const res = await app.request("/analytics/costs?from=2026-01-01&to=2026-01-02", {}, env, mockExCtx);
+      const res = await app.request("/analytics/costs?from=2026-03-01&to=2026-03-02", {}, env, mockExCtx);
       expect(res.status).toBe(200);
       const body: any = await res.json();
       expect(body.data).toHaveProperty("totalCost");
@@ -88,7 +89,7 @@ describe("Analytics Routes", () => {
     });
 
     it("returns zeroed data when table missing", async () => {
-      mockPrisma.pipelineStep.findMany.mockRejectedValueOnce(new Error("table missing"));
+      mockPrisma.$queryRawUnsafe.mockRejectedValueOnce(new Error("table missing"));
 
       const res = await app.request("/analytics/costs", {}, env, mockExCtx);
       expect(res.status).toBe(200);
@@ -98,98 +99,117 @@ describe("Analytics Routes", () => {
     });
   });
 
-  describe("GET /analytics/usage", () => {
-    it("returns usage trends", async () => {
-      const now = new Date();
-      mockPrisma.feedItem.findMany.mockResolvedValueOnce([
-        { createdAt: now, durationTier: 5 },
-      ]);
-      mockPrisma.episode.findMany.mockResolvedValueOnce([
-        { createdAt: now },
-      ]);
-      mockPrisma.user.findMany.mockResolvedValueOnce([
-        { createdAt: now },
-      ]);
-      // groupBy now uses planId
-      mockPrisma.user.groupBy.mockResolvedValueOnce([
-        { planId: "plan_free", _count: 50 },
-        { planId: "plan_pro", _count: 30 },
-      ]);
-      // The usage route looks up plan names after groupBy
-      mockPrisma.plan.findMany.mockResolvedValueOnce([
-        { id: "plan_free", name: "Free" },
-        { id: "plan_pro", name: "Pro" },
-      ]);
+  describe("GET /analytics/costs/by-model", () => {
+    it("returns grouped data", async () => {
+      mockPrisma.pipelineStep.groupBy
+        .mockResolvedValueOnce([
+          { model: "whisper-1", _sum: { cost: 0.5, inputTokens: 100, outputTokens: 0 }, _count: 2 },
+        ])
+        .mockResolvedValueOnce([
+          { stage: "TRANSCRIPTION", _sum: { cost: 0.5, inputTokens: 100, outputTokens: 0 }, _count: 2 },
+        ]);
 
-      const res = await app.request("/analytics/usage?from=2026-01-01&to=2026-01-01", {}, env, mockExCtx);
+      const res = await app.request("/analytics/costs/by-model?from=2026-03-01&to=2026-03-02", {}, env, mockExCtx);
       expect(res.status).toBe(200);
       const body: any = await res.json();
-      expect(body.data).toHaveProperty("metrics");
-      expect(body.data).toHaveProperty("trends");
-      expect(body.data).toHaveProperty("byPlan");
-      expect(body.data).toHaveProperty("peakTimes");
-      expect(body.data.metrics.feedItems).toBe(1);
+      expect(body.data.models).toHaveLength(1);
+      expect(body.data.byStage).toHaveLength(1);
+    });
+  });
+
+  describe("GET /analytics/usage", () => {
+    it("returns usage trends", async () => {
+      // Mock all $queryRawUnsafe: feedTrends, episodeTrends, userTrends, feedAgg, peakRows
+      mockPrisma.$queryRawUnsafe
+        .mockResolvedValueOnce([{ day: "2026-03-01", count: 10 }]) // feedTrends
+        .mockResolvedValueOnce([{ day: "2026-03-01", count: 5 }]) // episodeTrends
+        .mockResolvedValueOnce([{ day: "2026-03-01", count: 2 }]) // userTrends
+        .mockResolvedValueOnce([{ total: 10, avg_duration: 5 }]) // feedAgg
+        .mockResolvedValueOnce([{ hour: 8, count: 5 }]); // peakRows
+
+      mockPrisma.user.groupBy.mockResolvedValue([]);
+      mockPrisma.plan.findMany.mockResolvedValue([]);
+
+      const res = await app.request("/analytics/usage?from=2026-03-01&to=2026-03-02", {}, env, mockExCtx);
+      expect(res.status).toBe(200);
+      const body: any = await res.json();
+      expect(body.data.metrics).toHaveProperty("feedItems");
+      expect(body.data.trends).toHaveLength(1);
+      expect(body.data.peakTimes).toHaveLength(1);
     });
   });
 
   describe("GET /analytics/quality", () => {
     it("returns quality metrics", async () => {
-      const now = new Date();
-      mockPrisma.clip.findMany.mockResolvedValueOnce([
-        { durationTier: 5, actualSeconds: 295, createdAt: now },
-      ]);
-      mockPrisma.distillation.findMany.mockResolvedValueOnce([
-        { status: "COMPLETED" },
-        { status: "FAILED" },
-      ]);
-      mockPrisma.episode.findMany.mockResolvedValueOnce([
-        { transcriptUrl: "http://t.txt" },
-        { transcriptUrl: null },
-      ]);
+      mockPrisma.$queryRawUnsafe
+        .mockResolvedValueOnce([{ avg_fit: 92.5 }]) // clipAgg
+        .mockResolvedValueOnce([{ total: 10, completed: 9 }]) // distAgg
+        .mockResolvedValueOnce([{ total: 20, with_transcript: 18 }]) // epAgg
+        .mockResolvedValueOnce([{ day: "2026-03-01", score: 92.5 }]) // dailyQuality
+        .mockResolvedValueOnce([{ count: 0 }]); // poorFitCount
 
-      const res = await app.request("/analytics/quality?from=2026-01-01&to=2026-01-02", {}, env, mockExCtx);
+      mockPrisma.distillation.count.mockResolvedValue(1);
+
+      const res = await app.request("/analytics/quality?from=2026-03-01&to=2026-03-02", {}, env, mockExCtx);
       expect(res.status).toBe(200);
       const body: any = await res.json();
       expect(body.data).toHaveProperty("overallScore");
-      expect(body.data).toHaveProperty("components");
       expect(body.data.components).toHaveProperty("timeFitting");
       expect(body.data.components).toHaveProperty("claimCoverage");
       expect(body.data.components).toHaveProperty("transcription");
-      expect(body.data).toHaveProperty("trend");
-      expect(body.data).toHaveProperty("recentIssues");
     });
   });
 
   describe("GET /analytics/pipeline", () => {
-    it("returns pipeline performance with bottlenecks", async () => {
-      const now = new Date();
-      mockPrisma.pipelineStep.findMany.mockResolvedValueOnce([
-        { stage: "TRANSCRIPTION", status: "COMPLETED", durationMs: 500, createdAt: now },
-        { stage: "TRANSCRIPTION", status: "FAILED", durationMs: null, createdAt: now },
-        { stage: "DISTILLATION", status: "COMPLETED", durationMs: 300, createdAt: now },
-      ]);
-      mockPrisma.pipelineStep.count.mockResolvedValueOnce(5);
+    it("returns pipeline metrics", async () => {
+      mockPrisma.$queryRawUnsafe
+        .mockResolvedValueOnce([
+          { stage: "TRANSCRIPTION", total: 10, completed: 9 },
+        ])
+        .mockResolvedValueOnce([{ day: "2026-03-01", avg_ms: 500 }]); // dailySpeed
 
-      const res = await app.request("/analytics/pipeline?from=2026-01-01&to=2026-01-02", {}, env, mockExCtx);
+      mockPrisma.pipelineStep.count
+        .mockResolvedValueOnce(100) // completedCount
+        .mockResolvedValueOnce(80); // prevCount
+
+      const res = await app.request("/analytics/pipeline?from=2026-03-01&to=2026-03-02", {}, env, mockExCtx);
       expect(res.status).toBe(200);
       const body: any = await res.json();
       expect(body.data).toHaveProperty("throughput");
       expect(body.data).toHaveProperty("successRates");
-      expect(body.data.successRates).toHaveLength(5);
       expect(body.data).toHaveProperty("processingSpeed");
-      expect(body.data).toHaveProperty("bottlenecks");
     });
 
-    it("returns default data when table missing", async () => {
-      mockPrisma.pipelineStep.findMany.mockRejectedValueOnce(new Error("table missing"));
+    it("returns fallback when table missing", async () => {
+      mockPrisma.$queryRawUnsafe.mockRejectedValueOnce(new Error("table missing"));
 
       const res = await app.request("/analytics/pipeline", {}, env, mockExCtx);
       expect(res.status).toBe(200);
       const body: any = await res.json();
       expect(body.data.throughput.episodesPerHour).toBe(0);
-      expect(body.data.successRates).toHaveLength(5);
-      expect(body.data.bottlenecks).toEqual([]);
     });
+  });
 
+  describe("GET /analytics/revenue", () => {
+    it("returns revenue metrics", async () => {
+      mockPrisma.user.count
+        .mockResolvedValueOnce(100)
+        .mockResolvedValueOnce(5);
+      mockPrisma.user.groupBy.mockResolvedValue([
+        { planId: "plan1", _count: 50 },
+        { planId: "plan2", _count: 50 },
+      ]);
+      mockPrisma.plan.findMany.mockResolvedValue([
+        { id: "plan1", name: "Free", slug: "free", priceCentsMonthly: 0, priceCentsAnnual: null },
+        { id: "plan2", name: "Pro", slug: "pro", priceCentsMonthly: 999, priceCentsAnnual: 9990 },
+      ]);
+
+      const res = await app.request("/analytics/revenue", {}, env, mockExCtx);
+      expect(res.status).toBe(200);
+      const body: any = await res.json();
+      expect(body.data.totalUsers).toBe(100);
+      expect(body.data.mrr).toBeGreaterThan(0);
+      expect(body.data.byPlan).toHaveLength(2);
+    });
   });
 });

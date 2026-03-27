@@ -143,8 +143,8 @@ Priority: Address after the above phases are complete.
 
 | # | Finding | Source | Effort |
 |---|---------|--------|--------|
-| 7.1 | Analytics queries load all rows into memory | SaaS 3.2, 3.3 | Medium — rewrite as `GROUP BY` SQL |
-| 7.2 | Dead letter queue handling | SaaS 4.4 | Medium — configure CF DLQ + alert |
+| 7.1 | Analytics queries load all rows into memory | SaaS 3.2, 3.3 | Medium — rewrite as `GROUP BY` SQL | DONE |
+| 7.2 | Dead letter queue handling | SaaS 4.4 | Medium — configure CF DLQ + alert | DONE |
 | 7.3 | Circuit breaker state is per-isolate | Code Quality, Error Capture | Medium — move to KV |
 | 7.4 | GDPR data export + deletion request flow | SaaS 1.2 | High |
 | 7.5 | Audit log coverage gaps | SaaS 1.1 | Low — add `writeAuditLog` to missing admin actions |

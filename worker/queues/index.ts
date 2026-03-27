@@ -105,6 +105,21 @@ export async function handleQueue(
         env,
         ctx
       );
+    case "dead-letter":
+      for (const msg of batch.messages) {
+        const body = msg.body as Record<string, unknown>;
+        console.error(JSON.stringify({
+          level: "error",
+          action: "dead_letter_received",
+          rawQueue: batch.queue,
+          jobId: body.jobId ?? body.requestId ?? undefined,
+          episodeId: body.episodeId ?? undefined,
+          messageBody: JSON.stringify(body).slice(0, 500),
+          ts: new Date().toISOString(),
+        }));
+        msg.ack();
+      }
+      return;
     default:
       console.error(JSON.stringify({
         level: "error",
