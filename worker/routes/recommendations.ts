@@ -254,6 +254,7 @@ recommendations.get("/episodes", async (c) => {
   const user = await getCurrentUser(c, prisma);
   const genre = c.req.query("genre") || null;
   const search = c.req.query("search") || null;
+  const sort = c.req.query("sort") || "recent";
   const page = parseInt(c.req.query("page") || "1", 10);
   const pageSize = Math.min(parseInt(c.req.query("pageSize") || "20", 10), 50);
   const skip = (page - 1) * pageSize;
@@ -279,13 +280,21 @@ recommendations.get("/episodes", async (c) => {
     ];
   }
 
+  const episodeOrderByMap: Record<string, any> = {
+    rank: [{ podcast: { appleRank: { sort: "asc", nulls: "last" } } }, { publishedAt: "desc" }],
+    popularity: [{ podcast: { feedItems: { _count: "desc" } } }, { publishedAt: "desc" }],
+    subscriptions: [{ podcast: { subscriptions: { _count: "desc" } } }, { publishedAt: "desc" }],
+    favorites: [{ podcast: { favorites: { _count: "desc" } } }, { publishedAt: "desc" }],
+  };
+  const episodeOrderBy = episodeOrderByMap[sort] || { publishedAt: "desc" };
+
   // Over-fetch to allow diversity filtering (3x page size)
   const [rawEpisodes, total] = await Promise.all([
     prisma.episode.findMany({
       where,
       skip,
       take: pageSize * 3,
-      orderBy: { publishedAt: "desc" },
+      orderBy: episodeOrderBy,
       select: {
         id: true,
         title: true,

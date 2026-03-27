@@ -65,6 +65,8 @@ podcasts.get("/catalog", async (c) => {
   const pageSize = Math.min(100, Math.max(1, parseInt(c.req.query("pageSize") || "50")));
   const skip = (page - 1) * pageSize;
 
+  const sort = c.req.query("sort") || "rank";
+
   const where: any = { deliverable: true };
   if (q) {
     where.OR = [
@@ -73,10 +75,18 @@ podcasts.get("/catalog", async (c) => {
     ];
   }
 
+  const orderByMap: Record<string, any> = {
+    rank: [{ appleRank: { sort: "asc", nulls: "last" } }, { title: "asc" }],
+    popularity: { feedItems: { _count: "desc" } },
+    subscriptions: { subscriptions: { _count: "desc" } },
+    favorites: { favorites: { _count: "desc" } },
+  };
+  const orderBy = orderByMap[sort] || orderByMap.rank;
+
   const [podcasts, total] = await Promise.all([
     prisma.podcast.findMany({
       where,
-      orderBy: { title: "asc" },
+      orderBy,
       skip,
       take: pageSize,
       select: {

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
-import { Search, X, Plus, Loader2 } from "lucide-react";
+import { Search, X, Plus, Loader2, ArrowUpDown } from "lucide-react";
 import { toast } from "sonner";
 import { useApiFetch } from "../lib/api";
 import { useFetch } from "../lib/use-fetch";
@@ -45,6 +45,8 @@ export function Discover() {
   const [searchError, setSearchError] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
   const [browseTab, setBrowseTab] = useState<"episodes" | "podcasts">("podcasts");
+  const [sortBy, setSortBy] = useState<"rank" | "popularity" | "subscriptions" | "favorites">("rank");
+  const [showSortMenu, setShowSortMenu] = useState(false);
 
   // Dynamic category pills from API
   const { data: categoryData } = useFetch<{
@@ -89,8 +91,9 @@ export function Discover() {
     try {
       const genreParam = selectedCategory !== "All" ? `&genre=${encodeURIComponent(selectedCategory)}` : "";
       const searchParam = debouncedSearch.trim() ? `&search=${encodeURIComponent(debouncedSearch.trim())}` : "";
+      const sortParam = `&sort=${sortBy}`;
       const data = await apiFetch<EpisodeBrowseResponse>(
-        `/recommendations/episodes?page=${page}&pageSize=${EPISODE_PAGE_SIZE}${genreParam}${searchParam}`
+        `/recommendations/episodes?page=${page}&pageSize=${EPISODE_PAGE_SIZE}${genreParam}${searchParam}${sortParam}`
       );
       setEpisodes((prev) => reset ? data.episodes : [...prev, ...data.episodes]);
       setEpisodeTotal(data.total);
@@ -101,9 +104,9 @@ export function Discover() {
     } finally {
       setEpisodeLoading(false);
     }
-  }, [apiFetch, selectedCategory, debouncedSearch]);
+  }, [apiFetch, selectedCategory, debouncedSearch, sortBy]);
 
-  // Reset episodes when category or search changes
+  // Reset episodes when category, search, or sort changes
   useEffect(() => {
     setEpisodes([]);
     setEpisodePage(1);
@@ -148,8 +151,9 @@ export function Discover() {
     try {
       const genreParam = selectedCategory !== "All" ? `&category=${encodeURIComponent(selectedCategory)}` : "";
       const searchParam = debouncedSearch.trim() ? `&q=${encodeURIComponent(debouncedSearch.trim())}` : "";
+      const sortParam = `&sort=${sortBy}`;
       const data = await apiFetch<CatalogResponse>(
-        `/podcasts/catalog?page=${page}&pageSize=${BROWSE_PAGE_SIZE}${genreParam}${searchParam}`
+        `/podcasts/catalog?page=${page}&pageSize=${BROWSE_PAGE_SIZE}${genreParam}${searchParam}${sortParam}`
       );
       setAllPodcasts((prev) => reset ? data.podcasts : [...prev, ...data.podcasts]);
       setBrowseTotal(data.total);
@@ -160,9 +164,9 @@ export function Discover() {
     } finally {
       setBrowseLoading(false);
     }
-  }, [apiFetch, selectedCategory, debouncedSearch]);
+  }, [apiFetch, selectedCategory, debouncedSearch, sortBy]);
 
-  // Reset podcasts browse when category or search changes
+  // Reset podcasts browse when category, search, or sort changes
   useEffect(() => {
     setAllPodcasts([]);
     setBrowsePage(1);
@@ -368,8 +372,8 @@ export function Discover() {
           )}
       </div>
 
-      {/* Tab switcher: Podcasts / Episodes */}
-      <div className="flex gap-2 pt-2">
+      {/* Tab switcher: Podcasts / Episodes + Sort */}
+      <div className="flex items-center gap-2 pt-2">
         <button
           onClick={() => setBrowseTab("podcasts")}
           className={`px-4 py-1.5 rounded-full text-xs font-medium transition-colors ${
@@ -390,6 +394,42 @@ export function Discover() {
         >
           Episodes
         </button>
+        <div className="relative ml-auto">
+          <button
+            onClick={() => setShowSortMenu(!showSortMenu)}
+            className={`p-2 rounded-lg transition-colors ${
+              showSortMenu ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"
+            }`}
+            aria-label="Sort"
+          >
+            <ArrowUpDown className="w-4 h-4" />
+          </button>
+          {showSortMenu && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setShowSortMenu(false)} />
+              <div className="absolute right-0 top-full mt-1.5 z-50 bg-card/90 backdrop-blur-md border border-border rounded-lg py-1 shadow-xl shadow-black/40 min-w-[160px]">
+                {([
+                  { value: "rank", label: "Apple Rank" },
+                  { value: "popularity", label: "Popularity" },
+                  { value: "subscriptions", label: "Subscriptions" },
+                  { value: "favorites", label: "Favorites" },
+                ] as const).map(({ value, label }) => (
+                  <button
+                    key={value}
+                    onClick={() => { setSortBy(value); setShowSortMenu(false); }}
+                    className={`w-full text-left px-3 py-2 text-sm transition-colors ${
+                      sortBy === value
+                        ? "text-primary font-medium"
+                        : "text-foreground hover:bg-muted"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Episodes tab */}
