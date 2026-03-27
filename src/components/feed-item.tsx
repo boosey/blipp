@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { Share2, Info } from "lucide-react";
+import { Share2, Info, Trash2, ListPlus } from "lucide-react";
 import { toast } from "sonner";
 import type { FeedItem } from "../types/feed";
 import { formatDuration } from "../lib/feed-utils";
@@ -58,10 +58,14 @@ export function FeedItemCard({
   item,
   onPlay,
   onEpisodeVote,
+  onRemove,
+  onAddToQueue,
 }: {
   item: FeedItem;
   onPlay?: (id: string) => void;
   onEpisodeVote?: (episodeId: string, vote: number) => void;
+  onRemove?: () => void;
+  onAddToQueue?: () => void;
 }) {
   const audio = useAudio();
   const isPlayable = item.status === "READY" && item.briefing?.clip;
@@ -158,6 +162,29 @@ export function FeedItemCard({
               </span>
             )}
           </>
+        )}
+        {/* Desktop-only action buttons */}
+        {(onAddToQueue || onRemove) && (
+          <div className="hidden sm:flex items-center gap-1 mt-1.5 justify-end">
+            {onAddToQueue && item.status === "READY" && item.briefing?.clip && (
+              <button
+                aria-label="Add to queue"
+                onClick={(e) => { e.stopPropagation(); onAddToQueue(); }}
+                className="p-1 text-muted-foreground hover:text-blue-400 transition-colors"
+              >
+                <ListPlus className="w-3.5 h-3.5" />
+              </button>
+            )}
+            {onRemove && (
+              <button
+                aria-label="Remove from feed"
+                onClick={(e) => { e.stopPropagation(); onRemove(); }}
+                className="p-1 text-muted-foreground hover:text-red-400 transition-colors"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
         )}
       </div>
     </div>

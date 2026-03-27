@@ -179,11 +179,6 @@ export function SwipeableFeedItem({
         <FeedItemCard item={item} onPlay={onPlay} onEpisodeVote={onEpisodeVote} />
       </div>
 
-      {/* Keyboard-accessible actions (screen reader only) */}
-      <div className="sr-only">
-        <button onClick={handleAddToQueue}>Add to queue</button>
-        <button onClick={handleRemove}>Remove from feed</button>
-      </div>
     </div>
   );
 }

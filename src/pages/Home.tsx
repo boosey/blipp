@@ -43,6 +43,7 @@ export function Home() {
   const [items, setItems] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FeedFilter>("all");
+  const [swipeHintDismissed, setSwipeHintDismissed] = useState(() => !!localStorage.getItem("swipe-hint-seen"));
 
   const { data: counts } = useFetch<FeedCounts>("/feed/counts");
   const { data: curatedData } = useFetch<CuratedResponse>("/recommendations/curated");
@@ -247,15 +248,15 @@ export function Home() {
       <InstallPrompt />
 
       {/* Swipe hint — first session only */}
-      {!localStorage.getItem("swipe-hint-seen") && items.length > 0 && (
+      {!swipeHintDismissed && items.length > 0 && (
         <div
-          className="flex items-center gap-2 px-3 py-2 mb-3 rounded-lg bg-muted/50 border border-border text-xs text-muted-foreground animate-fade-in"
+          className="flex sm:hidden items-center gap-2 px-3 py-2 mb-3 rounded-lg bg-muted/50 border border-border text-xs text-muted-foreground animate-fade-in"
           role="status"
         >
           <span className="inline-block animate-bounce-x">👈</span>
           Swipe left to remove, right to add to queue
           <button
-            onClick={() => { localStorage.setItem("swipe-hint-seen", "1"); }}
+            onClick={() => { localStorage.setItem("swipe-hint-seen", "1"); setSwipeHintDismissed(true); }}
             className="ml-auto text-xs text-muted-foreground/60 hover:text-foreground"
             aria-label="Dismiss swipe hint"
           >
