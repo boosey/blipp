@@ -78,6 +78,7 @@ export async function transcribeChunked(
     inputTokens: Math.round(totalBytes / STT_BYTES_PER_TOKEN),
     outputTokens: 0,
     cost: calculateAudioCost(pricing, estimatedSeconds),
+    audioSeconds: estimatedSeconds,
   };
 
   return { transcript, usage };

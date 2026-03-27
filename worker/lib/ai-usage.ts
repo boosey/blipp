@@ -8,6 +8,10 @@ export interface AiUsage {
   cacheCreationTokens?: number;
   /** Tokens read from prompt cache on this request (Anthropic — 90% cheaper). */
   cacheReadTokens?: number;
+  /** STT: input audio duration; TTS: output audio duration. */
+  audioSeconds?: number;
+  /** TTS: input character count. */
+  charCount?: number;
 }
 
 /** Pricing info from the AiModelProvider table. */

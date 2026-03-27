@@ -239,6 +239,8 @@ export async function handleDistillation(
             inputTokens: claimsUsage!.inputTokens,
             outputTokens: claimsUsage!.outputTokens,
             cost: claimsUsage!.cost,
+            cacheCreationTokens: claimsUsage!.cacheCreationTokens ?? null,
+            cacheReadTokens: claimsUsage!.cacheReadTokens ?? null,
           },
         });
 

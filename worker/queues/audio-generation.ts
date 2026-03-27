@@ -148,7 +148,7 @@ export async function handleAudioGeneration(
 
         // Try each model in the chain until one succeeds
         let audio: ArrayBuffer | undefined;
-        let ttsUsage: { model: string; inputTokens: number; outputTokens: number; cost: number | null } | undefined;
+        let ttsUsage: { model: string; inputTokens: number; outputTokens: number; cost: number | null; audioSeconds?: number; charCount?: number } | undefined;
         let successAttemptIndex = 0;
         modelChainLength = modelChain.length;
         for (let i = 0; i < modelChain.length; i++) {
@@ -193,6 +193,8 @@ export async function handleAudioGeneration(
               const audioChunks: ArrayBuffer[] = [];
               let totalInputTokens = 0;
               let totalCost: number | null = 0;
+              let totalAudioSeconds = 0;
+              let totalCharCount = 0;
 
               for (let c = 0; c < chunks.length; c++) {
                 await writeEvent(prisma, step.id, "DEBUG", `Generating chunk ${c + 1}/${chunks.length} (${chunks[c].length} chars)`, {
@@ -207,6 +209,8 @@ export async function handleAudioGeneration(
                 totalCost = totalCost !== null && result.usage.cost !== null
                   ? totalCost + result.usage.cost
                   : null;
+                totalAudioSeconds += result.usage.audioSeconds ?? 0;
+                totalCharCount += result.usage.charCount ?? 0;
                 await writeEvent(prisma, step.id, "DEBUG", `Chunk ${c + 1}/${chunks.length} complete`, {
                   chunk: c + 1, chunkChars: chunks[c].length, chunkAudioBytes: result.audio.byteLength,
                 });
@@ -215,7 +219,7 @@ export async function handleAudioGeneration(
               const silence = createSilenceFrame();
               return {
                 audio: concatenateAudioChunks(audioChunks, silence),
-                usage: { model: resolved.providerModelId, inputTokens: totalInputTokens, outputTokens: 0, cost: totalCost },
+                usage: { model: resolved.providerModelId, inputTokens: totalInputTokens, outputTokens: 0, cost: totalCost, audioSeconds: totalAudioSeconds, charCount: totalCharCount },
               };
             };
 
@@ -352,6 +356,8 @@ export async function handleAudioGeneration(
             inputTokens: ttsUsage!.inputTokens,
             outputTokens: ttsUsage!.outputTokens,
             cost: ttsUsage!.cost ?? null,
+            audioSeconds: ttsUsage!.audioSeconds ?? null,
+            charCount: ttsUsage!.charCount ?? null,
           },
         });
 

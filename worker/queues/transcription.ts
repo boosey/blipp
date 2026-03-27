@@ -235,7 +235,7 @@ export async function handleTranscription(
                 recordSuccess(resolved.provider);
                 const estimatedSeconds = probe.contentLength ? probe.contentLength / ASSUMED_BITRATE_BYTES_PER_SEC : durationSeconds;
                 const sttInputTokens = probe.contentLength ? Math.round(probe.contentLength / STT_BYTES_PER_TOKEN) : 0;
-                sttUsage = { model: resolved.model, inputTokens: sttInputTokens, outputTokens: 0, cost: calculateAudioCost(resolved.pricing, estimatedSeconds) };
+                sttUsage = { model: resolved.model, inputTokens: sttInputTokens, outputTokens: 0, cost: calculateAudioCost(resolved.pricing, estimatedSeconds), audioSeconds: estimatedSeconds };
 
                 await writeEvent(prisma, step.id, "INFO", `Transcript generated via ${tier} URL-direct ${providerImpl.name}`, {
                   tier, bytes: transcript.length, source: resolved.provider,
@@ -272,7 +272,7 @@ export async function handleTranscription(
                 recordSuccess(resolved.provider);
                 const estimatedSeconds = probe.contentLength / ASSUMED_BITRATE_BYTES_PER_SEC;
                 const sttInputTokens = Math.round(probe.contentLength / STT_BYTES_PER_TOKEN);
-                sttUsage = { model: resolved.model, inputTokens: sttInputTokens, outputTokens: 0, cost: calculateAudioCost(resolved.pricing, estimatedSeconds) };
+                sttUsage = { model: resolved.model, inputTokens: sttInputTokens, outputTokens: 0, cost: calculateAudioCost(resolved.pricing, estimatedSeconds), audioSeconds: estimatedSeconds };
 
                 await writeEvent(prisma, step.id, "INFO", `Transcript generated via ${tier} chunked ${providerImpl.name}`, {
                   tier, bytes: transcript.length, source: resolved.provider,
@@ -314,7 +314,7 @@ export async function handleTranscription(
                 recordSuccess(resolved.provider);
                 const estimatedSeconds = buffer.byteLength / ASSUMED_BITRATE_BYTES_PER_SEC;
                 const sttInputTokens = Math.round(buffer.byteLength / STT_BYTES_PER_TOKEN);
-                sttUsage = { model: resolved.model, inputTokens: sttInputTokens, outputTokens: 0, cost: calculateAudioCost(resolved.pricing, estimatedSeconds) };
+                sttUsage = { model: resolved.model, inputTokens: sttInputTokens, outputTokens: 0, cost: calculateAudioCost(resolved.pricing, estimatedSeconds), audioSeconds: estimatedSeconds };
 
                 await writeEvent(prisma, step.id, "INFO", `Transcript generated via ${tier} ${providerImpl.name}`, {
                   tier, bytes: transcript.length, source: resolved.provider,
@@ -380,7 +380,7 @@ export async function handleTranscription(
             status: "COMPLETED",
             completedAt: new Date(),
             durationMs: Date.now() - startTime,
-            ...(sttUsage ? { model: sttUsage.model, inputTokens: sttUsage.inputTokens, outputTokens: sttUsage.outputTokens, cost: sttUsage.cost } : {}),
+            ...(sttUsage ? { model: sttUsage.model, inputTokens: sttUsage.inputTokens, outputTokens: sttUsage.outputTokens, cost: sttUsage.cost, audioSeconds: sttUsage.audioSeconds } : {}),
           },
         });
 

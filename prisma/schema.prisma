@@ -461,11 +461,15 @@ model PipelineStep {
   startedAt     DateTime?
   completedAt   DateTime?
   durationMs    Int?
-  cost          Float?
-  model         String?
-  inputTokens   Int?
-  outputTokens  Int?
-  retryCount    Int                @default(0)
+  cost                Float?
+  model               String?
+  inputTokens         Int?
+  outputTokens        Int?
+  cacheCreationTokens Int?
+  cacheReadTokens     Int?
+  audioSeconds        Float?             // STT: input audio duration; TTS: output audio duration
+  charCount           Int?               // TTS: input character count
+  retryCount          Int                @default(0)
   workProductId String?
   createdAt     DateTime           @default(now())
 

@@ -124,6 +124,7 @@ describe("transcribeChunked", () => {
       inputTokens: expectedTokens,
       outputTokens: 0,
       cost: (estimatedSeconds / 60) * 0.006,
+      audioSeconds: estimatedSeconds,
     });
     expect(mockOpenai.audio.transcriptions.create).toHaveBeenCalledTimes(3);
   });

@@ -45,7 +45,7 @@ aiModelsRoutes.get("/", async (c) => {
         createdAt: { gte: thirtyDaysAgo },
         status: "COMPLETED",
       },
-      _sum: { inputTokens: true, outputTokens: true },
+      _sum: { inputTokens: true, outputTokens: true, audioSeconds: true, charCount: true },
     }),
     // Find the earliest completed step to normalize partial data periods
     prisma.pipelineStep.findFirst({
@@ -61,12 +61,14 @@ aiModelsRoutes.get("/", async (c) => {
     : 30;
   const monthlyMultiplier = 30 / Math.min(30, daysOfData);
 
-  // Build workload map: PipelineStage -> { inputTokens, outputTokens }
-  const workloadMap = new Map<string, { inputTokens: number; outputTokens: number }>();
+  // Build workload map: PipelineStage -> aggregated workload
+  const workloadMap = new Map<string, { inputTokens: number; outputTokens: number; audioSeconds: number | null; charCount: number | null }>();
   for (const r of stageWorkloads) {
     workloadMap.set(r.stage, {
       inputTokens: r._sum.inputTokens ?? 0,
       outputTokens: r._sum.outputTokens ?? 0,
+      audioSeconds: r._sum.audioSeconds ?? null,
+      charCount: r._sum.charCount ?? null,
     });
   }
 
@@ -93,23 +95,28 @@ aiModelsRoutes.get("/", async (c) => {
 /**
  * Calculate what a model's provider would cost for a given stage workload.
  * Returns the raw cost (not yet normalized to monthly).
+ *
+ * Uses real audioSeconds/charCount columns when available, falls back to
+ * reverse-engineering from inputTokens for historical data that predates
+ * those columns. TODO(May 2026): remove reverse-engineering fallbacks once
+ * we have ~2 months of real production data.
  */
 function calculateModelCostForWorkload(
   aiStage: string,
   provider: any,
-  workload: { inputTokens: number; outputTokens: number }
+  workload: { inputTokens: number; outputTokens: number; audioSeconds: number | null; charCount: number | null }
 ): number | null {
   switch (aiStage) {
     case "stt": {
-      // inputTokens = audio bytes / STT_BYTES_PER_TOKEN
-      // Recover audio minutes: tokens * STT_BYTES_PER_TOKEN / BITRATE / 60
       if (provider.pricePerMinute == null) return null;
-      const audioMinutes = (workload.inputTokens * STT_BYTES_PER_TOKEN) / BITRATE_BPS / 60;
+      // Prefer real audioSeconds; fall back to reverse-engineering from inputTokens
+      const audioMinutes = workload.audioSeconds != null
+        ? workload.audioSeconds / 60
+        : (workload.inputTokens * STT_BYTES_PER_TOKEN) / BITRATE_BPS / 60;
       return audioMinutes * provider.pricePerMinute;
     }
     case "distillation":
     case "narrative": {
-      // LLM token-based pricing
       if (provider.priceInputPerMToken == null || provider.priceOutputPerMToken == null) return null;
       return (
         (workload.inputTokens / 1_000_000) * provider.priceInputPerMToken +
@@ -117,14 +124,17 @@ function calculateModelCostForWorkload(
       );
     }
     case "tts": {
-      // inputTokens = character count
+      // Prefer real charCount; fall back to inputTokens (which stores chars)
+      const chars = workload.charCount ?? workload.inputTokens;
       if (provider.pricePerKChars != null) {
-        return (workload.inputTokens / 1000) * provider.pricePerKChars;
+        return (chars / 1000) * provider.pricePerKChars;
       }
       if (provider.pricePerMinute != null) {
-        // Estimate audio minutes from character count
-        const estimatedMinutes = workload.inputTokens / TTS_CHARS_PER_MINUTE;
-        return estimatedMinutes * provider.pricePerMinute;
+        // Prefer real audioSeconds; fall back to estimating from chars
+        const audioMinutes = workload.audioSeconds != null
+          ? workload.audioSeconds / 60
+          : chars / TTS_CHARS_PER_MINUTE;
+        return audioMinutes * provider.pricePerMinute;
       }
       return null;
     }

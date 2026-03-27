@@ -288,6 +288,8 @@ export async function handleNarrativeGeneration(
             inputTokens: narrativeUsage!.inputTokens,
             outputTokens: narrativeUsage!.outputTokens,
             cost: narrativeUsage!.cost ?? null,
+            cacheCreationTokens: narrativeUsage!.cacheCreationTokens ?? null,
+            cacheReadTokens: narrativeUsage!.cacheReadTokens ?? null,
           },
         });
 

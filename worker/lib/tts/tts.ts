@@ -51,6 +51,8 @@ export async function generateSpeech(
     inputTokens: text.length,
     outputTokens: 0,
     cost,
+    audioSeconds: estimatedSeconds,
+    charCount: text.length,
   };
 
   return { audio: result.audio, usage };
