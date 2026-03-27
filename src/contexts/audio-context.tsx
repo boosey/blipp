@@ -45,6 +45,7 @@ interface AudioActions {
   seek: (time: number) => void;
   setRate: (rate: number) => void;
   stop: () => void;
+  addToQueue: (item: FeedItem) => void;
 }
 
 type AudioContextValue = AudioState & AudioActions;
@@ -377,6 +378,18 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     [play]
   );
 
+  const addToQueue = useCallback((item: FeedItem) => {
+    // If nothing is playing, play immediately
+    if (!currentItem) {
+      play(item);
+    } else {
+      // Avoid duplicates
+      if (!queueRef.current.some((q) => q.id === item.id) && currentItem.id !== item.id) {
+        queueRef.current.push(item);
+      }
+    }
+  }, [currentItem, play]);
+
   // Handle audio ended — sequence: intro-jingle -> content -> outro-jingle -> postroll
   const handleEnded = useCallback(async () => {
     if (unlockingRef.current) return; // Ignore ended event from silent unlock WAV
@@ -520,6 +533,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     seek,
     setRate,
     stop,
+    addToQueue,
   };
 
   return (

@@ -124,20 +124,6 @@ export function Home() {
     }
   }
 
-  function handleToggleListened(feedItemId: string, listened: boolean) {
-    // Optimistic update
-    setItems((prev) =>
-      prev.map((i) => (i.id === feedItemId ? { ...i, listened } : i))
-    );
-    apiFetch(`/feed/${feedItemId}/listened`, { method: "PATCH" }).catch(() => {
-      // Revert on failure
-      setItems((prev) =>
-        prev.map((i) => (i.id === feedItemId ? { ...i, listened: !listened } : i))
-      );
-      toast.error("Failed to update");
-    });
-  }
-
   async function handleEpisodeVote(episodeId: string, vote: number) {
     const prevItems = items;
     setItems((prev) =>
@@ -267,7 +253,7 @@ export function Home() {
           role="status"
         >
           <span className="inline-block animate-bounce-x">👈</span>
-          Swipe left to remove, right to mark as listened
+          Swipe left to remove, right to add to queue
           <button
             onClick={() => { localStorage.setItem("swipe-hint-seen", "1"); }}
             className="ml-auto text-xs text-muted-foreground/60 hover:text-foreground"
@@ -318,7 +304,6 @@ export function Home() {
                     <SwipeableFeedItem
                       item={item}
                       onPlay={handlePlay}
-                      onToggleListened={handleToggleListened}
                       onRemove={handleRemove}
                       onEpisodeVote={handleEpisodeVote}
                     />

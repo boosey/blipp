@@ -1,16 +1,16 @@
-import { useRef, useState, useCallback, useEffect } from "react";
-import { Check, CheckCheck, Trash2 } from "lucide-react";
+import { useRef, useState, useCallback } from "react";
+import { ListPlus, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { FeedItemCard } from "./feed-item";
+import { useAudio } from "../contexts/audio-context";
 import type { FeedItem } from "../types/feed";
 
 const SWIPE_THRESHOLD = 10;
-const LISTENED_THRESHOLD = 0.3;
-const REMOVE_THRESHOLD = 0.8;
+const BUTTON_WIDTH = 72; // px
 
 interface SwipeableFeedItemProps {
   item: FeedItem;
   onPlay?: (id: string) => void;
-  onToggleListened: (id: string, listened: boolean) => void;
   onRemove: (id: string) => void;
   onEpisodeVote?: (episodeId: string, vote: number) => void;
 }
@@ -18,79 +18,32 @@ interface SwipeableFeedItemProps {
 export function SwipeableFeedItem({
   item,
   onPlay,
-  onToggleListened,
   onRemove,
   onEpisodeVote,
 }: SwipeableFeedItemProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
+  const audio = useAudio();
   const cardRef = useRef<HTMLDivElement>(null);
-  const leftZoneRef = useRef<HTMLDivElement>(null);
-  const rightZoneRef = useRef<HTMLDivElement>(null);
-  const leftIconRef = useRef<HTMLDivElement>(null);
-  const rightIconRef = useRef<HTMLDivElement>(null);
   const startXRef = useRef(0);
   const startYRef = useRef(0);
   const swipingRef = useRef(false);
+  const directionRef = useRef<"left" | "right" | null>(null);
   const offsetRef = useRef(0);
+  const [revealed, setRevealed] = useState<"left" | "right" | null>(null);
   const [removing, setRemoving] = useState(false);
 
-  // Store callbacks in refs to avoid stale closures
-  const callbacksRef = useRef({ onToggleListened, onRemove });
-  useEffect(() => {
-    callbacksRef.current = { onToggleListened, onRemove };
-  }, [onToggleListened, onRemove]);
-
-  const applyTransform = useCallback((dx: number) => {
+  const snapTo = useCallback((dx: number) => {
     const card = cardRef.current;
-    const container = containerRef.current;
-    if (!card || !container) return;
-
-    const cardWidth = container.offsetWidth;
-    const ratio = Math.abs(dx) / cardWidth;
-
-    // Card position — no transition during gesture
+    if (!card) return;
+    card.style.transition = "transform 0.2s ease-out";
     card.style.transform = dx !== 0 ? `translateX(${dx}px)` : "";
-    card.style.pointerEvents = dx !== 0 ? "none" : "";
-
-    // Left zone (delete, right side)
-    const leftZone = leftZoneRef.current;
-    const leftIcon = leftIconRef.current;
-    if (leftZone) {
-      if (dx < 0) {
-        leftZone.style.display = "flex";
-        leftZone.style.width = `${Math.abs(dx)}px`;
-        const inZone = ratio >= REMOVE_THRESHOLD;
-        leftZone.style.backgroundColor = inZone ? "rgba(239,68,68,0.3)" : "var(--color-muted)";
-        leftZone.style.color = inZone ? "rgb(248,113,113)" : "var(--color-muted-foreground)";
-        if (leftIcon) leftIcon.style.display = inZone ? "block" : "none";
-      } else {
-        leftZone.style.display = "none";
-      }
-    }
-
-    // Right zone (listened, left side)
-    const rightZone = rightZoneRef.current;
-    const rightIcon = rightIconRef.current;
-    if (rightZone) {
-      if (dx > 0) {
-        rightZone.style.display = "flex";
-        rightZone.style.width = `${dx}px`;
-        const inZone = ratio >= LISTENED_THRESHOLD;
-        rightZone.style.backgroundColor = inZone ? "rgba(59,130,246,0.3)" : "var(--color-muted)";
-        rightZone.style.color = inZone ? "rgb(96,165,250)" : "var(--color-muted-foreground)";
-        if (rightIcon) rightIcon.style.display = inZone ? "block" : "none";
-      } else {
-        rightZone.style.display = "none";
-      }
-    }
   }, []);
 
   const onTouchStart = useCallback((e: React.TouchEvent) => {
     startXRef.current = e.touches[0].clientX;
     startYRef.current = e.touches[0].clientY;
     swipingRef.current = false;
+    directionRef.current = null;
     offsetRef.current = 0;
-    // Remove snap-back transition during active gesture
     if (cardRef.current) cardRef.current.style.transition = "none";
   }, []);
 
@@ -98,6 +51,7 @@ export function SwipeableFeedItem({
     const deltaX = e.touches[0].clientX - startXRef.current;
     const deltaY = e.touches[0].clientY - startYRef.current;
 
+    // Lock to vertical scroll if vertical wins
     if (!swipingRef.current && Math.abs(deltaY) > Math.abs(deltaX)) {
       startXRef.current = 0;
       return;
@@ -106,37 +60,79 @@ export function SwipeableFeedItem({
     if (Math.abs(deltaX) > SWIPE_THRESHOLD) {
       swipingRef.current = true;
       e.preventDefault();
-      offsetRef.current = deltaX;
-      applyTransform(deltaX);
+
+      // Lock direction on first move
+      if (!directionRef.current) {
+        directionRef.current = deltaX < 0 ? "left" : "right";
+      }
+
+      // Clamp movement to button width in the locked direction
+      let clamped: number;
+      if (directionRef.current === "left") {
+        clamped = Math.max(deltaX, -BUTTON_WIDTH);
+        clamped = Math.min(clamped, 0); // don't allow opposite direction
+      } else {
+        clamped = Math.min(deltaX, BUTTON_WIDTH);
+        clamped = Math.max(clamped, 0);
+      }
+
+      offsetRef.current = clamped;
+      const card = cardRef.current;
+      if (card) {
+        card.style.transform = `translateX(${clamped}px)`;
+        card.style.pointerEvents = "none";
+      }
     }
-  }, [applyTransform]);
+  }, []);
 
   const onTouchEnd = useCallback(() => {
-    const container = containerRef.current;
-    if (!swipingRef.current || !container) {
-      applyTransform(0);
-      startXRef.current = 0;
+    if (!swipingRef.current) {
       return;
     }
 
     const dx = offsetRef.current;
-    const cardWidth = container.offsetWidth;
-    const swipeRatio = Math.abs(dx) / cardWidth;
+    const threshold = BUTTON_WIDTH * 0.4;
 
-    if (dx < 0 && swipeRatio >= REMOVE_THRESHOLD) {
-      setRemoving(true);
-      callbacksRef.current.onRemove(item.id);
-    } else if (dx > 0 && swipeRatio >= LISTENED_THRESHOLD) {
-      callbacksRef.current.onToggleListened(item.id, !item.listened);
+    if (Math.abs(dx) >= threshold && directionRef.current) {
+      // Snap open to reveal button
+      const target = directionRef.current === "left" ? -BUTTON_WIDTH : BUTTON_WIDTH;
+      snapTo(target);
+      setRevealed(directionRef.current);
+    } else {
+      // Snap back
+      snapTo(0);
+      setRevealed(null);
     }
 
-    // Animate snap-back
-    if (cardRef.current) cardRef.current.style.transition = "transform 0.2s ease-out";
-    applyTransform(0);
-    startXRef.current = 0;
-    offsetRef.current = 0;
+    if (cardRef.current) cardRef.current.style.pointerEvents = "";
     swipingRef.current = false;
-  }, [item.id, item.listened, applyTransform]);
+    directionRef.current = null;
+    offsetRef.current = 0;
+  }, [snapTo]);
+
+  // Close revealed button when tapping the card area
+  const handleCardClick = useCallback(() => {
+    if (revealed) {
+      snapTo(0);
+      setRevealed(null);
+    }
+  }, [revealed, snapTo]);
+
+  function handleRemove() {
+    setRemoving(true);
+    onRemove(item.id);
+  }
+
+  function handleAddToQueue() {
+    if (item.status !== "READY" || !item.briefing?.clip) {
+      toast.error("This briefing isn't ready yet");
+      return;
+    }
+    audio.addToQueue(item);
+    toast.success("Added to queue");
+    snapTo(0);
+    setRevealed(null);
+  }
 
   if (removing) {
     return (
@@ -149,35 +145,44 @@ export function SwipeableFeedItem({
 
   return (
     <div
-      ref={containerRef}
       className="relative overflow-hidden rounded-lg"
       onTouchStart={onTouchStart}
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
     >
-      {/* Left swipe action zone — delete (right side) */}
-      <div className="absolute inset-y-0 right-0 items-center justify-center px-6" style={{ display: "none" }} ref={leftZoneRef}>
-        <div ref={leftIconRef} style={{ display: "none" }}><Trash2 className="w-5 h-5" /></div>
-      </div>
+      {/* Right-side button (swipe left to reveal) — Delete */}
+      <button
+        onClick={handleRemove}
+        className="absolute inset-y-0 right-0 flex items-center justify-center bg-red-500/20 text-red-400 active:bg-red-500/30 transition-colors"
+        style={{ width: BUTTON_WIDTH }}
+        aria-label="Remove from feed"
+      >
+        <Trash2 className="w-5 h-5" />
+      </button>
 
-      {/* Right swipe action zone — listened toggle (left side) */}
-      <div className="absolute inset-y-0 left-0 items-center justify-center px-6" style={{ display: "none" }} ref={rightZoneRef}>
-        <div ref={rightIconRef} style={{ display: "none" }}>
-          {item.listened ? <Check className="w-5 h-5" /> : <CheckCheck className="w-5 h-5" />}
-        </div>
-      </div>
+      {/* Left-side button (swipe right to reveal) — Add to Queue */}
+      <button
+        onClick={handleAddToQueue}
+        className="absolute inset-y-0 left-0 flex items-center justify-center bg-blue-500/20 text-blue-400 active:bg-blue-500/30 transition-colors"
+        style={{ width: BUTTON_WIDTH }}
+        aria-label="Add to queue"
+      >
+        <ListPlus className="w-5 h-5" />
+      </button>
 
       {/* Card */}
-      <div ref={cardRef} className="relative will-change-transform">
+      <div
+        ref={cardRef}
+        className="relative will-change-transform bg-background"
+        onClick={handleCardClick}
+      >
         <FeedItemCard item={item} onPlay={onPlay} onEpisodeVote={onEpisodeVote} />
       </div>
 
       {/* Keyboard-accessible actions (screen reader only) */}
       <div className="sr-only">
-        <button onClick={() => onToggleListened(item.id, !item.listened)}>
-          {item.listened ? "Mark as unlistened" : "Mark as listened"}
-        </button>
-        <button onClick={() => onRemove(item.id)}>Remove from feed</button>
+        <button onClick={handleAddToQueue}>Add to queue</button>
+        <button onClick={handleRemove}>Remove from feed</button>
       </div>
     </div>
   );

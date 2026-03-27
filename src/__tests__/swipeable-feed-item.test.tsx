@@ -2,6 +2,8 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import type { FeedItem } from "../types/feed";
 
+const mockAddToQueue = vi.fn();
+
 vi.mock("../contexts/audio-context", () => ({
   useAudio: () => ({
     play: vi.fn(),
@@ -22,6 +24,8 @@ vi.mock("../contexts/audio-context", () => ({
     seek: vi.fn(),
     setRate: vi.fn(),
     stop: vi.fn(),
+    addToQueue: mockAddToQueue,
+    playAll: vi.fn(),
   }),
 }));
 
@@ -67,26 +71,8 @@ function simulateSwipe(
 }
 
 describe("SwipeableFeedItem", () => {
-  const originalOffsetWidth = Object.getOwnPropertyDescriptor(
-    HTMLElement.prototype,
-    "offsetWidth"
-  );
-
-  beforeAll(() => {
-    Object.defineProperty(HTMLElement.prototype, "offsetWidth", {
-      configurable: true,
-      value: 300,
-    });
-  });
-
-  afterAll(() => {
-    if (originalOffsetWidth) {
-      Object.defineProperty(
-        HTMLElement.prototype,
-        "offsetWidth",
-        originalOffsetWidth
-      );
-    }
+  beforeEach(() => {
+    mockAddToQueue.mockClear();
   });
 
   it("renders the inner FeedItemCard", () => {
@@ -94,7 +80,6 @@ describe("SwipeableFeedItem", () => {
       <MemoryRouter>
         <SwipeableFeedItem
           item={mockItem}
-          onToggleListened={vi.fn()}
           onRemove={vi.fn()}
         />
       </MemoryRouter>
@@ -104,100 +89,49 @@ describe("SwipeableFeedItem", () => {
     expect(screen.getByText("Test Episode")).toBeInTheDocument();
   });
 
-  it("right swipe past 30% threshold calls onToggleListened", () => {
-    const onToggleListened = vi.fn();
-    const { container } = render(
+  it("has accessible remove and queue buttons", () => {
+    render(
       <MemoryRouter>
         <SwipeableFeedItem
           item={mockItem}
-          onToggleListened={onToggleListened}
           onRemove={vi.fn()}
         />
       </MemoryRouter>
     );
 
-    // 30% of 300px = 90px, swipe 100px to be over threshold
-    const swipeTarget = container.firstElementChild as HTMLElement;
-    simulateSwipe(swipeTarget, 100);
-
-    expect(onToggleListened).toHaveBeenCalledWith("fi-1", true);
+    expect(screen.getByLabelText("Remove from feed")).toBeInTheDocument();
+    expect(screen.getByLabelText("Add to queue")).toBeInTheDocument();
   });
 
-  it("right swipe below 30% threshold does NOT call onToggleListened", () => {
-    const onToggleListened = vi.fn();
-    const { container } = render(
-      <MemoryRouter>
-        <SwipeableFeedItem
-          item={mockItem}
-          onToggleListened={onToggleListened}
-          onRemove={vi.fn()}
-        />
-      </MemoryRouter>
-    );
-
-    // 30% of 300px = 90px, swipe only 50px (below threshold but above SWIPE_THRESHOLD of 10)
-    const swipeTarget = container.firstElementChild as HTMLElement;
-    simulateSwipe(swipeTarget, 50);
-
-    expect(onToggleListened).not.toHaveBeenCalled();
-  });
-
-  it("left swipe past 80% threshold calls onRemove", () => {
+  it("clicking remove button calls onRemove", () => {
     const onRemove = vi.fn();
-    const { container } = render(
+    render(
       <MemoryRouter>
         <SwipeableFeedItem
           item={mockItem}
-          onToggleListened={vi.fn()}
           onRemove={onRemove}
         />
       </MemoryRouter>
     );
 
-    // 80% of 300px = 240px, swipe -250px to be over threshold
-    const swipeTarget = container.firstElementChild as HTMLElement;
-    simulateSwipe(swipeTarget, -250);
-
+    fireEvent.click(screen.getByLabelText("Remove from feed"));
     expect(onRemove).toHaveBeenCalledWith("fi-1");
   });
 
-  it("left swipe below 80% threshold does NOT call onRemove", () => {
-    const onRemove = vi.fn();
-    const { container } = render(
-      <MemoryRouter>
-        <SwipeableFeedItem
-          item={mockItem}
-          onToggleListened={vi.fn()}
-          onRemove={onRemove}
-        />
-      </MemoryRouter>
-    );
-
-    // 80% of 300px = 240px, swipe only -150px (below threshold)
-    const swipeTarget = container.firstElementChild as HTMLElement;
-    simulateSwipe(swipeTarget, -150);
-
-    expect(onRemove).not.toHaveBeenCalled();
-  });
-
   it("vertical movement does not trigger swipe (scrolling works)", () => {
-    const onToggleListened = vi.fn();
     const onRemove = vi.fn();
     const { container } = render(
       <MemoryRouter>
         <SwipeableFeedItem
           item={mockItem}
-          onToggleListened={onToggleListened}
           onRemove={onRemove}
         />
       </MemoryRouter>
     );
 
     const swipeTarget = container.firstElementChild as HTMLElement;
-    // Vertical movement greater than horizontal — should be treated as scroll
     simulateSwipe(swipeTarget, 20, 100);
 
-    expect(onToggleListened).not.toHaveBeenCalled();
     expect(onRemove).not.toHaveBeenCalled();
   });
 
@@ -207,41 +141,16 @@ describe("SwipeableFeedItem", () => {
       <MemoryRouter>
         <SwipeableFeedItem
           item={mockItem}
-          onToggleListened={vi.fn()}
           onRemove={onRemove}
         />
       </MemoryRouter>
     );
 
-    const swipeTarget = container.firstElementChild as HTMLElement;
-    simulateSwipe(swipeTarget, -250);
-
+    fireEvent.click(screen.getByLabelText("Remove from feed"));
     expect(onRemove).toHaveBeenCalled();
 
-    // After removing, the component should render a collapsed div
     const collapsed = container.firstElementChild as HTMLElement;
     expect(collapsed.style.maxHeight).toBe("0px");
     expect(collapsed.style.opacity).toBe("0");
-  });
-
-  it("right swipe on listened item calls onToggleListened with false", () => {
-    const onToggleListened = vi.fn();
-    const listenedItem: FeedItem = { ...mockItem, listened: true };
-
-    const { container } = render(
-      <MemoryRouter>
-        <SwipeableFeedItem
-          item={listenedItem}
-          onToggleListened={onToggleListened}
-          onRemove={vi.fn()}
-        />
-      </MemoryRouter>
-    );
-
-    const swipeTarget = container.firstElementChild as HTMLElement;
-    simulateSwipe(swipeTarget, 100);
-
-    // !listened => !true => false
-    expect(onToggleListened).toHaveBeenCalledWith("fi-1", false);
   });
 });

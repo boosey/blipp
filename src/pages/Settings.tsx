@@ -525,7 +525,13 @@ function UsageMeter({
   );
 }
 
-const ARTWORK_SIZES = [100, 120, 140, 160, 180] as const;
+const ARTWORK_SIZES: { value: number; label: string }[] = [
+  { value: 100, label: "XS" },
+  { value: 120, label: "S" },
+  { value: 140, label: "M" },
+  { value: 160, label: "L" },
+  { value: 180, label: "XL" },
+];
 
 function AppConfigSection() {
   const [config, updateConfig] = useAppConfig();
@@ -541,17 +547,17 @@ function AppConfigSection() {
           </p>
         </div>
         <div className="flex gap-2">
-          {ARTWORK_SIZES.map((size) => (
+          {ARTWORK_SIZES.map(({ value, label }) => (
             <button
-              key={size}
-              onClick={() => updateConfig({ artworkSize: size })}
+              key={value}
+              onClick={() => updateConfig({ artworkSize: value })}
               className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
-                config.artworkSize === size
+                config.artworkSize === value
                   ? "bg-primary text-primary-foreground"
                   : "bg-muted text-muted-foreground hover:text-foreground"
               }`}
             >
-              {size}
+              {label}
             </button>
           ))}
         </div>
