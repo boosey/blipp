@@ -1,815 +1,21 @@
 import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
-import {
-  CreditCard,
-  Plus,
-  Pencil,
-  Trash2,
-  Check,
-  X,
-  AlertTriangle,
-  Loader2,
-  Infinity,
-  Clock,
-  ChevronDown,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
-import { Badge } from "@/components/ui/badge";
+import { CreditCard, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Separator } from "@/components/ui/separator";
-import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-  DialogDescription,
-} from "@/components/ui/dialog";
 import { useAdminFetch } from "@/lib/admin-api";
 import type { AdminPlan, DurationTier, PaginatedResponse, VoicePresetEntry } from "@/types/admin";
-
-// ── Helpers ──
-
-function formatDollars(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
-}
-
-
-function formatCost(n: number): string {
-  return "$" + n.toFixed(2);
-}
-
-// ── Empty form state ──
-
-interface PlanFormData {
-  name: string;
-  slug: string;
-  description: string;
-  // Limits
-  briefingsPerWeek: string;
-  maxDurationMinutes: string;
-  maxPodcastSubscriptions: string;
-  pastEpisodesLimit: string;
-  // Content Delivery
-  onDemandRequestsPerWeek: string;
-  outputFormats: string;
-  transcriptAccess: boolean;
-  refreshLatencyTier: string;
-  dailyDigest: boolean;
-  weeklyRecap: boolean;
-  narrativeDepthTier: string;
-  episodeHighlightClips: boolean;
-  // Pipeline & Processing
-  aiModelTier: string;
-  ttsModelTier: string;
-  sttModelTier: string;
-  customInstructions: boolean;
-  retryBudget: string;
-  concurrentPipelineJobs: string;
-  // Feature flags
-  adFree: boolean;
-  priorityProcessing: boolean;
-  earlyAccess: boolean;
-  researchMode: boolean;
-  crossPodcastSynthesis: boolean;
-  // Library & Discovery
-  topicTracking: boolean;
-  customCollections: boolean;
-  searchBriefings: boolean;
-  catalogAccess: string;
-  savedSearches: string;
-  rssExport: boolean;
-  apiAccess: boolean;
-  // Personalization
-  tonePresets: boolean;
-  languageSupport: string;
-  focusTopics: boolean;
-  skipTopics: boolean;
-  briefingIntro: boolean;
-  maxStorageDays: string;
-  offlineAccess: boolean;
-  publicSharing: boolean;
-  interactiveBriefing: boolean;
-  // Billing
-  priceCentsMonthly: string;
-  priceCentsAnnual: string;
-  trialDays: string;
-  allowedVoicePresetIds: string[];
-  // Display
-  features: string;
-  highlighted: boolean;
-  sortOrder: string;
-  isDefault: boolean;
-}
-
-function emptyForm(): PlanFormData {
-  return {
-    name: "",
-    slug: "",
-    description: "",
-    briefingsPerWeek: "",
-    maxDurationMinutes: "5",
-    maxPodcastSubscriptions: "",
-    pastEpisodesLimit: "",
-    onDemandRequestsPerWeek: "",
-    outputFormats: "audio",
-    transcriptAccess: false,
-    refreshLatencyTier: "standard",
-    dailyDigest: false,
-    weeklyRecap: false,
-    narrativeDepthTier: "standard",
-    episodeHighlightClips: false,
-    aiModelTier: "standard",
-    ttsModelTier: "standard",
-    sttModelTier: "standard",
-    customInstructions: false,
-    retryBudget: "1",
-    concurrentPipelineJobs: "1",
-    adFree: false,
-    priorityProcessing: false,
-    earlyAccess: false,
-    researchMode: false,
-    crossPodcastSynthesis: false,
-    topicTracking: false,
-    customCollections: false,
-    searchBriefings: false,
-    catalogAccess: "subscribed",
-    savedSearches: "",
-    rssExport: false,
-    apiAccess: false,
-    tonePresets: false,
-    languageSupport: "",
-    focusTopics: false,
-    skipTopics: false,
-    briefingIntro: false,
-    maxStorageDays: "",
-    offlineAccess: false,
-    publicSharing: false,
-    interactiveBriefing: false,
-    priceCentsMonthly: "0",
-    priceCentsAnnual: "",
-    trialDays: "0",
-    allowedVoicePresetIds: [],
-    features: "",
-    highlighted: false,
-    sortOrder: "0",
-    isDefault: false,
-  };
-}
-
-function planToForm(plan: AdminPlan): PlanFormData {
-  return {
-    name: plan.name,
-    slug: plan.slug,
-    description: plan.description ?? "",
-    briefingsPerWeek: plan.briefingsPerWeek != null ? String(plan.briefingsPerWeek) : "",
-    maxDurationMinutes: String(plan.maxDurationMinutes),
-    maxPodcastSubscriptions: plan.maxPodcastSubscriptions != null ? String(plan.maxPodcastSubscriptions) : "",
-    pastEpisodesLimit: plan.pastEpisodesLimit != null ? String(plan.pastEpisodesLimit) : "",
-    onDemandRequestsPerWeek: plan.onDemandRequestsPerWeek != null ? String(plan.onDemandRequestsPerWeek) : "",
-    outputFormats: (plan.outputFormats ?? []).join(", "),
-    transcriptAccess: plan.transcriptAccess,
-    refreshLatencyTier: plan.refreshLatencyTier ?? "standard",
-    dailyDigest: plan.dailyDigest,
-    weeklyRecap: plan.weeklyRecap,
-    narrativeDepthTier: plan.narrativeDepthTier ?? "standard",
-    episodeHighlightClips: plan.episodeHighlightClips,
-    aiModelTier: plan.aiModelTier ?? "standard",
-    ttsModelTier: plan.ttsModelTier ?? "standard",
-    sttModelTier: plan.sttModelTier ?? "standard",
-    customInstructions: plan.customInstructions,
-    retryBudget: String(plan.retryBudget ?? 1),
-    concurrentPipelineJobs: String(plan.concurrentPipelineJobs ?? 1),
-    adFree: plan.adFree,
-    priorityProcessing: plan.priorityProcessing,
-    earlyAccess: plan.earlyAccess,
-    researchMode: plan.researchMode,
-    crossPodcastSynthesis: plan.crossPodcastSynthesis,
-    topicTracking: plan.topicTracking,
-    customCollections: plan.customCollections,
-    searchBriefings: plan.searchBriefings,
-    catalogAccess: plan.catalogAccess ?? "subscribed",
-    savedSearches: plan.savedSearches != null ? String(plan.savedSearches) : "",
-    rssExport: plan.rssExport,
-    apiAccess: plan.apiAccess,
-    tonePresets: plan.tonePresets,
-    languageSupport: (plan.languageSupport ?? []).join(", "),
-    focusTopics: plan.focusTopics,
-    skipTopics: plan.skipTopics,
-    briefingIntro: plan.briefingIntro,
-    maxStorageDays: plan.maxStorageDays != null ? String(plan.maxStorageDays) : "",
-    offlineAccess: plan.offlineAccess,
-    publicSharing: plan.publicSharing,
-    interactiveBriefing: plan.interactiveBriefing,
-    priceCentsMonthly: String(plan.priceCentsMonthly),
-    priceCentsAnnual: plan.priceCentsAnnual != null ? String(plan.priceCentsAnnual) : "",
-    trialDays: String(plan.trialDays),
-    allowedVoicePresetIds: plan.allowedVoicePresetIds ?? [],
-    features: plan.features.join(", "),
-    highlighted: plan.highlighted,
-    sortOrder: String(plan.sortOrder),
-    isDefault: plan.isDefault,
-  };
-}
-
-function formToPayload(form: PlanFormData) {
-  return {
-    name: form.name,
-    slug: form.slug,
-    description: form.description || undefined,
-    // Limits
-    briefingsPerWeek: form.briefingsPerWeek ? Number(form.briefingsPerWeek) : null,
-    maxDurationMinutes: Number(form.maxDurationMinutes),
-    maxPodcastSubscriptions: form.maxPodcastSubscriptions ? Number(form.maxPodcastSubscriptions) : null,
-    pastEpisodesLimit: form.pastEpisodesLimit ? Number(form.pastEpisodesLimit) : null,
-    // Content Delivery
-    onDemandRequestsPerWeek: form.onDemandRequestsPerWeek ? Number(form.onDemandRequestsPerWeek) : null,
-    outputFormats: form.outputFormats.split(",").map((s) => s.trim()).filter(Boolean),
-    transcriptAccess: form.transcriptAccess,
-    refreshLatencyTier: form.refreshLatencyTier,
-    dailyDigest: form.dailyDigest,
-    weeklyRecap: form.weeklyRecap,
-    narrativeDepthTier: form.narrativeDepthTier,
-    episodeHighlightClips: form.episodeHighlightClips,
-    // Pipeline & Processing
-    aiModelTier: form.aiModelTier,
-    ttsModelTier: form.ttsModelTier,
-    sttModelTier: form.sttModelTier,
-    customInstructions: form.customInstructions,
-    retryBudget: Number(form.retryBudget),
-    concurrentPipelineJobs: Number(form.concurrentPipelineJobs),
-    // Feature flags
-    adFree: form.adFree,
-    priorityProcessing: form.priorityProcessing,
-    earlyAccess: form.earlyAccess,
-    researchMode: form.researchMode,
-    crossPodcastSynthesis: form.crossPodcastSynthesis,
-    // Library & Discovery
-    topicTracking: form.topicTracking,
-    customCollections: form.customCollections,
-    searchBriefings: form.searchBriefings,
-    catalogAccess: form.catalogAccess,
-    savedSearches: form.savedSearches ? Number(form.savedSearches) : null,
-    rssExport: form.rssExport,
-    apiAccess: form.apiAccess,
-    // Personalization
-    tonePresets: form.tonePresets,
-    languageSupport: form.languageSupport.split(",").map((s) => s.trim()).filter(Boolean),
-    focusTopics: form.focusTopics,
-    skipTopics: form.skipTopics,
-    briefingIntro: form.briefingIntro,
-    maxStorageDays: form.maxStorageDays ? Number(form.maxStorageDays) : null,
-    offlineAccess: form.offlineAccess,
-    publicSharing: form.publicSharing,
-    interactiveBriefing: form.interactiveBriefing,
-    // Billing
-    priceCentsMonthly: Number(form.priceCentsMonthly),
-    priceCentsAnnual: form.priceCentsAnnual ? Number(form.priceCentsAnnual) : null,
-    trialDays: Number(form.trialDays),
-    allowedVoicePresetIds: form.allowedVoicePresetIds,
-    // Display
-    features: form.features
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean),
-    highlighted: form.highlighted,
-    sortOrder: Number(form.sortOrder),
-    isDefault: form.isDefault,
-  };
-}
-
-// ── Plan Form Dialog ──
-
-function PlanFormDialog({
-  open,
-  onOpenChange,
-  title,
-  form,
-  setForm,
-  onSubmit,
-  saving,
-  voicePresets,
-}: {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  title: string;
-  form: PlanFormData;
-  setForm: (f: PlanFormData) => void;
-  onSubmit: () => void;
-  saving: boolean;
-  voicePresets: VoicePresetEntry[];
-}) {
-  const update = (patch: Partial<PlanFormData>) => setForm({ ...form, ...patch });
-
-  const toggleVoicePreset = (id: string) => {
-    const ids = form.allowedVoicePresetIds.includes(id)
-      ? form.allowedVoicePresetIds.filter((v) => v !== id)
-      : [...form.allowedVoicePresetIds, id];
-    update({ allowedVoicePresetIds: ids });
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-[#1A2942] border-white/10 text-[#F9FAFB] max-w-5xl max-h-[94vh] overflow-hidden flex flex-col">
-        <DialogHeader>
-          <DialogTitle className="text-lg">{title}</DialogTitle>
-        </DialogHeader>
-
-        <ScrollArea className="flex-1 -mx-6 px-6 overflow-y-auto">
-          <div className="space-y-6 pb-4">
-            {/* Identity */}
-            <div className="space-y-3">
-              <span className="text-sm font-semibold text-[#9CA3AF] uppercase tracking-wider">Identity</span>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label className="text-sm text-[#F9FAFB]">Name</Label>
-                  <Input
-                    value={form.name}
-                    onChange={(e) => update({ name: e.target.value })}
-                    placeholder="Pro"
-                    className="h-9 text-sm bg-[#0A1628] border-white/5 text-[#F9FAFB]"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-sm text-[#F9FAFB]">Slug</Label>
-                  <Input
-                    value={form.slug}
-                    onChange={(e) => update({ slug: e.target.value })}
-                    placeholder="pro"
-                    className="h-9 text-sm bg-[#0A1628] border-white/5 text-[#F9FAFB]"
-                  />
-                </div>
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-sm text-[#F9FAFB]">Description</Label>
-                <Textarea
-                  value={form.description}
-                  onChange={(e) => update({ description: e.target.value })}
-                  placeholder="Plan description..."
-                  rows={2}
-                  className="text-xs bg-[#0A1628] border-white/5 text-[#F9FAFB] resize-none"
-                />
-              </div>
-            </div>
-
-            <Separator className="bg-white/5" />
-
-            {/* Limits */}
-            <div className="space-y-3">
-              <span className="text-sm font-semibold text-[#9CA3AF] uppercase tracking-wider">Limits</span>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label className="text-sm text-[#F9FAFB]">Briefings/week</Label>
-                  <Input
-                    type="number"
-                    value={form.briefingsPerWeek}
-                    onChange={(e) => update({ briefingsPerWeek: e.target.value })}
-                    placeholder="Unlimited"
-                    className="h-9 text-sm bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono"
-                  />
-                  <span className="text-xs text-[#9CA3AF]">Empty = unlimited</span>
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-sm text-[#F9FAFB]">Max duration (min)</Label>
-                  <Input
-                    type="number"
-                    value={form.maxDurationMinutes}
-                    onChange={(e) => update({ maxDurationMinutes: e.target.value })}
-                    className="h-9 text-sm bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-sm text-[#F9FAFB]">Max podcasts</Label>
-                  <Input
-                    type="number"
-                    value={form.maxPodcastSubscriptions}
-                    onChange={(e) => update({ maxPodcastSubscriptions: e.target.value })}
-                    placeholder="Unlimited"
-                    className="h-9 text-sm bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono"
-                  />
-                  <span className="text-xs text-[#9CA3AF]">Empty = unlimited</span>
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-sm text-[#F9FAFB]">Past episodes</Label>
-                  <Input
-                    type="number"
-                    value={form.pastEpisodesLimit}
-                    onChange={(e) => update({ pastEpisodesLimit: e.target.value })}
-                    placeholder="Unlimited"
-                    className="h-9 text-sm bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono"
-                  />
-                  <span className="text-xs text-[#9CA3AF]">Empty = unlimited</span>
-                </div>
-              </div>
-            </div>
-
-            <Separator className="bg-white/5" />
-
-            {/* Content Delivery */}
-            <div className="space-y-3">
-              <span className="text-sm font-semibold text-[#9CA3AF] uppercase tracking-wider">Content Delivery</span>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label className="text-sm text-[#F9FAFB]">On-demand requests/week</Label>
-                  <Input type="number" value={form.onDemandRequestsPerWeek} onChange={(e) => update({ onDemandRequestsPerWeek: e.target.value })} placeholder="Unlimited" className="h-9 text-sm bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono" />
-                  <span className="text-xs text-[#9CA3AF]">Empty = unlimited</span>
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-sm text-[#F9FAFB]">Output formats</Label>
-                  <Input value={form.outputFormats} onChange={(e) => update({ outputFormats: e.target.value })} placeholder="audio, text, markdown" className="h-9 text-sm bg-[#0A1628] border-white/5 text-[#F9FAFB]" />
-                  <span className="text-xs text-[#9CA3AF]">Comma-separated</span>
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-sm text-[#F9FAFB]">Narrative depth</Label>
-                  <select value={form.narrativeDepthTier} onChange={(e) => update({ narrativeDepthTier: e.target.value })} className="h-9 w-full text-sm bg-[#0A1628] border border-white/5 text-[#F9FAFB] rounded-md px-3">
-                    <option value="headlines">Headlines</option>
-                    <option value="standard">Standard</option>
-                    <option value="deep">Deep</option>
-                  </select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-sm text-[#F9FAFB]">Refresh latency</Label>
-                  <select value={form.refreshLatencyTier} onChange={(e) => update({ refreshLatencyTier: e.target.value })} className="h-9 w-full text-sm bg-[#0A1628] border border-white/5 text-[#F9FAFB] rounded-md px-3">
-                    <option value="standard">Standard</option>
-                    <option value="fast">Fast</option>
-                    <option value="realtime">Realtime</option>
-                  </select>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-y-3 gap-x-6">
-                {([
-                  ["transcriptAccess", "Transcript Access"],
-                  ["dailyDigest", "Daily Digest"],
-                  ["weeklyRecap", "Weekly Recap"],
-                  ["episodeHighlightClips", "Highlight Clips"],
-                ] as const).map(([key, label]) => (
-                  <div key={key} className="flex items-center justify-between">
-                    <Label className="text-sm text-[#F9FAFB]">{label}</Label>
-                    <Switch checked={form[key]} onCheckedChange={(v) => update({ [key]: v })} className="data-[state=checked]:bg-[#10B981]" />
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <Separator className="bg-white/5" />
-
-            {/* Pipeline & Processing */}
-            <div className="space-y-3">
-              <span className="text-sm font-semibold text-[#9CA3AF] uppercase tracking-wider">Pipeline & Processing</span>
-              <div className="grid grid-cols-3 gap-3">
-                <div className="space-y-1.5">
-                  <Label className="text-sm text-[#F9FAFB]">AI model tier</Label>
-                  <select value={form.aiModelTier} onChange={(e) => update({ aiModelTier: e.target.value })} className="h-9 w-full text-sm bg-[#0A1628] border border-white/5 text-[#F9FAFB] rounded-md px-3">
-                    <option value="standard">Standard</option>
-                    <option value="premium">Premium</option>
-                  </select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-sm text-[#F9FAFB]">TTS model tier</Label>
-                  <select value={form.ttsModelTier} onChange={(e) => update({ ttsModelTier: e.target.value })} className="h-9 w-full text-sm bg-[#0A1628] border border-white/5 text-[#F9FAFB] rounded-md px-3">
-                    <option value="standard">Standard</option>
-                    <option value="premium">Premium</option>
-                  </select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-sm text-[#F9FAFB]">STT model tier</Label>
-                  <select value={form.sttModelTier} onChange={(e) => update({ sttModelTier: e.target.value })} className="h-9 w-full text-sm bg-[#0A1628] border border-white/5 text-[#F9FAFB] rounded-md px-3">
-                    <option value="standard">Standard</option>
-                    <option value="premium">Premium</option>
-                  </select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-sm text-[#F9FAFB]">Retry budget</Label>
-                  <Input type="number" min={1} value={form.retryBudget} onChange={(e) => update({ retryBudget: e.target.value })} className="h-9 text-sm bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono" />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-sm text-[#F9FAFB]">Concurrent jobs</Label>
-                  <Input type="number" min={1} value={form.concurrentPipelineJobs} onChange={(e) => update({ concurrentPipelineJobs: e.target.value })} className="h-9 text-sm bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono" />
-                </div>
-                <div className="flex items-center justify-between pt-5">
-                  <Label className="text-sm text-[#F9FAFB]">Custom instructions</Label>
-                  <Switch checked={form.customInstructions} onCheckedChange={(v) => update({ customInstructions: v })} className="data-[state=checked]:bg-[#10B981]" />
-                </div>
-              </div>
-            </div>
-
-            <Separator className="bg-white/5" />
-
-            {/* Feature Flags */}
-            <div className="space-y-3">
-              <span className="text-sm font-semibold text-[#9CA3AF] uppercase tracking-wider">Feature Flags</span>
-              <div className="grid grid-cols-2 gap-y-3 gap-x-6">
-                {([
-                  ["adFree", "Ad-Free"],
-                  ["priorityProcessing", "Priority Processing"],
-                  ["earlyAccess", "Early Access"],
-                  ["researchMode", "Research Mode"],
-                  ["crossPodcastSynthesis", "Cross-Podcast Synthesis"],
-                ] as const).map(([key, label]) => (
-                  <div key={key} className="flex items-center justify-between">
-                    <Label className="text-sm text-[#F9FAFB]">{label}</Label>
-                    <Switch
-                      checked={form[key]}
-                      onCheckedChange={(v) => update({ [key]: v })}
-                      className="data-[state=checked]:bg-[#10B981]"
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <Separator className="bg-white/5" />
-
-            {/* Library & Discovery */}
-            <div className="space-y-3">
-              <span className="text-sm font-semibold text-[#9CA3AF] uppercase tracking-wider">Library & Discovery</span>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label className="text-sm text-[#F9FAFB]">Catalog access</Label>
-                  <select value={form.catalogAccess} onChange={(e) => update({ catalogAccess: e.target.value })} className="h-9 w-full text-sm bg-[#0A1628] border border-white/5 text-[#F9FAFB] rounded-md px-3">
-                    <option value="subscribed">Subscribed only</option>
-                    <option value="full">Full catalog</option>
-                  </select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-sm text-[#F9FAFB]">Saved searches</Label>
-                  <Input type="number" value={form.savedSearches} onChange={(e) => update({ savedSearches: e.target.value })} placeholder="Unlimited" className="h-9 text-sm bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono" />
-                  <span className="text-xs text-[#9CA3AF]">Empty = unlimited</span>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-y-3 gap-x-6">
-                {([
-                  ["topicTracking", "Topic Tracking"],
-                  ["customCollections", "Custom Collections"],
-                  ["searchBriefings", "Search Briefings"],
-                  ["rssExport", "RSS Export"],
-                  ["apiAccess", "API Access"],
-                ] as const).map(([key, label]) => (
-                  <div key={key} className="flex items-center justify-between">
-                    <Label className="text-sm text-[#F9FAFB]">{label}</Label>
-                    <Switch checked={form[key]} onCheckedChange={(v) => update({ [key]: v })} className="data-[state=checked]:bg-[#10B981]" />
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <Separator className="bg-white/5" />
-
-            {/* Personalization */}
-            <div className="space-y-3">
-              <span className="text-sm font-semibold text-[#9CA3AF] uppercase tracking-wider">Personalization</span>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label className="text-sm text-[#F9FAFB]">Languages</Label>
-                  <Input value={form.languageSupport} onChange={(e) => update({ languageSupport: e.target.value })} placeholder="en, es, fr" className="h-9 text-sm bg-[#0A1628] border-white/5 text-[#F9FAFB]" />
-                  <span className="text-xs text-[#9CA3AF]">Comma-separated codes</span>
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-sm text-[#F9FAFB]">Storage retention (days)</Label>
-                  <Input type="number" value={form.maxStorageDays} onChange={(e) => update({ maxStorageDays: e.target.value })} placeholder="Forever" className="h-9 text-sm bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono" />
-                  <span className="text-xs text-[#9CA3AF]">Empty = forever</span>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-y-3 gap-x-6">
-                {([
-                  ["tonePresets", "Tone Presets"],
-                  ["focusTopics", "Focus Topics"],
-                  ["skipTopics", "Skip Topics"],
-                  ["briefingIntro", "Personalized Intro"],
-                  ["offlineAccess", "Offline Access"],
-                  ["publicSharing", "Public Sharing"],
-                  ["interactiveBriefing", "Interactive Q&A"],
-                ] as const).map(([key, label]) => (
-                  <div key={key} className="flex items-center justify-between">
-                    <Label className="text-sm text-[#F9FAFB]">{label}</Label>
-                    <Switch checked={form[key]} onCheckedChange={(v) => update({ [key]: v })} className="data-[state=checked]:bg-[#10B981]" />
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <Separator className="bg-white/5" />
-
-            {/* Voice Presets */}
-            {voicePresets.length > 0 && (
-              <div className="space-y-3">
-                <span className="text-sm font-semibold text-[#9CA3AF] uppercase tracking-wider">Voice Presets</span>
-                <p className="text-xs text-[#9CA3AF]">Select which voice presets this plan grants access to.</p>
-                <div className="grid grid-cols-2 gap-y-2 gap-x-6">
-                  {voicePresets.map((vp) => (
-                    <div key={vp.id} className="flex items-center justify-between">
-                      <Label className="text-sm text-[#F9FAFB]">
-                        {vp.name}
-                        {vp.isSystem && <span className="text-xs text-[#9CA3AF] ml-1">(system)</span>}
-                      </Label>
-                      <Switch
-                        checked={form.allowedVoicePresetIds.includes(vp.id)}
-                        onCheckedChange={() => toggleVoicePreset(vp.id)}
-                        className="data-[state=checked]:bg-[#10B981]"
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <Separator className="bg-white/5" />
-
-            {/* Billing */}
-            <div className="space-y-3">
-              <span className="text-sm font-semibold text-[#9CA3AF] uppercase tracking-wider">Billing</span>
-              <div className="grid grid-cols-3 gap-3">
-                <div className="space-y-1.5">
-                  <Label className="text-sm text-[#F9FAFB]">Monthly price (cents)</Label>
-                  <Input
-                    type="number"
-                    value={form.priceCentsMonthly}
-                    onChange={(e) => update({ priceCentsMonthly: e.target.value })}
-                    className="h-9 text-sm bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-sm text-[#F9FAFB]">Annual price (cents)</Label>
-                  <Input
-                    type="number"
-                    value={form.priceCentsAnnual}
-                    onChange={(e) => update({ priceCentsAnnual: e.target.value })}
-                    placeholder="Optional"
-                    className="h-9 text-sm bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-sm text-[#F9FAFB]">Trial days</Label>
-                  <Input
-                    type="number"
-                    value={form.trialDays}
-                    onChange={(e) => update({ trialDays: e.target.value })}
-                    className="h-9 text-sm bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <Separator className="bg-white/5" />
-
-            {/* Display */}
-            <div className="space-y-3">
-              <span className="text-sm font-semibold text-[#9CA3AF] uppercase tracking-wider">Display</span>
-              <div className="space-y-1.5">
-                <Label className="text-sm text-[#F9FAFB]">Features (comma-separated)</Label>
-                <Input
-                  value={form.features}
-                  onChange={(e) => update({ features: e.target.value })}
-                  placeholder="e.g. 10 briefings/week, Ad-free listening, Priority processing"
-                  className="h-9 text-sm bg-[#0A1628] border-white/5 text-[#F9FAFB]"
-                />
-              </div>
-              <div className="grid grid-cols-3 gap-3">
-                <div className="space-y-1.5">
-                  <Label className="text-sm text-[#F9FAFB]">Sort order</Label>
-                  <Input
-                    type="number"
-                    value={form.sortOrder}
-                    onChange={(e) => update({ sortOrder: e.target.value })}
-                    className="h-9 text-sm bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono"
-                  />
-                </div>
-                <div className="flex items-center justify-between pt-5">
-                  <Label className="text-sm text-[#F9FAFB]">Highlighted</Label>
-                  <Switch
-                    checked={form.highlighted}
-                    onCheckedChange={(v) => update({ highlighted: v })}
-                    className="data-[state=checked]:bg-[#F59E0B]"
-                  />
-                </div>
-                <div className="flex items-center justify-between pt-5">
-                  <Label className="text-sm text-[#F9FAFB]">Default plan</Label>
-                  <Switch
-                    checked={form.isDefault}
-                    onCheckedChange={(v) => update({ isDefault: v })}
-                    className="data-[state=checked]:bg-[#3B82F6]"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        </ScrollArea>
-
-        <DialogFooter className="pt-3 border-t border-white/5">
-          <Button
-            variant="ghost"
-            onClick={() => onOpenChange(false)}
-            className="text-[#9CA3AF]"
-          >
-            Cancel
-          </Button>
-          <Button
-            className="bg-[#3B82F6] hover:bg-[#3B82F6]/80 text-white"
-            disabled={saving || !form.name || !form.slug}
-            onClick={onSubmit}
-          >
-            {saving ? (
-              <>
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Saving...
-              </>
-            ) : (
-              "Save"
-            )}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// ── Delete Confirmation Dialog ──
-
-function DeleteDialog({
-  open,
-  onOpenChange,
-  plan,
-  onConfirm,
-  deleting,
-}: {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  plan: AdminPlan | null;
-  onConfirm: () => void;
-  deleting: boolean;
-}) {
-  if (!plan) return null;
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-[#1A2942] border-white/10 text-[#F9FAFB] max-w-md">
-        <DialogHeader>
-          <DialogTitle className="text-sm">Delete Plan</DialogTitle>
-          <DialogDescription className="text-xs text-[#9CA3AF]">
-            This will soft-delete the plan "{plan.name}".
-          </DialogDescription>
-        </DialogHeader>
-
-        {plan.userCount > 0 && (
-          <div className="rounded-md bg-[#EF4444]/10 border border-[#EF4444]/20 p-3 flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4 text-[#EF4444] shrink-0" />
-            <span className="text-xs text-[#EF4444]">
-              This plan has {plan.userCount} active user{plan.userCount !== 1 ? "s" : ""}
-            </span>
-          </div>
-        )}
-
-        <DialogFooter>
-          <Button
-            variant="ghost"
-            onClick={() => onOpenChange(false)}
-            className="text-[#9CA3AF]"
-          >
-            Cancel
-          </Button>
-          <Button
-            className="bg-[#EF4444] hover:bg-[#EF4444]/80 text-white"
-            disabled={deleting}
-            onClick={onConfirm}
-          >
-            {deleting ? (
-              <>
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Deleting...
-              </>
-            ) : (
-              "Delete"
-            )}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// ── Loading Skeleton ──
-
-function PlansSkeleton() {
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <Skeleton className="h-8 w-48 bg-white/5 rounded-lg" />
-        <Skeleton className="h-8 w-28 bg-white/5 rounded-lg" />
-      </div>
-      {Array.from({ length: 4 }).map((_, i) => (
-        <Skeleton key={i} className="h-16 bg-white/5 rounded-lg" />
-      ))}
-    </div>
-  );
-}
-
-// ── Main ──
+import {
+  PlanFormDialog,
+  DeleteDialog,
+  DeactivateDialog,
+  PlanCard,
+  DurationTiersPanel,
+  PlansSkeleton,
+  emptyForm,
+  planToForm,
+  formToPayload,
+} from "@/components/admin/plans";
+import type { PlanFormData } from "@/components/admin/plans";
 
 export default function PlansPage() {
   const apiFetch = useAdminFetch();
@@ -819,22 +25,18 @@ export default function PlansPage() {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  // Dialog state
   const [createOpen, setCreateOpen] = useState(false);
   const [editPlan, setEditPlan] = useState<AdminPlan | null>(null);
   const [deletePlan, setDeletePlan] = useState<AdminPlan | null>(null);
   const [form, setForm] = useState<PlanFormData>(emptyForm());
 
-  // Toggle saving state per plan id
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [deactivatePlan, setDeactivatePlan] = useState<AdminPlan | null>(null);
 
-  // Duration tiers
   const [durationTiers, setDurationTiers] = useState<DurationTier[]>([]);
   const [tiersLoading, setTiersLoading] = useState(true);
   const [tiersOpen, setTiersOpen] = useState(false);
 
-  // Voice presets (for plan configuration)
   const [voicePresets, setVoicePresets] = useState<VoicePresetEntry[]>([]);
 
   const loadPlans = useCallback(() => {
@@ -845,9 +47,7 @@ export default function PlansPage() {
       .finally(() => setLoading(false));
   }, [apiFetch]);
 
-  useEffect(() => {
-    loadPlans();
-  }, [loadPlans]);
+  useEffect(() => { loadPlans(); }, [loadPlans]);
 
   useEffect(() => {
     apiFetch<{ data: VoicePresetEntry[] }>("/voice-presets?includeInactive=true")
@@ -863,84 +63,43 @@ export default function PlansPage() {
       .finally(() => setTiersLoading(false));
   }, [apiFetch]);
 
-  // Create
-  const handleCreate = useCallback(() => {
-    setForm(emptyForm());
-    setCreateOpen(true);
-  }, []);
+  const handleCreate = useCallback(() => { setForm(emptyForm()); setCreateOpen(true); }, []);
 
   const submitCreate = useCallback(() => {
     setSaving(true);
-    apiFetch("/plans", {
-      method: "POST",
-      body: JSON.stringify(formToPayload(form)),
-    })
-      .then(() => {
-        setCreateOpen(false);
-        loadPlans();
-      })
+    apiFetch("/plans", { method: "POST", body: JSON.stringify(formToPayload(form)) })
+      .then(() => { setCreateOpen(false); loadPlans(); })
       .catch(console.error)
       .finally(() => setSaving(false));
   }, [apiFetch, form, loadPlans]);
 
-  // Edit
-  const handleEdit = useCallback((plan: AdminPlan) => {
-    setForm(planToForm(plan));
-    setEditPlan(plan);
-  }, []);
+  const handleEdit = useCallback((plan: AdminPlan) => { setForm(planToForm(plan)); setEditPlan(plan); }, []);
 
   const submitEdit = useCallback(() => {
     if (!editPlan) return;
     setSaving(true);
-    apiFetch(`/plans/${editPlan.id}`, {
-      method: "PATCH",
-      body: JSON.stringify(formToPayload(form)),
-    })
-      .then(() => {
-        setEditPlan(null);
-        loadPlans();
-      })
+    apiFetch(`/plans/${editPlan.id}`, { method: "PATCH", body: JSON.stringify(formToPayload(form)) })
+      .then(() => { setEditPlan(null); loadPlans(); })
       .catch(console.error)
       .finally(() => setSaving(false));
   }, [apiFetch, editPlan, form, loadPlans]);
 
-  // Delete
   const submitDelete = useCallback(() => {
     if (!deletePlan) return;
     setDeleting(true);
     apiFetch(`/plans/${deletePlan.id}`, { method: "DELETE" })
-      .then(() => {
-        toast.success(`Plan "${deletePlan.name}" deactivated`);
-        setDeletePlan(null);
-        loadPlans();
-      })
-      .catch((e) => {
-        toast.error(e instanceof Error ? e.message : "Failed to delete plan");
-      })
+      .then(() => { toast.success(`Plan "${deletePlan.name}" deactivated`); setDeletePlan(null); loadPlans(); })
+      .catch((e) => { toast.error(e instanceof Error ? e.message : "Failed to delete plan"); })
       .finally(() => setDeleting(false));
   }, [apiFetch, deletePlan, loadPlans]);
 
-  // Inline toggle active — deactivation requires confirmation
   const handleToggleActive = useCallback(
     (plan: AdminPlan, active: boolean) => {
-      if (!active) {
-        // Deactivating → show confirmation dialog
-        setDeactivatePlan(plan);
-        return;
-      }
-      // Activating → go straight through
+      if (!active) { setDeactivatePlan(plan); return; }
       setTogglingId(plan.id);
-      apiFetch(`/plans/${plan.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ active: true }),
-      })
-        .then(() => {
-          toast.success(`Plan "${plan.name}" activated`);
-          loadPlans();
-        })
-        .catch((e) => {
-          toast.error(e instanceof Error ? e.message : "Failed to activate plan");
-        })
+      apiFetch(`/plans/${plan.id}`, { method: "PATCH", body: JSON.stringify({ active: true }) })
+        .then(() => { toast.success(`Plan "${plan.name}" activated`); loadPlans(); })
+        .catch((e) => { toast.error(e instanceof Error ? e.message : "Failed to activate plan"); })
         .finally(() => setTogglingId(null));
     },
     [apiFetch, loadPlans]
@@ -949,18 +108,9 @@ export default function PlansPage() {
   const confirmDeactivate = useCallback(() => {
     if (!deactivatePlan) return;
     setTogglingId(deactivatePlan.id);
-    apiFetch(`/plans/${deactivatePlan.id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ active: false }),
-    })
-      .then(() => {
-        toast.success(`Plan "${deactivatePlan.name}" deactivated`);
-        setDeactivatePlan(null);
-        loadPlans();
-      })
-      .catch((e) => {
-        toast.error(e instanceof Error ? e.message : "Failed to deactivate plan");
-      })
+    apiFetch(`/plans/${deactivatePlan.id}`, { method: "PATCH", body: JSON.stringify({ active: false }) })
+      .then(() => { toast.success(`Plan "${deactivatePlan.name}" deactivated`); setDeactivatePlan(null); loadPlans(); })
+      .catch((e) => { toast.error(e instanceof Error ? e.message : "Failed to deactivate plan"); })
       .finally(() => setTogglingId(null));
   }, [apiFetch, deactivatePlan, loadPlans]);
 
@@ -968,7 +118,6 @@ export default function PlansPage() {
 
   return (
     <div className="space-y-4">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-sm font-semibold text-[#F9FAFB]">Subscription Plans</h2>
@@ -976,26 +125,17 @@ export default function PlansPage() {
             {plans.length} plan{plans.length !== 1 ? "s" : ""} configured
           </p>
         </div>
-        <Button
-          size="sm"
-          onClick={handleCreate}
-          className="bg-[#3B82F6] hover:bg-[#3B82F6]/80 text-white text-xs gap-1.5"
-        >
+        <Button size="sm" onClick={handleCreate} className="bg-[#3B82F6] hover:bg-[#3B82F6]/80 text-white text-xs gap-1.5">
           <Plus className="h-3 w-3" />
           Add Plan
         </Button>
       </div>
 
-      {/* Plan cards */}
       {plans.length === 0 && !loading && (
         <div className="flex flex-col items-center justify-center py-16 text-[#9CA3AF]">
           <CreditCard className="h-8 w-8 mb-2 opacity-40" />
           <span className="text-xs">No plans configured</span>
-          <Button
-            size="sm"
-            onClick={handleCreate}
-            className="mt-3 bg-[#3B82F6] hover:bg-[#3B82F6]/80 text-white text-xs gap-1.5"
-          >
+          <Button size="sm" onClick={handleCreate} className="mt-3 bg-[#3B82F6] hover:bg-[#3B82F6]/80 text-white text-xs gap-1.5">
             <Plus className="h-3 w-3" />
             Create First Plan
           </Button>
@@ -1004,377 +144,31 @@ export default function PlansPage() {
 
       {plans.length > 0 && (
         <div className="space-y-4">
-          {plans.map((plan) => {
-            return (
-              <div
-                key={plan.id}
-                className={cn(
-                  "bg-[#0F1D32] border rounded-xl p-6 transition-colors",
-                  !plan.active && "opacity-50",
-                  plan.highlighted ? "border-[#F59E0B]/30" : "border-white/5"
-                )}
-              >
-                {/* Header: name + badges + actions */}
-                <div className="flex items-start gap-3 mb-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-lg font-semibold text-[#F9FAFB]">{plan.name}</span>
-                      {plan.isDefault && (
-                        <Badge className="bg-[#3B82F6]/15 text-[#3B82F6] border-[#3B82F6]/30 text-xs">
-                          DEFAULT
-                        </Badge>
-                      )}
-                      {plan.highlighted && (
-                        <Badge className="bg-[#F59E0B]/15 text-[#F59E0B] border-[#F59E0B]/30 text-xs">
-                          FEATURED
-                        </Badge>
-                      )}
-                    </div>
-                    <span className="text-sm font-mono text-[#9CA3AF]">{plan.slug}</span>
-                  </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <div title={plan.isDefault ? "Cannot disable the default plan" : undefined}>
-                      <Switch
-                        checked={plan.active}
-                        onCheckedChange={(v) => handleToggleActive(plan, v)}
-                        disabled={togglingId === plan.id || plan.isDefault}
-                        className="data-[state=checked]:bg-[#10B981]"
-                      />
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      onClick={() => handleEdit(plan)}
-                      className="text-[#9CA3AF] hover:text-[#3B82F6]"
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      onClick={() => setDeletePlan(plan)}
-                      disabled={plan.isDefault || plan.userCount > 0}
-                      title={
-                        plan.isDefault
-                          ? "Cannot delete the default plan"
-                          : plan.userCount > 0
-                            ? `Cannot delete — ${plan.userCount} active user${plan.userCount !== 1 ? "s" : ""}`
-                            : undefined
-                      }
-                      className="text-[#9CA3AF] hover:text-[#EF4444] disabled:opacity-30 disabled:hover:text-[#9CA3AF]"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Pricing */}
-                <div className="flex items-baseline gap-3 mb-4">
-                  <span className="text-lg font-mono tabular-nums text-[#F9FAFB]">
-                    {formatDollars(plan.priceCentsMonthly)}
-                    <span className="text-sm text-[#9CA3AF]">/mo</span>
-                  </span>
-                  {plan.priceCentsAnnual != null && (
-                    <span className="text-sm font-mono tabular-nums text-[#9CA3AF]">
-                      {formatDollars(plan.priceCentsAnnual)}/yr
-                    </span>
-                  )}
-                  <Badge className="bg-white/5 text-[#9CA3AF] border-white/10 text-sm ml-auto">
-                    {plan.userCount} user{plan.userCount !== 1 ? "s" : ""}
-                  </Badge>
-                </div>
-
-                {/* Numeric Limits */}
-                <div className="grid grid-cols-3 sm:grid-cols-5 gap-x-6 gap-y-3 mb-4">
-                  {([
-                    ["Briefings/wk", plan.briefingsPerWeek],
-                    ["On-demand/wk", plan.onDemandRequestsPerWeek],
-                    ["Max duration", plan.maxDurationMinutes != null ? `${plan.maxDurationMinutes}m` : null],
-                    ["Subscriptions", plan.maxPodcastSubscriptions],
-                    ["Past episodes", plan.pastEpisodesLimit],
-                    ["Saved searches", plan.savedSearches],
-                    ["Retry budget", plan.retryBudget],
-                    ["Concurrent jobs", plan.concurrentPipelineJobs],
-                    ["Storage", plan.maxStorageDays != null ? `${plan.maxStorageDays}d` : null],
-                  ] as [string, unknown][]).map(([label, value]) => (
-                    <div key={label}>
-                      <span className="text-sm text-[#6B7280]">{label}</span>
-                      <div className="text-base text-[#F9FAFB] font-mono font-semibold">
-                        {value != null ? String(value) : <Infinity className="h-4 w-4 inline" />}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Enum Tiers */}
-                <div className="grid grid-cols-3 sm:grid-cols-6 gap-x-6 gap-y-3 mb-4">
-                  {([
-                    ["Depth", plan.narrativeDepthTier],
-                    ["Latency", plan.refreshLatencyTier],
-                    ["Catalog", plan.catalogAccess],
-                    ["AI models", plan.aiModelTier],
-                    ["TTS", plan.ttsModelTier],
-                    ["STT", plan.sttModelTier],
-                  ] as [string, string][]).map(([label, value]) => (
-                    <div key={label}>
-                      <span className="text-sm text-[#6B7280]">{label}</span>
-                      <div className="text-base text-[#F9FAFB] font-mono font-semibold capitalize">{value}</div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Array fields */}
-                <div className="grid grid-cols-2 gap-x-6 mb-4">
-                  <div>
-                    <span className="text-sm text-[#6B7280]">Formats</span>
-                    <div className="text-base text-[#F9FAFB] font-mono font-semibold">{plan.outputFormats?.length > 0 ? plan.outputFormats.join(", ") : "—"}</div>
-                  </div>
-                  <div>
-                    <span className="text-sm text-[#6B7280]">Languages</span>
-                    <div className="text-base text-[#F9FAFB] font-mono font-semibold">{plan.languageSupport?.length > 0 ? plan.languageSupport.join(", ") : "—"}</div>
-                  </div>
-                </div>
-
-                {/* All boolean features — always shown */}
-                <div className="flex flex-wrap gap-1.5 mt-3">
-                  {([
-                    ["Ad-Free", plan.adFree],
-                    ["Priority", plan.priorityProcessing],
-                    ["Early Access", plan.earlyAccess],
-                    ["Research", plan.researchMode],
-                    ["Synthesis", plan.crossPodcastSynthesis],
-                    ["Transcripts", plan.transcriptAccess],
-                    ["Daily Digest", plan.dailyDigest],
-                    ["Weekly Recap", plan.weeklyRecap],
-                    ["Clips", plan.episodeHighlightClips],
-                    ["Custom Instructions", plan.customInstructions],
-                    ["Topics", plan.topicTracking],
-                    ["Collections", plan.customCollections],
-                    ["Search", plan.searchBriefings],
-                    ["RSS", plan.rssExport],
-                    ["API", plan.apiAccess],
-                    ["Tone Presets", plan.tonePresets],
-                    ["Focus Topics", plan.focusTopics],
-                    ["Skip Topics", plan.skipTopics],
-                    ["Intro", plan.briefingIntro],
-                    ["Offline", plan.offlineAccess],
-                    ["Sharing", plan.publicSharing],
-                    ["Interactive Q&A", plan.interactiveBriefing],
-                  ] as [string, boolean][]).map(([label, enabled]) => (
-                    <Badge
-                      key={label}
-                      className={cn(
-                        "text-sm py-1 px-2.5",
-                        enabled
-                          ? "bg-[#10B981]/10 text-[#10B981] font-medium"
-                          : "bg-white/[0.03] text-[#4B5563] font-normal"
-                      )}
-                    >
-                      {enabled
-                        ? <Check className="h-4 w-4 mr-1" />
-                        : <X className="h-4 w-4 mr-1" />
-                      }
-                      {label}
-                    </Badge>
-                  ))}
-                </div>
-
-                {/* Voice presets */}
-                {(plan.allowedVoicePresetIds?.length ?? 0) > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mt-3">
-                    {plan.allowedVoicePresetIds.map((vpId) => {
-                      const vp = voicePresets.find((v) => v.id === vpId);
-                      return (
-                        <Badge key={vpId} className="bg-[#3B82F6]/10 text-[#3B82F6] text-sm font-normal">
-                          {vp?.name ?? vpId.slice(0, 6)}
-                        </Badge>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+          {plans.map((plan) => (
+            <PlanCard
+              key={plan.id}
+              plan={plan}
+              voicePresets={voicePresets}
+              togglingId={togglingId}
+              onToggleActive={handleToggleActive}
+              onEdit={handleEdit}
+              onDelete={setDeletePlan}
+            />
+          ))}
         </div>
       )}
 
-      {/* Duration Tiers */}
-      <div className="rounded-lg bg-[#0F1D32] border border-white/5 overflow-hidden">
-        <button
-          type="button"
-          onClick={() => setTiersOpen((v) => !v)}
-          className="w-full flex items-center gap-2 px-4 py-3 hover:bg-white/[0.03] transition-colors"
-        >
-          <Clock className="h-4 w-4 text-[#3B82F6]" />
-          <span className="text-xs font-semibold text-[#F9FAFB]">Duration Tiers</span>
-          <Badge className="bg-white/5 text-[#9CA3AF] border-white/10 text-[10px] ml-1">
-            {tiersLoading ? "..." : durationTiers.length}
-          </Badge>
-          <ChevronDown
-            className={cn(
-              "h-3.5 w-3.5 text-[#9CA3AF] ml-auto transition-transform duration-200",
-              tiersOpen && "rotate-180"
-            )}
-          />
-        </button>
-
-        {tiersOpen && (
-          <div className="px-4 pb-4 space-y-2">
-            {tiersLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-4 w-4 animate-spin text-[#9CA3AF]" />
-              </div>
-            ) : durationTiers.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-[#9CA3AF]">
-                <Clock className="h-8 w-8 mb-2 opacity-40" />
-                <span className="text-xs">No duration tiers configured</span>
-              </div>
-            ) : (
-              durationTiers.map((tier) => {
-                const cacheColor =
-                  tier.cacheHitRate > 70 ? "#10B981" : tier.cacheHitRate > 40 ? "#F59E0B" : "#EF4444";
-                return (
-                  <div
-                    key={tier.minutes}
-                    className="bg-[#0A1628] border border-white/5 rounded-lg p-4 hover:border-white/10 transition-colors"
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className="flex items-center justify-center h-12 w-12 rounded-lg bg-[#3B82F6]/10 shrink-0">
-                        <span className="text-lg font-bold font-mono tabular-nums text-[#3B82F6]">
-                          {tier.minutes}
-                        </span>
-                      </div>
-
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-xs font-semibold text-[#F9FAFB]">
-                            {tier.minutes} minute{tier.minutes !== 1 ? "s" : ""}
-                          </span>
-                          <Badge className="bg-white/5 text-[#9CA3AF] text-[10px]">
-                            {tier.usageFrequency}% usage
-                          </Badge>
-                        </div>
-
-                        <div className="grid grid-cols-3 gap-4 text-[10px]">
-                          <div>
-                            <span className="text-[#9CA3AF]">Clips Generated</span>
-                            <div className="text-xs font-mono tabular-nums text-[#F9FAFB] mt-0.5">
-                              {tier.clipsGenerated.toLocaleString()}
-                            </div>
-                          </div>
-                          <div>
-                            <span className="text-[#9CA3AF]">Storage Cost</span>
-                            <div className="text-xs font-mono tabular-nums text-[#F9FAFB] mt-0.5">
-                              {formatCost(tier.storageCost)}
-                            </div>
-                          </div>
-                          <div>
-                            <span className="text-[#9CA3AF]">Cache Hit Rate</span>
-                            <div className="flex items-center gap-2 mt-1">
-                              <div className="flex-1 h-1.5 bg-white/5 rounded-full overflow-hidden">
-                                <div
-                                  className="h-full rounded-full transition-all duration-500"
-                                  style={{ width: `${tier.cacheHitRate}%`, backgroundColor: cacheColor }}
-                                />
-                              </div>
-                              <span className="font-mono tabular-nums text-[10px]" style={{ color: cacheColor }}>
-                                {tier.cacheHitRate.toFixed(0)}%
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Create Dialog */}
-      <PlanFormDialog
-        open={createOpen}
-        onOpenChange={setCreateOpen}
-        title="Create Plan"
-        form={form}
-        setForm={setForm}
-        onSubmit={submitCreate}
-        saving={saving}
-        voicePresets={voicePresets}
+      <DurationTiersPanel
+        tiers={durationTiers}
+        loading={tiersLoading}
+        open={tiersOpen}
+        onToggle={() => setTiersOpen((v) => !v)}
       />
 
-      {/* Edit Dialog */}
-      <PlanFormDialog
-        open={!!editPlan}
-        onOpenChange={(v) => { if (!v) setEditPlan(null); }}
-        title={`Edit Plan: ${editPlan?.name ?? ""}`}
-        form={form}
-        setForm={setForm}
-        onSubmit={submitEdit}
-        saving={saving}
-        voicePresets={voicePresets}
-      />
-
-      {/* Delete Dialog */}
-      <DeleteDialog
-        open={!!deletePlan}
-        onOpenChange={(v) => { if (!v) setDeletePlan(null); }}
-        plan={deletePlan}
-        onConfirm={submitDelete}
-        deleting={deleting}
-      />
-
-      {/* Deactivate Confirmation Dialog */}
-      <Dialog open={!!deactivatePlan} onOpenChange={(v) => { if (!v) setDeactivatePlan(null); }}>
-        <DialogContent className="bg-[#1A2942] border-white/10 text-[#F9FAFB] max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-sm">Deactivate Plan</DialogTitle>
-            <DialogDescription className="text-xs text-[#9CA3AF]">
-              Are you sure you want to deactivate "{deactivatePlan?.name}"?
-            </DialogDescription>
-          </DialogHeader>
-
-          {deactivatePlan && deactivatePlan.userCount > 0 && (
-            <div className="rounded-md bg-[#EF4444]/10 border border-[#EF4444]/20 p-3 flex items-start gap-2">
-              <AlertTriangle className="h-4 w-4 text-[#EF4444] shrink-0 mt-0.5" />
-              <div className="text-xs text-[#EF4444] space-y-1">
-                <p className="font-medium">
-                  {deactivatePlan.userCount} active user{deactivatePlan.userCount !== 1 ? "s" : ""} on this plan
-                </p>
-                <p className="text-[#EF4444]/80">
-                  Deactivating will hide this plan from new signups. Existing users will remain on the plan but it will no longer be selectable.
-                </p>
-              </div>
-            </div>
-          )}
-
-          <DialogFooter>
-            <Button
-              variant="ghost"
-              onClick={() => setDeactivatePlan(null)}
-              className="text-[#9CA3AF]"
-            >
-              Cancel
-            </Button>
-            <Button
-              className="bg-[#F59E0B] hover:bg-[#F59E0B]/80 text-white"
-              disabled={togglingId === deactivatePlan?.id}
-              onClick={confirmDeactivate}
-            >
-              {togglingId === deactivatePlan?.id ? (
-                <>
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  Deactivating...
-                </>
-              ) : (
-                "Deactivate"
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <PlanFormDialog open={createOpen} onOpenChange={setCreateOpen} title="Create Plan" form={form} setForm={setForm} onSubmit={submitCreate} saving={saving} voicePresets={voicePresets} />
+      <PlanFormDialog open={!!editPlan} onOpenChange={(v) => { if (!v) setEditPlan(null); }} title={`Edit Plan: ${editPlan?.name ?? ""}`} form={form} setForm={setForm} onSubmit={submitEdit} saving={saving} voicePresets={voicePresets} />
+      <DeleteDialog open={!!deletePlan} onOpenChange={(v) => { if (!v) setDeletePlan(null); }} plan={deletePlan} onConfirm={submitDelete} deleting={deleting} />
+      <DeactivateDialog open={!!deactivatePlan} onOpenChange={(v) => { if (!v) setDeactivatePlan(null); }} plan={deactivatePlan} onConfirm={confirmDeactivate} confirming={togglingId === deactivatePlan?.id} />
     </div>
   );
 }
