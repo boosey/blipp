@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-vi.mock("../url-validation", () => ({
+vi.mock("../../url-validation", () => ({
   safeFetch: vi.fn((url: string, init?: RequestInit) => fetch(url, init)),
   validateExternalUrl: vi.fn((url: string) => new URL(url)),
 }));
 
-import { parseVTT, parseSRT, fetchTranscript } from "../transcript";
+import { parseVTT, parseSRT, fetchTranscript } from "../parser";
 
 describe("parseVTT", () => {
   it("should strip WEBVTT header and timing lines", () => {
@@ -205,7 +205,7 @@ Hello from SRT`;
   });
 
   it("should call safeFetch with the provided URL", async () => {
-    const { safeFetch } = await import("../url-validation");
+    const { safeFetch } = await import("../../url-validation");
     mockFetch.mockResolvedValueOnce({
       ok: true,
       text: () => Promise.resolve("WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nHi"),

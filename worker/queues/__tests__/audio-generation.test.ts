@@ -10,7 +10,7 @@ vi.mock("../../lib/config", () => ({
   getConfig: vi.fn().mockResolvedValue(true),
 }));
 
-vi.mock("../../lib/tts", () => ({
+vi.mock("../../lib/tts/tts", () => ({
   generateSpeech: vi.fn().mockResolvedValue({
     audio: new ArrayBuffer(2048),
     usage: { model: "test-tts-model", inputTokens: 40, outputTokens: 0, cost: null },
@@ -54,7 +54,7 @@ vi.mock("../../lib/model-resolution", () => ({
   }]),
 }));
 
-vi.mock("../../lib/tts-providers", () => ({
+vi.mock("../../lib/tts/providers", () => ({
   getTtsProviderImpl: vi.fn().mockReturnValue({ name: "MockTTS", provider: "openai" }),
 }));
 
@@ -107,7 +107,7 @@ vi.mock("../../lib/ai-errors", () => {
 
 import { createPrismaClient } from "../../lib/db";
 import { getConfig } from "../../lib/config";
-import { generateSpeech } from "../../lib/tts";
+import { generateSpeech } from "../../lib/tts/tts";
 import { putWorkProduct, getWorkProduct } from "../../lib/work-products";
 import { resolveStageModel, resolveModelChain } from "../../lib/model-resolution";
 import { writeAiError } from "../../lib/ai-errors";

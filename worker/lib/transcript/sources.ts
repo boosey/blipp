@@ -1,5 +1,5 @@
-import { safeFetch } from "./url-validation";
-import type { Env } from "../types";
+import { safeFetch } from "../url-validation";
+import type { Env } from "../../types";
 
 export interface TranscriptLookupContext {
   episodeGuid: string;
@@ -42,9 +42,9 @@ const PodcastIndexTranscriptSource: TranscriptSource = {
   name: "Podcast Index",
   identifier: "podcast-index",
   async lookup(ctx, env) {
-    const { PodcastIndexClient } = await import("./podcast-index");
-    const { lookupPodcastIndexTranscript } = await import("./transcript-source");
-    const { fetchTranscript } = await import("./transcript");
+    const { PodcastIndexClient } = await import("../podcast-index");
+    const { lookupPodcastIndexTranscript } = await import("./podcast-index-source");
+    const { fetchTranscript } = await import("./parser");
     const client = new PodcastIndexClient(env.PODCAST_INDEX_KEY, env.PODCAST_INDEX_SECRET);
     const url = await lookupPodcastIndexTranscript(
       client,

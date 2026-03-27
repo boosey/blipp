@@ -1,4 +1,4 @@
-import { DEFAULT_TTS_MAX_INPUT_CHARS } from "./constants";
+import { DEFAULT_TTS_MAX_INPUT_CHARS } from "../constants";
 
 /**
  * Detect if a TTS error is an input-too-long rejection and extract the provider's

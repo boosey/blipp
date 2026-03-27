@@ -5,7 +5,7 @@ import {
   normalizeCompounds,
   correctSpelling,
   preWerNormalize,
-} from "../transcript-normalizer";
+} from "../normalizer";
 
 // ── intToWords ──
 

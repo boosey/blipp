@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { hirschbergAlign, normalizeText, stripInsertionBlocks, calculateWer, fuzzyFindAnchor, alignTranscriptWindow } from "../wer";
+import { hirschbergAlign, normalizeText, stripInsertionBlocks, calculateWer, fuzzyFindAnchor, alignTranscriptWindow } from "../stt/wer";
 
 describe("hirschbergAlign", () => {
   it("returns all matches for identical sequences", () => {

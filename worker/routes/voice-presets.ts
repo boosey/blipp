@@ -3,8 +3,8 @@ import type { Env } from "../types";
 import { requireAuth } from "../middleware/auth";
 import { getCurrentUser } from "../lib/admin-helpers";
 import { checkVoicePresetAccess, loadPresetConfig, extractProviderConfig } from "../lib/voice-presets";
-import { generateSpeech } from "../lib/tts";
-import { getTtsProviderImpl } from "../lib/tts-providers";
+import { generateSpeech } from "../lib/tts/tts";
+import { getTtsProviderImpl } from "../lib/tts/providers";
 import { resolveModelChain } from "../lib/model-resolution";
 
 /**

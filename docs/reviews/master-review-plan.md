@@ -141,18 +141,18 @@ Priority: Fix launch-blocking UX issues.
 
 Priority: Address after the above phases are complete.
 
-| # | Finding | Source | Effort |
-|---|---------|--------|--------|
+| # | Finding | Source | Effort | Status |
+|---|---------|--------|--------|--------|
 | 7.1 | Analytics queries load all rows into memory | SaaS 3.2, 3.3 | Medium — rewrite as `GROUP BY` SQL | DONE |
 | 7.2 | Dead letter queue handling | SaaS 4.4 | Medium — configure CF DLQ + alert | DONE |
-| 7.3 | Circuit breaker state is per-isolate | Code Quality, Error Capture | Medium — move to KV |
-| 7.4 | GDPR data export + deletion request flow | SaaS 1.2 | High |
-| 7.5 | Audit log coverage gaps | SaaS 1.1 | Low — add `writeAuditLog` to missing admin actions |
-| 7.6 | ExternalServiceError table for non-AI services | Error Capture §4 | Medium |
-| 7.7 | Incident runbooks | SaaS 6.4 | Low — document existing implicit procedures |
-| 7.8 | Config key registry + validation | Code Quality Step 5 | Medium |
-| 7.9 | Shared types between frontend/backend | Code Quality Step 5 | High — zod schemas or shared package |
-| 7.10 | `worker/lib/` directory structure | Code Quality Step 8 | Low — create stt/, tts/, transcript/ subdirs |
+| 7.3 | Circuit breaker state is per-isolate | Code Quality, Error Capture | Medium — move to KV | SKIP — per-isolate is acceptable; AiServiceError table covers observability |
+| 7.4 | GDPR data export + deletion request flow | SaaS 1.2 | High | SKIP — revisit when international users |
+| 7.5 | Audit log coverage gaps | SaaS 1.1 | Low — add `writeAuditLog` to missing admin actions | DONE — auto-audit middleware on all admin mutations |
+| 7.6 | ExternalServiceError table for non-AI services | Error Capture §4 | Medium | SKIP — structured logs sufficient for low-volume non-AI failures |
+| 7.7 | Incident runbooks | SaaS 6.4 | Low — document existing implicit procedures | DONE |
+| 7.8 | Config key registry + validation | Code Quality Step 5 | Medium | DONE |
+| 7.9 | Shared types between frontend/backend | Code Quality Step 5 | High — zod schemas or shared package | SKIP — high churn, low ROI; tests catch drift |
+| 7.10 | `worker/lib/` directory structure | Code Quality Step 8 | Low — create stt/, tts/, transcript/ subdirs | DONE |
 
 ---
 

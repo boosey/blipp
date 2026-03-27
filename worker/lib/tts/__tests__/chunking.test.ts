@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { chunkNarrativeText, createSilenceFrame, concatenateAudioChunks, parseInputLimitError, limitToSafeMaxChars } from "../tts-chunking";
+import { chunkNarrativeText, createSilenceFrame, concatenateAudioChunks, parseInputLimitError, limitToSafeMaxChars } from "../chunking";
 
 describe("chunkNarrativeText", () => {
   it("returns single chunk when text is under limit", () => {

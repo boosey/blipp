@@ -1,5 +1,5 @@
 import { wpKey, putWorkProduct } from "./work-products";
-import { lookupPodcastIndexTranscript } from "./transcript-source";
+import { lookupPodcastIndexTranscript } from "./transcript/podcast-index-source";
 import { PodcastIndexClient } from "./podcast-index";
 import { safeFetch } from "./url-validation";
 import type { Env } from "../types";

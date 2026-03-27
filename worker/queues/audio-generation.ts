@@ -1,16 +1,16 @@
 import { createPrismaClient } from "../lib/db";
 import { createPipelineLogger, logDbError } from "../lib/logger";
 import { checkStageEnabled } from "../lib/queue-helpers";
-import { generateSpeech } from "../lib/tts";
+import { generateSpeech } from "../lib/tts/tts";
 import { loadPresetConfig, extractProviderConfig } from "../lib/voice-presets";
 
 import { resolveModelChain } from "../lib/model-resolution";
-import { getTtsProviderImpl } from "../lib/tts-providers";
+import { getTtsProviderImpl } from "../lib/tts/providers";
 import { wpKey, putWorkProduct, getWorkProduct } from "../lib/work-products";
 import { writeEvent } from "../lib/pipeline-events";
 import { writeAiError, classifyAiError, AiProviderError } from "../lib/ai-errors";
 import { recordSuccess, recordFailure } from "../lib/circuit-breaker";
-import { chunkNarrativeText, createSilenceFrame, concatenateAudioChunks, parseInputLimitError, limitToSafeMaxChars } from "../lib/tts-chunking";
+import { chunkNarrativeText, createSilenceFrame, concatenateAudioChunks, parseInputLimitError, limitToSafeMaxChars } from "../lib/tts/chunking";
 import { DEFAULT_TTS_MAX_INPUT_CHARS } from "../lib/constants";
 import type { AudioGenerationMessage } from "../lib/queue-messages";
 import type { Env } from "../types";

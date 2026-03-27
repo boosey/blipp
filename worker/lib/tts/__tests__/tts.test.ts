@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { generateSpeech, DEFAULT_VOICE, DEFAULT_INSTRUCTIONS } from "../tts";
-import type { TtsProvider, TtsResult } from "../tts-providers";
+import type { TtsProvider, TtsResult } from "../providers";
 
 function createMockTtsProvider(audioBuffer: ArrayBuffer): TtsProvider {
   return {

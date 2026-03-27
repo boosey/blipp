@@ -747,6 +747,32 @@ Once approved:
 
 **DB connection errors:** Neon status (neonstatus.com) → `npx wrangler hyperdrive list` → connection pool limits → `npm run db:check`
 
+**Dead letter queue messages appearing:**
+1. CF dashboard → Queues → `dead-letter` queue depth
+2. Worker logs: filter for `dead_letter_received` — shows jobId, episodeId, source queue
+3. Check the source queue's error pattern (rate limit? model down? audio issue?)
+4. Fix root cause, then retry affected jobs: Admin UI → Pipeline → filter FAILED → bulk retry
+
+**AI provider outage (all requests failing):**
+1. Admin UI → AI Errors — check if errors are `transient` (rate_limit, server_error) or `permanent` (auth, quota)
+2. Transient: queue retries handle it automatically (3 retries + model chain fallback)
+3. Permanent (auth/quota): fix API key or billing, then Admin UI → Pipeline → bulk retry FAILED jobs
+4. If one provider is down: model chain auto-falls through to secondary/tertiary — no action needed unless all fail
+
+**Cron jobs not running:**
+1. Admin UI → Cron Jobs — check last run times and status
+2. Worker logs: filter for `cron_job_failed` — shows jobKey and error
+3. Check if job is disabled: `cron.{jobKey}.enabled` in Platform Config
+4. Check for stuck IN_PROGRESS run: runner auto-marks as FAILED after interval elapses
+5. Manual trigger: CF dashboard → Workers → Triggers → trigger cron manually
+
+**Feed refresh stalled (no new episodes):**
+1. Admin UI → Pipeline → trigger feed refresh for a single podcast
+2. Check `feed-refresh-retry` queue depth (messages that failed primary refresh)
+3. Worker logs: filter for `feed_fetch_timeout` or `rss_parse_error`
+4. Common causes: podcast RSS server down, feed URL changed, SSRF validation blocking legitimate URL
+5. If widespread: check `cron.pipeline-trigger.lastRunAt` — cron may have stopped
+
 ---
 
 ## Automation Scripts

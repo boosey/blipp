@@ -1,8 +1,8 @@
-import type { SttProvider, SttResult } from "./stt-providers";
-import { ASSUMED_BITRATE_BYTES_PER_SEC } from "./constants";
-import { safeFetch } from "./url-validation";
-import type { Env } from "../types";
-import { DEFAULT_STT_CHUNK_SIZE } from "./constants";
+import type { SttProvider, SttResult } from "./providers";
+import { ASSUMED_BITRATE_BYTES_PER_SEC } from "../constants";
+import { safeFetch } from "../url-validation";
+import type { Env } from "../../types";
+import { DEFAULT_STT_CHUNK_SIZE } from "../constants";
 
 // ---------------------------------------------------------------------------
 // Audio format detection (moved from transcription.ts)

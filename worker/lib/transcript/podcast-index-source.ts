@@ -1,4 +1,4 @@
-import type { PodcastIndexClient } from "./podcast-index";
+import type { PodcastIndexClient } from "../podcast-index";
 
 /**
  * Looks up a transcript URL for an episode via the Podcast Index API.

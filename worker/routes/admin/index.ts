@@ -1,6 +1,8 @@
 import { Hono } from "hono";
 import type { Env } from "../../types";
 import { requireAdmin } from "../../middleware/admin";
+import { getAuth } from "../../middleware/auth";
+import { writeAuditLog } from "../../lib/audit-log";
 import { dashboardRoutes } from "./dashboard";
 import { pipelineRoutes } from "./pipeline";
 import { podcastsRoutes } from "./podcasts";
@@ -34,6 +36,33 @@ const adminRoutes = new Hono<{ Bindings: Env }>();
 
 // Apply admin middleware to all admin routes
 adminRoutes.use("*", requireAdmin);
+
+// Auto-audit: log all non-GET admin requests after handler completes
+adminRoutes.use("*", async (c, next) => {
+  if (c.req.method === "GET" || c.req.method === "OPTIONS") {
+    return next();
+  }
+  await next();
+  // Only log successful mutations (2xx)
+  if (c.res.status >= 200 && c.res.status < 300) {
+    const auth = getAuth(c);
+    const prisma = c.get("prisma") as any;
+    if (prisma && auth?.userId) {
+      const path = c.req.path;
+      // Extract entity type from route path (e.g. /admin/podcasts/123 → podcast)
+      const segments = path.replace(/^\/api\/admin\//, "").split("/");
+      const entityType = segments[0]?.replace(/-/g, "_") ?? "unknown";
+      const entityId = segments[1] ?? "";
+      writeAuditLog(prisma, {
+        actorId: auth.userId,
+        action: `${c.req.method.toLowerCase()}_${entityType}`,
+        entityType,
+        entityId,
+        metadata: { path, method: c.req.method },
+      });
+    }
+  }
+});
 
 adminRoutes.route("/dashboard", dashboardRoutes);
 adminRoutes.route("/pipeline", pipelineRoutes);

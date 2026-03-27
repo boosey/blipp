@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { AiProviderError } from "../ai-errors";
+import { AiProviderError } from "../../ai-errors";
 
 // Mock OpenAI SDK
 const mockSpeechCreate = vi.fn();
@@ -9,7 +9,7 @@ vi.mock("openai", () => ({
   },
 }));
 
-const { getTtsProviderImpl } = await import("../tts-providers");
+const { getTtsProviderImpl } = await import("../providers");
 
 describe("TTS Providers - AiProviderError wrapping", () => {
   beforeEach(() => {

@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { createMockEnv } from "../../../tests/helpers/mocks";
-import { getProviderImpl } from "../stt-providers";
-import { AiProviderError } from "../ai-errors";
-import type { Env } from "../../types";
+import { createMockEnv } from "../../../../tests/helpers/mocks";
+import { getProviderImpl } from "../providers";
+import { AiProviderError } from "../../ai-errors";
+import type { Env } from "../../../types";
 
 describe("stt-providers", () => {
   let env: Env;

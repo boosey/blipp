@@ -1,6 +1,6 @@
 import OpenAI from "openai";
-import type { Env } from "../types";
-import { AiProviderError } from "./ai-errors";
+import type { Env } from "../../types";
+import { AiProviderError } from "../ai-errors";
 
 /** Provider-agnostic TTS synthesis result. */
 export interface TtsResult {

@@ -1,6 +1,6 @@
 import type OpenAI from "openai";
-import { calculateAudioCost, type AiUsage, type ModelPricing } from "./ai-usage";
-import { ASSUMED_BITRATE_BYTES_PER_SEC, STT_BYTES_PER_TOKEN } from "./constants";
+import { calculateAudioCost, type AiUsage, type ModelPricing } from "../ai-usage";
+import { ASSUMED_BITRATE_BYTES_PER_SEC, STT_BYTES_PER_TOKEN } from "../constants";
 
 /** Whisper API maximum file size: 25MB */
 export const WHISPER_MAX_BYTES = 25 * 1024 * 1024;

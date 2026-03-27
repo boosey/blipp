@@ -2,7 +2,7 @@
  * Transcript parsing utilities for VTT and SRT subtitle formats.
  * Strips timing/cue information and returns plain text for distillation.
  */
-import { safeFetch } from "./url-validation";
+import { safeFetch } from "../url-validation";
 
 /**
  * Parses a WebVTT transcript, stripping timing metadata and cue headers.

@@ -5,8 +5,8 @@ import {
   parseSort,
   paginatedResponse,
 } from "../../lib/admin-helpers";
-import { runNextTask } from "../../lib/stt-benchmark-runner";
-import { parseVTT, parseSRT } from "../../lib/transcript";
+import { runNextTask } from "../../lib/stt/benchmark-runner";
+import { parseVTT, parseSRT } from "../../lib/transcript/parser";
 
 const sttBenchmarkRoutes = new Hono<{ Bindings: Env }>();
 

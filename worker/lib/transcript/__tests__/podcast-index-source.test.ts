@@ -1,14 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { lookupPodcastIndexTranscript } from "../transcript-source";
+import { lookupPodcastIndexTranscript } from "../podcast-index-source";
 
 // Mock the podcast-index module
-vi.mock("../podcast-index", () => ({
+vi.mock("../../podcast-index", () => ({
   PodcastIndexClient: vi.fn().mockImplementation(() => ({
     episodesByFeedId: vi.fn(),
   })),
 }));
 
-import { PodcastIndexClient } from "../podcast-index";
+import { PodcastIndexClient } from "../../podcast-index";
 
 beforeEach(() => {
   vi.clearAllMocks();

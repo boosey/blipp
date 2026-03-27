@@ -5,8 +5,8 @@ import type { Env } from "../../types";
 import { writeAuditLog } from "../../lib/audit-log";
 import { parsePagination, parseSort, paginatedResponse } from "../../lib/admin-helpers";
 import { validateBody } from "../../lib/validation";
-import { generateSpeech } from "../../lib/tts";
-import { getTtsProviderImpl } from "../../lib/tts-providers";
+import { generateSpeech } from "../../lib/tts/tts";
+import { getTtsProviderImpl } from "../../lib/tts/providers";
 import { resolveModelChain } from "../../lib/model-resolution";
 
 const PREVIEW_DEFAULT_TEXT = "Here's a quick preview of how this voice sounds for your daily briefing.";

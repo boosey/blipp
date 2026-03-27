@@ -1,10 +1,10 @@
-import type { Env } from "../types";
-import type { AudioInput } from "./stt-providers";
-import { getProviderImpl } from "./stt-providers";
-import { getModelPricing, calculateAudioCost } from "./ai-usage";
-import { parseVTT, parseSRT } from "./transcript";
+import type { Env } from "../../types";
+import type { AudioInput } from "./providers";
+import { getProviderImpl } from "./providers";
+import { getModelPricing, calculateAudioCost } from "../ai-usage";
+import { parseVTT, parseSRT } from "../transcript/parser";
 import { alignTranscriptWindow, calculateWer, normalizeText, stripInsertionBlocks } from "./wer";
-import { preWerNormalize } from "./transcript-normalizer";
+import { preWerNormalize } from "../transcript/normalizer";
 
 const BENCHMARK_WINDOW_SECONDS = 900; // 15 minutes
 

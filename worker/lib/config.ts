@@ -1,3 +1,5 @@
+import { validateConfigKey } from "./config-registry";
+
 /**
  * Reads a PlatformConfig key with in-memory TTL cache.
  *
@@ -20,6 +22,8 @@ export async function getConfig<T>(
   key: string,
   fallback: T
 ): Promise<T> {
+  validateConfigKey(key);
+
   const now = Date.now();
   const cached = cache.get(key);
   if (cached && cached.expiresAt > now) {

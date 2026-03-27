@@ -54,7 +54,7 @@ vi.mock("../../lib/work-products", () => ({
 const mockRssLookup = vi.fn().mockResolvedValue(null);
 const mockPiLookup = vi.fn().mockResolvedValue(null);
 
-vi.mock("../../lib/transcript-sources", () => ({
+vi.mock("../../lib/transcript/sources", () => ({
   getTranscriptSource: vi.fn().mockImplementation((id: string) => {
     if (id === "rss-feed") return { name: "RSS Feed", identifier: "rss-feed", lookup: mockRssLookup };
     if (id === "podcast-index") return { name: "Podcast Index", identifier: "podcast-index", lookup: mockPiLookup };
@@ -87,7 +87,7 @@ vi.mock("../../lib/logger", () => ({
 }));
 
 const mockTranscribe = vi.fn().mockResolvedValue({ transcript: "Provider transcript text.", costDollars: null, latencyMs: 100 });
-vi.mock("../../lib/stt-providers", () => ({
+vi.mock("../../lib/stt/providers", () => ({
   getProviderImpl: vi.fn().mockReturnValue({
     name: "MockProvider",
     provider: "cloudflare",
@@ -105,7 +105,7 @@ const mockProbeAudio = vi.fn().mockResolvedValue({
   supportsRangeRequests: true,
 });
 const mockTranscribeChunked = vi.fn().mockResolvedValue({ transcript: "Chunked transcript.", costDollars: null, latencyMs: 200 });
-vi.mock("../../lib/audio-probe", () => ({
+vi.mock("../../lib/stt/audio-probe", () => ({
   probeAudio: (...args: any[]) => mockProbeAudio(...args),
   transcribeChunked: (...args: any[]) => mockTranscribeChunked(...args),
 }));
@@ -149,8 +149,8 @@ vi.mock("../../lib/ai-errors", () => {
 
 const { getConfig } = await import("../../lib/config");
 const { resolveModelChain } = await import("../../lib/model-resolution");
-const { getTranscriptSource } = await import("../../lib/transcript-sources");
-const { getProviderImpl } = await import("../../lib/stt-providers");
+const { getTranscriptSource } = await import("../../lib/transcript/sources");
+const { getProviderImpl } = await import("../../lib/stt/providers");
 const { writeAiError } = await import("../../lib/ai-errors");
 const { handleTranscription } = await import("../transcription");
 
