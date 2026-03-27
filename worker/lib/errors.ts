@@ -4,6 +4,18 @@ import type { Context } from "hono";
 import type { Env } from "../types";
 import { ValidationError } from "./validation";
 
+/** Typed HTTP error for route handlers — avoids string matching in classifyHttpError. */
+export class HttpError extends Error {
+  constructor(
+    public readonly status: number,
+    message: string,
+    public readonly code?: string,
+  ) {
+    super(message);
+    this.name = "HttpError";
+  }
+}
+
 /** Standard API error response shape. Every error from the API uses this. */
 export interface ApiErrorResponse {
   error: string;
@@ -17,6 +29,11 @@ export interface ApiErrorResponse {
  * Prevents Prisma internals, stack traces, and API keys from leaking to clients.
  */
 export function classifyHttpError(err: unknown): { status: number; message: string; code?: string; details?: Array<{ path: string; message: string }> } {
+  // Typed HTTP errors from route handlers
+  if (err instanceof HttpError) {
+    return { status: err.status, message: err.message, code: err.code };
+  }
+
   // Validation errors — return 400 with field-level details
   if (err instanceof ValidationError) {
     return { status: 400, message: err.message, code: err.code, details: err.details };
@@ -41,11 +58,6 @@ export function classifyHttpError(err: unknown): { status: number; message: stri
     // Prisma P2003: Foreign key constraint violation
     if (msg.includes("P2003")) {
       return { status: 400, message: "Invalid reference", code: "INVALID_REFERENCE" };
-    }
-
-    // Explicit 404 throws from route handlers
-    if (msg.toLowerCase().includes("not found")) {
-      return { status: 404, message: msg, code: "NOT_FOUND" };
     }
 
     // Stripe errors

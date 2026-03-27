@@ -234,13 +234,13 @@ export class ApplePodcastsClient {
    */
   async top200(country: string = "us"): Promise<AppleRSSEntry[]> {
     const url = `${ITUNES_BASE}/${country}/rss/toppodcasts/limit=200/json`;
-    console.log(`[ApplePodcasts] GET ${url}`);
+    console.log(JSON.stringify({ level: "info", action: "apple_top200_fetch", url, ts: new Date().toISOString() }));
     try {
       const res = await fetchWithRetry(url);
-      console.log(`[ApplePodcasts] top200 response: ${res.status} ${res.statusText}`);
+      console.log(JSON.stringify({ level: "info", action: "apple_top200_response", status: res.status, statusText: res.statusText, ts: new Date().toISOString() }));
       const data = (await res.json()) as ITunesRSSResponse;
       const entries = data.feed?.entry ?? [];
-      console.log(`[ApplePodcasts] top200 parsed ${entries.length} entries`);
+      console.log(JSON.stringify({ level: "info", action: "apple_top200_parsed", entryCount: entries.length, ts: new Date().toISOString() }));
 
       return entries.map((e) => {
         const images = e["im:image"] ?? [];
@@ -323,7 +323,7 @@ export class ApplePodcastsClient {
       const result = results[i];
       const genreName = APPLE_PODCAST_GENRES[genreIds[i]];
       if (result.status !== "fulfilled") {
-        console.warn(`[Apple] Genre ${genreIds[i]} (${genreName}): FAILED - ${result.reason}`);
+        console.warn(JSON.stringify({ level: "warn", action: "apple_genre_failed", genreId: genreIds[i], genreName, reason: String(result.reason), ts: new Date().toISOString() }));
         continue;
       }
       const entries = result.value;
@@ -347,12 +347,10 @@ export class ApplePodcastsClient {
       }
 
       const newUnique = seen.size - prevSize;
-      console.log(
-        `[Apple] Genre ${genreIds[i]} (${genreName}): ${entries.length} fetched, ${newUnique} new unique | Running total: ${totalFetched} fetched, ${seen.size} unique`
-      );
+      console.log(JSON.stringify({ level: "info", action: "apple_genre_done", genreId: genreIds[i], genreName, fetched: entries.length, newUnique, totalFetched, totalUnique: seen.size, ts: new Date().toISOString() }));
     }
 
-    console.log(`[Apple] All genres done: ${totalFetched} total fetched, ${seen.size} unique`);
+    console.log(JSON.stringify({ level: "info", action: "apple_all_genres_done", totalFetched, totalUnique: seen.size, ts: new Date().toISOString() }));
     return Array.from(seen.values());
   }
 
@@ -373,24 +371,21 @@ export class ApplePodcastsClient {
       const chunk = ids.slice(i, i + LOOKUP_BATCH_SIZE);
       const csvIds = chunk.join(",");
       const url = `${ITUNES_BASE}/lookup?id=${csvIds}&entity=podcast`;
-      console.log(`[ApplePodcasts] GET lookup batch ${Math.floor(i / LOOKUP_BATCH_SIZE) + 1} (${chunk.length} IDs): ${url.slice(0, 120)}...`);
+      console.log(JSON.stringify({ level: "info", action: "apple_lookup_batch", batch: Math.floor(i / LOOKUP_BATCH_SIZE) + 1, idCount: chunk.length, ts: new Date().toISOString() }));
 
       try {
         const res = await fetchWithRetry(url);
-        console.log(`[ApplePodcasts] lookup batch response: ${res.status} ${res.statusText}`);
+        console.log(JSON.stringify({ level: "info", action: "apple_lookup_response", status: res.status, statusText: res.statusText, ts: new Date().toISOString() }));
         const data = (await res.json()) as ITunesResponse;
 
         // Filter to podcast results only (exclude artist entries, etc.)
         const podcasts = (data.results ?? []).filter(
           (r) => r.wrapperType === "track" && r.kind === "podcast"
         );
-        console.log(`[ApplePodcasts] lookup batch: ${data.resultCount} results, ${podcasts.length} podcasts with feedUrl`);
+        console.log(JSON.stringify({ level: "info", action: "apple_lookup_results", resultCount: data.resultCount, podcastCount: podcasts.length, ts: new Date().toISOString() }));
         results.push(...podcasts);
       } catch (err) {
-        console.warn(
-          `[ApplePodcasts] Lookup batch failed for ${chunk.length} IDs:`,
-          err
-        );
+        console.warn(JSON.stringify({ level: "warn", action: "apple_lookup_batch_failed", idCount: chunk.length, error: err instanceof Error ? err.message : String(err), ts: new Date().toISOString() }));
         // Continue with next chunk rather than failing entirely
       }
 
@@ -420,7 +415,7 @@ export class ApplePodcastsClient {
       const data = (await res.json()) as ITunesResponse;
       return data.results ?? [];
     } catch (err) {
-      console.warn(`[ApplePodcasts] Search failed for "${term}":`, err);
+      console.warn(JSON.stringify({ level: "warn", action: "apple_search_failed", term, error: err instanceof Error ? err.message : String(err), ts: new Date().toISOString() }));
       return [];
     }
   }

@@ -66,7 +66,7 @@ export function Discover() {
 
   // Podcast request form
   const [showRequestForm, setShowRequestForm] = useState(false);
-  const [requestUrl, setRequestUrl] = useState("");
+  const [requestQuery, setRequestQuery] = useState("");
   const [requestLoading, setRequestLoading] = useState(false);
   const [myRequests, setMyRequests] = useState<
     { id: string; feedUrl: string; title?: string; status: string; podcastId?: string }[]
@@ -238,16 +238,16 @@ export function Discover() {
   }, [apiFetch]);
 
   async function handlePodcastRequest() {
-    if (!requestUrl.trim()) return;
+    if (!requestQuery.trim()) return;
     setRequestLoading(true);
     try {
       await apiFetch("/podcasts/request", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ feedUrl: requestUrl.trim() }),
+        body: JSON.stringify({ query: requestQuery.trim() }),
       });
       toast.success("Podcast request submitted! We'll review it soon.");
-      setRequestUrl("");
+      setRequestQuery("");
       setShowRequestForm(false);
       apiFetch<{ data: typeof myRequests }>("/podcasts/requests")
         .then((data) => setMyRequests(data.data || []))
@@ -496,24 +496,24 @@ export function Discover() {
           </button>
         ) : (
           <div className="bg-card border border-border rounded-lg p-3 space-y-2">
-            <p className="text-xs text-muted-foreground">Paste the podcast's RSS feed URL:</p>
+            <p className="text-xs text-muted-foreground">What podcast are you looking for?</p>
             <div className="flex gap-2">
               <input
-                value={requestUrl}
-                onChange={(e) => setRequestUrl(e.target.value)}
-                placeholder="https://example.com/feed.xml"
+                value={requestQuery}
+                onChange={(e) => setRequestQuery(e.target.value)}
+                placeholder="e.g. The Daily, Huberman Lab"
                 className="flex-1 px-3 py-1.5 bg-muted border border-border rounded text-sm"
               />
               <button
                 onClick={handlePodcastRequest}
-                disabled={requestLoading || !requestUrl.trim()}
+                disabled={requestLoading || !requestQuery.trim()}
                 className="px-3 py-1.5 bg-primary text-primary-foreground text-sm font-medium rounded disabled:opacity-50"
               >
-                {requestLoading ? "..." : "Submit"}
+                {requestLoading ? "..." : "Request"}
               </button>
             </div>
             <button
-              onClick={() => { setShowRequestForm(false); setRequestUrl(""); }}
+              onClick={() => { setShowRequestForm(false); setRequestQuery(""); }}
               className="text-xs text-muted-foreground hover:text-foreground"
             >
               Cancel

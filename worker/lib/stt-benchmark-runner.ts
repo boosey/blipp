@@ -51,7 +51,7 @@ export async function runNextTask(
   }
 
   // 2. Find POLLING and PENDING tasks — handle both in parallel so async
-  //    providers (AssemblyAI) don't block synchronous ones (Whisper, Deepgram).
+  //    providers don't block synchronous ones (Whisper, Deepgram).
   const [pollingResult, pendingResult] = await Promise.all([
     prisma.sttBenchmarkResult.findFirst({
       where: { experimentId, status: "POLLING" },
@@ -276,7 +276,7 @@ async function handlePendingTask(
   const sttResult = await provider.transcribe(audio, durationSeconds, env, providerModelId);
 
   if (sttResult.async) {
-    // Async provider (AssemblyAI, Google) — save job ID and poll later
+    // Async provider — save job ID and poll later
     await prisma.sttBenchmarkResult.update({
       where: { id: result.id },
       data: {

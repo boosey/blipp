@@ -1,6 +1,7 @@
 import { wpKey, putWorkProduct } from "./work-products";
 import { lookupPodcastIndexTranscript } from "./transcript-source";
 import { PodcastIndexClient } from "./podcast-index";
+import { safeFetch } from "./url-validation";
 import type { Env } from "../types";
 
 /**
@@ -112,7 +113,7 @@ async function tryFetchTranscript(
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), fetchTimeoutMs);
-    const res = await fetch(url, { signal: controller.signal });
+    const res = await safeFetch(url, { signal: controller.signal });
     if (!res.ok) { clearTimeout(timeout); return null; }
     const transcript = await res.text();
     clearTimeout(timeout);

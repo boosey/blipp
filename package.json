@@ -62,7 +62,6 @@
     "@hono/clerk-auth": "^3.1.0",
     "@prisma/adapter-pg": "^7.4.1",
     "@prisma/client": "^7.4.1",
-    "@sentry/cloudflare": "^10.45.0",
     "@tanstack/react-table": "^8.21.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

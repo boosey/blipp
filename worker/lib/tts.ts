@@ -1,5 +1,6 @@
 import type { TtsProvider } from "./tts-providers";
 import { calculateAudioCost, calculateCharCost, type AiUsage, type ModelPricing } from "./ai-usage";
+import { ASSUMED_BITRATE_BYTES_PER_SEC } from "./constants";
 
 /** Default TTS voice for briefing narration. */
 export const DEFAULT_VOICE = "coral";
@@ -40,7 +41,7 @@ export async function generateSpeech(
   );
 
   // TTS pricing: try per-minute first (based on output audio), fall back to per-char
-  const estimatedSeconds = result.audio.byteLength / (128 * 1000 / 8);
+  const estimatedSeconds = result.audio.byteLength / ASSUMED_BITRATE_BYTES_PER_SEC;
   const cost =
     calculateAudioCost(pricing, estimatedSeconds) ??
     calculateCharCost(pricing, text.length);

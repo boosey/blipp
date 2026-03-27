@@ -74,7 +74,7 @@ describe("Analytics", () => {
       }
       if (url.includes("/analytics/costs")) {
         return Promise.resolve(mockJsonResponse({
-          data: { totalCost: 0, dailyCosts: [], comparison: { amount: 0, direction: "down", percentage: 0 }, metrics: { perEpisode: 0, dailyAvg: 0, projectedMonthly: 0, budgetStatus: "OK" }, efficiencyScore: 85 },
+          data: { totalCost: 0, dailyCosts: [], comparison: { amount: 0, direction: "down", percentage: 0 }, metrics: { perEpisode: 0, dailyAvg: 0, projectedMonthly: 0 } },
         }));
       }
       if (url.includes("/analytics/usage")) {
@@ -84,7 +84,7 @@ describe("Analytics", () => {
       }
       if (url.includes("/analytics/quality")) {
         return Promise.resolve(mockJsonResponse({
-          data: { overallScore: 90, components: { timeFitting: 95, claimCoverage: 90, transcription: 92, userSatisfaction: 88 }, trend: [], recentIssues: [] },
+          data: { overallScore: 90, components: { timeFitting: 95, claimCoverage: 90, transcription: 92, userSatisfaction: undefined }, trend: [], recentIssues: [] },
         }));
       }
       return Promise.resolve(mockJsonResponse({
@@ -138,8 +138,7 @@ describe("Analytics", () => {
             totalCost: 42.50,
             dailyCosts: [{ date: "2026-03-01", stt: 1, distillation: 2, tts: 1.5, infrastructure: 0.5 }],
             comparison: { amount: 4.25, direction: "down", percentage: 10 },
-            metrics: { perEpisode: 0.05, dailyAvg: 1.42, projectedMonthly: 42.5, budgetStatus: "OK" },
-            efficiencyScore: 85,
+            metrics: { perEpisode: 0.05, dailyAvg: 1.42, projectedMonthly: 42.5 },
           },
         }));
       }
@@ -158,7 +157,7 @@ describe("Analytics", () => {
         return Promise.resolve(mockJsonResponse({
           data: {
             overallScore: 90,
-            components: { timeFitting: 95, claimCoverage: 90, transcription: 92, userSatisfaction: 88 },
+            components: { timeFitting: 95, claimCoverage: 90, transcription: 92, userSatisfaction: undefined },
             trend: [{ date: "2026-03-01", score: 90 }],
             recentIssues: [],
           },

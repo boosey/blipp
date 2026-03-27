@@ -36,6 +36,7 @@ const mockLogger = vi.hoisted(() => ({
 }));
 vi.mock("../../lib/logger", () => ({
   createPipelineLogger: vi.fn().mockResolvedValue(mockLogger),
+  logDbError: vi.fn(() => () => {}),
 }));
 
 vi.mock("../../lib/model-resolution", () => ({
@@ -466,8 +467,9 @@ describe("handleNarrativeGeneration", () => {
         })
       );
 
-      expect(mockMsg.ack).toHaveBeenCalled();
-      expect(mockMsg.retry).not.toHaveBeenCalled();
+      // Transient error (rate limit) → retry, not ack
+      expect(mockMsg.retry).toHaveBeenCalled();
+      expect(mockMsg.ack).not.toHaveBeenCalled();
     });
   });
 

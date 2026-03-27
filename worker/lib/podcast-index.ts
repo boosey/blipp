@@ -182,7 +182,14 @@ export class PodcastIndexClient {
         id: itunesId.toString(),
       });
       return data.feed ?? null;
-    } catch {
+    } catch (err) {
+      console.warn(JSON.stringify({
+        level: "warn",
+        action: "podcast_index_byitunesid_failed",
+        itunesId,
+        error: err instanceof Error ? err.message : String(err),
+        ts: new Date().toISOString(),
+      }));
       return null;
     }
   }

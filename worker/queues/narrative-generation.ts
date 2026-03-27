@@ -1,5 +1,5 @@
 import { createPrismaClient } from "../lib/db";
-import { createPipelineLogger } from "../lib/logger";
+import { createPipelineLogger, logDbError } from "../lib/logger";
 import { checkStageEnabled } from "../lib/queue-helpers";
 import { generateNarrative, selectClaimsForDuration, type EpisodeMetadata } from "../lib/distillation";
 import { resolveModelChain } from "../lib/model-resolution";
@@ -44,6 +44,8 @@ export async function handleNarrativeGeneration(
 
       let narrativeModel: string | undefined;
       let narrativeProvider: string | undefined;
+      let modelChainAttempts = 0;
+      let modelChainLength = 0;
       let claimCount: number | undefined;
 
       try {
@@ -162,7 +164,9 @@ export async function handleNarrativeGeneration(
         claimCount = claims.length;
         let narrative: string | undefined;
         let narrativeUsage: { model: string; inputTokens: number; outputTokens: number; cost: number | null; cacheCreationTokens?: number; cacheReadTokens?: number } | undefined;
+        modelChainLength = modelChain.length;
         for (let i = 0; i < modelChain.length; i++) {
+          modelChainAttempts = i + 1;
           const resolved = modelChain[i];
           const tier = ["primary", "secondary", "tertiary"][i];
           const llm = getLlmProviderImpl(resolved.provider);
@@ -316,17 +320,7 @@ export async function handleNarrativeGeneration(
               durationMs: Date.now() - startTime,
             },
           })
-          .catch((dbErr: unknown) => {
-            console.error(JSON.stringify({
-              level: "error",
-              action: "error_path_db_write_failed",
-              stage: "narrative",
-              target: "pipelineStep",
-              jobId,
-              error: dbErr instanceof Error ? dbErr.message : String(dbErr),
-              ts: new Date().toISOString(),
-            }));
-          });
+          .catch(logDbError("narrative", "pipelineStep", jobId));
 
         if (stepId) await writeEvent(prisma, stepId, "ERROR", `Narrative generation failed: ${errorMessage.slice(0, 2048)}`, {
           model: narrativeModel,
@@ -356,8 +350,8 @@ export async function handleNarrativeGeneration(
             rawResponse: err.rawResponse,
             requestDurationMs: err.requestDurationMs,
             timestamp: new Date(),
-            retryCount: 0,
-            maxRetries: 0,
+            retryCount: modelChainAttempts - 1,
+            maxRetries: modelChainLength - 1,
             willRetry: false,
             rateLimitRemaining: err.rateLimitRemaining,
             rateLimitResetAt: err.rateLimitResetAt,
@@ -384,6 +378,13 @@ export async function handleNarrativeGeneration(
           });
         }
 
+        if (err instanceof AiProviderError) {
+          const { severity } = classifyAiError(err, err.httpStatus, err.rawResponse);
+          if (severity === "transient") {
+            msg.retry();
+            continue;
+          }
+        }
         msg.ack();
       }
     }

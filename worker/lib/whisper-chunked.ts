@@ -1,5 +1,6 @@
 import type OpenAI from "openai";
 import { calculateAudioCost, type AiUsage, type ModelPricing } from "./ai-usage";
+import { ASSUMED_BITRATE_BYTES_PER_SEC, STT_BYTES_PER_TOKEN } from "./constants";
 
 /** Whisper API maximum file size: 25MB */
 export const WHISPER_MAX_BYTES = 25 * 1024 * 1024;
@@ -71,10 +72,10 @@ export async function transcribeChunked(
   const transcript = chunks.join(" ");
 
   // Approximate duration: totalBytes / (128kbps bitrate in bytes/sec)
-  const estimatedSeconds = totalBytes / (128 * 1000 / 8);
+  const estimatedSeconds = totalBytes / ASSUMED_BITRATE_BYTES_PER_SEC;
   const usage: AiUsage = {
     model,
-    inputTokens: Math.round(totalBytes / 16000),
+    inputTokens: Math.round(totalBytes / STT_BYTES_PER_TOKEN),
     outputTokens: 0,
     cost: calculateAudioCost(pricing, estimatedSeconds),
   };

@@ -417,9 +417,26 @@ function SeekBar({
         role="slider"
         aria-label="Seek"
         aria-valuemin={0}
-        aria-valuemax={duration}
-        aria-valuenow={currentTime}
+        aria-valuemax={Math.round(duration)}
+        aria-valuenow={Math.round(currentTime)}
+        aria-valuetext={`${formatTime(currentTime)} of ${formatTime(duration)}`}
         tabIndex={0}
+        onKeyDown={(e) => {
+          const step = e.shiftKey ? 30 : 5;
+          if (e.key === "ArrowRight" || e.key === "ArrowUp") {
+            e.preventDefault();
+            onSeek(Math.min(duration, currentTime + step));
+          } else if (e.key === "ArrowLeft" || e.key === "ArrowDown") {
+            e.preventDefault();
+            onSeek(Math.max(0, currentTime - step));
+          } else if (e.key === "Home") {
+            e.preventDefault();
+            onSeek(0);
+          } else if (e.key === "End") {
+            e.preventDefault();
+            onSeek(duration);
+          }
+        }}
         onMouseDown={(e) => {
           setIsDragging(true);
           handleSeek(e.clientX);

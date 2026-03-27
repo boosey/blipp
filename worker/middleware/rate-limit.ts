@@ -10,15 +10,16 @@ interface RateLimitConfig {
   skipPaths?: string[];
 }
 
-// In-memory fallback (per-isolate, resets on redeploy).
-// Used when KV is not configured.
-const counters = new Map<string, { count: number; expiresAt: number }>();
-
 export function rateLimit(config: RateLimitConfig) {
   return createMiddleware<{ Bindings: Env }>(async (c, next) => {
     // Skip exempt paths (webhooks, health checks, etc.)
     if (config.skipPaths?.some((prefix) => c.req.path.startsWith(prefix))) {
       return next();
+    }
+
+    const kv = c.env.RATE_LIMIT_KV;
+    if (!kv) {
+      throw new Error("RATE_LIMIT_KV binding is required but not configured");
     }
 
     const auth = getAuth(c);
@@ -27,19 +28,8 @@ export function rateLimit(config: RateLimitConfig) {
     const bucket = Math.floor(Date.now() / config.windowMs);
     const key = `${config.keyPrefix}:${identifier}:${bucket}`;
 
-    const kv = c.env.RATE_LIMIT_KV;
-    let current: number;
-
-    if (kv) {
-      // KV-backed: persistent across isolates and redeploys
-      const val = await kv.get(key);
-      current = val ? parseInt(val, 10) : 0;
-    } else {
-      // In-memory fallback
-      const now = Date.now();
-      const entry = counters.get(key);
-      current = entry && entry.expiresAt > now ? entry.count : 0;
-    }
+    const val = await kv.get(key);
+    const current = val ? parseInt(val, 10) : 0;
 
     if (current >= config.maxRequests) {
       const resetAt = (bucket + 1) * config.windowMs;
@@ -53,28 +43,10 @@ export function rateLimit(config: RateLimitConfig) {
     }
 
     const newCount = current + 1;
-
-    if (kv) {
-      // TTL = remaining window time + 60s buffer, in seconds
-      const ttlSeconds = Math.ceil(config.windowMs / 1000) + 60;
-      // Fire-and-forget the KV write to avoid blocking the request
-      c.executionCtx.waitUntil(
-        kv.put(key, String(newCount), { expirationTtl: ttlSeconds })
-      );
-    } else {
-      const now = Date.now();
-      counters.set(key, {
-        count: newCount,
-        expiresAt: now + config.windowMs + 60_000,
-      });
-
-      // Clean stale entries periodically (~1% of requests)
-      if (Math.random() < 0.01) {
-        for (const [k, v] of counters) {
-          if (v.expiresAt < now) counters.delete(k);
-        }
-      }
-    }
+    const ttlSeconds = Math.ceil(config.windowMs / 1000) + 60;
+    c.executionCtx.waitUntil(
+      kv.put(key, String(newCount), { expirationTtl: ttlSeconds })
+    );
 
     c.header("X-RateLimit-Limit", String(config.maxRequests));
     c.header(

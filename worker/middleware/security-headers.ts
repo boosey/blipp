@@ -26,5 +26,6 @@ export const securityHeaders = createMiddleware<{ Bindings: Env }>(
     c.header("X-Frame-Options", "DENY");
     c.header("Referrer-Policy", "strict-origin-when-cross-origin");
     c.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+    c.header("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
   }
 );

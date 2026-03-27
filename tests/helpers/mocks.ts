@@ -99,10 +99,13 @@ export function createMockEnv(): Env {
     CATALOG_REFRESH_QUEUE: { send: vi.fn().mockResolvedValue(undefined), sendBatch: vi.fn().mockResolvedValue(undefined) } as unknown as Queue,
     CONTENT_PREFETCH_QUEUE: { send: vi.fn().mockResolvedValue(undefined), sendBatch: vi.fn().mockResolvedValue(undefined) } as unknown as Queue,
     DEEPGRAM_API_KEY: "mock-deepgram-key",
-    ASSEMBLYAI_API_KEY: "mock-assemblyai-key",
-    GOOGLE_STT_API_KEY: "mock-google-stt-key",
     GROQ_API_KEY: "mock-groq-key",
     AI: { run: vi.fn().mockResolvedValue({ data: [[0.1, 0.2, 0.3]] }) } as unknown as Ai,
+    RATE_LIMIT_KV: {
+      get: vi.fn().mockResolvedValue(null),
+      put: vi.fn().mockResolvedValue(undefined),
+      delete: vi.fn().mockResolvedValue(undefined),
+    } as unknown as KVNamespace,
   };
 }
 

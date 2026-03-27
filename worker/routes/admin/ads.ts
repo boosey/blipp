@@ -121,7 +121,8 @@ adsRoutes.post("/test-vast", async (c) => {
   }
 
   try {
-    const response = await fetch(body.url, {
+    const { safeFetch } = await import("../../lib/url-validation");
+    const response = await safeFetch(body.url, {
       headers: { Accept: "application/xml, text/xml" },
     });
 

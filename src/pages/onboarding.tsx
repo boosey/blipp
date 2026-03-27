@@ -304,9 +304,14 @@ export default function Onboarding() {
         <h1 className="text-2xl font-bold">You're all set!</h1>
         <p className="text-muted-foreground text-sm leading-relaxed">
           {selectedPodcasts.size > 0
-            ? "We've saved your favorites. Explore the catalog to subscribe and start getting briefings."
-            : "Browse our catalog to find podcasts and start getting briefings."}
+            ? "We've saved your favorites. Subscribe to any of them to start getting briefings — they usually take 2-5 minutes to create."
+            : "Browse our catalog to find podcasts and subscribe. Your first briefings will be ready in 2-5 minutes."}
         </p>
+        {selectedPodcasts.size > 0 && (
+          <p className="text-xs text-muted-foreground/70">
+            Once you subscribe, look for the "Creating" badge in your feed while briefings are being generated.
+          </p>
+        )}
         <button
           onClick={() => navigate("/home")}
           className="w-full py-3 bg-primary text-primary-foreground font-semibold rounded-xl hover:bg-primary/90 transition-colors"

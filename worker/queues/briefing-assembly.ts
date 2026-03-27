@@ -1,5 +1,5 @@
 import { createPrismaClient } from "../lib/db";
-import { createPipelineLogger } from "../lib/logger";
+import { createPipelineLogger, logDbError } from "../lib/logger";
 import { checkStageEnabled } from "../lib/queue-helpers";
 import { writeEvent } from "../lib/pipeline-events";
 import type { BriefingAssemblyMessage } from "../lib/queue-messages";
@@ -159,34 +159,14 @@ export async function handleBriefingAssembly(
                   durationMs: Date.now() - jobStartTime,
                 },
               })
-              .catch((dbErr: unknown) => {
-                console.error(JSON.stringify({
-                  level: "error",
-                  action: "error_path_db_write_failed",
-                  stage: "briefing-assembly",
-                  target: "pipelineStep",
-                  jobId: job.id,
-                  error: dbErr instanceof Error ? dbErr.message : String(dbErr),
-                  ts: new Date().toISOString(),
-                }));
-              });
+              .catch(logDbError("briefing-assembly", "pipelineStep", job.id));
 
             await prisma.pipelineJob
               .update({
                 where: { id: job.id },
                 data: { status: "FAILED", errorMessage, completedAt: new Date() },
               })
-              .catch((dbErr: unknown) => {
-                console.error(JSON.stringify({
-                  level: "error",
-                  action: "error_path_db_write_failed",
-                  stage: "briefing-assembly",
-                  target: "pipelineJob",
-                  jobId: job.id,
-                  error: dbErr instanceof Error ? dbErr.message : String(dbErr),
-                  ts: new Date().toISOString(),
-                }));
-              });
+              .catch(logDbError("briefing-assembly", "pipelineJob", job.id));
 
             failureCount++;
           }
@@ -235,17 +215,7 @@ export async function handleBriefingAssembly(
             where: { requestId },
             data: { status: "FAILED", errorMessage },
           })
-          .catch((dbErr: unknown) => {
-            console.error(JSON.stringify({
-              level: "error",
-              action: "error_path_db_write_failed",
-              stage: "briefing-assembly",
-              target: "feedItem",
-              requestId,
-              error: dbErr instanceof Error ? dbErr.message : String(dbErr),
-              ts: new Date().toISOString(),
-            }));
-          });
+          .catch(logDbError("briefing-assembly", "feedItem", requestId));
 
         await prisma.briefingRequest
           .updateMany({
@@ -255,17 +225,7 @@ export async function handleBriefingAssembly(
             },
             data: { status: "FAILED", errorMessage },
           })
-          .catch((dbErr: unknown) => {
-            console.error(JSON.stringify({
-              level: "error",
-              action: "error_path_db_write_failed",
-              stage: "briefing-assembly",
-              target: "briefingRequest",
-              requestId,
-              error: dbErr instanceof Error ? dbErr.message : String(dbErr),
-              ts: new Date().toISOString(),
-            }));
-          });
+          .catch(logDbError("briefing-assembly", "briefingRequest", requestId));
 
         msg.retry();
       }

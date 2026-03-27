@@ -151,7 +151,7 @@ export async function scheduled(
     await migrateLegacyConfigKeys(prisma);
 
     // Dispatch all jobs — each checks its own enabled flag and interval
-    await Promise.allSettled([
+    const results = await Promise.allSettled([
       runJob({
         jobKey: "podcast-discovery",
         prisma: prisma as any,
@@ -189,6 +189,24 @@ export async function scheduled(
         execute: (logger) => runRecommendationsJob(prisma as any, logger, env),
       }),
     ]);
+
+    const jobKeys = [
+      "podcast-discovery", "pipeline-trigger", "monitoring",
+      "user-lifecycle", "data-retention", "recommendations",
+    ];
+    for (let i = 0; i < results.length; i++) {
+      const r = results[i];
+      if (r.status === "rejected") {
+        const err = r.reason instanceof Error ? r.reason : new Error(String(r.reason));
+        console.error(JSON.stringify({
+          level: "error",
+          action: "cron_job_failed",
+          jobKey: jobKeys[i],
+          error: err.message,
+          ts: new Date().toISOString(),
+        }));
+      }
+    }
   } finally {
     ctx.waitUntil(prisma.$disconnect());
   }

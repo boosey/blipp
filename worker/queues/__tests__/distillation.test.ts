@@ -18,6 +18,7 @@ const mockLogger = vi.hoisted(() => ({
 }));
 vi.mock("../../lib/logger", () => ({
   createPipelineLogger: vi.fn().mockResolvedValue(mockLogger),
+  logDbError: vi.fn(() => () => {}),
 }));
 
 vi.mock("../../lib/distillation", () => ({
@@ -473,8 +474,9 @@ describe("handleDistillation", () => {
         })
       );
 
-      expect(batch.messages[0].ack).toHaveBeenCalled();
-      expect(batch.messages[0].retry).not.toHaveBeenCalled();
+      // Transient error (500) → retry, not ack
+      expect(batch.messages[0].retry).toHaveBeenCalled();
+      expect(batch.messages[0].ack).not.toHaveBeenCalled();
     });
   });
 

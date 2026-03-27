@@ -204,204 +204,6 @@ const DeepgramProvider: SttProvider = {
 };
 
 // ---------------------------------------------------------------------------
-// AssemblyAI — async provider, requires polling
-// ---------------------------------------------------------------------------
-
-const AssemblyAIProvider: SttProvider = {
-  name: "AssemblyAI",
-  provider: "assemblyai",
-  supportsUrl: true,
-
-  async transcribe(audio: AudioInput, _durationSeconds: number, env: Env, _providerModelId: string): Promise<SttResult> {
-    const start = Date.now();
-
-    let audioUrl: string;
-    if ("url" in audio) {
-      audioUrl = audio.url;
-    } else {
-      const uploadResp = await fetch("https://api.assemblyai.com/v2/upload", {
-        method: "POST",
-        headers: {
-          Authorization: env.ASSEMBLYAI_API_KEY,
-          "Content-Type": "application/octet-stream",
-        },
-        body: audio.buffer,
-      });
-      if (!uploadResp.ok) {
-        const body = await uploadResp.text();
-        throw new AiProviderError({
-          message: `AssemblyAI upload error ${uploadResp.status}: ${body.slice(0, 500)}`,
-          provider: "assemblyai",
-          model: "universal-3-pro",
-          httpStatus: uploadResp.status,
-          rawResponse: body.slice(0, 2048),
-          requestDurationMs: Date.now() - start,
-        });
-      }
-      const uploadData = (await uploadResp.json()) as { upload_url: string };
-      audioUrl = uploadData.upload_url;
-    }
-
-    const resp = await fetch("https://api.assemblyai.com/v2/transcript", {
-      method: "POST",
-      headers: {
-        Authorization: env.ASSEMBLYAI_API_KEY,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ audio_url: audioUrl, language_code: "en", speech_models: ["universal-3-pro"] }),
-    });
-
-    if (!resp.ok) {
-      const body = await resp.text();
-      throw new AiProviderError({
-        message: `AssemblyAI API error ${resp.status}: ${body.slice(0, 500)}`,
-        provider: "assemblyai",
-        model: "universal-3-pro",
-        httpStatus: resp.status,
-        rawResponse: body.slice(0, 2048),
-        requestDurationMs: Date.now() - start,
-      });
-    }
-
-    const data = (await resp.json()) as { id: string; status: string };
-    return {
-      transcript: "",
-      costDollars: null,
-      latencyMs: Date.now() - start,
-      async: { jobId: data.id },
-    };
-  },
-
-  async poll(jobId: string, env: Env): Promise<SttPollResult> {
-    const start = Date.now();
-    const resp = await fetch(`https://api.assemblyai.com/v2/transcript/${jobId}`, {
-      headers: { Authorization: env.ASSEMBLYAI_API_KEY },
-    });
-
-    if (!resp.ok) {
-      const body = await resp.text();
-      throw new AiProviderError({
-        message: `AssemblyAI poll error ${resp.status}: ${body.slice(0, 500)}`,
-        provider: "assemblyai",
-        model: "universal-3-pro",
-        httpStatus: resp.status,
-        rawResponse: body.slice(0, 2048),
-        requestDurationMs: Date.now() - start,
-      });
-    }
-
-    const data = (await resp.json()) as { status: string; text?: string; error?: string };
-
-    if (data.status === "completed") {
-      return { done: true, transcript: data.text ?? "" };
-    }
-    if (data.status === "error") {
-      throw new AiProviderError({
-        message: `AssemblyAI transcription failed: ${data.error ?? "unknown"}`,
-        provider: "assemblyai",
-        model: "universal-3-pro",
-        rawResponse: data.error,
-        requestDurationMs: Date.now() - start,
-      });
-    }
-
-    return { done: false };
-  },
-};
-
-// ---------------------------------------------------------------------------
-// Google Cloud STT (Chirp) — async provider, requires polling
-// ---------------------------------------------------------------------------
-
-const GoogleSttProvider: SttProvider = {
-  name: "Google Cloud STT",
-  provider: "google",
-  supportsUrl: false,
-
-  async transcribe(audio: AudioInput, _durationSeconds: number, env: Env, providerModelId: string): Promise<SttResult> {
-    const start = Date.now();
-
-    const audioBuffer = await resolveAudioBuffer(audio);
-    const base64Audio = btoa(
-      new Uint8Array(audioBuffer).reduce((acc, byte) => acc + String.fromCharCode(byte), ""),
-    );
-
-    const resp = await fetch(
-      `https://speech.googleapis.com/v1/speech:longrunningrecognize?key=${env.GOOGLE_STT_API_KEY}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          config: {
-            encoding: "MP3",
-            sampleRateHertz: 16000,
-            languageCode: "en-US",
-            model: providerModelId || "chirp",
-          },
-          audio: { content: base64Audio },
-        }),
-      },
-    );
-
-    if (!resp.ok) {
-      const body = await resp.text();
-      throw new AiProviderError({
-        message: `Google STT API error ${resp.status}: ${body.slice(0, 500)}`,
-        provider: "google",
-        model: providerModelId || "chirp",
-        httpStatus: resp.status,
-        rawResponse: body.slice(0, 2048),
-        requestDurationMs: Date.now() - start,
-      });
-    }
-
-    const data = (await resp.json()) as { name: string };
-    return {
-      transcript: "",
-      costDollars: null,
-      latencyMs: Date.now() - start,
-      async: { jobId: data.name },
-    };
-  },
-
-  async poll(jobId: string, env: Env): Promise<SttPollResult> {
-    const start = Date.now();
-    const resp = await fetch(
-      `https://speech.googleapis.com/v1/operations/${jobId}?key=${env.GOOGLE_STT_API_KEY}`,
-    );
-
-    if (!resp.ok) {
-      const body = await resp.text();
-      throw new AiProviderError({
-        message: `Google STT poll error ${resp.status}: ${body.slice(0, 500)}`,
-        provider: "google",
-        model: "chirp",
-        httpStatus: resp.status,
-        rawResponse: body.slice(0, 2048),
-        requestDurationMs: Date.now() - start,
-      });
-    }
-
-    const data = (await resp.json()) as {
-      done?: boolean;
-      response?: {
-        results?: { alternatives?: { transcript: string }[] }[];
-      };
-    };
-
-    if (data.done) {
-      const transcript =
-        data.response?.results
-          ?.map((r) => r.alternatives?.[0]?.transcript ?? "")
-          .join(" ") ?? "";
-      return { done: true, transcript };
-    }
-
-    return { done: false };
-  },
-};
-
-// ---------------------------------------------------------------------------
 // Groq — OpenAI-compatible API, serves whisper models
 // ---------------------------------------------------------------------------
 
@@ -493,40 +295,45 @@ async function groqSingleRequest(
 // Cloudflare Workers AI — serves @cf/* models via AI binding
 // ---------------------------------------------------------------------------
 
-const CloudflareProvider: SttProvider = {
-  name: "Cloudflare Workers AI",
+const CloudflareDeepgramProvider: SttProvider = {
+  name: "Cloudflare Deepgram",
+  provider: "cloudflare-deepgram",
+  supportsUrl: false,
+
+  async transcribe(audio: AudioInput, _durationSeconds: number, env: Env, providerModelId: string): Promise<SttResult> {
+    const start = Date.now();
+    const audioBuffer = await resolveAudioBuffer(audio);
+
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new Uint8Array(audioBuffer));
+        controller.close();
+      },
+    });
+    const result = await env.AI.run(providerModelId as any, {
+      audio: { body: stream, contentType: "audio/mpeg" },
+      detect_language: true,
+    } as any);
+
+    const res = result as any;
+    const transcript =
+      res?.transcripts?.[0]?.transcript ??
+      res?.results?.channels?.[0]?.alternatives?.[0]?.transcript ??
+      res?.text ??
+      "";
+    return { transcript, costDollars: null, latencyMs: Date.now() - start };
+  },
+};
+
+const CloudflareWhisperProvider: SttProvider = {
+  name: "Cloudflare Whisper",
   provider: "cloudflare",
   supportsUrl: false,
 
   async transcribe(audio: AudioInput, _durationSeconds: number, env: Env, providerModelId: string): Promise<SttResult> {
     const start = Date.now();
     const audioBuffer = await resolveAudioBuffer(audio);
-    const isDeepgram = providerModelId.includes("deepgram");
 
-    if (isDeepgram) {
-      // Deepgram models expect { audio: { body: ReadableStream, contentType } }
-      const stream = new ReadableStream({
-        start(controller) {
-          controller.enqueue(new Uint8Array(audioBuffer));
-          controller.close();
-        },
-      });
-      const result = await env.AI.run(providerModelId as any, {
-        audio: { body: stream, contentType: "audio/mpeg" },
-        detect_language: true,
-      } as any);
-
-      // Deepgram response: { transcripts: [{ transcript }] } or { results: { channels: [...] } }
-      const res = result as any;
-      const transcript =
-        res?.transcripts?.[0]?.transcript ??
-        res?.results?.channels?.[0]?.alternatives?.[0]?.transcript ??
-        res?.text ??
-        "";
-      return { transcript, costDollars: null, latencyMs: Date.now() - start };
-    }
-
-    // Whisper models — base64 input, chunked at 5MB
     const CF_CHUNK_SIZE = 5 * 1024 * 1024;
     const totalBytes = audioBuffer.byteLength;
     const totalChunks = Math.ceil(totalBytes / CF_CHUNK_SIZE);
@@ -587,10 +394,9 @@ const CloudflareProvider: SttProvider = {
 const PROVIDERS: SttProvider[] = [
   OpenAIProvider,
   DeepgramProvider,
-  AssemblyAIProvider,
-  GoogleSttProvider,
   GroqProvider,
-  CloudflareProvider,
+  CloudflareWhisperProvider,
+  CloudflareDeepgramProvider,
 ];
 
 const providerMap = new Map<string, SttProvider>(

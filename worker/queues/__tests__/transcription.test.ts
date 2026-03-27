@@ -83,6 +83,7 @@ const mockLogger = vi.hoisted(() => ({
 }));
 vi.mock("../../lib/logger", () => ({
   createPipelineLogger: vi.fn().mockResolvedValue(mockLogger),
+  logDbError: vi.fn(() => () => {}),
 }));
 
 const mockTranscribe = vi.fn().mockResolvedValue({ transcript: "Provider transcript text.", costDollars: null, latencyMs: 100 });
@@ -708,9 +709,9 @@ describe("handleTranscription", () => {
         })
       );
 
-      // Message acked (not retried)
-      expect(msg.ack).toHaveBeenCalled();
-      expect(msg.retry).not.toHaveBeenCalled();
+      // Transient error (rate limit) → retry, not ack
+      expect(msg.retry).toHaveBeenCalled();
+      expect(msg.ack).not.toHaveBeenCalled();
     });
   });
 

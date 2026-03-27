@@ -25,7 +25,7 @@ function statusLabel(status: FeedItem["status"]) {
   switch (status) {
     case "PENDING":
     case "PROCESSING":
-      return "Creating";
+      return "Creating (~2-5 min)";
     case "FAILED":
       return "Error";
     default:

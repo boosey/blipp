@@ -1,4 +1,6 @@
 import type { SttProvider, SttResult } from "./stt-providers";
+import { ASSUMED_BITRATE_BYTES_PER_SEC } from "./constants";
+import { safeFetch } from "./url-validation";
 import type { Env } from "../types";
 import { DEFAULT_STT_CHUNK_SIZE } from "./constants";
 
@@ -83,7 +85,7 @@ export interface AudioProbe {
  */
 export async function probeAudio(audioUrl: string, episodeDurationSeconds: number | null): Promise<AudioProbe> {
   // HEAD request for metadata
-  const headResp = await fetch(audioUrl, { method: "HEAD" });
+  const headResp = await safeFetch(audioUrl, { method: "HEAD" });
   const clHeader = headResp.headers.get("content-length");
   const contentLength = clHeader ? Number(clHeader) : null;
   const contentType = headResp.headers.get("content-type")?.split(";")[0].trim() || null;
@@ -93,7 +95,7 @@ export async function probeAudio(audioUrl: string, episodeDurationSeconds: numbe
   // Tiny range request for magic bytes (12 bytes)
   let detectedFormat: { format: string; details?: string } = { format: "unknown" };
   try {
-    const rangeResp = await fetch(audioUrl, {
+    const rangeResp = await safeFetch(audioUrl, {
       headers: { Range: "bytes=0-11" },
     });
     if (rangeResp.status === 206 || rangeResp.ok) {
@@ -108,7 +110,7 @@ export async function probeAudio(audioUrl: string, episodeDurationSeconds: numbe
 
   // Duration estimate: prefer episode metadata, fall back to bitrate estimate
   const durationEstimateSeconds = episodeDurationSeconds
-    ?? (contentLength != null ? Math.round(contentLength / (128 * 1000 / 8)) : 0);
+    ?? (contentLength != null ? Math.round(contentLength / ASSUMED_BITRATE_BYTES_PER_SEC) : 0);
 
   return {
     contentLength,
@@ -156,7 +158,7 @@ export async function transcribeChunked(
     const offset = i * effectiveChunkSize;
     const end = Math.min(offset + effectiveChunkSize, totalBytes) - 1;
 
-    const resp = await fetch(audioUrl, {
+    const resp = await safeFetch(audioUrl, {
       headers: { Range: `bytes=${offset}-${end}` },
     });
 

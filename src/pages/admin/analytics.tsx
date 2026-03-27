@@ -269,20 +269,10 @@ function CostBreakdownWidget({ data }: { data: CostBreakdownData }) {
       </div>
 
       {/* Key metrics row */}
-      <div className="grid grid-cols-4 gap-2 mb-3">
+      <div className="grid grid-cols-3 gap-2">
         <MetricItem label="Cost/Episode" value={formatCost(data.metrics.perEpisode)} icon={Disc3} color="#3B82F6" />
         <MetricItem label="Daily Avg" value={formatCost(data.metrics.dailyAvg)} icon={BarChart3} color="#8B5CF6" />
         <MetricItem label="Projected" value={formatCost(data.metrics.projectedMonthly)} icon={TrendingUp} color="#F59E0B" />
-        <MetricItem label="Budget" value={data.metrics.budgetStatus} icon={DollarSign} color="#10B981" />
-      </div>
-
-      {/* Efficiency gauge */}
-      <div className="flex items-center gap-3 pt-2 border-t border-white/5">
-        <CircularGauge value={data.efficiencyScore} size={52} strokeWidth={4} color={data.efficiencyScore > 80 ? "#10B981" : data.efficiencyScore > 60 ? "#F59E0B" : "#EF4444"} />
-        <div>
-          <span className="text-xs font-medium text-[#F9FAFB]">Efficiency Score</span>
-          <p className="text-[10px] text-[#9CA3AF]">Based on cost per output quality</p>
-        </div>
       </div>
     </div>
   );
@@ -406,7 +396,7 @@ function QualityMetricsWidget({ data }: { data: QualityMetricsData }) {
           <ProgressBar label="Time-Fitting" value={data.components.timeFitting} color="#3B82F6" />
           <ProgressBar label="Claim Coverage" value={data.components.claimCoverage} color="#8B5CF6" />
           <ProgressBar label="Transcription" value={data.components.transcription} color="#F59E0B" />
-          <ProgressBar label="User Satisfaction" value={data.components.userSatisfaction} color="#10B981" />
+          {data.components.userSatisfaction != null && <ProgressBar label="User Satisfaction" value={data.components.userSatisfaction} color="#10B981" />}
         </div>
       </div>
 

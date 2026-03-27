@@ -64,8 +64,7 @@ analyticsRoutes.get("/costs", async (c) => {
         totalCost: 0,
         comparison: { amount: 0, percentage: 0, direction: "up" },
         dailyCosts: [],
-        metrics: { perEpisode: 0, dailyAvg: 0, projectedMonthly: 0, budgetStatus: "on_track" },
-        efficiencyScore: 0,
+        metrics: { perEpisode: 0, dailyAvg: 0, projectedMonthly: 0 },
       },
     });
   }
@@ -106,9 +105,7 @@ analyticsRoutes.get("/costs", async (c) => {
         perEpisode,
         dailyAvg: round(dailyAvg),
         projectedMonthly: round(dailyAvg * 30),
-        budgetStatus: "on_track",
       },
-      efficiencyScore: 85, // placeholder
     },
   });
 });
@@ -324,7 +321,6 @@ analyticsRoutes.get("/quality", async (c) => {
         timeFitting,
         claimCoverage,
         transcription,
-        userSatisfaction: 85, // placeholder
       },
       trend,
       recentIssues,

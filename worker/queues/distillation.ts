@@ -1,5 +1,5 @@
 import { createPrismaClient } from "../lib/db";
-import { createPipelineLogger } from "../lib/logger";
+import { createPipelineLogger, logDbError } from "../lib/logger";
 import { checkStageEnabled } from "../lib/queue-helpers";
 import { extractClaims } from "../lib/distillation";
 import { resolveModelChain } from "../lib/model-resolution";
@@ -42,6 +42,8 @@ export async function handleDistillation(
       let requestId: string | undefined;
       let distillProvider: string | undefined;
       let distillModel: string | undefined;
+      let modelChainAttempts = 0;
+      let modelChainLength = 0;
 
       try {
         // Load job to get requestId
@@ -145,7 +147,9 @@ export async function handleDistillation(
         // Try each model in the chain until one succeeds
         let claims: any[] | undefined;
         let claimsUsage: { model: string; inputTokens: number; outputTokens: number; cost: number | null; cacheCreationTokens?: number; cacheReadTokens?: number } | undefined;
+        modelChainLength = modelChain.length;
         for (let i = 0; i < modelChain.length; i++) {
+          modelChainAttempts = i + 1;
           const resolved = modelChain[i];
           const tier = ["primary", "secondary", "tertiary"][i];
           const llm = getLlmProviderImpl(resolved.provider);
@@ -270,17 +274,7 @@ export async function handleDistillation(
                 durationMs: new Date().getTime() - startedAt.getTime(),
               },
             })
-            .catch((dbErr: unknown) => {
-              console.error(JSON.stringify({
-                level: "error",
-                action: "error_path_db_write_failed",
-                stage: "distillation",
-                target: "pipelineStep",
-                jobId,
-                error: dbErr instanceof Error ? dbErr.message : String(dbErr),
-                ts: new Date().toISOString(),
-              }));
-            });
+            .catch(logDbError("distillation", "pipelineStep", jobId));
         }
 
         // Upsert distillation as FAILED
@@ -290,17 +284,7 @@ export async function handleDistillation(
             update: { status: "FAILED", errorMessage },
             create: { episodeId, status: "FAILED", errorMessage },
           })
-          .catch((dbErr: unknown) => {
-            console.error(JSON.stringify({
-              level: "error",
-              action: "error_path_db_write_failed",
-              stage: "distillation",
-              target: "distillation",
-              jobId,
-              error: dbErr instanceof Error ? dbErr.message : String(dbErr),
-              ts: new Date().toISOString(),
-            }));
-          });
+          .catch(logDbError("distillation", "distillation", jobId));
 
         if (step) await writeEvent(prisma, step.id, "ERROR", `Distillation failed: ${errorMessage.slice(0, 2048)}`, {
           model: distillModel,
@@ -330,8 +314,8 @@ export async function handleDistillation(
             rawResponse: err.rawResponse,
             requestDurationMs: err.requestDurationMs,
             timestamp: new Date(),
-            retryCount: 0,
-            maxRetries: 0,
+            retryCount: modelChainAttempts - 1,
+            maxRetries: modelChainLength - 1,
             willRetry: false,
             rateLimitRemaining: err.rateLimitRemaining,
             rateLimitResetAt: err.rateLimitResetAt,
@@ -358,6 +342,15 @@ export async function handleDistillation(
           });
         }
 
+        // Retry transient AI errors (rate limits, timeouts, server errors);
+        // ack permanent errors (auth, model not found, content filter)
+        if (err instanceof AiProviderError) {
+          const { severity } = classifyAiError(err, err.httpStatus, err.rawResponse);
+          if (severity === "transient") {
+            msg.retry();
+            continue;
+          }
+        }
         msg.ack();
       }
     }

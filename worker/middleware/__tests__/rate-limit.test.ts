@@ -15,10 +15,19 @@ vi.mock("../auth", () => ({
 const { rateLimit } = await import("../rate-limit");
 
 const mockExCtx = {
-  waitUntil: vi.fn(),
+  waitUntil: vi.fn((p: Promise<any>) => p.catch(() => {})),
   passThroughOnException: vi.fn(),
   props: {},
 };
+
+function createStatefulKV() {
+  const store = new Map<string, string>();
+  return {
+    get: vi.fn((key: string) => Promise.resolve(store.get(key) ?? null)),
+    put: vi.fn((key: string, value: string) => { store.set(key, value); return Promise.resolve(undefined); }),
+    delete: vi.fn((key: string) => { store.delete(key); return Promise.resolve(undefined); }),
+  } as unknown as KVNamespace;
+}
 
 describe("rateLimit middleware", () => {
   it("allows requests under the limit", async () => {
@@ -29,7 +38,7 @@ describe("rateLimit middleware", () => {
     );
     app.get("/test", (c) => c.json({ ok: true }));
 
-    const env = createMockEnv();
+    const env = { ...createMockEnv(), RATE_LIMIT_KV: createStatefulKV() };
     const res = await app.request("/test", {}, env, mockExCtx);
     expect(res.status).toBe(200);
     expect(res.headers.get("X-RateLimit-Limit")).toBe("5");
@@ -43,7 +52,7 @@ describe("rateLimit middleware", () => {
     );
     app.get("/test", (c) => c.json({ ok: true }));
 
-    const env = createMockEnv();
+    const env = { ...createMockEnv(), RATE_LIMIT_KV: createStatefulKV() };
     // First 2 requests succeed
     await app.request("/test", {}, env, mockExCtx);
     await app.request("/test", {}, env, mockExCtx);
@@ -62,7 +71,7 @@ describe("rateLimit middleware", () => {
     );
     app.get("/test", (c) => c.json({ ok: true }));
 
-    const env = createMockEnv();
+    const env = { ...createMockEnv(), RATE_LIMIT_KV: createStatefulKV() };
     const res = await app.request("/test", {}, env, mockExCtx);
     expect(res.headers.get("X-RateLimit-Limit")).toBe("10");
     expect(res.headers.get("X-RateLimit-Remaining")).toBeTruthy();
@@ -82,7 +91,7 @@ describe("rateLimit middleware", () => {
     app.get("/webhook/test", (c) => c.json({ ok: true }));
     app.get("/other", (c) => c.json({ ok: true }));
 
-    const env = createMockEnv();
+    const env = { ...createMockEnv(), RATE_LIMIT_KV: createStatefulKV() };
     // Webhook path should always work (skipped)
     const res1 = await app.request("/webhook/test", {}, env, mockExCtx);
     expect(res1.status).toBe(200);

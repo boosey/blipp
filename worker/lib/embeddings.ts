@@ -62,7 +62,13 @@ export async function computeEmbedding(
       text: [text],
     });
     return (result as any).data[0];
-  } catch {
+  } catch (err) {
+    console.warn(JSON.stringify({
+      level: "warn",
+      action: "embedding_failed",
+      error: err instanceof Error ? err.message : String(err),
+      ts: new Date().toISOString(),
+    }));
     return null;
   }
 }

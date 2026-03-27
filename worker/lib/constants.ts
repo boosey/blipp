@@ -37,3 +37,9 @@ export const PIPELINE_STAGE_NAMES: Record<string, string> = {
  * Displayed read-only in admin UI. Change requires redeploy.
  */
 export const FEED_REFRESH_MAX_CONSUMERS = 50;
+
+/** Assumed MP3 bitrate (128kbps) in bytes per second, for duration estimation. */
+export const ASSUMED_BITRATE_BYTES_PER_SEC = 128 * 1000 / 8; // 16000
+
+/** Approximate bytes per STT input token (used for cost estimation). */
+export const STT_BYTES_PER_TOKEN = 16000;

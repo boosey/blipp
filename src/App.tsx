@@ -66,7 +66,7 @@ function AdminLoading() {
 export default function App() {
   return (
     <>
-    <CookieConsent />
+    <SignedOut><CookieConsent /></SignedOut>
     <Routes>
       <Route path="/" element={
         <>

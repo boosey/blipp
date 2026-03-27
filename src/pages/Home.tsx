@@ -190,12 +190,43 @@ export function Home() {
 
   if (items.length === 0 && filter === "all") {
     return (
-      <EmptyState
-        icon={Headphones}
-        title="No briefings yet"
-        description="Subscribe to your favorite podcasts and we'll create bite-sized briefings for you."
-        action={{ label: "Discover Podcasts", to: "/discover" }}
-      />
+      <div>
+        <EmptyState
+          icon={Headphones}
+          title="No briefings yet"
+          description="Subscribe to podcasts and we'll create bite-sized briefings. Or tap a podcast below to get started."
+          action={{ label: "Browse All Podcasts", to: "/discover" }}
+        />
+        {curatedData?.rows?.[0] && (
+          <CuratedRow row={{ ...curatedData.rows[0], title: "Popular Podcasts" }} />
+        )}
+      </div>
+    );
+  }
+
+  if (items.length === 0 && filter !== "all") {
+    return (
+      <div>
+        <h1 className="text-xl font-bold mb-3">Your Feed</h1>
+        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide snap-x-mandatory mb-3">
+          {FILTERS.map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => setFilter(key)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors snap-start ${
+                filter === key
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-secondary text-secondary-foreground"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <p className="text-center text-sm text-muted-foreground py-12">
+          {filter === "creating" ? "No briefings are being created right now." : "Nothing here yet."}
+        </p>
+      </div>
     );
   }
 
@@ -206,24 +237,46 @@ export function Home() {
 
       {/* Filter pills */}
       <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide snap-x-mandatory mb-3">
-        {FILTERS.map(({ key, label }) => (
-          <button
-            key={key}
-            onClick={() => setFilter(key)}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors snap-start ${
-              filter === key
-                ? "bg-primary text-primary-foreground"
-                : "bg-secondary text-secondary-foreground"
-            }`}
-          >
-            {key === "new" && counts?.unlistened
-              ? `${label} (${counts.unlistened})`
-              : label}
-          </button>
-        ))}
+        {FILTERS.map(({ key, label }) => {
+          const count = key === "new" ? counts?.unlistened
+            : key === "creating" ? counts?.pending
+            : key === "all" ? counts?.total
+            : undefined;
+          return (
+            <button
+              key={key}
+              onClick={() => setFilter(key)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors snap-start ${
+                filter === key
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-secondary text-secondary-foreground"
+              }`}
+            >
+              {count ? `${label} (${count})` : label}
+            </button>
+          );
+        })}
       </div>
 
       <InstallPrompt />
+
+      {/* Swipe hint — first session only */}
+      {!localStorage.getItem("swipe-hint-seen") && items.length > 0 && (
+        <div
+          className="flex items-center gap-2 px-3 py-2 mb-3 rounded-lg bg-muted/50 border border-border text-xs text-muted-foreground animate-fade-in"
+          role="status"
+        >
+          <span className="inline-block animate-bounce-x">👈</span>
+          Swipe left to remove, right to mark as listened
+          <button
+            onClick={() => { localStorage.setItem("swipe-hint-seen", "1"); }}
+            className="ml-auto text-xs text-muted-foreground/60 hover:text-foreground"
+            aria-label="Dismiss swipe hint"
+          >
+            Got it
+          </button>
+        </div>
+      )}
 
       {/* Suggested Next Blipps */}
       {curatedData?.rows?.[0]?.items && curatedData.rows[0].items.length > 0 && (

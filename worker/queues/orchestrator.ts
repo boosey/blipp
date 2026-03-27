@@ -1,6 +1,9 @@
-import { createPrismaClient } from "../lib/db";
-import { createPipelineLogger } from "../lib/logger";
-import type { OrchestratorMessage, BriefingRequestItem } from "../lib/queue-messages";
+import { createPrismaClient, type PrismaClient } from "../lib/db";
+import { createPipelineLogger, type PipelineLogger } from "../lib/logger";
+import type {
+  OrchestratorMessage, BriefingRequestItem,
+  TranscriptionMessage, DistillationMessage, NarrativeGenerationMessage, AudioGenerationMessage,
+} from "../lib/queue-messages";
 import type { Env } from "../types";
 
 const NEXT_STAGE: Record<string, string | null> = {
@@ -88,9 +91,9 @@ export async function handleOrchestrator(
 }
 
 async function handleEvaluate(
-  prisma: any,
+  prisma: PrismaClient,
   env: Env,
-  log: any,
+  log: PipelineLogger,
   request: any,
   msg: Message<OrchestratorMessage>
 ): Promise<void> {
@@ -238,22 +241,15 @@ async function handleEvaluate(
           durationTier,
           voicePresetId: resolved.voicePresetId ?? null,
           status: "PENDING",
-          currentStage: entryStage,
+          currentStage: entryStage as any,
         },
       });
 
       const queueBinding = STAGE_QUEUE_MAP[entryStage];
-      const message: Record<string, any> = {
-        jobId: job.id,
-        episodeId,
-        correlationId: request.id,
-      };
-      if (entryStage === "NARRATIVE_GENERATION" || entryStage === "AUDIO_GENERATION") {
-        message.durationTier = durationTier;
-      }
-      if (entryStage === "AUDIO_GENERATION") {
-        message.voicePresetId = resolved.voicePresetId ?? null;
-      }
+      const message = buildStageMessage(entryStage, {
+        jobId: job.id, episodeId, correlationId: request.id,
+        durationTier, voicePresetId: resolved.voicePresetId ?? null,
+      });
 
       await env[queueBinding].send(message);
 
@@ -276,10 +272,26 @@ async function handleEvaluate(
   msg.ack();
 }
 
+/** Build a typed queue message for a pipeline stage. */
+function buildStageMessage(
+  stage: string,
+  ctx: { jobId: string; episodeId: string; correlationId?: string; durationTier?: number; voicePresetId?: string | null },
+): TranscriptionMessage | DistillationMessage | NarrativeGenerationMessage | AudioGenerationMessage {
+  const base = { jobId: ctx.jobId, episodeId: ctx.episodeId, correlationId: ctx.correlationId };
+  switch (stage) {
+    case "AUDIO_GENERATION":
+      return { ...base, durationTier: ctx.durationTier!, voicePresetId: ctx.voicePresetId };
+    case "NARRATIVE_GENERATION":
+      return { ...base, durationTier: ctx.durationTier! };
+    default:
+      return base;
+  }
+}
+
 async function handleJobStageComplete(
-  prisma: any,
+  prisma: PrismaClient,
   env: Env,
-  log: any,
+  log: PipelineLogger,
   request: any,
   jobId: string,
   msg: Message<OrchestratorMessage>
@@ -321,8 +333,8 @@ async function handleJobStageComplete(
     // Uses completedStage (from message) as the CAS condition, not the potentially
     // stale job.currentStage from Hyperdrive. Only one concurrent handler wins.
     const advanced = await prisma.pipelineJob.updateMany({
-      where: { id: jobId, currentStage: completedStage },
-      data: { currentStage: nextStage, status: "IN_PROGRESS" },
+      where: { id: jobId, currentStage: completedStage as any },
+      data: { currentStage: nextStage as any, status: "IN_PROGRESS" },
     });
 
     if (advanced.count === 0) {
@@ -332,13 +344,10 @@ async function handleJobStageComplete(
     }
 
     const queueBinding = STAGE_QUEUE_MAP[nextStage];
-    const message: Record<string, any> = { jobId, episodeId: job.episodeId, correlationId: msg.body.correlationId };
-    if (nextStage === "NARRATIVE_GENERATION" || nextStage === "AUDIO_GENERATION") {
-      message.durationTier = job.durationTier;
-    }
-    if (nextStage === "AUDIO_GENERATION") {
-      message.voicePresetId = job.voicePresetId ?? null;
-    }
+    const message = buildStageMessage(nextStage, {
+      jobId, episodeId: job.episodeId, correlationId: msg.body.correlationId,
+      durationTier: job.durationTier, voicePresetId: job.voicePresetId ?? null,
+    });
 
     await env[queueBinding].send(message);
 
@@ -380,9 +389,9 @@ async function handleJobStageComplete(
 }
 
 async function handleJobFailed(
-  prisma: any,
+  prisma: PrismaClient,
   env: Env,
-  log: any,
+  log: PipelineLogger,
   request: any,
   jobId: string,
   errorMessage: string,

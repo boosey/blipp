@@ -84,34 +84,45 @@ export async function resolveModelChain(
     `ai.${stage}.model.secondary`,
     `ai.${stage}.model.tertiary`,
   ];
-  const chain: ResolvedModel[] = [];
 
-  for (const key of keys) {
-    const config = await getConfig<{ provider: string; model: string } | null>(prisma, key, null);
+  // Fetch all configs in parallel
+  const configs = await Promise.all(
+    keys.map((key) => getConfig<{ provider: string; model: string } | null>(prisma, key, null))
+  );
+
+  // Filter to valid, non-circuit-broken configs
+  const valid: { provider: string; model: string }[] = [];
+  for (const config of configs) {
     if (!config?.provider || !config?.model) continue;
-
     try {
       checkCircuit(config.provider);
     } catch (err) {
       if (err instanceof CircuitOpenError) continue;
       throw err;
     }
-
-    const pricing = await getModelPricing(prisma, config.model, config.provider);
-    const dbProvider = await prisma.aiModelProvider.findFirst({
-      where: { provider: config.provider, model: { modelId: config.model } },
-    });
-
-    chain.push({
-      provider: config.provider,
-      model: config.model,
-      providerModelId: dbProvider?.providerModelId ?? config.model,
-      pricing,
-      limits: (dbProvider?.limits as Record<string, unknown>) ?? null,
-    });
+    valid.push(config);
   }
 
-  return chain;
+  // Fetch pricing and provider details in parallel for each valid config
+  const resolved = await Promise.all(
+    valid.map(async (config) => {
+      const [pricing, dbProvider] = await Promise.all([
+        getModelPricing(prisma, config.model, config.provider),
+        prisma.aiModelProvider.findFirst({
+          where: { provider: config.provider, model: { modelId: config.model } },
+        }),
+      ]);
+      return {
+        provider: config.provider,
+        model: config.model,
+        providerModelId: dbProvider?.providerModelId ?? config.model,
+        pricing,
+        limits: (dbProvider?.limits as Record<string, unknown>) ?? null,
+      };
+    })
+  );
+
+  return resolved;
 }
 
 /** @deprecated Use resolveModelChain(prisma, "stt") instead */

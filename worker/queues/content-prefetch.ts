@@ -1,4 +1,4 @@
-import { createPrismaClient } from "../lib/db";
+import { createPrismaClient, type PrismaClient } from "../lib/db";
 import { getConfig } from "../lib/config";
 import { prefetchEpisodeContent } from "../lib/content-prefetch";
 import { isRefreshJobActive, tryCompleteRefreshJob } from "../lib/queue-helpers";
@@ -15,7 +15,7 @@ export interface ContentPrefetchMessage {
 async function processEpisode(
   episodeId: string,
   refreshJobId: string | undefined,
-  prisma: any,
+  prisma: PrismaClient,
   env: Env,
   fetchTimeoutMs: number
 ): Promise<void> {

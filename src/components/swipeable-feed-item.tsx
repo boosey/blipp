@@ -171,6 +171,14 @@ export function SwipeableFeedItem({
       <div ref={cardRef} className="relative will-change-transform">
         <FeedItemCard item={item} onPlay={onPlay} onEpisodeVote={onEpisodeVote} />
       </div>
+
+      {/* Keyboard-accessible actions (screen reader only) */}
+      <div className="sr-only">
+        <button onClick={() => onToggleListened(item.id, !item.listened)}>
+          {item.listened ? "Mark as unlistened" : "Mark as listened"}
+        </button>
+        <button onClick={() => onRemove(item.id)}>Remove from feed</button>
+      </div>
     </div>
   );
 }

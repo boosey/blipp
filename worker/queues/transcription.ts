@@ -1,17 +1,18 @@
 import { createPrismaClient } from "../lib/db";
 import { resolveModelChain } from "../lib/model-resolution";
 import { checkStageEnabled } from "../lib/queue-helpers";
-import { createPipelineLogger } from "../lib/logger";
+import { createPipelineLogger, logDbError } from "../lib/logger";
 import { wpKey, putWorkProduct } from "../lib/work-products";
 import { getTranscriptSource } from "../lib/transcript-sources";
 import { getProviderImpl } from "../lib/stt-providers";
 import { getConfig } from "../lib/config";
 import { calculateAudioCost, type AiUsage } from "../lib/ai-usage";
+import { safeFetch } from "../lib/url-validation";
 import { writeEvent } from "../lib/pipeline-events";
 import { writeAiError, classifyAiError, AiProviderError } from "../lib/ai-errors";
 import { recordSuccess, recordFailure } from "../lib/circuit-breaker";
 import { probeAudio, transcribeChunked } from "../lib/audio-probe";
-import { DEFAULT_STT_CHUNK_SIZE, MIN_AUDIO_SIZE_BYTES } from "../lib/constants";
+import { DEFAULT_STT_CHUNK_SIZE, MIN_AUDIO_SIZE_BYTES, ASSUMED_BITRATE_BYTES_PER_SEC, STT_BYTES_PER_TOKEN } from "../lib/constants";
 import type { TranscriptionMessage } from "../lib/queue-messages";
 import type { Env } from "../types";
 
@@ -39,6 +40,8 @@ export async function handleTranscription(
       let requestId: string | undefined;
       let sttProvider: string | undefined;
       let sttModel: string | undefined;
+      let modelChainAttempts = 0;
+      let modelChainLength = 0;
       let audioSizeBytes: number | undefined;
       let audioContentType: string | undefined;
       try {
@@ -204,7 +207,9 @@ export async function handleTranscription(
 
           // Phase 3: Try each model — URL-direct → chunked fallback → next model
           const sttErrors: { provider: string; model: string; error: string; httpStatus?: number }[] = [];
+          modelChainLength = modelChain.length;
           for (let i = 0; i < modelChain.length; i++) {
+            modelChainAttempts = i + 1;
             const resolved = modelChain[i];
             const tier = ["primary", "secondary", "tertiary"][i];
             const providerImpl = getProviderImpl(resolved.provider);
@@ -228,8 +233,8 @@ export async function handleTranscription(
 
                 transcript = sttResult.transcript;
                 recordSuccess(resolved.provider);
-                const estimatedSeconds = probe.contentLength ? probe.contentLength / (128 * 1000 / 8) : durationSeconds;
-                const sttInputTokens = probe.contentLength ? Math.round(probe.contentLength / 16000) : 0;
+                const estimatedSeconds = probe.contentLength ? probe.contentLength / ASSUMED_BITRATE_BYTES_PER_SEC : durationSeconds;
+                const sttInputTokens = probe.contentLength ? Math.round(probe.contentLength / STT_BYTES_PER_TOKEN) : 0;
                 sttUsage = { model: resolved.model, inputTokens: sttInputTokens, outputTokens: 0, cost: calculateAudioCost(resolved.pricing, estimatedSeconds) };
 
                 await writeEvent(prisma, step.id, "INFO", `Transcript generated via ${tier} URL-direct ${providerImpl.name}`, {
@@ -265,8 +270,8 @@ export async function handleTranscription(
 
                 transcript = sttResult.transcript;
                 recordSuccess(resolved.provider);
-                const estimatedSeconds = probe.contentLength / (128 * 1000 / 8);
-                const sttInputTokens = Math.round(probe.contentLength / 16000);
+                const estimatedSeconds = probe.contentLength / ASSUMED_BITRATE_BYTES_PER_SEC;
+                const sttInputTokens = Math.round(probe.contentLength / STT_BYTES_PER_TOKEN);
                 sttUsage = { model: resolved.model, inputTokens: sttInputTokens, outputTokens: 0, cost: calculateAudioCost(resolved.pricing, estimatedSeconds) };
 
                 await writeEvent(prisma, step.id, "INFO", `Transcript generated via ${tier} chunked ${providerImpl.name}`, {
@@ -296,7 +301,7 @@ export async function handleTranscription(
               });
 
               try {
-                const resp = await fetch(episode.audioUrl);
+                const resp = await safeFetch(episode.audioUrl);
                 if (!resp.ok) throw new Error(`Audio fetch failed: HTTP ${resp.status}`);
                 const buffer = await resp.arrayBuffer();
 
@@ -307,8 +312,8 @@ export async function handleTranscription(
 
                 transcript = sttResult.transcript;
                 recordSuccess(resolved.provider);
-                const estimatedSeconds = buffer.byteLength / (128 * 1000 / 8);
-                const sttInputTokens = Math.round(buffer.byteLength / 16000);
+                const estimatedSeconds = buffer.byteLength / ASSUMED_BITRATE_BYTES_PER_SEC;
+                const sttInputTokens = Math.round(buffer.byteLength / STT_BYTES_PER_TOKEN);
                 sttUsage = { model: resolved.model, inputTokens: sttInputTokens, outputTokens: 0, cost: calculateAudioCost(resolved.pricing, estimatedSeconds) };
 
                 await writeEvent(prisma, step.id, "INFO", `Transcript generated via ${tier} ${providerImpl.name}`, {
@@ -409,17 +414,7 @@ export async function handleTranscription(
               durationMs: Date.now() - startTime,
             },
           })
-          .catch((dbErr: unknown) => {
-            console.error(JSON.stringify({
-              level: "error",
-              action: "error_path_db_write_failed",
-              stage: "transcription",
-              target: "pipelineStep",
-              jobId,
-              error: dbErr instanceof Error ? dbErr.message : String(dbErr),
-              ts: new Date().toISOString(),
-            }));
-          });
+          .catch(logDbError("transcription", "pipelineStep", jobId));
 
         // Write error event if step exists
         if (stepId) {
@@ -440,17 +435,7 @@ export async function handleTranscription(
             update: { status: "FAILED", errorMessage },
             create: { episodeId, status: "FAILED", errorMessage },
           })
-          .catch((dbErr: unknown) => {
-            console.error(JSON.stringify({
-              level: "error",
-              action: "error_path_db_write_failed",
-              stage: "transcription",
-              target: "distillation",
-              jobId,
-              error: dbErr instanceof Error ? dbErr.message : String(dbErr),
-              ts: new Date().toISOString(),
-            }));
-          });
+          .catch(logDbError("transcription", "distillation", jobId));
 
         log.error("episode_error", { episodeId, jobId }, err);
 
@@ -473,8 +458,8 @@ export async function handleTranscription(
             rawResponse: err.rawResponse,
             requestDurationMs: err.requestDurationMs,
             timestamp: new Date(),
-            retryCount: 0,
-            maxRetries: 0,
+            retryCount: modelChainAttempts - 1,
+            maxRetries: modelChainLength - 1,
             willRetry: false,
             rateLimitRemaining: err.rateLimitRemaining,
             rateLimitResetAt: err.rateLimitResetAt,
@@ -501,6 +486,13 @@ export async function handleTranscription(
           });
         }
 
+        if (err instanceof AiProviderError) {
+          const { severity } = classifyAiError(err, err.httpStatus, err.rawResponse);
+          if (severity === "transient") {
+            msg.retry();
+            continue;
+          }
+        }
         msg.ack();
       }
     }

@@ -66,10 +66,6 @@ export type Env = {
   CONTENT_PREFETCH_QUEUE: Queue;
   /** Deepgram API key for STT benchmark */
   DEEPGRAM_API_KEY: string;
-  /** AssemblyAI API key for STT benchmark */
-  ASSEMBLYAI_API_KEY: string;
-  /** Google Cloud STT API key for STT benchmark */
-  GOOGLE_STT_API_KEY: string;
   /** Groq API key for fast STT inference */
   GROQ_API_KEY: string;
   /** Comma-separated list of allowed CORS origins (optional, overrides defaults) */
@@ -86,8 +82,6 @@ export type Env = {
   VAPID_PRIVATE_KEY?: string;
   /** VAPID subject (mailto: URL) for Web Push (optional) */
   VAPID_SUBJECT?: string;
-  /** Sentry DSN for error tracking (optional — Sentry no-ops when unset) */
-  SENTRY_DSN?: string;
   /** KV namespace for persistent rate limiting (optional — falls back to in-memory) */
   RATE_LIMIT_KV?: KVNamespace;
   /** GitHub PAT for triggering Actions workflows (optional — Apple refresh button) */

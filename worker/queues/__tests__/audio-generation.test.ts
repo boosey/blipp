@@ -35,6 +35,7 @@ const mockLogger = vi.hoisted(() => ({
 }));
 vi.mock("../../lib/logger", () => ({
   createPipelineLogger: vi.fn().mockResolvedValue(mockLogger),
+  logDbError: vi.fn(() => () => {}),
 }));
 
 vi.mock("../../lib/model-resolution", () => ({
@@ -94,7 +95,12 @@ vi.mock("../../lib/ai-errors", () => {
   }
   return {
     writeAiError: vi.fn().mockResolvedValue(undefined),
-    classifyAiError: vi.fn().mockReturnValue({ category: "unknown", severity: "transient" }),
+    classifyAiError: vi.fn((err: any, httpStatus?: number) => {
+      if (httpStatus === 429 || (err instanceof Error && err.message.includes("rate_limit"))) return { category: "rate_limit", severity: "transient" };
+      if (httpStatus && httpStatus >= 500) return { category: "server_error", severity: "transient" };
+      if (httpStatus === 402 || (err instanceof Error && err.message.includes("quota"))) return { category: "quota_exceeded", severity: "permanent" };
+      return { category: "unknown", severity: "permanent" };
+    }),
     AiProviderError,
   };
 });

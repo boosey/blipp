@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { classifyHttpError } from "../../lib/errors";
+import { classifyHttpError, HttpError } from "../../lib/errors";
 import { ValidationError } from "../../lib/validation";
 
 describe("classifyHttpError", () => {
@@ -29,11 +29,18 @@ describe("classifyHttpError", () => {
     expect(result).toEqual({ status: 400, message: "Invalid reference", code: "INVALID_REFERENCE" });
   });
 
-  it("classifies 'not found' messages as 404", () => {
-    const err = new Error("Episode not found");
+  it("classifies HttpError as the specified status", () => {
+    const err = new HttpError(404, "Episode not found", "NOT_FOUND");
     const result = classifyHttpError(err);
     expect(result.status).toBe(404);
     expect(result.message).toBe("Episode not found");
+    expect(result.code).toBe("NOT_FOUND");
+  });
+
+  it("does not classify plain 'not found' string as 404", () => {
+    const err = new Error("Episode not found");
+    const result = classifyHttpError(err);
+    expect(result.status).toBe(500);
   });
 
   it("classifies generic errors as 500 without leaking details", () => {

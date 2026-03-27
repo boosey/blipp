@@ -407,6 +407,99 @@ describe("handleOrchestrator", () => {
       );
     });
 
+    it("should include voicePresetId in AUDIO_GENERATION dispatch", async () => {
+      const msg = createMsg({ requestId: "req1", action: "evaluate" });
+      mockPrisma.briefingRequest.findUnique.mockResolvedValue({
+        id: "req1", status: "PENDING", userId: "u1", targetMinutes: 5,
+        items: [
+          { podcastId: "pod1", episodeId: "ep1", durationTier: 3, useLatest: false, voicePresetId: "voice-abc" },
+        ],
+      });
+      mockPrisma.briefingRequest.update.mockResolvedValue({});
+      mockPrisma.pipelineJob.create.mockResolvedValue({ id: "job1", episodeId: "ep1", durationTier: 3 });
+      mockPrisma.workProduct.findMany.mockResolvedValue([
+        { type: "NARRATIVE", episodeId: "ep1", durationTier: 3, voice: null },
+      ]);
+      mockPrisma.clip.findMany.mockResolvedValue([]);
+
+      await handleOrchestrator(createBatch([msg]), env, ctx);
+
+      expect(env.AUDIO_GENERATION_QUEUE.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          jobId: "job1",
+          episodeId: "ep1",
+          durationTier: 3,
+          voicePresetId: "voice-abc",
+        })
+      );
+    });
+
+    it("should dispatch assembly immediately when all items are fully cached", async () => {
+      const msg = createMsg({ requestId: "req1", action: "evaluate" });
+      mockPrisma.briefingRequest.findUnique.mockResolvedValue({
+        id: "req1", status: "PENDING", userId: "u1", targetMinutes: 5,
+        items: [
+          { podcastId: "pod1", episodeId: "ep1", durationTier: 5, useLatest: false },
+          { podcastId: "pod2", episodeId: "ep2", durationTier: 5, useLatest: false },
+        ],
+      });
+      mockPrisma.briefingRequest.update.mockResolvedValue({});
+      mockPrisma.pipelineJob.create
+        .mockResolvedValueOnce({ id: "job1", episodeId: "ep1", durationTier: 5 })
+        .mockResolvedValueOnce({ id: "job2", episodeId: "ep2", durationTier: 5 });
+      mockPrisma.workProduct.findMany.mockResolvedValue([
+        { type: "AUDIO_CLIP", episodeId: "ep1", durationTier: 5, voice: "default" },
+        { type: "AUDIO_CLIP", episodeId: "ep2", durationTier: 5, voice: "default" },
+      ]);
+      mockPrisma.clip.findMany.mockResolvedValue([
+        { id: "clip1", episodeId: "ep1", durationTier: 5, voicePresetId: null },
+        { id: "clip2", episodeId: "ep2", durationTier: 5, voicePresetId: null },
+      ]);
+
+      await handleOrchestrator(createBatch([msg]), env, ctx);
+
+      // No stage queues dispatched
+      expect(env.TRANSCRIPTION_QUEUE.send).not.toHaveBeenCalled();
+      expect(env.DISTILLATION_QUEUE.send).not.toHaveBeenCalled();
+      expect(env.NARRATIVE_GENERATION_QUEUE.send).not.toHaveBeenCalled();
+      expect(env.AUDIO_GENERATION_QUEUE.send).not.toHaveBeenCalled();
+
+      // Assembly dispatched immediately
+      expect(env.BRIEFING_ASSEMBLY_QUEUE.send).toHaveBeenCalledWith(
+        expect.objectContaining({ requestId: "req1" })
+      );
+      expect(msg.ack).toHaveBeenCalled();
+    });
+
+    it("should NOT dispatch assembly when only some items are cached", async () => {
+      const msg = createMsg({ requestId: "req1", action: "evaluate" });
+      mockPrisma.briefingRequest.findUnique.mockResolvedValue({
+        id: "req1", status: "PENDING", userId: "u1", targetMinutes: 5,
+        items: [
+          { podcastId: "pod1", episodeId: "ep1", durationTier: 5, useLatest: false },
+          { podcastId: "pod2", episodeId: "ep2", durationTier: 5, useLatest: false },
+        ],
+      });
+      mockPrisma.briefingRequest.update.mockResolvedValue({});
+      mockPrisma.pipelineJob.create
+        .mockResolvedValueOnce({ id: "job1", episodeId: "ep1", durationTier: 5 })
+        .mockResolvedValueOnce({ id: "job2", episodeId: "ep2", durationTier: 5 });
+      // Only ep1 is fully cached
+      mockPrisma.workProduct.findMany.mockResolvedValue([
+        { type: "AUDIO_CLIP", episodeId: "ep1", durationTier: 5, voice: "default" },
+      ]);
+      mockPrisma.clip.findMany.mockResolvedValue([
+        { id: "clip1", episodeId: "ep1", durationTier: 5, voicePresetId: null },
+      ]);
+
+      await handleOrchestrator(createBatch([msg]), env, ctx);
+
+      // ep2 goes to TRANSCRIPTION, ep1 goes to assembly
+      expect(env.TRANSCRIPTION_QUEUE.send).toHaveBeenCalledTimes(1);
+      // Assembly NOT dispatched early (one item still needs processing)
+      expect(env.BRIEFING_ASSEMBLY_QUEUE.send).not.toHaveBeenCalled();
+    });
+
     it("should fail request when items array is empty", async () => {
       const msg = createMsg({ requestId: "req1", action: "evaluate" });
       mockPrisma.briefingRequest.findUnique.mockResolvedValue({
@@ -566,6 +659,83 @@ describe("handleOrchestrator", () => {
 
       await handleOrchestrator(createBatch([msg]), env, ctx);
 
+      expect(msg.ack).toHaveBeenCalled();
+    });
+
+    it("should ack when CAS fails (job already advanced past reported stage)", async () => {
+      const msg = createMsg({ requestId: "req1", action: "job-stage-complete", jobId: "job1", completedStage: "TRANSCRIPTION" });
+      mockPrisma.briefingRequest.findUnique.mockResolvedValue({
+        id: "req1", status: "PROCESSING", userId: "u1", targetMinutes: 5,
+      });
+      mockPrisma.pipelineJob.findUnique.mockResolvedValue({
+        id: "job1", requestId: "req1", episodeId: "ep1", durationTier: 5,
+        status: "IN_PROGRESS", currentStage: "TRANSCRIPTION",
+      });
+      // CAS fails — another handler already advanced
+      mockPrisma.pipelineJob.updateMany.mockResolvedValue({ count: 0 });
+
+      await handleOrchestrator(createBatch([msg]), env, ctx);
+
+      // No queue dispatch
+      expect(env.DISTILLATION_QUEUE.send).not.toHaveBeenCalled();
+      expect(msg.ack).toHaveBeenCalled();
+    });
+
+    it("should ack stale message where completedStage is behind currentStage", async () => {
+      const msg = createMsg({ requestId: "req1", action: "job-stage-complete", jobId: "job1", completedStage: "TRANSCRIPTION" });
+      mockPrisma.briefingRequest.findUnique.mockResolvedValue({
+        id: "req1", status: "PROCESSING", userId: "u1", targetMinutes: 5,
+      });
+      // Job already at NARRATIVE_GENERATION, but message reports TRANSCRIPTION complete
+      mockPrisma.pipelineJob.findUnique.mockResolvedValue({
+        id: "job1", requestId: "req1", episodeId: "ep1", durationTier: 5,
+        status: "IN_PROGRESS", currentStage: "NARRATIVE_GENERATION",
+      });
+
+      await handleOrchestrator(createBatch([msg]), env, ctx);
+
+      // Should not attempt CAS or dispatch
+      expect(mockPrisma.pipelineJob.updateMany).not.toHaveBeenCalled();
+      expect(env.DISTILLATION_QUEUE.send).not.toHaveBeenCalled();
+      expect(msg.ack).toHaveBeenCalled();
+    });
+
+    it("should include voicePresetId when advancing to AUDIO_GENERATION", async () => {
+      const msg = createMsg({ requestId: "req1", action: "job-stage-complete", jobId: "job1", completedStage: "NARRATIVE_GENERATION" });
+      mockPrisma.briefingRequest.findUnique.mockResolvedValue({
+        id: "req1", status: "PROCESSING", userId: "u1", targetMinutes: 5,
+      });
+      mockPrisma.pipelineJob.findUnique.mockResolvedValue({
+        id: "job1", requestId: "req1", episodeId: "ep1", durationTier: 3,
+        voicePresetId: "voice-xyz",
+        status: "IN_PROGRESS", currentStage: "NARRATIVE_GENERATION",
+      });
+      mockPrisma.pipelineJob.updateMany.mockResolvedValue({ count: 1 });
+
+      await handleOrchestrator(createBatch([msg]), env, ctx);
+
+      expect(env.AUDIO_GENERATION_QUEUE.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          jobId: "job1",
+          episodeId: "ep1",
+          durationTier: 3,
+          voicePresetId: "voice-xyz",
+        })
+      );
+    });
+
+    it("should skip already FAILED jobs", async () => {
+      const msg = createMsg({ requestId: "req1", action: "job-stage-complete", jobId: "job1", completedStage: "TRANSCRIPTION" });
+      mockPrisma.briefingRequest.findUnique.mockResolvedValue({
+        id: "req1", status: "PROCESSING", userId: "u1", targetMinutes: 5,
+      });
+      mockPrisma.pipelineJob.findUnique.mockResolvedValue({
+        id: "job1", status: "FAILED", currentStage: "TRANSCRIPTION",
+      });
+
+      await handleOrchestrator(createBatch([msg]), env, ctx);
+
+      expect(mockPrisma.pipelineJob.updateMany).not.toHaveBeenCalled();
       expect(msg.ack).toHaveBeenCalled();
     });
   });
@@ -804,5 +974,56 @@ describe("handleOrchestrator", () => {
       expect(msg.ack).toHaveBeenCalled();
       expect(msg.retry).not.toHaveBeenCalled();
     });
+  });
+
+  // ── Unknown action ──
+
+  it("should ack unknown actions without processing", async () => {
+    const msg = createMsg({ requestId: "req1", action: "bogus-action" });
+    mockPrisma.briefingRequest.findUnique.mockResolvedValue({
+      id: "req1", status: "PROCESSING", userId: "u1", targetMinutes: 5,
+    });
+
+    await handleOrchestrator(createBatch([msg]), env, ctx);
+
+    expect(msg.ack).toHaveBeenCalled();
+    expect(mockPrisma.pipelineJob.create).not.toHaveBeenCalled();
+    expect(mockPrisma.pipelineJob.findUnique).not.toHaveBeenCalled();
+  });
+
+  // ── Cleanup ──
+
+  it("disconnects prisma via ctx.waitUntil in finally block", async () => {
+    mockPrisma.briefingRequest.findUnique.mockResolvedValue(null);
+
+    const msg = createMsg({ requestId: "req1", action: "evaluate" });
+    await handleOrchestrator(createBatch([msg]), env, ctx);
+
+    expect(ctx.waitUntil).toHaveBeenCalled();
+  });
+
+  it("disconnects prisma even when handler throws", async () => {
+    mockPrisma.briefingRequest.findUnique.mockRejectedValue(new Error("boom"));
+    mockPrisma.briefingRequest.update.mockResolvedValue({});
+
+    const msg = createMsg({ requestId: "req1", action: "evaluate" });
+    await handleOrchestrator(createBatch([msg]), env, ctx);
+
+    expect(ctx.waitUntil).toHaveBeenCalled();
+  });
+
+  // ── Batch processing ──
+
+  it("processes multiple messages independently", async () => {
+    const msg1 = createMsg({ requestId: "req1", action: "evaluate" });
+    const msg2 = createMsg({ requestId: "req2", action: "evaluate" });
+    mockPrisma.briefingRequest.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null);
+
+    await handleOrchestrator(createBatch([msg1, msg2]), env, ctx);
+
+    expect(msg1.ack).toHaveBeenCalled();
+    expect(msg2.ack).toHaveBeenCalled();
   });
 });

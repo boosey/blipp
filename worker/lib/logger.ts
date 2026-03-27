@@ -21,6 +21,24 @@ export interface PipelineLogger {
   timer: (action: string) => () => void;
 }
 
+/**
+ * Logs a DB write failure on an error path (fire-and-forget catch handler).
+ * Use as: `.catch(logDbError("stage", "target", jobId))`
+ */
+export function logDbError(stage: string, target: string, jobId: string) {
+  return (dbErr: unknown) => {
+    console.error(JSON.stringify({
+      level: "error",
+      action: "error_path_db_write_failed",
+      stage,
+      target,
+      jobId,
+      error: dbErr instanceof Error ? (dbErr as Error).message : String(dbErr),
+      ts: new Date().toISOString(),
+    }));
+  };
+}
+
 export async function createPipelineLogger(opts: LoggerOptions): Promise<PipelineLogger> {
   const levelName = await getConfig(opts.prisma, "pipeline.logLevel", "info");
   const threshold = LOG_LEVELS[levelName as string] ?? LOG_LEVELS.info;

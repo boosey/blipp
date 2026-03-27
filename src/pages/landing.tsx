@@ -289,6 +289,8 @@ export function Landing() {
           <span className="text-zinc-800">&middot;</span>
           <Link to="/about" className="hover:text-zinc-400 transition-colors">About</Link>
           <span className="text-zinc-800">&middot;</span>
+          <Link to="/pricing" className="hover:text-zinc-400 transition-colors">Pricing</Link>
+          <span className="text-zinc-800">&middot;</span>
           <Link to="/contact" className="hover:text-zinc-400 transition-colors">Contact</Link>
         </div>
       </footer>

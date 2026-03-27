@@ -111,19 +111,12 @@ describe("Home Feed", () => {
       renderHome();
 
       await waitFor(() => {
-        expect(screen.getByText("All")).toBeInTheDocument();
+        expect(screen.getByText("All (10)")).toBeInTheDocument();
       });
       expect(screen.getByText(/^New/)).toBeInTheDocument();
       expect(screen.getByText("Subscriptions")).toBeInTheDocument();
       expect(screen.getByText("On Demand")).toBeInTheDocument();
-      // "Creating" appears both as a filter pill and as a status badge on PENDING items
-      const creatingElements = screen.getAllByText("Creating");
-      expect(creatingElements.length).toBeGreaterThanOrEqual(1);
-      // The filter pill button specifically
-      const filterPill = creatingElements.find(
-        (el) => el.tagName === "BUTTON"
-      );
-      expect(filterPill).toBeDefined();
+      expect(screen.getByText("Creating (1)")).toBeInTheDocument();
     });
 
     it("shows unlistened count on New pill", async () => {
@@ -248,7 +241,7 @@ describe("Home Feed", () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText("No items match this filter.")
+          screen.getByText("Nothing here yet.")
         ).toBeInTheDocument();
       });
     });

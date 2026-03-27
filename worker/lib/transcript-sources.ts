@@ -1,3 +1,4 @@
+import { safeFetch } from "./url-validation";
 import type { Env } from "../types";
 
 export interface TranscriptLookupContext {
@@ -21,10 +22,17 @@ const RssFeedSource: TranscriptSource = {
   async lookup(ctx) {
     if (!ctx.transcriptUrl) return null;
     try {
-      const resp = await fetch(ctx.transcriptUrl);
+      const resp = await safeFetch(ctx.transcriptUrl);
       if (!resp.ok) return null;
       return resp.text();
-    } catch {
+    } catch (err) {
+      console.warn(JSON.stringify({
+        level: "warn",
+        action: "rss_transcript_fetch_failed",
+        transcriptUrl: ctx.transcriptUrl,
+        error: err instanceof Error ? err.message : String(err),
+        ts: new Date().toISOString(),
+      }));
       return null;
     }
   },

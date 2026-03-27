@@ -85,7 +85,6 @@ describe("Analytics Routes", () => {
       expect(body.data).toHaveProperty("comparison");
       expect(body.data).toHaveProperty("dailyCosts");
       expect(body.data).toHaveProperty("metrics");
-      expect(body.data).toHaveProperty("efficiencyScore");
     });
 
     it("returns zeroed data when table missing", async () => {

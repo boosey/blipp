@@ -435,8 +435,8 @@ export interface CostBreakdownData {
   totalCost: number;
   comparison: { amount: number; percentage: number; direction: "up" | "down" };
   dailyCosts: { date: string; stt: number; distillation: number; tts: number; infrastructure: number }[];
-  metrics: { perEpisode: number; dailyAvg: number; projectedMonthly: number; budgetStatus: string };
-  efficiencyScore: number;
+  metrics: { perEpisode: number; dailyAvg: number; projectedMonthly: number };
+
 }
 
 export interface UsageTrendsData {
@@ -453,7 +453,7 @@ export interface QualityMetricsData {
     timeFitting: number;
     claimCoverage: number;
     transcription: number;
-    userSatisfaction: number;
+    userSatisfaction?: number;
   };
   trend: { date: string; score: number }[];
   recentIssues: { type: string; count: number }[];

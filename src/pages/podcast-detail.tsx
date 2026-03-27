@@ -371,7 +371,7 @@ export function PodcastDetail({ podcastId: propPodcastId, scrollToEpisodeId }: {
               planUsage.subscriptions.remaining !== null &&
               planUsage.subscriptions.remaining <= 0 ? (
               <button
-                onClick={() => { closeSheet(); navigate("/settings"); }}
+                onClick={() => showUpgrade("You've reached your subscription limit. Upgrade your plan to subscribe to more podcasts.")}
                 className="px-4 py-1.5 rounded-full text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
               >
                 Upgrade to Subscribe
@@ -505,9 +505,9 @@ export function PodcastDetail({ podcastId: propPodcastId, scrollToEpisodeId }: {
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
                       </span>
                     ) : ep.blippStatus?.status === "PENDING" || ep.blippStatus?.status === "PROCESSING" ? (
-                      <span className="flex items-center gap-1 px-3 py-1.5 rounded text-xs font-medium bg-yellow-500/15 text-yellow-400">
+                      <span className="flex items-center gap-1 px-3 py-1.5 rounded text-xs font-medium bg-yellow-500/15 text-yellow-400" title="Usually ready in 2-5 minutes">
                         <Loader2 className="w-3 h-3 animate-spin" />
-                        Creating
+                        Creating...
                       </span>
                     ) : ep.blippStatus?.status === "READY" ? (
                       <span className={`flex items-center gap-1 px-3 py-1.5 rounded text-xs font-medium ${
@@ -573,6 +573,7 @@ export function PodcastDetail({ podcastId: propPodcastId, scrollToEpisodeId }: {
                         }}
                         onContextMenu={(e) => e.preventDefault()}
                         className="px-3 py-1.5 bg-primary text-primary-foreground rounded text-xs font-medium hover:bg-primary/90 transition-colors select-none"
+                        title="Create a bite-sized briefing (long-press for duration options)"
                       >
                         Blipp
                       </button>

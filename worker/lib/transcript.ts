@@ -2,6 +2,7 @@
  * Transcript parsing utilities for VTT and SRT subtitle formats.
  * Strips timing/cue information and returns plain text for distillation.
  */
+import { safeFetch } from "./url-validation";
 
 /**
  * Parses a WebVTT transcript, stripping timing metadata and cue headers.
@@ -79,7 +80,7 @@ export function parseSRT(srt: string): string {
  * @throws Error if fetch fails or response is not OK
  */
 export async function fetchTranscript(url: string): Promise<string> {
-  const res = await fetch(url);
+  const res = await safeFetch(url);
 
   if (!res.ok) {
     throw new Error(

@@ -1,9 +1,10 @@
-import { createPrismaClient } from "../lib/db";
+import { createPrismaClient, type PrismaClient } from "../lib/db";
 import { getConfig } from "../lib/config";
-import { createPipelineLogger } from "../lib/logger";
+import { createPipelineLogger, type PipelineLogger } from "../lib/logger";
 import { parseRssFeed, type ParsedEpisode } from "../lib/rss-parser";
 import type { FeedRefreshMessage } from "../lib/queue-messages";
 import { isRefreshJobActive, tryCompleteRefreshJob } from "../lib/queue-helpers";
+import { safeFetch } from "../lib/url-validation";
 import type { Env } from "../types";
 
 /**
@@ -25,9 +26,9 @@ function latestEpisodes(episodes: ParsedEpisode[], max: number): ParsedEpisode[]
  */
 async function processPodcast(
   podcast: any,
-  prisma: any,
+  prisma: PrismaClient,
   env: Env,
-  log: any,
+  log: PipelineLogger,
   maxEpisodes: number,
   fetchTimeoutMs: number,
   refreshJobId?: string
@@ -38,7 +39,7 @@ async function processPodcast(
 
   let xml: string;
   try {
-    const response = await fetch(podcast.feedUrl, { signal: controller.signal });
+    const response = await safeFetch(podcast.feedUrl, { signal: controller.signal });
     if (!response.ok) {
       throw new Error(`RSS feed returned HTTP ${response.status} ${response.statusText}: ${podcast.feedUrl}`);
     }

@@ -1,6 +1,6 @@
 import type { Env } from "../types";
 import type { CatalogRefreshMessage } from "../lib/queue-messages";
-import { createPrismaClient } from "../lib/db";
+import { createPrismaClient, type PrismaClient } from "../lib/db";
 import { getConfig } from "../lib/config";
 import { getCatalogSource } from "../lib/catalog-sources";
 import type { DiscoveredPodcast } from "../lib/catalog-sources";
@@ -19,7 +19,7 @@ export async function handleCatalogRefresh(
       const { action, mode, source, seedJobId } = msg.body;
       const seedMode = mode ?? "destructive";
       const sourceId = source ?? "apple";
-      console.log(`[catalog-refresh] Starting ${action} (mode: ${seedMode}, source: ${sourceId})...`);
+      console.log(JSON.stringify({ level: "info", action: "catalog_refresh_start", catalogAction: action, seedMode, sourceId, ts: new Date().toISOString() }));
 
       try {
         await updateStatus(prisma, "fetching_charts");
@@ -35,7 +35,7 @@ export async function handleCatalogRefresh(
           ? 100
           : Number(await getConfig(prisma, "catalog.seedSize", DEFAULT_DISCOVER_COUNT));
         const discovered = await catalogSource.discover(discoverCount, env);
-        console.log(`[catalog-refresh] ${catalogSource.name}: discovered ${discovered.length} podcasts`);
+        console.log(JSON.stringify({ level: "info", action: "catalog_refresh_discovered", source: catalogSource.name, count: discovered.length, ts: new Date().toISOString() }));
 
         // ── Upsert categories ──
         await updateStatus(prisma, "resolving_metadata");
@@ -57,7 +57,7 @@ export async function handleCatalogRefresh(
             if (newPodcasts.length > 0) {
               newIds = await bulkInsertPodcasts(prisma, newPodcasts, categoryIdMap, sourceId);
             }
-            console.log(`[catalog-refresh] Additive ${catalogSource.name}: ${newIds.length} new of ${discovered.length}`);
+            console.log(JSON.stringify({ level: "info", action: "catalog_refresh_additive", source: catalogSource.name, newCount: newIds.length, totalDiscovered: discovered.length, ts: new Date().toISOString() }));
           }
           upsertedIds = newIds;
         } else {
@@ -91,10 +91,10 @@ export async function handleCatalogRefresh(
         await queueFeedRefresh(env, prisma, upsertedIds, refreshJobId);
 
         await updateStatus(prisma, "complete");
-        console.log(`[catalog-refresh] ${action} (${seedMode}, ${sourceId}) complete. ${upsertedIds.length} podcasts processed.`);
+        console.log(JSON.stringify({ level: "info", action: "catalog_refresh_complete", catalogAction: action, seedMode, sourceId, processedCount: upsertedIds.length, ts: new Date().toISOString() }));
         msg.ack();
       } catch (err) {
-        console.error(`[catalog-refresh] ${action} failed:`, err);
+        console.error(JSON.stringify({ level: "error", action: "catalog_refresh_failed", catalogAction: action, error: err instanceof Error ? err.message : String(err), ts: new Date().toISOString() }));
         await updateStatus(prisma, "failed");
         if (seedJobId) {
           await updateSeedJob(prisma, seedJobId, {
@@ -119,11 +119,12 @@ export async function handleCatalogRefresh(
   }
 }
 
-async function updateSeedJob(prisma: any, seedJobId: string, data: Record<string, unknown>): Promise<void> {
+async function updateSeedJob(prisma: PrismaClient, seedJobId: string, data: Record<string, unknown>): Promise<void> {
+
   await prisma.catalogSeedJob.update({ where: { id: seedJobId }, data });
 }
 
-async function updateStatus(prisma: any, status: string): Promise<void> {
+async function updateStatus(prisma: PrismaClient, status: string): Promise<void> {
   await prisma.platformConfig.upsert({
     where: { key: "catalogRefresh.status" },
     update: { value: status },
@@ -131,7 +132,7 @@ async function updateStatus(prisma: any, status: string): Promise<void> {
   });
 }
 
-async function wipeCatalogData(prisma: any, r2: R2Bucket): Promise<void> {
+async function wipeCatalogData(prisma: PrismaClient, r2: R2Bucket): Promise<void> {
   // Delete DB records
   await prisma.feedItem.deleteMany({});
   await prisma.briefing.deleteMany({});
@@ -154,10 +155,10 @@ async function wipeCatalogData(prisma: any, r2: R2Bucket): Promise<void> {
     }
     cursor = listed.truncated ? listed.cursor : undefined;
   } while (cursor);
-  console.log(`[catalog-refresh] Deleted ${totalDeleted} R2 objects`);
+  console.log(JSON.stringify({ level: "info", action: "catalog_refresh_r2_wipe", deletedCount: totalDeleted, ts: new Date().toISOString() }));
 }
 
-async function filterNewPodcasts(prisma: any, discovered: DiscoveredPodcast[]): Promise<DiscoveredPodcast[]> {
+async function filterNewPodcasts(prisma: PrismaClient, discovered: DiscoveredPodcast[]): Promise<DiscoveredPodcast[]> {
   const feedUrls = discovered.filter((p) => p.feedUrl).map((p) => p.feedUrl);
   const BATCH = 500;
   const existingUrls = new Set<string>();
@@ -174,7 +175,7 @@ async function filterNewPodcasts(prisma: any, discovered: DiscoveredPodcast[]): 
   return discovered.filter((p) => p.feedUrl && !existingUrls.has(p.feedUrl));
 }
 
-async function upsertCategories(prisma: any, discovered: DiscoveredPodcast[]): Promise<Map<string, string>> {
+async function upsertCategories(prisma: PrismaClient, discovered: DiscoveredPodcast[]): Promise<Map<string, string>> {
   const genreMap = new Map<string, string>();
   for (const podcast of discovered) {
     for (const cat of podcast.categories ?? []) {
@@ -201,7 +202,7 @@ async function upsertCategories(prisma: any, discovered: DiscoveredPodcast[]): P
  * Uses createMany in batches of 500 — much faster than individual upserts.
  */
 async function bulkInsertPodcasts(
-  prisma: any,
+  prisma: PrismaClient,
   discovered: DiscoveredPodcast[],
   categoryIdMap: Map<string, string>,
   sourceId: string
@@ -228,7 +229,7 @@ async function bulkInsertPodcasts(
       })),
       skipDuplicates: true,
     });
-    console.log(`[catalog-refresh] [${sourceId}] Inserted ${Math.min(i + BATCH, valid.length)}/${valid.length} podcasts`);
+    console.log(JSON.stringify({ level: "info", action: "catalog_refresh_bulk_insert", sourceId, progress: Math.min(i + BATCH, valid.length), total: valid.length, ts: new Date().toISOString() }));
   }
 
   // Fetch all created podcast IDs
@@ -257,14 +258,14 @@ async function bulkInsertPodcasts(
         skipDuplicates: true,
       });
     }
-    console.log(`[catalog-refresh] Created ${joinRecords.length} category associations`);
+    console.log(JSON.stringify({ level: "info", action: "catalog_refresh_categories", count: joinRecords.length, ts: new Date().toISOString() }));
   }
 
   return created.map((p: any) => p.id);
 }
 
 async function upsertPodcasts(
-  prisma: any,
+  prisma: PrismaClient,
   discovered: DiscoveredPodcast[],
   categoryIdMap: Map<string, string>,
   sourceId: string
@@ -319,7 +320,7 @@ async function upsertPodcasts(
             appleId: podcast.appleId,
             podcastIndexId: podcast.podcastIndexId,
             categories: categoryNames,
-            appleMetadata: podcast.appleMetadata ?? undefined,
+            appleMetadata: (podcast.appleMetadata ?? undefined) as any,
             language: "en",
             source: sourceId,
           };
@@ -337,11 +338,11 @@ async function upsertPodcasts(
           upsertedIds.push(upserted.id);
         }
       } catch (err) {
-        console.warn(`[catalog-refresh] [${sourceId}] Failed to upsert "${podcast.title}":`, err);
+        console.warn(JSON.stringify({ level: "warn", action: "catalog_refresh_upsert_failed", sourceId, title: podcast.title, error: err instanceof Error ? err.message : String(err), ts: new Date().toISOString() }));
       }
     }
 
-    console.log(`[catalog-refresh] [${sourceId}] Upserted ${Math.min(i + CHUNK, discovered.length)}/${discovered.length} podcasts`);
+    console.log(JSON.stringify({ level: "info", action: "catalog_refresh_upsert_progress", sourceId, progress: Math.min(i + CHUNK, discovered.length), total: discovered.length, ts: new Date().toISOString() }));
 
     // Batch PodcastCategory joins per chunk
     const joinRecords: { podcastId: string; categoryId: string }[] = [];
@@ -382,7 +383,7 @@ async function upsertPodcasts(
   return upsertedIds;
 }
 
-async function markPendingDeletion(prisma: any, chartPodcastIds: string[]): Promise<void> {
+async function markPendingDeletion(prisma: PrismaClient, chartPodcastIds: string[]): Promise<void> {
   const chartIdSet = new Set(chartPodcastIds);
   const activePodcasts = await prisma.podcast.findMany({
     where: { status: "active" },
@@ -405,7 +406,7 @@ async function markPendingDeletion(prisma: any, chartPodcastIds: string[]): Prom
   }
 }
 
-async function queueFeedRefresh(env: Env, prisma: any, podcastIds: string[], refreshJobId?: string): Promise<void> {
+async function queueFeedRefresh(env: Env, prisma: PrismaClient, podcastIds: string[], refreshJobId?: string): Promise<void> {
   if (podcastIds.length === 0) return;
   const { getConfig: gc } = await import("../lib/config");
   const { sendBatchedFeedRefresh } = await import("../lib/queue-helpers");

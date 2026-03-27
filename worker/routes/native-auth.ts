@@ -247,7 +247,7 @@ routes.post("/native", async (c) => {
         error: err.message,
       })
     );
-    return c.json({ error: err.message }, 500);
+    return c.json({ error: "Authentication failed" }, 500);
   }
 });
 

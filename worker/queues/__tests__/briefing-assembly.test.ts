@@ -12,6 +12,7 @@ const mockLogger = vi.hoisted(() => ({
 }));
 vi.mock("../../lib/logger", () => ({
   createPipelineLogger: vi.fn().mockResolvedValue(mockLogger),
+  logDbError: vi.fn(() => () => {}),
 }));
 
 const mockPrisma = createMockPrisma();

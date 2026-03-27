@@ -11,6 +11,8 @@ import { PrismaClient } from "../../src/generated/prisma";
  * @param hyperdrive - Cloudflare Hyperdrive binding for connection pooling
  * @returns A fresh PrismaClient instance. Caller must disconnect via `ctx.waitUntil(prisma.$disconnect())`.
  */
+export type { PrismaClient };
+
 export function createPrismaClient(hyperdrive: Hyperdrive): PrismaClient {
   const adapter = new PrismaPg({
     connectionString: hyperdrive.connectionString,

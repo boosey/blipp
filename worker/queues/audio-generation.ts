@@ -1,5 +1,5 @@
 import { createPrismaClient } from "../lib/db";
-import { createPipelineLogger } from "../lib/logger";
+import { createPipelineLogger, logDbError } from "../lib/logger";
 import { checkStageEnabled } from "../lib/queue-helpers";
 import { generateSpeech } from "../lib/tts";
 import { loadPresetConfig, extractProviderConfig } from "../lib/voice-presets";
@@ -48,6 +48,8 @@ export async function handleAudioGeneration(
       let audioModel: string | undefined;
       let audioProvider: string | undefined;
       let narrativeLength: number | undefined;
+      let modelChainAttempts = 0;
+      let modelChainLength = 0;
 
       try {
         // Load job to get requestId
@@ -148,7 +150,9 @@ export async function handleAudioGeneration(
         let audio: ArrayBuffer | undefined;
         let ttsUsage: { model: string; inputTokens: number; outputTokens: number; cost: number | null } | undefined;
         let successAttemptIndex = 0;
+        modelChainLength = modelChain.length;
         for (let i = 0; i < modelChain.length; i++) {
+          modelChainAttempts = i + 1;
           const resolved = modelChain[i];
           const tier = ["primary", "secondary", "tertiary"][i];
           const tts = getTtsProviderImpl(resolved.provider);
@@ -386,17 +390,7 @@ export async function handleAudioGeneration(
               durationMs: Date.now() - startTime,
             },
           })
-          .catch((dbErr: unknown) => {
-            console.error(JSON.stringify({
-              level: "error",
-              action: "error_path_db_write_failed",
-              stage: "tts",
-              target: "pipelineStep",
-              jobId,
-              error: dbErr instanceof Error ? dbErr.message : String(dbErr),
-              ts: new Date().toISOString(),
-            }));
-          });
+          .catch(logDbError("tts", "pipelineStep", jobId));
 
         // Try to record the error on the clip
         const failedClip = await prisma.clip.findFirst({
@@ -416,17 +410,7 @@ export async function handleAudioGeneration(
               },
             })
         )
-          .catch((dbErr: unknown) => {
-            console.error(JSON.stringify({
-              level: "error",
-              action: "error_path_db_write_failed",
-              stage: "tts",
-              target: "clip",
-              jobId,
-              error: dbErr instanceof Error ? dbErr.message : String(dbErr),
-              ts: new Date().toISOString(),
-            }));
-          });
+          .catch(logDbError("tts", "clip", jobId));
 
         // Write error event — step may not exist if creation itself failed
         try {
@@ -466,8 +450,8 @@ export async function handleAudioGeneration(
             rawResponse: err.rawResponse,
             requestDurationMs: err.requestDurationMs,
             timestamp: new Date(),
-            retryCount: 0,
-            maxRetries: 0,
+            retryCount: modelChainAttempts - 1,
+            maxRetries: modelChainLength - 1,
             willRetry: false,
             rateLimitRemaining: err.rateLimitRemaining,
             rateLimitResetAt: err.rateLimitResetAt,
@@ -494,6 +478,13 @@ export async function handleAudioGeneration(
           });
         }
 
+        if (err instanceof AiProviderError) {
+          const { severity } = classifyAiError(err, err.httpStatus, err.rawResponse);
+          if (severity === "transient") {
+            msg.retry();
+            continue;
+          }
+        }
         msg.ack();
       }
     }
