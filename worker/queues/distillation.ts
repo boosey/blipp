@@ -68,14 +68,15 @@ export async function handleDistillation(
             startedAt,
           },
         });
+        const stepId = step!.id;
 
-        await writeEvent(prisma, step.id, "INFO", "Checking cache for completed distillation");
+        await writeEvent(prisma, stepId, "INFO", "Checking cache for completed distillation");
 
         // Cache check: claims WorkProduct already exists in R2
         const claimsR2Key = wpKey({ type: "CLAIMS", episodeId });
         const existingClaims = await env.R2.head(claimsR2Key);
         if (existingClaims) {
-          await writeEvent(prisma, step.id, "INFO", "Cache hit — claims exist in R2, skipping");
+          await writeEvent(prisma, stepId, "INFO", "Cache hit — claims exist in R2, skipping");
           log.debug("cache_hit", { episodeId, jobId });
 
           // Ensure WorkProduct index row exists for UI
@@ -94,7 +95,7 @@ export async function handleDistillation(
           }
 
           await prisma.pipelineStep.update({
-            where: { id: step.id },
+            where: { id: stepId },
             data: {
               status: "SKIPPED",
               cached: true,
@@ -119,11 +120,11 @@ export async function handleDistillation(
         const transcriptR2Key = wpKey({ type: "TRANSCRIPT", episodeId });
         const transcriptData = await getWorkProduct(env.R2, transcriptR2Key);
         if (!transcriptData) {
-          await writeEvent(prisma, step.id, "ERROR", "No transcript in R2 — transcription stage must run first");
+          await writeEvent(prisma, stepId, "ERROR", "No transcript in R2 — transcription stage must run first");
           throw new Error("No transcript available — run transcription first");
         }
         const transcript = new TextDecoder().decode(transcriptData);
-        await writeEvent(prisma, step.id, "INFO", `Loaded transcript from R2 (${transcript.length} bytes)`, {
+        await writeEvent(prisma, stepId, "INFO", `Loaded transcript from R2 (${transcript.length} bytes)`, {
           transcriptBytes: transcript.length,
         });
 
@@ -140,7 +141,7 @@ export async function handleDistillation(
           throw new Error("No distillation model configured — configure at least a primary in Admin > AI Models");
         }
 
-        await writeEvent(prisma, step.id, "INFO", `Model chain: ${modelChain.map((m, i) => `${["primary", "secondary", "tertiary"][i]}=${m.provider}/${m.providerModelId}`).join(", ")}`, {
+        await writeEvent(prisma, stepId, "INFO", `Model chain: ${modelChain.map((m, i) => `${["primary", "secondary", "tertiary"][i]}=${m.provider}/${m.providerModelId}`).join(", ")}`, {
           chainLength: modelChain.length,
         });
 
@@ -156,7 +157,7 @@ export async function handleDistillation(
           distillProvider = resolved.provider;
           distillModel = resolved.providerModelId;
 
-          await writeEvent(prisma, step.id, "INFO", `Sending transcript to ${tier}: ${llm.name} (${resolved.providerModelId}) for claim extraction`, {
+          await writeEvent(prisma, stepId, "INFO", `Sending transcript to ${tier}: ${llm.name} (${resolved.providerModelId}) for claim extraction`, {
             tier,
             transcriptBytes: transcript.length,
             model: resolved.providerModelId,
@@ -171,7 +172,7 @@ export async function handleDistillation(
             claims = result.claims;
             claimsUsage = result.usage;
 
-            await writeEvent(prisma, step.id, "INFO", `Extracted ${claims.length} claims via ${tier} ${llm.name}`, {
+            await writeEvent(prisma, stepId, "INFO", `Extracted ${claims.length} claims via ${tier} ${llm.name}`, {
               tier,
               claimCount: claims.length,
               attemptNumber: i + 1,
@@ -183,7 +184,7 @@ export async function handleDistillation(
             const httpStatus = (chainErr as any)?.httpStatus;
             recordFailure(resolved.provider);
 
-            await writeEvent(prisma, step.id, "WARN", `${tier} failed: ${llm.name} — ${errMsg.slice(0, 300)}`, {
+            await writeEvent(prisma, stepId, "WARN", `${tier} failed: ${llm.name} — ${errMsg.slice(0, 300)}`, {
               tier,
               provider: resolved.provider,
               model: resolved.providerModelId,
@@ -200,7 +201,7 @@ export async function handleDistillation(
           }
         }
 
-        await writeEvent(prisma, step.id, "DEBUG", `Model: ${claimsUsage!.model}`, {
+        await writeEvent(prisma, stepId, "DEBUG", `Model: ${claimsUsage!.model}`, {
           inputTokens: claimsUsage!.inputTokens,
           outputTokens: claimsUsage!.outputTokens,
           cost: claimsUsage!.cost,
@@ -224,12 +225,12 @@ export async function handleDistillation(
           update: { sizeBytes, metadata: { claimCount: claims!.length } },
           create: { type: "CLAIMS", episodeId, r2Key, sizeBytes, metadata: { claimCount: claims!.length } },
         });
-        await writeEvent(prisma, step.id, "INFO", "Saved claims to R2", { r2Key, claimCount: claims!.length });
+        await writeEvent(prisma, stepId, "INFO", "Saved claims to R2", { r2Key, claimCount: claims!.length });
 
         // Mark step COMPLETED
         const completedAt = new Date();
         await prisma.pipelineStep.update({
-          where: { id: step.id },
+          where: { id: stepId },
           data: {
             status: "COMPLETED",
             completedAt,
