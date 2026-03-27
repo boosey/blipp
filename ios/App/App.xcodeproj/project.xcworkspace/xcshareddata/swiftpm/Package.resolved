@@ -1,5 +1,5 @@
 {
-  "originHash" : "cf07fc6cccb13ee4d35930ac9fa1a92772f3dbbac4e6e7142e50e295f57c540e",
+  "originHash" : "04ba0c4b4e7d674587947bea5194343b6de6e06b3d0b3471a8fb84f302e3375c",
   "pins" : [
     {
       "identity" : "alamofire",
@@ -89,15 +89,6 @@
       "state" : {
         "revision" : "540318ecedd63d883069ae7f1ed811a2df00b6ac",
         "version" : "2.4.0"
-      }
-    },
-    {
-      "identity" : "swift-package-manager-google-interactive-media-ads-ios",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/googleads/swift-package-manager-google-interactive-media-ads-ios",
-      "state" : {
-        "branch" : "main",
-        "revision" : "9bd145421334f4c3a4650b2478b21a0aa842bffb"
       }
     }
   ],
