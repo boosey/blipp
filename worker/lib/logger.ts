@@ -27,7 +27,7 @@ export interface PipelineLogger {
  */
 export function logDbError(stage: string, target: string, jobId: string) {
   return (dbErr: unknown) => {
-    console.error(JSON.stringify({
+    console.error({
       level: "error",
       action: "error_path_db_write_failed",
       stage,
@@ -35,7 +35,7 @@ export function logDbError(stage: string, target: string, jobId: string) {
       jobId,
       error: dbErr instanceof Error ? (dbErr as Error).message : String(dbErr),
       ts: new Date().toISOString(),
-    }));
+    });
   };
 }
 
@@ -49,11 +49,11 @@ export async function createPipelineLogger(opts: LoggerOptions): Promise<Pipelin
   if (opts.correlationId) base.correlationId = opts.correlationId;
 
   function emit(level: string, action: string, data: Record<string, unknown>) {
-    const line = JSON.stringify({ level, ...base, action, ...data, ts: new Date().toISOString() });
+    const entry = { level, ...base, action, ...data, ts: new Date().toISOString() };
     if (level === "error") {
-      console.error(line);
+      console.error(entry);
     } else {
-      console.log(line);
+      console.log(entry);
     }
   }
 
