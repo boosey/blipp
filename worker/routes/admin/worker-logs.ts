@@ -17,7 +17,7 @@ const DEFAULT_TEMPLATES = [
       limit: 200,
       parameters: {
         filters: [
-          { key: "requestId", operation: "eq", value: "{{requestId}}" },
+          { key: "requestId", operation: "eq", value: "{{requestId}}", type: "string" },
         ],
       },
     },

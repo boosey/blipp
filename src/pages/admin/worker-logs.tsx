@@ -166,6 +166,7 @@ export default function AdminWorkerLogs() {
       key: f.field,
       operation: f.operator,
       value: f.value,
+      type: "string" as const,
     }));
     return {
       filters: conditions,
