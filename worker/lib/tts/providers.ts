@@ -81,7 +81,7 @@ const GroqTtsProvider: TtsProvider = {
       body: JSON.stringify({
         model: providerModelId,
         input: text,
-        voice: voice || "austin",
+        voice: voice || "tara",
         response_format: "wav",
       }),
     });
@@ -116,13 +116,18 @@ const CloudflareTtsProvider: TtsProvider = {
     try {
       const result = (await env.AI.run(providerModelId as any, {
         text,
-        speaker: voice || "angus",
+        speaker: voice || "luna",
       })) as any;
 
-      // CF TTS models return audio data directly or in a structured response
-      const audio: ArrayBuffer = result instanceof ArrayBuffer
-        ? result
-        : result?.audio ?? new ArrayBuffer(0);
+      // CF Workers AI TTS models return a ReadableStream
+      let audio: ArrayBuffer;
+      if (result instanceof ReadableStream) {
+        audio = await new Response(result).arrayBuffer();
+      } else if (result instanceof ArrayBuffer) {
+        audio = result;
+      } else {
+        audio = result?.audio ?? new ArrayBuffer(0);
+      }
       return { audio, contentType: "audio/mpeg" };
     } catch (err) {
       throw new AiProviderError({

@@ -166,8 +166,8 @@ async function main() {
             "Maintain a steady, engaging pace. Pause naturally between topics.",
           speed: 1.0,
         },
-        groq: { voice: "austin" },
-        cloudflare: {},
+        groq: { voice: "tara" },
+        cloudflare: { voice: "luna" },
       },
     },
   });
@@ -191,8 +191,8 @@ async function main() {
             "Keep the pace lively but clear. Add natural enthusiasm when introducing new topics.",
           speed: 1.05,
         },
-        groq: { voice: "austin" },
-        cloudflare: {},
+        groq: { voice: "jess" },
+        cloudflare: { voice: "electra" },
       },
       voiceCharacteristics: { gender: "female", tone: "energetic", pace: "fast" },
     },
@@ -216,8 +216,8 @@ async function main() {
             "Convey gravitas without being monotone.",
           speed: 0.95,
         },
-        groq: { voice: "austin" },
-        cloudflare: {},
+        groq: { voice: "leo" },
+        cloudflare: { voice: "orpheus" },
       },
       voiceCharacteristics: { gender: "male", tone: "authoritative", pace: "slow" },
     },
@@ -241,34 +241,36 @@ async function main() {
             "Keep it casual and engaging.",
           speed: 1.0,
         },
-        groq: { voice: "austin" },
-        cloudflare: {},
+        groq: { voice: "leah" },
+        cloudflare: { voice: "thalia" },
       },
       voiceCharacteristics: { gender: "female", tone: "conversational", pace: "medium" },
     },
   });
 
-  // ── Backfill: add groq config to presets missing it ──
+  // ── Backfill: add groq/cloudflare config to presets missing them ──
 
-  const presetsToBackfill = await prisma.voicePreset.findMany({
-    where: {
-      OR: [
-        { config: { path: ["groq"], equals: undefined as any } },
-        { config: { path: ["groq"], equals: {} } },
-      ],
-    },
-  });
+  const presetsToBackfill = await prisma.voicePreset.findMany({});
 
   for (const preset of presetsToBackfill) {
     const cfg = preset.config as Record<string, unknown>;
-    if (!cfg.groq || (typeof cfg.groq === "object" && Object.keys(cfg.groq as any).length === 0)) {
+    const groqCfg = cfg.groq as Record<string, unknown> | undefined;
+    const cfCfg = cfg.cloudflare as Record<string, unknown> | undefined;
+    const needsGroq = !groqCfg || Object.keys(groqCfg).length === 0 || (groqCfg as any).voice === "austin";
+    const needsCf = !cfCfg || Object.keys(cfCfg).length === 0;
+
+    if (needsGroq || needsCf) {
       await prisma.voicePreset.update({
         where: { id: preset.id },
         data: {
-          config: { ...cfg, groq: { voice: "austin" } },
+          config: {
+            ...cfg,
+            ...(needsGroq && { groq: { voice: "tara" } }),
+            ...(needsCf && { cloudflare: { voice: "luna" } }),
+          },
         },
       });
-      console.log(`  Backfilled groq voice for preset "${preset.name}"`);
+      console.log(`  Backfilled voice config for preset "${preset.name}"`);
     }
   }
 
