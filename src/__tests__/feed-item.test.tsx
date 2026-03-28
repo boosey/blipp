@@ -36,7 +36,7 @@ const mockItem: FeedItem = {
   durationTier: 5,
   createdAt: "2026-03-16T00:00:00Z",
   errorMessage: null,
-  podcast: { id: "p1", title: "Test Pod", imageUrl: null },
+  podcast: { id: "p1", title: "Test Pod", imageUrl: null, podcastIndexId: null },
   episode: {
     id: "e1",
     title: "Test Episode",

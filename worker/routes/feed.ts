@@ -73,7 +73,7 @@ feed.get("/", async (c) => {
       take: limit,
       skip: offset,
       include: {
-        podcast: { select: { id: true, title: true, imageUrl: true } },
+        podcast: { select: { id: true, title: true, imageUrl: true, podcastIndexId: true } },
         episode: { select: { id: true, title: true, publishedAt: true, durationSeconds: true } },
         briefing: {
           include: {
@@ -163,7 +163,7 @@ feed.get("/shared/:briefingId", async (c) => {
   let feedItem = await prisma.feedItem.findFirst({
     where: { userId: user.id, briefingId },
     include: {
-      podcast: { select: { id: true, title: true, imageUrl: true } },
+      podcast: { select: { id: true, title: true, imageUrl: true, podcastIndexId: true } },
       episode: { select: { id: true, title: true, publishedAt: true, durationSeconds: true } },
       briefing: {
         include: {
@@ -216,7 +216,7 @@ feed.get("/shared/:briefingId", async (c) => {
     feedItem = await prisma.feedItem.findFirst({
       where: { userId: user.id, requestId: request.id },
       include: {
-        podcast: { select: { id: true, title: true, imageUrl: true } },
+        podcast: { select: { id: true, title: true, imageUrl: true, podcastIndexId: true } },
         episode: { select: { id: true, title: true, publishedAt: true, durationSeconds: true } },
         briefing: {
           include: {
@@ -259,7 +259,7 @@ feed.get("/:id", async (c) => {
   const item = await prisma.feedItem.findFirst({
     where: { id: feedItemId, userId: user.id },
     include: {
-      podcast: { select: { id: true, title: true, imageUrl: true } },
+      podcast: { select: { id: true, title: true, imageUrl: true, podcastIndexId: true } },
       episode: { select: { id: true, title: true, publishedAt: true, durationSeconds: true } },
       briefing: {
         include: {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Play, Pause, RotateCcw, RotateCw, ChevronDown, Share2 } from "lucide-react";
+import { Play, Pause, RotateCcw, RotateCw, ChevronDown, Share2, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import {
   Sheet,
@@ -217,6 +217,17 @@ export function PlayerSheet({
               >
                 <Share2 className="w-4 h-4" />
               </button>
+              {currentItem?.podcast.podcastIndexId && (
+                <a
+                  href={`https://podcastindex.org/podcast/${currentItem.podcast.podcastIndexId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-2 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                  aria-label="Listen to original episode"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                </a>
+              )}
             </div>
           )}
         </div>

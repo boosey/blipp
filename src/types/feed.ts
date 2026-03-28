@@ -11,6 +11,7 @@ export interface FeedItem {
     id: string;
     title: string;
     imageUrl: string | null;
+    podcastIndexId: string | null;
   };
   episode: {
     id: string;

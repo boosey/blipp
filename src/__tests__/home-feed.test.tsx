@@ -69,7 +69,7 @@ const makeItem = (id: string, overrides: Partial<FeedItem> = {}): FeedItem => ({
   durationTier: 5,
   createdAt: new Date().toISOString(),
   errorMessage: null,
-  podcast: { id: "p1", title: "Test Pod", imageUrl: null },
+  podcast: { id: "p1", title: "Test Pod", imageUrl: null, podcastIndexId: null },
   episode: {
     id: `e-${id}`,
     title: `Episode ${id}`,
