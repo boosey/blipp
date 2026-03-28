@@ -179,7 +179,21 @@ export function PlayerSheet({
         </SheetDescription>
 
         {/* Artwork + Actions row */}
-        <div className="flex items-start w-full max-w-sm mt-1 gap-3">
+        <div className="flex items-center w-full max-w-sm mt-1 gap-3">
+          {/* Left action — listen to original */}
+          <div className="w-10 flex justify-center">
+            {!inAd && currentItem?.podcast.podcastIndexId ? (
+              <a
+                href={`https://podcastindex.org/podcast/${currentItem.podcast.podcastIndexId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-2 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                aria-label="Listen to original episode"
+              >
+                <ExternalLink className="w-4 h-4" />
+              </a>
+            ) : null}
+          </div>
           {/* Artwork */}
           <div className="flex-1 flex justify-center">
             {inAd ? (
@@ -206,9 +220,9 @@ export function PlayerSheet({
               </button>
             )}
           </div>
-          {/* Side actions — thumbs + share */}
+          {/* Right actions — thumbs + share */}
           {!inAd && (
-            <div className="flex flex-col items-center gap-1 pt-2">
+            <div className="flex items-center gap-1">
               <ThumbButtons vote={episodeVote} onVote={handleEpisodeVote} size="md" />
               <button
                 onClick={handleShare}
@@ -217,17 +231,6 @@ export function PlayerSheet({
               >
                 <Share2 className="w-4 h-4" />
               </button>
-              {currentItem?.podcast.podcastIndexId && (
-                <a
-                  href={`https://podcastindex.org/podcast/${currentItem.podcast.podcastIndexId}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="p-2 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                  aria-label="Listen to original episode"
-                >
-                  <ExternalLink className="w-4 h-4" />
-                </a>
-              )}
             </div>
           )}
         </div>
