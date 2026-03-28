@@ -5,6 +5,7 @@ import { AiProviderError } from "../ai-errors";
 /** Provider-agnostic TTS synthesis result. */
 export interface TtsResult {
   audio: ArrayBuffer;
+  contentType: string;
 }
 
 /**
@@ -46,7 +47,7 @@ const OpenAITtsProvider: TtsProvider = {
       });
 
       const audio = await response.arrayBuffer();
-      return { audio };
+      return { audio, contentType: "audio/mpeg" };
     } catch (err) {
       const status = (err as any)?.status ?? (err as any)?.statusCode;
       throw new AiProviderError({
@@ -81,7 +82,7 @@ const GroqTtsProvider: TtsProvider = {
         model: providerModelId,
         input: text,
         voice: voice || "austin",
-        response_format: "mp3",
+        response_format: "wav",
       }),
     });
 
@@ -98,7 +99,7 @@ const GroqTtsProvider: TtsProvider = {
     }
 
     const audio = await resp.arrayBuffer();
-    return { audio };
+    return { audio, contentType: "audio/wav" };
   },
 };
 
@@ -110,18 +111,19 @@ const CloudflareTtsProvider: TtsProvider = {
   name: "Cloudflare Workers AI",
   provider: "cloudflare",
 
-  async synthesize(text, _voice, providerModelId, _instructions, env) {
+  async synthesize(text, voice, providerModelId, _instructions, env) {
     const start = Date.now();
     try {
       const result = (await env.AI.run(providerModelId as any, {
         text,
+        speaker: voice || "angus",
       })) as any;
 
       // CF TTS models return audio data directly or in a structured response
       const audio: ArrayBuffer = result instanceof ArrayBuffer
         ? result
         : result?.audio ?? new ArrayBuffer(0);
-      return { audio };
+      return { audio, contentType: "audio/mpeg" };
     } catch (err) {
       throw new AiProviderError({
         message: `Cloudflare TTS error: ${err instanceof Error ? err.message : String(err)}`,

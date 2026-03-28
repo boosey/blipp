@@ -258,7 +258,7 @@ voicePresetsRoutes.post("/preview", async (c) => {
   }
 
   const tts = getTtsProviderImpl(body.provider);
-  const { audio } = await generateSpeech(
+  const { audio, contentType } = await generateSpeech(
     tts,
     text,
     body.voice,
@@ -271,7 +271,7 @@ voicePresetsRoutes.post("/preview", async (c) => {
 
   return c.body(audio, {
     headers: {
-      "Content-Type": "audio/mpeg",
+      "Content-Type": contentType,
       "Content-Length": String(audio.byteLength),
     },
   });

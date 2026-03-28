@@ -148,6 +148,7 @@ export async function handleAudioGeneration(
 
         // Try each model in the chain until one succeeds
         let audio: ArrayBuffer | undefined;
+        let audioContentType: string | undefined;
         let ttsUsage: { model: string; inputTokens: number; outputTokens: number; cost: number | null; audioSeconds?: number; charCount?: number } | undefined;
         let successAttemptIndex = 0;
         modelChainLength = modelChain.length;
@@ -187,10 +188,11 @@ export async function handleAudioGeneration(
                   tts, narrative, voiceConfig.voice, resolved.providerModelId, env,
                   resolved.pricing, voiceConfig.instructions, voiceConfig.speed
                 );
-                return { audio: result.audio, usage: result.usage };
+                return { audio: result.audio, contentType: result.contentType, usage: result.usage };
               }
 
               const audioChunks: ArrayBuffer[] = [];
+              let chunkContentType = "audio/mpeg";
               let totalInputTokens = 0;
               let totalCost: number | null = 0;
               let totalAudioSeconds = 0;
@@ -205,6 +207,7 @@ export async function handleAudioGeneration(
                   resolved.pricing, voiceConfig.instructions, voiceConfig.speed
                 );
                 audioChunks.push(result.audio);
+                chunkContentType = result.contentType;
                 totalInputTokens += result.usage.inputTokens;
                 totalCost = totalCost !== null && result.usage.cost !== null
                   ? totalCost + result.usage.cost
@@ -219,6 +222,7 @@ export async function handleAudioGeneration(
               const silence = createSilenceFrame();
               return {
                 audio: concatenateAudioChunks(audioChunks, silence),
+                contentType: chunkContentType,
                 usage: { model: resolved.providerModelId, inputTokens: totalInputTokens, outputTokens: 0, cost: totalCost, audioSeconds: totalAudioSeconds, charCount: totalCharCount },
               };
             };
@@ -227,6 +231,7 @@ export async function handleAudioGeneration(
             try {
               const gen = await generateChunked(activeChunks);
               audio = gen.audio;
+              audioContentType = gen.contentType;
               ttsUsage = gen.usage;
             } catch (firstErr) {
               // Defensive re-chunk: if the provider rejected input as too long,
@@ -252,6 +257,7 @@ export async function handleAudioGeneration(
 
               const gen = await generateChunked(activeChunks);
               audio = gen.audio;
+              audioContentType = gen.contentType;
               ttsUsage = gen.usage;
             }
 
@@ -321,7 +327,7 @@ export async function handleAudioGeneration(
         if (existingClipForUpdate) {
           await prisma.clip.update({
             where: { id: existingClipForUpdate.id },
-            data: { status: "COMPLETED", audioKey, voiceDegraded: successAttemptIndex > 0 },
+            data: { status: "COMPLETED", audioKey, audioContentType, voiceDegraded: successAttemptIndex > 0 },
           });
           finalClipId = existingClipForUpdate.id;
         } else {
@@ -339,6 +345,7 @@ export async function handleAudioGeneration(
               voicePresetId: voicePresetId ?? null,
               status: "COMPLETED",
               audioKey,
+              audioContentType,
               voiceDegraded: successAttemptIndex > 0,
             },
           });

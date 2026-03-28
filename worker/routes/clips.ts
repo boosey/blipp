@@ -37,6 +37,12 @@ clips.get("/:episodeId/:durationTier", async (c) => {
     }
   }
 
+  // Look up clip to get content type
+  const clip = await prisma.clip.findFirst({
+    where: { episodeId, durationTier: parseInt(durationTier, 10) },
+    select: { audioContentType: true },
+  });
+
   // Try new WorkProduct path first, fall back to legacy path for pre-migration clips
   const wpPath = `wp/clip/${episodeId}/${durationTier}/default.mp3`;
   const legacyPath = `clips/${episodeId}/${durationTier}.mp3`;
@@ -50,7 +56,7 @@ clips.get("/:episodeId/:durationTier", async (c) => {
   }
 
   const headers: Record<string, string> = {
-    "Content-Type": "audio/mpeg",
+    "Content-Type": clip?.audioContentType || "audio/mpeg",
     "Content-Length": String(obj.size),
     // Audio clips are immutable — aggressive CDN caching (7 days + immutable)
     "Cache-Control": "public, max-age=604800, immutable",

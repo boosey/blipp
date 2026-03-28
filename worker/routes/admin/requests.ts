@@ -272,9 +272,19 @@ requestsRoutes.get("/work-product/:id/audio", async (c) => {
   const obj = await c.env.R2.get(wp.r2Key);
   if (!obj) return c.json({ error: "Audio not found in R2" }, 404);
 
+  // Resolve content type from associated clip if available
+  let contentType = "audio/mpeg";
+  if (wp.episodeId && wp.durationTier != null) {
+    const clip = await prisma.clip.findFirst({
+      where: { episodeId: wp.episodeId, durationTier: wp.durationTier },
+      select: { audioContentType: true },
+    });
+    if (clip?.audioContentType) contentType = clip.audioContentType;
+  }
+
   return new Response(obj.body, {
     headers: {
-      "Content-Type": "audio/mpeg",
+      "Content-Type": contentType,
       "Content-Length": String(obj.size),
       "Cache-Control": "private, max-age=3600",
     },

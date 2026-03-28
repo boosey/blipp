@@ -8,6 +8,7 @@ function createMockTtsProvider(audioBuffer: ArrayBuffer): TtsProvider {
     provider: "mock",
     synthesize: vi.fn().mockResolvedValue({
       audio: audioBuffer,
+      contentType: "audio/mpeg",
     } satisfies TtsResult),
   };
 }

@@ -149,7 +149,7 @@ briefings.get("/:id/audio", async (c) => {
   const briefing = await prisma.briefing.findFirst({
     where: { id: briefingId, userId: user.id },
     include: {
-      clip: { select: { audioKey: true } },
+      clip: { select: { audioKey: true, audioContentType: true } },
     },
   });
 
@@ -167,7 +167,7 @@ briefings.get("/:id/audio", async (c) => {
   }
 
   const headers: Record<string, string> = {
-    "Content-Type": "audio/mpeg",
+    "Content-Type": briefing.clip.audioContentType || "audio/mpeg",
     "Content-Length": String(clipObj.size),
     "Cache-Control": "public, max-age=604800, immutable",
     "Accept-Ranges": "bytes",

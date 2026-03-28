@@ -30,7 +30,7 @@ export async function generateSpeech(
   pricing: ModelPricing | null = null,
   instructions: string = DEFAULT_INSTRUCTIONS,
   speed?: number
-): Promise<{ audio: ArrayBuffer; usage: AiUsage }> {
+): Promise<{ audio: ArrayBuffer; contentType: string; usage: AiUsage }> {
   const result = await tts.synthesize(
     text,
     voice,
@@ -55,5 +55,5 @@ export async function generateSpeech(
     charCount: text.length,
   };
 
-  return { audio: result.audio, usage };
+  return { audio: result.audio, contentType: result.contentType, usage };
 }

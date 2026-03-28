@@ -87,7 +87,7 @@ voicePresets.post("/:id/preview", async (c) => {
 
   const voiceConfig = extractProviderConfig(presetConfig, resolved.provider);
   const tts = getTtsProviderImpl(resolved.provider);
-  const { audio } = await generateSpeech(
+  const { audio, contentType } = await generateSpeech(
     tts,
     PREVIEW_TEXT,
     voiceConfig.voice,
@@ -100,7 +100,7 @@ voicePresets.post("/:id/preview", async (c) => {
 
   return c.body(audio, {
     headers: {
-      "Content-Type": "audio/mpeg",
+      "Content-Type": contentType,
       "Content-Length": String(audio.byteLength),
     },
   });
