@@ -128,6 +128,7 @@ const sidebarEntries: SidebarEntry[] = [
       { path: "feature-flags", label: "Feature Flags", icon: Flag },
       { path: "api-keys", label: "API Keys", icon: Key },
       { path: "audit-log", label: "Audit Log", icon: ScrollText },
+      { path: "worker-logs", label: "Worker Logs", icon: ScrollText },
       { path: "scheduled-jobs", label: "Scheduled Jobs", icon: Clock },
       { path: "system-settings", label: "System", icon: Settings2 },
     ],

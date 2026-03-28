@@ -40,6 +40,7 @@ const ModelRegistry = lazy(() => import("./pages/admin/model-registry"));
 const AdminApiKeys = lazy(() => import("./pages/admin/api-keys"));
 const AdminAuditLog = lazy(() => import("./pages/admin/audit-log"));
 const AdminAiErrors = lazy(() => import("./pages/admin/ai-errors"));
+const AdminWorkerLogs = lazy(() => import("./pages/admin/worker-logs"));
 const AdminAds = lazy(() => import("./pages/admin/ads"));
 const AdminRecommendations = lazy(() => import("./pages/admin/recommendations"));
 const CatalogDiscovery = lazy(() => import("./pages/admin/catalog-discovery"));
@@ -149,6 +150,7 @@ export default function App() {
         <Route path="api-keys" element={<Suspense fallback={<AdminLoading />}><AdminApiKeys /></Suspense>} />
         <Route path="audit-log" element={<Suspense fallback={<AdminLoading />}><AdminAuditLog /></Suspense>} />
         <Route path="ai-errors" element={<Suspense fallback={<AdminLoading />}><AdminAiErrors /></Suspense>} />
+        <Route path="worker-logs" element={<Suspense fallback={<AdminLoading />}><AdminWorkerLogs /></Suspense>} />
         <Route path="ads" element={<Suspense fallback={<AdminLoading />}><AdminAds /></Suspense>} />
         <Route path="recommendations" element={<Suspense fallback={<AdminLoading />}><AdminRecommendations /></Suspense>} />
         <Route path="scheduled-jobs" element={<Suspense fallback={<AdminLoading />}><ScheduledJobs /></Suspense>} />

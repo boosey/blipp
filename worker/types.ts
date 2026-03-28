@@ -88,4 +88,8 @@ export type Env = {
   GITHUB_TOKEN?: string;
   /** Shared secret for server-to-server script auth (GH Actions, CI) */
   SCRIPT_TOKEN?: string;
+  /** Cloudflare API token for Workers Observability queries */
+  CF_API_TOKEN?: string;
+  /** Cloudflare account ID for API calls */
+  CF_ACCOUNT_ID?: string;
 };

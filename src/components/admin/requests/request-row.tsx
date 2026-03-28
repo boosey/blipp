@@ -1,4 +1,5 @@
 import React from "react";
+import { Link } from "react-router-dom";
 import {
   ChevronDown,
   ChevronRight,
@@ -143,6 +144,13 @@ export function RequestRow({
             >
               {request.id}
             </code>
+            <Link
+              to={`/admin/worker-logs?template=briefing-request-logs&requestId=${request.id}`}
+              className="text-[10px] text-[#3B82F6] hover:underline"
+              onClick={(e) => e.stopPropagation()}
+            >
+              View Logs
+            </Link>
           </div>
           {/* Items summary */}
           {detailLoading ? (
