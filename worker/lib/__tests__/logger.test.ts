@@ -26,7 +26,7 @@ describe("createPipelineLogger", () => {
     log.info("transcript_fetched", { episodeId: "ep1", bytes: 5000 });
 
     expect(consoleSpy).toHaveBeenCalledTimes(1);
-    const parsed = JSON.parse(consoleSpy.mock.calls[0][0]);
+    const parsed = consoleSpy.mock.calls[0][0];
     expect(parsed).toMatchObject({
       level: "info",
       stage: "transcription",
@@ -43,7 +43,7 @@ describe("createPipelineLogger", () => {
     log.error("claude_api_failed", { episodeId: "ep2" }, err);
 
     expect(errorSpy).toHaveBeenCalledTimes(1);
-    const parsed = JSON.parse(errorSpy.mock.calls[0][0]);
+    const parsed = errorSpy.mock.calls[0][0];
     expect(parsed).toMatchObject({
       level: "error",
       stage: "distillation",
@@ -58,7 +58,7 @@ describe("createPipelineLogger", () => {
     const log = await createPipelineLogger({ stage: "orchestrator", requestId: "req_abc", prisma: {} as any });
     log.info("request_evaluated", {});
 
-    const parsed = JSON.parse(consoleSpy.mock.calls[0][0]);
+    const parsed = consoleSpy.mock.calls[0][0];
     expect(parsed.requestId).toBe("req_abc");
   });
 
@@ -66,7 +66,7 @@ describe("createPipelineLogger", () => {
     const log = await createPipelineLogger({ stage: "feed-refresh", prisma: {} as any });
     log.info("batch_start", {});
 
-    const parsed = JSON.parse(consoleSpy.mock.calls[0][0]);
+    const parsed = consoleSpy.mock.calls[0][0];
     expect(parsed.requestId).toBeUndefined();
   });
 
@@ -84,7 +84,7 @@ describe("createPipelineLogger", () => {
     log.debug("idempotency_skip", { episodeId: "ep1" });
 
     expect(consoleSpy).toHaveBeenCalledTimes(1);
-    const parsed = JSON.parse(consoleSpy.mock.calls[0][0]);
+    const parsed = consoleSpy.mock.calls[0][0];
     expect(parsed.level).toBe("debug");
   });
 
@@ -102,7 +102,7 @@ describe("createPipelineLogger", () => {
     const log = await createPipelineLogger({ stage: "feed-refresh", prisma: {} as any });
     log.error("unexpected_error", {}, "string error");
 
-    const parsed = JSON.parse(errorSpy.mock.calls[0][0]);
+    const parsed = errorSpy.mock.calls[0][0];
     expect(parsed.error).toBe("string error");
     expect(parsed.stack).toBeUndefined();
   });
@@ -113,7 +113,7 @@ describe("createPipelineLogger", () => {
     elapsed();
 
     expect(consoleSpy).toHaveBeenCalledTimes(1);
-    const parsed = JSON.parse(consoleSpy.mock.calls[0][0]);
+    const parsed = consoleSpy.mock.calls[0][0];
     expect(parsed.action).toBe("tts_generation");
     expect(typeof parsed.durationMs).toBe("number");
     expect(parsed.durationMs).toBeGreaterThanOrEqual(0);
