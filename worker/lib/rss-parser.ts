@@ -87,8 +87,7 @@ export function parseRssFeed(xml: string): ParsedFeed {
       tagName === "item" || tagName === "podcast:transcript",
     // Some podcast feeds (e.g. with thousands of episodes) exceed the default
     // entity expansion limit of 1000. Raise it to handle large feeds safely.
-    processEntities: true,
-    entityExpansionLimit: 5000,
+    processEntities: { enabled: true, maxTotalExpansions: 5000 },
   });
 
   const parsed = parser.parse(xml);
