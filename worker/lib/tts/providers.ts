@@ -81,7 +81,7 @@ const GroqTtsProvider: TtsProvider = {
       body: JSON.stringify({
         model: providerModelId,
         input: text,
-        voice: voice || "tara",
+        voice: voice || "diana",
         response_format: "wav",
       }),
     });

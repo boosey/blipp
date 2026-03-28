@@ -166,7 +166,7 @@ async function main() {
             "Maintain a steady, engaging pace. Pause naturally between topics.",
           speed: 1.0,
         },
-        groq: { voice: "tara" },
+        groq: { voice: "diana" },
         cloudflare: { voice: "luna" },
       },
     },
@@ -191,7 +191,7 @@ async function main() {
             "Keep the pace lively but clear. Add natural enthusiasm when introducing new topics.",
           speed: 1.05,
         },
-        groq: { voice: "jess" },
+        groq: { voice: "autumn" },
         cloudflare: { voice: "electra" },
       },
       voiceCharacteristics: { gender: "female", tone: "energetic", pace: "fast" },
@@ -216,7 +216,7 @@ async function main() {
             "Convey gravitas without being monotone.",
           speed: 0.95,
         },
-        groq: { voice: "leo" },
+        groq: { voice: "daniel" },
         cloudflare: { voice: "orpheus" },
       },
       voiceCharacteristics: { gender: "male", tone: "authoritative", pace: "slow" },
@@ -241,7 +241,7 @@ async function main() {
             "Keep it casual and engaging.",
           speed: 1.0,
         },
-        groq: { voice: "leah" },
+        groq: { voice: "hannah" },
         cloudflare: { voice: "thalia" },
       },
       voiceCharacteristics: { gender: "female", tone: "conversational", pace: "medium" },
@@ -256,7 +256,8 @@ async function main() {
     const cfg = preset.config as Record<string, unknown>;
     const groqCfg = cfg.groq as Record<string, unknown> | undefined;
     const cfCfg = cfg.cloudflare as Record<string, unknown> | undefined;
-    const needsGroq = !groqCfg || Object.keys(groqCfg).length === 0 || (groqCfg as any).voice === "austin";
+    const invalidGroqVoices = ["austin", "tara", "jess", "leo", "leah"];
+    const needsGroq = !groqCfg || Object.keys(groqCfg).length === 0 || invalidGroqVoices.includes((groqCfg as any).voice);
     const needsCf = !cfCfg || Object.keys(cfCfg).length === 0;
 
     if (needsGroq || needsCf) {
@@ -265,7 +266,7 @@ async function main() {
         data: {
           config: {
             ...cfg,
-            ...(needsGroq && { groq: { voice: "tara" } }),
+            ...(needsGroq && { groq: { voice: "diana" } }),
             ...(needsCf && { cloudflare: { voice: "luna" } }),
           },
         },
