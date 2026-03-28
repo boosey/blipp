@@ -162,6 +162,8 @@ export async function generateNarrative(
     .replace("{{durationMinutes}}", String(durationMinutes))
     .replace("{{wpm}}", String(WORDS_PER_MINUTE))
     .replace("{{metadataBlock}}", metadataIntro as string)
+    .replace("{{podcastTitle}}", metadata?.podcastTitle ?? "")
+    .replace("{{episodeTitle}}", metadata?.episodeTitle ?? "")
     .replace("{{claimsLabel}}", hasExcerpts ? "CLAIMS AND EXCERPTS" : "CLAIMS")
     .replace("{{claimsJson}}", JSON.stringify(claims, null, 2));
 
