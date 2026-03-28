@@ -189,16 +189,18 @@ export default function AdminWorkerLogs() {
   }, [buildQuery, rawJsonEdited]);
 
   // Auto-execute on mount if template + variables present
+  // Must depend on variableValues so the query runs AFTER URL params are hydrated
   useEffect(() => {
     if (autoExecuted.current) return;
     if (!selectedTemplate) return;
     const hasVars = selectedTemplate.variables.length > 0;
     const hasValues = selectedTemplate.variables.some((v) => searchParams.get(v.name));
-    if (hasVars && hasValues) {
+    const varsHydrated = Object.keys(variableValues).length > 0;
+    if (hasVars && hasValues && varsHydrated) {
       autoExecuted.current = true;
       executeQuery();
     }
-  }, [selectedTemplate]);
+  }, [selectedTemplate, variableValues]);
 
   function resolveTimestamp(val: string): number {
     if (val === "now" || !val) return Date.now();
