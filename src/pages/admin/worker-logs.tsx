@@ -132,13 +132,32 @@ export default function AdminWorkerLogs() {
       try { return JSON.parse(rawJson); } catch { return {}; }
     }
     if (selectedTemplate) {
+      // First pass: string replacement for non-timestamp variables
       let jsonStr = JSON.stringify(selectedTemplate.query);
       for (const v of selectedTemplate.variables) {
+        if (v.type === "timestamp") continue;
         const val = variableValues[v.name] || v.default || "";
-        const resolved = resolveTimestamp(val);
-        jsonStr = jsonStr.replaceAll(`{{${v.name}}}`, resolved);
+        jsonStr = jsonStr.replaceAll(`{{${v.name}}}`, val);
       }
-      try { return JSON.parse(jsonStr); } catch { return {}; }
+      // Parse, then set timestamp values as numbers (not strings)
+      try {
+        const query = JSON.parse(jsonStr);
+        for (const v of selectedTemplate.variables) {
+          if (v.type !== "timestamp") continue;
+          const val = variableValues[v.name] || v.default || "";
+          const resolved = resolveTimestamp(val);
+          // Walk the query and replace any remaining "{{name}}" string with the number
+          const placeholder = `{{${v.name}}}`;
+          JSON.stringify(query, (_key, value) => {
+            if (value === placeholder) return resolved;
+            return value;
+          });
+          // Direct replacement for known timeframe location
+          if (query.timeframe?.from === placeholder) query.timeframe.from = resolved;
+          if (query.timeframe?.to === placeholder) query.timeframe.to = resolved;
+        }
+        return query;
+      } catch { return {}; }
     }
     // Build from filter rows
     const validFilters = filters.filter((f) => f.field && f.value);
@@ -174,17 +193,18 @@ export default function AdminWorkerLogs() {
     }
   }, [selectedTemplate]);
 
-  function resolveTimestamp(val: string): string {
-    if (!val) return val;
-    if (val === "now") return new Date().toISOString();
+  function resolveTimestamp(val: string): number {
+    if (val === "now" || !val) return Date.now();
     const relMatch = val.match(/^-(\d+)(m|h|d)$/);
     if (relMatch) {
       const n = parseInt(relMatch[1]);
       const unit = relMatch[2];
       const ms = unit === "m" ? n * 60000 : unit === "h" ? n * 3600000 : n * 86400000;
-      return new Date(Date.now() - ms).toISOString();
+      return Date.now() - ms;
     }
-    return val;
+    // Try parsing as date string
+    const parsed = new Date(val).getTime();
+    return isNaN(parsed) ? Date.now() : parsed;
   }
 
   async function executeQuery() {
