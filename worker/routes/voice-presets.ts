@@ -87,21 +87,27 @@ voicePresets.post("/:id/preview", async (c) => {
 
   const voiceConfig = extractProviderConfig(presetConfig, resolved.provider);
   const tts = getTtsProviderImpl(resolved.provider);
-  const { audio, contentType } = await generateSpeech(
-    tts,
-    PREVIEW_TEXT,
-    voiceConfig.voice,
-    resolved.providerModelId,
-    c.env,
-    resolved.pricing,
-    voiceConfig.instructions,
-    voiceConfig.speed,
-  );
+  try {
+    const { audio, contentType } = await generateSpeech(
+      tts,
+      PREVIEW_TEXT,
+      voiceConfig.voice,
+      resolved.providerModelId,
+      c.env,
+      resolved.pricing,
+      voiceConfig.instructions,
+      voiceConfig.speed,
+    );
 
-  return c.body(audio, {
-    headers: {
-      "Content-Type": contentType,
-      "Content-Length": String(audio.byteLength),
-    },
-  });
+    return c.body(audio, {
+      headers: {
+        "Content-Type": contentType,
+        "Content-Length": String(audio.byteLength),
+      },
+    });
+  } catch (err) {
+    console.error("[voice-preset-preview]", err);
+    const message = err instanceof Error ? err.message : String(err);
+    return c.json({ error: `TTS preview failed: ${message}` }, 500);
+  }
 });
