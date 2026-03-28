@@ -132,6 +132,7 @@ model User {
   recommendationProfile     UserRecommendationProfile?
   recommendationCache       RecommendationCache?
   recommendationDismissals  RecommendationDismissal[]
+  userEvents                UserEvent[]
 }
 
 // ── Podcast Favorites (interest signals for recommendations) ──
@@ -258,6 +259,7 @@ model Episode {
   votes            EpisodeVote[]
   benchmarkResults       SttBenchmarkResult[]
   claimsBenchmarkResults ClaimsBenchmarkResult[]
+  userEvents             UserEvent[]            @relation("UserEvents")
 
   @@unique([podcastId, guid])
   @@index([podcastId, publishedAt])
@@ -1042,4 +1044,22 @@ model EpisodeRefreshError {
 
   @@index([jobId])
   @@index([jobId, phase])
+}
+
+// ── User Analytics Events ──
+
+model UserEvent {
+  id        String   @id @default(cuid())
+  userId    String
+  event     String   // e.g. "original_click"
+  episodeId String?
+  podcastId String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  episode Episode? @relation("UserEvents", fields: [episodeId], references: [id], onDelete: SetNull)
+
+  @@index([userId, event, createdAt])
+  @@index([event, createdAt])
 }

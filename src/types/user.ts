@@ -21,6 +21,7 @@ export interface EpisodeSummary {
   description: string | null;
   publishedAt: string;
   durationSeconds: number | null;
+  audioUrl: string;
   userVote: number; // 1 = up, -1 = down, 0 = none
   blippStatus: { status: "PENDING" | "PROCESSING" | "READY" | "FAILED"; listened: boolean } | null;
 }

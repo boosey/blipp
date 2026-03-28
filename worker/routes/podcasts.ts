@@ -765,6 +765,7 @@ podcasts.get("/:id/episodes", async (c) => {
       description: true,
       publishedAt: true,
       durationSeconds: true,
+      audioUrl: true,
     },
   });
 

@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { Heart, Search, X, Loader2, Check, Headphones } from "lucide-react";
+import { Heart, Search, X, Loader2, Check, Headphones, ExternalLink } from "lucide-react";
 import { useApiFetch } from "../lib/api";
 import { useFetch } from "../lib/use-fetch";
 import { Skeleton } from "../components/ui/skeleton";
@@ -491,12 +491,30 @@ export function PodcastDetail({ podcastId: propPodcastId, scrollToEpisodeId }: {
                     </p>
                   </div>
                 )}
-                {/* Action row: thumbs left, blipp right */}
+                {/* Action row: thumbs left, original + blipp right */}
                 <div className="flex items-center justify-between mt-2">
-                  <ThumbButtons
-                    vote={ep.userVote}
-                    onVote={(v) => handleEpisodeVote(ep.id, v)}
-                  />
+                  <div className="flex items-center gap-2">
+                    <ThumbButtons
+                      vote={ep.userVote}
+                      onVote={(v) => handleEpisodeVote(ep.id, v)}
+                    />
+                    <a
+                      href={ep.audioUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => {
+                        apiFetch("/events", {
+                          method: "POST",
+                          body: JSON.stringify({ event: "original_click", episodeId: ep.id }),
+                        }).catch(() => {});
+                      }}
+                      className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+                      title="Listen to original episode"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      Original
+                    </a>
+                  </div>
                   <div className="relative">
                     {requestingEpisodeId === ep.id ? (
                       <span className="text-xs text-muted-foreground px-3 py-1.5">

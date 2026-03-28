@@ -17,6 +17,7 @@ export interface FeedItem {
     title: string;
     publishedAt: string;
     durationSeconds: number | null;
+    audioUrl: string;
   };
   episodeVote: number;
   briefing: {

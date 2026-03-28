@@ -1,9 +1,10 @@
 import { useCallback } from "react";
-import { Share2, Info } from "lucide-react";
+import { Share2, Info, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import type { FeedItem } from "../types/feed";
 import { formatDuration } from "../lib/feed-utils";
 import { useAudio } from "../contexts/audio-context";
+import { useApiFetch } from "../lib/api";
 import { ThumbButtons } from "./thumb-buttons";
 
 /** Map raw pipeline error to a short user-facing message. */
@@ -64,6 +65,7 @@ export function FeedItemCard({
   onEpisodeVote?: (episodeId: string, vote: number) => void;
 }) {
   const audio = useAudio();
+  const apiFetch = useApiFetch();
   const isPlayable = item.status === "READY" && item.briefing?.clip;
   const isCreating = item.status === "PENDING" || item.status === "PROCESSING";
   const label = statusLabel(item.status);
@@ -104,6 +106,22 @@ export function FeedItemCard({
         <div className="flex items-center justify-between gap-2">
           <p className="text-xs text-muted-foreground truncate">{item.podcast.title}</p>
           <div className="flex items-center gap-1.5 flex-shrink-0">
+            <a
+              href={item.episode.audioUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Listen to original episode"
+              onClick={(e) => {
+                e.stopPropagation();
+                apiFetch("/events", {
+                  method: "POST",
+                  body: JSON.stringify({ event: "original_click", episodeId: item.episode.id, podcastId: item.podcast.id }),
+                }).catch(() => {});
+              }}
+              className="p-1 text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+            </a>
             {isPlayable && (
               <button
                 aria-label="Share"
