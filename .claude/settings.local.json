@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(npx vitest:*)",
+      "Bash(git pull:*)",
+      "Bash(git push:*)",
+      "Bash(gh run:*)",
+      "Bash(where gh:*)",
+      "Bash(cmd.exe /c \"where gh\" 2>/dev/null)",
+      "Bash(npm run:*)"
+    ]
+  }
+}
