@@ -4,8 +4,7 @@ import {
   resolveVoicePresetId,
   extractProviderConfig,
   loadPresetConfig,
-  SYSTEM_DEFAULT_VOICE,
-  SYSTEM_DEFAULT_INSTRUCTIONS,
+  loadSystemDefaultConfig,
 } from "../voice-presets";
 
 let mockPrisma: ReturnType<typeof createMockPrisma>;
@@ -48,7 +47,7 @@ describe("extractProviderConfig", () => {
   const fullConfig = {
     openai: { voice: "nova", instructions: "Speak clearly", speed: 1.1 },
     groq: { voice: "aura-orpheus-en" },
-    cloudflare: {},
+    cloudflare: { voice: "luna" },
   };
 
   it("returns correct config for openai provider", () => {
@@ -63,16 +62,19 @@ describe("extractProviderConfig", () => {
     expect(result.voice).toBe("aura-orpheus-en");
   });
 
-  it("returns system defaults when provider key is missing from config", () => {
-    const result = extractProviderConfig({ openai: { voice: "nova" } }, "groq");
-    expect(result.voice).toBe(SYSTEM_DEFAULT_VOICE);
-    expect(result.instructions).toBe(SYSTEM_DEFAULT_INSTRUCTIONS);
+  it("throws when provider key is missing from config", () => {
+    expect(() => extractProviderConfig({ openai: { voice: "nova" } }, "groq"))
+      .toThrow('no mapping for provider "groq"');
   });
 
-  it("returns system defaults when preset config is null", () => {
-    const result = extractProviderConfig(null, "openai");
-    expect(result.voice).toBe(SYSTEM_DEFAULT_VOICE);
-    expect(result.instructions).toBe(SYSTEM_DEFAULT_INSTRUCTIONS);
+  it("throws when preset config is null", () => {
+    expect(() => extractProviderConfig(null, "openai"))
+      .toThrow("No voice preset config available");
+  });
+
+  it("throws when provider voice is empty", () => {
+    expect(() => extractProviderConfig({ groq: {} }, "groq"))
+      .toThrow('no voice set');
   });
 });
 
@@ -101,6 +103,26 @@ describe("loadPresetConfig", () => {
       isActive: false,
     });
     const result = await loadPresetConfig(mockPrisma as any, "preset-inactive");
+    expect(result).toBeNull();
+  });
+});
+
+describe("loadSystemDefaultConfig", () => {
+  it("returns config from the System Default preset", async () => {
+    const config = { openai: { voice: "coral" }, groq: { voice: "diana" }, cloudflare: { voice: "luna" } };
+    mockPrisma.voicePreset.findFirst.mockResolvedValue({ config });
+
+    const result = await loadSystemDefaultConfig(mockPrisma as any);
+    expect(result).toEqual(config);
+    expect(mockPrisma.voicePreset.findFirst).toHaveBeenCalledWith({
+      where: { name: "System Default", isSystem: true, isActive: true },
+      select: { config: true },
+    });
+  });
+
+  it("returns null when no system default preset exists", async () => {
+    mockPrisma.voicePreset.findFirst.mockResolvedValue(null);
+    const result = await loadSystemDefaultConfig(mockPrisma as any);
     expect(result).toBeNull();
   });
 });

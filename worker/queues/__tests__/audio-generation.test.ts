@@ -69,7 +69,8 @@ vi.mock("../../lib/circuit-breaker", () => ({
 
 vi.mock("../../lib/voice-presets", () => ({
   loadPresetConfig: vi.fn().mockResolvedValue(null),
-  extractProviderConfig: vi.fn().mockReturnValue({}),
+  loadSystemDefaultConfig: vi.fn().mockResolvedValue({ openai: { voice: "coral" }, groq: { voice: "diana" }, cloudflare: { voice: "luna" } }),
+  extractProviderConfig: vi.fn().mockReturnValue({ voice: "coral" }),
 }));
 
 vi.mock("../../lib/ai-errors", () => {
@@ -111,7 +112,7 @@ import { generateSpeech } from "../../lib/tts/tts";
 import { putWorkProduct, getWorkProduct } from "../../lib/work-products";
 import { resolveStageModel, resolveModelChain } from "../../lib/model-resolution";
 import { writeAiError } from "../../lib/ai-errors";
-import { loadPresetConfig, extractProviderConfig } from "../../lib/voice-presets";
+import { loadPresetConfig, loadSystemDefaultConfig, extractProviderConfig } from "../../lib/voice-presets";
 
 let mockPrisma: ReturnType<typeof createMockPrisma>;
 let mockEnv: ReturnType<typeof createMockEnv>;
@@ -646,15 +647,14 @@ describe("handleAudioGeneration", () => {
       expect(mockMsg.ack).toHaveBeenCalled();
     });
 
-    it("falls back to default voice when preset not found", async () => {
+    it("uses system default config when no voicePresetId in message", async () => {
       mockPrisma.clip.findFirst.mockResolvedValue({ id: "clip-1", status: "PENDING" });
       mockPrisma.clip.update.mockResolvedValue({ id: "clip-1" });
-      (loadPresetConfig as any).mockResolvedValue(null);
 
-      const bodyWithPreset = { ...msgBody, voicePresetId: "nonexistent" };
-      const { mockMsg, mockBatch } = makeBatch(bodyWithPreset);
+      const { mockMsg, mockBatch } = makeBatch(msgBody);
       await handleAudioGeneration(mockBatch, mockEnv, mockCtx);
 
+      expect(loadSystemDefaultConfig).toHaveBeenCalledWith(mockPrisma);
       expect(generateSpeech).toHaveBeenCalled();
       expect(mockMsg.ack).toHaveBeenCalled();
     });

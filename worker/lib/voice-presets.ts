@@ -2,21 +2,13 @@
  * Voice preset resolution and configuration extraction.
  *
  * VoicePreset.config is a JSON blob shaped like:
- *   { openai: { voice, instructions, speed }, groq: { voice }, cloudflare: {} }
+ *   { openai: { voice, instructions, speed }, groq: { voice }, cloudflare: { voice } }
  *
  * Resolution order:
  *   1. Subscription-level override (voicePresetId on Subscription)
  *   2. User-level default (defaultVoicePresetId on User)
- *   3. System default (null — uses DEFAULT_VOICE / DEFAULT_INSTRUCTIONS from tts.ts)
+ *   3. System default (the VoicePreset named "System Default" with isSystem=true)
  */
-
-/** System default voice ID (matches DEFAULT_VOICE in tts.ts). */
-export const SYSTEM_DEFAULT_VOICE = "coral";
-
-/** System default TTS instructions (matches DEFAULT_INSTRUCTIONS in tts.ts). */
-export const SYSTEM_DEFAULT_INSTRUCTIONS =
-  "Speak in a warm, professional tone suitable for a daily podcast briefing. " +
-  "Maintain a steady, engaging pace. Pause naturally between topics.";
 
 /** Per-provider config extracted from a VoicePreset.config blob. */
 export interface ProviderVoiceConfig {
@@ -28,7 +20,7 @@ export interface ProviderVoiceConfig {
 /**
  * Resolves the effective voicePresetId for a user+podcast combination.
  *
- * @returns The preset ID, or null if the user should use system defaults.
+ * @returns The preset ID, or null if the user should use the system default preset.
  */
 export async function resolveVoicePresetId(
   prisma: any,
@@ -85,7 +77,7 @@ export async function checkVoicePresetAccess(
 }
 
 /**
- * Loads the full config JSON for a voice preset.
+ * Loads the full config JSON for a voice preset by ID.
  *
  * @returns The parsed config object, or null if the preset doesn't exist or is inactive.
  */
@@ -102,37 +94,49 @@ export async function loadPresetConfig(
 }
 
 /**
+ * Loads the "System Default" voice preset config from the database.
+ * This is the fallback when no user/subscription preset is configured.
+ *
+ * @returns The parsed config object, or null if no system default preset exists.
+ */
+export async function loadSystemDefaultConfig(
+  prisma: any
+): Promise<Record<string, any> | null> {
+  const preset = await prisma.voicePreset.findFirst({
+    where: { name: "System Default", isSystem: true, isActive: true },
+    select: { config: true },
+  });
+  if (!preset) return null;
+  return preset.config as Record<string, any>;
+}
+
+/**
  * Extracts provider-specific voice config from a preset's config blob.
  *
- * Falls back to system defaults for any missing fields.
+ * The presetConfig must be loaded from the database (either a user's chosen
+ * preset or the system default). Throws if presetConfig is null — callers
+ * must ensure a config is always loaded.
  */
 export function extractProviderConfig(
   presetConfig: Record<string, any> | null,
   provider: string
 ): ProviderVoiceConfig {
   if (!presetConfig) {
-    return {
-      voice: SYSTEM_DEFAULT_VOICE,
-      instructions: SYSTEM_DEFAULT_INSTRUCTIONS,
-      speed: undefined,
-    };
+    throw new Error("No voice preset config available — ensure the System Default voice preset exists in the database");
   }
 
   const providerConf = presetConfig[provider];
   if (!providerConf || typeof providerConf !== "object") {
-    if (provider === "openai" || provider === "groq") {
-      console.warn(`[voice-presets] Preset config has no mapping for provider "${provider}" — falling back to system defaults`);
-    }
-    return {
-      voice: SYSTEM_DEFAULT_VOICE,
-      instructions: SYSTEM_DEFAULT_INSTRUCTIONS,
-      speed: undefined,
-    };
+    throw new Error(`Voice preset config has no mapping for provider "${provider}" — add a "${provider}" key to the preset config`);
+  }
+
+  if (!providerConf.voice) {
+    throw new Error(`Voice preset config for provider "${provider}" has no voice set`);
   }
 
   return {
-    voice: providerConf.voice || SYSTEM_DEFAULT_VOICE,
-    instructions: providerConf.instructions || SYSTEM_DEFAULT_INSTRUCTIONS,
+    voice: providerConf.voice,
+    instructions: providerConf.instructions || undefined,
     speed: typeof providerConf.speed === "number" ? providerConf.speed : undefined,
   };
 }

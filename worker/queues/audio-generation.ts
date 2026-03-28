@@ -2,7 +2,7 @@ import { createPrismaClient } from "../lib/db";
 import { createPipelineLogger, logDbError } from "../lib/logger";
 import { checkStageEnabled } from "../lib/queue-helpers";
 import { generateSpeech } from "../lib/tts/tts";
-import { loadPresetConfig, extractProviderConfig } from "../lib/voice-presets";
+import { loadPresetConfig, loadSystemDefaultConfig, extractProviderConfig } from "../lib/voice-presets";
 
 import { resolveModelChain } from "../lib/model-resolution";
 import { getTtsProviderImpl } from "../lib/tts/providers";
@@ -76,9 +76,11 @@ export async function handleAudioGeneration(
 
         await writeEvent(prisma, step.id, "INFO", "Checking cache for completed audio clip");
 
-        // Resolve voice preset config for TTS
+        // Resolve voice preset config for TTS — always load a config (user preset or system default)
         const voiceTag = voicePresetId ?? "default";
-        const presetConfig = voicePresetId ? await loadPresetConfig(prisma, voicePresetId) : null;
+        const presetConfig = voicePresetId
+          ? await loadPresetConfig(prisma, voicePresetId)
+          : await loadSystemDefaultConfig(prisma);
 
         // Cache check: audio clip already exists in R2
         const cachedAudioR2Key = wpKey({ type: "AUDIO_CLIP", episodeId, durationTier, voice: voiceTag });

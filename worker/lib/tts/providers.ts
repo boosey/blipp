@@ -81,7 +81,7 @@ const GroqTtsProvider: TtsProvider = {
       body: JSON.stringify({
         model: providerModelId,
         input: text,
-        voice: voice || "diana",
+        voice,
         response_format: "wav",
       }),
     });
@@ -116,7 +116,7 @@ const CloudflareTtsProvider: TtsProvider = {
     try {
       const result = (await env.AI.run(providerModelId as any, {
         text,
-        speaker: voice || "luna",
+        speaker: voice,
       })) as any;
 
       // CF Workers AI TTS models return a ReadableStream
