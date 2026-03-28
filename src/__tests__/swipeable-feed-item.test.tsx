@@ -99,8 +99,9 @@ describe("SwipeableFeedItem", () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByLabelText("Remove from feed")).toBeInTheDocument();
-    expect(screen.getByLabelText("Add to queue")).toBeInTheDocument();
+    // Both swipe-layer and desktop card buttons share the same labels
+    expect(screen.getAllByLabelText("Remove from feed").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByLabelText("Add to queue").length).toBeGreaterThanOrEqual(1);
   });
 
   it("clicking remove button calls onRemove", () => {
@@ -114,7 +115,8 @@ describe("SwipeableFeedItem", () => {
       </MemoryRouter>
     );
 
-    fireEvent.click(screen.getByLabelText("Remove from feed"));
+    // Click the first (swipe-layer) remove button
+    fireEvent.click(screen.getAllByLabelText("Remove from feed")[0]);
     expect(onRemove).toHaveBeenCalledWith("fi-1");
   });
 
@@ -146,7 +148,7 @@ describe("SwipeableFeedItem", () => {
       </MemoryRouter>
     );
 
-    fireEvent.click(screen.getByLabelText("Remove from feed"));
+    fireEvent.click(screen.getAllByLabelText("Remove from feed")[0]);
     expect(onRemove).toHaveBeenCalled();
 
     const collapsed = container.firstElementChild as HTMLElement;
