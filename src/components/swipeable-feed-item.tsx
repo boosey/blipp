@@ -176,7 +176,7 @@ export function SwipeableFeedItem({
         className="relative will-change-transform bg-background"
         onClick={handleCardClick}
       >
-        <FeedItemCard item={item} onPlay={onPlay} onEpisodeVote={onEpisodeVote} />
+        <FeedItemCard item={item} onPlay={onPlay} onEpisodeVote={onEpisodeVote} onRemove={() => handleRemove()} onAddToQueue={handleAddToQueue} />
       </div>
 
     </div>

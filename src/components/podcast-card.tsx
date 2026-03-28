@@ -88,7 +88,7 @@ export function PodcastCard({
           )}
         </div>
       </button>
-      <div className="flex flex-col items-center justify-center gap-1 flex-shrink-0">
+      <div className="flex items-center gap-1 flex-shrink-0">
         <ThumbButtons vote={vote} onVote={handleVote} />
         <button
           onClick={(e) => { e.stopPropagation(); handleFavorite(); }}
