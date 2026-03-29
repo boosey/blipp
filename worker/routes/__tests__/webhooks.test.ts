@@ -307,6 +307,8 @@ describe("Stripe Webhooks", () => {
 
     // planFromPriceId uses findFirst with OR on stripePriceIdMonthly/stripePriceIdAnnual
     mockPrisma.plan.findFirst.mockResolvedValueOnce({ id: "plan_pro", slug: "pro", name: "Pro" });
+    // findFirst for user lookup by stripeCustomerId or clerkId
+    mockPrisma.user.findFirst.mockResolvedValueOnce({ id: "usr_1", stripeCustomerId: "cus_123" });
     mockPrisma.user.update.mockResolvedValueOnce({ id: "usr_1", planId: "plan_pro" });
 
     const res = await app.request(
@@ -325,8 +327,8 @@ describe("Stripe Webhooks", () => {
 
     expect(res.status).toBe(200);
     expect(mockPrisma.user.update).toHaveBeenCalledWith({
-      where: { stripeCustomerId: "cus_123" },
-      data: { planId: "plan_pro" },
+      where: { id: "usr_1" },
+      data: { planId: "plan_pro", stripeCustomerId: "cus_123" },
     });
   });
 
