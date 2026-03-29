@@ -7,7 +7,7 @@ interface AppConfig {
 }
 
 const DEFAULTS: AppConfig = {
-  artworkSize: 140,
+  artworkSize: 100,
 };
 
 function getSnapshot(): AppConfig {

@@ -52,7 +52,10 @@ billing.post("/checkout", async (c) => {
 
   const stripe = createStripeClient(c.env.STRIPE_SECRET_KEY);
 
-  const origin = c.req.header("origin") ?? (c.env.APP_ORIGIN || "https://podblipp.com");
+  if (!c.env.APP_ORIGIN) {
+    throw new Error("APP_ORIGIN env var is required");
+  }
+  const origin = c.req.header("origin") ?? c.env.APP_ORIGIN;
 
   const sessionParams: Record<string, unknown> = {
     mode: "subscription" as const,
@@ -101,7 +104,10 @@ billing.post("/portal", async (c) => {
   }
 
   const stripe = createStripeClient(c.env.STRIPE_SECRET_KEY);
-  const origin = c.req.header("origin") ?? (c.env.APP_ORIGIN || "https://podblipp.com");
+  if (!c.env.APP_ORIGIN) {
+    throw new Error("APP_ORIGIN env var is required");
+  }
+  const origin = c.req.header("origin") ?? c.env.APP_ORIGIN;
 
   const session = await stripe.billingPortal.sessions.create({
     customer: user.stripeCustomerId,

@@ -72,17 +72,10 @@ app.use("/api/*", requestIdMiddleware);
 // CORS for all API routes
 app.use("/api/*", cors({
   origin: (origin, c) => {
-    const allowedOrigins = c.env.ALLOWED_ORIGINS
-      ? c.env.ALLOWED_ORIGINS.split(",").map((o: string) => o.trim())
-      : [
-          "http://localhost:8787",
-          "http://localhost:5173",
-          "https://podblipp.com",
-          "https://www.podblipp.com",
-          "capacitor://localhost",
-          "capacitor://podblipp.com",
-          "ionic://localhost",
-        ];
+    if (!c.env.ALLOWED_ORIGINS) {
+      throw new Error("ALLOWED_ORIGINS env var is required");
+    }
+    const allowedOrigins = c.env.ALLOWED_ORIGINS.split(",").map((o: string) => o.trim());
     return allowedOrigins.includes(origin) ? origin : "";
   },
   credentials: true,
@@ -95,15 +88,10 @@ app.use("/api/*", cors({
 // Must be before Clerk auth middleware since these are Clerk's own API calls.
 app.all("/__clerk/*", async (c) => {
   const origin = c.req.header("origin") ?? "";
-  const allowedOrigins = [
-    "https://podblipp.com",
-    "https://www.podblipp.com",
-    "https://staging.podblipp.com",
-    "capacitor://localhost",
-    "ionic://localhost",
-    "http://localhost:8787",
-    "http://localhost:5173",
-  ];
+  if (!c.env.ALLOWED_ORIGINS) {
+    throw new Error("ALLOWED_ORIGINS env var is required");
+  }
+  const allowedOrigins = c.env.ALLOWED_ORIGINS.split(",").map((o: string) => o.trim());
   const corsOrigin = allowedOrigins.includes(origin) ? origin : "";
 
   // Handle CORS preflight
@@ -123,7 +111,7 @@ app.all("/__clerk/*", async (c) => {
   // Proxy to Clerk's Frontend API
   const url = new URL(c.req.url);
   const clerkPath = url.pathname.replace("/__clerk", "");
-  const targetUrl = `https://clerk.podblipp.com${clerkPath}${url.search}`;
+  const targetUrl = `${c.env.CLERK_FAPI_URL}${clerkPath}${url.search}`;
 
   const headers = new Headers(c.req.raw.headers);
   headers.delete("host");
@@ -219,6 +207,10 @@ app.get("/api/health/deep", async (c) => {
 app.use(
   "/api/briefings/generate",
   rateLimit({ windowMs: 3_600_000, maxRequests: 10, keyPrefix: "rl:generate" })
+);
+app.use(
+  "/api/voice-presets/*/preview",
+  rateLimit({ windowMs: 60_000, maxRequests: 20, keyPrefix: "rl:voice-preview" })
 );
 app.use(
   "/api/podcasts/subscribe",

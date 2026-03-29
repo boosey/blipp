@@ -50,26 +50,11 @@ voicePresets.get("/", async (c) => {
 
 const PREVIEW_TEXT = "Here's a quick preview of how this voice sounds for your daily briefing.";
 
-// In-memory rate limit: userId -> { count, resetAt }
-const userPreviewLimits = new Map<string, { count: number; resetAt: number }>();
-
 /** POST /:id/preview — Generate a TTS audio preview using a voice preset. */
 voicePresets.post("/:id/preview", async (c) => {
   const prisma = c.get("prisma") as any;
   const user = await getCurrentUser(c, prisma);
   const presetId = c.req.param("id");
-
-  // Rate limit: 5 per user per minute
-  const now = Date.now();
-  const limit = userPreviewLimits.get(user.id);
-  if (limit && now < limit.resetAt) {
-    if (limit.count >= 5) {
-      return c.json({ error: "Rate limit exceeded — max 5 previews per minute" }, 429);
-    }
-    limit.count++;
-  } else {
-    userPreviewLimits.set(user.id, { count: 1, resetAt: now + 60_000 });
-  }
 
   // Check plan access
   const accessError = await checkVoicePresetAccess(prisma, user.planId, presetId);
@@ -86,6 +71,30 @@ voicePresets.post("/:id/preview", async (c) => {
   const resolved = chain[0];
 
   const voiceConfig = extractProviderConfig(presetConfig, resolved.provider);
+
+  // Hash all inputs that affect audio output so cache auto-invalidates on changes
+  const hashInput = JSON.stringify({
+    text: PREVIEW_TEXT,
+    model: resolved.providerModelId,
+    voice: voiceConfig.voice,
+    instructions: voiceConfig.instructions ?? null,
+    speed: voiceConfig.speed ?? null,
+  });
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(hashInput));
+  const hash = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 16);
+  const cacheKey = `voice-previews/${presetId}/${hash}.audio`;
+  const cached = await c.env.R2.get(cacheKey);
+  if (cached) {
+    const contentType = cached.httpMetadata?.contentType ?? "audio/mpeg";
+    return c.body(await cached.arrayBuffer(), {
+      headers: {
+        "Content-Type": contentType,
+        "Content-Length": String(cached.size),
+        "X-Cache": "HIT",
+      },
+    });
+  }
+
   const tts = getTtsProviderImpl(resolved.provider);
   try {
     const { audio, contentType } = await generateSpeech(
@@ -99,10 +108,18 @@ voicePresets.post("/:id/preview", async (c) => {
       voiceConfig.speed,
     );
 
+    // Cache in R2 for future requests
+    c.executionCtx.waitUntil(
+      c.env.R2.put(cacheKey, audio, {
+        httpMetadata: { contentType },
+      })
+    );
+
     return c.body(audio, {
       headers: {
         "Content-Type": contentType,
         "Content-Length": String(audio.byteLength),
+        "X-Cache": "MISS",
       },
     });
   } catch (err) {

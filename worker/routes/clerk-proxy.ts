@@ -12,7 +12,7 @@ import type { Context } from "hono";
 import type { Env } from "../types";
 
 export async function handleClerkProxy(c: Context<{ Bindings: Env }>) {
-  const clerkFapi = (c.env as any).CLERK_FAPI_URL || "https://clerk.podblipp.com";
+  const clerkFapi = c.env.CLERK_FAPI_URL;
   const requestOrigin = c.req.header("origin") || "*";
 
   // Handle CORS preflight
@@ -36,7 +36,7 @@ export async function handleClerkProxy(c: Context<{ Bindings: Env }>) {
 
   const headers = new Headers(c.req.raw.headers);
   headers.delete("origin");
-  headers.set("origin", "https://podblipp.com");
+  headers.set("origin", c.env.APP_ORIGIN);
   headers.delete("host");
 
   // Log for debugging

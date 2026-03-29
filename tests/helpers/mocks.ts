@@ -107,6 +107,9 @@ export function createMockEnv(): Env {
       put: vi.fn().mockResolvedValue(undefined),
       delete: vi.fn().mockResolvedValue(undefined),
     } as unknown as KVNamespace,
+    ALLOWED_ORIGINS: "http://localhost:8787,http://localhost:5173",
+    APP_ORIGIN: "http://localhost:8787",
+    CLERK_FAPI_URL: "https://clerk.test.example.com",
   };
 }
 

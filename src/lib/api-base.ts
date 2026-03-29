@@ -7,7 +7,10 @@ import { Capacitor } from "@capacitor/core";
  */
 export function getApiBase(): string {
   if (Capacitor.isNativePlatform()) {
-    return import.meta.env.VITE_API_BASE_URL || "https://podblipp.com";
+    if (!import.meta.env.VITE_API_BASE_URL) {
+      throw new Error("VITE_API_BASE_URL is required for native builds");
+    }
+    return import.meta.env.VITE_API_BASE_URL;
   }
   return "";
 }

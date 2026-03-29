@@ -32,6 +32,15 @@ export async function getConfig<T>(
 
   try {
     const entry = await prisma.platformConfig.findUnique({ where: { key } });
+    if (!entry) {
+      console.warn(JSON.stringify({
+        level: "warn",
+        action: "config_using_fallback",
+        key,
+        fallback,
+        ts: new Date().toISOString(),
+      }));
+    }
     const value = entry ? (entry.value as T) : fallback;
     cache.set(key, { value, expiresAt: now + TTL_MS });
     return value;
