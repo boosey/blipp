@@ -26,6 +26,7 @@ import type {
   FeedRefreshMessage,
   CatalogRefreshMessage,
 } from "../lib/queue-messages";
+import * as Sentry from "@sentry/cloudflare";
 import type { Env } from "../types";
 
 /**
@@ -117,6 +118,11 @@ export async function handleQueue(
           messageBody: JSON.stringify(body).slice(0, 500),
           ts: new Date().toISOString(),
         }));
+        Sentry.captureMessage("Dead letter received", {
+          level: "error",
+          tags: { queue: batch.queue, episodeId: String(body.episodeId ?? "") },
+          extra: { jobId: body.jobId, requestId: body.requestId, body: JSON.stringify(body).slice(0, 500) },
+        });
         msg.ack();
       }
       return;
@@ -220,6 +226,7 @@ export async function scheduled(
           error: err.message,
           ts: new Date().toISOString(),
         }));
+        Sentry.captureException(err, { tags: { jobKey: jobKeys[i], handler: "scheduled" } });
       }
     }
   } finally {

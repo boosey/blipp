@@ -88,4 +88,12 @@ export type Env = {
   GITHUB_TOKEN?: string;
   /** Shared secret for server-to-server script auth (GH Actions, CI) */
   SCRIPT_TOKEN?: string;
+  /** Resend API key for transactional emails (waitlist confirmation) */
+  RESEND_API_KEY?: string;
+  /** From address for transactional emails */
+  FROM_EMAIL?: string;
+  /** Admin token for waitlist export endpoint */
+  ADMIN_TOKEN?: string;
+  /** Sentry DSN for error tracking (optional — disabled if unset) */
+  SENTRY_DSN?: string;
 };

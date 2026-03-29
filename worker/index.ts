@@ -9,6 +9,7 @@
 import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
 import { cors } from "hono/cors";
+import * as Sentry from "@sentry/cloudflare";
 import { clerkMiddleware } from "./middleware/auth";
 import { prismaMiddleware } from "./middleware/prisma";
 import { requestIdMiddleware } from "./middleware/request-id";
@@ -25,6 +26,7 @@ import { securityHeaders } from "./middleware/security-headers";
 import { cacheResponse } from "./middleware/cache";
 import { deepHealthCheck } from "./lib/health";
 import { catalogSeedRoutes } from "./routes/admin/catalog-seed";
+import { waitlist } from "./routes/waitlist";
 import type { Env } from "./types";
 
 const app = new Hono<{ Bindings: Env }>();
@@ -47,6 +49,12 @@ app.onError((err, c) => {
     ts: new Date().toISOString(),
   }));
 
+  if (status >= 500) {
+    Sentry.captureException(err, {
+      tags: { requestId, path: c.req.path, method: c.req.method },
+    });
+  }
+
   const body: ApiErrorResponse = { error: message, requestId };
   if (code) body.code = code;
   if (details) body.details = details;
@@ -65,6 +73,9 @@ app.all("/api/__clerk/*", handleClerkProxy);
 // Native auth endpoint — verifies provider tokens and creates Clerk sign-in tickets
 // Must be before clerkMiddleware since it handles its own auth
 app.route("/api/auth", nativeAuthRoutes);
+
+// Public waitlist endpoints — no Clerk auth required
+app.route("/api/waitlist", waitlist);
 
 // Request ID — must be first so all other middleware can access it
 app.use("/api/*", requestIdMiddleware);
@@ -243,7 +254,7 @@ app.use("/*", securityHeaders);
 // Mount all API routes under /api
 app.route("/api", routes);
 
-export default {
+const handler = {
   fetch: (request: Request, env: any, ctx: ExecutionContext) => {
     return app.fetch(request, shimQueuesForLocalDev(env as Env, ctx), ctx);
   },
@@ -254,3 +265,13 @@ export default {
     return scheduled(event as ScheduledEvent, shimQueuesForLocalDev(env as Env, ctx), ctx);
   },
 };
+
+export default Sentry.withSentry(
+  (env: Env) => ({
+    dsn: env.SENTRY_DSN,
+    environment: env.ENVIRONMENT ?? "production",
+    tracesSampleRate: env.ENVIRONMENT === "production" ? 0.1 : 1.0,
+    sendDefaultPii: false,
+  }),
+  handler,
+);
