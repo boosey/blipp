@@ -189,7 +189,7 @@ export default function AdminWorkerLogs() {
   }, [buildQuery, rawJsonEdited]);
 
   // Auto-execute on mount if template + variables present
-  // Must depend on variableValues so the query runs AFTER URL params are hydrated
+  // Must depend on buildQuery so the query includes hydrated variable values
   useEffect(() => {
     if (autoExecuted.current) return;
     if (!selectedTemplate) return;
@@ -198,9 +198,28 @@ export default function AdminWorkerLogs() {
     const varsHydrated = Object.keys(variableValues).length > 0;
     if (hasVars && hasValues && varsHydrated) {
       autoExecuted.current = true;
-      executeQuery();
+      // Call buildQuery directly instead of executeQuery to avoid stale closure
+      const query = buildQuery();
+      setQueryLoading(true);
+      setResults([]);
+      setExpandedRow(null);
+      setQueryDurationMs(null);
+      const start = performance.now();
+      adminFetch<{ data: LogEvent[] }>("/worker-logs/query", {
+        method: "POST",
+        body: JSON.stringify(query),
+      })
+        .then((data) => {
+          setResults(data.data || []);
+          setQueryDurationMs(Math.round(performance.now() - start));
+        })
+        .catch((err) => {
+          toast.error(err instanceof Error ? err.message : "Query failed");
+          setQueryDurationMs(Math.round(performance.now() - start));
+        })
+        .finally(() => setQueryLoading(false));
     }
-  }, [selectedTemplate, variableValues]);
+  }, [selectedTemplate, buildQuery]);
 
   function resolveTimestamp(val: string): number {
     if (val === "now" || !val) return Date.now();
