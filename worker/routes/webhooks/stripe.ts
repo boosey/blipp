@@ -90,10 +90,31 @@ stripeWebhooks.post("/", async (c) => {
       }
 
       if (plan) {
-        await prisma.user.update({
-          where: { stripeCustomerId },
-          data: { planId: plan.id },
+        // Try by stripeCustomerId first, fall back to clerkId from metadata
+        // (first checkout: stripeCustomerId may not be saved on user yet)
+        const user = await prisma.user.findFirst({
+          where: {
+            OR: [
+              { stripeCustomerId },
+              ...(session.metadata?.clerkId ? [{ clerkId: session.metadata.clerkId }] : []),
+            ],
+          },
         });
+
+        if (user) {
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { planId: plan.id, stripeCustomerId },
+          });
+        } else {
+          console.error(JSON.stringify({
+            level: "error",
+            action: "checkout_user_not_found",
+            stripeCustomerId,
+            clerkId: session.metadata?.clerkId,
+            ts: new Date().toISOString(),
+          }));
+        }
       }
       break;
     }
