@@ -97,7 +97,7 @@ export function planToForm(plan: AdminPlan): PlanFormData {
     priceCentsAnnual: plan.priceCentsAnnual != null ? String(plan.priceCentsAnnual) : "",
     trialDays: String(plan.trialDays),
     allowedVoicePresetIds: plan.allowedVoicePresetIds ?? [],
-    features: plan.features.join("; "),
+    features: plan.features.join("\n"),
     highlighted: plan.highlighted,
     sortOrder: String(plan.sortOrder),
     isDefault: plan.isDefault,
@@ -127,7 +127,7 @@ export function formToPayload(form: PlanFormData) {
     trialDays: Number(form.trialDays),
     allowedVoicePresetIds: form.allowedVoicePresetIds,
     features: form.features
-      .split(";")
+      .split("\n")
       .map((s) => s.trim())
       .filter(Boolean),
     highlighted: form.highlighted,

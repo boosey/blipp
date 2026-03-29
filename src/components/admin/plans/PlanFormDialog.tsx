@@ -281,12 +281,13 @@ export function PlanFormDialog({
             <div className="space-y-3">
               <span className="text-sm font-semibold text-[#9CA3AF] uppercase tracking-wider">Display</span>
               <div className="space-y-1.5">
-                <Label className="text-sm text-[#F9FAFB]">Features (semicolon-separated)</Label>
-                <Input
+                <Label className="text-sm text-[#F9FAFB]">Features (one per line)</Label>
+                <Textarea
                   value={form.features}
                   onChange={(e) => update({ features: e.target.value })}
-                  placeholder="e.g. 10 briefings/week, Ad-free listening, Priority processing"
-                  className="h-9 text-sm bg-[#0A1628] border-white/5 text-[#F9FAFB]"
+                  placeholder={"10 briefings per week\n5 minute maximum\nAd-free listening"}
+                  rows={5}
+                  className="text-xs bg-[#0A1628] border-white/5 text-[#F9FAFB] resize-y"
                 />
               </div>
               <div className="grid grid-cols-3 gap-3">
