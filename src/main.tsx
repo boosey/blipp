@@ -5,7 +5,15 @@ import { AppClerkProvider } from "./providers/clerk-provider";
 import { ThemeProvider } from "./contexts/theme-context";
 import App from "./App";
 import { Toaster } from "./components/toaster";
+import { registerSW } from "virtual:pwa-register";
 import "./index.css";
+
+// Auto-reload when a new service worker activates after deploy
+registerSW({
+  onNeedRefresh() {
+    window.location.reload();
+  },
+});
 
 class DebugErrorBoundary extends Component<
   { children: ReactNode },

@@ -12,7 +12,7 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
-    "types": ["@cloudflare/workers-types", "vitest/globals"],
+    "types": ["@cloudflare/workers-types", "vitest/globals", "vite-plugin-pwa/client"],
     "paths": {
       "@/*": ["./src/*"]
     }
