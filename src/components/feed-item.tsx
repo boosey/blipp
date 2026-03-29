@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useRef, useLayoutEffect, useState } from "react";
 import { Share2, Trash2, ListPlus } from "lucide-react";
 import { toast } from "sonner";
 import type { FeedItem } from "../types/feed";
@@ -75,6 +75,21 @@ export function FeedItemCard({
   const label = statusLabel(item.status);
   const epDuration = formatEpDuration(item.episode.durationSeconds);
 
+  // Measure card height to size artwork as a matching square.
+  // Artwork is absolutely positioned so it doesn't influence card height.
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [artSize, setArtSize] = useState(0);
+
+  useLayoutEffect(() => {
+    const el = cardRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => {
+      setArtSize(entry.borderBoxSize[0]?.blockSize ?? entry.contentRect.height);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   const handleShare = useCallback(async (e: React.MouseEvent) => {
     e.stopPropagation();
     const text = `Check out this briefing from ${item.podcast.title} on Blipp`;
@@ -88,14 +103,18 @@ export function FeedItemCard({
 
   const cardInner = (
     <div
-      className={`relative flex gap-3 bg-card border border-border rounded-lg p-3 overflow-hidden${
+      ref={cardRef}
+      className={`relative bg-card border border-border rounded-lg overflow-hidden${
         !item.listened && item.status === "READY"
           ? " border-l-[3px] border-l-primary"
           : ""
       }`}
     >
-      {/* Podcast artwork — fills card height, width scales to stay square */}
-      <div className="self-stretch aspect-square rounded overflow-hidden flex-shrink-0">
+      {/* Podcast artwork — absolutely positioned square, full card height */}
+      <div
+        className="absolute top-0 left-0 bottom-0 overflow-hidden rounded-l-lg"
+        style={{ width: artSize }}
+      >
         {item.podcast.imageUrl ? (
           <img
             src={item.podcast.imageUrl}
@@ -107,8 +126,8 @@ export function FeedItemCard({
         )}
       </div>
 
-      {/* Text */}
-      <div className="flex-1 min-w-0">
+      {/* Text — these three lines drive card height; left margin clears artwork + gap */}
+      <div className="p-3" style={{ marginLeft: artSize ? artSize + 12 : 0 }}>
         <div className="flex items-center justify-between gap-2">
           <p className="text-xs text-muted-foreground truncate">{item.podcast.title}</p>
           <div className="flex items-center gap-1.5 flex-shrink-0">
