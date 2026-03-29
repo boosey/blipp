@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import type { FeedItem } from "../types/feed";
 import { formatDuration } from "../lib/feed-utils";
 import { useAudio } from "../contexts/audio-context";
+import { usePlan } from "../contexts/plan-context";
 import { ThumbButtons } from "./thumb-buttons";
 
 /** Map raw pipeline error to a short user-facing message. */
@@ -68,6 +69,7 @@ export function FeedItemCard({
   onAddToQueue?: () => void;
 }) {
   const audio = useAudio();
+  const { publicSharing } = usePlan();
   const isPlayable = item.status === "READY" && item.briefing?.clip;
   const isCreating = item.status === "PENDING" || item.status === "PROCESSING";
   const label = statusLabel(item.status);
@@ -108,7 +110,7 @@ export function FeedItemCard({
         <div className="flex items-center justify-between gap-2">
           <p className="text-xs text-muted-foreground truncate">{item.podcast.title}</p>
           <div className="flex items-center gap-1.5 flex-shrink-0">
-            {isPlayable && (
+            {isPlayable && publicSharing && (
               <button
                 aria-label="Share"
                 onClick={handleShare}

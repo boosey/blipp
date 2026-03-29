@@ -31,7 +31,7 @@ export interface PlanFormData {
   priorityProcessing: boolean;
   earlyAccess: boolean;
   // Personalization
-  maxVoices: string;
+
   offlineAccess: boolean;
   publicSharing: boolean;
   // Billing
@@ -61,7 +61,7 @@ export function emptyForm(): PlanFormData {
     adFree: false,
     priorityProcessing: false,
     earlyAccess: false,
-    maxVoices: "1",
+
     offlineAccess: false,
     publicSharing: false,
     priceCentsMonthly: "0",
@@ -90,14 +90,14 @@ export function planToForm(plan: AdminPlan): PlanFormData {
     adFree: plan.adFree,
     priorityProcessing: plan.priorityProcessing,
     earlyAccess: plan.earlyAccess,
-    maxVoices: String(plan.maxVoices ?? 1),
+
     offlineAccess: plan.offlineAccess,
     publicSharing: plan.publicSharing,
     priceCentsMonthly: String(plan.priceCentsMonthly),
     priceCentsAnnual: plan.priceCentsAnnual != null ? String(plan.priceCentsAnnual) : "",
     trialDays: String(plan.trialDays),
     allowedVoicePresetIds: plan.allowedVoicePresetIds ?? [],
-    features: plan.features.join(", "),
+    features: plan.features.join("; "),
     highlighted: plan.highlighted,
     sortOrder: String(plan.sortOrder),
     isDefault: plan.isDefault,
@@ -119,7 +119,7 @@ export function formToPayload(form: PlanFormData) {
     adFree: form.adFree,
     priorityProcessing: form.priorityProcessing,
     earlyAccess: form.earlyAccess,
-    maxVoices: Number(form.maxVoices),
+
     offlineAccess: form.offlineAccess,
     publicSharing: form.publicSharing,
     priceCentsMonthly: Number(form.priceCentsMonthly),
@@ -127,7 +127,7 @@ export function formToPayload(form: PlanFormData) {
     trialDays: Number(form.trialDays),
     allowedVoicePresetIds: form.allowedVoicePresetIds,
     features: form.features
-      .split(",")
+      .split(";")
       .map((s) => s.trim())
       .filter(Boolean),
     highlighted: form.highlighted,

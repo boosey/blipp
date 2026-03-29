@@ -41,7 +41,6 @@ model Plan {
   earlyAccess             Boolean  @default(false)
 
   // ── Personalization ──
-  maxVoices               Int      @default(1)          // number of voice presets the user can use
   offlineAccess           Boolean  @default(false)      // mobile offline caching
   publicSharing           Boolean  @default(false)      // shareable briefing links
 

@@ -6,6 +6,10 @@ interface PlanUsage {
   briefings: { used: number; limit: number | null; remaining: number | null };
   subscriptions: { used: number; limit: number | null; remaining: number | null };
   maxDurationMinutes: number;
+  pastEpisodesLimit: number | null;
+  publicSharing: boolean;
+  transcriptAccess: boolean;
+
   loading: boolean;
   refetch: () => void;
 }
@@ -19,6 +23,10 @@ export function PlanProvider({ children }: { children: ReactNode }) {
     briefings: { used: 0, limit: null, remaining: null },
     subscriptions: { used: 0, limit: null, remaining: null },
     maxDurationMinutes: 30,
+    pastEpisodesLimit: null,
+    publicSharing: false,
+    transcriptAccess: false,
+
     loading: true,
     refetch: () => {},
   });
@@ -32,6 +40,10 @@ export function PlanProvider({ children }: { children: ReactNode }) {
         briefings: res.data.briefings,
         subscriptions: res.data.subscriptions,
         maxDurationMinutes: res.data.maxDurationMinutes,
+        pastEpisodesLimit: res.data.pastEpisodesLimit ?? null,
+        publicSharing: res.data.publicSharing ?? false,
+        transcriptAccess: res.data.transcriptAccess ?? false,
+
         loading: false,
       }));
     } catch {

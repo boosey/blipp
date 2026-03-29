@@ -97,6 +97,30 @@ async function handleEvaluate(
   request: any,
   msg: Message<OrchestratorMessage>
 ): Promise<void> {
+  // Enforce concurrent pipeline job limit
+  const user = await prisma.user.findUnique({
+    where: { id: request.userId },
+    include: { plan: { select: { concurrentPipelineJobs: true } } },
+  });
+  if (user?.plan) {
+    const { checkConcurrentJobLimit } = await import("../lib/plan-limits");
+    const limitErr = await checkConcurrentJobLimit(
+      request.userId,
+      user.plan.concurrentPipelineJobs,
+      prisma
+    );
+    if (limitErr) {
+      // Re-queue so it can be picked up when slots free up
+      log.info("concurrent_limit_reached", {
+        requestId: request.id,
+        userId: request.userId,
+        limit: user.plan.concurrentPipelineJobs,
+      });
+      msg.retry();
+      return;
+    }
+  }
+
   const items = request.items as BriefingRequestItem[];
 
   if (!items || items.length === 0) {

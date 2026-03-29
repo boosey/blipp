@@ -15,7 +15,7 @@ export interface AdminPlan {
   adFree: boolean;
   priorityProcessing: boolean;
   earlyAccess: boolean;
-  maxVoices: number;
+
   offlineAccess: boolean;
   publicSharing: boolean;
   priceCentsMonthly: number;

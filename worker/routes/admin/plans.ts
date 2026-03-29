@@ -30,7 +30,7 @@ const PLAN_WRITABLE_FIELDS = [
   "priorityProcessing",
   "earlyAccess",
   // Personalization
-  "maxVoices",
+
   "offlineAccess",
   "publicSharing",
   // Billing

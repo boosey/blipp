@@ -109,7 +109,7 @@ export function PlanCard({
           ["Subscriptions", plan.maxPodcastSubscriptions],
           ["Past episodes", plan.pastEpisodesLimit],
           ["Concurrent jobs", plan.concurrentPipelineJobs],
-          ["Voices", plan.maxVoices],
+
         ] as [string, unknown][]).map(([label, value]) => (
           <div key={label}>
             <span className="text-sm text-[#6B7280]">{label}</span>

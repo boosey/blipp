@@ -450,13 +450,16 @@ export function PodcastDetail({ podcastId: propPodcastId, scrollToEpisodeId }: {
         ) : (
           <div className="space-y-2">
             {episodes
-              .filter((ep) => {
+              .map((ep, idx) => ({ ep, idx }))
+              .filter(({ ep }) => {
                 if (!episodeSearch) return true;
                 const q = episodeSearch.toLowerCase();
                 return ep.title.toLowerCase().includes(q) ||
                   ep.description?.toLowerCase().includes(q);
               })
-              .map((ep) => (
+              .map(({ ep, idx }) => {
+              const lockedByPlan = planUsage.pastEpisodesLimit !== null && idx >= planUsage.pastEpisodesLimit;
+              return (
               <div
                 key={ep.id}
                 ref={(el) => { if (el) episodeRefs.current.set(ep.id, el); }}
@@ -534,6 +537,14 @@ export function PodcastDetail({ podcastId: propPodcastId, scrollToEpisodeId }: {
                       >
                         Retry
                       </button>
+                    ) : lockedByPlan ? (
+                      <button
+                        onClick={() => showUpgrade(`Your plan allows access to the ${planUsage.pastEpisodesLimit} most recent episodes. Upgrade for full archive access.`)}
+                        className="px-3 py-1.5 bg-muted text-muted-foreground rounded text-xs font-medium hover:bg-muted/80 transition-colors select-none cursor-not-allowed opacity-60"
+                        title="Upgrade to access older episodes"
+                      >
+                        Blipp
+                      </button>
                     ) : (
                       <button
                         onClick={() => setBriefTierPickerEpisodeId(
@@ -564,7 +575,8 @@ export function PodcastDetail({ podcastId: propPodcastId, scrollToEpisodeId }: {
                   </div>
                 </div>
               </div>
-            ))}
+            );})
+            }
           </div>
         )}
       </div>

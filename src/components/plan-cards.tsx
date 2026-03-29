@@ -100,9 +100,12 @@ export function PlanCards({ currentPlanSlug, onCheckout, compact }: PlanCardsPro
       )}
 
       <div className={`grid gap-4 ${compact ? "grid-cols-1" : "grid-cols-1 md:grid-cols-3 gap-6"}`}>
-        {plans.map((plan) => {
+        {plans.map((plan, idx) => {
           const isCurrent = currentPlanSlug === plan.slug;
-          const isFree = plan.slug === "free" || plan.priceCentsMonthly === 0;
+          const currentIdx = plans.findIndex((p) => p.slug === currentPlanSlug);
+          const isUpgrade = currentIdx >= 0 && idx > currentIdx;
+          const isNextUp = currentIdx >= 0 && idx === currentIdx + 1;
+          const isFree = plan.priceCentsMonthly === 0;
 
           return (
             <div
@@ -155,18 +158,14 @@ export function PlanCards({ currentPlanSlug, onCheckout, compact }: PlanCardsPro
                   <span className="block text-center py-2 text-sm text-muted-foreground">
                     Current plan
                   </span>
-                ) : isFree ? (
-                  <span className="block text-center py-2 text-sm text-muted-foreground">
-                    Included
-                  </span>
-                ) : (
+                ) : isUpgrade ? (
                   <>
                     <SignedIn>
                       <button
                         onClick={() => handleCheckout(plan)}
                         disabled={checkoutLoading === plan.id}
                         className={`w-full py-2 rounded-lg font-medium text-sm transition-colors disabled:opacity-50 ${
-                          plan.highlighted
+                          isNextUp
                             ? "bg-primary text-primary-foreground hover:bg-primary/90"
                             : "bg-muted border border-border hover:bg-accent"
                         }`}
@@ -178,7 +177,7 @@ export function PlanCards({ currentPlanSlug, onCheckout, compact }: PlanCardsPro
                       <SignInButton>
                         <button
                           className={`w-full py-2 rounded-lg font-medium text-sm transition-colors ${
-                            plan.highlighted
+                            isNextUp
                               ? "bg-primary text-primary-foreground hover:bg-primary/90"
                               : "bg-muted border border-border hover:bg-accent"
                           }`}
@@ -188,7 +187,7 @@ export function PlanCards({ currentPlanSlug, onCheckout, compact }: PlanCardsPro
                       </SignInButton>
                     </SignedOut>
                   </>
-                )}
+                ) : null}
               </div>
             </div>
           );

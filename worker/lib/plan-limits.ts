@@ -108,11 +108,58 @@ export async function checkPastEpisodesLimit(
   return null;
 }
 
+/**
+ * Check if user has reached their concurrent pipeline job limit.
+ * Counts IN_PROGRESS jobs for the user (via their briefing requests).
+ * Returns an error string if at limit, null if OK.
+ */
+export async function checkConcurrentJobLimit(
+  userId: string,
+  concurrentPipelineJobs: number,
+  prisma: any
+): Promise<string | null> {
+  const count = await prisma.pipelineJob.count({
+    where: {
+      status: "IN_PROGRESS",
+      request: { userId },
+    },
+  });
+  if (count >= concurrentPipelineJobs) {
+    return `Your plan allows ${concurrentPipelineJobs} concurrent pipeline jobs. Please wait for current jobs to finish.`;
+  }
+  return null;
+}
+
+/**
+ * Check if user's plan allows public sharing.
+ * Returns an error string if not allowed, null if OK.
+ */
+export function checkPublicSharing(publicSharing: boolean): string | null {
+  if (!publicSharing) {
+    return "Public sharing is not available on your current plan. Upgrade to share briefings.";
+  }
+  return null;
+}
+
+/**
+ * Check if user's plan allows transcript access.
+ * Returns an error string if not allowed, null if OK.
+ */
+export function checkTranscriptAccess(transcriptAccess: boolean): string | null {
+  if (!transcriptAccess) {
+    return "Transcript access is not available on your current plan. Upgrade to view transcripts.";
+  }
+  return null;
+}
+
 export interface UsageData {
   period: { start: string; end: string; daysRemaining: number };
   briefings: { used: number; limit: number | null; remaining: number | null; percentUsed: number };
   subscriptions: { used: number; limit: number | null; remaining: number | null; percentUsed: number };
   maxDurationMinutes: number;
+  pastEpisodesLimit: number | null;
+  publicSharing: boolean;
+  transcriptAccess: boolean;
   plan: { name: string; slug: string };
 }
 
@@ -152,6 +199,9 @@ export async function getUserUsage(userId: string, prisma: any): Promise<UsageDa
       percentUsed: plan.maxPodcastSubscriptions !== null ? Math.round((subscriptionCount / plan.maxPodcastSubscriptions) * 100) : 0,
     },
     maxDurationMinutes: plan.maxDurationMinutes,
+    pastEpisodesLimit: plan.pastEpisodesLimit ?? null,
+    publicSharing: plan.publicSharing ?? false,
+    transcriptAccess: plan.transcriptAccess ?? false,
     plan: { name: plan.name, slug: plan.slug },
   };
 }

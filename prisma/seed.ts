@@ -31,7 +31,7 @@ async function main() {
     adFree: false,
     priorityProcessing: false,
     earlyAccess: false,
-    maxVoices: 2,
+
     offlineAccess: false,
     publicSharing: true,
     isDefault: true,
@@ -68,7 +68,7 @@ async function main() {
     adFree: true,
     priorityProcessing: false,
     earlyAccess: false,
-    maxVoices: 4,
+
     offlineAccess: false,
     publicSharing: true,
     isDefault: false,
@@ -106,7 +106,7 @@ async function main() {
     adFree: true,
     priorityProcessing: true,
     earlyAccess: true,
-    maxVoices: 10,
+
     offlineAccess: true,
     publicSharing: true,
     isDefault: false,

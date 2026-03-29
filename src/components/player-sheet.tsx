@@ -10,6 +10,7 @@ import {
 import { useAudio } from "../contexts/audio-context";
 import { usePodcastSheet } from "../contexts/podcast-sheet-context";
 import { useApiFetch } from "../lib/api";
+import { usePlan } from "../contexts/plan-context";
 import { formatDuration } from "../lib/feed-utils";
 import { ThumbButtons } from "./thumb-buttons";
 
@@ -46,6 +47,7 @@ export function PlayerSheet({
   const apiFetch = useApiFetch();
 
   const { open: openPodcast } = usePodcastSheet();
+  const { publicSharing } = usePlan();
 
   // Episode vote state — reset when track changes
   const [episodeVote, setEpisodeVote] = useState(0);
@@ -224,13 +226,15 @@ export function PlayerSheet({
           {!inAd && (
             <div className="flex items-center gap-1">
               <ThumbButtons vote={episodeVote} onVote={handleEpisodeVote} size="md" />
-              <button
-                onClick={handleShare}
-                className="p-2 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                aria-label="Share briefing"
-              >
-                <Share2 className="w-4 h-4" />
-              </button>
+              {publicSharing && (
+                <button
+                  onClick={handleShare}
+                  className="p-2 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                  aria-label="Share briefing"
+                >
+                  <Share2 className="w-4 h-4" />
+                </button>
+              )}
             </div>
           )}
         </div>

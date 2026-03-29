@@ -321,6 +321,7 @@ podcasts.patch("/subscribe/:podcastId", async (c) => {
   if (body.voicePresetId !== undefined) {
     const voiceError = await checkVoicePresetAccess(prisma, user.planId, body.voicePresetId);
     if (voiceError) return c.json({ error: voiceError }, 403);
+
   }
 
   const data: any = {};

@@ -200,12 +200,6 @@ export function PlanFormDialog({
             {/* Personalization */}
             <div className="space-y-3">
               <span className="text-sm font-semibold text-[#9CA3AF] uppercase tracking-wider">Personalization</span>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label className="text-sm text-[#F9FAFB]">Number of voices</Label>
-                  <Input type="number" min={1} value={form.maxVoices} onChange={(e) => update({ maxVoices: e.target.value })} className="h-9 text-sm bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono" />
-                </div>
-              </div>
               <div className="grid grid-cols-2 gap-y-3 gap-x-6">
                 {([
                   ["offlineAccess", "Offline Access"],
@@ -287,7 +281,7 @@ export function PlanFormDialog({
             <div className="space-y-3">
               <span className="text-sm font-semibold text-[#9CA3AF] uppercase tracking-wider">Display</span>
               <div className="space-y-1.5">
-                <Label className="text-sm text-[#F9FAFB]">Features (comma-separated)</Label>
+                <Label className="text-sm text-[#F9FAFB]">Features (semicolon-separated)</Label>
                 <Input
                   value={form.features}
                   onChange={(e) => update({ features: e.target.value })}

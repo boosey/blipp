@@ -115,6 +115,7 @@ me.patch("/preferences", async (c) => {
   if (body.defaultVoicePresetId !== undefined && body.defaultVoicePresetId !== null) {
     const voiceError = await checkVoicePresetAccess(prisma, user.planId, body.defaultVoicePresetId);
     if (voiceError) return c.json({ error: voiceError }, 403);
+
   }
 
   const data: any = {};
