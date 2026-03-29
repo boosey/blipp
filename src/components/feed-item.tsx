@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { Share2, Info, Trash2, ListPlus } from "lucide-react";
+import { Share2, Trash2, ListPlus } from "lucide-react";
 import { toast } from "sonner";
 import type { FeedItem } from "../types/feed";
 import { formatDuration } from "../lib/feed-utils";
@@ -88,22 +88,24 @@ export function FeedItemCard({
 
   const cardInner = (
     <div
-      className={`relative flex gap-3 bg-card border border-border rounded-lg p-3 overflow-hidden${
+      className={`relative flex gap-3 bg-card border border-border rounded-lg p-3 h-[82px] overflow-hidden${
         !item.listened && item.status === "READY"
           ? " border-l-[3px] border-l-primary"
           : ""
       }`}
     >
-      {/* Podcast artwork — square, matching card height */}
-      {item.podcast.imageUrl ? (
-        <img
-          src={item.podcast.imageUrl}
-          alt=""
-          className="self-stretch aspect-square rounded object-cover flex-shrink-0"
-        />
-      ) : (
-        <div className="self-stretch aspect-square rounded bg-muted flex-shrink-0" />
-      )}
+      {/* Podcast artwork — fills card height, width scales to stay square */}
+      <div className="self-stretch aspect-square rounded overflow-hidden flex-shrink-0">
+        {item.podcast.imageUrl ? (
+          <img
+            src={item.podcast.imageUrl}
+            alt=""
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <div className="w-full h-full bg-muted" />
+        )}
+      </div>
 
       {/* Text */}
       <div className="flex-1 min-w-0">
@@ -137,13 +139,13 @@ export function FeedItemCard({
         <p className="font-medium text-sm truncate mt-0.5">
           {item.episode.title}
         </p>
-        {item.status === "FAILED" ? (
-          <p className="text-[10px] text-red-400/80 mt-1 truncate">
-            {friendlyError(item.errorMessage)}
-          </p>
-        ) : (
-          <>
-            <p className="text-xs text-muted-foreground mt-1">
+        <div className="flex items-center justify-between mt-1">
+          {item.status === "FAILED" ? (
+            <p className="text-[10px] text-red-400/80 truncate">
+              {friendlyError(item.errorMessage)}
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground truncate">
               {formatDuration(item.briefing?.clip?.actualSeconds, item.durationTier)}
               {epDuration && (
                 <>
@@ -152,42 +154,30 @@ export function FeedItemCard({
                 </>
               )}
             </p>
-            {item.briefing?.clip?.previewText && item.status === "READY" && (
-              <p className="text-xs text-muted-foreground/70 mt-1 line-clamp-2">
-                {item.briefing.clip.previewText}
-              </p>
-            )}
-            {item.briefing?.clip?.voiceDegraded && (
-              <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/60 mt-1" title="This briefing used an alternate voice due to a temporary service issue">
-                <Info className="w-3 h-3" />
-                Alternate voice
-              </span>
-            )}
-          </>
-        )}
-        {/* Desktop-only action buttons */}
-        {(onAddToQueue || onRemove) && (
-          <div className="hidden sm:flex items-center gap-1 mt-1.5 justify-end">
-            {onAddToQueue && item.status === "READY" && item.briefing?.clip && (
-              <button
-                aria-label="Add to queue"
-                onClick={(e) => { e.stopPropagation(); onAddToQueue(); }}
-                className="p-1 text-muted-foreground hover:text-blue-400 transition-colors"
-              >
-                <ListPlus className="w-3.5 h-3.5" />
-              </button>
-            )}
-            {onRemove && (
-              <button
-                aria-label="Remove from feed"
-                onClick={(e) => { e.stopPropagation(); onRemove(); }}
-                className="p-1 text-muted-foreground hover:text-red-400 transition-colors"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
-        )}
+          )}
+          {(onAddToQueue || onRemove) && (
+            <div className="flex items-center gap-1 flex-shrink-0">
+              {onAddToQueue && item.status === "READY" && item.briefing?.clip && (
+                <button
+                  aria-label="Add to queue"
+                  onClick={(e) => { e.stopPropagation(); onAddToQueue(); }}
+                  className="p-1 text-muted-foreground hover:text-blue-400 transition-colors"
+                >
+                  <ListPlus className="w-3.5 h-3.5" />
+                </button>
+              )}
+              {onRemove && (
+                <button
+                  aria-label="Remove from feed"
+                  onClick={(e) => { e.stopPropagation(); onRemove(); }}
+                  className="p-1 text-muted-foreground hover:text-red-400 transition-colors"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
