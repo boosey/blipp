@@ -36,6 +36,8 @@ const PLAN_WRITABLE_FIELDS = [
   // Billing
   "priceCentsMonthly",
   "priceCentsAnnual",
+  "stripePriceIdMonthly",
+  "stripePriceIdAnnual",
   "trialDays",
   "allowedVoicePresetIds",
   // Display

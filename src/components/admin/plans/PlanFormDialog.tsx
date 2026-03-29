@@ -273,6 +273,26 @@ export function PlanFormDialog({
                   />
                 </div>
               </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-sm text-[#F9FAFB]">Stripe Monthly Price ID</Label>
+                  <Input
+                    value={form.stripePriceIdMonthly}
+                    onChange={(e) => update({ stripePriceIdMonthly: e.target.value })}
+                    placeholder="price_..."
+                    className="h-9 text-sm bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-sm text-[#F9FAFB]">Stripe Annual Price ID</Label>
+                  <Input
+                    value={form.stripePriceIdAnnual}
+                    onChange={(e) => update({ stripePriceIdAnnual: e.target.value })}
+                    placeholder="price_..."
+                    className="h-9 text-sm bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono"
+                  />
+                </div>
+              </div>
             </div>
 
             <Separator className="bg-white/5" />

@@ -37,6 +37,8 @@ export interface PlanFormData {
   // Billing
   priceCentsMonthly: string;
   priceCentsAnnual: string;
+  stripePriceIdMonthly: string;
+  stripePriceIdAnnual: string;
   trialDays: string;
   allowedVoicePresetIds: string[];
   // Display
@@ -66,6 +68,8 @@ export function emptyForm(): PlanFormData {
     publicSharing: false,
     priceCentsMonthly: "0",
     priceCentsAnnual: "",
+    stripePriceIdMonthly: "",
+    stripePriceIdAnnual: "",
     trialDays: "0",
     allowedVoicePresetIds: [],
     features: "",
@@ -95,6 +99,8 @@ export function planToForm(plan: AdminPlan): PlanFormData {
     publicSharing: plan.publicSharing,
     priceCentsMonthly: String(plan.priceCentsMonthly),
     priceCentsAnnual: plan.priceCentsAnnual != null ? String(plan.priceCentsAnnual) : "",
+    stripePriceIdMonthly: plan.stripePriceIdMonthly ?? "",
+    stripePriceIdAnnual: plan.stripePriceIdAnnual ?? "",
     trialDays: String(plan.trialDays),
     allowedVoicePresetIds: plan.allowedVoicePresetIds ?? [],
     features: plan.features.join("\n"),
@@ -124,6 +130,8 @@ export function formToPayload(form: PlanFormData) {
     publicSharing: form.publicSharing,
     priceCentsMonthly: Number(form.priceCentsMonthly),
     priceCentsAnnual: form.priceCentsAnnual ? Number(form.priceCentsAnnual) : null,
+    stripePriceIdMonthly: form.stripePriceIdMonthly || null,
+    stripePriceIdAnnual: form.stripePriceIdAnnual || null,
     trialDays: Number(form.trialDays),
     allowedVoicePresetIds: form.allowedVoicePresetIds,
     features: form.features
