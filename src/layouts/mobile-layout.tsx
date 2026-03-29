@@ -1,7 +1,8 @@
-import { useRef, useCallback } from "react";
+import { useRef, useCallback, useState } from "react";
 import { Outlet, useLocation, useNavigate, Navigate } from "react-router-dom";
 import { UserButton } from "@clerk/clerk-react";
-import { ArrowLeft, Shield } from "lucide-react";
+import { ArrowLeft, Shield, MessageSquare, Bell } from "lucide-react";
+import { FeedbackDialog } from "../components/feedback-dialog";
 import { BottomNav } from "../components/bottom-nav";
 import { AudioProvider, useAudio } from "../contexts/audio-context";
 import { PlanProvider } from "../contexts/plan-context";
@@ -19,6 +20,7 @@ function MobileLayoutInner() {
   const miniPlayerRef = useRef<MiniPlayerHandle>(null);
   const location = useLocation();
   const navigate = useNavigate();
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const hasMiniPlayer = currentItem !== null;
   const isOnboarding = location.pathname === "/onboarding";
   const isSharedPlay = location.pathname.startsWith("/play/");
@@ -50,11 +52,24 @@ function MobileLayoutInner() {
             </button>
           )}
           <span className="text-lg font-bold flex items-center gap-0.5">
-            <img src="/blipp_icon_clean_128.png" alt="" className="w-7 h-7 rounded-md" />
+            <img src="/blipp_icon_clean_128.png" alt="" className="w-14 h-14 rounded-md" />
             <span>lipp</span>
           </span>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setFeedbackOpen(true)}
+            className="p-1.5 text-muted-foreground hover:text-foreground transition-colors"
+            title="Send feedback"
+          >
+            <MessageSquare className="w-5 h-5" />
+          </button>
+          <button
+            className="p-1.5 text-muted-foreground hover:text-foreground transition-colors"
+            title="Notifications"
+          >
+            <Bell className="w-5 h-5" />
+          </button>
           {isAdmin && (
             <button
               onClick={() => window.open("/admin", "blipp-admin")}
@@ -84,6 +99,8 @@ function MobileLayoutInner() {
 
       {/* Podcast detail sheet */}
       <PodcastDetailSheet />
+
+      <FeedbackDialog open={feedbackOpen} onOpenChange={setFeedbackOpen} />
     </div>
   );
 }
