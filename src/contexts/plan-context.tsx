@@ -63,10 +63,21 @@ export function PlanProvider({ children }: { children: ReactNode }) {
   return <PlanContext.Provider value={value}>{children}</PlanContext.Provider>;
 }
 
+const PLAN_DEFAULTS: PlanUsage = {
+  plan: { name: "", slug: "" },
+  briefings: { used: 0, limit: null, remaining: null },
+  subscriptions: { used: 0, limit: null, remaining: null },
+  maxDurationMinutes: 30,
+  pastEpisodesLimit: null,
+  publicSharing: false,
+  transcriptAccess: false,
+  loading: true,
+  refetch: () => {},
+};
+
 export function usePlan(): PlanUsage {
   const ctx = useContext(PlanContext);
-  if (!ctx) throw new Error("usePlan must be used inside PlanProvider");
-  return ctx;
+  return ctx ?? PLAN_DEFAULTS;
 }
 
 /** Check if user can subscribe to another podcast. Returns error message or null. */
