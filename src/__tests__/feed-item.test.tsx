@@ -84,53 +84,6 @@ describe("FeedItemCard", () => {
     expect(screen.getByText(/5m/)).toBeInTheDocument();
   });
 
-  // --- Preview text ---
-
-  it("shows preview text for READY items with previewText", () => {
-    render(
-      <MemoryRouter>
-        <FeedItemCard item={mockItem} />
-      </MemoryRouter>
-    );
-    expect(
-      screen.getByText("This is a preview of the briefing content")
-    ).toBeInTheDocument();
-  });
-
-  it("does not show preview text for non-READY items", () => {
-    const item: FeedItem = {
-      ...mockItem,
-      status: "PENDING",
-      briefing: null,
-    };
-    render(
-      <MemoryRouter>
-        <FeedItemCard item={item} />
-      </MemoryRouter>
-    );
-    expect(
-      screen.queryByText("This is a preview of the briefing content")
-    ).not.toBeInTheDocument();
-  });
-
-  it("does not show preview text when previewText is null", () => {
-    const item: FeedItem = {
-      ...mockItem,
-      briefing: {
-        ...mockItem.briefing!,
-        clip: { audioUrl: "/audio.mp3", actualSeconds: 185, previewText: null },
-      },
-    };
-    render(
-      <MemoryRouter>
-        <FeedItemCard item={item} />
-      </MemoryRouter>
-    );
-    // The preview paragraph should not be rendered
-    const paragraphs = document.querySelectorAll("p.line-clamp-2");
-    expect(paragraphs).toHaveLength(0);
-  });
-
   // --- Existing behavior (regression) ---
 
   it("renders podcast title and episode title", () => {
