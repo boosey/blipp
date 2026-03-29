@@ -13,6 +13,10 @@ vi.mock("../contexts/podcast-sheet-context", () => ({
   usePodcastSheet: () => ({ podcastId: null, open: vi.fn(), close: vi.fn() }),
 }));
 
+vi.mock("../contexts/plan-context", () => ({
+  usePlan: () => ({ publicSharing: true }),
+}));
+
 import { toast } from "sonner";
 
 const mockCurrentItem = {
