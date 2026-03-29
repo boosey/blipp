@@ -91,7 +91,7 @@ export function SwipeableFeedItem({
     }
 
     const dx = offsetRef.current;
-    const threshold = BUTTON_WIDTH * 0.4;
+    const threshold = BUTTON_WIDTH * 0.75;
 
     if (Math.abs(dx) >= threshold && directionRef.current) {
       // Snap open to reveal button
