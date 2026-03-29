@@ -119,7 +119,7 @@ describe("Admin Plans Routes", () => {
       const createCall = mockPrisma.plan.create.mock.calls[0][0];
       expect(createCall.data).not.toHaveProperty("id");
       expect(createCall.data).not.toHaveProperty("stripeProductId");
-      expect(createCall.data).not.toHaveProperty("stripePriceIdMonthly");
+      expect(createCall.data).toHaveProperty("stripePriceIdMonthly", "price_evil");
       expect(createCall.data).not.toHaveProperty("createdAt");
     });
 
