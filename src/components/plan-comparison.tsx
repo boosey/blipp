@@ -48,8 +48,10 @@ export function PlanComparison({
 
   return (
     <div className="space-y-3">
-      {plans.map((p) => {
+      {plans.map((p, idx) => {
         const isCurrent = currentPlanSlug === p.slug;
+        const currentIdx = plans.findIndex((pl) => pl.slug === currentPlanSlug);
+        const isUpgrade = currentIdx >= 0 && idx > currentIdx;
         return (
           <div
             key={p.id}
@@ -100,7 +102,7 @@ export function PlanComparison({
                   </button>
                 )}
               </div>
-            ) : p.priceCentsMonthly > 0 ? (
+            ) : isUpgrade ? (
               <button
                 onClick={() => onUpgrade(p)}
                 disabled={actionLoading === p.id}
