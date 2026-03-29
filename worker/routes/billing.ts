@@ -52,10 +52,10 @@ billing.post("/checkout", async (c) => {
 
   const stripe = createStripeClient(c.env.STRIPE_SECRET_KEY);
 
-  if (!c.env.APP_ORIGIN) {
-    throw new Error("APP_ORIGIN env var is required");
+  const origin = c.req.header("origin") || c.env.APP_ORIGIN;
+  if (!origin) {
+    return c.json({ error: "Cannot determine app origin — APP_ORIGIN env var is missing and no Origin header" }, 500);
   }
-  const origin = c.req.header("origin") ?? c.env.APP_ORIGIN;
 
   const sessionParams: Record<string, unknown> = {
     mode: "subscription" as const,
@@ -72,9 +72,16 @@ billing.post("/checkout", async (c) => {
     sessionParams.customer_email = user.email;
   }
 
-  const session = await stripe.checkout.sessions.create(
-    sessionParams as Parameters<typeof stripe.checkout.sessions.create>[0]
-  );
+  let session;
+  try {
+    session = await stripe.checkout.sessions.create(
+      sessionParams as Parameters<typeof stripe.checkout.sessions.create>[0]
+    );
+  } catch (err) {
+    console.error("[billing/checkout] Stripe error:", err);
+    const message = err instanceof Error ? err.message : String(err);
+    return c.json({ error: `Checkout failed: ${message}` }, 500);
+  }
 
   // Save stripeCustomerId if this is the user's first checkout
   if (!user.stripeCustomerId && session.customer) {
@@ -104,10 +111,10 @@ billing.post("/portal", async (c) => {
   }
 
   const stripe = createStripeClient(c.env.STRIPE_SECRET_KEY);
-  if (!c.env.APP_ORIGIN) {
-    throw new Error("APP_ORIGIN env var is required");
+  const origin = c.req.header("origin") || c.env.APP_ORIGIN;
+  if (!origin) {
+    return c.json({ error: "Cannot determine app origin — APP_ORIGIN env var is missing and no Origin header" }, 500);
   }
-  const origin = c.req.header("origin") ?? c.env.APP_ORIGIN;
 
   const session = await stripe.billingPortal.sessions.create({
     customer: user.stripeCustomerId,

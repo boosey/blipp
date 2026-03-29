@@ -94,15 +94,15 @@ export function FeedItemCard({
           : ""
       }`}
     >
-      {/* Podcast artwork */}
+      {/* Podcast artwork — fills card height */}
       {item.podcast.imageUrl ? (
         <img
           src={item.podcast.imageUrl}
           alt=""
-          className="w-12 h-12 rounded object-cover flex-shrink-0"
+          className="w-16 self-stretch rounded object-cover flex-shrink-0"
         />
       ) : (
-        <div className="w-12 h-12 rounded bg-muted flex-shrink-0" />
+        <div className="w-16 self-stretch rounded bg-muted flex-shrink-0" />
       )}
 
       {/* Text */}
