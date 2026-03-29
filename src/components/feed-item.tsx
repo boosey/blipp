@@ -88,7 +88,7 @@ export function FeedItemCard({
 
   const cardInner = (
     <div
-      className={`relative flex gap-3 bg-card border border-border rounded-lg p-3 h-[82px] overflow-hidden${
+      className={`relative flex gap-3 bg-card border border-border rounded-lg p-3 overflow-hidden${
         !item.listened && item.status === "READY"
           ? " border-l-[3px] border-l-primary"
           : ""
