@@ -20,24 +20,6 @@ plans.get("/", async (c) => {
       priceCentsAnnual: true,
       features: true,
       highlighted: true,
-      // Limits
-      briefingsPerWeek: true,
-      maxDurationMinutes: true,
-      maxPodcastSubscriptions: true,
-      pastEpisodesLimit: true,
-      // Content Delivery
-      transcriptAccess: true,
-      dailyDigest: true,
-      // Pipeline & Processing
-      concurrentPipelineJobs: true,
-      // Feature flags
-      adFree: true,
-      priorityProcessing: true,
-      earlyAccess: true,
-      // Personalization
-      maxVoices: true,
-      offlineAccess: true,
-      publicSharing: true,
     },
   });
   return c.json(allPlans);

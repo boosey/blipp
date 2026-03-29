@@ -10,47 +10,8 @@ export interface Plan {
   description?: string;
   priceCentsMonthly: number;
   priceCentsAnnual?: number | null;
-  briefingsPerWeek: number | null;
-  maxDurationMinutes: number;
-  maxPodcastSubscriptions: number | null;
-  pastEpisodesLimit?: number | null;
-  transcriptAccess?: boolean;
-  dailyDigest?: boolean;
-  adFree: boolean;
-  priorityProcessing: boolean;
-  earlyAccess: boolean;
-  maxVoices?: number;
-  offlineAccess?: boolean;
-  publicSharing?: boolean;
+  features: string[];
   highlighted: boolean;
-}
-
-export function buildFeatures(plan: Plan): string[] {
-  const features: string[] = [];
-
-  if (plan.briefingsPerWeek === null) {
-    features.push("Unlimited briefings");
-  } else {
-    features.push(`${plan.briefingsPerWeek} briefings per week`);
-  }
-
-  features.push(`Up to ${plan.maxDurationMinutes} min briefings`);
-
-  if (plan.maxPodcastSubscriptions === null) {
-    features.push("Unlimited podcast subscriptions");
-  } else if (plan.maxPodcastSubscriptions > 0) {
-    features.push(`${plan.maxPodcastSubscriptions} podcast subscriptions`);
-  }
-
-  if (plan.adFree) features.push("Ad-free listening");
-  if (plan.transcriptAccess) features.push("Transcript access");
-  if (plan.dailyDigest) features.push("Daily digest");
-  if (plan.maxVoices && plan.maxVoices > 1) features.push(`${plan.maxVoices} voice options`);
-  if (plan.priorityProcessing) features.push("Priority processing");
-  if (plan.offlineAccess) features.push("Offline access");
-  if (plan.earlyAccess) features.push("Early access to new features");
-
-  return features;
 }
 
 interface PlanCardsProps {
@@ -178,7 +139,7 @@ export function PlanCards({ currentPlanSlug, onCheckout, compact }: PlanCardsPro
               )}
 
               <ul className={`${compact ? "mt-3 space-y-1.5" : "mt-6 space-y-3"} flex-1`}>
-                {buildFeatures(plan).map((feature) => (
+                {(plan.features || []).map((feature) => (
                   <li
                     key={feature}
                     className={`flex items-start gap-2 ${compact ? "text-xs" : "text-sm"} text-foreground/80`}

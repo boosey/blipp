@@ -6,94 +6,130 @@ const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
 const prisma = new PrismaClient({ adapter });
 
 async function main() {
+  // ── Resolve voice preset IDs by name (IDs differ between environments) ──
+  const voicePresets = await prisma.voicePreset.findMany({
+    where: { name: { in: ["System Default", "Nova", "Sage", "Spark"] } },
+    select: { id: true, name: true },
+  });
+  const vpId = (name: string) => voicePresets.find((v) => v.name === name)?.id;
+  const allVpIds = voicePresets.map((v) => v.id);
+
   // ── Plans ──
+
+  const freePlan = {
+    name: "Free",
+    slug: "free",
+    priceCentsMonthly: 0,
+    priceCentsAnnual: null as number | null,
+    briefingsPerWeek: 10 as number | null,
+    maxDurationMinutes: 5,
+    maxPodcastSubscriptions: null as number | null,
+    pastEpisodesLimit: 5 as number | null,
+    transcriptAccess: false,
+    dailyDigest: false,
+    concurrentPipelineJobs: 5,
+    adFree: false,
+    priorityProcessing: false,
+    earlyAccess: false,
+    maxVoices: 2,
+    offlineAccess: false,
+    publicSharing: true,
+    isDefault: true,
+    highlighted: false,
+    active: true,
+    features: [
+      "10 briefings per week",
+      "5 minute maximum",
+      "5000+ podcasts",
+      "Choice of 2 voices",
+    ],
+    allowedVoicePresetIds: [vpId("System Default"), vpId("Sage")].filter(Boolean) as string[],
+    sortOrder: 0,
+  };
 
   await prisma.plan.upsert({
     where: { slug: "free" },
-    update: {},
-    create: {
-      name: "Free",
-      slug: "free",
-      priceCentsMonthly: 0,
-      briefingsPerWeek: 10,
-      maxDurationMinutes: 5,
-      maxPodcastSubscriptions: 0,
-      pastEpisodesLimit: 5,
-      concurrentPipelineJobs: 1,
-      maxVoices: 1,
-      isDefault: true,
-      features: [
-        "10 briefings per week",
-        "Up to 5 min briefings",
-        "1 voice option",
-      ],
-      sortOrder: 0,
-    },
+    update: freePlan,
+    create: freePlan,
   });
+
+  const proPlan = {
+    name: "Pro",
+    slug: "pro",
+    priceCentsMonthly: 799,
+    priceCentsAnnual: 7999 as number | null,
+    briefingsPerWeek: null as number | null,
+    maxDurationMinutes: 15,
+    maxPodcastSubscriptions: 5 as number | null,
+    pastEpisodesLimit: null as number | null,
+    transcriptAccess: false,
+    dailyDigest: false,
+    concurrentPipelineJobs: 15,
+    adFree: true,
+    priorityProcessing: false,
+    earlyAccess: false,
+    maxVoices: 4,
+    offlineAccess: false,
+    publicSharing: true,
+    isDefault: false,
+    highlighted: true,
+    active: true,
+    features: [
+      "Unlimited briefings",
+      "15 minute maximum",
+      "5000+ podcasts",
+      "Choice of 4 voices",
+      "Ad-free",
+    ],
+    allowedVoicePresetIds: allVpIds,
+    sortOrder: 1,
+  };
 
   await prisma.plan.upsert({
     where: { slug: "pro" },
-    update: {},
-    create: {
-      name: "Pro",
-      slug: "pro",
-      priceCentsMonthly: 999,
-      priceCentsAnnual: 9999,
-      briefingsPerWeek: null,
-      maxDurationMinutes: 15,
-      maxPodcastSubscriptions: 5,
-      pastEpisodesLimit: 50,
-      transcriptAccess: true,
-      dailyDigest: true,
-      concurrentPipelineJobs: 3,
-      adFree: true,
-      maxVoices: 3,
-      publicSharing: true,
-      offlineAccess: true,
-      features: [
-        "Unlimited briefings",
-        "Up to 15 min briefings",
-        "Daily digest",
-        "Ad-free listening",
-        "3 voice options",
-        "Transcript access",
-        "Offline access",
-      ],
-      sortOrder: 1,
-    },
+    update: proPlan,
+    create: proPlan,
   });
+
+  const proPlusPlan = {
+    name: "Pro+",
+    slug: "pro-plus",
+    priceCentsMonthly: 1499,
+    priceCentsAnnual: 13999 as number | null,
+    briefingsPerWeek: null as number | null,
+    maxDurationMinutes: 30,
+    maxPodcastSubscriptions: null as number | null,
+    pastEpisodesLimit: null as number | null,
+    transcriptAccess: true,
+    dailyDigest: true,
+    concurrentPipelineJobs: 50,
+    adFree: true,
+    priorityProcessing: true,
+    earlyAccess: true,
+    maxVoices: 10,
+    offlineAccess: true,
+    publicSharing: true,
+    isDefault: false,
+    highlighted: false,
+    active: true,
+    features: [
+      "Unlimited briefings",
+      "30 minute maximum",
+      "5000+ podcasts",
+      "Choice of 10 voices",
+      "Ad-free",
+      "Offline listening",
+      "Priority Processing",
+      "Early access to new episodes",
+    ],
+    allowedVoicePresetIds: allVpIds,
+    sortOrder: 2,
+  };
 
   await prisma.plan.upsert({
     where: { slug: "pro-plus" },
-    update: {},
-    create: {
-      name: "Pro+",
-      slug: "pro-plus",
-      priceCentsMonthly: 1999,
-      priceCentsAnnual: 17999,
-      briefingsPerWeek: null,
-      maxDurationMinutes: 30,
-      maxPodcastSubscriptions: null,
-      pastEpisodesLimit: null,
-      transcriptAccess: true,
-      dailyDigest: true,
-      concurrentPipelineJobs: 5,
-      adFree: true,
-      priorityProcessing: true,
-      earlyAccess: true,
-      maxVoices: 10,
-      offlineAccess: true,
-      publicSharing: true,
-      features: [
-        "Unlimited everything",
-        "Up to 30 min briefings",
-        "10 voice options",
-        "Daily digest",
-        "Priority processing",
-        "Early access to new features",
-      ],
-      sortOrder: 2,
-    },
+    update: proPlusPlan,
+    create: proPlusPlan,
   });
 
   console.log("Seeded plans.");
@@ -124,106 +160,90 @@ async function main() {
 
   // ── Curated Personas ──
 
-  await prisma.voicePreset.upsert({
-    where: { name: "Nova" },
-    update: {},
-    create: {
-      name: "Nova",
-      description:
-        "Bright and energetic — like your favorite morning show host. Great for daily news briefings.",
-      isSystem: true,
-      isActive: true,
-      config: {
-        openai: {
-          voice: "nova",
-          instructions:
-            "Speak with bright, upbeat energy like a morning show host. " +
-            "Keep the pace lively but clear. Add natural enthusiasm when introducing new topics.",
-          speed: 1.05,
-        },
-        groq: { voice: "autumn" },
-        cloudflare: { voice: "electra" },
+  const novaPreset = {
+    description: "Bright and energetic — like your favorite morning show host. Great for daily news briefings.",
+    isSystem: true,
+    isActive: true,
+    config: {
+      openai: {
+        voice: "nova",
+        instructions: "Speak with bright, upbeat energy like a morning show host. Keep the pace lively but clear. Add natural enthusiasm when introducing new topics.",
+        speed: 1.05,
       },
-      voiceCharacteristics: { gender: "female", tone: "energetic", pace: "fast" },
+      groq: { voice: "autumn" },
+      cloudflare: { voice: "electra" },
     },
-  });
+    voiceCharacteristics: { gender: "female", tone: "energetic", pace: "fast" },
+  };
+  await prisma.voicePreset.upsert({ where: { name: "Nova" }, update: novaPreset, create: { name: "Nova", ...novaPreset } });
 
-  await prisma.voicePreset.upsert({
-    where: { name: "Sage" },
-    update: {},
-    create: {
-      name: "Sage",
-      description:
-        "Calm and authoritative — measured delivery for deep-dive analysis and long-form content.",
-      isSystem: true,
-      isActive: true,
-      config: {
-        openai: {
-          voice: "onyx",
-          instructions:
-            "Speak in a calm, measured, authoritative tone. " +
-            "Take your time with complex ideas. Pause thoughtfully between sections. " +
-            "Convey gravitas without being monotone.",
-          speed: 0.95,
-        },
-        groq: { voice: "daniel" },
-        cloudflare: { voice: "orpheus" },
+  const sagePreset = {
+    description: "Calm and authoritative — measured delivery for deep-dive analysis and long-form content.",
+    isSystem: true,
+    isActive: true,
+    config: {
+      openai: {
+        voice: "onyx",
+        instructions: "Speak in a calm, measured, authoritative tone. Take your time with complex ideas. Pause thoughtfully between sections. Convey gravitas without being monotone.",
+        speed: 0.95,
       },
-      voiceCharacteristics: { gender: "male", tone: "authoritative", pace: "slow" },
+      groq: { voice: "daniel" },
+      cloudflare: { voice: "orpheus" },
     },
-  });
+    voiceCharacteristics: { gender: "male", tone: "authoritative", pace: "slow" },
+  };
+  await prisma.voicePreset.upsert({ where: { name: "Sage" }, update: sagePreset, create: { name: "Sage", ...sagePreset } });
 
-  await prisma.voicePreset.upsert({
-    where: { name: "Spark" },
-    update: {},
-    create: {
-      name: "Spark",
-      description:
-        "Conversational and witty — casual tone perfect for entertainment and culture briefings.",
-      isSystem: true,
-      isActive: true,
-      config: {
-        openai: {
-          voice: "shimmer",
-          instructions:
-            "Speak in a friendly, conversational tone with a hint of wit. " +
-            "Sound like you're telling a friend about something interesting you just learned. " +
-            "Keep it casual and engaging.",
-          speed: 1.0,
-        },
-        groq: { voice: "hannah" },
-        cloudflare: { voice: "thalia" },
+  const sparkPreset = {
+    description: "Conversational and witty — casual tone perfect for entertainment and culture briefings.",
+    isSystem: true,
+    isActive: true,
+    config: {
+      openai: {
+        voice: "shimmer",
+        instructions: "Speak in a friendly, conversational tone with a hint of wit. Sound like you're telling a friend about something interesting you just learned. Keep it casual and engaging.",
+        speed: 1.0,
       },
-      voiceCharacteristics: { gender: "female", tone: "conversational", pace: "medium" },
+      groq: { voice: "hannah" },
+      cloudflare: { voice: "thalia" },
     },
-  });
+    voiceCharacteristics: { gender: "female", tone: "conversational", pace: "medium" },
+  };
+  await prisma.voicePreset.upsert({ where: { name: "Spark" }, update: sparkPreset, create: { name: "Spark", ...sparkPreset } });
 
-  // ── Backfill: add groq/cloudflare config to presets missing them ──
+  const echoPreset = {
+    description: "Smooth and confident — an easygoing male voice for laid-back, everyday briefings.",
+    isSystem: true,
+    isActive: true,
+    config: {
+      openai: {
+        voice: "echo",
+        instructions: "Speak in a smooth, confident, relaxed tone. Keep things easy and natural — like a trusted friend catching you up on what you missed. Don't rush.",
+        speed: 1.0,
+      },
+      groq: { voice: "austin" },
+      cloudflare: { voice: "apollo" },
+    },
+    voiceCharacteristics: { gender: "male", tone: "calm", pace: "medium" },
+  };
+  await prisma.voicePreset.upsert({ where: { name: "Echo" }, update: echoPreset, create: { name: "Echo", ...echoPreset } });
 
-  const presetsToBackfill = await prisma.voicePreset.findMany({});
-
-  for (const preset of presetsToBackfill) {
-    const cfg = preset.config as Record<string, unknown>;
-    const groqCfg = cfg.groq as Record<string, unknown> | undefined;
-    const cfCfg = cfg.cloudflare as Record<string, unknown> | undefined;
-    const invalidGroqVoices = ["austin", "tara", "jess", "leo", "leah"];
-    const needsGroq = !groqCfg || Object.keys(groqCfg).length === 0 || invalidGroqVoices.includes((groqCfg as any).voice);
-    const needsCf = !cfCfg || Object.keys(cfCfg).length === 0;
-
-    if (needsGroq || needsCf) {
-      await prisma.voicePreset.update({
-        where: { id: preset.id },
-        data: {
-          config: {
-            ...cfg,
-            ...(needsGroq && { groq: { voice: "diana" } }),
-            ...(needsCf && { cloudflare: { voice: "luna" } }),
-          },
-        },
-      });
-      console.log(`  Backfilled voice config for preset "${preset.name}"`);
-    }
-  }
+  const atlasPreset = {
+    description: "Deep and warm — a trustworthy baritone for serious topics and long-form content.",
+    isSystem: true,
+    isActive: true,
+    config: {
+      openai: {
+        voice: "ash",
+        instructions: "Speak with a deep, warm, trustworthy tone. You have gravitas and presence. Deliver information with quiet confidence and steady pacing. Let the content speak for itself.",
+        speed: 0.95,
+      },
+      groq: { voice: "troy" },
+      cloudflare: { voice: "zeus" },
+    },
+    voiceCharacteristics: { gender: "male", tone: "warm", pace: "slow" },
+  };
+  await prisma.voicePreset.upsert({ where: { name: "Atlas" }, update: atlasPreset, create: { name: "Atlas", ...atlasPreset } });
 
   console.log("Seeded voice presets.");
 
