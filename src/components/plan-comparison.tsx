@@ -12,12 +12,6 @@ export interface PlanDetail {
   priceCentsAnnual: number | null;
   features: string[];
   highlighted: boolean;
-  briefingsPerWeek: number | null;
-  maxDurationMinutes: number;
-  maxPodcastSubscriptions: number | null;
-  adFree: boolean;
-  priorityProcessing: boolean;
-  earlyAccess: boolean;
 }
 
 export function PlanComparison({
@@ -87,12 +81,9 @@ export function PlanComparison({
               </div>
             </div>
             <ul className="text-xs text-muted-foreground space-y-1">
-              <li>· {p.briefingsPerWeek ?? "Unlimited"} briefings/week</li>
-              <li>· Up to {p.maxDurationMinutes}min per briefing</li>
-              <li>· {p.maxPodcastSubscriptions ?? "Unlimited"} subscriptions</li>
-              {p.adFree && <li className="text-green-400">· Ad-free</li>}
-              {p.priorityProcessing && <li className="text-green-400">· Priority processing</li>}
-              {p.earlyAccess && <li className="text-green-400">· Early access</li>}
+              {(p.features || []).map((f) => (
+                <li key={f}>· {f}</li>
+              ))}
             </ul>
             {isCurrent ? (
               <div className="flex items-center gap-2">

@@ -27,14 +27,8 @@ const mockPlans: PlanDetail[] = [
     description: "Get started",
     priceCentsMonthly: 0,
     priceCentsAnnual: null,
-    features: [],
+    features: ["5 briefings per week", "3 minute maximum"],
     highlighted: false,
-    briefingsPerWeek: 5,
-    maxDurationMinutes: 3,
-    maxPodcastSubscriptions: 3,
-    adFree: false,
-    priorityProcessing: false,
-    earlyAccess: false,
   },
   {
     id: "plan-pro",
@@ -43,14 +37,8 @@ const mockPlans: PlanDetail[] = [
     description: "For power listeners",
     priceCentsMonthly: 999,
     priceCentsAnnual: 9990,
-    features: [],
+    features: ["Unlimited briefings", "15 minute maximum", "Ad-free", "Priority processing"],
     highlighted: true,
-    briefingsPerWeek: null,
-    maxDurationMinutes: 15,
-    maxPodcastSubscriptions: null,
-    adFree: true,
-    priorityProcessing: true,
-    earlyAccess: true,
   },
 ];
 
@@ -190,7 +178,7 @@ describe("PlanComparison", () => {
     expect(onManage).toHaveBeenCalled();
   });
 
-  it("shows plan details (briefings/week, max duration, subscriptions)", async () => {
+  it("shows features from the plan's features array", async () => {
     render(
       <PlanComparison
         currentPlanSlug="free"
@@ -201,32 +189,11 @@ describe("PlanComparison", () => {
     );
 
     await waitFor(() => {
-      // Free plan details (bullet format)
-      expect(screen.getByText("· 5 briefings/week")).toBeInTheDocument();
-      expect(screen.getByText("· Up to 3min per briefing")).toBeInTheDocument();
-      expect(screen.getByText("· 3 subscriptions")).toBeInTheDocument();
-
-      // Pro plan details
-      expect(screen.getByText("· Unlimited briefings/week")).toBeInTheDocument();
-      expect(screen.getByText("· Up to 15min per briefing")).toBeInTheDocument();
-      expect(screen.getByText("· Unlimited subscriptions")).toBeInTheDocument();
-    });
-  });
-
-  it("shows ad-free, priority processing, and early access badges for Pro", async () => {
-    render(
-      <PlanComparison
-        currentPlanSlug="free"
-        onUpgrade={vi.fn()}
-        onManage={vi.fn()}
-        actionLoading={null}
-      />
-    );
-
-    await waitFor(() => {
+      expect(screen.getByText("· 5 briefings per week")).toBeInTheDocument();
+      expect(screen.getByText("· 3 minute maximum")).toBeInTheDocument();
+      expect(screen.getByText("· Unlimited briefings")).toBeInTheDocument();
       expect(screen.getByText("· Ad-free")).toBeInTheDocument();
       expect(screen.getByText("· Priority processing")).toBeInTheDocument();
-      expect(screen.getByText("· Early access")).toBeInTheDocument();
     });
   });
 
