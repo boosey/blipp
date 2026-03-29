@@ -165,7 +165,7 @@ async function wipeCatalogData(prisma: PrismaClient, r2: R2Bucket): Promise<void
  * Updates appleRank for existing podcasts and clears rank for podcasts no longer in the chart.
  */
 async function updateAppleRanks(prisma: PrismaClient, discovered: DiscoveredPodcast[]): Promise<void> {
-  const withRank = discovered.filter((p) => p.feedUrl && p.appleRank != null);
+  const withRank = discovered.filter((p) => p.appleId && p.appleRank != null);
   if (withRank.length === 0) return;
 
   // Clear rank for all podcasts that previously had one (they may have dropped off the chart)
@@ -174,21 +174,23 @@ async function updateAppleRanks(prisma: PrismaClient, discovered: DiscoveredPodc
     data: { appleRank: null },
   });
 
-  // Set rank for current chart entries
+  // Set rank for current chart entries (match by appleId which is more reliable than feedUrl)
   const BATCH = 50;
+  let updated = 0;
   for (let i = 0; i < withRank.length; i += BATCH) {
     const chunk = withRank.slice(i, i + BATCH);
-    await Promise.all(
+    const results = await Promise.all(
       chunk.map((p) =>
         prisma.podcast.updateMany({
-          where: { feedUrl: p.feedUrl },
+          where: { appleId: p.appleId },
           data: { appleRank: p.appleRank },
         })
       )
     );
+    updated += results.reduce((sum, r) => sum + r.count, 0);
   }
 
-  console.log(JSON.stringify({ level: "info", action: "catalog_refresh_ranks_updated", count: withRank.length, ts: new Date().toISOString() }));
+  console.log(JSON.stringify({ level: "info", action: "catalog_refresh_ranks_updated", discovered: withRank.length, updated, ts: new Date().toISOString() }));
 }
 
 async function filterNewPodcasts(prisma: PrismaClient, discovered: DiscoveredPodcast[]): Promise<DiscoveredPodcast[]> {

@@ -5,7 +5,7 @@ import { FeedItemCard } from "./feed-item";
 import { useAudio } from "../contexts/audio-context";
 import type { FeedItem } from "../types/feed";
 
-const SWIPE_THRESHOLD = 10;
+const SWIPE_THRESHOLD = 30;
 const BUTTON_WIDTH = 72; // px
 
 interface SwipeableFeedItemProps {

@@ -14,25 +14,14 @@ export interface Plan {
   maxDurationMinutes: number;
   maxPodcastSubscriptions: number | null;
   pastEpisodesLimit?: number | null;
-  onDemandRequestsPerWeek?: number | null;
-  outputFormats?: string[];
   transcriptAccess?: boolean;
-  narrativeDepthTier?: string;
   dailyDigest?: boolean;
-  weeklyRecap?: boolean;
-  episodeHighlightClips?: boolean;
-  customInstructions?: boolean;
   adFree: boolean;
   priorityProcessing: boolean;
   earlyAccess: boolean;
-  crossPodcastSynthesis?: boolean;
-  topicTracking?: boolean;
-  searchBriefings?: boolean;
-  rssExport?: boolean;
-  apiAccess?: boolean;
+  maxVoices?: number;
   offlineAccess?: boolean;
   publicSharing?: boolean;
-  interactiveBriefing?: boolean;
   highlighted: boolean;
 }
 
@@ -53,18 +42,12 @@ export function buildFeatures(plan: Plan): string[] {
     features.push(`${plan.maxPodcastSubscriptions} podcast subscriptions`);
   }
 
-  if (plan.narrativeDepthTier === "deep") features.push("Deep analysis summaries");
   if (plan.adFree) features.push("Ad-free listening");
   if (plan.transcriptAccess) features.push("Transcript access");
   if (plan.dailyDigest) features.push("Daily digest");
-  if (plan.weeklyRecap) features.push("Weekly recap");
-  if (plan.customInstructions) features.push("Custom instructions");
+  if (plan.maxVoices && plan.maxVoices > 1) features.push(`${plan.maxVoices} voice options`);
   if (plan.priorityProcessing) features.push("Priority processing");
-  if (plan.crossPodcastSynthesis) features.push("Cross-podcast synthesis");
-  if (plan.interactiveBriefing) features.push("Interactive Q&A");
   if (plan.offlineAccess) features.push("Offline access");
-  if (plan.rssExport) features.push("RSS export");
-  if (plan.apiAccess) features.push("API access");
   if (plan.earlyAccess) features.push("Early access to new features");
 
   return features;

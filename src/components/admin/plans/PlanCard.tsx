@@ -105,14 +105,11 @@ export function PlanCard({
       <div className="grid grid-cols-3 sm:grid-cols-5 gap-x-6 gap-y-3 mb-4">
         {([
           ["Briefings/wk", plan.briefingsPerWeek],
-          ["On-demand/wk", plan.onDemandRequestsPerWeek],
           ["Max duration", plan.maxDurationMinutes != null ? `${plan.maxDurationMinutes}m` : null],
           ["Subscriptions", plan.maxPodcastSubscriptions],
           ["Past episodes", plan.pastEpisodesLimit],
-          ["Saved searches", plan.savedSearches],
-          ["Retry budget", plan.retryBudget],
           ["Concurrent jobs", plan.concurrentPipelineJobs],
-          ["Storage", plan.maxStorageDays != null ? `${plan.maxStorageDays}d` : null],
+          ["Voices", plan.maxVoices],
         ] as [string, unknown][]).map(([label, value]) => (
           <div key={label}>
             <span className="text-sm text-[#6B7280]">{label}</span>
@@ -123,60 +120,16 @@ export function PlanCard({
         ))}
       </div>
 
-      {/* Enum Tiers */}
-      <div className="grid grid-cols-3 sm:grid-cols-6 gap-x-6 gap-y-3 mb-4">
-        {([
-          ["Depth", plan.narrativeDepthTier],
-          ["Latency", plan.refreshLatencyTier],
-          ["Catalog", plan.catalogAccess],
-          ["AI models", plan.aiModelTier],
-          ["TTS", plan.ttsModelTier],
-          ["STT", plan.sttModelTier],
-        ] as [string, string][]).map(([label, value]) => (
-          <div key={label}>
-            <span className="text-sm text-[#6B7280]">{label}</span>
-            <div className="text-base text-[#F9FAFB] font-mono font-semibold capitalize">{value}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Array fields */}
-      <div className="grid grid-cols-2 gap-x-6 mb-4">
-        <div>
-          <span className="text-sm text-[#6B7280]">Formats</span>
-          <div className="text-base text-[#F9FAFB] font-mono font-semibold">{plan.outputFormats?.length > 0 ? plan.outputFormats.join(", ") : "—"}</div>
-        </div>
-        <div>
-          <span className="text-sm text-[#6B7280]">Languages</span>
-          <div className="text-base text-[#F9FAFB] font-mono font-semibold">{plan.languageSupport?.length > 0 ? plan.languageSupport.join(", ") : "—"}</div>
-        </div>
-      </div>
-
       {/* All boolean features */}
       <div className="flex flex-wrap gap-1.5 mt-3">
         {([
           ["Ad-Free", plan.adFree],
           ["Priority", plan.priorityProcessing],
           ["Early Access", plan.earlyAccess],
-          ["Research", plan.researchMode],
-          ["Synthesis", plan.crossPodcastSynthesis],
           ["Transcripts", plan.transcriptAccess],
           ["Daily Digest", plan.dailyDigest],
-          ["Weekly Recap", plan.weeklyRecap],
-          ["Clips", plan.episodeHighlightClips],
-          ["Custom Instructions", plan.customInstructions],
-          ["Topics", plan.topicTracking],
-          ["Collections", plan.customCollections],
-          ["Search", plan.searchBriefings],
-          ["RSS", plan.rssExport],
-          ["API", plan.apiAccess],
-          ["Tone Presets", plan.tonePresets],
-          ["Focus Topics", plan.focusTopics],
-          ["Skip Topics", plan.skipTopics],
-          ["Intro", plan.briefingIntro],
           ["Offline", plan.offlineAccess],
           ["Sharing", plan.publicSharing],
-          ["Interactive Q&A", plan.interactiveBriefing],
         ] as [string, boolean][]).map(([label, enabled]) => (
           <Badge
             key={label}

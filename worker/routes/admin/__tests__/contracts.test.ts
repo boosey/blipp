@@ -281,8 +281,6 @@ describe("API Response Contracts", () => {
         adFree: true,
         priorityProcessing: true,
         earlyAccess: false,
-        researchMode: false,
-        crossPodcastSynthesis: false,
         priceCentsMonthly: 599,
         priceCentsAnnual: 5990,
         stripePriceIdMonthly: null,
@@ -324,8 +322,6 @@ describe("API Response Contracts", () => {
       expect(plan).toHaveProperty("adFree");
       expect(plan).toHaveProperty("priorityProcessing");
       expect(plan).toHaveProperty("earlyAccess");
-      expect(plan).toHaveProperty("researchMode");
-      expect(plan).toHaveProperty("crossPodcastSynthesis");
     });
   });
 
