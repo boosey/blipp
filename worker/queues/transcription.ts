@@ -219,42 +219,8 @@ export async function handleTranscription(
 
             const maxFileSize = (resolved.limits?.maxFileSizeBytes as number) ?? DEFAULT_STT_CHUNK_SIZE;
 
-            // Step A: Try URL-direct if provider supports it
-            if (providerImpl.supportsUrl) {
-              await writeEvent(prisma, step.id, "INFO", `Attempting ${tier} URL-direct: ${providerImpl.name} (${providerModelId})`, {
-                tier, provider: resolved.provider, model: providerModelId,
-              });
-
-              try {
-                const sttResult = await providerImpl.transcribe(
-                  { url: episode.audioUrl },
-                  durationSeconds, env, providerModelId,
-                );
-
-                transcript = sttResult.transcript;
-                recordSuccess(resolved.provider);
-                const estimatedSeconds = probe.contentLength ? probe.contentLength / ASSUMED_BITRATE_BYTES_PER_SEC : durationSeconds;
-                const sttInputTokens = probe.contentLength ? Math.round(probe.contentLength / STT_BYTES_PER_TOKEN) : 0;
-                sttUsage = { model: resolved.model, inputTokens: sttInputTokens, outputTokens: 0, cost: calculateAudioCost(resolved.pricing, estimatedSeconds), audioSeconds: estimatedSeconds };
-
-                await writeEvent(prisma, step.id, "INFO", `Transcript generated via ${tier} URL-direct ${providerImpl.name}`, {
-                  tier, bytes: transcript.length, source: resolved.provider,
-                  attemptNumber: i + 1, previousFailures: sttErrors.length,
-                });
-                log.info("transcript_fetched", { episodeId, bytes: transcript.length, source: resolved.provider, tier, method: "url-direct" });
-                break; // Success
-              } catch (urlErr) {
-                const errMsg = urlErr instanceof Error ? urlErr.message : String(urlErr);
-                await writeEvent(prisma, step.id, "WARN", `${tier} URL-direct failed: ${providerImpl.name} — ${errMsg.slice(0, 300)}`, {
-                  tier, provider: resolved.provider, model: providerModelId,
-                  httpStatus: (urlErr as any)?.httpStatus,
-                  errorType: urlErr?.constructor?.name,
-                });
-                // Fall through to chunked fallback below
-              }
-            }
-
-            // Step B: Chunked byte-range fallback
+            // Chunked byte-range transcription (URL-direct removed — podcast audio URLs
+            // consistently return 302 redirects that STT providers don't follow)
             if (probe.contentLength != null && probe.supportsRangeRequests) {
               const estimatedChunks = Math.ceil(probe.contentLength / maxFileSize);
               await writeEvent(prisma, step.id, "INFO", `Attempting ${tier} chunked: ${providerImpl.name} (${providerModelId})`, {

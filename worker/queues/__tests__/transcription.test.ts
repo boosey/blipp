@@ -767,15 +767,14 @@ describe("handleTranscription", () => {
       mockPiLookup.mockResolvedValue(null);
     }
 
-    it("falls back to secondary model when primary fails (URL-capable providers)", async () => {
+    it("falls back to secondary model when primary chunked fails", async () => {
       setupSttBase();
       const msg = createMsg({ jobId: "job1", episodeId: "ep1" });
 
-      // Both providers support URL
       (getProviderImpl as any).mockReturnValue({
-        name: "MockUrlProvider",
+        name: "MockProvider",
         provider: "groq",
-        supportsUrl: true,
+        supportsUrl: false,
         transcribe: (...args: any[]) => mockTranscribe(...args),
       });
 
@@ -785,16 +784,12 @@ describe("handleTranscription", () => {
         { provider: "deepgram", model: "nova-3", providerModelId: "nova-3", pricing: null, limits: null },
       ]);
 
-      // URL-direct: first fails, falls to chunked which also fails, then second model's URL succeeds
-      mockTranscribe
-        .mockRejectedValueOnce(new Error("Groq 500: Internal Server Error"))
-        .mockResolvedValueOnce({ transcript: "Fallback transcript.", costDollars: null, latencyMs: 200 });
       mockTranscribeChunked
-        .mockRejectedValueOnce(new Error("Groq chunked also failed"));
+        .mockRejectedValueOnce(new Error("Groq chunked failed"))
+        .mockResolvedValueOnce({ transcript: "Fallback transcript.", costDollars: null, latencyMs: 200 });
 
       await handleTranscription(createBatch([msg]), env, ctx);
 
-      // Transcript was written to R2
       expect(mockPutWorkProduct).toHaveBeenCalledWith(
         env.R2,
         "wp/transcript/ep1.txt",
@@ -808,9 +803,9 @@ describe("handleTranscription", () => {
       const msg = createMsg({ jobId: "job1", episodeId: "ep1" });
 
       (getProviderImpl as any).mockReturnValue({
-        name: "MockUrlProvider",
+        name: "MockProvider",
         provider: "groq",
-        supportsUrl: true,
+        supportsUrl: false,
         transcribe: (...args: any[]) => mockTranscribe(...args),
       });
 
@@ -820,11 +815,6 @@ describe("handleTranscription", () => {
         { provider: "openai", model: "whisper-1", providerModelId: "whisper-1", pricing: null, limits: null },
       ]);
 
-      // URL-direct fails for all, chunked fails for first two, succeeds for third
-      mockTranscribe
-        .mockRejectedValueOnce(new Error("Groq URL 500"))
-        .mockRejectedValueOnce(new Error("Deepgram URL 500"))
-        .mockRejectedValueOnce(new Error("OpenAI URL 500"));
       mockTranscribeChunked
         .mockRejectedValueOnce(new Error("Groq chunked 500"))
         .mockRejectedValueOnce(new Error("Deepgram chunked 500"))
@@ -845,9 +835,9 @@ describe("handleTranscription", () => {
       const msg = createMsg({ jobId: "job1", episodeId: "ep1" });
 
       (getProviderImpl as any).mockReturnValue({
-        name: "MockUrlProvider",
+        name: "MockProvider",
         provider: "groq",
-        supportsUrl: true,
+        supportsUrl: false,
         transcribe: (...args: any[]) => mockTranscribe(...args),
       });
 
@@ -856,9 +846,6 @@ describe("handleTranscription", () => {
         { provider: "deepgram", model: "nova-3", providerModelId: "nova-3", pricing: null, limits: null },
       ]);
 
-      mockTranscribe
-        .mockRejectedValueOnce(new Error("Groq URL 500"))
-        .mockRejectedValueOnce(new Error("Deepgram URL 500"));
       mockTranscribeChunked
         .mockRejectedValueOnce(new Error("Groq chunked 500"))
         .mockRejectedValueOnce(new Error("Deepgram chunked 500"));
