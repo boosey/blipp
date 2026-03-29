@@ -209,8 +209,9 @@ export default function AdminWorkerLogs() {
         method: "POST",
         body: JSON.stringify(query),
       })
-        .then((data) => {
-          setResults(data.data || []);
+        .then((data: any) => {
+          const events = data.result?.events?.events || data.data || [];
+          setResults(events);
           setQueryDurationMs(Math.round(performance.now() - start));
         })
         .catch((err) => {
@@ -247,7 +248,8 @@ export default function AdminWorkerLogs() {
         method: "POST",
         body: JSON.stringify(query),
       });
-      setResults(data.data || []);
+      const events = (data as any).result?.events?.events || data.data || [];
+      setResults(events);
       setQueryDurationMs(Math.round(performance.now() - start));
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Query failed");
