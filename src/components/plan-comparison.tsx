@@ -16,11 +16,13 @@ export interface PlanDetail {
 
 export function PlanComparison({
   currentPlanSlug,
+  subscriptionEndsAt,
   onUpgrade,
   onManage,
   actionLoading,
 }: {
   currentPlanSlug: string | null;
+  subscriptionEndsAt?: string | null;
   onUpgrade: (plan: PlanDetail) => void;
   onManage: () => void;
   actionLoading: string | null;
@@ -88,18 +90,30 @@ export function PlanComparison({
               ))}
             </ul>
             {isCurrent ? (
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground bg-muted px-2.5 py-1 rounded-full">
-                  Current Plan
-                </span>
-                {p.priceCentsMonthly > 0 && (
-                  <button
-                    onClick={onManage}
-                    disabled={actionLoading === "manage"}
-                    className="text-xs text-muted-foreground hover:text-foreground"
-                  >
-                    {actionLoading === "manage" ? "..." : "Manage"}
-                  </button>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground bg-muted px-2.5 py-1 rounded-full">
+                    Current Plan
+                  </span>
+                  {p.priceCentsMonthly > 0 && (
+                    <button
+                      onClick={onManage}
+                      disabled={actionLoading === "manage"}
+                      className="text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      {actionLoading === "manage" ? "..." : "Manage"}
+                    </button>
+                  )}
+                </div>
+                {subscriptionEndsAt && (
+                  <p className="text-xs text-amber-500">
+                    Your subscription ends{" "}
+                    {new Date(subscriptionEndsAt).toLocaleDateString(undefined, {
+                      month: "long",
+                      day: "numeric",
+                      year: "numeric",
+                    })}
+                  </p>
                 )}
               </div>
             ) : isUpgrade ? (

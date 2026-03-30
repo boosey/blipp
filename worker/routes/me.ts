@@ -74,6 +74,7 @@ me.get("/", async (c) => {
             slug: fullUser.plan.slug,
           }
         : null,
+      subscriptionEndsAt: fullUser.subscriptionEndsAt,
       isAdmin: fullUser.isAdmin,
       onboardingComplete: fullUser.onboardingComplete,
       defaultDurationTier: fullUser.defaultDurationTier,

@@ -60,8 +60,8 @@ billing.post("/checkout", async (c) => {
   const sessionParams: Record<string, unknown> = {
     mode: "subscription" as const,
     line_items: [{ price: stripePriceId, quantity: 1 }],
-    success_url: `${origin}/billing?success=true`,
-    cancel_url: `${origin}/billing?canceled=true`,
+    success_url: `${origin}/settings?billing=success`,
+    cancel_url: `${origin}/settings?billing=canceled`,
     metadata: { clerkId: user.clerkId, planId },
   };
 
@@ -118,7 +118,7 @@ billing.post("/portal", async (c) => {
 
   const session = await stripe.billingPortal.sessions.create({
     customer: user.stripeCustomerId,
-    return_url: `${origin}/billing`,
+    return_url: `${origin}/settings`,
   });
 
   return c.json({ url: session.url });

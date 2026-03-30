@@ -32,6 +32,7 @@ interface UserInfo {
   name: string | null;
   imageUrl: string | null;
   plan: { id: string; name: string; slug: string };
+  subscriptionEndsAt: string | null;
   isAdmin: boolean;
   defaultDurationTier: number;
   defaultVoicePresetId: string | null;
@@ -62,8 +63,20 @@ export function Settings() {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
 
-  const { data: userData, loading: userLoading } = useFetch<{ user: UserInfo }>("/me");
-  const { data: usageData, loading: usageLoading } = useFetch<{ data: UsageData }>("/me/usage");
+  const { data: userData, loading: userLoading, refetch: refetchUser } = useFetch<{ user: UserInfo }>("/me");
+  const { data: usageData, loading: usageLoading, refetch: refetchUsage } = useFetch<{ data: UsageData }>("/me/usage");
+
+  // Re-fetch user/usage when returning from Stripe portal or checkout
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        refetchUser();
+        refetchUsage();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [refetchUser, refetchUsage]);
   const planUsage = usePlan();
   const [defaultTier, setDefaultTier] = useState<number | null>(null);
   const [defaultVoicePresetId, setDefaultVoicePresetId] = useState<string | null>(null);
@@ -286,6 +299,7 @@ export function Settings() {
         ) : (
           <PlanComparison
             currentPlanSlug={user.plan.slug}
+            subscriptionEndsAt={user.subscriptionEndsAt}
             onUpgrade={handleUpgrade}
             onManage={handleManage}
             actionLoading={actionLoading}

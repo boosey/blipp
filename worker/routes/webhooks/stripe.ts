@@ -128,6 +128,13 @@ stripeWebhooks.post("/", async (c) => {
 
       // Check if subscription is being cancelled (cancel_at_period_end)
       if (subscription.cancel_at_period_end) {
+        const endsAt = subscription.cancel_at
+          ? new Date(subscription.cancel_at * 1000)
+          : null;
+        await prisma.user.update({
+          where: { stripeCustomerId },
+          data: { subscriptionEndsAt: endsAt },
+        });
         console.log(JSON.stringify({
           level: "info",
           action: "subscription_cancellation_scheduled",
@@ -139,12 +146,12 @@ stripeWebhooks.post("/", async (c) => {
         break;
       }
 
-      // Plan change — update to new plan
+      // Plan change or reactivation — update plan and clear any pending cancellation
       const plan = await planFromPriceId(priceId, prisma);
       if (plan) {
         await prisma.user.update({
           where: { stripeCustomerId },
-          data: { planId: plan.id },
+          data: { planId: plan.id, subscriptionEndsAt: null },
         });
         console.log(JSON.stringify({
           level: "info",
@@ -201,7 +208,7 @@ stripeWebhooks.post("/", async (c) => {
       if (defaultPlan) {
         await prisma.user.update({
           where: { stripeCustomerId },
-          data: { planId: defaultPlan.id },
+          data: { planId: defaultPlan.id, subscriptionEndsAt: null },
         });
       }
       break;

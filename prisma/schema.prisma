@@ -79,6 +79,7 @@ model User {
   name                  String?
   imageUrl              String?
   stripeCustomerId      String?  @unique
+  subscriptionEndsAt    DateTime?              // set when user cancels; subscription runs until this date
   planId                String
   isAdmin               Boolean  @default(false)
   status                String   @default("active")  // "active" | "suspended" | "banned"
