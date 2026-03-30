@@ -9,6 +9,7 @@ import { getUserUsage } from "../lib/plan-limits";
 import { validateBody } from "../lib/validation";
 import { DURATION_TIERS } from "../lib/constants";
 import { checkVoicePresetAccess } from "../lib/voice-presets";
+import { createStripeClient } from "../lib/stripe";
 
 const OnboardingCompleteSchema = z.object({
   reset: z.boolean().optional(),
@@ -61,6 +62,27 @@ me.get("/", async (c) => {
     planSlug: fullUser.plan?.slug,
   });
 
+  // Fetch live cancellation status from Stripe (webhook may not have fired yet)
+  let subscriptionEndsAt: string | null = fullUser.subscriptionEndsAt?.toISOString() ?? null;
+  if (fullUser.stripeCustomerId && c.env.STRIPE_SECRET_KEY) {
+    try {
+      const stripe = createStripeClient(c.env.STRIPE_SECRET_KEY);
+      const subs = await stripe.subscriptions.list({
+        customer: fullUser.stripeCustomerId,
+        status: "active",
+        limit: 1,
+      });
+      const activeSub = subs.data[0];
+      if (activeSub?.cancel_at_period_end && activeSub.cancel_at) {
+        subscriptionEndsAt = new Date(activeSub.cancel_at * 1000).toISOString();
+      } else if (activeSub && !activeSub.cancel_at_period_end) {
+        subscriptionEndsAt = null;
+      }
+    } catch {
+      // Fall back to DB value
+    }
+  }
+
   return c.json({
     user: {
       id: fullUser.id,
@@ -74,7 +96,7 @@ me.get("/", async (c) => {
             slug: fullUser.plan.slug,
           }
         : null,
-      subscriptionEndsAt: fullUser.subscriptionEndsAt,
+      subscriptionEndsAt,
       isAdmin: fullUser.isAdmin,
       onboardingComplete: fullUser.onboardingComplete,
       defaultDurationTier: fullUser.defaultDurationTier,
