@@ -26,7 +26,7 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
     if (!message.trim()) return;
     setSubmitting(true);
     try {
-      await apiFetch("/api/feedback", {
+      await apiFetch("/feedback", {
         method: "POST",
         body: JSON.stringify({ message: message.trim() }),
       });
