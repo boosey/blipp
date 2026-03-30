@@ -81,7 +81,8 @@ me.get("/", async (c) => {
         cancelAt: activeSub?.cancel_at ?? null,
         dbSubscriptionEndsAt: subscriptionEndsAt,
       }));
-      if (activeSub?.cancel_at_period_end && activeSub.cancel_at) {
+      if (activeSub?.cancel_at) {
+        // cancel_at is set by either cancel_at_period_end or scheduled cancellation
         subscriptionEndsAt = new Date(activeSub.cancel_at * 1000).toISOString();
       } else if (activeSub && !activeSub.cancel_at_period_end) {
         subscriptionEndsAt = null;

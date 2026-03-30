@@ -138,8 +138,9 @@ stripeWebhooks.post("/", async (c) => {
 
       if (!priceId) break;
 
-      // Check if subscription is being cancelled (cancel_at_period_end)
-      if (subscription.cancel_at_period_end) {
+      // Check if subscription is being cancelled (cancel_at_period_end OR cancel_at)
+      // Stripe portal may set cancel_at without cancel_at_period_end
+      if (subscription.cancel_at_period_end || subscription.cancel_at) {
         const endsAt = subscription.cancel_at
           ? new Date(subscription.cancel_at * 1000)
           : null;
