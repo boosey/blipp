@@ -63,6 +63,18 @@ stripeWebhooks.post("/", async (c) => {
 
   const prisma = c.get("prisma") as any;
 
+  // Log every webhook event for debugging
+  const eventObj = event.data.object as any;
+  console.log(JSON.stringify({
+    action: "stripe_webhook_received",
+    eventType: event.type,
+    subscriptionStatus: eventObj.status ?? null,
+    cancelAtPeriodEnd: eventObj.cancel_at_period_end ?? null,
+    cancelAt: eventObj.cancel_at ?? null,
+    customer: eventObj.customer ?? eventObj.customer_email ?? null,
+    ts: new Date().toISOString(),
+  }));
+
   switch (event.type) {
     case "checkout.session.completed": {
       const session = event.data.object;
