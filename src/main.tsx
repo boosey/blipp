@@ -8,12 +8,8 @@ import { Toaster } from "./components/toaster";
 import { registerSW } from "virtual:pwa-register";
 import "./index.css";
 
-// Auto-reload when a new service worker activates after deploy
-registerSW({
-  onNeedRefresh() {
-    window.location.reload();
-  },
-});
+// Register service worker (runtime caching only, no precache)
+registerSW();
 
 class DebugErrorBoundary extends Component<
   { children: ReactNode },

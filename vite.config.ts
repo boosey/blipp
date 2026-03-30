@@ -31,7 +31,7 @@ export default defineConfig({
         ],
       },
       injectManifest: {
-        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+        injectionPoint: undefined,
       },
     }),
   ],

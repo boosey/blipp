@@ -1,7 +1,6 @@
 /// <reference lib="webworker" />
-import { precacheAndRoute, cleanupOutdatedCaches, createHandlerBoundToURL } from "workbox-precaching";
 import { registerRoute, NavigationRoute } from "workbox-routing";
-import { CacheFirst, NetworkFirst } from "workbox-strategies";
+import { CacheFirst, NetworkFirst, StaleWhileRevalidate } from "workbox-strategies";
 import { ExpirationPlugin } from "workbox-expiration";
 import { clientsClaim } from "workbox-core";
 
@@ -11,12 +10,17 @@ declare let self: ServiceWorkerGlobalScope;
 self.skipWaiting();
 clientsClaim();
 
-// Precache built assets — VitePWA injects manifest at build time
-precacheAndRoute(self.__WB_MANIFEST);
-cleanupOutdatedCaches();
+// SPA navigation fallback — network-first so deploys are picked up immediately
+registerRoute(new NavigationRoute(new NetworkFirst({ cacheName: "navigation-v1" })));
 
-// SPA navigation fallback
-registerRoute(new NavigationRoute(createHandlerBoundToURL("/index.html")));
+// JS/CSS assets — cache on first visit, revalidate in background
+registerRoute(
+  ({ url }) => url.pathname.startsWith("/assets/"),
+  new StaleWhileRevalidate({
+    cacheName: "assets-v1",
+    plugins: [new ExpirationPlugin({ maxEntries: 100, maxAgeSeconds: 30 * 24 * 60 * 60 })],
+  })
+);
 
 // ── Custom caching strategies ──
 
