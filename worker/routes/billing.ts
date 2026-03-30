@@ -52,7 +52,7 @@ billing.post("/checkout", async (c) => {
 
   const stripe = createStripeClient(c.env.STRIPE_SECRET_KEY);
 
-  const origin = c.req.header("origin") || c.env.APP_ORIGIN;
+  const origin = c.env.APP_ORIGIN || c.req.header("origin");
   if (!origin) {
     return c.json({ error: "Cannot determine app origin — APP_ORIGIN env var is missing and no Origin header" }, 500);
   }
@@ -111,14 +111,17 @@ billing.post("/portal", async (c) => {
   }
 
   const stripe = createStripeClient(c.env.STRIPE_SECRET_KEY);
-  const origin = c.req.header("origin") || c.env.APP_ORIGIN;
+  const origin = c.env.APP_ORIGIN || c.req.header("origin");
   if (!origin) {
     return c.json({ error: "Cannot determine app origin — APP_ORIGIN env var is missing and no Origin header" }, 500);
   }
 
+  const returnUrl = `${origin}/settings`;
+  console.log(JSON.stringify({ action: "portal_session", returnUrl, origin }));
+
   const session = await stripe.billingPortal.sessions.create({
     customer: user.stripeCustomerId,
-    return_url: `${origin}/settings`,
+    return_url: returnUrl,
   });
 
   return c.json({ url: session.url });
