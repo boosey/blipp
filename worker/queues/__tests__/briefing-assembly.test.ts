@@ -345,7 +345,7 @@ describe("handleBriefingAssembly", () => {
       expect(mockPrisma.briefingRequest.updateMany).toHaveBeenCalledWith({
         where: {
           id: "req-1",
-          status: { notIn: ["COMPLETED", "FAILED"] },
+          status: { notIn: ["COMPLETED", "COMPLETED_DEGRADED", "FAILED"] },
         },
         data: { status: "FAILED", errorMessage: "DB error" },
       });

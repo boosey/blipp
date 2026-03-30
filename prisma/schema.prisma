@@ -418,6 +418,7 @@ enum PipelineJobStatus {
   PENDING
   IN_PROGRESS
   COMPLETED
+  COMPLETED_DEGRADED // completed but used AI fallbacks (e.g. voice degraded)
   FAILED
 }
 
@@ -486,6 +487,7 @@ enum BriefingRequestStatus {
   PENDING
   PROCESSING
   COMPLETED
+  COMPLETED_DEGRADED // completed but used AI fallbacks
   FAILED
 }
 

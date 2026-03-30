@@ -187,7 +187,7 @@ export function PipelineDetailSheet({
 
           <TabsContent value="actions" className="flex-1 overflow-auto p-4">
             <div className="space-y-3">
-              {job.status === "FAILED" && (
+              {(job.status === "FAILED" || job.status === "COMPLETED_DEGRADED") && (
                 <Button
                   className="w-full bg-[#3B82F6] hover:bg-[#3B82F6]/80 text-white text-xs"
                   disabled={retrying}

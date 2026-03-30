@@ -108,14 +108,17 @@ export default function AdminWorkerLogs() {
     adminFetch<{ templates: QueryTemplate[] }>("/worker-logs/templates")
       .then((d) => setTemplates(d.templates || []))
       .catch(() => {});
-    adminFetch<{ result: string[] }>("/worker-logs/keys", {
+    adminFetch<{ result: any[] }>("/worker-logs/keys", {
       method: "POST",
       body: JSON.stringify({
         timeframe: { from: Date.now() - 6 * 3600000, to: Date.now() },
         limit: 100,
       }),
     })
-      .then((d) => setFieldKeys(d.result || []))
+      .then((d) => {
+        const keys = (d.result || []).map((k: any) => (typeof k === "string" ? k : k.key));
+        setFieldKeys(keys);
+      })
       .catch(() => {});
   }, []);
 

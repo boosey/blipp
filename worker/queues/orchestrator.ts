@@ -6,6 +6,10 @@ import type {
 } from "../lib/queue-messages";
 import type { Env } from "../types";
 
+const TERMINAL_STATUSES = ["COMPLETED", "COMPLETED_DEGRADED", "FAILED"] as const;
+function isTerminal(status: string) { return TERMINAL_STATUSES.includes(status as any); }
+function isCompleted(status: string) { return status === "COMPLETED" || status === "COMPLETED_DEGRADED"; }
+
 const NEXT_STAGE: Record<string, string | null> = {
   TRANSCRIPTION: "DISTILLATION",
   DISTILLATION: "NARRATIVE_GENERATION",
@@ -39,7 +43,7 @@ export async function handleOrchestrator(
           where: { id: requestId },
         });
 
-        if (!request || request.status === "COMPLETED" || request.status === "FAILED") {
+        if (!request || isTerminal(request.status)) {
           log.info("request_skipped", { requestId, reason: request ? `status=${request.status}` : "not_found" });
           msg.ack();
           continue;
@@ -330,7 +334,7 @@ async function handleJobStageComplete(
     return;
   }
 
-  if (job.status === "COMPLETED" || job.status === "FAILED") {
+  if (isTerminal(job.status)) {
     log.info("job_already_terminal", { jobId, status: job.status });
     msg.ack();
     return;
@@ -381,7 +385,7 @@ async function handleJobStageComplete(
     // Final per-job stage (AUDIO_GENERATION) complete — advance job to BRIEFING_ASSEMBLY PENDING.
     // The job stays visible in the assembly column until briefing-assembly.ts marks it COMPLETED.
     const advanced = await prisma.pipelineJob.updateMany({
-      where: { id: jobId, status: { not: "COMPLETED" } },
+      where: { id: jobId, status: { notIn: ["COMPLETED", "COMPLETED_DEGRADED"] } },
       data: { currentStage: "BRIEFING_ASSEMBLY", status: "PENDING" },
     });
 
@@ -431,7 +435,7 @@ async function handleJobFailed(
     return;
   }
 
-  if (job.status === "COMPLETED" || job.status === "FAILED") {
+  if (isTerminal(job.status)) {
     log.info("job_already_terminal", { jobId, status: job.status });
     msg.ack();
     return;

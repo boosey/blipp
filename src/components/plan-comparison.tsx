@@ -112,6 +112,16 @@ export function PlanComparison({
                   ? "Redirecting..."
                   : `Upgrade to ${p.name}`}
               </button>
+            ) : currentIdx >= 0 ? (
+              <button
+                onClick={onManage}
+                disabled={actionLoading === "manage"}
+                className="w-full py-2 border border-border text-xs font-medium rounded-lg text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors disabled:opacity-50"
+              >
+                {actionLoading === "manage"
+                  ? "Redirecting..."
+                  : `Downgrade to ${p.name}`}
+              </button>
             ) : null}
           </div>
         );

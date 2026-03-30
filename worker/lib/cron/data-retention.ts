@@ -6,6 +6,8 @@ type PrismaLike = {
   episode: { count: (args: any) => Promise<number> };
   podcast: { count: (args: any) => Promise<number> };
   briefingRequest: { deleteMany: (args: any) => Promise<{ count: number }> };
+  pipelineJob: { updateMany: (args: any) => Promise<{ count: number }> };
+  pipelineStep: { updateMany: (args: any) => Promise<{ count: number }> };
 };
 
 /**
@@ -92,6 +94,36 @@ export async function runDataRetentionJob(
     await logger.info("requests_archived", { count, maxAgeDays });
     result.requestsArchived = count;
   }
+
+  // Stale job reaper — mark IN_PROGRESS jobs as FAILED if not updated in 30 minutes
+  const staleCutoff = new Date(Date.now() - 30 * 60 * 1000);
+  const { count: staleJobs } = await prisma.pipelineJob.updateMany({
+    where: {
+      status: "IN_PROGRESS",
+      updatedAt: { lt: staleCutoff },
+    },
+    data: {
+      status: "FAILED",
+      errorMessage: "Marked failed: job stalled for over 30 minutes",
+      completedAt: new Date(),
+    },
+  });
+  if (staleJobs > 0) {
+    // Also fail their in-progress steps
+    await prisma.pipelineStep.updateMany({
+      where: {
+        status: "IN_PROGRESS",
+        updatedAt: { lt: staleCutoff },
+      },
+      data: {
+        status: "FAILED",
+        errorMessage: "Marked failed: step stalled for over 30 minutes",
+        completedAt: new Date(),
+      },
+    });
+    await logger.info("stale_jobs_reaped", { count: staleJobs });
+  }
+  result.staleJobsReaped = staleJobs;
 
   return result;
 }

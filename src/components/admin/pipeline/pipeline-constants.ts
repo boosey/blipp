@@ -5,6 +5,7 @@ import {
   Volume2,
   Package,
   CheckCircle2,
+  AlertTriangle,
   XCircle,
   Loader2,
   Clock,
@@ -26,11 +27,13 @@ export const STATUS_PRIORITY: Record<string, number> = {
   IN_PROGRESS: 0,
   PENDING: 1,
   FAILED: 2,
-  COMPLETED: 3,
+  COMPLETED_DEGRADED: 3,
+  COMPLETED: 4,
 };
 
 export const STATUS_CONFIG: Record<string, { color: string; icon: React.ElementType; label: string }> = {
   COMPLETED: { color: "#10B981", icon: CheckCircle2, label: "Done" },
+  COMPLETED_DEGRADED: { color: "#F59E0B", icon: AlertTriangle, label: "Degraded" },
   FAILED: { color: "#EF4444", icon: XCircle, label: "Failed" },
   IN_PROGRESS: { color: "#F59E0B", icon: Loader2, label: "Running" },
   PENDING: { color: "#9CA3AF", icon: Clock, label: "Queued" },

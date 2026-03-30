@@ -101,9 +101,17 @@ export async function assembleBriefings(
         },
       });
 
+      // Check if any step in this job used AI fallbacks (retryCount > 0)
+      const degradedStepCount = await prisma.pipelineStep.count({
+        where: { jobId: job.id, retryCount: { gt: 0 } },
+      });
+
       await prisma.pipelineJob.update({
         where: { id: job.id },
-        data: { status: "COMPLETED", completedAt: new Date() },
+        data: {
+          status: degradedStepCount > 0 ? "COMPLETED_DEGRADED" : "COMPLETED",
+          completedAt: new Date(),
+        },
       });
 
       successCount++;
@@ -152,10 +160,15 @@ export async function assembleBriefings(
     log.info("assembly_all_failed", { requestId });
   } else {
     const isPartial = failureCount > 0;
+    // Check if any completed jobs used AI fallbacks
+    const degradedJobs = await prisma.pipelineJob.count({
+      where: { requestId, status: "COMPLETED_DEGRADED" },
+    });
+    const hasDegradation = degradedJobs > 0;
     await prisma.briefingRequest.update({
       where: { id: requestId },
       data: {
-        status: "COMPLETED",
+        status: hasDegradation ? "COMPLETED_DEGRADED" : "COMPLETED",
         errorMessage: isPartial
           ? `Partial: ${failureCount} of ${jobs.length} jobs failed`
           : null,

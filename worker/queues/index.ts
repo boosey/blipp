@@ -15,7 +15,7 @@ import { runMonitoringJob } from "../lib/cron/monitoring";
 import { runUserLifecycleJob } from "../lib/cron/user-lifecycle";
 import { runDataRetentionJob } from "../lib/cron/data-retention";
 import { runRecommendationsJob } from "../lib/cron/recommendations";
-import { runPodcastDiscoveryJob } from "../lib/cron/podcast-discovery";
+import { runAppleDiscoveryJob, runPodcastIndexDiscoveryJob } from "../lib/cron/podcast-discovery";
 import type {
   TranscriptionMessage,
   DistillationMessage,
@@ -148,7 +148,7 @@ export async function handleQueue(
  * Cron heartbeat handler — fires every 5 minutes and dispatches all named jobs.
  * Each job manages its own enable toggle and run interval via PlatformConfig.
  *
- * Jobs: podcast-discovery, pipeline-trigger, monitoring, user-lifecycle, data-retention, recommendations
+ * Jobs: apple-discovery, podcast-index-discovery, pipeline-trigger, monitoring, user-lifecycle, data-retention, recommendations
  *
  * @param event - Cloudflare scheduled event
  * @param env - Worker environment bindings
@@ -168,10 +168,16 @@ export async function scheduled(
     // Dispatch all jobs — each checks its own enabled flag and interval
     const results = await Promise.allSettled([
       runJob({
-        jobKey: "podcast-discovery",
+        jobKey: "apple-discovery",
         prisma: prisma as any,
         defaultIntervalMinutes: 10080,
-        execute: (logger) => runPodcastDiscoveryJob(prisma as any, logger, env),
+        execute: (logger) => runAppleDiscoveryJob(prisma as any, logger, env),
+      }),
+      runJob({
+        jobKey: "podcast-index-discovery",
+        prisma: prisma as any,
+        defaultIntervalMinutes: 10080,
+        execute: (logger) => runPodcastIndexDiscoveryJob(prisma as any, logger, env),
       }),
       runJob({
         jobKey: "pipeline-trigger",
@@ -206,7 +212,7 @@ export async function scheduled(
     ]);
 
     const jobKeys = [
-      "podcast-discovery", "pipeline-trigger", "monitoring",
+      "apple-discovery", "podcast-index-discovery", "pipeline-trigger", "monitoring",
       "user-lifecycle", "data-retention", "recommendations",
     ];
     for (let i = 0; i < results.length; i++) {

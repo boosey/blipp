@@ -6,9 +6,15 @@ const VALID_INTERVALS = [15, 30, 60, 120, 360, 720, 1440, 10080];
 
 const JOB_DEFINITIONS = [
   {
-    jobKey: "podcast-discovery",
-    label: "Podcast Discovery",
-    description: "Discovers new podcasts from catalog sources and adds them to the library",
+    jobKey: "apple-discovery",
+    label: "Apple Discovery",
+    description: "Discovers new podcasts from Apple Podcasts and adds them to the library",
+    defaultIntervalMinutes: 10080,
+  },
+  {
+    jobKey: "podcast-index-discovery",
+    label: "Podcast Index Discovery",
+    description: "Discovers new podcasts from Podcast Index and adds them to the library",
     defaultIntervalMinutes: 10080,
   },
   {

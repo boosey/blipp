@@ -4,7 +4,7 @@ import type { DateRange } from "./common";
 
 export type PipelineStage = "TRANSCRIPTION" | "DISTILLATION" | "CLIP_GENERATION" | "NARRATIVE_GENERATION" | "AUDIO_GENERATION" | "BRIEFING_ASSEMBLY";
 
-export type PipelineJobStatus = "PENDING" | "IN_PROGRESS" | "COMPLETED" | "FAILED";
+export type PipelineJobStatus = "PENDING" | "IN_PROGRESS" | "COMPLETED" | "COMPLETED_DEGRADED" | "FAILED";
 
 export type PipelineStepStatus = "PENDING" | "IN_PROGRESS" | "COMPLETED" | "SKIPPED" | "FAILED";
 

@@ -160,7 +160,7 @@ function groupForPath(pathname: string): string | null {
   for (const entry of sidebarEntries) {
     if (entry.type === "group") {
       for (const child of entry.children) {
-        if (pathname.includes(child.path)) return entry.id;
+        if (pathname.endsWith("/" + child.path)) return entry.id;
       }
     }
   }
@@ -171,7 +171,7 @@ function groupForPath(pathname: string): string | null {
 function resolveCurrentPage(pathname: string): string {
   // Check standalone items first
   for (const entry of sidebarEntries) {
-    if (entry.type === "item" && pathname.includes(entry.path)) {
+    if (entry.type === "item" && pathname.endsWith("/" + entry.path)) {
       return entry.label;
     }
   }
@@ -179,7 +179,7 @@ function resolveCurrentPage(pathname: string): string {
   for (const entry of sidebarEntries) {
     if (entry.type === "group") {
       for (const child of entry.children) {
-        if (pathname.includes(child.path)) return child.label;
+        if (pathname.endsWith("/" + child.path)) return child.label;
       }
     }
   }
@@ -214,7 +214,7 @@ function SidebarGroup({
             onClick={() => navigate(`/admin/${entry.children[0].path}`)}
             className={cn(
               "flex items-center justify-center w-full rounded-md py-2 text-sm transition-colors",
-              entry.children.some((ch) => location.pathname.includes(ch.path))
+              entry.children.some((ch) => location.pathname.endsWith("/" + ch.path))
                 ? "bg-[#3B82F6]/10 text-[#3B82F6]"
                 : "text-[#9CA3AF] hover:bg-white/5 hover:text-[#F9FAFB]"
             )}
@@ -257,7 +257,7 @@ function SidebarGroup({
         <div className="overflow-hidden">
           {entry.children.map((child) => {
             const ChildIcon = child.icon;
-            const isActive = location.pathname.includes(child.path);
+            const isActive = location.pathname.endsWith("/" + child.path);
             return (
               <NavLink
                 key={child.path}
@@ -349,7 +349,7 @@ export function AdminLayout() {
             {sidebarEntries.map((entry) => {
               if (entry.type === "item") {
                 const Icon = entry.icon;
-                const isActive = location.pathname.includes(entry.path);
+                const isActive = location.pathname.endsWith("/" + entry.path);
                 const linkClasses = cn(
                   "flex items-center w-full rounded-md py-2 text-sm transition-colors",
                   collapsed ? "justify-center" : "gap-3 px-3",

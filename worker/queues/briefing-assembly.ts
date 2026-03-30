@@ -38,7 +38,7 @@ export async function handleBriefingAssembly(
           msg.ack();
           continue;
         }
-        if (request.status === "COMPLETED" || request.status === "FAILED") {
+        if (["COMPLETED", "COMPLETED_DEGRADED", "FAILED"].includes(request.status)) {
           log.info("request_already_terminal", { requestId, status: request.status });
           msg.ack();
           continue;
@@ -61,7 +61,7 @@ export async function handleBriefingAssembly(
           .updateMany({
             where: {
               id: requestId,
-              status: { notIn: ["COMPLETED", "FAILED"] },
+              status: { notIn: ["COMPLETED", "COMPLETED_DEGRADED", "FAILED"] },
             },
             data: { status: "FAILED", errorMessage },
           })

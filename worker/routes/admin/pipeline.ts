@@ -211,6 +211,32 @@ pipelineRoutes.get("/jobs/:id", async (c) => {
   });
 });
 
+// POST /jobs/:id/cancel - Mark an in-progress or pending job as failed
+pipelineRoutes.post("/jobs/:id/cancel", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const job = await prisma.pipelineJob.findUnique({
+    where: { id: c.req.param("id") },
+  });
+
+  if (!job) return c.json({ error: "Job not found" }, 404);
+  if (["COMPLETED", "COMPLETED_DEGRADED", "FAILED"].includes(job.status)) {
+    return c.json({ error: `Job already ${job.status.toLowerCase()}` }, 400);
+  }
+
+  await prisma.pipelineJob.update({
+    where: { id: job.id },
+    data: { status: "FAILED", errorMessage: "Cancelled by admin", completedAt: new Date() },
+  });
+
+  // Also fail any in-progress steps
+  await prisma.pipelineStep.updateMany({
+    where: { jobId: job.id, status: "IN_PROGRESS" },
+    data: { status: "FAILED", errorMessage: "Cancelled by admin", completedAt: new Date() },
+  });
+
+  return c.json({ data: { id: job.id, status: "FAILED" } });
+});
+
 // POST /jobs/:id/retry - Retry a failed job (dispatches to the correct queue)
 pipelineRoutes.post("/jobs/:id/retry", async (c) => {
   const prisma = c.get("prisma") as any;
@@ -593,7 +619,7 @@ pipelineRoutes.get("/stages", async (c) => {
     }
     const s = stageData.get(row.stage)!;
     s.total += row._count;
-    if (row.status === "COMPLETED") s.completed += row._count;
+    if (row.status === "COMPLETED" || row.status === "COMPLETED_DEGRADED") s.completed += row._count;
     if (row.status === "IN_PROGRESS") s.active += row._count;
   }
 
