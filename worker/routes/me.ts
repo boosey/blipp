@@ -73,13 +73,24 @@ me.get("/", async (c) => {
         limit: 1,
       });
       const activeSub = subs.data[0];
+      console.log(JSON.stringify({
+        action: "me_stripe_check",
+        stripeCustomerId: fullUser.stripeCustomerId,
+        hasActiveSub: !!activeSub,
+        cancelAtPeriodEnd: activeSub?.cancel_at_period_end ?? null,
+        cancelAt: activeSub?.cancel_at ?? null,
+        dbSubscriptionEndsAt: subscriptionEndsAt,
+      }));
       if (activeSub?.cancel_at_period_end && activeSub.cancel_at) {
         subscriptionEndsAt = new Date(activeSub.cancel_at * 1000).toISOString();
       } else if (activeSub && !activeSub.cancel_at_period_end) {
         subscriptionEndsAt = null;
       }
-    } catch {
-      // Fall back to DB value
+    } catch (err) {
+      console.error(JSON.stringify({
+        action: "me_stripe_check_error",
+        error: err instanceof Error ? err.message : String(err),
+      }));
     }
   }
 
