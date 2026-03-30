@@ -28,6 +28,7 @@ import { voicePresetsRoutes } from "./voice-presets";
 import { storageRoutes } from "./storage";
 import { episodeRefreshRoutes } from "./episode-refresh";
 import { workerLogsRoutes } from "./worker-logs";
+import { feedbackRoutes } from "./feedback";
 
 /**
  * Admin route tree. All routes require admin authentication.
@@ -91,5 +92,6 @@ adminRoutes.route("/voice-presets", voicePresetsRoutes);
 adminRoutes.route("/storage", storageRoutes);
 adminRoutes.route("/episode-refresh", episodeRefreshRoutes);
 adminRoutes.route("/worker-logs", workerLogsRoutes);
+adminRoutes.route("/feedback", feedbackRoutes);
 
 export { adminRoutes };

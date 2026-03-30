@@ -115,6 +115,7 @@ const sidebarEntries: SidebarEntry[] = [
       { path: "plans", label: "Plans", icon: CreditCard },
       { path: "recommendations", label: "Recommendations", icon: Sparkles },
       { path: "ads", label: "Advertisements", icon: Megaphone },
+      { path: "feedback", label: "Feedback", icon: MessageSquare },
     ],
   },
 

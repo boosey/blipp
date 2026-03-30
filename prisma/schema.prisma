@@ -104,6 +104,7 @@ model User {
   recommendationProfile     UserRecommendationProfile?
   recommendationCache       RecommendationCache?
   recommendationDismissals  RecommendationDismissal[]
+  feedback                  Feedback[]
 }
 
 // ── Podcast Favorites (interest signals for recommendations) ──
@@ -1021,4 +1022,17 @@ model EpisodeRefreshError {
 
   @@index([jobId])
   @@index([jobId, phase])
+}
+
+// ── User Feedback ──
+
+model Feedback {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  message   String
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
 }

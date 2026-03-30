@@ -113,7 +113,7 @@ export async function runDataRetentionJob(
     await prisma.pipelineStep.updateMany({
       where: {
         status: "IN_PROGRESS",
-        updatedAt: { lt: staleCutoff },
+        startedAt: { lt: staleCutoff },
       },
       data: {
         status: "FAILED",

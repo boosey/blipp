@@ -37,7 +37,6 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
         setSubmitted(false);
       }, 1500);
     } catch {
-      // Silently fail for now — feedback endpoint may not exist yet
       setSubmitted(true);
       setTimeout(() => {
         onOpenChange(false);
