@@ -366,11 +366,11 @@ describe("Stripe Webhooks", () => {
     expect(res.status).toBe(200);
     expect(mockPrisma.user.update).toHaveBeenCalledWith({
       where: { stripeCustomerId: "cus_123" },
-      data: { planId: "plan_pro" },
+      data: { planId: "plan_pro", subscriptionEndsAt: null },
     });
   });
 
-  it("should not change plan when subscription cancellation is scheduled", async () => {
+  it("should save subscriptionEndsAt when subscription cancellation is scheduled", async () => {
     mockConstructEventAsync.mockResolvedValueOnce({
       type: "customer.subscription.updated",
       data: {
@@ -400,7 +400,10 @@ describe("Stripe Webhooks", () => {
     );
 
     expect(res.status).toBe(200);
-    expect(mockPrisma.user.update).not.toHaveBeenCalled();
+    expect(mockPrisma.user.update).toHaveBeenCalledWith({
+      where: { stripeCustomerId: "cus_123" },
+      data: { subscriptionEndsAt: new Date(1700000000 * 1000) },
+    });
   });
 
   it("should log but not downgrade on first payment failure", async () => {
@@ -503,7 +506,7 @@ describe("Stripe Webhooks", () => {
     expect(res.status).toBe(200);
     expect(mockPrisma.user.update).toHaveBeenCalledWith({
       where: { stripeCustomerId: "cus_123" },
-      data: { planId: "plan_free" },
+      data: { planId: "plan_free", subscriptionEndsAt: null },
     });
   });
 });
