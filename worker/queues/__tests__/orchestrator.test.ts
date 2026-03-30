@@ -622,7 +622,7 @@ describe("handleOrchestrator", () => {
 
       // Job advanced to BRIEFING_ASSEMBLY via CAS updateMany
       expect(mockPrisma.pipelineJob.updateMany).toHaveBeenCalledWith({
-        where: { id: "job1", status: { not: "COMPLETED" } },
+        where: { id: "job1", status: { notIn: ["COMPLETED", "COMPLETED_DEGRADED"] } },
         data: { currentStage: "BRIEFING_ASSEMBLY", status: "PENDING" },
       });
       // Dispatched to assembly queue
