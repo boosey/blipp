@@ -25,6 +25,13 @@ export function About() {
             <span className="text-white font-500">Blipp</span> automatically
             whenever a new episode drops. No more falling behind.
           </p>
+          <p>
+            When a summary sparks your curiosity, tap{" "}
+            <span className="text-white font-500">Listen to Original</span> to
+            jump straight to the full episode on its source platform. Blipp
+            isn't a replacement for podcasts — it's the fastest way to find the
+            ones worth your time.
+          </p>
 
           <h2 className="font-sora text-2xl font-700 text-white pt-4">
             Our mission
@@ -42,6 +49,7 @@ export function About() {
             <li>Search or subscribe to any podcast.</li>
             <li>Choose your preferred summary length.</li>
             <li>Listen to a voice-narrated Blipp of each episode.</li>
+            <li>Tap "Listen to Original" to hear the full episode when you want more.</li>
           </ol>
         </div>
 
