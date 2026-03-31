@@ -5,7 +5,8 @@ import { FeedItemCard } from "./feed-item";
 import { useAudio } from "../contexts/audio-context";
 import type { FeedItem } from "../types/feed";
 
-const SWIPE_THRESHOLD = 30;
+const SWIPE_THRESHOLD = 50;
+const MIN_VELOCITY = 0.15; // px/ms — ignore slow accidental drags
 const BUTTON_WIDTH = 72; // px
 
 interface SwipeableFeedItemProps {
@@ -25,6 +26,7 @@ export function SwipeableFeedItem({
   const cardRef = useRef<HTMLDivElement>(null);
   const startXRef = useRef(0);
   const startYRef = useRef(0);
+  const startTimeRef = useRef(0);
   const swipingRef = useRef(false);
   const directionRef = useRef<"left" | "right" | null>(null);
   const offsetRef = useRef(0);
@@ -41,6 +43,7 @@ export function SwipeableFeedItem({
   const onTouchStart = useCallback((e: React.TouchEvent) => {
     startXRef.current = e.touches[0].clientX;
     startYRef.current = e.touches[0].clientY;
+    startTimeRef.current = Date.now();
     swipingRef.current = false;
     directionRef.current = null;
     offsetRef.current = 0;
@@ -91,9 +94,11 @@ export function SwipeableFeedItem({
     }
 
     const dx = offsetRef.current;
+    const elapsed = Date.now() - startTimeRef.current;
+    const velocity = elapsed > 0 ? Math.abs(dx) / elapsed : Infinity;
     const threshold = BUTTON_WIDTH * 0.75;
 
-    if (Math.abs(dx) >= threshold && directionRef.current) {
+    if (Math.abs(dx) >= threshold && directionRef.current && velocity >= MIN_VELOCITY) {
       // Snap open to reveal button
       const target = directionRef.current === "left" ? -BUTTON_WIDTH : BUTTON_WIDTH;
       snapTo(target);
