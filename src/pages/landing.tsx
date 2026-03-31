@@ -1,7 +1,7 @@
 import { SignInButton } from "@clerk/clerk-react";
 import { Capacitor } from "@capacitor/core";
 import { Link, useNavigate } from "react-router-dom";
-import { Search, Clock, Podcast } from "lucide-react";
+import { Search, Clock, Podcast, ExternalLink } from "lucide-react";
 
 const features = [
   {
@@ -21,6 +21,12 @@ const features = [
     title: "Subscribe to shows",
     description: "Get automatic Blipps whenever new episodes drop.",
     color: "from-orange-400 to-rose-500",
+  },
+  {
+    icon: ExternalLink,
+    title: "Listen to the original",
+    description: "Love what you hear? One tap takes you to the full episode.",
+    color: "from-emerald-400 to-teal-500",
   },
 ];
 
@@ -154,6 +160,7 @@ export function Landing() {
             called <span className="text-white font-500">Blipps</span>. Choose how much time you have
             — <span className="text-violet-400">2, 5, 10, 15, or 30 minutes</span> — and
             Blipp delivers the most important insights from any episode.
+            Hear something great? Tap through to the full original anytime.
           </p>
 
           {/* CTA */}
@@ -202,7 +209,8 @@ export function Landing() {
             Follow your favorite podcasts and automatically get a{" "}
             <span className="text-white font-500">fresh Blipp for every new release</span>.
             Stay informed, discover new ideas, and keep up with more shows
-            without spending hours listening.
+            without spending hours listening. When something grabs you,{" "}
+            <span className="text-white font-500">jump straight to the full episode</span> with one tap.
           </p>
           <p className="font-dm text-lg sm:text-xl text-zinc-500 leading-relaxed animate-fade-up delay-100">
             Whether you're commuting, walking the dog, or grabbing coffee,
@@ -223,7 +231,7 @@ export function Landing() {
         />
 
         <div className="relative z-10 max-w-4xl mx-auto">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-5">
             {features.map((f, i) => (
               <div
                 key={f.title}
