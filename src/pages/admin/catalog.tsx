@@ -128,7 +128,7 @@ export default function Catalog() {
   if (loading && podcasts.length === 0) return <CatalogSkeleton />;
 
   return (
-    <div className="flex gap-4 h-[calc(100vh-7rem)]">
+    <div className="flex flex-col md:flex-row gap-4 h-[calc(100vh-6.5rem)] md:h-[calc(100vh-7rem)]">
       <FilterSidebar
         filters={filters}
         stats={stats}
@@ -153,8 +153,8 @@ export default function Catalog() {
         </Accordion>
 
         {/* Toolbar */}
-        <div className="flex items-center justify-between mb-3 gap-3">
-          <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap">
             <Button
               variant="ghost"
               size="icon-xs"
@@ -245,7 +245,7 @@ export default function Catalog() {
         {/* Content */}
         <ScrollArea className="flex-1">
           {view === "grid" ? (
-            <div className="grid grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-2">
               {podcasts.map((p) => (
                 <PodcastCard
                   key={p.id}
@@ -260,7 +260,7 @@ export default function Catalog() {
               ))}
             </div>
           ) : (
-            <div className="rounded-lg bg-[#1A2942] border border-white/5 overflow-hidden">
+            <div className="rounded-lg bg-[#1A2942] border border-white/5 overflow-x-auto">
               <div className="flex items-center h-8 px-3 gap-3 border-b border-white/5 bg-white/[0.02] text-[10px] text-[#9CA3AF] uppercase tracking-wider font-medium">
                 <span className="w-3.5" />
                 <span className="w-7" />

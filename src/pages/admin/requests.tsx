@@ -37,7 +37,7 @@ const PAGE_SIZE = 20;
 
 function RequestsSkeleton() {
   return (
-    <div className="h-[calc(100vh-7rem)] flex flex-col gap-3">
+    <div className="h-[calc(100vh-6.5rem)] md:h-[calc(100vh-7rem)] flex flex-col gap-3">
       <div className="flex items-center justify-between">
         <Skeleton className="h-8 w-60 bg-white/5 rounded" />
         <Skeleton className="h-8 w-32 bg-white/5 rounded" />
@@ -167,7 +167,7 @@ export default function Requests() {
   if (loading && requests.length === 0) return <RequestsSkeleton />;
 
   return (
-    <div className="h-[calc(100vh-7rem)] flex flex-col gap-3">
+    <div className="h-[calc(100vh-6.5rem)] md:h-[calc(100vh-7rem)] flex flex-col gap-3">
       {/* Header toolbar */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">

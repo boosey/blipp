@@ -51,9 +51,9 @@ export default function Analytics() {
   if (loading && !costs && !usage && !quality && !pipeline) return <AnalyticsSkeleton />;
 
   return (
-    <div className="h-[calc(100vh-7rem)] flex flex-col gap-4">
+    <div className="h-[calc(100vh-6.5rem)] md:h-[calc(100vh-7rem)] flex flex-col gap-4">
       {/* Header Bar */}
-      <div className="flex items-center justify-between shrink-0">
+      <div className="flex items-center justify-between shrink-0 flex-wrap gap-2">
         <span className="text-sm font-semibold text-[#F9FAFB]">Analytics</span>
         <div className="flex items-center gap-3">
           {/* Date range pills */}
@@ -98,7 +98,7 @@ export default function Analytics() {
 
       {/* 2x2 Grid */}
       <ScrollArea className="flex-1 min-h-0">
-        <div className="grid grid-cols-2 gap-4 pb-2">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-2">
           {costs ? <CostBreakdownWidget data={costs} /> : <Skeleton className="h-[420px] bg-white/5 rounded-lg" />}
           {usage ? <UsageTrendsWidget data={usage} /> : <Skeleton className="h-[420px] bg-white/5 rounded-lg" />}
           {quality ? <QualityMetricsWidget data={quality} /> : <Skeleton className="h-[420px] bg-white/5 rounded-lg" />}

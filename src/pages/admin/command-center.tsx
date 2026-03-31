@@ -67,7 +67,7 @@ const GRID_CSS = `
 
 function CommandCenterSkeleton() {
   return (
-    <div className="grid grid-cols-[5fr_3fr_2fr] gap-4 h-full">
+    <div className="grid grid-cols-1 md:grid-cols-[5fr_3fr_2fr] gap-4 h-full">
       <div className="space-y-4">
         <Skeleton className="h-48 bg-white/5 rounded-lg" />
         <Skeleton className="h-96 bg-white/5 rounded-lg" />

@@ -32,8 +32,10 @@ import {
   Mic,
   ExternalLink,
   Settings2,
+  Menu,
+  X,
 } from "lucide-react";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -287,7 +289,9 @@ function SidebarGroup({
 
 export function AdminLayout() {
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
+  const sidebarRef = useRef<HTMLDivElement>(null);
 
   // Open groups state — seeded from localStorage, auto-expands active group
   const [openGroups, setOpenGroups] = useState<Set<string>>(() => {
@@ -310,6 +314,23 @@ export function AdminLayout() {
     }
   }, [location.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Close mobile sidebar on navigation
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [location.pathname]);
+
+  // Close mobile sidebar on outside click
+  useEffect(() => {
+    if (!mobileOpen) return;
+    function handleClick(e: MouseEvent) {
+      if (sidebarRef.current && !sidebarRef.current.contains(e.target as Node)) {
+        setMobileOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [mobileOpen]);
+
   const toggleGroup = useCallback((id: string) => {
     setOpenGroups((prev) => {
       const next = new Set(prev);
@@ -322,125 +343,164 @@ export function AdminLayout() {
 
   const currentPageLabel = resolveCurrentPage(location.pathname);
 
+  // Shared sidebar content (used in both desktop aside and mobile drawer)
+  const sidebarContent = (
+    <>
+      {/* Logo */}
+      <div className="flex h-16 items-center gap-3 px-4 border-b border-white/5">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#3B82F6] font-bold text-sm shrink-0">
+          B
+        </div>
+        {!collapsed && (
+          <div className="flex flex-col">
+            <span className="text-sm font-semibold">Blipp Admin</span>
+            <span className="text-[10px] text-[#9CA3AF]">v{__APP_VERSION__}</span>
+          </div>
+        )}
+        {/* Mobile close button */}
+        <button
+          onClick={() => setMobileOpen(false)}
+          className="ml-auto md:hidden text-[#9CA3AF] hover:text-[#F9FAFB]"
+        >
+          <X className="h-5 w-5" />
+        </button>
+      </div>
+
+      {/* Nav */}
+      <nav className="flex-1 flex flex-col gap-1 py-3 px-2 overflow-y-auto">
+        {sidebarEntries.map((entry) => {
+          if (entry.type === "item") {
+            const Icon = entry.icon;
+            const isActive = location.pathname.endsWith("/" + entry.path);
+            const linkClasses = cn(
+              "flex items-center w-full rounded-md py-2 text-sm transition-colors",
+              collapsed ? "justify-center md:justify-center" : "gap-3 px-3",
+              isActive
+                ? "bg-[#3B82F6]/10 text-[#3B82F6]"
+                : "text-[#9CA3AF] hover:bg-white/5 hover:text-[#F9FAFB]"
+            );
+            const link = (
+              <NavLink
+                key={entry.path}
+                to={`/admin/${entry.path}`}
+                className={linkClasses}
+              >
+                <Icon className="h-4 w-4 shrink-0" />
+                {!collapsed && <span className="truncate">{entry.label}</span>}
+              </NavLink>
+            );
+
+            if (collapsed) {
+              return (
+                <Tooltip key={entry.path}>
+                  <TooltipTrigger asChild>{link}</TooltipTrigger>
+                  <TooltipContent side="right" className="bg-[#1A2942] text-[#F9FAFB] border-white/10">
+                    {entry.label}
+                  </TooltipContent>
+                </Tooltip>
+              );
+            }
+            return link;
+          }
+
+          // Group entry
+          return (
+            <SidebarGroup
+              key={entry.id}
+              entry={entry}
+              collapsed={collapsed}
+              isOpen={openGroups.has(entry.id)}
+              onToggle={() => toggleGroup(entry.id)}
+            />
+          );
+        })}
+      </nav>
+
+      {/* Footer buttons */}
+      <div className="p-2 border-t border-white/5 flex flex-col gap-1">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => window.open("/", "blipp-user")}
+          className={cn(
+            "text-[#9CA3AF] hover:text-[#F9FAFB] hover:bg-white/5",
+            collapsed ? "w-full justify-center" : "w-full justify-start gap-2"
+          )}
+        >
+          <ExternalLink className="h-4 w-4 shrink-0" />
+          {!collapsed && <span className="text-xs">User App</span>}
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setCollapsed(!collapsed)}
+          className="w-full justify-center text-[#9CA3AF] hover:text-[#F9FAFB] hover:bg-white/5 hidden md:flex"
+        >
+          {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+        </Button>
+      </div>
+    </>
+  );
+
   return (
     <TooltipProvider delayDuration={0}>
       <div className="dark flex h-screen bg-[#0A1628] text-[#F9FAFB] overflow-hidden">
-        {/* Sidebar */}
+        {/* Desktop sidebar — hidden on mobile */}
         <aside
           className={cn(
-            "flex flex-col border-r border-white/5 bg-[#0F1D32] transition-all duration-200",
+            "hidden md:flex flex-col border-r border-white/5 bg-[#0F1D32] transition-all duration-200",
             collapsed ? "w-16" : "w-60"
           )}
         >
-          {/* Logo */}
-          <div className="flex h-16 items-center gap-3 px-4 border-b border-white/5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#3B82F6] font-bold text-sm shrink-0">
-              B
-            </div>
-            {!collapsed && (
-              <div className="flex flex-col">
-                <span className="text-sm font-semibold">Blipp Admin</span>
-                <span className="text-[10px] text-[#9CA3AF]">v{__APP_VERSION__}</span>
-              </div>
-            )}
-          </div>
+          {sidebarContent}
+        </aside>
 
-          {/* Nav */}
-          <nav className="flex-1 flex flex-col gap-1 py-3 px-2 overflow-y-auto">
-            {sidebarEntries.map((entry) => {
-              if (entry.type === "item") {
-                const Icon = entry.icon;
-                const isActive = location.pathname.endsWith("/" + entry.path);
-                const linkClasses = cn(
-                  "flex items-center w-full rounded-md py-2 text-sm transition-colors",
-                  collapsed ? "justify-center" : "gap-3 px-3",
-                  isActive
-                    ? "bg-[#3B82F6]/10 text-[#3B82F6]"
-                    : "text-[#9CA3AF] hover:bg-white/5 hover:text-[#F9FAFB]"
-                );
-                const link = (
-                  <NavLink
-                    key={entry.path}
-                    to={`/admin/${entry.path}`}
-                    className={linkClasses}
-                  >
-                    <Icon className="h-4 w-4 shrink-0" />
-                    {!collapsed && <span className="truncate">{entry.label}</span>}
-                  </NavLink>
-                );
+        {/* Mobile sidebar overlay */}
+        {mobileOpen && (
+          <div className="fixed inset-0 z-40 bg-black/60 md:hidden" aria-hidden="true" />
+        )}
 
-                if (collapsed) {
-                  return (
-                    <Tooltip key={entry.path}>
-                      <TooltipTrigger asChild>{link}</TooltipTrigger>
-                      <TooltipContent side="right" className="bg-[#1A2942] text-[#F9FAFB] border-white/10">
-                        {entry.label}
-                      </TooltipContent>
-                    </Tooltip>
-                  );
-                }
-                return link;
-              }
-
-              // Group entry
-              return (
-                <SidebarGroup
-                  key={entry.id}
-                  entry={entry}
-                  collapsed={collapsed}
-                  isOpen={openGroups.has(entry.id)}
-                  onToggle={() => toggleGroup(entry.id)}
-                />
-              );
-            })}
-          </nav>
-
-          {/* Footer buttons */}
-          <div className="p-2 border-t border-white/5 flex flex-col gap-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => window.open("/", "blipp-user")}
-              className={cn(
-                "text-[#9CA3AF] hover:text-[#F9FAFB] hover:bg-white/5",
-                collapsed ? "w-full justify-center" : "w-full justify-start gap-2"
-              )}
-            >
-              <ExternalLink className="h-4 w-4 shrink-0" />
-              {!collapsed && <span className="text-xs">User App</span>}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setCollapsed(!collapsed)}
-              className="w-full justify-center text-[#9CA3AF] hover:text-[#F9FAFB] hover:bg-white/5"
-            >
-              {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-            </Button>
-          </div>
+        {/* Mobile sidebar drawer */}
+        <aside
+          ref={sidebarRef}
+          className={cn(
+            "fixed inset-y-0 left-0 z-50 flex flex-col w-60 bg-[#0F1D32] transition-transform duration-200 md:hidden",
+            mobileOpen ? "translate-x-0" : "-translate-x-full"
+          )}
+        >
+          {sidebarContent}
         </aside>
 
         {/* Main area */}
         <div className="flex flex-1 flex-col overflow-hidden">
           {/* Top bar */}
-          <header className="flex h-16 items-center justify-between border-b border-white/5 bg-[#0F1D32] px-6">
-            <div className="flex items-center gap-4">
-              <h1 className="text-lg font-semibold">
+          <header className="flex h-14 md:h-16 items-center justify-between border-b border-white/5 bg-[#0F1D32] px-3 md:px-6">
+            <div className="flex items-center gap-3">
+              {/* Mobile hamburger */}
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setMobileOpen(true)}
+                className="md:hidden text-[#9CA3AF] hover:text-[#F9FAFB] shrink-0"
+              >
+                <Menu className="h-5 w-5" />
+              </Button>
+              <h1 className="text-base md:text-lg font-semibold truncate">
                 {currentPageLabel}
               </h1>
             </div>
 
-            <div className="flex items-center gap-3">
-              {/* Search */}
-              <div className="relative">
+            <div className="flex items-center gap-2 md:gap-3">
+              {/* Search — hidden on mobile */}
+              <div className="relative hidden sm:block">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-[#9CA3AF]" />
                 <Input
                   placeholder="Search... (⌘K)"
-                  className="w-64 bg-white/5 border-white/10 pl-9 text-sm text-[#F9FAFB] placeholder:text-[#9CA3AF]/60 focus:border-[#3B82F6]/50 focus:ring-[#3B82F6]/20"
+                  className="w-48 lg:w-64 bg-white/5 border-white/10 pl-9 text-sm text-[#F9FAFB] placeholder:text-[#9CA3AF]/60 focus:border-[#3B82F6]/50 focus:ring-[#3B82F6]/20"
                 />
               </div>
 
-              <Separator orientation="vertical" className="h-6 bg-white/10" />
+              <Separator orientation="vertical" className="h-6 bg-white/10 hidden sm:block" />
 
               {/* Notifications */}
               <Button variant="ghost" size="icon" className="text-[#9CA3AF] hover:text-[#F9FAFB] relative">
@@ -462,7 +522,7 @@ export function AdminLayout() {
           </header>
 
           {/* Content */}
-          <main className="flex-1 overflow-auto p-6">
+          <main className="flex-1 overflow-auto p-3 md:p-6">
             <Outlet />
           </main>
         </div>

@@ -161,9 +161,9 @@ export default function RecommendationsPage() {
   }
 
   return (
-    <div className="flex gap-4 h-[calc(100vh-7rem)]">
+    <div className="flex flex-col md:flex-row gap-4 h-[calc(100vh-6.5rem)] md:h-[calc(100vh-7rem)]">
       {/* LEFT PANE */}
-      <div className="w-[40%] flex flex-col gap-3 min-h-0">
+      <div className="w-full md:w-[40%] flex flex-col gap-3 min-h-0">
         {/* Stats Bar */}
         <div className="flex gap-2">
           {statsLoading ? (

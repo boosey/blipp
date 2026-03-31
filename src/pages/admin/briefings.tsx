@@ -142,8 +142,8 @@ function BriefingCard({
 
 function BriefingSkeleton() {
   return (
-    <div className="flex gap-4 h-full">
-      <div className="w-1/2 shrink-0 space-y-3">
+    <div className="flex flex-col md:flex-row gap-4 h-full">
+      <div className="w-full md:w-1/2 shrink-0 space-y-3">
         {Array.from({ length: 6 }).map((_, i) => (
           <Skeleton key={i} className="h-24 bg-white/5 rounded-lg" />
         ))}
@@ -244,9 +244,9 @@ export default function BriefingsPage() {
   if (loading && briefings.length === 0) return <BriefingSkeleton />;
 
   return (
-    <div className="flex gap-4 h-[calc(100vh-7rem)]">
+    <div className="flex flex-col md:flex-row gap-4 h-[calc(100vh-6.5rem)] md:h-[calc(100vh-7rem)]">
       {/* ── LEFT: Briefing List ── */}
-      <div className="w-1/2 shrink-0 flex flex-col gap-3 min-h-0">
+      <div className="w-full md:w-1/2 shrink-0 flex flex-col gap-3 min-h-0">
         {/* Filters */}
         <div className="flex gap-2">
           <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -340,7 +340,7 @@ export default function BriefingsPage() {
                 </div>
 
                 {/* Clip stats */}
-                <div className="grid grid-cols-4 gap-2">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                   <div className="rounded-md bg-[#0A1628] border border-white/5 p-2.5 text-center">
                     <div className="text-sm font-bold font-mono tabular-nums text-[#F9FAFB]">
                       {selected.clip.durationTier}m

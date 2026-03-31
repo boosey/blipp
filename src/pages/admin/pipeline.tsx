@@ -120,10 +120,10 @@ export default function Pipeline() {
   if (loading && stageStats.length === 0) return <PipelineSkeleton />;
 
   return (
-    <div className="h-[calc(100vh-7rem)] flex flex-col gap-3">
+    <div className="h-[calc(100vh-6.5rem)] md:h-[calc(100vh-7rem)] flex flex-col gap-3">
       {/* Toolbar */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="text-sm font-semibold">Pipeline Flow</span>
           <Badge className="bg-white/5 text-[#9CA3AF] text-[10px]">
             {allJobs.filter((j) => j.status === "IN_PROGRESS").length} active
@@ -142,7 +142,7 @@ export default function Pipeline() {
             />
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Select value={stageFilter} onValueChange={setStageFilter}>
             <SelectTrigger className="w-40 h-8 text-xs bg-[#1A2942] border-white/10 text-[#F9FAFB]">
               <SelectValue placeholder="Filter by stage" />
@@ -183,7 +183,7 @@ export default function Pipeline() {
       </div>
 
       {/* Stage Columns */}
-      <div className="flex gap-0 flex-1 min-h-0" data-testid="pipeline-columns">
+      <div className="flex gap-0 flex-1 min-h-0 overflow-x-auto" data-testid="pipeline-columns">
         {STAGE_META.map((meta, idx) => {
           const stats = stageStats.find((s) => s.stage === meta.stage);
           const jobs = sortedFilteredJobs(meta.stage);
@@ -196,7 +196,7 @@ export default function Pipeline() {
           return (
             <div key={meta.stage} className="contents">
               {idx > 0 && (stageFilter === "all") && <FlowArrow color={STAGE_META[idx - 1].color} />}
-              <div className="flex-1 flex flex-col rounded-lg bg-[#1A2942] border border-white/5 min-h-0 overflow-hidden" data-testid={`stage-column-${meta.stage}`}>
+              <div className="flex-1 min-w-[200px] md:min-w-0 flex flex-col rounded-lg bg-[#1A2942] border border-white/5 min-h-0 overflow-hidden" data-testid={`stage-column-${meta.stage}`}>
                 <StageHeader
                   meta={meta}
                   stats={stats}

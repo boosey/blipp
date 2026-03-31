@@ -81,9 +81,9 @@ export default function UsersPage() {
   if (loading && users.length === 0) return <UsersSkeleton />;
 
   return (
-    <div className="flex gap-4 h-[calc(100vh-7rem)]">
+    <div className="flex flex-col md:flex-row gap-4 h-[calc(100vh-6.5rem)] md:h-[calc(100vh-7rem)]">
       {/* ── LEFT: User List (40%) ── */}
-      <div className="w-[40%] flex flex-col gap-3 min-h-0">
+      <div className="w-full md:w-[40%] flex flex-col gap-3 min-h-0">
         {/* Segment Quick Filters */}
         <div className="flex flex-wrap gap-1.5">
           {SEGMENT_FILTERS.map((sf) => {
