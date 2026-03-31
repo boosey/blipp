@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Search, User, UserX } from "lucide-react";
+import { ArrowLeft, Search, User, UserX } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -80,10 +80,18 @@ export default function UsersPage() {
 
   if (loading && users.length === 0) return <UsersSkeleton />;
 
+  // On mobile, show either list OR detail (not both stacked)
+  const showMobileDetail = !!selectedUser;
+
   return (
     <div className="flex flex-col md:flex-row gap-4 h-[calc(100vh-6.5rem)] md:h-[calc(100vh-7rem)]">
       {/* ── LEFT: User List (40%) ── */}
-      <div className="w-full md:w-[40%] flex flex-col gap-3 min-h-0">
+      <div
+        className={cn(
+          "w-full md:w-[40%] flex flex-col gap-3 min-h-0",
+          showMobileDetail && "hidden md:flex"
+        )}
+      >
         {/* Segment Quick Filters */}
         <div className="flex flex-wrap gap-1.5">
           {SEGMENT_FILTERS.map((sf) => {
@@ -155,7 +163,12 @@ export default function UsersPage() {
       </div>
 
       {/* ── RIGHT: User Detail (60%) ── */}
-      <div className="flex-1 flex flex-col min-h-0 min-w-0">
+      <div
+        className={cn(
+          "flex-1 flex flex-col min-h-0 min-w-0",
+          !showMobileDetail && "hidden md:flex"
+        )}
+      >
         {detailLoading && !selectedUser ? (
           <div className="flex-1 space-y-4">
             <Skeleton className="h-24 bg-white/5 rounded-lg" />
@@ -164,6 +177,15 @@ export default function UsersPage() {
           </div>
         ) : selectedUser ? (
           <div className="flex flex-col gap-4 h-full min-h-0">
+            {/* Mobile back button */}
+            <button
+              onClick={() => setSelectedUser(null)}
+              className="md:hidden flex items-center gap-1.5 text-xs text-[#9CA3AF] hover:text-[#F9FAFB] shrink-0"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              Back to list
+            </button>
+
             <UserDetailHeader user={selectedUser} />
 
             {/* Tabs */}
@@ -198,22 +220,18 @@ export default function UsersPage() {
                 </TabsTrigger>
               </TabsList>
 
-              <div className="flex-1 min-h-0 mt-4">
-                <ScrollArea className="h-full">
-                  <TabsContent value="overview">
-                    <OverviewTab user={selectedUser} />
-                  </TabsContent>
-                  <TabsContent value="activity">
-                    <FeedItemsTab feedItems={selectedUser.recentFeedItems} />
-                  </TabsContent>
-                  <TabsContent value="billing">
-                    <BillingTab user={selectedUser} onUpdate={handleUserUpdate} />
-                  </TabsContent>
-                  <TabsContent value="recs">
-                    <RecommendationsTab userId={selectedUser.id} />
-                  </TabsContent>
-                </ScrollArea>
-              </div>
+              <TabsContent value="overview" className="flex-1 overflow-auto mt-4">
+                <OverviewTab user={selectedUser} />
+              </TabsContent>
+              <TabsContent value="activity" className="flex-1 overflow-auto mt-4">
+                <FeedItemsTab feedItems={selectedUser.recentFeedItems} />
+              </TabsContent>
+              <TabsContent value="billing" className="flex-1 overflow-auto mt-4">
+                <BillingTab user={selectedUser} onUpdate={handleUserUpdate} />
+              </TabsContent>
+              <TabsContent value="recs" className="flex-1 overflow-auto mt-4">
+                <RecommendationsTab userId={selectedUser.id} />
+              </TabsContent>
             </Tabs>
           </div>
         ) : (
