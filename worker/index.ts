@@ -27,6 +27,7 @@ import { cacheResponse } from "./middleware/cache";
 import { deepHealthCheck } from "./lib/health";
 import { catalogSeedRoutes } from "./routes/admin/catalog-seed";
 import { waitlist } from "./routes/waitlist";
+import { feedback } from "./routes/feedback";
 import type { Env } from "./types";
 
 const app = new Hono<{ Bindings: Env }>();
@@ -76,6 +77,9 @@ app.route("/api/auth", nativeAuthRoutes);
 
 // Public waitlist endpoints — no Clerk auth required
 app.route("/api/waitlist", waitlist);
+
+// Public feedback endpoint — no Clerk auth required
+app.route("/api/feedback", feedback);
 
 // Request ID — must be first so all other middleware can access it
 app.use("/api/*", requestIdMiddleware);

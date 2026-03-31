@@ -27,6 +27,7 @@ import { promptsRoutes } from "./prompts";
 import { voicePresetsRoutes } from "./voice-presets";
 import { storageRoutes } from "./storage";
 import { episodeRefreshRoutes } from "./episode-refresh";
+import { invitesRoutes } from "./invites";
 
 /**
  * Admin route tree. All routes require admin authentication.
@@ -89,5 +90,6 @@ adminRoutes.route("/prompts", promptsRoutes);
 adminRoutes.route("/voice-presets", voicePresetsRoutes);
 adminRoutes.route("/storage", storageRoutes);
 adminRoutes.route("/episode-refresh", episodeRefreshRoutes);
+adminRoutes.route("/invites", invitesRoutes);
 
 export { adminRoutes };
