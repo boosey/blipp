@@ -169,6 +169,8 @@ app.route("/api/admin/catalog-seed", catalogSeedRoutes);
 app.use("/api/*", async (c, next) => {
   // Already authenticated by scriptOrClerkAuth middleware (catalog-seed routes)
   if (c.get("scriptAuth")) return next();
+  // Public logs API handles its own auth via SCRIPT_TOKEN
+  if (c.req.path.startsWith("/api/logs")) return next();
   // Bearer secret bypass (server-to-server)
   const authHeader = c.req.header("Authorization");
   if (authHeader?.startsWith("Bearer ")) {
