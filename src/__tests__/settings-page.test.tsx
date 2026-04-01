@@ -62,6 +62,20 @@ vi.mock("../contexts/plan-context", () => ({
   usePlan: () => ({ maxDurationMinutes: 15, subscriptions: { limit: 10, remaining: 7 } }),
 }));
 
+vi.mock("../contexts/storage-context", () => ({
+  useStorage: () => ({
+    isSupported: false,
+    downloads: [],
+    downloading: new Set(),
+    downloadEpisode: vi.fn(),
+    removeDownload: vi.fn(),
+    getDownloadUrl: vi.fn(),
+    usedBytes: 0,
+    clearAll: vi.fn(),
+  }),
+  StorageProvider: ({ children }: any) => children,
+}));
+
 import { Settings } from "../pages/Settings";
 
 beforeAll(() => {

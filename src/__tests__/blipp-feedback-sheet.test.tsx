@@ -23,7 +23,7 @@ describe("BlippFeedbackSheet", () => {
     render(<BlippFeedbackSheet {...defaultProps} />);
 
     const buttons = screen.getAllByRole("button").filter(
-      (b) => !b.textContent?.match(/Submit|Sending|Add a comment/i)
+      (b) => !b.textContent?.match(/Submit|Sending|Add a comment/i) && b.getAttribute("aria-label") !== "Close feedback"
     );
 
     expect(buttons[0]).toHaveTextContent("Blipp failed");
