@@ -2,6 +2,10 @@ import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import type { FeedItem } from "../types/feed";
 
+vi.mock("../lib/api", () => ({
+  useApiFetch: () => vi.fn().mockResolvedValue({}),
+}));
+
 vi.mock("../contexts/audio-context", () => ({
   useAudio: () => ({
     play: vi.fn(),

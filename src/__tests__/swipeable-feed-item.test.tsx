@@ -4,6 +4,10 @@ import type { FeedItem } from "../types/feed";
 
 const mockAddToQueue = vi.fn();
 
+vi.mock("../lib/api", () => ({
+  useApiFetch: () => vi.fn().mockResolvedValue({}),
+}));
+
 vi.mock("../contexts/audio-context", () => ({
   useAudio: () => ({
     play: vi.fn(),
