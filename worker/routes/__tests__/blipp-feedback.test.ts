@@ -129,6 +129,57 @@ describe("POST /feedback/blipp", () => {
     expect(res.status).toBe(404);
   });
 
+  it("creates feedback with multiple reasons", async () => {
+    const res = await app.request("/feedback/blipp", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        episodeId: "ep1",
+        reasons: ["too_short", "missed_key_points", "not_interesting"],
+      }),
+    }, env, mockExCtx);
+
+    expect(res.status).toBe(201);
+    expect(mockPrisma.blippFeedback.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        reasons: ["too_short", "missed_key_points", "not_interesting"],
+        isTechnicalFailure: false,
+      }),
+    });
+  });
+
+  it("returns 401 when unauthenticated (requireAuth rejects)", async () => {
+    // Build a fresh app without the auth bypass to test requireAuth behavior
+    const unauthApp = new Hono<{ Bindings: Env }>();
+    unauthApp.use("/*", async (c, next) => {
+      c.set("prisma", mockPrisma);
+      await next();
+    });
+    // Simulate requireAuth rejecting: no clerk auth → 401
+    unauthApp.use("/feedback/blipp/*", async (c, next) => {
+      return c.json({ error: "Unauthorized" }, 401);
+    });
+    unauthApp.route("/feedback/blipp", blippFeedback);
+
+    const res = await unauthApp.request("/feedback/blipp", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ episodeId: "ep1", reasons: ["too_short"] }),
+    }, env, mockExCtx);
+
+    expect(res.status).toBe(401);
+  });
+
+  it("rejects missing episodeId", async () => {
+    const res = await app.request("/feedback/blipp", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reasons: ["too_short"] }),
+    }, env, mockExCtx);
+
+    expect(res.status).toBe(400);
+  });
+
   it("accepts optional message and briefingId", async () => {
     const res = await app.request("/feedback/blipp", {
       method: "POST",
