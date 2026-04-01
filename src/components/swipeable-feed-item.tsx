@@ -178,7 +178,7 @@ export function SwipeableFeedItem({
       const card = cardRef.current;
       if (card) {
         // Cancel any running animation
-        card.getAnimations().forEach((a) => a.cancel());
+        card.getAnimations?.()?.forEach((a) => a.cancel());
         card.style.transition = "none";
       }
     },
