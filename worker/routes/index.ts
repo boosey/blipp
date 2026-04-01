@@ -18,6 +18,7 @@ import { cleanR2Routes } from "./admin/clean-r2";
 import { feedback } from "./feedback";
 import { blippFeedback } from "./blipp-feedback";
 import { logsRoutes } from "./logs";
+import { events } from "./events";
 
 /**
  * Combined route tree for the Blipp API.
@@ -38,6 +39,7 @@ routes.route("/voice-presets", voicePresets);
 routes.route("/feedback", feedback);
 routes.route("/feedback/blipp", blippFeedback);
 routes.route("/logs", logsRoutes);
+routes.route("/events", events);
 routes.route("/webhooks/clerk", clerkWebhooks);
 routes.route("/webhooks/stripe", stripeWebhooks);
 routes.route("/admin", adminRoutes);

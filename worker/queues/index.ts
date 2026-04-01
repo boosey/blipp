@@ -16,6 +16,7 @@ import { runUserLifecycleJob } from "../lib/cron/user-lifecycle";
 import { runDataRetentionJob } from "../lib/cron/data-retention";
 import { runRecommendationsJob } from "../lib/cron/recommendations";
 import { runAppleDiscoveryJob, runPodcastIndexDiscoveryJob } from "../lib/cron/podcast-discovery";
+import { runListenOriginalAggregationJob } from "../lib/cron/listen-original-aggregation";
 import type {
   TranscriptionMessage,
   DistillationMessage,
@@ -209,11 +210,17 @@ export async function scheduled(
         defaultIntervalMinutes: 10080,
         execute: (logger) => runRecommendationsJob(prisma as any, logger, env),
       }),
+      runJob({
+        jobKey: "listen-original-aggregation",
+        prisma: prisma as any,
+        defaultIntervalMinutes: 1440,
+        execute: (logger) => runListenOriginalAggregationJob(prisma as any, logger),
+      }),
     ]);
 
     const jobKeys = [
       "apple-discovery", "podcast-index-discovery", "pipeline-trigger", "monitoring",
-      "user-lifecycle", "data-retention", "recommendations",
+      "user-lifecycle", "data-retention", "recommendations", "listen-original-aggregation",
     ];
     for (let i = 0; i < results.length; i++) {
       const r = results[i];

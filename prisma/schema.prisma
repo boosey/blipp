@@ -106,6 +106,7 @@ model User {
   recommendationDismissals  RecommendationDismissal[]
   feedback                  Feedback[]
   blippFeedback             BlippFeedback[]
+  listenOriginalEvents      ListenOriginalEvent[] @relation("ListenOriginalEvents")
 }
 
 // ── Podcast Favorites (interest signals for recommendations) ──
@@ -233,6 +234,7 @@ model Episode {
   benchmarkResults       SttBenchmarkResult[]
   claimsBenchmarkResults ClaimsBenchmarkResult[]
   blippFeedback          BlippFeedback[]
+  listenOriginalEvents   ListenOriginalEvent[] @relation("ListenOriginalEvents")
 
   @@unique([podcastId, guid])
   @@index([podcastId, publishedAt])
@@ -1058,4 +1060,78 @@ model BlippFeedback {
   @@index([episodeId])
   @@index([createdAt])
   @@index([isTechnicalFailure, createdAt])
+}
+
+// ── Listen-to-Original Conversion Tracking ──
+
+enum ListenOriginalEventType {
+  listen_original_click
+  listen_original_start
+  listen_original_complete
+}
+
+enum DeviceType {
+  mobile
+  desktop
+  tablet
+}
+
+enum AppPlatform {
+  ios
+  android
+  web
+}
+
+enum ReferralSource {
+  feed
+  search
+  share
+  notification
+}
+
+model ListenOriginalEvent {
+  id                    String                   @id @default(cuid())
+  eventType             ListenOriginalEventType
+  timestamp             DateTime                 @default(now())
+  userId                String
+  sessionId             String
+  deviceType            DeviceType
+  platform              AppPlatform
+  blippId               String
+  blippDurationMs       Int
+  episodeId             String
+  podcastId             String
+  publisherId           String
+  referralSource        ReferralSource
+  timeToClickSec        Float
+  blippCompletionPct    Float
+  didReturnToBlipp      Boolean                  @default(false)
+  utmSource             String?
+  utmMedium             String?
+  utmCampaign           String?
+  reportBatchId         String?
+  createdAt             DateTime                 @default(now())
+
+  user    User    @relation("ListenOriginalEvents", fields: [userId], references: [id], onDelete: Cascade)
+  episode Episode @relation("ListenOriginalEvents", fields: [episodeId], references: [id], onDelete: Cascade)
+
+  @@index([publisherId, timestamp])
+  @@index([userId, timestamp])
+  @@index([blippId, eventType])
+  @@index([episodeId, timestamp])
+  @@index([reportBatchId])
+}
+
+model PublisherReportBatch {
+  id             String   @id @default(cuid())
+  publisherId    String
+  periodStart    DateTime
+  periodEnd      DateTime
+  totalClicks    Int
+  totalStarts    Int
+  totalCompletes Int
+  uniqueUsers    Int
+  generatedAt    DateTime @default(now())
+
+  @@index([publisherId, periodStart])
 }

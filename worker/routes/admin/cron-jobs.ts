@@ -47,6 +47,12 @@ const JOB_DEFINITIONS = [
     description: "Rebuilds podcast recommendation profiles for all users",
     defaultIntervalMinutes: 10080,
   },
+  {
+    jobKey: "listen-original-aggregation",
+    label: "Listen-to-Original Aggregation",
+    description: "Aggregates listen-to-original conversion events into daily publisher report batches",
+    defaultIntervalMinutes: 1440,
+  },
 ] as const;
 
 const VALID_JOB_KEYS = JOB_DEFINITIONS.map((j) => j.jobKey);
