@@ -30,6 +30,7 @@ import {
   Sprout,
   RefreshCw,
   Mic,
+  ThumbsDown,
   ExternalLink,
   Settings2,
   Menu,
@@ -118,6 +119,7 @@ const sidebarEntries: SidebarEntry[] = [
       { path: "recommendations", label: "Recommendations", icon: Sparkles },
       { path: "ads", label: "Advertisements", icon: Megaphone },
       { path: "feedback", label: "Feedback", icon: MessageSquare },
+      { path: "blipp-feedback", label: "Blipp Feedback", icon: ThumbsDown },
     ],
   },
 

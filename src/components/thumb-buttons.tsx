@@ -3,10 +3,12 @@ import { ThumbsUp, ThumbsDown } from "lucide-react";
 export function ThumbButtons({
   vote,
   onVote,
+  onThumbsDown,
   size = "sm",
 }: {
   vote: number; // 1, -1, or 0
   onVote: (vote: number) => void;
+  onThumbsDown?: () => void;
   size?: "sm" | "md";
 }) {
   const iconClass = size === "md" ? "w-5 h-5" : "w-4 h-4";
@@ -31,7 +33,9 @@ export function ThumbButtons({
       <button
         onClick={(e) => {
           e.stopPropagation();
-          onVote(vote === -1 ? 0 : -1);
+          const newVote = vote === -1 ? 0 : -1;
+          onVote(newVote);
+          if (newVote === -1) onThumbsDown?.();
         }}
         className={`${btnClass} rounded-full transition-colors ${
           vote === -1

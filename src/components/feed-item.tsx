@@ -6,6 +6,7 @@ import { formatDuration } from "../lib/feed-utils";
 import { useAudio } from "../contexts/audio-context";
 import { usePlan } from "../contexts/plan-context";
 import { ThumbButtons } from "./thumb-buttons";
+import { BlippFeedbackSheet } from "./blipp-feedback-sheet";
 
 /** Map raw pipeline error to a short user-facing message. */
 function friendlyError(raw: string | null): string {
@@ -70,6 +71,7 @@ export function FeedItemCard({
 }) {
   const audio = useAudio();
   const { publicSharing } = usePlan();
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const isPlayable = item.status === "READY" && item.briefing?.clip;
   const isCreating = item.status === "PENDING" || item.status === "PROCESSING";
   const label = statusLabel(item.status);
@@ -144,6 +146,7 @@ export function FeedItemCard({
               <ThumbButtons
                 vote={item.episodeVote}
                 onVote={(v) => onEpisodeVote(item.episode.id, v)}
+                onThumbsDown={() => setFeedbackOpen(true)}
               />
             )}
             {label && (
@@ -220,29 +223,46 @@ export function FeedItemCard({
     </div>
   ) : cardInner;
 
+  const feedbackSheet = (
+    <BlippFeedbackSheet
+      episodeId={item.episode.id}
+      briefingId={item.briefing?.id ?? null}
+      open={feedbackOpen}
+      onOpenChange={setFeedbackOpen}
+    />
+  );
+
   if (isPlayable) {
     return (
-      <div
-        role="button"
-        tabIndex={0}
-        className="w-full text-left active:scale-[0.98] transition-transform duration-75 cursor-pointer"
-        onClick={(e) => {
-          // Don't play if user clicked a thumb button
-          if ((e.target as HTMLElement).closest("[aria-label]")) return;
-          audio.play(item);
-          onPlay?.(item.id);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
+      <>
+        <div
+          role="button"
+          tabIndex={0}
+          className="w-full text-left active:scale-[0.98] transition-transform duration-75 cursor-pointer"
+          onClick={(e) => {
+            // Don't play if user clicked a thumb button
+            if ((e.target as HTMLElement).closest("[aria-label]")) return;
             audio.play(item);
             onPlay?.(item.id);
-          }
-        }}
-      >
-        {card}
-      </div>
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              audio.play(item);
+              onPlay?.(item.id);
+            }
+          }}
+        >
+          {card}
+        </div>
+        {feedbackSheet}
+      </>
     );
   }
 
-  return card;
+  return (
+    <>
+      {card}
+      {feedbackSheet}
+    </>
+  );
 }

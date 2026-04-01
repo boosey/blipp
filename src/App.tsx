@@ -52,6 +52,7 @@ const DlqMonitor = lazy(() => import("./pages/admin/dlq"));
 const VoicePresets = lazy(() => import("./pages/admin/voice-presets"));
 const EpisodeRefresh = lazy(() => import("./pages/admin/episode-refresh"));
 const AdminFeedback = lazy(() => import("./pages/admin/feedback"));
+const AdminBlippFeedback = lazy(() => import("./pages/admin/blipp-feedback"));
 const TermsOfService = lazy(() => import("./pages/tos"));
 const PrivacyPolicy = lazy(() => import("./pages/privacy"));
 const Onboarding = lazy(() => import("./pages/onboarding"));
@@ -156,6 +157,7 @@ export default function App() {
         <Route path="worker-logs" element={<Suspense fallback={<AdminLoading />}><AdminWorkerLogs /></Suspense>} />
         <Route path="ads" element={<Suspense fallback={<AdminLoading />}><AdminAds /></Suspense>} />
         <Route path="feedback" element={<Suspense fallback={<AdminLoading />}><AdminFeedback /></Suspense>} />
+        <Route path="blipp-feedback" element={<Suspense fallback={<AdminLoading />}><AdminBlippFeedback /></Suspense>} />
         <Route path="recommendations" element={<Suspense fallback={<AdminLoading />}><AdminRecommendations /></Suspense>} />
         <Route path="scheduled-jobs" element={<Suspense fallback={<AdminLoading />}><ScheduledJobs /></Suspense>} />
         <Route path="prompt-management" element={<Navigate to="/admin/stage-configuration" replace />} />

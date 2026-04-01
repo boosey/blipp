@@ -29,6 +29,7 @@ import { storageRoutes } from "./storage";
 import { episodeRefreshRoutes } from "./episode-refresh";
 import { workerLogsRoutes } from "./worker-logs";
 import { feedbackRoutes } from "./feedback";
+import { blippFeedbackRoutes } from "./blipp-feedback";
 
 /**
  * Admin route tree. All routes require admin authentication.
@@ -93,5 +94,6 @@ adminRoutes.route("/storage", storageRoutes);
 adminRoutes.route("/episode-refresh", episodeRefreshRoutes);
 adminRoutes.route("/worker-logs", workerLogsRoutes);
 adminRoutes.route("/feedback", feedbackRoutes);
+adminRoutes.route("/blipp-feedback", blippFeedbackRoutes);
 
 export { adminRoutes };

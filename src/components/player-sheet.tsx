@@ -13,6 +13,7 @@ import { useApiFetch } from "../lib/api";
 import { usePlan } from "../contexts/plan-context";
 import { formatDuration } from "../lib/feed-utils";
 import { ThumbButtons } from "./thumb-buttons";
+import { BlippFeedbackSheet } from "./blipp-feedback-sheet";
 
 const RATE_CYCLE = [1, 1.25, 1.5, 2, 0.75] as const;
 
@@ -51,6 +52,7 @@ export function PlayerSheet({
 
   // Episode vote state — reset when track changes
   const [episodeVote, setEpisodeVote] = useState(0);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const lastEpisodeId = useRef<string | null>(null);
 
   useEffect(() => {
@@ -225,7 +227,7 @@ export function PlayerSheet({
           {/* Right actions — thumbs + share */}
           {!inAd && (
             <div className="flex items-center gap-1">
-              <ThumbButtons vote={episodeVote} onVote={handleEpisodeVote} size="md" />
+              <ThumbButtons vote={episodeVote} onVote={handleEpisodeVote} onThumbsDown={() => setFeedbackOpen(true)} size="md" />
               {publicSharing && (
                 <button
                   onClick={handleShare}
@@ -354,6 +356,14 @@ export function PlayerSheet({
           )}
         </div>
       </SheetContent>
+      {currentItem && (
+        <BlippFeedbackSheet
+          episodeId={currentItem.episode.id}
+          briefingId={currentItem.briefing?.id ?? null}
+          open={feedbackOpen}
+          onOpenChange={setFeedbackOpen}
+        />
+      )}
     </Sheet>
   );
 }
