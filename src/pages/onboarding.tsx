@@ -3,7 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { useApiFetch } from "../lib/api";
 import { useFetch } from "../lib/use-fetch";
 import { useOnboarding } from "../contexts/onboarding-context";
-import { Check, ChevronRight, Headphones, Search, X } from "lucide-react";
+import { usePlan } from "../contexts/plan-context";
+import { AlertTriangle, Check, ChevronRight, Headphones, Loader2, Search, X } from "lucide-react";
 
 interface CatalogPodcast {
   id: string;
@@ -25,9 +26,10 @@ export default function Onboarding() {
   const navigate = useNavigate();
   const apiFetch = useApiFetch();
   const { markComplete } = useOnboarding();
+  const { subscriptions, maxDurationMinutes } = usePlan();
   const [step, setStep] = useState<1 | 2 | 3>(1);
-  const [selectedPodcasts, setSelectedPodcasts] = useState<Set<string>>(
-    new Set()
+  const [selectedPodcasts, setSelectedPodcasts] = useState<Map<string, CatalogPodcast>>(
+    new Map()
   );
   const [saving, setSaving] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState("All");
@@ -35,6 +37,12 @@ export default function Onboarding() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [searchResults, setSearchResults] = useState<CatalogPodcast[] | null>(null);
   const [searching, setSearching] = useState(false);
+
+  const planLimit = subscriptions.limit;
+  const currentUsed = subscriptions.used;
+  const selectedCount = selectedPodcasts.size;
+  const effectiveRemaining = planLimit === null ? Infinity : Math.max(0, planLimit - currentUsed);
+  const atLimit = planLimit !== null && selectedCount >= effectiveRemaining;
 
   const { data: catalogData, loading: catalogLoading } = useFetch<{
     podcasts: CatalogPodcast[];
@@ -87,13 +95,15 @@ export default function Onboarding() {
     );
   }, [isSearching, searchResults, podcasts, categoryFilter]);
 
-  function togglePodcast(id: string) {
+  function togglePodcast(podcast: CatalogPodcast) {
     setSelectedPodcasts((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
+      const next = new Map(prev);
+      if (next.has(podcast.id)) {
+        next.delete(podcast.id);
       } else {
-        next.add(id);
+        // Don't add if at plan limit
+        if (planLimit !== null && next.size >= effectiveRemaining) return prev;
+        next.set(podcast.id, podcast);
       }
       return next;
     });
@@ -102,16 +112,27 @@ export default function Onboarding() {
   async function handleFinish() {
     setSaving(true);
 
-    // Save favorites (if any selected)
+    // Subscribe to each selected podcast
     if (selectedPodcasts.size > 0) {
-      try {
-        await apiFetch("/podcasts/favorites", {
-          method: "POST",
-          body: JSON.stringify({ podcastIds: Array.from(selectedPodcasts) }),
-        });
-      } catch {
-        // Non-critical — don't block onboarding completion
-      }
+      const pods = Array.from(selectedPodcasts.values());
+      // Use the smallest duration tier available on the plan
+      const durationTier = Math.min(maxDurationMinutes, 5);
+
+      await Promise.allSettled(
+        pods.map((p) =>
+          apiFetch("/podcasts/subscribe", {
+            method: "POST",
+            body: JSON.stringify({
+              feedUrl: p.feedUrl,
+              title: p.title,
+              durationTier,
+              description: p.description,
+              imageUrl: p.imageUrl,
+              author: p.author,
+            }),
+          })
+        )
+      );
     }
 
     // Mark onboarding complete in DB + local state
@@ -155,7 +176,7 @@ export default function Onboarding() {
     );
   }
 
-  // Step 2 — Pick favorites (optional)
+  // Step 2 — Subscribe to podcasts
   if (step === 2) {
     return (
       <div className="min-h-screen bg-background text-foreground flex flex-col px-4 py-6">
@@ -165,7 +186,7 @@ export default function Onboarding() {
               What podcasts are you into?
             </h1>
             <p className="text-muted-foreground text-sm mt-1">
-              Pick a few so we can tailor your experience.
+              Pick a few to subscribe — we'll start creating briefings right away.
             </p>
           </div>
 
@@ -223,11 +244,13 @@ export default function Onboarding() {
             <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3">
               {filteredPodcasts.map((podcast) => {
                 const isSelected = selectedPodcasts.has(podcast.id);
+                const disabled = !isSelected && atLimit;
                 return (
                   <button
                     key={podcast.id}
-                    onClick={() => togglePodcast(podcast.id)}
-                    className="relative text-left"
+                    onClick={() => togglePodcast(podcast)}
+                    disabled={disabled}
+                    className={`relative text-left ${disabled ? "opacity-40" : ""}`}
                   >
                     <div
                       className={`rounded-xl overflow-hidden border-2 transition-colors ${
@@ -265,19 +288,46 @@ export default function Onboarding() {
           )}
         </div>
 
-        {/* Bottom actions */}
+        {/* Bottom actions — sticky bar with selection counter + plan limit */}
         <div className="sticky bottom-0 pt-4 pb-2 bg-background space-y-2">
+          {/* Plan limit banner */}
+          {atLimit && planLimit !== null && (
+            <div className="flex items-center gap-2 px-3 py-2 bg-amber-500/15 border border-amber-500/30 rounded-lg text-amber-400 text-xs">
+              <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+              <span>
+                Your {subscriptions.limit === 0 ? "free" : "current"} plan allows {planLimit} subscription{planLimit !== 1 ? "s" : ""}. Upgrade to add more.
+              </span>
+            </div>
+          )}
+
+          {/* Selection counter */}
+          {planLimit !== null && (
+            <p className="text-xs text-muted-foreground text-center">
+              {selectedCount} of {effectiveRemaining} subscription{effectiveRemaining !== 1 ? "s" : ""} selected
+            </p>
+          )}
+
           <button
             onClick={handleFinish}
             disabled={saving}
             className="w-full py-3 bg-primary text-primary-foreground font-semibold rounded-xl hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
           >
-            {saving
-              ? "Saving..."
-              : selectedPodcasts.size > 0
-                ? `Continue with ${selectedPodcasts.size} favorite${selectedPodcasts.size > 1 ? "s" : ""}`
-                : "Continue"}
-            {!saving && <ChevronRight className="w-4 h-4" />}
+            {saving ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Subscribing...
+              </>
+            ) : selectedCount > 0 ? (
+              <>
+                Subscribe to {selectedCount} podcast{selectedCount > 1 ? "s" : ""}
+                <ChevronRight className="w-4 h-4" />
+              </>
+            ) : (
+              <>
+                Continue
+                <ChevronRight className="w-4 h-4" />
+              </>
+            )}
           </button>
           <button
             onClick={async () => {
@@ -298,24 +348,22 @@ export default function Onboarding() {
     );
   }
 
-  // Step 3 — Confirmation
+  // Step 3 — Confirmation (subscribed vs skipped variants)
+  const subscribed = selectedPodcasts.size > 0;
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center px-6">
       <div className="max-w-sm text-center space-y-6">
         <div className="w-16 h-16 mx-auto bg-green-500/20 rounded-full flex items-center justify-center">
           <Check className="w-8 h-8 text-green-400" />
         </div>
-        <h1 className="text-2xl font-bold">You're all set!</h1>
+        <h1 className="text-2xl font-bold">
+          {subscribed ? "You're subscribed!" : "You're all set!"}
+        </h1>
         <p className="text-muted-foreground text-sm leading-relaxed">
-          {selectedPodcasts.size > 0
-            ? "We've saved your favorites. Subscribe to any of them to start getting briefings — they usually take 2-5 minutes to create."
+          {subscribed
+            ? `We're creating briefings for your ${selectedPodcasts.size} subscription${selectedPodcasts.size > 1 ? "s" : ""}. They usually take 2-5 minutes — look for the "Creating" badge in your feed.`
             : "Browse our catalog to find podcasts and subscribe. Your first briefings will be ready in 2-5 minutes."}
         </p>
-        {selectedPodcasts.size > 0 && (
-          <p className="text-xs text-muted-foreground/70">
-            Once you subscribe, look for the "Creating" badge in your feed while briefings are being generated.
-          </p>
-        )}
         <button
           onClick={() => navigate("/home")}
           className="w-full py-3 bg-primary text-primary-foreground font-semibold rounded-xl hover:bg-primary/90 transition-colors"
