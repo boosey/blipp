@@ -358,6 +358,7 @@ model FeedItem {
   status       FeedItemStatus @default(PENDING)
   listened     Boolean        @default(false)
   listenedAt   DateTime?
+  playbackPositionSeconds Float?
   requestId    String?
   errorMessage String?
   createdAt    DateTime       @default(now())

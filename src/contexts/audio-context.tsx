@@ -83,6 +83,19 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   // Queue for Play All
   const queueRef = useRef<FeedItem[]>([]);
 
+  // Playback position saving
+  const saveTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const savePlaybackPosition = useCallback(
+    (itemId: string, position: number | null) => {
+      apiFetch(`/feed/${itemId}/progress`, {
+        method: "PATCH",
+        body: JSON.stringify({ positionSeconds: position }),
+      }).catch(() => {});
+    },
+    [apiFetch]
+  );
+
   // Begin content playback — sets src to briefing audio, fires listened PATCH
   const beginContent = useCallback(
     async (item: FeedItem) => {
@@ -254,9 +267,13 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       setIsPlaying(false);
       return;
     }
-    audioRef.current?.pause();
+    const audio = audioRef.current;
+    if (audio && currentItem && adState === "content") {
+      savePlaybackPosition(currentItem.id, audio.currentTime);
+    }
+    audio?.pause();
     setIsPlaying(false);
-  }, [ima]);
+  }, [ima, currentItem, adState, savePlaybackPosition]);
 
   const resume = useCallback(() => {
     if (ima.isAdPlaying) {
@@ -306,6 +323,11 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     async (item: FeedItem) => {
       if (!item.briefing) return;
       if (!audioRef.current) return;
+
+      // Save position of currently playing item before switching
+      if (currentItem && adState === "content" && audioRef.current) {
+        savePlaybackPosition(currentItem.id, audioRef.current.currentTime);
+      }
 
       // Store the item for after preroll
       pendingItemRef.current = item;
@@ -360,7 +382,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       // No preroll — start content directly
       startContentPlayback(item);
     },
-    [apiFetch, ima, startContentPlayback]
+    [apiFetch, ima, startContentPlayback, currentItem, adState, savePlaybackPosition]
   );
 
   // Keep playRef in sync so onPlaybackFinished can call play without circular deps
@@ -404,6 +426,10 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     }
 
     if (adState === "content") {
+      // Clear saved position — playback completed
+      if (currentItem) {
+        savePlaybackPosition(currentItem.id, null);
+      }
       const outroUrl = await getJingleUrl("outro");
       if (outroUrl && audio) {
         setAdState("outro-jingle");
@@ -423,7 +449,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       handlePostrollOrEnd();
       return;
     }
-  }, [adState, beginContent, currentItem, handlePostrollOrEnd]);
+  }, [adState, beginContent, currentItem, handlePostrollOrEnd, savePlaybackPosition]);
 
   // Audio element event handlers
   const handleTimeUpdate = useCallback(() => {
@@ -436,11 +462,23 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   const handleLoadedMetadata = useCallback(() => {
     if (unlockingRef.current) return;
     if (adState === "intro-jingle" || adState === "outro-jingle") return;
-    if (audioRef.current) {
-      setDuration(audioRef.current.duration);
+    const audio = audioRef.current;
+    if (audio) {
+      setDuration(audio.duration);
       setIsLoading(false);
+
+      // Restore playback position if saved
+      const item = currentItem;
+      if (
+        item?.playbackPositionSeconds &&
+        item.playbackPositionSeconds < audio.duration - 10
+      ) {
+        const resumeAt = Math.max(0, item.playbackPositionSeconds - 5);
+        audio.currentTime = resumeAt;
+        setCurrentTime(resumeAt);
+      }
     }
-  }, [adState]);
+  }, [adState, currentItem]);
 
   const handlePlay = useCallback(() => {
     if (unlockingRef.current) return;
@@ -499,6 +537,29 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       });
     }
   }, [adState, pause, resume, seek]);
+
+  // Periodic playback position save (every 10s while content is playing)
+  useEffect(() => {
+    if (isPlaying && adState === "content" && currentItem) {
+      const itemId = currentItem.id;
+      saveTimerRef.current = setInterval(() => {
+        const audio = audioRef.current;
+        if (audio && !audio.paused) {
+          savePlaybackPosition(itemId, audio.currentTime);
+        }
+      }, 10000);
+      return () => {
+        if (saveTimerRef.current) {
+          clearInterval(saveTimerRef.current);
+          saveTimerRef.current = null;
+        }
+      };
+    }
+    if (saveTimerRef.current) {
+      clearInterval(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+  }, [isPlaying, adState, currentItem, savePlaybackPosition]);
 
   // Sync mediaSession position state
   useEffect(() => {

@@ -5,6 +5,7 @@ export interface FeedItem {
   errorMessage: string | null;
   listened: boolean;
   listenedAt: string | null;
+  playbackPositionSeconds: number | null;
   durationTier: number;
   createdAt: string;
   podcast: {

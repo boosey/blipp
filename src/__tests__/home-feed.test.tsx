@@ -66,6 +66,7 @@ const makeItem = (id: string, overrides: Partial<FeedItem> = {}): FeedItem => ({
   status: "READY",
   listened: false,
   listenedAt: null,
+  playbackPositionSeconds: null,
   durationTier: 5,
   createdAt: new Date().toISOString(),
   errorMessage: null,

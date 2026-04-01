@@ -41,6 +41,7 @@ const mockItem: FeedItem = {
   status: "READY",
   listened: false,
   listenedAt: null,
+  playbackPositionSeconds: null,
   durationTier: 3,
   createdAt: "2026-03-16T00:00:00Z",
   errorMessage: null,

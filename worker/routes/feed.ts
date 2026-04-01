@@ -99,6 +99,7 @@ feed.get("/", async (c) => {
     status: item.status,
     listened: item.listened,
     listenedAt: item.listenedAt,
+    playbackPositionSeconds: item.playbackPositionSeconds ?? null,
     durationTier: item.durationTier,
     createdAt: item.createdAt,
     errorMessage: item.errorMessage ?? null,
@@ -238,6 +239,7 @@ feed.get("/shared/:briefingId", async (c) => {
       status: feedItem.status,
       listened: feedItem.listened,
       listenedAt: feedItem.listenedAt,
+      playbackPositionSeconds: feedItem.playbackPositionSeconds ?? null,
       durationTier: feedItem.durationTier,
       createdAt: feedItem.createdAt,
       errorMessage: null,
@@ -280,6 +282,7 @@ feed.get("/:id", async (c) => {
       status: item.status,
       listened: item.listened,
       listenedAt: item.listenedAt,
+      playbackPositionSeconds: item.playbackPositionSeconds ?? null,
       durationTier: item.durationTier,
       createdAt: item.createdAt,
       errorMessage: item.errorMessage ?? null,
@@ -312,6 +315,28 @@ feed.patch("/:id/listened", async (c) => {
     await recomputeUserProfile(user.id, prisma);
   } catch (err) {
     console.error(JSON.stringify({ level: "warn", action: "recommendation_recompute_failed", userId: user.id, trigger: "listened", error: err instanceof Error ? err.message : String(err), ts: new Date().toISOString() }));
+  }
+
+  return c.json({ success: true });
+});
+
+/**
+ * PATCH /:id/progress — Save playback position for resume.
+ */
+feed.patch("/:id/progress", async (c) => {
+  const feedItemId = c.req.param("id");
+  const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
+
+  const body = await c.req.json<{ positionSeconds: number | null }>();
+
+  const result = await prisma.feedItem.updateMany({
+    where: { id: feedItemId, userId: user.id },
+    data: { playbackPositionSeconds: body.positionSeconds },
+  });
+
+  if (result.count === 0) {
+    return c.json({ error: "Feed item not found" }, 404);
   }
 
   return c.json({ success: true });
