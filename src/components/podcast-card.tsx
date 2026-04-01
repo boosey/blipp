@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { ChevronRight, Heart } from "lucide-react";
+import { ChevronRight, Heart, Lock } from "lucide-react";
 import { useApiFetch } from "../lib/api";
 import { usePodcastSheet } from "../contexts/podcast-sheet-context";
 import { ThumbButtons } from "./thumb-buttons";
+import { useCanSubscribe } from "../contexts/plan-context";
 
 export interface PodcastCardProps {
   id: string;
@@ -25,6 +26,7 @@ export function PodcastCard({
 }: PodcastCardProps) {
   const { open } = usePodcastSheet();
   const apiFetch = useApiFetch();
+  const { allowed: canSubscribe } = useCanSubscribe();
   const [vote, setVote] = useState(0);
   const [favorited, setFavorited] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -60,19 +62,26 @@ export function PodcastCard({
   return (
     <div className="flex gap-3 bg-card border border-border rounded-lg p-3 active:scale-[0.98] transition-transform duration-75">
       <button onClick={() => open(id)} className="flex gap-3 flex-1 min-w-0 text-left">
-        {imageUrl ? (
-          <img
-            src={imageUrl}
-            alt={title}
-            className="w-14 h-14 rounded object-cover flex-shrink-0"
-          />
-        ) : (
-          <div className="w-14 h-14 rounded bg-muted flex items-center justify-center flex-shrink-0">
-            <span className="text-xl font-bold text-muted-foreground">
-              {title.charAt(0).toUpperCase()}
-            </span>
-          </div>
-        )}
+        <div className="relative flex-shrink-0">
+          {imageUrl ? (
+            <img
+              src={imageUrl}
+              alt={title}
+              className="w-14 h-14 rounded object-cover"
+            />
+          ) : (
+            <div className="w-14 h-14 rounded bg-muted flex items-center justify-center">
+              <span className="text-xl font-bold text-muted-foreground">
+                {title.charAt(0).toUpperCase()}
+              </span>
+            </div>
+          )}
+          {!canSubscribe && (
+            <div className="absolute inset-0 rounded bg-background/60 flex items-center justify-center">
+              <Lock className="w-4 h-4 text-amber-500" />
+            </div>
+          )}
+        </div>
         <div className="flex-1 min-w-0">
           <h3 className="font-semibold text-sm truncate">{title}</h3>
           <p className="text-xs text-muted-foreground truncate">{author}</p>

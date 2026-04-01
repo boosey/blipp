@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { Heart, Search, X, Loader2, Check, Headphones } from "lucide-react";
+import { Heart, Search, X, Loader2, Check, Headphones, Sparkles } from "lucide-react";
 import { useApiFetch } from "../lib/api";
 import { useFetch } from "../lib/use-fetch";
 import { Skeleton } from "../components/ui/skeleton";
@@ -368,12 +368,29 @@ export function PodcastDetail({ podcastId: propPodcastId, scrollToEpisodeId }: {
             {planUsage.subscriptions.limit !== null &&
               planUsage.subscriptions.remaining !== null &&
               planUsage.subscriptions.remaining <= 0 ? (
-              <button
-                onClick={() => showUpgrade("You've reached your subscription limit. Upgrade your plan to subscribe to more podcasts.")}
-                className="px-4 py-1.5 rounded-full text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
-              >
-                Upgrade to Subscribe
-              </button>
+              <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <Sparkles className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                  <span className="text-sm font-medium text-foreground">Subscription limit reached</span>
+                </div>
+                <p className="text-xs text-muted-foreground mb-3">
+                  Your plan allows {planUsage.subscriptions.limit} subscription{planUsage.subscriptions.limit !== 1 ? "s" : ""}. Upgrade or remove one to add this podcast.
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => showUpgrade("You've reached your subscription limit. Upgrade your plan to subscribe to more podcasts.")}
+                    className="px-3 py-1.5 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                  >
+                    Upgrade
+                  </button>
+                  <button
+                    onClick={() => navigate("/library")}
+                    className="px-3 py-1.5 rounded-md text-xs font-medium bg-muted text-muted-foreground hover:bg-accent transition-colors"
+                  >
+                    Manage Subscriptions
+                  </button>
+                </div>
+              </div>
             ) : showSubscribeTierPicker ? (
               <div className="space-y-2">
                 <p className="text-xs text-muted-foreground">Briefing length:</p>

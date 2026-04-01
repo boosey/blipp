@@ -7,6 +7,7 @@ import { LibrarySkeleton } from "../components/skeletons/library-skeleton";
 import { EmptyState } from "../components/empty-state";
 import { usePullToRefresh } from "../hooks/use-pull-to-refresh";
 import { usePodcastSheet } from "../contexts/podcast-sheet-context";
+import { usePlan } from "../contexts/plan-context";
 
 const History = lazy(() => import("./history"));
 
@@ -162,6 +163,12 @@ function FavoritesGrid({ onRefetchRef }: { onRefetchRef?: React.MutableRefObject
 export function LibraryPage() {
   const [tab, setTab] = useState<"favorites" | "subscriptions" | "history">("favorites");
   const refetchRef = useRef<(() => void) | null>(null);
+  const { subscriptions } = usePlan();
+
+  const atLimit = subscriptions.limit !== null && subscriptions.remaining !== null && subscriptions.remaining <= 0;
+  const subscriptionLabel = subscriptions.limit !== null
+    ? `Subscriptions (${subscriptions.used} of ${subscriptions.limit})`
+    : "Subscriptions";
 
   const { indicator: pullIndicator, bind: pullBind } = usePullToRefresh({
     onRefresh: async () => { refetchRef.current?.(); },
@@ -181,9 +188,9 @@ export function LibraryPage() {
         </button>
         <button
           onClick={() => setTab("subscriptions")}
-          className={`pb-2 text-sm font-medium ${tab === "subscriptions" ? "text-foreground border-b-2 border-foreground" : "text-muted-foreground"}`}
+          className={`pb-2 text-sm font-medium ${tab === "subscriptions" ? "text-foreground border-b-2 border-foreground" : "text-muted-foreground"} ${atLimit ? "text-amber-600 dark:text-amber-400" : ""}`}
         >
-          Subscriptions
+          {subscriptionLabel}
         </button>
         <button
           onClick={() => setTab("history")}
