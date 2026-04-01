@@ -37,6 +37,7 @@ interface UserInfo {
   isAdmin: boolean;
   defaultDurationTier: number;
   defaultVoicePresetId: string | null;
+  acceptAnyVoice: boolean;
 }
 
 interface UsageData {
@@ -81,6 +82,7 @@ export function Settings() {
   const planUsage = usePlan();
   const [defaultTier, setDefaultTier] = useState<number | null>(null);
   const [defaultVoicePresetId, setDefaultVoicePresetId] = useState<string | null>(null);
+  const [acceptAnyVoice, setAcceptAnyVoice] = useState<boolean | null>(null);
 
   const user = userData?.user ?? null;
 
@@ -92,7 +94,10 @@ export function Settings() {
     if (user && defaultVoicePresetId === null) {
       setDefaultVoicePresetId(user.defaultVoicePresetId ?? null);
     }
-  }, [user, defaultTier, defaultVoicePresetId]);
+    if (user && acceptAnyVoice === null) {
+      setAcceptAnyVoice(user.acceptAnyVoice ?? false);
+    }
+  }, [user, defaultTier, defaultVoicePresetId, acceptAnyVoice]);
   const usage = usageData?.data ?? null;
 
   // Check push state on mount
@@ -396,6 +401,43 @@ export function Settings() {
               }
             }}
           />
+        </div>
+      </section>
+
+      {/* Voice Bypass */}
+      <section className="space-y-4">
+        <h2 className="text-lg font-semibold">Voice Delivery</h2>
+        <div className="bg-card border border-border rounded-xl p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-medium">Accept any available voice</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Get briefings faster by accepting any cached voice instead of waiting for your preferred one
+              </p>
+            </div>
+            <button
+              onClick={async () => {
+                const prev = acceptAnyVoice;
+                const next = !prev;
+                setAcceptAnyVoice(next);
+                try {
+                  await apiFetch("/me/preferences", {
+                    method: "PATCH",
+                    body: JSON.stringify({ acceptAnyVoice: next }),
+                  });
+                  toast.success(next ? "Voice bypass enabled" : "Voice bypass disabled");
+                } catch {
+                  setAcceptAnyVoice(prev);
+                  toast.error("Failed to update preference");
+                }
+              }}
+              className={`relative w-11 h-6 rounded-full transition-colors ${acceptAnyVoice ? "bg-primary" : "bg-muted"}`}
+            >
+              <span
+                className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full transition-transform ${acceptAnyVoice ? "translate-x-5 bg-primary-foreground" : "bg-muted-foreground"}`}
+              />
+            </button>
+          </div>
         </div>
       </section>
 

@@ -38,8 +38,9 @@ export function PodcastDetail({ podcastId: propPodcastId, scrollToEpisodeId }: {
   const planUsage = usePlan();
   const { showUpgrade, UpgradeModalElement } = useUpgradeModal();
   const { close: closeSheet } = usePodcastSheet();
-  const { data: meData } = useFetch<{ user: { defaultDurationTier: number } }>("/me");
+  const { data: meData } = useFetch<{ user: { defaultDurationTier: number; acceptAnyVoice?: boolean } }>("/me");
   const defaultTier = (meData?.user?.defaultDurationTier ?? 5) as DurationTier;
+  const userAcceptsAnyVoice = meData?.user?.acceptAnyVoice ?? false;
   const episodeRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   const fetchData = useCallback(async () => {
@@ -160,6 +161,26 @@ export function PodcastDetail({ podcastId: propPodcastId, scrollToEpisodeId }: {
     setRequestingEpisodeId(episodeId);
     setBriefTierPickerEpisodeId(null);
     try {
+      // Check availability before creating
+      let availabilityMsg = `${tier}m Blipp requested — usually ready in 2-5 minutes`;
+      try {
+        const avail = await apiFetch<{
+          available: boolean;
+          matchType: "exact" | "any_voice" | null;
+          estimatedWaitSeconds: number | null;
+          voicePresetName: string | null;
+        }>(`/blipps/availability?episodeId=${episodeId}&durationTier=${tier}`);
+        if (avail.available) {
+          availabilityMsg = avail.matchType === "any_voice"
+            ? `Ready in seconds — available in ${avail.voicePresetName ?? "another"} voice`
+            : "Ready in seconds";
+        } else if (!userAcceptsAnyVoice) {
+          availabilityMsg = "This will take a few minutes. Enable \"Accept any voice\" in Settings for faster delivery";
+        }
+      } catch {
+        // Availability endpoint may not exist yet — fall through with default message
+      }
+
       await apiFetch("/briefings/generate", {
         method: "POST",
         body: JSON.stringify({ podcastId, episodeId, durationTier: tier }),
@@ -173,7 +194,7 @@ export function PodcastDetail({ podcastId: propPodcastId, scrollToEpisodeId }: {
         )
       );
       if (!silent) {
-        toast(`${tier}m Blipp requested — usually ready in 2-5 minutes`, { duration: 4000 });
+        toast(availabilityMsg, { duration: 4000 });
       }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to request briefing");

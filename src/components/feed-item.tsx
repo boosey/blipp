@@ -175,6 +175,12 @@ export function FeedItemCard({
                   <span className="text-muted-foreground/60">from {epDuration}</span>
                 </>
               )}
+              {item.briefing?.clip?.voiceDegraded && (
+                <>
+                  <span className="text-muted-foreground/60 mx-1">·</span>
+                  <span className="text-amber-400/80 text-[10px]">alt voice</span>
+                </>
+              )}
             </p>
           )}
           {(onAddToQueue || onRemove) && (
