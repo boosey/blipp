@@ -15,6 +15,7 @@ import { Pricing } from "./pages/pricing";
 import { About } from "./pages/about";
 import { Contact } from "./pages/contact";
 import { CookieConsent } from "./components/cookie-consent";
+import { NotFound } from "./pages/not-found";
 import { Home } from "./pages/Home";
 import { Discover } from "./pages/discover";
 import { PodcastDetail } from "./pages/podcast-detail";
@@ -115,6 +116,7 @@ export default function App() {
         <Route path="/play/:id" element={<BriefingPlayer />} />
         <Route path="/briefing/:requestId" element={<Navigate to="/home" replace />} />
         <Route path="/onboarding" element={<Suspense fallback={null}><Onboarding /></Suspense>} />
+        <Route path="*" element={<NotFound />} />
       </Route>
 
       {/* Admin routes */}
@@ -161,6 +163,21 @@ export default function App() {
         <Route path="voice-presets" element={<Suspense fallback={<AdminLoading />}><VoicePresets /></Suspense>} />
         <Route path="episode-refresh" element={<Suspense fallback={<AdminLoading />}><EpisodeRefresh /></Suspense>} />
       </Route>
+
+      {/* Catch-all 404 for unauthenticated users */}
+      <Route path="*" element={
+        <div className="min-h-screen bg-background text-foreground flex flex-col items-center">
+          <header className="w-full flex items-center px-4 py-3 border-b border-border max-w-3xl">
+            <span className="text-lg font-bold flex items-center">
+              <span className="w-10 h-10 overflow-hidden rounded-md -mr-3 flex-shrink-0">
+                <img src="/blipp_icon_clean_128.png" alt="" className="w-[140%] h-[140%] object-cover -ml-[20%] -mt-[20%]" />
+              </span>
+              <span className="bg-gradient-to-r from-pink-300 via-purple-400 to-indigo-400 bg-clip-text text-transparent">lipp</span>
+            </span>
+          </header>
+          <NotFound />
+        </div>
+      } />
     </Routes>
     </>
   );

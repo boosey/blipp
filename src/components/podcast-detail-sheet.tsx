@@ -68,7 +68,8 @@ export function PodcastDetailSheet() {
           <div className="w-10 h-1 bg-muted rounded-full mx-auto" />
           <button
             onClick={close}
-            className="absolute right-3 top-2 p-1.5 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors opacity-0 hover:opacity-100 focus:opacity-100 sm:opacity-100"
+            onKeyDown={(e) => { if (e.key === "Escape") close(); }}
+            className="absolute right-3 top-3 p-2 rounded-full bg-muted/80 backdrop-blur-sm text-muted-foreground hover:text-foreground transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
             aria-label="Close"
           >
             <X className="w-4 h-4" />
