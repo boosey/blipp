@@ -122,6 +122,10 @@ export default function Onboarding() {
     }
     markComplete();
 
+    if (selectedPodcasts.size > 0) {
+      sessionStorage.setItem("blipp-just-onboarded", "1");
+    }
+
     setStep(3);
     setSaving(false);
   }

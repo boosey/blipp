@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { Headphones, Play } from "lucide-react";
 import { toast } from "sonner";
 import { useApiFetch } from "../lib/api";
@@ -7,6 +7,8 @@ import { SwipeableFeedItem } from "../components/swipeable-feed-item";
 import { FeedSkeleton } from "../components/skeletons/feed-skeleton";
 import { EmptyState } from "../components/empty-state";
 import { CuratedRow } from "../components/curated-row";
+import { WelcomeCard } from "../components/welcome-card";
+import { SubscribeNudge } from "../components/subscribe-nudge";
 import type { FeedItem, FeedFilter, FeedCounts } from "../types/feed";
 import type { CuratedResponse } from "../types/recommendations";
 import { groupByDate } from "../lib/feed-utils";
@@ -21,6 +23,8 @@ const FILTERS: { key: FeedFilter; label: string }[] = [
   { key: "on_demand", label: "On Demand" },
   { key: "creating", label: "Creating" },
 ];
+
+const GENERATING_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutes
 
 function buildFilterParams(filter: FeedFilter): string {
   switch (filter) {
@@ -44,9 +48,16 @@ export function Home() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FeedFilter>("all");
   const [swipeHintDismissed, setSwipeHintDismissed] = useState(() => !!localStorage.getItem("swipe-hint-seen"));
+  const [generatingTimedOut, setGeneratingTimedOut] = useState(false);
 
   const { data: counts } = useFetch<FeedCounts>("/feed/counts");
   const { data: curatedData } = useFetch<CuratedResponse>("/recommendations/curated");
+
+  // Track "just onboarded" state via sessionStorage
+  const justOnboarded = sessionStorage.getItem("blipp-just-onboarded") === "1";
+  const generatingStartRef = useRef<number | null>(
+    justOnboarded ? Date.now() : null
+  );
 
   const fetchFeed = useCallback(async () => {
     try {
@@ -74,7 +85,8 @@ export function Home() {
     const hasActive = items.some(
       (i) => i.status === "PENDING" || i.status === "PROCESSING"
     );
-    if (!hasActive) return;
+    // Also poll during generating state even if items array is empty
+    if (!hasActive && !justOnboarded) return;
 
     const interval = setInterval(fetchFeed, 5000);
     return () => clearInterval(interval);
@@ -85,6 +97,49 @@ export function Home() {
     const interval = setInterval(fetchFeed, 60_000);
     return () => clearInterval(interval);
   }, [fetchFeed]);
+
+  // Generating state timeout — 3 minutes
+  useEffect(() => {
+    if (!justOnboarded || generatingTimedOut) return;
+
+    const elapsed = Date.now() - (generatingStartRef.current ?? Date.now());
+    const remaining = GENERATING_TIMEOUT_MS - elapsed;
+    if (remaining <= 0) {
+      setGeneratingTimedOut(true);
+      return;
+    }
+
+    const timer = setTimeout(() => setGeneratingTimedOut(true), remaining);
+    return () => clearTimeout(timer);
+  }, [justOnboarded, generatingTimedOut]);
+
+  // Determine generating state:
+  // User just onboarded, has items, all are PENDING/PROCESSING (none READY yet)
+  const pendingItems = items.filter(
+    (i) => i.status === "PENDING" || i.status === "PROCESSING"
+  );
+  const readyItems = items.filter((i) => i.status === "READY");
+  const failedItems = items.filter((i) => i.status === "FAILED");
+
+  const isGenerating =
+    justOnboarded &&
+    !generatingTimedOut &&
+    (items.length === 0 || readyItems.length < items.length - failedItems.length);
+
+  // Clear "just onboarded" flag once all items are ready (or timed out)
+  useEffect(() => {
+    if (!justOnboarded) return;
+    const allDone =
+      items.length > 0 &&
+      pendingItems.length === 0;
+    if (allDone || generatingTimedOut) {
+      sessionStorage.removeItem("blipp-just-onboarded");
+    }
+  }, [items, pendingItems.length, justOnboarded, generatingTimedOut]);
+
+  // Detect zero-subscription users who skipped onboarding
+  const isZeroSubscriptionUser =
+    !loading && items.length === 0 && filter === "all" && !justOnboarded;
 
   // Sort by request time, youngest first
   const sortedItems = useMemo(() => {
@@ -175,9 +230,87 @@ export function Home() {
     return <FeedSkeleton />;
   }
 
+  // Post-onboarding generating state
+  if (isGenerating || (justOnboarded && generatingTimedOut && pendingItems.length > 0)) {
+    const totalGenerating = items.length > 0
+      ? items.length - failedItems.length
+      : (counts?.pending ?? 3);
+    const skeletonCount = Math.max(0, totalGenerating - readyItems.length);
+
+    return (
+      <div>
+        <h1 className="text-xl font-bold mb-3">Your Feed</h1>
+
+        {/* Filter pills (dimmed during generating) */}
+        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide snap-x-mandatory mb-3 opacity-50 pointer-events-none">
+          {FILTERS.map(({ key, label }) => (
+            <button
+              key={key}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap ${
+                key === "all"
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-secondary text-secondary-foreground"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <WelcomeCard
+          readyCount={readyItems.length}
+          totalCount={totalGenerating}
+          timedOut={generatingTimedOut}
+          onRetry={fetchFeed}
+        />
+
+        {/* Ready items with animation */}
+        {readyItems.length > 0 && (
+          <div className="space-y-2 mb-2">
+            {readyItems.map((item, index) => (
+              <div
+                key={item.id}
+                className="feed-item-enter"
+                style={{ animationDelay: `${Math.min(index * 50, 500)}ms` }}
+              >
+                <SwipeableFeedItem
+                  item={item}
+                  onPlay={handlePlay}
+                  onRemove={handleRemove}
+                  onEpisodeVote={handleEpisodeVote}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Skeleton cards for pending items */}
+        {skeletonCount > 0 && (
+          <div className="space-y-2">
+            {Array.from({ length: Math.min(skeletonCount, 3) }, (_, i) => (
+              <div
+                key={`skeleton-${i}`}
+                className="flex gap-3 bg-card border border-border rounded-lg p-3"
+              >
+                <div className="w-12 h-12 rounded flex-shrink-0 bg-accent animate-pulse" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-3 w-1/3 rounded-md bg-accent animate-pulse" />
+                  <div className="h-4 w-3/4 rounded-md bg-accent animate-pulse" />
+                  <div className="h-3 w-1/2 rounded-md bg-accent animate-pulse" />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Zero-subscription empty state with nudge
   if (items.length === 0 && filter === "all") {
     return (
       <div>
+        <SubscribeNudge />
         <EmptyState
           icon={Headphones}
           title="No briefings yet"
