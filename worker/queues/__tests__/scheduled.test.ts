@@ -54,7 +54,7 @@ describe("scheduled", () => {
   it("dispatches all 7 cron jobs via runJob", async () => {
     await scheduled(mockEvent, mockEnv, mockCtx);
 
-    expect(mockRunJob).toHaveBeenCalledTimes(7);
+    expect(mockRunJob).toHaveBeenCalledTimes(8);
     const jobKeys = mockRunJob.mock.calls.map((c: any) => c[0].jobKey);
     expect(jobKeys).toContain("apple-discovery");
     expect(jobKeys).toContain("podcast-index-discovery");
@@ -63,6 +63,7 @@ describe("scheduled", () => {
     expect(jobKeys).toContain("user-lifecycle");
     expect(jobKeys).toContain("data-retention");
     expect(jobKeys).toContain("recommendations");
+    expect(jobKeys).toContain("listen-original-aggregation");
   });
 
   it("passes prisma to each runJob call", async () => {
@@ -110,7 +111,7 @@ describe("scheduled", () => {
     // Should not throw — Promise.allSettled handles rejections
     await scheduled(mockEvent, mockEnv, mockCtx);
 
-    expect(mockRunJob).toHaveBeenCalledTimes(7);
+    expect(mockRunJob).toHaveBeenCalledTimes(8);
   });
 
   it("disconnects prisma in finally block", async () => {
