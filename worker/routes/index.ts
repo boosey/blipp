@@ -18,6 +18,7 @@ import { cleanR2Routes } from "./admin/clean-r2";
 import { feedback } from "./feedback";
 import { blippFeedback } from "./blipp-feedback";
 import { logsRoutes } from "./logs";
+import { blipps } from "./blipps";
 import { events } from "./events";
 
 /**
@@ -32,6 +33,7 @@ routes.route("/podcasts", podcasts);
 routes.route("/briefings", briefings);
 routes.route("/feed", feed);
 routes.route("/clips", clips);
+routes.route("/blipps", blipps);
 routes.route("/billing", billing);
 routes.route("/ads", ads);
 routes.route("/recommendations", recommendations);

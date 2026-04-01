@@ -23,6 +23,7 @@ const PreferencesSchema = z.object({
     })
     .optional(),
   defaultVoicePresetId: z.string().nullable().optional(),
+  acceptAnyVoice: z.boolean().optional(),
 });
 
 const DeleteAccountSchema = z.object({
@@ -113,6 +114,7 @@ me.get("/", async (c) => {
       onboardingComplete: fullUser.onboardingComplete,
       defaultDurationTier: fullUser.defaultDurationTier,
       defaultVoicePresetId: fullUser.defaultVoicePresetId,
+      acceptAnyVoice: fullUser.acceptAnyVoice,
       featureFlags: flags,
     },
   });
@@ -156,6 +158,7 @@ me.patch("/preferences", async (c) => {
   const data: any = {};
   if (body.defaultDurationTier !== undefined) data.defaultDurationTier = body.defaultDurationTier;
   if (body.defaultVoicePresetId !== undefined) data.defaultVoicePresetId = body.defaultVoicePresetId;
+  if (body.acceptAnyVoice !== undefined) data.acceptAnyVoice = body.acceptAnyVoice;
 
   const updated = await prisma.user.update({
     where: { id: user.id },
@@ -166,6 +169,7 @@ me.patch("/preferences", async (c) => {
     data: {
       defaultDurationTier: updated.defaultDurationTier,
       defaultVoicePresetId: updated.defaultVoicePresetId,
+      acceptAnyVoice: updated.acceptAnyVoice,
     },
   });
 });

@@ -86,6 +86,7 @@ model User {
   onboardingComplete    Boolean  @default(false)
   defaultDurationTier   Int      @default(5)
   defaultVoicePresetId  String?
+  acceptAnyVoice        Boolean  @default(false)
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
