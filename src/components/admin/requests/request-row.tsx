@@ -162,18 +162,20 @@ export function RequestRow({
             <Trash2 className="h-3 w-3" />
           </button>
         </div>
-        {/* Row 2: podcast + episode + meta inline */}
-        <div className="pl-[18px] flex items-center gap-2 min-w-0 text-[10px] text-[#9CA3AF]">
-          {request.podcastTitle && (
-            <span className="truncate">
-              {request.podcastTitle}{request.episodeTitle ? ` \u2014 ${request.episodeTitle}` : ""}
-            </span>
-          )}
-          <span className="shrink-0 font-mono tabular-nums">{request.targetMinutes}m \u00b7 {itemCount}</span>
+        {/* Row 2: podcast + episode */}
+        {request.podcastTitle && (
+          <div className="pl-[18px] text-[10px] text-[#9CA3AF] truncate">
+            {request.podcastTitle}{request.episodeTitle ? ` \u2014 ${request.episodeTitle}` : ""}
+          </div>
+        )}
+        {/* Row 3: meta chips */}
+        <div className="pl-[18px] flex items-center gap-3 text-[10px] text-[#9CA3AF] font-mono tabular-nums">
+          <span>{request.targetMinutes}m</span>
+          <span>{itemCount} item{itemCount !== 1 ? "s" : ""}</span>
           {request.totalCost != null && (
-            <span className="shrink-0 font-mono tabular-nums text-[#10B981]">${request.totalCost.toFixed(4)}</span>
+            <span className="text-[#10B981]">${request.totalCost.toFixed(4)}</span>
           )}
-          <span className="shrink-0 font-mono tabular-nums">{relativeTime(request.createdAt)}</span>
+          <span>{relativeTime(request.createdAt)}</span>
         </div>
       </div>
 
