@@ -95,7 +95,7 @@ export function BlippFeedbackSheet({
       <SheetContent
         side="bottom"
         showCloseButton={false}
-        className="rounded-t-2xl bg-background border-border px-4 pt-3 pb-[max(5rem,calc(3.5rem+env(safe-area-inset-bottom)))]"
+        className="rounded-t-2xl bg-background border-border px-4 pt-3 pb-[max(7rem,calc(5.5rem+env(safe-area-inset-bottom)))]"
       >
         <div className="w-full flex justify-center mb-3 relative">
           <div className="w-10 h-1 rounded-full bg-muted" />
