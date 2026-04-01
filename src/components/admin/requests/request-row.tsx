@@ -136,14 +136,14 @@ export function RequestRow({
       {/* ── Mobile card ── */}
       <div
         onClick={onToggle}
-        className="md:hidden flex flex-col gap-1.5 px-3 py-3 hover:bg-white/[0.02] transition-colors cursor-pointer"
+        className="md:hidden flex flex-col gap-0.5 px-3 py-2 hover:bg-white/[0.02] transition-colors cursor-pointer"
       >
         {/* Row 1: status + user email + chevron */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           {expanded ? (
-            <ChevronDown className="h-3.5 w-3.5 text-[#9CA3AF] shrink-0" />
+            <ChevronDown className="h-3 w-3 text-[#9CA3AF] shrink-0" />
           ) : (
-            <ChevronRight className="h-3.5 w-3.5 text-[#9CA3AF] shrink-0" />
+            <ChevronRight className="h-3 w-3 text-[#9CA3AF] shrink-0" />
           )}
           <StatusBadge status={request.status} />
           <span className="text-xs text-[#F9FAFB] truncate flex-1 min-w-0">
@@ -156,26 +156,24 @@ export function RequestRow({
           )}
           <button
             onClick={(e) => { e.stopPropagation(); onDelete(); }}
-            className="flex items-center justify-center h-6 w-6 rounded hover:bg-[#EF4444]/15 text-[#9CA3AF] hover:text-[#EF4444] transition-colors shrink-0"
+            className="flex items-center justify-center h-5 w-5 rounded hover:bg-[#EF4444]/15 text-[#9CA3AF] hover:text-[#EF4444] transition-colors shrink-0"
             title="Delete request"
           >
             <Trash2 className="h-3 w-3" />
           </button>
         </div>
-        {/* Row 2: podcast + episode */}
-        {request.podcastTitle && (
-          <div className="pl-[22px] text-[11px] text-[#9CA3AF] truncate">
-            {request.podcastTitle}{request.episodeTitle ? ` \u2014 ${request.episodeTitle}` : ""}
-          </div>
-        )}
-        {/* Row 3: meta chips */}
-        <div className="pl-[22px] flex items-center gap-3 text-[10px] text-[#9CA3AF] font-mono tabular-nums">
-          <span>{request.targetMinutes}m</span>
-          <span>{itemCount} item{itemCount !== 1 ? "s" : ""}</span>
-          {request.totalCost != null && (
-            <span className="text-[#10B981]">${request.totalCost.toFixed(4)}</span>
+        {/* Row 2: podcast + episode + meta inline */}
+        <div className="pl-[18px] flex items-center gap-2 min-w-0 text-[10px] text-[#9CA3AF]">
+          {request.podcastTitle && (
+            <span className="truncate">
+              {request.podcastTitle}{request.episodeTitle ? ` \u2014 ${request.episodeTitle}` : ""}
+            </span>
           )}
-          <span>{relativeTime(request.createdAt)}</span>
+          <span className="shrink-0 font-mono tabular-nums">{request.targetMinutes}m \u00b7 {itemCount}</span>
+          {request.totalCost != null && (
+            <span className="shrink-0 font-mono tabular-nums text-[#10B981]">${request.totalCost.toFixed(4)}</span>
+          )}
+          <span className="shrink-0 font-mono tabular-nums">{relativeTime(request.createdAt)}</span>
         </div>
       </div>
 
