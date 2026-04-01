@@ -14,6 +14,7 @@ import { VoicePresetPicker } from "../components/voice-preset-picker";
 import { useTheme, type Theme } from "../contexts/theme-context";
 import { usePlan } from "../contexts/plan-context";
 import { useAppConfig } from "../lib/app-config";
+import { StorageSettings } from "../components/storage-settings";
 import type { DurationTier } from "../lib/duration-tiers";
 import {
   Dialog,
@@ -339,6 +340,9 @@ export function Settings() {
           </div>
         </div>
       </section>
+
+      {/* Storage & Downloads */}
+      <StorageSettings />
 
       {/* Default Blipp Duration */}
       <section className="space-y-4">

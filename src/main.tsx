@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { AppClerkProvider } from "./providers/clerk-provider";
 import { ThemeProvider } from "./contexts/theme-context";
+import { StorageProvider } from "./contexts/storage-context";
 import App from "./App";
 import { Toaster } from "./components/toaster";
 import { registerSW } from "virtual:pwa-register";
@@ -37,7 +38,9 @@ createRoot(document.getElementById("root")!).render(
       <ThemeProvider>
         <BrowserRouter>
           <AppClerkProvider>
-            <App />
+            <StorageProvider>
+              <App />
+            </StorageProvider>
             <Toaster />
           </AppClerkProvider>
         </BrowserRouter>

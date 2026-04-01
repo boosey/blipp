@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { X } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -94,10 +95,17 @@ export function BlippFeedbackSheet({
       <SheetContent
         side="bottom"
         showCloseButton={false}
-        className="rounded-t-2xl bg-background border-border px-4 pt-3 pb-[max(1.5rem,env(safe-area-inset-bottom))]"
+        className="rounded-t-2xl bg-background border-border px-4 pt-3 pb-[max(5rem,calc(3.5rem+env(safe-area-inset-bottom)))]"
       >
-        <div className="w-full flex justify-center mb-3">
+        <div className="w-full flex justify-center mb-3 relative">
           <div className="w-10 h-1 rounded-full bg-muted" />
+          <button
+            onClick={() => handleOpenChange(false)}
+            className="absolute right-0 top-1/2 -translate-y-1/2 p-1 rounded-full text-muted-foreground hover:text-foreground transition-colors"
+            aria-label="Close feedback"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
         <SheetTitle className="text-base font-semibold mb-1">
