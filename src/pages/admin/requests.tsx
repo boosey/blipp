@@ -169,8 +169,8 @@ export default function Requests() {
   return (
     <div className="h-[calc(100vh-6.5rem)] md:h-[calc(100vh-7rem)] flex flex-col gap-3">
       {/* Header toolbar */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-2 md:gap-3">
           <span className="text-sm font-semibold">Requests</span>
           <Badge className="bg-white/5 text-[#9CA3AF] text-[10px]">
             {total} total
@@ -179,11 +179,11 @@ export default function Requests() {
             <span className="h-1.5 w-1.5 rounded-full bg-[#10B981] animate-pulse" />
             Live
           </span>
-          <span className="text-[#3F3F46] mx-1">|</span>
+          <span className="hidden md:inline text-[#3F3F46] mx-1">|</span>
           <button
             onClick={() => setGlobalShowDebug((v) => !v)}
             className={cn(
-              "inline-flex items-center gap-1 text-[10px] transition-colors",
+              "hidden md:inline-flex items-center gap-1 text-[10px] transition-colors",
               globalShowDebug ? "text-[#9CA3AF]" : "text-[#9CA3AF]/40 hover:text-[#9CA3AF]/70"
             )}
           >
@@ -193,7 +193,7 @@ export default function Requests() {
           <button
             onClick={() => setGlobalShowDetails((v) => !v)}
             className={cn(
-              "inline-flex items-center gap-1 text-[10px] transition-colors",
+              "hidden md:inline-flex items-center gap-1 text-[10px] transition-colors",
               globalShowDetails ? "text-[#9CA3AF]" : "text-[#9CA3AF]/40 hover:text-[#9CA3AF]/70"
             )}
           >
@@ -219,7 +219,7 @@ export default function Requests() {
             className="bg-[#3B82F6] hover:bg-[#3B82F6]/80 text-white text-xs gap-1.5"
           >
             <FlaskConical className="h-3.5 w-3.5" />
-            Test Briefing
+            <span className="hidden md:inline">Test Briefing</span>
           </Button>
         </div>
       </div>
@@ -247,8 +247,8 @@ export default function Requests() {
 
       {/* Table */}
       <div className="flex-1 bg-[#1A2942] border border-white/5 rounded-lg flex flex-col min-h-0 overflow-hidden">
-        {/* Table header */}
-        <div className="grid grid-cols-[24px_100px_1fr_80px_60px_80px_80px_100px_32px] gap-3 px-3 py-2 text-[10px] uppercase tracking-wider text-[#9CA3AF] border-b border-white/5 bg-[#0F1D32]">
+        {/* Table header – desktop only */}
+        <div className="hidden md:grid grid-cols-[24px_100px_1fr_80px_60px_80px_80px_100px_32px] gap-3 px-3 py-2 text-[10px] uppercase tracking-wider text-[#9CA3AF] border-b border-white/5 bg-[#0F1D32]">
           <span />
           <span>Status</span>
           <span>User</span>
