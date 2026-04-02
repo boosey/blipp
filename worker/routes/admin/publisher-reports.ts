@@ -37,10 +37,13 @@ publisherReportsRoutes.get("/:batchId", async (c) => {
     return c.json({ error: "Batch not found" }, 404);
   }
 
-  // Get top blipps by conversion for this batch
+  // Get top blipps by conversion for this batch period
   const topBlipps = await prisma.listenOriginalEvent.groupBy({
     by: ["blippId"],
-    where: { reportBatchId: batchId },
+    where: {
+      publisherId: batch.publisherId,
+      receivedAt: { gte: batch.periodStart, lt: batch.periodEnd },
+    },
     _count: { id: true },
     _avg: { timeToClickSec: true, blippCompletionPct: true },
     orderBy: { _count: { id: "desc" } },
