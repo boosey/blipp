@@ -1070,6 +1070,7 @@ enum ListenOriginalEventType {
   listen_original_click
   listen_original_start
   listen_original_complete
+  listen_original_return
 }
 
 enum DeviceType {
@@ -1092,9 +1093,11 @@ enum ReferralSource {
 }
 
 model ListenOriginalEvent {
-  id                    String                   @id @default(cuid())
+  id                    String                   @id @default(uuid())
+  idempotencyKey        String                   @unique
   eventType             ListenOriginalEventType
-  timestamp             DateTime                 @default(now())
+  timestamp             DateTime
+  receivedAt            DateTime                 @default(now())
   userId                String
   sessionId             String
   deviceType            DeviceType
@@ -1107,21 +1110,18 @@ model ListenOriginalEvent {
   referralSource        ReferralSource
   timeToClickSec        Float
   blippCompletionPct    Float
-  didReturnToBlipp      Boolean                  @default(false)
   utmSource             String?
   utmMedium             String?
   utmCampaign           String?
-  reportBatchId         String?
   createdAt             DateTime                 @default(now())
 
   user    User    @relation("ListenOriginalEvents", fields: [userId], references: [id], onDelete: Cascade)
   episode Episode @relation("ListenOriginalEvents", fields: [episodeId], references: [id], onDelete: Cascade)
 
-  @@index([publisherId, timestamp])
-  @@index([userId, timestamp])
+  @@index([publisherId, receivedAt])
+  @@index([userId, receivedAt])
   @@index([blippId, eventType])
-  @@index([episodeId, timestamp])
-  @@index([reportBatchId])
+  @@index([episodeId, receivedAt])
 }
 
 model PublisherReportBatch {
@@ -1133,6 +1133,7 @@ model PublisherReportBatch {
   totalStarts    Int
   totalCompletes Int
   uniqueUsers    Int
+  clickThroughRate Float?
   generatedAt    DateTime @default(now())
 
   @@index([publisherId, periodStart])
