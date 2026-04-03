@@ -130,6 +130,7 @@ export function SwipeableFeedItem({
   onCancel,
 }: SwipeableFeedItemProps) {
   const audio = useAudio();
+  const isCreating = item.status === "PENDING" || item.status === "PROCESSING";
   const cardRef = useRef<HTMLDivElement>(null);
   const startXRef = useRef(0);
   const startYRef = useRef(0);
@@ -303,14 +304,16 @@ export function SwipeableFeedItem({
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
     >
-      {/* Right-side button (swipe left to reveal) — Delete */}
+      {/* Right-side button (swipe left to reveal) — Delete or Cancel */}
       <button
-        onClick={handleRemove}
-        className="absolute inset-y-0 right-0 flex items-center justify-center bg-red-500/20 text-red-400 active:bg-red-500/30 transition-colors"
+        onClick={isCreating && onCancel ? () => onCancel(item.id) : handleRemove}
+        className={`absolute inset-y-0 right-0 flex items-center justify-center transition-colors ${
+          isCreating ? "bg-orange-500/20 text-orange-400 active:bg-orange-500/30" : "bg-red-500/20 text-red-400 active:bg-red-500/30"
+        }`}
         style={{ width: BUTTON_WIDTH }}
-        aria-label="Remove from feed"
+        aria-label={isCreating ? "Cancel briefing" : "Remove from feed"}
       >
-        <Trash2 className="w-5 h-5" />
+        {isCreating ? <span className="text-xs font-medium">Cancel</span> : <Trash2 className="w-5 h-5" />}
       </button>
 
       {/* Left-side button (swipe right to reveal) — Add to Queue */}

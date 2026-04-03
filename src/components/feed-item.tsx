@@ -41,7 +41,7 @@ function statusColor(status: FeedItem["status"]) {
   switch (status) {
     case "PENDING":
     case "PROCESSING":
-      return "bg-amber-500/20 text-amber-200";
+      return "bg-amber-500/25 text-amber-50";
     case "CANCELLED":
       return "bg-gray-500/20 text-gray-400";
     case "FAILED":
@@ -208,7 +208,7 @@ export function FeedItemCard({
                   <ListPlus className="w-3.5 h-3.5" />
                 </button>
               )}
-              {onRemove && (
+              {onRemove && !isCreating && (
                 <button
                   aria-label="Remove from feed"
                   onClick={(e) => { e.stopPropagation(); onRemove(); }}

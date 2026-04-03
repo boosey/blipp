@@ -572,7 +572,7 @@ export function PodcastDetail({ podcastId: propPodcastId, scrollToEpisodeId }: {
                       </span>
                     ) : ep.blippStatus?.status === "PENDING" || ep.blippStatus?.status === "PROCESSING" ? (
                       <div className="flex items-center gap-1.5">
-                        <span className="flex items-center gap-1 px-3 py-1.5 rounded text-xs font-medium bg-amber-500/15 text-amber-200" title="Usually ready in 2-5 minutes">
+                        <span className="flex items-center gap-1 px-3 py-1.5 rounded text-xs font-medium bg-amber-500/25 text-amber-50" title="Usually ready in 2-5 minutes">
                           <Loader2 className="w-3 h-3 animate-spin" />
                           Creating...
                         </span>
