@@ -108,6 +108,8 @@ beforeEach(() => {
   mockEnv = createMockEnv();
   mockCtx = { waitUntil: vi.fn() } as unknown as ExecutionContext;
   (createPrismaClient as any).mockReturnValue(mockPrisma);
+  // Cancellation guard: default to non-cancelled request so happy-path tests proceed
+  mockPrisma.briefingRequest.findUnique.mockResolvedValue({ status: "PROCESSING" });
 
   // Re-set mocks after clearAllMocks
   (getConfig as any).mockResolvedValue(true);

@@ -207,6 +207,8 @@ describe("handleTranscription", () => {
       }
     });
     mockPrisma.$disconnect.mockResolvedValue(undefined);
+    // Cancellation guard: default to non-cancelled request so happy-path tests proceed
+    mockPrisma.briefingRequest.findUnique.mockResolvedValue({ status: "PROCESSING" });
     // Ensure updateMany always returns a promise (used in error handler .catch())
     mockPrisma.pipelineStep.updateMany.mockResolvedValue({ count: 0 });
     // Pipeline events
