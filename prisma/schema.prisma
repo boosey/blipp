@@ -429,6 +429,7 @@ enum PipelineJobStatus {
   COMPLETED
   COMPLETED_DEGRADED // completed but used AI fallbacks (e.g. voice degraded)
   FAILED
+  CANCELLED
 }
 
 model PipelineStep {

@@ -58,6 +58,21 @@ export async function handleAudioGeneration(
         });
         requestId = job.requestId;
 
+        // Cancellation guard: skip if parent request was cancelled
+        const request = await prisma.briefingRequest.findUnique({
+          where: { id: job.requestId },
+          select: { status: true },
+        });
+        if (!request || request.status === "CANCELLED") {
+          log.info("request_cancelled_skipping", { jobId, requestId: job.requestId });
+          await prisma.pipelineJob.update({
+            where: { id: jobId },
+            data: { status: "CANCELLED" },
+          });
+          msg.ack();
+          continue;
+        }
+
         // Update job status to IN_PROGRESS
         await prisma.pipelineJob.update({
           where: { id: jobId },

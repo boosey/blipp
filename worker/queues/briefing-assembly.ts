@@ -38,7 +38,7 @@ export async function handleBriefingAssembly(
           msg.ack();
           continue;
         }
-        if (["COMPLETED", "COMPLETED_DEGRADED", "FAILED"].includes(request.status)) {
+        if (["COMPLETED", "COMPLETED_DEGRADED", "FAILED", "CANCELLED"].includes(request.status)) {
           log.info("request_already_terminal", { requestId, status: request.status });
           msg.ack();
           continue;
