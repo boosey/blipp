@@ -57,6 +57,8 @@ feed.get("/", async (c) => {
     userId: user.id,
     episode: { contentStatus: { not: "NOT_DELIVERABLE" } },
     ...(downvotedPodcastIds.length > 0 ? { podcastId: { notIn: downvotedPodcastIds } } : {}),
+    // Hide cancelled items unless explicitly filtering for them
+    ...(!status ? { status: { not: "CANCELLED" } } : {}),
   };
   if (status) where.status = status;
   if (source) where.source = source;

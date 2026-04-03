@@ -91,8 +91,8 @@ briefings.post("/generate", async (c) => {
     update: {},
   });
 
-  // Reset failed feed items so the user can retry
-  if (feedItem.status === "FAILED") {
+  // Reset failed/cancelled feed items so the user can retry
+  if (feedItem.status === "FAILED" || feedItem.status === "CANCELLED") {
     await prisma.feedItem.update({
       where: { id: feedItem.id },
       data: { status: "PENDING", requestId: null, briefingId: null },
@@ -146,8 +146,76 @@ briefings.post("/requests/:requestId/cancel", async (c) => {
   const prisma = c.get("prisma") as any;
   const user = await getCurrentUser(c, prisma);
 
+  return cancelRequest(c, prisma, requestId, user.id);
+});
+
+/**
+ * POST /cancel-by-feed-item/:feedItemId — Cancel via feed item ID.
+ * Resolves the requestId from the feed item, then cancels the request.
+ * This is the primary cancel path because the frontend may not have the
+ * requestId yet when the user clicks cancel (poll race with /generate).
+ */
+briefings.post("/cancel-by-feed-item/:feedItemId", async (c) => {
+  const feedItemId = c.req.param("feedItemId");
+  const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
+
+  const feedItem = await prisma.feedItem.findFirst({
+    where: { id: feedItemId, userId: user.id },
+    select: { requestId: true, status: true },
+  });
+
+  if (!feedItem) {
+    return c.json({ error: "Feed item not found" }, 404);
+  }
+
+  if (!feedItem.requestId) {
+    // Request hasn't been created yet — mark the feed item as CANCELLED
+    // so the generate endpoint's upsert won't re-queue it.
+    await prisma.feedItem.update({
+      where: { id: feedItemId },
+      data: { status: "CANCELLED" },
+    });
+    return c.json({ request: null, feedItemCancelled: true });
+  }
+
+  return cancelRequest(c, prisma, feedItem.requestId, user.id);
+});
+
+/**
+ * POST /cancel-by-episode/:episodeId — Cancel via episode ID.
+ * Finds the active feed item for this episode and cancels its request.
+ * Used from the podcast detail page where feed item IDs aren't available.
+ */
+briefings.post("/cancel-by-episode/:episodeId", async (c) => {
+  const episodeId = c.req.param("episodeId");
+  const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
+
+  const feedItem = await prisma.feedItem.findFirst({
+    where: { episodeId, userId: user.id, status: { in: ["PENDING", "PROCESSING"] } },
+    select: { id: true, requestId: true },
+    orderBy: { createdAt: "desc" },
+  });
+
+  if (!feedItem) {
+    return c.json({ error: "No active briefing found for this episode" }, 404);
+  }
+
+  if (!feedItem.requestId) {
+    await prisma.feedItem.update({
+      where: { id: feedItem.id },
+      data: { status: "CANCELLED" },
+    });
+    return c.json({ request: null, feedItemCancelled: true });
+  }
+
+  return cancelRequest(c, prisma, feedItem.requestId, user.id);
+});
+
+async function cancelRequest(c: any, prisma: any, requestId: string, userId: string) {
   const request = await prisma.briefingRequest.findFirst({
-    where: { id: requestId, userId: user.id },
+    where: { id: requestId, userId },
   });
 
   if (!request) {
@@ -181,7 +249,7 @@ briefings.post("/requests/:requestId/cancel", async (c) => {
   ]);
 
   return c.json({ request: updated });
-});
+}
 
 /**
  * GET /:id/audio — Stream raw clip audio from R2.

@@ -1,5 +1,5 @@
 import { useCallback, useRef, useLayoutEffect, useState } from "react";
-import { Share2, Trash2, ListPlus, XCircle } from "lucide-react";
+import { Share2, Trash2, ListPlus } from "lucide-react";
 import { toast } from "sonner";
 import type { FeedItem } from "../types/feed";
 import { formatDuration } from "../lib/feed-utils";
@@ -41,7 +41,7 @@ function statusColor(status: FeedItem["status"]) {
   switch (status) {
     case "PENDING":
     case "PROCESSING":
-      return "bg-yellow-500/20 text-yellow-400";
+      return "bg-amber-500/20 text-amber-200";
     case "CANCELLED":
       return "bg-gray-500/20 text-gray-400";
     case "FAILED":
@@ -193,11 +193,10 @@ export function FeedItemCard({
             <div className="flex items-center gap-1 flex-shrink-0">
               {onCancel && isCreating && (
                 <button
-                  aria-label="Cancel briefing"
                   onClick={(e) => { e.stopPropagation(); onCancel(); }}
-                  className="p-1 text-muted-foreground hover:text-orange-400 transition-colors"
+                  className="px-2 py-0.5 text-[10px] font-medium rounded text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors"
                 >
-                  <XCircle className="w-3.5 h-3.5" />
+                  Cancel
                 </button>
               )}
               {onAddToQueue && item.status === "READY" && item.briefing?.clip && (

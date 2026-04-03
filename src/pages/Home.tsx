@@ -235,18 +235,19 @@ export function Home() {
   async function confirmCancel() {
     if (!cancelTarget) return;
     const item = items.find((i) => i.id === cancelTarget);
-    if (!item?.requestId) return;
+    if (!item) return;
+    const savedStatus = item.status;
 
     // Optimistic update
     setItems((prev) => prev.map((i) => i.id === cancelTarget ? { ...i, status: "CANCELLED" as const } : i));
     setCancelTarget(null);
 
     try {
-      await apiFetch(`/briefings/requests/${item.requestId}/cancel`, { method: "POST" });
+      await apiFetch(`/briefings/cancel-by-feed-item/${item.id}`, { method: "POST" });
       toast.success("Briefing cancelled");
     } catch {
       // Revert on failure
-      setItems((prev) => prev.map((i) => i.id === cancelTarget ? { ...i, status: item.status } : i));
+      setItems((prev) => prev.map((i) => i.id === item.id ? { ...i, status: savedStatus } : i));
       toast.error("Failed to cancel briefing");
     }
   }
@@ -466,6 +467,7 @@ export function Home() {
                       onPlay={handlePlay}
                       onRemove={handleRemove}
                       onEpisodeVote={handleEpisodeVote}
+                      onCancel={handleCancelRequest}
                     />
                   </div>
                 ))}

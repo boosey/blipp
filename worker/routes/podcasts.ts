@@ -787,6 +787,8 @@ podcasts.get("/:id/episodes", async (c) => {
   // Build blipp status per episode (use most recent feed item)
   const blippMap = new Map<string, { status: string; listened: boolean }>();
   for (const fi of feedItems as any[]) {
+    // Skip cancelled items — they should look like no blipp exists
+    if (fi.status === "CANCELLED") continue;
     if (!blippMap.has(fi.episodeId)) {
       blippMap.set(fi.episodeId, { status: fi.status, listened: fi.listened });
     }

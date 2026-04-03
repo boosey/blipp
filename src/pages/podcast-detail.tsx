@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Heart, Search, X, Loader2, Check, Headphones, Sparkles } from "lucide-react";
+import { CancelBlippDialog } from "../components/cancel-blipp-dialog";
 import { useApiFetch } from "../lib/api";
 import { useFetch } from "../lib/use-fetch";
 import { Skeleton } from "../components/ui/skeleton";
@@ -34,6 +35,7 @@ export function PodcastDetail({ podcastId: propPodcastId, scrollToEpisodeId }: {
   const [searchOpen, setSearchOpen] = useState(false);
   const [titleExpanded, setTitleExpanded] = useState(false);
   const [descExpanded, setDescExpanded] = useState(false);
+  const [cancelTargetEpisodeId, setCancelTargetEpisodeId] = useState<string | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const planUsage = usePlan();
   const { showUpgrade, UpgradeModalElement } = useUpgradeModal();
@@ -248,6 +250,31 @@ export function PodcastDetail({ podcastId: propPodcastId, scrollToEpisodeId }: {
       setEpisodes((eps) =>
         eps.map((e) => (e.id === episodeId ? { ...e, userVote: prev } : e))
       );
+    }
+  }
+
+  async function handleCancelBlipp(episodeId: string) {
+    const ep = episodes.find((e) => e.id === episodeId);
+    if (!ep?.blippStatus) return;
+
+    // Optimistic update
+    setEpisodes((eps) =>
+      eps.map((e) =>
+        e.id === episodeId ? { ...e, blippStatus: null } : e
+      )
+    );
+    setCancelTargetEpisodeId(null);
+
+    try {
+      await apiFetch(`/briefings/cancel-by-episode/${episodeId}`, { method: "POST" });
+      toast.success("Briefing cancelled");
+    } catch {
+      setEpisodes((eps) =>
+        eps.map((e) =>
+          e.id === episodeId ? { ...e, blippStatus: ep.blippStatus } : e
+        )
+      );
+      toast.error("Failed to cancel briefing");
     }
   }
 
@@ -544,10 +571,18 @@ export function PodcastDetail({ podcastId: propPodcastId, scrollToEpisodeId }: {
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
                       </span>
                     ) : ep.blippStatus?.status === "PENDING" || ep.blippStatus?.status === "PROCESSING" ? (
-                      <span className="flex items-center gap-1 px-3 py-1.5 rounded text-xs font-medium bg-yellow-500/15 text-yellow-400" title="Usually ready in 2-5 minutes">
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                        Creating...
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="flex items-center gap-1 px-3 py-1.5 rounded text-xs font-medium bg-amber-500/15 text-amber-200" title="Usually ready in 2-5 minutes">
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                          Creating...
+                        </span>
+                        <button
+                          onClick={() => setCancelTargetEpisodeId(ep.id)}
+                          className="px-2 py-1.5 text-[10px] font-medium rounded text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
                     ) : ep.blippStatus?.status === "READY" ? (
                       <span className={`flex items-center gap-1 px-3 py-1.5 rounded text-xs font-medium ${
                         ep.blippStatus.listened
@@ -618,6 +653,13 @@ export function PodcastDetail({ podcastId: propPodcastId, scrollToEpisodeId }: {
           </div>
         )}
       </div>
+      <CancelBlippDialog
+        open={cancelTargetEpisodeId !== null}
+        onOpenChange={(open) => { if (!open) setCancelTargetEpisodeId(null); }}
+        onConfirm={() => {
+          if (cancelTargetEpisodeId) handleCancelBlipp(cancelTargetEpisodeId);
+        }}
+      />
     </div>
   );
 }

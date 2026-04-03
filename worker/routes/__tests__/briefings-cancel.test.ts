@@ -47,7 +47,7 @@ describe("POST /requests/:requestId/cancel", () => {
     (getCurrentUser as any).mockResolvedValue({ id: "user1", isAdmin: false });
   });
 
-  it("cancels a PENDING request and marks feed items as CANCELLED", async () => {
+  it("cancels a PENDING request and marks feed items and pipeline jobs as CANCELLED", async () => {
     mockPrisma.briefingRequest.findFirst.mockResolvedValue({
       id: "req1",
       userId: "user1",
@@ -172,5 +172,88 @@ describe("POST /requests/:requestId/cancel", () => {
     expect(res.status).toBe(400);
     const body = await res.json() as any;
     expect(body.error).toBe("Cannot cancel a FAILED request");
+  });
+});
+
+describe("POST /cancel-by-feed-item/:feedItemId", () => {
+  let app: Hono<{ Bindings: Env }>;
+  let mockPrisma: any;
+  let env: Env;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockPrisma = createMockPrisma();
+    env = createMockEnv();
+
+    app = new Hono<{ Bindings: Env }>();
+    app.use("/*", async (c, next) => {
+      c.set("prisma", mockPrisma);
+      await next();
+    });
+    app.route("/", briefings);
+    app.onError((err, c) => {
+      const { status, message, code, details } = classifyHttpError(err);
+      return c.json({ error: message, code, details }, status as any);
+    });
+
+    (getCurrentUser as any).mockResolvedValue({ id: "user1", isAdmin: false });
+  });
+
+  it("cancels via feed item that has a requestId", async () => {
+    mockPrisma.feedItem.findFirst.mockResolvedValue({
+      requestId: "req1",
+      status: "PROCESSING",
+    });
+    mockPrisma.briefingRequest.findFirst.mockResolvedValue({
+      id: "req1",
+      userId: "user1",
+      status: "PROCESSING",
+    });
+    mockPrisma.briefingRequest.update.mockResolvedValue({
+      id: "req1",
+      status: "CANCELLED",
+    });
+    mockPrisma.feedItem.updateMany.mockResolvedValue({ count: 1 });
+    mockPrisma.pipelineJob.updateMany.mockResolvedValue({ count: 1 });
+
+    const res = await app.request("/cancel-by-feed-item/fi1", {
+      method: "POST",
+    }, env, { waitUntil: vi.fn(), passThroughOnException: vi.fn(), props: {} } as any);
+
+    expect(res.status).toBe(200);
+    const body = await res.json() as any;
+    expect(body.request.status).toBe("CANCELLED");
+  });
+
+  it("cancels feed item directly when requestId is null", async () => {
+    mockPrisma.feedItem.findFirst.mockResolvedValue({
+      requestId: null,
+      status: "PENDING",
+    });
+    mockPrisma.feedItem.update.mockResolvedValue({ id: "fi1", status: "CANCELLED" });
+
+    const res = await app.request("/cancel-by-feed-item/fi1", {
+      method: "POST",
+    }, env, { waitUntil: vi.fn(), passThroughOnException: vi.fn(), props: {} } as any);
+
+    expect(res.status).toBe(200);
+    const body = await res.json() as any;
+    expect(body.feedItemCancelled).toBe(true);
+    expect(body.request).toBeNull();
+
+    expect(mockPrisma.feedItem.update).toHaveBeenCalledWith({
+      where: { id: "fi1" },
+      data: { status: "CANCELLED" },
+    });
+  });
+
+  it("returns 404 when feed item not found", async () => {
+    mockPrisma.feedItem.findFirst.mockResolvedValue(null);
+
+    const res = await app.request("/cancel-by-feed-item/fi1", {
+      method: "POST",
+    }, env, { waitUntil: vi.fn(), passThroughOnException: vi.fn(), props: {} } as any);
+
+    expect(res.status).toBe(404);
   });
 });
