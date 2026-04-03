@@ -28,6 +28,7 @@ const STATUS_TABS: { value: BriefingRequestStatus | "ALL"; label: string }[] = [
   { value: "PENDING", label: "Pending" },
   { value: "PROCESSING", label: "Processing" },
   { value: "COMPLETED", label: "Completed" },
+  { value: "CANCELLED", label: "Cancelled" },
   { value: "FAILED", label: "Failed" },
 ];
 

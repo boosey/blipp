@@ -6,7 +6,7 @@ import type {
 } from "../lib/queue-messages";
 import type { Env } from "../types";
 
-const TERMINAL_STATUSES = ["COMPLETED", "COMPLETED_DEGRADED", "FAILED"] as const;
+const TERMINAL_STATUSES = ["COMPLETED", "COMPLETED_DEGRADED", "FAILED", "CANCELLED"] as const;
 function isTerminal(status: string) { return TERMINAL_STATUSES.includes(status as any); }
 function isCompleted(status: string) { return status === "COMPLETED" || status === "COMPLETED_DEGRADED"; }
 

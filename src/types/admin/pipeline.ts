@@ -85,6 +85,7 @@ export interface BriefingRequest {
   isTest: boolean;
   briefingId: string | null;
   errorMessage: string | null;
+  cancelledAt: string | null;
   createdAt: string;
   updatedAt: string;
   userName?: string;
@@ -95,7 +96,7 @@ export interface BriefingRequest {
   jobProgress?: JobProgress[];
 }
 
-export type BriefingRequestStatus = "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED";
+export type BriefingRequestStatus = "PENDING" | "PROCESSING" | "CANCELLED" | "COMPLETED" | "FAILED";
 
 export interface DeletePreviewRelatedRequest {
   id: string;

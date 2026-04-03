@@ -385,6 +385,7 @@ enum FeedItemStatus {
   PROCESSING
   READY
   FAILED
+  CANCELLED
 }
 
 // ── Admin: Pipeline Job Lifecycle ──
@@ -484,6 +485,7 @@ model BriefingRequest {
   items         Json                 // BriefingRequestItem[]
   isTest        Boolean              @default(false)
   errorMessage  String?
+  cancelledAt   DateTime?
   createdAt     DateTime             @default(now())
   updatedAt     DateTime             @updatedAt
 
@@ -494,6 +496,7 @@ model BriefingRequest {
 enum BriefingRequestStatus {
   PENDING
   PROCESSING
+  CANCELLED
   COMPLETED
   COMPLETED_DEGRADED // completed but used AI fallbacks
   FAILED

@@ -95,6 +95,7 @@ feed.get("/", async (c) => {
 
   const data = items.map((item: any) => ({
     id: item.id,
+    requestId: item.requestId ?? null,
     source: item.source,
     status: item.status,
     listened: item.listened,

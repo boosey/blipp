@@ -138,6 +138,46 @@ briefings.post("/generate", async (c) => {
 });
 
 /**
+ * POST /requests/:requestId/cancel — Cancel a pending or processing briefing request.
+ * User-scoped: only the request owner can cancel.
+ */
+briefings.post("/requests/:requestId/cancel", async (c) => {
+  const requestId = c.req.param("requestId");
+  const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
+
+  const request = await prisma.briefingRequest.findFirst({
+    where: { id: requestId, userId: user.id },
+  });
+
+  if (!request) {
+    return c.json({ error: "Request not found" }, 404);
+  }
+
+  if (request.status === "CANCELLED") {
+    return c.json({ error: "Request is already cancelled" }, 400);
+  }
+
+  if (!["PENDING", "PROCESSING"].includes(request.status)) {
+    return c.json({ error: `Cannot cancel a ${request.status} request` }, 400);
+  }
+
+  const now = new Date();
+  const updated = await prisma.briefingRequest.update({
+    where: { id: requestId },
+    data: { status: "CANCELLED", cancelledAt: now },
+  });
+
+  // Also mark associated feed items as CANCELLED
+  await prisma.feedItem.updateMany({
+    where: { requestId, status: { in: ["PENDING", "PROCESSING"] } },
+    data: { status: "CANCELLED" },
+  });
+
+  return c.json({ request: updated });
+});
+
+/**
  * GET /:id/audio — Stream raw clip audio from R2.
  * User-scoped: only the briefing owner can access.
  */

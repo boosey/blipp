@@ -23,6 +23,7 @@ const STATUS_STYLES: Record<
 > = {
   PENDING: { bg: "#9CA3AF20", text: "#9CA3AF" },
   PROCESSING: { bg: "#3B82F620", text: "#3B82F6", pulse: true },
+  CANCELLED: { bg: "#6B728020", text: "#6B7280" },
   COMPLETED: { bg: "#10B98120", text: "#10B981" },
   FAILED: { bg: "#EF444420", text: "#EF4444" },
 };

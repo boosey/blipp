@@ -119,6 +119,7 @@ interface SwipeableFeedItemProps {
   onPlay?: (id: string) => void;
   onRemove: (id: string) => void;
   onEpisodeVote?: (episodeId: string, vote: number) => void;
+  onCancel?: (feedItemId: string) => void;
 }
 
 export function SwipeableFeedItem({
@@ -126,6 +127,7 @@ export function SwipeableFeedItem({
   onPlay,
   onRemove,
   onEpisodeVote,
+  onCancel,
 }: SwipeableFeedItemProps) {
   const audio = useAudio();
   const cardRef = useRef<HTMLDivElement>(null);
@@ -327,7 +329,7 @@ export function SwipeableFeedItem({
         className="relative will-change-transform bg-background"
         onClick={handleCardClick}
       >
-        <FeedItemCard item={item} onPlay={onPlay} onEpisodeVote={onEpisodeVote} onRemove={() => handleRemove()} onAddToQueue={handleAddToQueue} />
+        <FeedItemCard item={item} onPlay={onPlay} onEpisodeVote={onEpisodeVote} onRemove={() => handleRemove()} onAddToQueue={handleAddToQueue} onCancel={onCancel ? () => onCancel(item.id) : undefined} />
       </div>
 
     </div>

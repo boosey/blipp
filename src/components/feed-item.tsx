@@ -1,5 +1,5 @@
 import { useCallback, useRef, useLayoutEffect, useState } from "react";
-import { Share2, Trash2, ListPlus } from "lucide-react";
+import { Share2, Trash2, ListPlus, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import type { FeedItem } from "../types/feed";
 import { formatDuration } from "../lib/feed-utils";
@@ -28,6 +28,8 @@ function statusLabel(status: FeedItem["status"]) {
     case "PENDING":
     case "PROCESSING":
       return "Creating (~2-5 min)";
+    case "CANCELLED":
+      return "Cancelled";
     case "FAILED":
       return "Error";
     default:
@@ -40,6 +42,8 @@ function statusColor(status: FeedItem["status"]) {
     case "PENDING":
     case "PROCESSING":
       return "bg-yellow-500/20 text-yellow-400";
+    case "CANCELLED":
+      return "bg-gray-500/20 text-gray-400";
     case "FAILED":
       return "bg-red-500/20 text-red-400";
     default:
@@ -62,12 +66,14 @@ export function FeedItemCard({
   onEpisodeVote,
   onRemove,
   onAddToQueue,
+  onCancel,
 }: {
   item: FeedItem;
   onPlay?: (id: string) => void;
   onEpisodeVote?: (episodeId: string, vote: number) => void;
   onRemove?: () => void;
   onAddToQueue?: () => void;
+  onCancel?: () => void;
 }) {
   const audio = useAudio();
   const { publicSharing } = usePlan();
@@ -183,8 +189,17 @@ export function FeedItemCard({
               )}
             </p>
           )}
-          {(onAddToQueue || onRemove) && (
+          {(onAddToQueue || onRemove || onCancel) && (
             <div className="flex items-center gap-1 flex-shrink-0">
+              {onCancel && isCreating && (
+                <button
+                  aria-label="Cancel briefing"
+                  onClick={(e) => { e.stopPropagation(); onCancel(); }}
+                  className="p-1 text-muted-foreground hover:text-orange-400 transition-colors"
+                >
+                  <XCircle className="w-3.5 h-3.5" />
+                </button>
+              )}
               {onAddToQueue && item.status === "READY" && item.briefing?.clip && (
                 <button
                   aria-label="Add to queue"

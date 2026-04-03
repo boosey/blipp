@@ -15,6 +15,7 @@ import { groupByDate } from "../lib/feed-utils";
 import { usePullToRefresh } from "../hooks/use-pull-to-refresh";
 import { useAudio } from "../contexts/audio-context";
 import { InstallPrompt } from "../components/install-prompt";
+import { CancelBlippDialog } from "../components/cancel-blipp-dialog";
 
 const FILTERS: { key: FeedFilter; label: string }[] = [
   { key: "all", label: "All" },
@@ -49,6 +50,7 @@ export function Home() {
   const [filter, setFilter] = useState<FeedFilter>("all");
   const [swipeHintDismissed, setSwipeHintDismissed] = useState(() => !!localStorage.getItem("swipe-hint-seen"));
   const [generatingTimedOut, setGeneratingTimedOut] = useState(false);
+  const [cancelTarget, setCancelTarget] = useState<string | null>(null);
 
   const { data: counts } = useFetch<FeedCounts>("/feed/counts");
   const { data: curatedData } = useFetch<CuratedResponse>("/recommendations/curated");
@@ -226,6 +228,29 @@ export function Home() {
     });
   }
 
+  function handleCancelRequest(feedItemId: string) {
+    setCancelTarget(feedItemId);
+  }
+
+  async function confirmCancel() {
+    if (!cancelTarget) return;
+    const item = items.find((i) => i.id === cancelTarget);
+    if (!item?.requestId) return;
+
+    // Optimistic update
+    setItems((prev) => prev.map((i) => i.id === cancelTarget ? { ...i, status: "CANCELLED" as const } : i));
+    setCancelTarget(null);
+
+    try {
+      await apiFetch(`/briefings/requests/${item.requestId}/cancel`, { method: "POST" });
+      toast.success("Briefing cancelled");
+    } catch {
+      // Revert on failure
+      setItems((prev) => prev.map((i) => i.id === cancelTarget ? { ...i, status: item.status } : i));
+      toast.error("Failed to cancel briefing");
+    }
+  }
+
   if (loading) {
     return <FeedSkeleton />;
   }
@@ -278,6 +303,7 @@ export function Home() {
                   onPlay={handlePlay}
                   onRemove={handleRemove}
                   onEpisodeVote={handleEpisodeVote}
+                  onCancel={handleCancelRequest}
                 />
               </div>
             ))}
@@ -448,6 +474,11 @@ export function Home() {
           ))}
         </div>
       )}
+      <CancelBlippDialog
+        open={cancelTarget !== null}
+        onOpenChange={(open) => { if (!open) setCancelTarget(null); }}
+        onConfirm={confirmCancel}
+      />
     </div>
   );
 }
