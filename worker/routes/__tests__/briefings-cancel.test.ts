@@ -59,6 +59,7 @@ describe("POST /requests/:requestId/cancel", () => {
       cancelledAt: expect.any(Date),
     });
     mockPrisma.feedItem.updateMany.mockResolvedValue({ count: 1 });
+    mockPrisma.pipelineJob.updateMany.mockResolvedValue({ count: 2 });
 
     const res = await app.request("/requests/req1/cancel", {
       method: "POST",
@@ -76,6 +77,10 @@ describe("POST /requests/:requestId/cancel", () => {
       where: { requestId: "req1", status: { in: ["PENDING", "PROCESSING"] } },
       data: { status: "CANCELLED" },
     });
+    expect(mockPrisma.pipelineJob.updateMany).toHaveBeenCalledWith({
+      where: { requestId: "req1", status: { in: ["PENDING", "IN_PROGRESS"] } },
+      data: { status: "CANCELLED" },
+    });
   });
 
   it("cancels a PROCESSING request", async () => {
@@ -89,6 +94,7 @@ describe("POST /requests/:requestId/cancel", () => {
       status: "CANCELLED",
     });
     mockPrisma.feedItem.updateMany.mockResolvedValue({ count: 0 });
+    mockPrisma.pipelineJob.updateMany.mockResolvedValue({ count: 0 });
 
     const res = await app.request("/requests/req1/cancel", {
       method: "POST",

@@ -168,11 +168,17 @@ briefings.post("/requests/:requestId/cancel", async (c) => {
     data: { status: "CANCELLED", cancelledAt: now },
   });
 
-  // Also mark associated feed items as CANCELLED
-  await prisma.feedItem.updateMany({
-    where: { requestId, status: { in: ["PENDING", "PROCESSING"] } },
-    data: { status: "CANCELLED" },
-  });
+  // Also mark associated feed items and pipeline jobs as CANCELLED
+  await Promise.all([
+    prisma.feedItem.updateMany({
+      where: { requestId, status: { in: ["PENDING", "PROCESSING"] } },
+      data: { status: "CANCELLED" },
+    }),
+    prisma.pipelineJob.updateMany({
+      where: { requestId, status: { in: ["PENDING", "IN_PROGRESS"] } },
+      data: { status: "CANCELLED" },
+    }),
+  ]);
 
   return c.json({ request: updated });
 });
