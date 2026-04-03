@@ -62,6 +62,7 @@ import { Home } from "../pages/Home";
 
 const makeItem = (id: string, overrides: Partial<FeedItem> = {}): FeedItem => ({
   id,
+  requestId: null,
   source: "SUBSCRIPTION",
   status: "READY",
   listened: false,

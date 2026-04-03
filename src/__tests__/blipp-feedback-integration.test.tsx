@@ -33,6 +33,7 @@ import { FeedItemCard } from "../components/feed-item";
 
 const mockItem: FeedItem = {
   id: "fi-1",
+  requestId: null,
   source: "SUBSCRIPTION",
   status: "READY",
   listened: false,
