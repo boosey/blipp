@@ -170,7 +170,7 @@ describe("FeedItemCard", () => {
         <FeedItemCard item={item} onCancel={vi.fn()} />
       </MemoryRouter>
     );
-    expect(screen.getByLabelText("Cancel briefing")).toBeInTheDocument();
+    expect(screen.getByText("Cancel")).toBeInTheDocument();
   });
 
   it("shows cancel button for PROCESSING items when onCancel provided", () => {
@@ -184,7 +184,7 @@ describe("FeedItemCard", () => {
         <FeedItemCard item={item} onCancel={vi.fn()} />
       </MemoryRouter>
     );
-    expect(screen.getByLabelText("Cancel briefing")).toBeInTheDocument();
+    expect(screen.getByText("Cancel")).toBeInTheDocument();
   });
 
   it("does not show cancel button for READY items", () => {
@@ -193,7 +193,7 @@ describe("FeedItemCard", () => {
         <FeedItemCard item={mockItem} onCancel={vi.fn()} />
       </MemoryRouter>
     );
-    expect(screen.queryByLabelText("Cancel briefing")).not.toBeInTheDocument();
+    expect(screen.queryByText("Cancel")).not.toBeInTheDocument();
   });
 
   it("does not show cancel button when onCancel not provided", () => {
@@ -207,7 +207,7 @@ describe("FeedItemCard", () => {
         <FeedItemCard item={item} />
       </MemoryRouter>
     );
-    expect(screen.queryByLabelText("Cancel briefing")).not.toBeInTheDocument();
+    expect(screen.queryByText("Cancel")).not.toBeInTheDocument();
   });
 
   it("shows Cancelled badge for CANCELLED items", () => {
