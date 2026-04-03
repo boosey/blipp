@@ -33,6 +33,7 @@ import { FeedItemCard } from "../components/feed-item";
 
 const mockItem: FeedItem = {
   id: "fi-1",
+  requestId: null,
   source: "SUBSCRIPTION",
   status: "READY",
   listened: false,
@@ -154,5 +155,72 @@ describe("FeedItemCard", () => {
       </MemoryRouter>
     );
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  });
+
+  // --- Cancel feature ---
+
+  it("shows cancel button for PENDING items when onCancel provided", () => {
+    const item: FeedItem = {
+      ...mockItem,
+      status: "PENDING",
+      briefing: null,
+    };
+    render(
+      <MemoryRouter>
+        <FeedItemCard item={item} onCancel={vi.fn()} />
+      </MemoryRouter>
+    );
+    expect(screen.getByLabelText("Cancel briefing")).toBeInTheDocument();
+  });
+
+  it("shows cancel button for PROCESSING items when onCancel provided", () => {
+    const item: FeedItem = {
+      ...mockItem,
+      status: "PROCESSING",
+      briefing: null,
+    };
+    render(
+      <MemoryRouter>
+        <FeedItemCard item={item} onCancel={vi.fn()} />
+      </MemoryRouter>
+    );
+    expect(screen.getByLabelText("Cancel briefing")).toBeInTheDocument();
+  });
+
+  it("does not show cancel button for READY items", () => {
+    render(
+      <MemoryRouter>
+        <FeedItemCard item={mockItem} onCancel={vi.fn()} />
+      </MemoryRouter>
+    );
+    expect(screen.queryByLabelText("Cancel briefing")).not.toBeInTheDocument();
+  });
+
+  it("does not show cancel button when onCancel not provided", () => {
+    const item: FeedItem = {
+      ...mockItem,
+      status: "PENDING",
+      briefing: null,
+    };
+    render(
+      <MemoryRouter>
+        <FeedItemCard item={item} />
+      </MemoryRouter>
+    );
+    expect(screen.queryByLabelText("Cancel briefing")).not.toBeInTheDocument();
+  });
+
+  it("shows Cancelled badge for CANCELLED items", () => {
+    const item: FeedItem = {
+      ...mockItem,
+      status: "CANCELLED" as any,
+      briefing: null,
+    };
+    render(
+      <MemoryRouter>
+        <FeedItemCard item={item} />
+      </MemoryRouter>
+    );
+    expect(screen.getByText("Cancelled")).toBeInTheDocument();
   });
 });

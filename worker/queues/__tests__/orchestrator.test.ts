@@ -78,6 +78,18 @@ describe("handleOrchestrator", () => {
     expect(mockPrisma.pipelineJob.create).not.toHaveBeenCalled();
   });
 
+  it("should ack and skip CANCELLED requests", async () => {
+    const msg = createMsg({ requestId: "req1", action: "evaluate" });
+    mockPrisma.briefingRequest.findUnique.mockResolvedValue({
+      id: "req1", status: "CANCELLED", items: [],
+    });
+
+    await handleOrchestrator(createBatch([msg]), env, ctx);
+
+    expect(msg.ack).toHaveBeenCalled();
+    expect(mockPrisma.pipelineJob.create).not.toHaveBeenCalled();
+  });
+
   it("should ack and skip FAILED requests", async () => {
     const msg = createMsg({ requestId: "req1", action: "evaluate" });
     mockPrisma.briefingRequest.findUnique.mockResolvedValue({
