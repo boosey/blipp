@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { Env } from "../../types";
+import { runSmokeTest } from "../../lib/smoke-test";
 
 // Maps AiModel.stage (AiStage) to PipelineStep.stage (PipelineStage)
 const STAGE_TO_PIPELINE: Record<string, string> = {
@@ -225,6 +226,31 @@ aiModelsRoutes.delete("/:id", async (c) => {
   const id = c.req.param("id");
   await prisma.aiModel.delete({ where: { id } });
   return c.json({ success: true });
+});
+
+// POST /:id/providers/:providerId/smoke-test — verify provider connectivity
+aiModelsRoutes.post("/:id/providers/:providerId/smoke-test", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const modelId = c.req.param("id");
+  const providerId = c.req.param("providerId");
+
+  const providerRow = await prisma.aiModelProvider.findUnique({
+    where: { id: providerId },
+    include: { model: { select: { stage: true, modelId: true } } },
+  });
+
+  if (!providerRow || providerRow.aiModelId !== modelId) {
+    return c.json({ error: "Provider not found" }, 404);
+  }
+
+  const result = await runSmokeTest(
+    providerRow.model.stage,
+    providerRow.provider,
+    providerRow.providerModelId ?? providerRow.model.modelId,
+    c.env
+  );
+
+  return c.json({ data: result });
 });
 
 // DELETE /:id/providers/:providerId — remove a provider
