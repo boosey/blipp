@@ -1,3 +1,4 @@
+import { useState, useCallback, useRef, useEffect } from "react";
 import {
   ChevronDown,
   ChevronRight,
@@ -6,6 +7,8 @@ import {
   Trash2,
   Check,
   X,
+  Zap,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +18,8 @@ import type { AIStage } from "@/lib/ai-models";
 import type { AiModelEntry } from "@/types/admin";
 import { formatPrice, formatLimits, formatMonthlyCost } from "./helpers";
 import { AddProviderForm, EditProviderForm } from "./provider-forms";
+
+type SmokeTestState = { status: "idle" } | { status: "running" } | { status: "pass"; latencyMs: number } | { status: "fail"; error: string };
 
 export interface ModelTableProps {
   models: AiModelEntry[];
@@ -134,7 +139,7 @@ export function ModelTable({
                     <div>Pricing</div>
                     <div>Limits</div>
                     <div>Status</div>
-                    <div className="w-16 text-right">Actions</div>
+                    <div className="w-28 text-right">Actions</div>
                   </div>
 
                   {model.providers.length === 0 && (
@@ -142,67 +147,16 @@ export function ModelTable({
                   )}
 
                   {model.providers.map((prov) => (
-                    <div key={prov.id}>
-                      {editingProvider === prov.id ? (
-                        <EditProviderForm
-                          provider={prov}
-                          modelId={model.id}
-                          stage={model.stage}
-                          apiFetch={apiFetch}
-                          onDone={() => { setEditingProvider(null); onRefresh(); }}
-                          onCancel={() => setEditingProvider(null)}
-                        />
-                      ) : (
-                        <div className="grid grid-cols-[2fr_2fr_1.5fr_1fr_auto] gap-4 py-2 items-center text-xs">
-                          <div className="text-[#F9FAFB]">
-                            <div>
-                              {prov.providerLabel}
-                              <span className="ml-1.5 text-[10px] font-mono text-[#9CA3AF]">({prov.provider})</span>
-                              {prov.isDefault && (
-                                <Badge className="ml-2 text-[9px] bg-[#3B82F6]/20 text-[#3B82F6] border-0 py-0">
-                                  Default
-                                </Badge>
-                              )}
-                            </div>
-                            {prov.providerModelId && (
-                              <div className="text-[10px] font-mono text-[#6B7280] mt-0.5">{prov.providerModelId}</div>
-                            )}
-                          </div>
-                          <div className="text-[#9CA3AF] font-mono text-[11px]">{formatPrice(prov)}</div>
-                          <div className="text-[#9CA3AF] text-[11px]">{formatLimits(prov.limits)}</div>
-                          <div>
-                            <Badge
-                              variant="outline"
-                              className={`text-[10px] border-0 ${
-                                prov.isAvailable
-                                  ? "bg-[#22C55E]/10 text-[#22C55E]"
-                                  : "bg-[#EF4444]/10 text-[#EF4444]"
-                              }`}
-                            >
-                              {prov.isAvailable ? "Available" : "Unavailable"}
-                            </Badge>
-                          </div>
-                          <div className="w-16 flex justify-end gap-1">
-                            <Button
-                              variant="ghost"
-                              size="icon-xs"
-                              onClick={() => setEditingProvider(prov.id)}
-                              className="text-[#9CA3AF] hover:text-[#F9FAFB]"
-                            >
-                              <Pencil className="h-3 w-3" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon-xs"
-                              onClick={() => onDeleteProvider(model, prov.id)}
-                              className="text-[#9CA3AF] hover:text-[#EF4444]"
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
+                    <ProviderRow
+                      key={prov.id}
+                      prov={prov}
+                      model={model}
+                      editingProvider={editingProvider}
+                      setEditingProvider={setEditingProvider}
+                      apiFetch={apiFetch}
+                      onDeleteProvider={onDeleteProvider}
+                      onRefresh={onRefresh}
+                    />
                   ))}
 
                   {/* Add Provider */}
@@ -231,6 +185,130 @@ export function ModelTable({
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function ProviderRow({
+  prov,
+  model,
+  editingProvider,
+  setEditingProvider,
+  apiFetch,
+  onDeleteProvider,
+  onRefresh,
+}: {
+  prov: AiModelEntry["providers"][number];
+  model: AiModelEntry;
+  editingProvider: string | null;
+  setEditingProvider: (id: string | null) => void;
+  apiFetch: ReturnType<typeof useAdminFetch>;
+  onDeleteProvider: (model: AiModelEntry, providerId: string) => void;
+  onRefresh: () => void;
+}) {
+  const [testState, setTestState] = useState<SmokeTestState>({ status: "idle" });
+  const clearRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => { if (clearRef.current) clearTimeout(clearRef.current); }, []);
+
+  const runTest = useCallback(async () => {
+    setTestState({ status: "running" });
+    try {
+      const res = await apiFetch<{ data: { success: boolean; latencyMs: number; error?: string } }>(
+        `/ai-models/${model.id}/providers/${prov.id}/smoke-test`,
+        { method: "POST" }
+      );
+      if (res.data.success) {
+        setTestState({ status: "pass", latencyMs: res.data.latencyMs });
+      } else {
+        setTestState({ status: "fail", error: res.data.error ?? "Unknown error" });
+      }
+    } catch (err) {
+      setTestState({ status: "fail", error: err instanceof Error ? err.message : "Request failed" });
+    }
+    clearRef.current = setTimeout(() => setTestState({ status: "idle" }), 10000);
+  }, [apiFetch, model.id, prov.id]);
+
+  if (editingProvider === prov.id) {
+    return (
+      <div>
+        <EditProviderForm
+          provider={prov}
+          modelId={model.id}
+          stage={model.stage}
+          apiFetch={apiFetch}
+          onDone={() => { setEditingProvider(null); onRefresh(); }}
+          onCancel={() => setEditingProvider(null)}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-[2fr_2fr_1.5fr_1fr_auto] gap-4 py-2 items-center text-xs">
+      <div className="text-[#F9FAFB]">
+        <div>
+          {prov.providerLabel}
+          <span className="ml-1.5 text-[10px] font-mono text-[#9CA3AF]">({prov.provider})</span>
+          {prov.isDefault && (
+            <Badge className="ml-2 text-[9px] bg-[#3B82F6]/20 text-[#3B82F6] border-0 py-0">
+              Default
+            </Badge>
+          )}
+        </div>
+        {prov.providerModelId && (
+          <div className="text-[10px] font-mono text-[#6B7280] mt-0.5">{prov.providerModelId}</div>
+        )}
+      </div>
+      <div className="text-[#9CA3AF] font-mono text-[11px]">{formatPrice(prov)}</div>
+      <div className="text-[#9CA3AF] text-[11px]">{formatLimits(prov.limits)}</div>
+      <div>
+        <Badge
+          variant="outline"
+          className={`text-[10px] border-0 ${
+            prov.isAvailable
+              ? "bg-[#22C55E]/10 text-[#22C55E]"
+              : "bg-[#EF4444]/10 text-[#EF4444]"
+          }`}
+        >
+          {prov.isAvailable ? "Available" : "Unavailable"}
+        </Badge>
+      </div>
+      <div className="w-28 flex justify-end items-center gap-1">
+        {testState.status === "running" ? (
+          <Loader2 className="h-3 w-3 animate-spin text-[#9CA3AF]" />
+        ) : testState.status === "pass" ? (
+          <span className="text-[10px] text-[#22C55E] font-mono">{(testState.latencyMs / 1000).toFixed(1)}s</span>
+        ) : testState.status === "fail" ? (
+          <span className="text-[10px] text-[#EF4444] truncate max-w-[60px]" title={testState.error}>{testState.error}</span>
+        ) : null}
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          onClick={runTest}
+          disabled={testState.status === "running"}
+          className={`text-[#9CA3AF] hover:text-[#FBBF24] ${testState.status === "pass" ? "text-[#22C55E]" : testState.status === "fail" ? "text-[#EF4444]" : ""}`}
+          title="Smoke test"
+        >
+          <Zap className="h-3 w-3" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          onClick={() => setEditingProvider(prov.id)}
+          className="text-[#9CA3AF] hover:text-[#F9FAFB]"
+        >
+          <Pencil className="h-3 w-3" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          onClick={() => onDeleteProvider(model, prov.id)}
+          className="text-[#9CA3AF] hover:text-[#EF4444]"
+        >
+          <Trash2 className="h-3 w-3" />
+        </Button>
+      </div>
     </div>
   );
 }
