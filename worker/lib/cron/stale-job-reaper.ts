@@ -1,7 +1,10 @@
 import type { CronLogger } from "./runner";
 
 type PrismaLike = {
-  episodeRefreshJob: { updateMany: (args: any) => Promise<{ count: number }> };
+  episodeRefreshJob: {
+    findMany: (args: any) => Promise<any[]>;
+    updateMany: (args: any) => Promise<{ count: number }>;
+  };
   feedItem: { updateMany: (args: any) => Promise<{ count: number }> };
   pipelineJob: {
     findMany: (args: any) => Promise<{ requestId: string | null }[]>;
@@ -97,22 +100,65 @@ export async function runStaleJobReaperJob(
   // ── EpisodeRefreshJob (6 hours) ──
   // Previous fixes (ed9640a, 54dfc55) addressed prefetch counter drift, but
   // podcastsCompleted increments can still fail silently, leaving jobs stuck.
+  // Jobs that reached >90% progress are marked complete instead of failed.
   const refreshJobCutoff = new Date(Date.now() - 6 * 60 * 60 * 1000);
-  const { count: staleRefreshJobs } = await prisma.episodeRefreshJob.updateMany({
+  const staleRefreshRecords = await prisma.episodeRefreshJob.findMany({
     where: {
       status: "refreshing",
       startedAt: { lt: refreshJobCutoff },
     },
-    data: {
-      status: "failed",
-      error: "Marked failed: refresh job stalled for over 6 hours",
-      completedAt: new Date(),
+    select: {
+      id: true,
+      podcastsTotal: true,
+      podcastsCompleted: true,
+      prefetchTotal: true,
+      prefetchCompleted: true,
     },
   });
-  if (staleRefreshJobs > 0) {
-    await logger.info("stale_refresh_jobs_reaped", { count: staleRefreshJobs });
+
+  const nearCompleteIds: string[] = [];
+  const trulyFailedIds: string[] = [];
+  for (const job of staleRefreshRecords) {
+    const total = (job.podcastsTotal || 0) + (job.prefetchTotal || 0);
+    const completed = (job.podcastsCompleted || 0) + (job.prefetchCompleted || 0);
+    const pct = total > 0 ? completed / total : 0;
+    if (pct >= 0.9) {
+      nearCompleteIds.push(job.id);
+    } else {
+      trulyFailedIds.push(job.id);
+    }
   }
-  result.staleRefreshJobsReaped = staleRefreshJobs;
+
+  let staleRefreshCompleted = 0;
+  if (nearCompleteIds.length > 0) {
+    const { count } = await prisma.episodeRefreshJob.updateMany({
+      where: { id: { in: nearCompleteIds } },
+      data: {
+        status: "complete",
+        error: "Auto-completed by reaper: >90% progress reached before stalling",
+        completedAt: new Date(),
+      },
+    });
+    staleRefreshCompleted = count;
+    await logger.info("stale_refresh_jobs_completed", { count });
+  }
+
+  let staleRefreshFailed = 0;
+  if (trulyFailedIds.length > 0) {
+    const { count } = await prisma.episodeRefreshJob.updateMany({
+      where: { id: { in: trulyFailedIds } },
+      data: {
+        status: "failed",
+        error: "Marked failed: refresh job stalled for over 6 hours",
+        completedAt: new Date(),
+      },
+    });
+    staleRefreshFailed = count;
+    await logger.info("stale_refresh_jobs_reaped", { count });
+  }
+
+  result.staleRefreshJobsCompleted = staleRefreshCompleted;
+  result.staleRefreshJobsReaped = staleRefreshFailed;
 
   return result;
 }
