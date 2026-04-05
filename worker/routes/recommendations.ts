@@ -17,6 +17,15 @@ interface CuratedRow {
   items: any[];
 }
 
+// Categories where local podcasts naturally have fewer listeners but high relevance
+const LOCAL_BIASED_CATEGORIES = new Set([
+  "Sports",
+  "News",
+  "Government",
+  "Politics",
+  "Society & Culture",
+]);
+
 /** Cap episodes per podcast and interleave for diversity. */
 function diversifyEpisodes(episodes: any[], maxPerPodcast = 2, limit = 15): any[] {
   const byPodcast = new Map<string, any[]>();
@@ -46,6 +55,35 @@ function diversifyEpisodes(episodes: any[], maxPerPodcast = 2, limit = 15): any[
   return result;
 }
 
+/**
+ * Apply a soft locality boost to episode results when browsing a category
+ * with natural locality bias (Sports, News, etc.). Local pods have fewer
+ * listeners nationally but are highly relevant to the user's area.
+ *
+ * Episodes get a base score from their original rank position, then local
+ * pods receive an additive boost scaled by geo confidence. This lifts them
+ * in the list without forcing them to the top.
+ */
+function applyLocalBoost(
+  episodes: any[],
+  geoProfileMap: Map<string, number>, // podcastId → confidence (0-1)
+  boostWeight = 0.20,
+): any[] {
+  if (geoProfileMap.size === 0 || episodes.length === 0) return episodes;
+
+  const scored = episodes.map((ep, idx) => {
+    const pid = ep.podcast?.id ?? ep.podcastId;
+    // Base score: 1.0 for first, linearly decreasing
+    const baseScore = 1.0 - idx / episodes.length;
+    const geoConfidence = geoProfileMap.get(pid) ?? 0;
+    const boost = boostWeight * geoConfidence;
+    return { ep, score: baseScore + boost };
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+  return scored.map((s) => s.ep);
+}
+
 // --- Curated rows helper ---
 
 async function generateCuratedRows(
@@ -62,6 +100,20 @@ async function generateCuratedRows(
   const userExcludedCategories: string[] = explicit ? [] : (user.excludedCategories ?? []);
   const userExcludedTopics: string[] = explicit ? [] : (user.excludedTopics ?? []);
   const excludedTopicSet = new Set(userExcludedTopics.map((t: string) => t.toLowerCase()));
+
+  // Load geo profiles for locality boost when browsing locality-biased categories
+  let geoProfileMap = new Map<string, number>();
+  const applyLocality = genre != null && LOCAL_BIASED_CATEGORIES.has(genre) && user.dmaCode;
+  if (applyLocality) {
+    const geoProfiles = await prisma.podcastGeoProfile.findMany({
+      where: { dmaCode: user.dmaCode },
+      select: { podcastId: true, confidence: true },
+    });
+    for (const gp of geoProfiles) {
+      const existing = geoProfileMap.get(gp.podcastId) || 0;
+      geoProfileMap.set(gp.podcastId, Math.max(existing, gp.confidence));
+    }
+  }
 
   // Get user's subscribed + downvoted podcast IDs to exclude from discovery rows
   const [subscriptions, downvotes] = await Promise.all([
@@ -106,9 +158,11 @@ async function generateCuratedRows(
       },
     });
     // Post-filter episodes with excluded topics
-    const filtered = excludedTopicSet.size > 0
+    let filtered = excludedTopicSet.size > 0
       ? rawEpisodes.filter((ep: any) => !(ep.topicTags ?? []).some((t: string) => excludedTopicSet.has(t.toLowerCase())))
       : rawEpisodes;
+    // Boost local pods when browsing locality-biased categories
+    if (applyLocality) filtered = applyLocalBoost(filtered, geoProfileMap);
     const episodes = diversifyEpisodes(filtered, 2, 15);
     if (episodes.length > 0) {
       rows.push({
@@ -157,9 +211,10 @@ async function generateCuratedRows(
             podcast: { select: { id: true, title: true, author: true, imageUrl: true, categories: true } },
           },
         });
-        const filteredTopicEpisodes = excludedTopicSet.size > 0
+        let filteredTopicEpisodes = excludedTopicSet.size > 0
           ? rawTopicEpisodes.filter((ep: any) => !(ep.topicTags ?? []).some((t: string) => excludedTopicSet.has(t.toLowerCase())))
           : rawTopicEpisodes;
+        if (applyLocality) filteredTopicEpisodes = applyLocalBoost(filteredTopicEpisodes, geoProfileMap);
         const episodes = diversifyEpisodes(filteredTopicEpisodes, 2, 15);
         if (episodes.length > 0) {
           rows.push({
@@ -247,9 +302,11 @@ async function generateCuratedRows(
           podcast: { select: { id: true, title: true, author: true, imageUrl: true, categories: true } },
         },
       });
-      const episodes = excludedTopicSet.size > 0
-        ? rawSimilarEpisodes.filter((ep: any) => !(ep.topicTags ?? []).some((t: string) => excludedTopicSet.has(t.toLowerCase()))).slice(0, 15)
-        : rawSimilarEpisodes.slice(0, 15);
+      let similarFiltered = excludedTopicSet.size > 0
+        ? rawSimilarEpisodes.filter((ep: any) => !(ep.topicTags ?? []).some((t: string) => excludedTopicSet.has(t.toLowerCase())))
+        : rawSimilarEpisodes;
+      if (applyLocality) similarFiltered = applyLocalBoost(similarFiltered, geoProfileMap);
+      const episodes = similarFiltered.slice(0, 15);
       if (episodes.length > 0) {
         rows.push({
           title: `Because you like ${sourcePodcast.title}`,
@@ -382,9 +439,24 @@ recommendations.get("/episodes", async (c) => {
   ]);
 
   // Post-filter episodes with excluded topics, then diversify
-  const topicFiltered = excludedTopicSet.size > 0
+  let topicFiltered = excludedTopicSet.size > 0
     ? rawEpisodes.filter((ep: any) => !(ep.topicTags ?? []).some((t: string) => excludedTopicSet.has(t.toLowerCase())))
     : rawEpisodes;
+
+  // Boost local pods when browsing locality-biased categories
+  if (genre && LOCAL_BIASED_CATEGORIES.has(genre) && user.dmaCode) {
+    const geoProfiles = await prisma.podcastGeoProfile.findMany({
+      where: { dmaCode: user.dmaCode },
+      select: { podcastId: true, confidence: true },
+    });
+    const geoMap = new Map<string, number>();
+    for (const gp of geoProfiles) {
+      const existing = geoMap.get(gp.podcastId) || 0;
+      geoMap.set(gp.podcastId, Math.max(existing, gp.confidence));
+    }
+    topicFiltered = applyLocalBoost(topicFiltered, geoMap);
+  }
+
   const episodes = diversifyEpisodes(topicFiltered, 3, pageSize);
 
   return c.json({

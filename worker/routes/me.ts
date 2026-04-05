@@ -67,10 +67,12 @@ me.get("/", async (c) => {
     },
   });
 
-  // Opportunistically store DMA code from Cloudflare IP geolocation
+  // Opportunistically store DMA code from Cloudflare IP geolocation —
+  // only when user has no dmaCode yet (first visit). Once set (by auto-detect
+  // or user choice), we don't overwrite so the user's explicit selection sticks.
   const cf = (c.req.raw as any).cf;
   const detectedDma = cf?.metroCode != null ? String(cf.metroCode) : undefined;
-  if (detectedDma && fullUser.dmaCode !== detectedDma) {
+  if (detectedDma && !fullUser.dmaCode) {
     try {
       await prisma.user.update({
         where: { id: user.id },
