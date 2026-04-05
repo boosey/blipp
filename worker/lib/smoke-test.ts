@@ -63,6 +63,12 @@ function extractError(err: unknown): string {
   return String(err);
 }
 
+const SMOKE_TEST_VOICES: Record<string, string> = {
+  openai: "coral",
+  groq: "austin",
+  cloudflare: "default",
+};
+
 /**
  * Run a smoke test for a specific AI model provider.
  * Sends a minimal request to verify the provider is reachable and configured correctly.
@@ -103,7 +109,8 @@ export async function runSmokeTest(
 
       case "tts": {
         const impl = getTtsProviderImpl(provider);
-        await impl.synthesize("Hello.", "coral", providerModelId, undefined, env);
+        const voice = SMOKE_TEST_VOICES[provider] ?? "default";
+        await impl.synthesize("Hello.", voice, providerModelId, undefined, env);
         break;
       }
 

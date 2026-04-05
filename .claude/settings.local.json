@@ -11,5 +11,6 @@
       "Bash(cmd.exe /c \"where gh\" 2>/dev/null)",
       "Bash(npm run:*)"
     ]
-  }
+  },
+  "prefersReducedMotion": true
 }
