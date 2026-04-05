@@ -544,14 +544,16 @@ export function PodcastDetail({ podcastId: propPodcastId, scrollToEpisodeId }: {
           ) : (
             <>
               <h2 className="text-base font-semibold flex-1">Episodes</h2>
-              {episodes.length > 0 && (
+              {(episodes.length > 0 || episodeSort !== "latest" || episodeFilter !== "") && (
                 <>
-                  <button
-                    onClick={() => setSearchOpen(true)}
-                    className="p-1.5 rounded-full hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-                  >
-                    <Search className="w-4 h-4" />
-                  </button>
+                  {episodes.length > 0 && (
+                    <button
+                      onClick={() => setSearchOpen(true)}
+                      className="p-1.5 rounded-full hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                    >
+                      <Search className="w-4 h-4" />
+                    </button>
+                  )}
 
                   {/* Sort */}
                   <DropdownMenu>
