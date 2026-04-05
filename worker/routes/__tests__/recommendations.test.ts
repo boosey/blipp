@@ -96,7 +96,7 @@ describe("Recommendations routes", () => {
 
       const res = await app.request("/");
       expect(res.status).toBe(200);
-      expect(scoreRecommendations).toHaveBeenCalledWith("user1", mockPrisma);
+      expect(scoreRecommendations).toHaveBeenCalledWith("user1", mockPrisma, undefined, { dmaCode: undefined });
       const data = await res.json() as any;
       expect(data.source).toBe("personalized");
     });
