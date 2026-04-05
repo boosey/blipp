@@ -199,6 +199,7 @@ model Podcast {
   episodeCount   Int       @default(0)
   status         String    @default("active") // "active" | "paused" | "archived" | "pending_deletion" | "evicted"
   deliverable    Boolean   @default(true)     // false when no deliverable episodes exist
+  geoProcessedAt DateTime?                     // null = not geo-processed yet
   appleRank          Int?      // Position in Apple Top 200 chart (1-200, null if unranked)
   piRank             Int?      // Best position across PI trending categories (1 = most trending). Updated each discovery run.
   lastDetailViewedAt DateTime? // Last time any user fetched this podcast's detail page
@@ -214,6 +215,7 @@ model Podcast {
   votes             PodcastVote[]
   podcastCategories          PodcastCategory[]
   profile                    PodcastProfile?
+  geoProfiles                PodcastGeoProfile[]
   recommendationDismissals   RecommendationDismissal[]
 }
 
@@ -821,6 +823,7 @@ enum AiStage {
   distillation
   narrative
   tts
+  geoClassification
 }
 
 model AiModel {
@@ -1190,6 +1193,7 @@ model SportsTeam {
   division     SportsDivision?    @relation(fields: [divisionId], references: [id])
   markets        SportsTeamMarket[]
   userSelections UserSportsTeam[]
+  geoProfiles    PodcastGeoProfile[]
   createdAt    DateTime           @default(now())
   updatedAt    DateTime           @updatedAt
 
@@ -1216,4 +1220,22 @@ model UserSportsTeam {
 
   @@unique([userId, teamId])
   @@index([userId])
+}
+
+model PodcastGeoProfile {
+  id         String      @id @default(cuid())
+  podcastId  String
+  dmaCode    String      // Nielsen DMA code
+  scope      String      // "city" | "regional" | "state"
+  teamId     String?     // links to SportsTeam if team-specific
+  confidence Float       // 0-1
+  source     String      // "keyword" | "llm"
+  createdAt  DateTime    @default(now())
+
+  podcast    Podcast     @relation(fields: [podcastId], references: [id], onDelete: Cascade)
+  team       SportsTeam? @relation(fields: [teamId], references: [id])
+
+  @@unique([podcastId, dmaCode, teamId])
+  @@index([dmaCode])
+  @@index([podcastId])
 }

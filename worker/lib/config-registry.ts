@@ -46,6 +46,10 @@ export const CONFIG_REGISTRY: Record<string, ConfigEntry> = {
   "pipeline.feedRefresh.fetchTimeoutMs":        { type: "number", defaultValue: 10000, description: "Feed refresh timeout (ms)" },
   "pipeline.feedRefresh.batchConcurrency":      { type: "number", defaultValue: 10,    description: "Feed refresh queue send batch size" },
 
+  // ── Geo Classification ──
+  "geoClassification.llmProviderId": { type: "string",  defaultValue: "",    description: "AiProvider ID for LLM-based geo classification (pass 2)" },
+  "geoClassification.batchSize":     { type: "number",  defaultValue: 500,   description: "Max podcasts to geo-tag per cron run" },
+
   // ── Recommendations ──
   "recommendations.enabled":                  { type: "boolean", defaultValue: true,  description: "Enable recommendation engine" },
   "recommendations.embeddings.enabled":       { type: "boolean", defaultValue: false, description: "Enable embedding-based similarity" },
@@ -58,6 +62,7 @@ export const CONFIG_REGISTRY: Record<string, ConfigEntry> = {
   "recommendations.weights.topic":            { type: "number",  defaultValue: 0.15,  description: "Topic similarity weight" },
   "recommendations.weights.embedding":        { type: "number",  defaultValue: 0.15,  description: "Embedding similarity weight" },
   "recommendations.weights.explicitTopicBonus": { type: "number", defaultValue: 0.05, description: "Additive bonus for explicit topic matches" },
+  "recommendations.weights.localBoost":        { type: "number",  defaultValue: 0.10,  description: "Local content scoring weight" },
   "recommendations.explicit.categoryBoost":   { type: "number",  defaultValue: 1.0,   description: "Weight boost per explicit preferred category" },
   "recommendations.explicit.topicBoostFactor": { type: "number", defaultValue: 1.5,   description: "Factor above max implicit weight for explicit topics" },
   "recommendations.exclusion.topicPenalty":    { type: "number",  defaultValue: 0.3,   description: "Per-topic exclusion penalty multiplier" },

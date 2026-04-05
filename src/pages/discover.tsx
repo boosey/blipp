@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
-import { Search, X, Plus, Loader2, ArrowUpDown } from "lucide-react";
+import { Search, X, Plus, Loader2, ArrowUpDown, MapPin, Trophy } from "lucide-react";
 import { toast } from "sonner";
 import { useApiFetch } from "../lib/api";
 import { useFetch } from "../lib/use-fetch";
@@ -11,6 +11,7 @@ import { DiscoverSkeleton } from "../components/skeletons/discover-skeleton";
 import { EmptyState } from "../components/empty-state";
 import { usePullToRefresh } from "../hooks/use-pull-to-refresh";
 import { usePodcastSheet } from "../contexts/podcast-sheet-context";
+import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "../components/ui/accordion";
 import type { CuratedResponse, EpisodeBrowseItem, EpisodeBrowseResponse } from "../types/recommendations";
 
 interface CatalogPodcast {
@@ -77,6 +78,15 @@ export function Discover() {
   // --- Curated rows ---
   const curatedEndpoint = `/recommendations/curated${selectedCategory !== "All" ? `?genre=${encodeURIComponent(selectedCategory)}` : ""}`;
   const { data: curatedData, loading: curatedLoading } = useFetch<CuratedResponse>(curatedEndpoint);
+
+  // --- Local discovery ---
+  const { data: localData } = useFetch<{
+    data: {
+      local: { podcast: { id: string; title: string; imageUrl: string | null; author: string | null; categories: string[] }; scope: string; confidence: number }[];
+      localSports: { podcast: { id: string; title: string; imageUrl: string | null; author: string | null; categories: string[] }; scope: string; confidence: number; team: { id: string; name: string; nickname: string; abbreviation: string } }[];
+      dmaCode: string | null;
+    };
+  }>("/recommendations/local");
 
   // --- Episodes browse with pagination ---
   const [episodes, setEpisodes] = useState<EpisodeBrowseItem[]>([]);
@@ -308,6 +318,89 @@ export function Discover() {
           </button>
         ))}
       </ScrollableRow>
+
+      {/* Local discovery sections */}
+      {localData?.data?.dmaCode && (localData.data.local.length > 0 || localData.data.localSports.length > 0) && (
+        <Accordion type="multiple" defaultValue={["local", "local-sports"]}>
+          {localData.data.local.length > 0 && (
+            <AccordionItem value="local">
+              <AccordionTrigger>
+                <span className="flex items-center gap-2">
+                  <MapPin className="w-4 h-4" />
+                  Local Podcasts
+                </span>
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+                  {localData.data.local.map((item) => (
+                    <button
+                      key={item.podcast.id}
+                      onClick={() => openPodcast(item.podcast.id)}
+                      className="text-left"
+                    >
+                      {item.podcast.imageUrl ? (
+                        <img
+                          src={item.podcast.imageUrl}
+                          className="w-full aspect-square rounded-lg object-cover"
+                          alt=""
+                        />
+                      ) : (
+                        <div className="w-full aspect-square rounded-lg bg-muted flex items-center justify-center">
+                          <span className="text-2xl font-bold text-muted-foreground">
+                            {item.podcast.title.charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                      )}
+                      <p className="text-xs font-medium mt-1.5 truncate">{item.podcast.title}</p>
+                    </button>
+                  ))}
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          )}
+          {localData.data.localSports.length > 0 && (
+            <AccordionItem value="local-sports">
+              <AccordionTrigger>
+                <span className="flex items-center gap-2">
+                  <Trophy className="w-4 h-4" />
+                  Local Sports
+                </span>
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+                  {localData.data.localSports.map((item) => (
+                    <button
+                      key={item.podcast.id}
+                      onClick={() => openPodcast(item.podcast.id)}
+                      className="text-left"
+                    >
+                      {item.podcast.imageUrl ? (
+                        <img
+                          src={item.podcast.imageUrl}
+                          className="w-full aspect-square rounded-lg object-cover"
+                          alt=""
+                        />
+                      ) : (
+                        <div className="w-full aspect-square rounded-lg bg-muted flex items-center justify-center">
+                          <span className="text-2xl font-bold text-muted-foreground">
+                            {item.podcast.title.charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                      )}
+                      <p className="text-xs font-medium mt-1.5 truncate">{item.podcast.title}</p>
+                      {item.team?.nickname && (
+                        <span className="text-[10px] text-muted-foreground truncate block">
+                          {item.team.nickname}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          )}
+        </Accordion>
+      )}
 
       {/* Curated rows — smoothly hidden when searching */}
       <div

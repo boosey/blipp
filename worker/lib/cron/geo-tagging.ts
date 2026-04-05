@@ -1,0 +1,286 @@
+import type { CronLogger } from "./runner";
+import type { Env } from "../../types";
+import { getConfig } from "../config";
+import {
+  findCityMatches,
+  findStateMatches,
+  findRegionalMatches,
+  type GeoMatch,
+} from "../geo-lookup";
+import { getLlmProviderImpl } from "../llm-providers";
+
+/**
+ * Two-pass geo-tagging cron job:
+ * 1. Keyword matching using geo-lookup tables + sports team keywords from DB
+ * 2. LLM classification for unmatched Sports podcasts
+ */
+export async function runGeoTaggingJob(
+  prisma: any,
+  logger: CronLogger,
+  env: Env
+): Promise<Record<string, unknown>> {
+  const batchSize = await getConfig<number>(
+    prisma,
+    "geoClassification.batchSize",
+    500
+  );
+
+  // Fetch unprocessed podcasts
+  const podcasts = await prisma.podcast.findMany({
+    where: {
+      geoProcessedAt: null,
+      status: "active",
+    },
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      categories: true,
+    },
+    take: batchSize,
+  });
+
+  if (podcasts.length === 0) {
+    await logger.info("geo_tagging_no_podcasts", { message: "No unprocessed podcasts" });
+    return { processed: 0, pass1Matched: 0, pass2Matched: 0, pass2Attempted: 0 };
+  }
+
+  await logger.info("geo_tagging_start", { podcastCount: podcasts.length });
+
+  // Load sports teams with keywords for team-level matching
+  const sportsTeams = await prisma.sportsTeam.findMany({
+    select: {
+      id: true,
+      keywords: true,
+      markets: { select: { dmaCode: true } },
+    },
+  });
+
+  // ── Pass 1: Keyword matching ──
+  let pass1Matched = 0;
+  const unmatchedSports: typeof podcasts = [];
+
+  for (const podcast of podcasts) {
+    const title = podcast.title ?? "";
+    const description = podcast.description ?? "";
+
+    // Check sports team keywords first
+    const teamMatches: GeoMatch[] = [];
+    for (const team of sportsTeams) {
+      const keywords: string[] = team.keywords ?? [];
+      for (const keyword of keywords) {
+        const pattern = new RegExp(`\\b${keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+        if (pattern.test(title) || pattern.test(description)) {
+          for (const market of team.markets) {
+            teamMatches.push({
+              dmaCode: market.dmaCode,
+              scope: "city",
+              confidence: 0.95,
+              teamId: team.id,
+            });
+          }
+          break; // one keyword match per team is enough
+        }
+      }
+    }
+
+    // Geo-lookup matching
+    const cityMatches = findCityMatches(title, description);
+    const stateMatches = findStateMatches(title, description);
+    const regionalMatches = findRegionalMatches(title, description);
+
+    const allMatches = [...teamMatches, ...cityMatches, ...stateMatches, ...regionalMatches];
+
+    if (allMatches.length > 0) {
+      // Deduplicate by dmaCode+teamId, keeping highest confidence
+      const deduped = deduplicateMatches(allMatches);
+      await writeGeoProfiles(prisma, podcast.id, deduped, "keyword");
+      pass1Matched++;
+    } else {
+      // Check if this is a Sports podcast — candidate for LLM pass
+      const categories: string[] = podcast.categories ?? [];
+      const isSports = categories.some(
+        (c: string) => c.toLowerCase().includes("sport")
+      );
+      if (isSports) {
+        unmatchedSports.push(podcast);
+      }
+    }
+
+    // Mark as geo-processed regardless of match
+    await prisma.podcast.update({
+      where: { id: podcast.id },
+      data: { geoProcessedAt: new Date() },
+    });
+  }
+
+  // ── Pass 2: LLM classification for unmatched Sports podcasts ──
+  let pass2Matched = 0;
+  const pass2Attempted = unmatchedSports.length;
+
+  if (unmatchedSports.length > 0) {
+    const llmProviderId = await getConfig<string>(
+      prisma,
+      "geoClassification.llmProviderId",
+      ""
+    );
+
+    if (llmProviderId) {
+      // Resolve the LLM provider from AiProvider table
+      const aiProvider = await prisma.aiProvider.findUnique({
+        where: { id: llmProviderId },
+      });
+
+      if (aiProvider) {
+        const provider = getLlmProviderImpl(aiProvider.provider);
+        const model = aiProvider.providerModelId;
+
+        for (const podcast of unmatchedSports) {
+          try {
+            const result = await provider.complete(
+              [
+                {
+                  role: "user",
+                  content: buildGeoClassificationPrompt(
+                    podcast.title ?? "",
+                    podcast.description ?? ""
+                  ),
+                },
+              ],
+              model,
+              256,
+              env,
+              {
+                system:
+                  "You classify podcasts by US geographic market. Return valid JSON only.",
+              }
+            );
+
+            const parsed = parseGeoClassificationResponse(result.text);
+            if (parsed.length > 0) {
+              await writeGeoProfiles(prisma, podcast.id, parsed, "llm");
+              pass2Matched++;
+            }
+          } catch (err) {
+            await logger.warn("geo_tagging_llm_error", {
+              podcastId: podcast.id,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
+      } else {
+        await logger.warn("geo_tagging_no_provider", {
+          llmProviderId,
+          message: "AiProvider not found",
+        });
+      }
+    } else {
+      await logger.info("geo_tagging_llm_skipped", {
+        unmatchedSports: unmatchedSports.length,
+        message: "No LLM provider configured for geo classification",
+      });
+    }
+  }
+
+  await logger.info("geo_tagging_complete", {
+    processed: podcasts.length,
+    pass1Matched,
+    pass2Matched,
+    pass2Attempted,
+  });
+
+  return {
+    processed: podcasts.length,
+    pass1Matched,
+    pass2Matched,
+    pass2Attempted,
+  };
+}
+
+// ── Helpers ──
+
+function deduplicateMatches(matches: GeoMatch[]): GeoMatch[] {
+  const map = new Map<string, GeoMatch>();
+  for (const m of matches) {
+    const key = `${m.dmaCode}:${m.teamId ?? ""}`;
+    const existing = map.get(key);
+    if (!existing || m.confidence > existing.confidence) {
+      map.set(key, m);
+    }
+  }
+  return Array.from(map.values());
+}
+
+async function writeGeoProfiles(
+  prisma: any,
+  podcastId: string,
+  matches: GeoMatch[],
+  source: "keyword" | "llm"
+): Promise<void> {
+  for (const match of matches) {
+    await prisma.podcastGeoProfile.upsert({
+      where: {
+        podcastId_dmaCode_teamId: {
+          podcastId,
+          dmaCode: match.dmaCode,
+          teamId: match.teamId ?? null,
+        },
+      },
+      update: {
+        confidence: match.confidence,
+        scope: match.scope,
+        source,
+      },
+      create: {
+        podcastId,
+        dmaCode: match.dmaCode,
+        scope: match.scope,
+        teamId: match.teamId ?? null,
+        confidence: match.confidence,
+        source,
+      },
+    });
+  }
+}
+
+function buildGeoClassificationPrompt(title: string, description: string): string {
+  return `Analyze this podcast and determine if it targets a specific US geographic market.
+
+Title: ${title}
+Description: ${description}
+
+If this podcast targets a specific US city or region, return JSON:
+[{"dmaCode": "<Nielsen DMA code>", "scope": "city"|"state"|"regional", "confidence": 0.0-1.0}]
+
+Common DMA codes: New York=501, LA=803, Chicago=602, Houston=618, Dallas=623, SF=807, Seattle=819, Miami=528, Boston=506, Atlanta=524, Denver=751, Phoenix=753, Philadelphia=504, Detroit=505, Minneapolis=613.
+
+If the podcast is NOT geographically specific, return: []`;
+}
+
+function parseGeoClassificationResponse(text: string): GeoMatch[] {
+  try {
+    // Extract JSON array from response
+    const jsonMatch = text.match(/\[[\s\S]*?\]/);
+    if (!jsonMatch) return [];
+    const parsed = JSON.parse(jsonMatch[0]);
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+      .filter(
+        (item: any) =>
+          typeof item.dmaCode === "string" &&
+          typeof item.scope === "string" &&
+          typeof item.confidence === "number" &&
+          ["city", "state", "regional"].includes(item.scope) &&
+          item.confidence >= 0 &&
+          item.confidence <= 1
+      )
+      .map((item: any) => ({
+        dmaCode: String(item.dmaCode),
+        scope: item.scope as "city" | "state" | "regional",
+        confidence: item.confidence,
+      }));
+  } catch {
+    return [];
+  }
+}

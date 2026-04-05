@@ -5,6 +5,8 @@ import { useFetch } from "../lib/use-fetch";
 import { useOnboarding } from "../contexts/onboarding-context";
 import { usePlan } from "../contexts/plan-context";
 import { AlertTriangle, Check, ChevronRight, Headphones, Loader2, Search, X } from "lucide-react";
+import { InterestPicker } from "../components/interest-picker";
+import { SportsTeamPicker } from "../components/sports-team-picker";
 
 interface CatalogPodcast {
   id: string;
@@ -27,7 +29,7 @@ export default function Onboarding() {
   const apiFetch = useApiFetch();
   const { markComplete } = useOnboarding();
   const { subscriptions, maxDurationMinutes } = usePlan();
-  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [selectedPodcasts, setSelectedPodcasts] = useState<Map<string, CatalogPodcast>>(
     new Map()
   );
@@ -38,6 +40,15 @@ export default function Onboarding() {
   const [searchResults, setSearchResults] = useState<CatalogPodcast[] | null>(null);
   const [searching, setSearching] = useState(false);
 
+  // Interest preferences (step 2)
+  const [interests, setInterests] = useState({
+    preferredCategories: [] as string[],
+    excludedCategories: [] as string[],
+    preferredTopics: [] as string[],
+    excludedTopics: [] as string[],
+  });
+  const [savingInterests, setSavingInterests] = useState(false);
+
   const planLimit = subscriptions.limit;
   const currentUsed = subscriptions.used;
   const selectedCount = selectedPodcasts.size;
@@ -46,7 +57,7 @@ export default function Onboarding() {
 
   const { data: catalogData, loading: catalogLoading } = useFetch<{
     podcasts: CatalogPodcast[];
-  }>("/podcasts/catalog?pageSize=100", { enabled: step === 2 });
+  }>("/podcasts/catalog?pageSize=100", { enabled: step === 3 });
 
   const podcasts = catalogData?.podcasts ?? [];
 
@@ -87,13 +98,26 @@ export default function Onboarding() {
 
   const filteredPodcasts = useMemo(() => {
     const source = isSearching ? (searchResults ?? []) : podcasts;
-    if (categoryFilter === "All") return source;
-    return source.filter((p) =>
-      p.categories?.some(
-        (c) => c.toLowerCase() === categoryFilter.toLowerCase()
-      )
-    );
-  }, [isSearching, searchResults, podcasts, categoryFilter]);
+    const filtered = categoryFilter === "All"
+      ? source
+      : source.filter((p) =>
+          p.categories?.some(
+            (c) => c.toLowerCase() === categoryFilter.toLowerCase()
+          )
+        );
+
+    // Sort preferred categories to top when browsing "All"
+    if (categoryFilter === "All" && interests.preferredCategories.length > 0) {
+      const prefSet = new Set(interests.preferredCategories.map((c) => c.toLowerCase()));
+      return [...filtered].sort((a, b) => {
+        const aMatch = a.categories?.some((c) => prefSet.has(c.toLowerCase())) ? 1 : 0;
+        const bMatch = b.categories?.some((c) => prefSet.has(c.toLowerCase())) ? 1 : 0;
+        return bMatch - aMatch;
+      });
+    }
+
+    return filtered;
+  }, [isSearching, searchResults, podcasts, categoryFilter, interests.preferredCategories]);
 
   function togglePodcast(podcast: CatalogPodcast) {
     setSelectedPodcasts((prev) => {
@@ -147,7 +171,7 @@ export default function Onboarding() {
       sessionStorage.setItem("blipp-just-onboarded", "1");
     }
 
-    setStep(3);
+    setStep(4);
     setSaving(false);
   }
 
@@ -176,8 +200,77 @@ export default function Onboarding() {
     );
   }
 
-  // Step 2 — Subscribe to podcasts
+  // Step 2 — Tell us what you like
   if (step === 2) {
+    return (
+      <div className="min-h-screen bg-background text-foreground flex flex-col px-4 py-6">
+        <div className="space-y-4 flex-1">
+          <div>
+            <h1 className="text-xl font-bold">What are you into?</h1>
+            <p className="text-muted-foreground text-sm mt-1">
+              This helps us find podcasts you'll love.
+            </p>
+          </div>
+
+          <InterestPicker
+            preferredCategories={interests.preferredCategories}
+            excludedCategories={interests.excludedCategories}
+            preferredTopics={interests.preferredTopics}
+            excludedTopics={interests.excludedTopics}
+            onChange={setInterests}
+            compact
+          />
+
+          {/* Local sports teams (auto-detected from location) */}
+          <SportsTeamPicker compact />
+        </div>
+
+        <div className="sticky bottom-0 pt-4 pb-2 bg-background space-y-2">
+          <button
+            onClick={async () => {
+              const hasPrefs = interests.preferredCategories.length > 0 || interests.preferredTopics.length > 0;
+              if (hasPrefs) {
+                setSavingInterests(true);
+                try {
+                  await apiFetch("/me/preferences", {
+                    method: "PATCH",
+                    body: JSON.stringify(interests),
+                  });
+                } catch {
+                  // Non-critical — continue anyway
+                }
+                setSavingInterests(false);
+              }
+              setStep(3);
+            }}
+            disabled={savingInterests}
+            className="w-full py-3 bg-primary text-primary-foreground font-semibold rounded-xl hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {savingInterests ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                Continue
+                <ChevronRight className="w-4 h-4" />
+              </>
+            )}
+          </button>
+          <button
+            onClick={() => setStep(3)}
+            className="w-full py-2 text-muted-foreground text-sm hover:text-foreground/70 transition-colors"
+          >
+            Skip for now
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Step 3 — Subscribe to podcasts
+  if (step === 3) {
     return (
       <div className="min-h-screen bg-background text-foreground flex flex-col px-4 py-6">
         <div className="space-y-4 flex-1">

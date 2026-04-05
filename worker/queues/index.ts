@@ -18,6 +18,7 @@ import { runStaleJobReaperJob } from "../lib/cron/stale-job-reaper";
 import { runRecommendationsJob } from "../lib/cron/recommendations";
 import { runAppleDiscoveryJob, runPodcastIndexDiscoveryJob } from "../lib/cron/podcast-discovery";
 import { runListenOriginalAggregationJob } from "../lib/cron/listen-original-aggregation";
+import { runGeoTaggingJob } from "../lib/cron/geo-tagging";
 import type {
   TranscriptionMessage,
   DistillationMessage,
@@ -223,11 +224,18 @@ export async function scheduled(
         defaultIntervalMinutes: 30,
         execute: (logger) => runStaleJobReaperJob(prisma as any, logger),
       }),
+      runJob({
+        jobKey: "geo-tagging",
+        prisma: prisma as any,
+        defaultIntervalMinutes: 10080,
+        execute: (logger) => runGeoTaggingJob(prisma as any, logger, env),
+      }),
     ]);
 
     const jobKeys = [
       "apple-discovery", "podcast-index-discovery", "pipeline-trigger", "monitoring",
       "user-lifecycle", "data-retention", "recommendations", "listen-original-aggregation", "stale-job-reaper",
+      "geo-tagging",
     ];
     for (let i = 0; i < results.length; i++) {
       const r = results[i];

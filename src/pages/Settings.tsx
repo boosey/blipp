@@ -15,6 +15,8 @@ import { useTheme, type Theme } from "../contexts/theme-context";
 import { usePlan } from "../contexts/plan-context";
 import { useAppConfig } from "../lib/app-config";
 import { StorageSettings } from "../components/storage-settings";
+import { InterestPicker } from "../components/interest-picker";
+import { SportsTeamPicker } from "../components/sports-team-picker";
 import type { DurationTier } from "../lib/duration-tiers";
 import {
   Dialog,
@@ -38,6 +40,11 @@ interface UserInfo {
   defaultDurationTier: number;
   defaultVoicePresetId: string | null;
   acceptAnyVoice: boolean;
+  preferredCategories: string[];
+  excludedCategories: string[];
+  preferredTopics: string[];
+  excludedTopics: string[];
+  profileCompletedAt: string | null;
 }
 
 interface UsageData {
@@ -401,6 +408,44 @@ export function Settings() {
               }
             }}
           />
+        </div>
+      </section>
+
+      {/* Your Interests */}
+      {user && (
+        <section className="space-y-4">
+          <h2 className="text-lg font-semibold">Your Interests</h2>
+          <div className="bg-card border border-border rounded-xl p-4">
+            <InterestPicker
+              preferredCategories={user.preferredCategories ?? []}
+              excludedCategories={user.excludedCategories ?? []}
+              preferredTopics={user.preferredTopics ?? []}
+              excludedTopics={user.excludedTopics ?? []}
+              onChange={async (prefs) => {
+                try {
+                  await apiFetch("/me/preferences", {
+                    method: "PATCH",
+                    body: JSON.stringify(prefs),
+                  });
+                  toast.success("Interests updated");
+                  refetchUser();
+                } catch {
+                  toast.error("Failed to update interests");
+                }
+              }}
+            />
+          </div>
+        </section>
+      )}
+
+      {/* Sports Teams */}
+      <section className="space-y-4">
+        <h2 className="text-lg font-semibold">Sports Teams</h2>
+        <div className="bg-card border border-border rounded-xl p-4">
+          <p className="text-xs text-muted-foreground mb-3">
+            Follow teams to boost related podcast recommendations.
+          </p>
+          <SportsTeamPicker />
         </div>
       </section>
 

@@ -238,6 +238,40 @@ async function generateCuratedRows(
   return rows;
 }
 
+// GET /local — local podcasts for user's DMA
+recommendations.get("/local", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
+
+  const fullUser = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: { dmaCode: true },
+  });
+
+  if (!fullUser?.dmaCode) {
+    return c.json({ data: { local: [], localSports: [], dmaCode: null } });
+  }
+
+  const geoProfiles = await prisma.podcastGeoProfile.findMany({
+    where: { dmaCode: fullUser.dmaCode },
+    include: {
+      podcast: { select: { id: true, title: true, imageUrl: true, author: true, categories: true } },
+      team: { select: { id: true, name: true, nickname: true, abbreviation: true } },
+    },
+    orderBy: [{ confidence: "desc" }],
+  });
+
+  const local = geoProfiles.filter((gp: any) => !gp.teamId).map((gp: any) => ({
+    podcast: gp.podcast, scope: gp.scope, confidence: gp.confidence,
+  }));
+
+  const localSports = geoProfiles.filter((gp: any) => gp.teamId).map((gp: any) => ({
+    podcast: gp.podcast, scope: gp.scope, confidence: gp.confidence, team: gp.team,
+  }));
+
+  return c.json({ data: { local, localSports, dmaCode: fullUser.dmaCode } });
+});
+
 // GET /curated — Netflix-style curated rows
 recommendations.get("/curated", async (c) => {
   const prisma = c.get("prisma") as any;

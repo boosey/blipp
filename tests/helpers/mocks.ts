@@ -60,6 +60,7 @@ export function createMockPrisma() {
     promptVersion: modelMethods(),
     voicePreset: modelMethods(),
     feedback: modelMethods(),
+    podcastGeoProfile: modelMethods(),
     $disconnect: vi.fn().mockResolvedValue(undefined),
     $queryRawUnsafe: vi.fn().mockResolvedValue([]),
   };
