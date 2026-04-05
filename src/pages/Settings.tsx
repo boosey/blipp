@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { Sun, Moon, Monitor, Download, Trash2, LogOut } from "lucide-react";
+import { Sun, Moon, Monitor, Download, Trash2, LogOut, MapPin } from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { useClerk } from "@clerk/clerk-react";
@@ -29,6 +29,41 @@ import {
 
 declare const __APP_VERSION__: string;
 
+/** Nielsen DMA codes → metro area labels for the location picker. */
+const DMA_METROS: { code: string; label: string }[] = [
+  { code: "524", label: "Atlanta, GA" },
+  { code: "512", label: "Baltimore, MD" },
+  { code: "514", label: "Buffalo, NY" },
+  { code: "517", label: "Charlotte, NC" },
+  { code: "602", label: "Chicago, IL" },
+  { code: "515", label: "Cincinnati, OH" },
+  { code: "510", label: "Cleveland, OH" },
+  { code: "623", label: "Dallas–Fort Worth, TX" },
+  { code: "751", label: "Denver, CO" },
+  { code: "505", label: "Detroit, MI" },
+  { code: "658", label: "Green Bay, WI" },
+  { code: "618", label: "Houston, TX" },
+  { code: "527", label: "Indianapolis, IN" },
+  { code: "561", label: "Jacksonville, FL" },
+  { code: "616", label: "Kansas City, MO" },
+  { code: "839", label: "Las Vegas, NV" },
+  { code: "803", label: "Los Angeles, CA" },
+  { code: "528", label: "Miami–Fort Lauderdale, FL" },
+  { code: "617", label: "Milwaukee, WI" },
+  { code: "613", label: "Minneapolis–St. Paul, MN" },
+  { code: "659", label: "Nashville, TN" },
+  { code: "622", label: "New Orleans, LA" },
+  { code: "501", label: "New York, NY" },
+  { code: "504", label: "Philadelphia, PA" },
+  { code: "753", label: "Phoenix, AZ" },
+  { code: "508", label: "Pittsburgh, PA" },
+  { code: "807", label: "San Francisco–Oakland, CA" },
+  { code: "819", label: "Seattle–Tacoma, WA" },
+  { code: "539", label: "Tampa–St. Petersburg, FL" },
+  { code: "506", label: "Boston, MA" },
+  { code: "511", label: "Washington, DC" },
+];
+
 interface UserInfo {
   id: string;
   email: string;
@@ -45,6 +80,7 @@ interface UserInfo {
   preferredTopics: string[];
   excludedTopics: string[];
   profileCompletedAt: string | null;
+  dmaCode: string | null;
 }
 
 interface UsageData {
@@ -437,6 +473,43 @@ export function Settings() {
           </div>
         </section>
       )}
+
+      {/* Location */}
+      <section className="space-y-4">
+        <h2 className="text-lg font-semibold">Location</h2>
+        <div className="bg-card border border-border rounded-xl p-4">
+          <p className="text-xs text-muted-foreground mb-3">
+            Set your metro area for local sports and podcast recommendations.
+          </p>
+          <div className="relative">
+            <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+            <select
+              value={user?.dmaCode ?? ""}
+              onChange={async (e) => {
+                const dmaCode = e.target.value || null;
+                try {
+                  await apiFetch("/me/preferences", {
+                    method: "PATCH",
+                    body: JSON.stringify({ dmaCode }),
+                  });
+                  toast.success(dmaCode ? "Location updated" : "Location cleared");
+                  refetchUser();
+                } catch {
+                  toast.error("Failed to update location");
+                }
+              }}
+              className="w-full pl-9 pr-3 py-2 rounded-lg border border-border bg-background text-sm appearance-none cursor-pointer"
+            >
+              <option value="">Not set (auto-detect)</option>
+              {DMA_METROS.map((m) => (
+                <option key={m.code} value={m.code}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </section>
 
       {/* Sports Teams */}
       <section className="space-y-4">

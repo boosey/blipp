@@ -29,6 +29,7 @@ const PreferencesSchema = z.object({
   excludedCategories: z.array(z.string()).max(10).optional(),
   preferredTopics: z.array(z.string().max(50)).max(20).optional(),
   excludedTopics: z.array(z.string().max(50)).max(20).optional(),
+  dmaCode: z.string().max(10).nullable().optional(),
 });
 
 const DeleteAccountSchema = z.object({
@@ -191,6 +192,7 @@ me.patch("/preferences", async (c) => {
   if (body.excludedCategories !== undefined) data.excludedCategories = body.excludedCategories;
   if (body.preferredTopics !== undefined) data.preferredTopics = body.preferredTopics;
   if (body.excludedTopics !== undefined) data.excludedTopics = body.excludedTopics;
+  if (body.dmaCode !== undefined) data.dmaCode = body.dmaCode;
 
   // Mark profile as completed if any interest prefs are being set
   const hasInterestUpdate = body.preferredCategories !== undefined
@@ -204,8 +206,8 @@ me.patch("/preferences", async (c) => {
     data,
   });
 
-  // Recompute recommendation profile in background when interests change
-  if (hasInterestUpdate) {
+  // Recompute recommendation profile in background when interests or location change
+  if (hasInterestUpdate || body.dmaCode !== undefined) {
     try {
       await computeUserProfile(user.id, prisma);
       await recomputeRecommendationCache(user.id, prisma);
@@ -227,6 +229,7 @@ me.patch("/preferences", async (c) => {
       excludedCategories: updated.excludedCategories,
       preferredTopics: updated.preferredTopics,
       excludedTopics: updated.excludedTopics,
+      dmaCode: updated.dmaCode,
     },
   });
 });
