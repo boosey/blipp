@@ -9,7 +9,10 @@
       "Bash(gh run:*)",
       "Bash(where gh:*)",
       "Bash(cmd.exe /c \"where gh\" 2>/dev/null)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "mcp__composio__COMPOSIO_SEARCH_TOOLS",
+      "mcp__composio__COMPOSIO_MULTI_EXECUTE_TOOL",
+      "mcp__composio__COMPOSIO_MANAGE_CONNECTIONS"
     ]
   },
   "prefersReducedMotion": true
