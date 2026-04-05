@@ -210,3 +210,13 @@
 .animate-slide-up {
   animation: slide-up 0.3s ease-out;
 }
+
+/* Mini-player waveform bars */
+@keyframes waveform-pulse {
+  0%, 100% { height: 3px; }
+  50% { height: 11px; }
+}
+.waveform-bar {
+  height: 3px;
+  animation: waveform-pulse 0.75s ease-in-out infinite;
+}
