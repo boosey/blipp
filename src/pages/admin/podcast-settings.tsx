@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Check } from "lucide-react";
 import { useAdminFetch } from "@/lib/admin-api";
 import type { PlatformConfigEntry } from "@/types/admin";
 
@@ -68,6 +69,59 @@ const CONFIG_GROUPS: ConfigGroup[] = [
     ],
   },
 ];
+
+/** Number input that holds local state and saves on blur to avoid focus loss. */
+function NumberConfigInput({
+  value,
+  onSave,
+  saving,
+}: {
+  value: number;
+  onSave: (val: number) => void;
+  saving: boolean;
+}) {
+  const [local, setLocal] = useState(String(value));
+  const [saved, setSaved] = useState(false);
+  const prevValue = useRef(value);
+
+  // Sync from server when the server value changes (not from our own save)
+  useEffect(() => {
+    if (value !== prevValue.current) {
+      setLocal(String(value));
+      prevValue.current = value;
+    }
+  }, [value]);
+
+  const commit = () => {
+    const num = Math.max(1, Number(local) || 1);
+    setLocal(String(num));
+    if (num !== value) {
+      onSave(num);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1500);
+    }
+  };
+
+  return (
+    <div className="relative">
+      <Input
+        type="number"
+        min={1}
+        value={local}
+        onChange={(e) => setLocal(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => { if (e.key === "Enter") { e.currentTarget.blur(); } }}
+        className="w-24 h-8 text-xs bg-[#1A2942] border-white/10 text-[#F9FAFB] font-mono tabular-nums text-center"
+      />
+      {saving && (
+        <span className="absolute -right-5 top-1/2 -translate-y-1/2 text-[#9CA3AF] text-[10px]">…</span>
+      )}
+      {saved && !saving && (
+        <Check className="absolute -right-5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#14B8A6]" />
+      )}
+    </div>
+  );
+}
 
 function PodcastSettingsSkeleton() {
   return (
@@ -164,16 +218,10 @@ export default function PodcastSettings() {
                     ) : cfg.type === "readonly" ? (
                       <span className="text-xs font-mono text-[#9CA3AF] tabular-nums">{cfg.default}</span>
                     ) : (
-                      <Input
-                        type="number"
-                        min={1}
+                      <NumberConfigInput
                         value={currentValue as number}
-                        onChange={(e) => {
-                          const val = Math.max(1, Number(e.target.value));
-                          updateConfig(cfg.key, val);
-                        }}
-                        disabled={saving === cfg.key}
-                        className="w-24 h-8 text-xs bg-[#1A2942] border-white/10 text-[#F9FAFB] font-mono tabular-nums text-center"
+                        onSave={(val) => updateConfig(cfg.key, val)}
+                        saving={saving === cfg.key}
                       />
                     )}
                   </div>
