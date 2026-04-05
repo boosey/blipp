@@ -1141,3 +1141,59 @@ model PublisherReportBatch {
 
   @@index([publisherId, periodStart])
 }
+
+// ── Sports Teams & Markets ──
+
+model SportsLeague {
+  id        String           @id @default(cuid())
+  name      String           @unique // "NFL", "NBA", "Premier League"
+  sport     String           // "football", "basketball", "soccer"
+  country   String?          // "us", "gb" — null for international
+  divisions SportsDivision[]
+  teams     SportsTeam[]
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+}
+
+model SportsDivision {
+  id        String           @id @default(cuid())
+  name      String           // "AFC", "AFC East", "Eastern Conference"
+  leagueId  String
+  parentId  String?
+  league    SportsLeague     @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  parent    SportsDivision?  @relation("DivisionHierarchy", fields: [parentId], references: [id])
+  children  SportsDivision[] @relation("DivisionHierarchy")
+  teams     SportsTeam[]
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@unique([leagueId, name])
+}
+
+model SportsTeam {
+  id           String             @id @default(cuid())
+  name         String             // "Kansas City Chiefs"
+  city         String             // "Kansas City"
+  nickname     String             // "Chiefs"
+  abbreviation String             // "KC"
+  keywords     String[]           // title-match terms: ["Chiefs", "Kansas City Chiefs"]
+  leagueId     String
+  divisionId   String?
+  league       SportsLeague       @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  division     SportsDivision?    @relation(fields: [divisionId], references: [id])
+  markets      SportsTeamMarket[]
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  @@unique([leagueId, abbreviation])
+}
+
+model SportsTeamMarket {
+  id      String     @id @default(cuid())
+  teamId  String
+  dmaCode String     // Cloudflare cf.metroCode (Nielsen DMA)
+  team    SportsTeam @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, dmaCode])
+  @@index([dmaCode])
+}

@@ -376,7 +376,9 @@ recommendations.get("/", async (c) => {
   }
 
   // Compute fresh
-  const result = await scoreRecommendations(user.id, prisma);
+  const cf = (c.req.raw as any).cf;
+  const dmaCode = cf?.metroCode != null ? String(cf.metroCode) : undefined;
+  const result = await scoreRecommendations(user.id, prisma, undefined, { dmaCode });
 
   // Hydrate with podcast data
   const podcastIds = result.recommendations.map((r) => r.podcastId);

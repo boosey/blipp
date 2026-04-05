@@ -351,7 +351,8 @@ export async function computeUserProfile(userId: string, prisma: any): Promise<v
 export async function scoreRecommendations(
   userId: string,
   prisma: any,
-  maxResults?: number
+  maxResults?: number,
+  options?: { dmaCode?: string }
 ): Promise<RecommendationResult> {
   const configMax = await getConfig(prisma, "recommendations.cache.maxResults", 20);
   const limit = maxResults ?? (configMax as number);
@@ -362,6 +363,17 @@ export async function scoreRecommendations(
   const wOverlap = await getConfig(prisma, "recommendations.weights.subscriberOverlap", 0.15);
   const wTopic = await getConfig(prisma, "recommendations.weights.topic", 0.15);
   const wEmbedding = await getConfig(prisma, "recommendations.weights.embedding", 0.15);
+  const wSportsLocal = await getConfig(prisma, "recommendations.weights.sportsLocal", 0.10);
+
+  // Resolve local team keywords from DMA code
+  let localTeamKeywords: string[] = [];
+  if (options?.dmaCode) {
+    const markets = await prisma.sportsTeamMarket.findMany({
+      where: { dmaCode: options.dmaCode },
+      include: { team: { select: { keywords: true } } },
+    });
+    localTeamKeywords = markets.flatMap((m: any) => m.team.keywords.map((k: string) => k.toLowerCase()));
+  }
 
   // Get user's subscribed, downvoted, and dismissed podcast IDs to exclude
   const [subscriptions, downvotes, dismissals] = await Promise.all([
@@ -430,12 +442,12 @@ export async function scoreRecommendations(
   if (!userProfile) {
     // Compute on the fly if missing
     await computeUserProfile(userId, prisma);
-    return scoreRecommendations(userId, prisma, maxResults);
+    return scoreRecommendations(userId, prisma, maxResults, options);
   }
 
   const podcastProfiles = await prisma.podcastProfile.findMany({
     where: { podcastId: { notIn: [...excludeIds] }, podcast: { deliverable: true } },
-    include: { podcast: { select: { subscriptions: { select: { userId: true } } } } },
+    include: { podcast: { select: { title: true, categories: true, subscriptions: { select: { userId: true } } } } },
   });
 
   // Build subscriber sets for overlap computation
@@ -504,6 +516,21 @@ export async function scoreRecommendations(
       if (embScore > 0.7) reasons.push("Semantically similar to podcasts you enjoy");
     }
 
+    // Sports local team boost (additive, only for Sports-category podcasts matching a local team)
+    let sportsLocalBoost = 0;
+    if (localTeamKeywords.length > 0) {
+      const podcastCategories: string[] = (profile.podcast?.categories || []).map((c: string) => c.toLowerCase());
+      const isSports = podcastCategories.some((c: string) => c.includes("sport"));
+      if (isSports) {
+        const title = (profile.podcast?.title || "").toLowerCase();
+        const matchesLocalTeam = localTeamKeywords.some((kw) => title.includes(kw));
+        if (matchesLocalTeam) {
+          sportsLocalBoost = wSportsLocal as number;
+          reasons.push("Covers your local team");
+        }
+      }
+    }
+
     let score: number;
     if (hasEmbedding) {
       score =
@@ -512,7 +539,8 @@ export async function scoreRecommendations(
         (wEmbedding as number) * embScore +
         (wPopularity as number) * profile.popularity +
         (wFreshness as number) * profile.freshness +
-        (wOverlap as number) * overlapScore;
+        (wOverlap as number) * overlapScore +
+        sportsLocalBoost;
     } else {
       // Redistribute embedding weight proportionally to other signals
       const totalOther = (wCategory as number) + (wTopic as number) + (wPopularity as number) + (wFreshness as number) + (wOverlap as number);
@@ -522,7 +550,8 @@ export async function scoreRecommendations(
         (wTopic as number) * scale * topicScore +
         (wPopularity as number) * scale * profile.popularity +
         (wFreshness as number) * scale * profile.freshness +
-        (wOverlap as number) * scale * overlapScore;
+        (wOverlap as number) * scale * overlapScore +
+        sportsLocalBoost;
     }
 
     if (reasons.length === 0) reasons.push("Recommended for you");
