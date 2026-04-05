@@ -90,12 +90,34 @@ function renderSettings() {
   );
 }
 
+/** Click a tab pill by label to switch sections. */
+function switchTab(label: string) {
+  fireEvent.click(screen.getByRole("tab", { name: label }));
+}
+
 describe("Settings Page", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  describe("Account section", () => {
+  describe("Tab navigation", () => {
+    it("renders all tab pills", () => {
+      renderSettings();
+
+      expect(screen.getByRole("tab", { name: "Profile" })).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: "Content" })).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: "App" })).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: "Account" })).toBeInTheDocument();
+    });
+
+    it("defaults to Profile tab", () => {
+      renderSettings();
+
+      expect(screen.getByRole("tab", { name: "Profile" })).toHaveAttribute("aria-selected", "true");
+    });
+  });
+
+  describe("Account section (Profile tab)", () => {
     it("renders user avatar, name, and email", () => {
       renderSettings();
 
@@ -112,7 +134,7 @@ describe("Settings Page", () => {
     });
   });
 
-  describe("Usage meters", () => {
+  describe("Usage meters (Profile tab)", () => {
     it("renders usage meters with correct values", () => {
       renderSettings();
 
@@ -128,44 +150,50 @@ describe("Settings Page", () => {
     });
   });
 
-  describe("About section", () => {
+  describe("About section (Account tab)", () => {
     it("shows app version", () => {
       renderSettings();
+      switchTab("Account");
 
       expect(screen.getByText("0.8.17")).toBeInTheDocument();
     });
 
     it("shows Terms and Privacy links", () => {
       renderSettings();
+      switchTab("Account");
 
       expect(screen.getByText("Terms of Service")).toBeInTheDocument();
       expect(screen.getByText("Privacy Policy")).toBeInTheDocument();
     });
   });
 
-  describe("Data & Privacy", () => {
+  describe("Data & Privacy (Account tab)", () => {
     it("renders export data button", () => {
       renderSettings();
+      switchTab("Account");
 
       expect(screen.getByText("Export My Data")).toBeInTheDocument();
     });
 
     it("renders delete account button", () => {
       renderSettings();
+      switchTab("Account");
 
       expect(screen.getByText("Delete Account")).toBeInTheDocument();
     });
   });
 
-  describe("Sign Out", () => {
+  describe("Sign Out (Account tab)", () => {
     it("renders sign out button", () => {
       renderSettings();
+      switchTab("Account");
 
       expect(screen.getByText("Sign Out")).toBeInTheDocument();
     });
 
     it("calls signOut when clicked", () => {
       renderSettings();
+      switchTab("Account");
 
       fireEvent.click(screen.getByText("Sign Out"));
 
@@ -173,18 +201,17 @@ describe("Settings Page", () => {
     });
   });
 
-  describe("Delete Account flow", () => {
+  describe("Delete Account flow (Account tab)", () => {
     it("opens delete confirmation dialog", async () => {
       renderSettings();
+      switchTab("Account");
 
       fireEvent.click(screen.getByText("Delete Account"));
 
-      // Dialog opens in a portal; use getByRole to find content reliably
       await waitFor(() => {
         expect(screen.getByRole("dialog")).toBeInTheDocument();
       });
 
-      // Verify dialog content is present (search within dialog)
       const dialog = screen.getByRole("dialog");
       expect(dialog).toHaveTextContent("Type DELETE to confirm");
     });
@@ -192,6 +219,7 @@ describe("Settings Page", () => {
     it("disables delete button until DELETE is typed", async () => {
       const user = userEvent.setup();
       renderSettings();
+      switchTab("Account");
 
       fireEvent.click(screen.getByText("Delete Account"));
 
@@ -199,15 +227,12 @@ describe("Settings Page", () => {
         expect(screen.getByRole("dialog")).toBeInTheDocument();
       });
 
-      // The "Delete My Account" button should be disabled initially
       const deleteBtn = screen.getByRole("button", { name: "Delete My Account" });
       expect(deleteBtn).toBeDisabled();
 
-      // Type "DELETE" into the confirmation input
       const input = screen.getByPlaceholderText("DELETE");
       await user.type(input, "DELETE");
 
-      // Now the button should be enabled
       expect(deleteBtn).not.toBeDisabled();
     });
   });
