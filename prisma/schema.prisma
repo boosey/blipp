@@ -91,7 +91,10 @@ model User {
   excludedCategories    String[]          // categories to never recommend
   preferredTopics       String[]          // free-text topic interests, e.g. ["AI", "NBA"]
   excludedTopics        String[]          // topics to suppress from recommendations
-  dmaCode               String?           // Cloudflare cf.metroCode (Nielsen DMA) for local sports
+  zipCode               String?           // user-entered US zip code
+  city                  String?           // resolved from zip code or Cloudflare cf.city
+  state                 String?           // resolved from zip code or Cloudflare cf.region
+  country               String?  @default("US")  // resolved from zip code or Cloudflare cf.country
   profileCompletedAt    DateTime?         // when user last saved interest preferences
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
@@ -1203,11 +1206,12 @@ model SportsTeam {
 model SportsTeamMarket {
   id      String     @id @default(cuid())
   teamId  String
-  dmaCode String     // Cloudflare cf.metroCode (Nielsen DMA)
+  city    String
+  state   String
   team    SportsTeam @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
-  @@unique([teamId, dmaCode])
-  @@index([dmaCode])
+  @@unique([teamId, city, state])
+  @@index([city, state])
 }
 
 model UserSportsTeam {
@@ -1225,7 +1229,9 @@ model UserSportsTeam {
 model PodcastGeoProfile {
   id         String      @id @default(cuid())
   podcastId  String
-  dmaCode    String      // Nielsen DMA code
+  city       String      // city name (empty string for state-level matches)
+  state      String      // full state name
+  country    String      @default("US")
   scope      String      // "city" | "regional" | "state"
   teamId     String?     // links to SportsTeam if team-specific
   confidence Float       // 0-1
@@ -1235,7 +1241,7 @@ model PodcastGeoProfile {
   podcast    Podcast     @relation(fields: [podcastId], references: [id], onDelete: Cascade)
   team       SportsTeam? @relation(fields: [teamId], references: [id])
 
-  @@unique([podcastId, dmaCode, teamId])
-  @@index([dmaCode])
+  @@unique([podcastId, city, state, teamId])
+  @@index([city, state])
   @@index([podcastId])
 }

@@ -653,50 +653,50 @@ Then proceed directly into the content.`;
 
   type TeamSeed = {
     name: string; city: string; nickname: string; abbreviation: string;
-    keywords: string[]; division: string; dmaCodes: string[];
+    keywords: string[]; division: string; markets: { city: string; state: string }[];
   };
 
   const nflTeams: TeamSeed[] = [
     // AFC East
-    { name: "Buffalo Bills",          city: "Buffalo",       nickname: "Bills",       abbreviation: "BUF", division: "afcEast",  dmaCodes: ["514"],       keywords: ["Buffalo Bills", "Bills"] },
-    { name: "Miami Dolphins",         city: "Miami",         nickname: "Dolphins",    abbreviation: "MIA", division: "afcEast",  dmaCodes: ["528"],       keywords: ["Miami Dolphins", "Dolphins"] },
-    { name: "New England Patriots",   city: "New England",   nickname: "Patriots",    abbreviation: "NE",  division: "afcEast",  dmaCodes: ["506"],       keywords: ["New England Patriots", "Patriots", "Pats"] },
-    { name: "New York Jets",          city: "New York",      nickname: "Jets",        abbreviation: "NYJ", division: "afcEast",  dmaCodes: ["501"],       keywords: ["New York Jets", "NY Jets", "Jets"] },
+    { name: "Buffalo Bills",          city: "Buffalo",       nickname: "Bills",       abbreviation: "BUF", division: "afcEast",  markets: [{ city: "Buffalo", state: "New York" }],             keywords: ["Buffalo Bills", "Bills"] },
+    { name: "Miami Dolphins",         city: "Miami",         nickname: "Dolphins",    abbreviation: "MIA", division: "afcEast",  markets: [{ city: "Miami", state: "Florida" }],                keywords: ["Miami Dolphins", "Dolphins"] },
+    { name: "New England Patriots",   city: "New England",   nickname: "Patriots",    abbreviation: "NE",  division: "afcEast",  markets: [{ city: "Boston", state: "Massachusetts" }],          keywords: ["New England Patriots", "Patriots", "Pats"] },
+    { name: "New York Jets",          city: "New York",      nickname: "Jets",        abbreviation: "NYJ", division: "afcEast",  markets: [{ city: "New York", state: "New York" }],             keywords: ["New York Jets", "NY Jets", "Jets"] },
     // AFC North
-    { name: "Baltimore Ravens",       city: "Baltimore",     nickname: "Ravens",      abbreviation: "BAL", division: "afcNorth", dmaCodes: ["512"],       keywords: ["Baltimore Ravens", "Ravens"] },
-    { name: "Cincinnati Bengals",     city: "Cincinnati",    nickname: "Bengals",     abbreviation: "CIN", division: "afcNorth", dmaCodes: ["515"],       keywords: ["Cincinnati Bengals", "Bengals", "Who Dey"] },
-    { name: "Cleveland Browns",       city: "Cleveland",     nickname: "Browns",      abbreviation: "CLE", division: "afcNorth", dmaCodes: ["510"],       keywords: ["Cleveland Browns", "Browns"] },
-    { name: "Pittsburgh Steelers",    city: "Pittsburgh",    nickname: "Steelers",    abbreviation: "PIT", division: "afcNorth", dmaCodes: ["508"],       keywords: ["Pittsburgh Steelers", "Steelers"] },
+    { name: "Baltimore Ravens",       city: "Baltimore",     nickname: "Ravens",      abbreviation: "BAL", division: "afcNorth", markets: [{ city: "Baltimore", state: "Maryland" }],             keywords: ["Baltimore Ravens", "Ravens"] },
+    { name: "Cincinnati Bengals",     city: "Cincinnati",    nickname: "Bengals",     abbreviation: "CIN", division: "afcNorth", markets: [{ city: "Cincinnati", state: "Ohio" }],                keywords: ["Cincinnati Bengals", "Bengals", "Who Dey"] },
+    { name: "Cleveland Browns",       city: "Cleveland",     nickname: "Browns",      abbreviation: "CLE", division: "afcNorth", markets: [{ city: "Cleveland", state: "Ohio" }],                 keywords: ["Cleveland Browns", "Browns"] },
+    { name: "Pittsburgh Steelers",    city: "Pittsburgh",    nickname: "Steelers",    abbreviation: "PIT", division: "afcNorth", markets: [{ city: "Pittsburgh", state: "Pennsylvania" }],         keywords: ["Pittsburgh Steelers", "Steelers"] },
     // AFC South
-    { name: "Houston Texans",         city: "Houston",       nickname: "Texans",      abbreviation: "HOU", division: "afcSouth", dmaCodes: ["618"],       keywords: ["Houston Texans", "Texans"] },
-    { name: "Indianapolis Colts",     city: "Indianapolis",  nickname: "Colts",       abbreviation: "IND", division: "afcSouth", dmaCodes: ["527"],       keywords: ["Indianapolis Colts", "Colts"] },
-    { name: "Jacksonville Jaguars",   city: "Jacksonville",  nickname: "Jaguars",     abbreviation: "JAX", division: "afcSouth", dmaCodes: ["561"],       keywords: ["Jacksonville Jaguars", "Jaguars", "Jags"] },
-    { name: "Tennessee Titans",       city: "Nashville",     nickname: "Titans",      abbreviation: "TEN", division: "afcSouth", dmaCodes: ["659"],       keywords: ["Tennessee Titans", "Titans"] },
+    { name: "Houston Texans",         city: "Houston",       nickname: "Texans",      abbreviation: "HOU", division: "afcSouth", markets: [{ city: "Houston", state: "Texas" }],                  keywords: ["Houston Texans", "Texans"] },
+    { name: "Indianapolis Colts",     city: "Indianapolis",  nickname: "Colts",       abbreviation: "IND", division: "afcSouth", markets: [{ city: "Indianapolis", state: "Indiana" }],            keywords: ["Indianapolis Colts", "Colts"] },
+    { name: "Jacksonville Jaguars",   city: "Jacksonville",  nickname: "Jaguars",     abbreviation: "JAX", division: "afcSouth", markets: [{ city: "Jacksonville", state: "Florida" }],            keywords: ["Jacksonville Jaguars", "Jaguars", "Jags"] },
+    { name: "Tennessee Titans",       city: "Nashville",     nickname: "Titans",      abbreviation: "TEN", division: "afcSouth", markets: [{ city: "Nashville", state: "Tennessee" }],             keywords: ["Tennessee Titans", "Titans"] },
     // AFC West
-    { name: "Denver Broncos",         city: "Denver",        nickname: "Broncos",     abbreviation: "DEN", division: "afcWest",  dmaCodes: ["751"],       keywords: ["Denver Broncos", "Broncos"] },
-    { name: "Kansas City Chiefs",     city: "Kansas City",   nickname: "Chiefs",      abbreviation: "KC",  division: "afcWest",  dmaCodes: ["616"],       keywords: ["Kansas City Chiefs", "Chiefs", "KC Chiefs"] },
-    { name: "Las Vegas Raiders",      city: "Las Vegas",     nickname: "Raiders",     abbreviation: "LV",  division: "afcWest",  dmaCodes: ["839"],       keywords: ["Las Vegas Raiders", "Raiders"] },
-    { name: "Los Angeles Chargers",   city: "Los Angeles",   nickname: "Chargers",    abbreviation: "LAC", division: "afcWest",  dmaCodes: ["803"],       keywords: ["Los Angeles Chargers", "LA Chargers", "Chargers"] },
+    { name: "Denver Broncos",         city: "Denver",        nickname: "Broncos",     abbreviation: "DEN", division: "afcWest",  markets: [{ city: "Denver", state: "Colorado" }],                 keywords: ["Denver Broncos", "Broncos"] },
+    { name: "Kansas City Chiefs",     city: "Kansas City",   nickname: "Chiefs",      abbreviation: "KC",  division: "afcWest",  markets: [{ city: "Kansas City", state: "Missouri" }],            keywords: ["Kansas City Chiefs", "Chiefs", "KC Chiefs"] },
+    { name: "Las Vegas Raiders",      city: "Las Vegas",     nickname: "Raiders",     abbreviation: "LV",  division: "afcWest",  markets: [{ city: "Las Vegas", state: "Nevada" }],                keywords: ["Las Vegas Raiders", "Raiders"] },
+    { name: "Los Angeles Chargers",   city: "Los Angeles",   nickname: "Chargers",    abbreviation: "LAC", division: "afcWest",  markets: [{ city: "Los Angeles", state: "California" }],          keywords: ["Los Angeles Chargers", "LA Chargers", "Chargers"] },
     // NFC East
-    { name: "Dallas Cowboys",         city: "Dallas",        nickname: "Cowboys",     abbreviation: "DAL", division: "nfcEast",  dmaCodes: ["623"],       keywords: ["Dallas Cowboys", "Cowboys"] },
-    { name: "New York Giants",        city: "New York",      nickname: "Giants",      abbreviation: "NYG", division: "nfcEast",  dmaCodes: ["501"],       keywords: ["New York Giants", "NY Giants", "Giants"] },
-    { name: "Philadelphia Eagles",    city: "Philadelphia",  nickname: "Eagles",      abbreviation: "PHI", division: "nfcEast",  dmaCodes: ["504"],       keywords: ["Philadelphia Eagles", "Eagles"] },
-    { name: "Washington Commanders",  city: "Washington",    nickname: "Commanders",  abbreviation: "WAS", division: "nfcEast",  dmaCodes: ["511"],       keywords: ["Washington Commanders", "Commanders"] },
+    { name: "Dallas Cowboys",         city: "Dallas",        nickname: "Cowboys",     abbreviation: "DAL", division: "nfcEast",  markets: [{ city: "Dallas", state: "Texas" }],                    keywords: ["Dallas Cowboys", "Cowboys"] },
+    { name: "New York Giants",        city: "New York",      nickname: "Giants",      abbreviation: "NYG", division: "nfcEast",  markets: [{ city: "New York", state: "New York" }],               keywords: ["New York Giants", "NY Giants", "Giants"] },
+    { name: "Philadelphia Eagles",    city: "Philadelphia",  nickname: "Eagles",      abbreviation: "PHI", division: "nfcEast",  markets: [{ city: "Philadelphia", state: "Pennsylvania" }],       keywords: ["Philadelphia Eagles", "Eagles"] },
+    { name: "Washington Commanders",  city: "Washington",    nickname: "Commanders",  abbreviation: "WAS", division: "nfcEast",  markets: [{ city: "Washington", state: "District of Columbia" }], keywords: ["Washington Commanders", "Commanders"] },
     // NFC North
-    { name: "Chicago Bears",          city: "Chicago",       nickname: "Bears",       abbreviation: "CHI", division: "nfcNorth", dmaCodes: ["602"],       keywords: ["Chicago Bears", "Bears", "Da Bears"] },
-    { name: "Detroit Lions",          city: "Detroit",       nickname: "Lions",       abbreviation: "DET", division: "nfcNorth", dmaCodes: ["505"],       keywords: ["Detroit Lions", "Lions"] },
-    { name: "Green Bay Packers",      city: "Green Bay",     nickname: "Packers",     abbreviation: "GB",  division: "nfcNorth", dmaCodes: ["658", "617"], keywords: ["Green Bay Packers", "Packers"] },
-    { name: "Minnesota Vikings",      city: "Minneapolis",   nickname: "Vikings",     abbreviation: "MIN", division: "nfcNorth", dmaCodes: ["613"],       keywords: ["Minnesota Vikings", "Vikings"] },
+    { name: "Chicago Bears",          city: "Chicago",       nickname: "Bears",       abbreviation: "CHI", division: "nfcNorth", markets: [{ city: "Chicago", state: "Illinois" }],                keywords: ["Chicago Bears", "Bears", "Da Bears"] },
+    { name: "Detroit Lions",          city: "Detroit",       nickname: "Lions",       abbreviation: "DET", division: "nfcNorth", markets: [{ city: "Detroit", state: "Michigan" }],                 keywords: ["Detroit Lions", "Lions"] },
+    { name: "Green Bay Packers",      city: "Green Bay",     nickname: "Packers",     abbreviation: "GB",  division: "nfcNorth", markets: [{ city: "Green Bay", state: "Wisconsin" }, { city: "Milwaukee", state: "Wisconsin" }], keywords: ["Green Bay Packers", "Packers"] },
+    { name: "Minnesota Vikings",      city: "Minneapolis",   nickname: "Vikings",     abbreviation: "MIN", division: "nfcNorth", markets: [{ city: "Minneapolis", state: "Minnesota" }],           keywords: ["Minnesota Vikings", "Vikings"] },
     // NFC South
-    { name: "Atlanta Falcons",        city: "Atlanta",       nickname: "Falcons",     abbreviation: "ATL", division: "nfcSouth", dmaCodes: ["524"],       keywords: ["Atlanta Falcons", "Falcons"] },
-    { name: "Carolina Panthers",      city: "Charlotte",     nickname: "Panthers",    abbreviation: "CAR", division: "nfcSouth", dmaCodes: ["517"],       keywords: ["Carolina Panthers", "Panthers"] },
-    { name: "New Orleans Saints",     city: "New Orleans",   nickname: "Saints",      abbreviation: "NO",  division: "nfcSouth", dmaCodes: ["622"],       keywords: ["New Orleans Saints", "Saints", "Who Dat"] },
-    { name: "Tampa Bay Buccaneers",   city: "Tampa",         nickname: "Buccaneers",  abbreviation: "TB",  division: "nfcSouth", dmaCodes: ["539"],       keywords: ["Tampa Bay Buccaneers", "Buccaneers", "Bucs"] },
+    { name: "Atlanta Falcons",        city: "Atlanta",       nickname: "Falcons",     abbreviation: "ATL", division: "nfcSouth", markets: [{ city: "Atlanta", state: "Georgia" }],                 keywords: ["Atlanta Falcons", "Falcons"] },
+    { name: "Carolina Panthers",      city: "Charlotte",     nickname: "Panthers",    abbreviation: "CAR", division: "nfcSouth", markets: [{ city: "Charlotte", state: "North Carolina" }],        keywords: ["Carolina Panthers", "Panthers"] },
+    { name: "New Orleans Saints",     city: "New Orleans",   nickname: "Saints",      abbreviation: "NO",  division: "nfcSouth", markets: [{ city: "New Orleans", state: "Louisiana" }],           keywords: ["New Orleans Saints", "Saints", "Who Dat"] },
+    { name: "Tampa Bay Buccaneers",   city: "Tampa",         nickname: "Buccaneers",  abbreviation: "TB",  division: "nfcSouth", markets: [{ city: "Tampa", state: "Florida" }],                   keywords: ["Tampa Bay Buccaneers", "Buccaneers", "Bucs"] },
     // NFC West
-    { name: "Arizona Cardinals",      city: "Phoenix",       nickname: "Cardinals",   abbreviation: "ARI", division: "nfcWest",  dmaCodes: ["753"],       keywords: ["Arizona Cardinals", "Cardinals"] },
-    { name: "Los Angeles Rams",       city: "Los Angeles",   nickname: "Rams",        abbreviation: "LAR", division: "nfcWest",  dmaCodes: ["803"],       keywords: ["Los Angeles Rams", "LA Rams", "Rams"] },
-    { name: "San Francisco 49ers",    city: "San Francisco", nickname: "49ers",       abbreviation: "SF",  division: "nfcWest",  dmaCodes: ["807"],       keywords: ["San Francisco 49ers", "49ers", "Niners"] },
-    { name: "Seattle Seahawks",       city: "Seattle",       nickname: "Seahawks",    abbreviation: "SEA", division: "nfcWest",  dmaCodes: ["819"],       keywords: ["Seattle Seahawks", "Seahawks"] },
+    { name: "Arizona Cardinals",      city: "Phoenix",       nickname: "Cardinals",   abbreviation: "ARI", division: "nfcWest",  markets: [{ city: "Phoenix", state: "Arizona" }],                 keywords: ["Arizona Cardinals", "Cardinals"] },
+    { name: "Los Angeles Rams",       city: "Los Angeles",   nickname: "Rams",        abbreviation: "LAR", division: "nfcWest",  markets: [{ city: "Los Angeles", state: "California" }],          keywords: ["Los Angeles Rams", "LA Rams", "Rams"] },
+    { name: "San Francisco 49ers",    city: "San Francisco", nickname: "49ers",       abbreviation: "SF",  division: "nfcWest",  markets: [{ city: "San Francisco", state: "California" }],        keywords: ["San Francisco 49ers", "49ers", "Niners"] },
+    { name: "Seattle Seahawks",       city: "Seattle",       nickname: "Seahawks",    abbreviation: "SEA", division: "nfcWest",  markets: [{ city: "Seattle", state: "Washington" }],              keywords: ["Seattle Seahawks", "Seahawks"] },
   ];
 
   for (const t of nflTeams) {
@@ -705,11 +705,11 @@ Then proceed directly into the content.`;
       update: { name: t.name, city: t.city, nickname: t.nickname, keywords: t.keywords, divisionId: divIds[t.division] },
       create: { name: t.name, city: t.city, nickname: t.nickname, abbreviation: t.abbreviation, keywords: t.keywords, leagueId: nfl.id, divisionId: divIds[t.division] },
     });
-    for (const dmaCode of t.dmaCodes) {
+    for (const market of t.markets) {
       await prisma.sportsTeamMarket.upsert({
-        where: { teamId_dmaCode: { teamId: team.id, dmaCode } },
+        where: { teamId_city_state: { teamId: team.id, city: market.city, state: market.state } },
         update: {},
-        create: { teamId: team.id, dmaCode },
+        create: { teamId: team.id, city: market.city, state: market.state },
       });
     }
   }

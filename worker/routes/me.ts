@@ -29,7 +29,7 @@ const PreferencesSchema = z.object({
   excludedCategories: z.array(z.string()).max(10).optional(),
   preferredTopics: z.array(z.string().max(50)).max(20).optional(),
   excludedTopics: z.array(z.string().max(50)).max(20).optional(),
-  dmaCode: z.string().max(10).nullable().optional(),
+  zipCode: z.string().regex(/^\d{5}$/).nullable().optional(),
 });
 
 const DeleteAccountSchema = z.object({
@@ -67,19 +67,25 @@ me.get("/", async (c) => {
     },
   });
 
-  // Opportunistically store DMA code from Cloudflare IP geolocation —
-  // only when user has no dmaCode yet (first visit). Once set (by auto-detect
+  // Opportunistically store city/state/country from Cloudflare IP geolocation —
+  // only when user has no zipCode yet (first visit). Once set (by auto-detect
   // or user choice), we don't overwrite so the user's explicit selection sticks.
-  const cf = (c.req.raw as any).cf;
-  const detectedDma = cf?.metroCode != null ? String(cf.metroCode) : undefined;
-  if (detectedDma && !fullUser.dmaCode) {
-    try {
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { dmaCode: detectedDma },
-      });
-      fullUser.dmaCode = detectedDma;
-    } catch { /* non-critical */ }
+  if (!fullUser.zipCode && !fullUser.city) {
+    const cf = (c.req.raw as any).cf;
+    const detectedCity = cf?.city as string | undefined;
+    const detectedState = cf?.region as string | undefined;
+    const detectedCountry = cf?.country as string | undefined;
+    if (detectedCity && detectedState) {
+      try {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { city: detectedCity, state: detectedState, country: detectedCountry ?? "US" },
+        });
+        fullUser.city = detectedCity;
+        fullUser.state = detectedState;
+        fullUser.country = detectedCountry ?? "US";
+      } catch { /* non-critical */ }
+    }
   }
 
   const flags = await getActiveFlags(prisma, {
@@ -144,7 +150,10 @@ me.get("/", async (c) => {
       preferredTopics: fullUser.preferredTopics ?? [],
       excludedTopics: fullUser.excludedTopics ?? [],
       profileCompletedAt: fullUser.profileCompletedAt?.toISOString() ?? null,
-      dmaCode: fullUser.dmaCode ?? null,
+      zipCode: fullUser.zipCode ?? null,
+      city: fullUser.city ?? null,
+      state: fullUser.state ?? null,
+      country: fullUser.country ?? null,
       sportsTeams: (fullUser.sportsTeams ?? []).map((st: any) => st.team),
       featureFlags: flags,
     },
@@ -194,7 +203,34 @@ me.patch("/preferences", async (c) => {
   if (body.excludedCategories !== undefined) data.excludedCategories = body.excludedCategories;
   if (body.preferredTopics !== undefined) data.preferredTopics = body.preferredTopics;
   if (body.excludedTopics !== undefined) data.excludedTopics = body.excludedTopics;
-  if (body.dmaCode !== undefined) data.dmaCode = body.dmaCode;
+  // Resolve zip code to city/state/country via external API
+  if (body.zipCode !== undefined) {
+    if (body.zipCode === null) {
+      // Clear location
+      data.zipCode = null;
+      data.city = null;
+      data.state = null;
+      data.country = null;
+    } else {
+      try {
+        const resp = await fetch(`https://api.zippopotam.us/us/${body.zipCode}`);
+        if (!resp.ok) {
+          return c.json({ error: "Invalid zip code" }, 400);
+        }
+        const zipData = await resp.json() as any;
+        const place = zipData.places?.[0];
+        if (!place) {
+          return c.json({ error: "Invalid zip code" }, 400);
+        }
+        data.zipCode = body.zipCode;
+        data.city = place["place name"];
+        data.state = place.state;
+        data.country = zipData.country ?? "US";
+      } catch {
+        return c.json({ error: "Failed to resolve zip code" }, 502);
+      }
+    }
+  }
 
   // Mark profile as completed if any interest prefs are being set
   const hasInterestUpdate = body.preferredCategories !== undefined
@@ -209,7 +245,7 @@ me.patch("/preferences", async (c) => {
   });
 
   // Recompute recommendation profile in background when interests or location change
-  if (hasInterestUpdate || body.dmaCode !== undefined) {
+  if (hasInterestUpdate || body.zipCode !== undefined) {
     try {
       await computeUserProfile(user.id, prisma);
       await recomputeRecommendationCache(user.id, prisma);
@@ -231,7 +267,10 @@ me.patch("/preferences", async (c) => {
       excludedCategories: updated.excludedCategories,
       preferredTopics: updated.preferredTopics,
       excludedTopics: updated.excludedTopics,
-      dmaCode: updated.dmaCode,
+      zipCode: updated.zipCode,
+      city: updated.city,
+      state: updated.state,
+      country: updated.country,
     },
   });
 });
@@ -360,17 +399,20 @@ me.get("/sports-teams", async (c) => {
   });
   const selectedIds = new Set(userTeams.map((t: any) => t.teamId));
 
-  // Fetch user's DMA for local teams
+  // Fetch user's city/state for local teams
   const fullUser = await prisma.user.findUnique({
     where: { id: user.id },
-    select: { dmaCode: true },
+    select: { city: true, state: true },
   });
 
-  // Resolve local team IDs from DMA
+  // Resolve local team IDs from city/state
   let localTeamIds = new Set<string>();
-  if (fullUser?.dmaCode) {
+  if (fullUser?.city && fullUser?.state) {
     const markets = await prisma.sportsTeamMarket.findMany({
-      where: { dmaCode: fullUser.dmaCode },
+      where: { OR: [
+        { city: fullUser.city, state: fullUser.state },
+        { state: fullUser.state },
+      ]},
       select: { teamId: true },
     });
     localTeamIds = new Set(markets.map((m: any) => m.teamId));

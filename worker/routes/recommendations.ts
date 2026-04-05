@@ -103,15 +103,25 @@ async function generateCuratedRows(
 
   // Load geo profiles for locality boost when browsing locality-biased categories
   let geoProfileMap = new Map<string, number>();
-  const applyLocality = genre != null && LOCAL_BIASED_CATEGORIES.has(genre) && user.dmaCode;
+  const applyLocality = genre != null && LOCAL_BIASED_CATEGORIES.has(genre) && user.city && user.state;
   if (applyLocality) {
-    const geoProfiles = await prisma.podcastGeoProfile.findMany({
-      where: { dmaCode: user.dmaCode },
-      select: { podcastId: true, confidence: true },
-    });
-    for (const gp of geoProfiles) {
+    const [cityProfiles, stateProfiles] = await Promise.all([
+      prisma.podcastGeoProfile.findMany({
+        where: { city: user.city, state: user.state },
+        select: { podcastId: true, confidence: true },
+      }),
+      prisma.podcastGeoProfile.findMany({
+        where: { state: user.state, NOT: { city: user.city } },
+        select: { podcastId: true, confidence: true },
+      }),
+    ]);
+    for (const gp of cityProfiles) {
       const existing = geoProfileMap.get(gp.podcastId) || 0;
       geoProfileMap.set(gp.podcastId, Math.max(existing, gp.confidence));
+    }
+    for (const gp of stateProfiles) {
+      const existing = geoProfileMap.get(gp.podcastId) || 0;
+      geoProfileMap.set(gp.podcastId, Math.max(existing, gp.confidence * 0.4));
     }
   }
 
@@ -325,22 +335,23 @@ async function generateCuratedRows(
   return rows;
 }
 
-// GET /local — local podcasts for user's DMA
+// GET /local — local podcasts for user's city/state
 recommendations.get("/local", async (c) => {
   const prisma = c.get("prisma") as any;
   const user = await getCurrentUser(c, prisma);
 
   const fullUser = await prisma.user.findUnique({
     where: { id: user.id },
-    select: { dmaCode: true },
+    select: { city: true, state: true, country: true },
   });
 
-  if (!fullUser?.dmaCode) {
-    return c.json({ data: { local: [], localSports: [], dmaCode: null } });
+  if (!fullUser?.city || !fullUser?.state) {
+    return c.json({ data: { local: [], localSports: [], location: null } });
   }
 
+  // City-level matches + state-level matches
   const geoProfiles = await prisma.podcastGeoProfile.findMany({
-    where: { dmaCode: fullUser.dmaCode },
+    where: { state: fullUser.state },
     include: {
       podcast: { select: { id: true, title: true, imageUrl: true, author: true, categories: true } },
       team: { select: { id: true, name: true, nickname: true, abbreviation: true } },
@@ -348,15 +359,23 @@ recommendations.get("/local", async (c) => {
     orderBy: [{ confidence: "desc" }],
   });
 
-  const local = geoProfiles.filter((gp: any) => !gp.teamId).map((gp: any) => ({
+  // Sort: city matches first (stronger relevance), then state-level
+  const sorted = geoProfiles.sort((a: any, b: any) => {
+    const aIsCity = a.city === fullUser.city ? 1 : 0;
+    const bIsCity = b.city === fullUser.city ? 1 : 0;
+    if (aIsCity !== bIsCity) return bIsCity - aIsCity;
+    return b.confidence - a.confidence;
+  });
+
+  const local = sorted.filter((gp: any) => !gp.teamId).map((gp: any) => ({
     podcast: gp.podcast, scope: gp.scope, confidence: gp.confidence,
   }));
 
-  const localSports = geoProfiles.filter((gp: any) => gp.teamId).map((gp: any) => ({
+  const localSports = sorted.filter((gp: any) => gp.teamId).map((gp: any) => ({
     podcast: gp.podcast, scope: gp.scope, confidence: gp.confidence, team: gp.team,
   }));
 
-  return c.json({ data: { local, localSports, dmaCode: fullUser.dmaCode } });
+  return c.json({ data: { local, localSports, location: { city: fullUser.city, state: fullUser.state, country: fullUser.country } } });
 });
 
 // GET /curated — Netflix-style curated rows
@@ -444,15 +463,25 @@ recommendations.get("/episodes", async (c) => {
     : rawEpisodes;
 
   // Boost local pods when browsing locality-biased categories
-  if (genre && LOCAL_BIASED_CATEGORIES.has(genre) && user.dmaCode) {
-    const geoProfiles = await prisma.podcastGeoProfile.findMany({
-      where: { dmaCode: user.dmaCode },
-      select: { podcastId: true, confidence: true },
-    });
+  if (genre && LOCAL_BIASED_CATEGORIES.has(genre) && user.city && user.state) {
+    const [cityGeo, stateGeo] = await Promise.all([
+      prisma.podcastGeoProfile.findMany({
+        where: { city: user.city, state: user.state },
+        select: { podcastId: true, confidence: true },
+      }),
+      prisma.podcastGeoProfile.findMany({
+        where: { state: user.state, NOT: { city: user.city } },
+        select: { podcastId: true, confidence: true },
+      }),
+    ]);
     const geoMap = new Map<string, number>();
-    for (const gp of geoProfiles) {
+    for (const gp of cityGeo) {
       const existing = geoMap.get(gp.podcastId) || 0;
       geoMap.set(gp.podcastId, Math.max(existing, gp.confidence));
+    }
+    for (const gp of stateGeo) {
+      const existing = geoMap.get(gp.podcastId) || 0;
+      geoMap.set(gp.podcastId, Math.max(existing, gp.confidence * 0.4));
     }
     topicFiltered = applyLocalBoost(topicFiltered, geoMap);
   }
@@ -525,9 +554,7 @@ recommendations.get("/", async (c) => {
   }
 
   // Compute fresh
-  const cf = (c.req.raw as any).cf;
-  const dmaCode = cf?.metroCode != null ? String(cf.metroCode) : undefined;
-  const result = await scoreRecommendations(user.id, prisma, undefined, { dmaCode });
+  const result = await scoreRecommendations(user.id, prisma);
 
   // Hydrate with podcast data
   const podcastIds = result.recommendations.map((r) => r.podcastId);

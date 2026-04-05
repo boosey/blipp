@@ -98,7 +98,7 @@ export function Discover() {
     data: {
       local: { podcast: { id: string; title: string; imageUrl: string | null; author: string | null; categories: string[] }; scope: string; confidence: number }[];
       localSports: { podcast: { id: string; title: string; imageUrl: string | null; author: string | null; categories: string[] }; scope: string; confidence: number; team: { id: string; name: string; nickname: string; abbreviation: string } }[];
-      dmaCode: string | null;
+      location: { city: string; state: string; country: string } | null;
     };
   }>("/recommendations/local");
 
@@ -334,7 +334,7 @@ export function Discover() {
       </ScrollableRow>
 
       {/* Local discovery sections */}
-      {localData?.data?.dmaCode && (localData.data.local.length > 0 || localData.data.localSports.length > 0) && (
+      {localData?.data?.location && (localData.data.local.length > 0 || localData.data.localSports.length > 0) && (
         <Accordion type="multiple" defaultValue={["local", "local-sports"]}>
           {localData.data.local.length > 0 && (
             <AccordionItem value="local">

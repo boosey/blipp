@@ -33,41 +33,6 @@ import {
 
 declare const __APP_VERSION__: string;
 
-/** Nielsen DMA codes → metro area labels for the location picker. */
-const DMA_METROS: { code: string; label: string }[] = [
-  { code: "524", label: "Atlanta, GA" },
-  { code: "512", label: "Baltimore, MD" },
-  { code: "514", label: "Buffalo, NY" },
-  { code: "517", label: "Charlotte, NC" },
-  { code: "602", label: "Chicago, IL" },
-  { code: "515", label: "Cincinnati, OH" },
-  { code: "510", label: "Cleveland, OH" },
-  { code: "623", label: "Dallas–Fort Worth, TX" },
-  { code: "751", label: "Denver, CO" },
-  { code: "505", label: "Detroit, MI" },
-  { code: "658", label: "Green Bay, WI" },
-  { code: "618", label: "Houston, TX" },
-  { code: "527", label: "Indianapolis, IN" },
-  { code: "561", label: "Jacksonville, FL" },
-  { code: "616", label: "Kansas City, MO" },
-  { code: "839", label: "Las Vegas, NV" },
-  { code: "803", label: "Los Angeles, CA" },
-  { code: "528", label: "Miami–Fort Lauderdale, FL" },
-  { code: "617", label: "Milwaukee, WI" },
-  { code: "613", label: "Minneapolis–St. Paul, MN" },
-  { code: "659", label: "Nashville, TN" },
-  { code: "622", label: "New Orleans, LA" },
-  { code: "501", label: "New York, NY" },
-  { code: "504", label: "Philadelphia, PA" },
-  { code: "753", label: "Phoenix, AZ" },
-  { code: "508", label: "Pittsburgh, PA" },
-  { code: "807", label: "San Francisco–Oakland, CA" },
-  { code: "819", label: "Seattle–Tacoma, WA" },
-  { code: "539", label: "Tampa–St. Petersburg, FL" },
-  { code: "506", label: "Boston, MA" },
-  { code: "511", label: "Washington, DC" },
-];
-
 interface UserInfo {
   id: string;
   email: string;
@@ -84,7 +49,10 @@ interface UserInfo {
   preferredTopics: string[];
   excludedTopics: string[];
   profileCompletedAt: string | null;
-  dmaCode: string | null;
+  zipCode: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
 }
 
 interface UsageData {
@@ -589,35 +557,9 @@ function ContentTab({
       {/* Location */}
       <SettingsGroup title="Location">
         <p className="text-xs text-muted-foreground mb-3">
-          Set your metro area for local sports and podcast recommendations.
+          Enter your zip code for local sports and podcast recommendations.
         </p>
-        <div className="relative">
-          <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-          <select
-            value={user?.dmaCode ?? ""}
-            onChange={async (e) => {
-              const dmaCode = e.target.value || null;
-              try {
-                await apiFetch("/me/preferences", {
-                  method: "PATCH",
-                  body: JSON.stringify({ dmaCode }),
-                });
-                toast.success(dmaCode ? "Location updated" : "Location cleared");
-                refetchUser();
-              } catch {
-                toast.error("Failed to update location");
-              }
-            }}
-            className="w-full pl-9 pr-3 py-2 rounded-lg border border-border bg-background text-sm appearance-none cursor-pointer"
-          >
-            <option value="">Not set (auto-detect)</option>
-            {DMA_METROS.map((m) => (
-              <option key={m.code} value={m.code}>
-                {m.label}
-              </option>
-            ))}
-          </select>
-        </div>
+        <ZipCodeInput user={user} apiFetch={apiFetch} refetchUser={refetchUser} />
       </SettingsGroup>
 
       {/* Sports Teams */}
@@ -628,6 +570,94 @@ function ContentTab({
         <SportsTeamPicker />
       </SettingsGroup>
     </>
+  );
+}
+
+/* ─── Zip Code Input ─────────────────────────────────────── */
+
+function ZipCodeInput({
+  user,
+  apiFetch,
+  refetchUser,
+}: {
+  user: UserInfo | null;
+  apiFetch: ReturnType<typeof useApiFetch>;
+  refetchUser: () => void;
+}) {
+  const [zip, setZip] = useState(user?.zipCode ?? "");
+  const [saving, setSaving] = useState(false);
+
+  const handleBlur = async () => {
+    // Only submit if it's a valid 5-digit zip and different from current
+    if (!/^\d{5}$/.test(zip)) return;
+    if (zip === user?.zipCode) return;
+
+    setSaving(true);
+    try {
+      await apiFetch("/me/preferences", {
+        method: "PATCH",
+        body: JSON.stringify({ zipCode: zip }),
+      });
+      toast.success("Location updated");
+      refetchUser();
+    } catch {
+      toast.error("Invalid zip code");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleClear = async () => {
+    setSaving(true);
+    try {
+      await apiFetch("/me/preferences", {
+        method: "PATCH",
+        body: JSON.stringify({ zipCode: null }),
+      });
+      setZip("");
+      toast.success("Location cleared");
+      refetchUser();
+    } catch {
+      toast.error("Failed to clear location");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="relative flex gap-2">
+        <div className="relative flex-1">
+          <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+          <input
+            type="text"
+            inputMode="numeric"
+            maxLength={5}
+            placeholder="Enter zip code"
+            value={zip}
+            onChange={(e) => setZip(e.target.value.replace(/\D/g, "").slice(0, 5))}
+            onBlur={handleBlur}
+            onKeyDown={(e) => { if (e.key === "Enter") handleBlur(); }}
+            disabled={saving}
+            className="w-full pl-9 pr-3 py-2 rounded-lg border border-border bg-background text-sm"
+          />
+        </div>
+        {user?.zipCode && (
+          <button
+            onClick={handleClear}
+            disabled={saving}
+            className="px-3 py-2 rounded-lg border border-border bg-background text-sm text-muted-foreground hover:text-foreground"
+          >
+            Clear
+          </button>
+        )}
+      </div>
+      {user?.city && user?.state && (
+        <p className="text-xs text-muted-foreground pl-1">
+          {user.city}, {user.state}{user.country && user.country !== "US" ? `, ${user.country}` : ""}
+        </p>
+      )}
+    </div>
   );
 }
 

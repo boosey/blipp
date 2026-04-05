@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
   US_CITIES,
-  US_STATES,
   REGIONAL_PHRASES,
   AMBIGUOUS_CITIES,
   findCityMatches,
@@ -10,35 +9,26 @@ import {
 } from "../geo-lookup";
 
 describe("geo-lookup tables", () => {
-  it("US_CITIES contains key cities with correct DMA codes", () => {
-    expect(US_CITIES.get("New York")?.dmaCode).toBe("501");
-    expect(US_CITIES.get("Los Angeles")?.dmaCode).toBe("803");
-    expect(US_CITIES.get("Chicago")?.dmaCode).toBe("602");
-    expect(US_CITIES.get("Houston")?.dmaCode).toBe("618");
-    expect(US_CITIES.get("Seattle")?.dmaCode).toBe("819");
-    expect(US_CITIES.get("Miami")?.dmaCode).toBe("528");
+  it("US_CITIES contains key cities with correct states", () => {
+    expect(US_CITIES.get("New York")?.state).toBe("New York");
+    expect(US_CITIES.get("Los Angeles")?.state).toBe("California");
+    expect(US_CITIES.get("Chicago")?.state).toBe("Illinois");
+    expect(US_CITIES.get("Houston")?.state).toBe("Texas");
+    expect(US_CITIES.get("Seattle")?.state).toBe("Washington");
+    expect(US_CITIES.get("Miami")?.state).toBe("Florida");
   });
 
-  it("US_STATES covers all 50 states", () => {
-    expect(US_STATES.size).toBe(50);
-  });
-
-  it("US_STATES maps Texas to expected DMA codes", () => {
-    const texas = US_STATES.get("Texas");
-    expect(texas).toBeDefined();
-    expect(texas).toContain("618"); // Houston
-    expect(texas).toContain("623"); // Dallas
-    expect(texas).toContain("635"); // Austin
-  });
-
-  it("REGIONAL_PHRASES maps Bay Area to SF DMA", () => {
-    expect(REGIONAL_PHRASES.get("Bay Area")).toEqual(["807"]);
+  it("REGIONAL_PHRASES maps Bay Area to SF", () => {
+    const bayArea = REGIONAL_PHRASES.get("Bay Area");
+    expect(bayArea).toBeDefined();
+    expect(bayArea!.some((l) => l.city === "San Francisco" && l.state === "California")).toBe(true);
   });
 
   it("REGIONAL_PHRASES maps Pacific Northwest to Seattle+Portland", () => {
     const pnw = REGIONAL_PHRASES.get("Pacific Northwest");
-    expect(pnw).toContain("819");
-    expect(pnw).toContain("820");
+    expect(pnw).toBeDefined();
+    expect(pnw!.some((l) => l.city === "Seattle")).toBe(true);
+    expect(pnw!.some((l) => l.city === "Portland")).toBe(true);
   });
 
   it("AMBIGUOUS_CITIES contains expected entries", () => {
@@ -55,7 +45,8 @@ describe("findCityMatches", () => {
   it("matches city name in title", () => {
     const matches = findCityMatches("The Seattle Sports Hour", "Weekly sports recap");
     expect(matches).toHaveLength(1);
-    expect(matches[0].dmaCode).toBe("819");
+    expect(matches[0].city).toBe("Seattle");
+    expect(matches[0].state).toBe("Washington");
     expect(matches[0].scope).toBe("city");
     expect(matches[0].confidence).toBe(0.9);
   });
@@ -63,7 +54,8 @@ describe("findCityMatches", () => {
   it("matches city name in description with lower confidence", () => {
     const matches = findCityMatches("Local News Podcast", "Covering news from Denver and surrounding areas");
     expect(matches).toHaveLength(1);
-    expect(matches[0].dmaCode).toBe("751");
+    expect(matches[0].city).toBe("Denver");
+    expect(matches[0].state).toBe("Colorado");
     expect(matches[0].confidence).toBe(0.7);
   });
 
@@ -81,13 +73,15 @@ describe("findCityMatches", () => {
     // "Portland" in description with state → match
     const withState = findCityMatches("Sports Talk", "Great coverage of Portland Oregon teams");
     expect(withState).toHaveLength(1);
-    expect(withState[0].dmaCode).toBe("820");
+    expect(withState[0].city).toBe("Portland");
+    expect(withState[0].state).toBe("Oregon");
   });
 
   it("allows ambiguous city in title without state context", () => {
     const matches = findCityMatches("Jacksonville Daily News", "Local news and weather");
     expect(matches).toHaveLength(1);
-    expect(matches[0].dmaCode).toBe("561");
+    expect(matches[0].city).toBe("Jacksonville");
+    expect(matches[0].state).toBe("Florida");
     expect(matches[0].confidence).toBe(0.9);
   });
 
@@ -99,34 +93,33 @@ describe("findCityMatches", () => {
   it("matches multiple cities", () => {
     const matches = findCityMatches("East Coast Roundup", "News from Boston and Miami this week");
     expect(matches.length).toBeGreaterThanOrEqual(2);
-    const dmaCodes = matches.map((m) => m.dmaCode);
-    expect(dmaCodes).toContain("506"); // Boston
-    expect(dmaCodes).toContain("528"); // Miami
+    const cities = matches.map((m) => m.city);
+    expect(cities).toContain("Boston");
+    expect(cities).toContain("Miami");
   });
 });
 
 describe("findStateMatches", () => {
   it("matches state name in title", () => {
     const matches = findStateMatches("Texas Football Weekly", "");
-    expect(matches.length).toBeGreaterThan(0);
+    expect(matches).toHaveLength(1);
+    expect(matches[0].state).toBe("Texas");
+    expect(matches[0].city).toBe("");
     expect(matches[0].scope).toBe("state");
     expect(matches[0].confidence).toBe(0.6);
-    const dmaCodes = matches.map((m) => m.dmaCode);
-    expect(dmaCodes).toContain("618"); // Houston
   });
 
   it("matches state name in description with lower confidence", () => {
     const matches = findStateMatches("Local Politics", "Coverage of California state legislature");
-    expect(matches.length).toBeGreaterThan(0);
-    expect(matches[0].confidence).toBe(0.4);
+    const ca = matches.find((m) => m.state === "California");
+    expect(ca).toBeDefined();
+    expect(ca!.confidence).toBe(0.4);
   });
 
-  it("does not match state substrings", () => {
-    // "Virginia" should not match inside "West Virginia" when only "West Virginia" is present
-    // But both "Virginia" standalone would match
+  it("matches state from description", () => {
     const matches = findStateMatches("News", "News from Oregon today");
-    const dmaCodes = matches.map((m) => m.dmaCode);
-    expect(dmaCodes).toContain("820"); // Oregon/Portland
+    const states = matches.map((m) => m.state);
+    expect(states).toContain("Oregon");
   });
 
   it("returns empty for non-US states", () => {
@@ -138,8 +131,9 @@ describe("findStateMatches", () => {
 describe("findRegionalMatches", () => {
   it("matches Bay Area", () => {
     const matches = findRegionalMatches("Bay Area Tech Talk", "Silicon Valley startup news");
-    expect(matches).toHaveLength(1);
-    expect(matches[0].dmaCode).toBe("807");
+    expect(matches.length).toBeGreaterThanOrEqual(1);
+    expect(matches[0].city).toBe("San Francisco");
+    expect(matches[0].state).toBe("California");
     expect(matches[0].scope).toBe("regional");
     expect(matches[0].confidence).toBe(0.8);
   });
@@ -147,9 +141,9 @@ describe("findRegionalMatches", () => {
   it("matches Pacific Northwest in description", () => {
     const matches = findRegionalMatches("Outdoor Adventures", "Hiking in the Pacific Northwest");
     expect(matches).toHaveLength(2);
-    const dmaCodes = matches.map((m) => m.dmaCode);
-    expect(dmaCodes).toContain("819"); // Seattle
-    expect(dmaCodes).toContain("820"); // Portland
+    const cities = matches.map((m) => m.city);
+    expect(cities).toContain("Seattle");
+    expect(cities).toContain("Portland");
     expect(matches[0].confidence).toBe(0.6); // description-only
   });
 

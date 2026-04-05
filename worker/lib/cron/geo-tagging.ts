@@ -52,7 +52,7 @@ export async function runGeoTaggingJob(
     select: {
       id: true,
       keywords: true,
-      markets: { select: { dmaCode: true } },
+      markets: { select: { city: true, state: true } },
     },
   });
 
@@ -73,7 +73,8 @@ export async function runGeoTaggingJob(
         if (pattern.test(title) || pattern.test(description)) {
           for (const market of team.markets) {
             teamMatches.push({
-              dmaCode: market.dmaCode,
+              city: market.city,
+              state: market.state,
               scope: "city",
               confidence: 0.95,
               teamId: team.id,
@@ -92,7 +93,7 @@ export async function runGeoTaggingJob(
     const allMatches = [...teamMatches, ...cityMatches, ...stateMatches, ...regionalMatches];
 
     if (allMatches.length > 0) {
-      // Deduplicate by dmaCode+teamId, keeping highest confidence
+      // Deduplicate by city+state+teamId, keeping highest confidence
       const deduped = deduplicateMatches(allMatches);
       await writeGeoProfiles(prisma, podcast.id, deduped, "keyword");
       pass1Matched++;
@@ -202,7 +203,7 @@ export async function runGeoTaggingJob(
 function deduplicateMatches(matches: GeoMatch[]): GeoMatch[] {
   const map = new Map<string, GeoMatch>();
   for (const m of matches) {
-    const key = `${m.dmaCode}:${m.teamId ?? ""}`;
+    const key = `${m.city}:${m.state}:${m.teamId ?? ""}`;
     const existing = map.get(key);
     if (!existing || m.confidence > existing.confidence) {
       map.set(key, m);
@@ -220,9 +221,10 @@ async function writeGeoProfiles(
   for (const match of matches) {
     await prisma.podcastGeoProfile.upsert({
       where: {
-        podcastId_dmaCode_teamId: {
+        podcastId_city_state_teamId: {
           podcastId,
-          dmaCode: match.dmaCode,
+          city: match.city,
+          state: match.state,
           teamId: match.teamId ?? null,
         },
       },
@@ -233,7 +235,8 @@ async function writeGeoProfiles(
       },
       create: {
         podcastId,
-        dmaCode: match.dmaCode,
+        city: match.city,
+        state: match.state,
         scope: match.scope,
         teamId: match.teamId ?? null,
         confidence: match.confidence,
@@ -250,9 +253,13 @@ Title: ${title}
 Description: ${description}
 
 If this podcast targets a specific US city or region, return JSON:
-[{"dmaCode": "<Nielsen DMA code>", "scope": "city"|"state"|"regional", "confidence": 0.0-1.0}]
+[{"city": "<city name>", "state": "<full state name>", "scope": "city"|"state"|"regional", "confidence": 0.0-1.0}]
 
-Common DMA codes: New York=501, LA=803, Chicago=602, Houston=618, Dallas=623, SF=807, Seattle=819, Miami=528, Boston=506, Atlanta=524, Denver=751, Phoenix=753, Philadelphia=504, Detroit=505, Minneapolis=613.
+For state-level matches, set city to an empty string "".
+
+Examples:
+- City-level: [{"city": "Chicago", "state": "Illinois", "scope": "city", "confidence": 0.9}]
+- State-level: [{"city": "", "state": "Texas", "scope": "state", "confidence": 0.7}]
 
 If the podcast is NOT geographically specific, return: []`;
 }
@@ -268,7 +275,8 @@ function parseGeoClassificationResponse(text: string): GeoMatch[] {
     return parsed
       .filter(
         (item: any) =>
-          typeof item.dmaCode === "string" &&
+          typeof item.city === "string" &&
+          typeof item.state === "string" &&
           typeof item.scope === "string" &&
           typeof item.confidence === "number" &&
           ["city", "state", "regional"].includes(item.scope) &&
@@ -276,7 +284,8 @@ function parseGeoClassificationResponse(text: string): GeoMatch[] {
           item.confidence <= 1
       )
       .map((item: any) => ({
-        dmaCode: String(item.dmaCode),
+        city: item.city,
+        state: item.state,
         scope: item.scope as "city" | "state" | "regional",
         confidence: item.confidence,
       }));

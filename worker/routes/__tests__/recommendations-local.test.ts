@@ -39,25 +39,26 @@ describe("GET /local", () => {
     (getCurrentUser as any).mockResolvedValue({ id: "user1" });
   });
 
-  it("returns empty when user has no dmaCode", async () => {
-    mockPrisma.user.findUnique.mockResolvedValue({ dmaCode: null });
+  it("returns empty when user has no city/state", async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({ city: null, state: null, country: null });
 
     const res = await app.request("/local");
     expect(res.status).toBe(200);
     const data = await res.json() as any;
     expect(data.data.local).toHaveLength(0);
     expect(data.data.localSports).toHaveLength(0);
-    expect(data.data.dmaCode).toBeNull();
+    expect(data.data.location).toBeNull();
   });
 
-  it("returns local and localSports when user has dmaCode", async () => {
-    mockPrisma.user.findUnique.mockResolvedValue({ dmaCode: "501" });
+  it("returns local and localSports when user has city/state", async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({ city: "New York", state: "New York", country: "US" });
     mockPrisma.podcastGeoProfile.findMany.mockResolvedValue([
       {
         id: "gp1",
         teamId: null,
-        dmaCode: "501",
-        scope: "local",
+        city: "New York",
+        state: "New York",
+        scope: "city",
         confidence: 0.9,
         podcast: { id: "pod1", title: "NYC News", imageUrl: null, author: "Author", categories: ["News"] },
         team: null,
@@ -65,8 +66,9 @@ describe("GET /local", () => {
       {
         id: "gp2",
         teamId: "team1",
-        dmaCode: "501",
-        scope: "local",
+        city: "New York",
+        state: "New York",
+        scope: "city",
         confidence: 0.85,
         podcast: { id: "pod2", title: "Yankees Talk", imageUrl: null, author: "Sports Author", categories: ["Sports"] },
         team: { id: "team1", name: "New York Yankees", nickname: "Yankees", abbreviation: "NYY" },
@@ -76,7 +78,7 @@ describe("GET /local", () => {
     const res = await app.request("/local");
     expect(res.status).toBe(200);
     const data = await res.json() as any;
-    expect(data.data.dmaCode).toBe("501");
+    expect(data.data.location).toEqual({ city: "New York", state: "New York", country: "US" });
     expect(data.data.local).toHaveLength(1);
     expect(data.data.local[0].podcast.id).toBe("pod1");
     expect(data.data.localSports).toHaveLength(1);

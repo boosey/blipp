@@ -389,7 +389,6 @@ export async function scoreRecommendations(
   userId: string,
   prisma: any,
   maxResults?: number,
-  options?: { dmaCode?: string }
 ): Promise<RecommendationResult> {
   const configMax = await getConfig(prisma, "recommendations.cache.maxResults", 20);
   const limit = maxResults ?? (configMax as number);
@@ -414,24 +413,36 @@ export async function scoreRecommendations(
       excludedCategories: true,
       preferredTopics: true,
       excludedTopics: true,
-      dmaCode: true,
+      city: true,
+      state: true,
     },
   });
   const excludedCategorySet = new Set<string>(userRecord?.excludedCategories ?? []);
   const excludedTopicSet = new Set<string>(userRecord?.excludedTopics ?? []);
   const userExplicitTopics: string[] = userRecord?.preferredTopics ?? [];
 
-  // Load geo-profiles for user's DMA (pre-computed by cron)
-  const userDma = userRecord?.dmaCode;
+  // Load geo-profiles for user's city/state (pre-computed by cron)
+  const userCity = userRecord?.city;
+  const userState = userRecord?.state;
   let geoProfileMap = new Map<string, number>(); // podcastId → max confidence
-  if (userDma) {
-    const geoProfiles = await prisma.podcastGeoProfile.findMany({
-      where: { dmaCode: userDma },
-      select: { podcastId: true, confidence: true },
-    });
-    for (const gp of geoProfiles) {
+  if (userCity && userState) {
+    const [cityProfiles, stateProfiles] = await Promise.all([
+      prisma.podcastGeoProfile.findMany({
+        where: { city: userCity, state: userState },
+        select: { podcastId: true, confidence: true },
+      }),
+      prisma.podcastGeoProfile.findMany({
+        where: { state: userState, NOT: { city: userCity } },
+        select: { podcastId: true, confidence: true },
+      }),
+    ]);
+    for (const gp of cityProfiles) {
       const existing = geoProfileMap.get(gp.podcastId) || 0;
       geoProfileMap.set(gp.podcastId, Math.max(existing, gp.confidence));
+    }
+    for (const gp of stateProfiles) {
+      const existing = geoProfileMap.get(gp.podcastId) || 0;
+      geoProfileMap.set(gp.podcastId, Math.max(existing, gp.confidence * 0.4));
     }
   }
 
@@ -570,7 +581,7 @@ export async function scoreRecommendations(
   if (!userProfile) {
     // Compute on the fly if missing
     await computeUserProfile(userId, prisma);
-    return scoreRecommendations(userId, prisma, maxResults, options);
+    return scoreRecommendations(userId, prisma, maxResults);
   }
 
   const podcastProfiles = await prisma.podcastProfile.findMany({
