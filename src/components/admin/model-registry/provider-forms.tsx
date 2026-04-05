@@ -4,18 +4,19 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAdminFetch } from "@/lib/admin-api";
 import type { AiModelProviderEntry } from "@/types/admin";
-import { buildLimitsPayload, extractLimitValue } from "./helpers";
+import { buildLimitsPayload, extractLimitValue, getLimitStage } from "./helpers";
 import { LimitInput } from "./limit-input";
 
 export interface AddProviderFormProps {
   modelId: string;
-  stage: string;
+  stages: string[];
   apiFetch: ReturnType<typeof useAdminFetch>;
   onDone: () => void;
   onCancel: () => void;
 }
 
-export function AddProviderForm({ modelId, stage, apiFetch, onDone, onCancel }: AddProviderFormProps) {
+export function AddProviderForm({ modelId, stages, apiFetch, onDone, onCancel }: AddProviderFormProps) {
+  const limitStage = getLimitStage(stages);
   const [provider, setProvider] = useState("");
   const [providerLabel, setProviderLabel] = useState("");
   const [pricePerMinute, setPricePerMinute] = useState("");
@@ -38,7 +39,7 @@ export function AddProviderForm({ modelId, stage, apiFetch, onDone, onCancel }: 
           ...(priceInputPerMToken && { priceInputPerMToken: parseFloat(priceInputPerMToken) }),
           ...(priceOutputPerMToken && { priceOutputPerMToken: parseFloat(priceOutputPerMToken) }),
           ...(pricePerKChars && { pricePerKChars: parseFloat(pricePerKChars) }),
-          ...({ limits: buildLimitsPayload(stage, limitValue) ?? null }),
+          ...(limitStage && { limits: buildLimitsPayload(limitStage, limitValue) ?? null }),
         }),
       });
       onDone();
@@ -62,8 +63,8 @@ export function AddProviderForm({ modelId, stage, apiFetch, onDone, onCancel }: 
         <Input placeholder="$/1M output tok" value={priceOutputPerMToken} onChange={(e) => setPriceOutputPerMToken(e.target.value)} className="h-7 text-[11px] bg-[#0F1D32] border-white/10 text-[#F9FAFB]" />
         <Input placeholder="$/1K chars" value={pricePerKChars} onChange={(e) => setPricePerKChars(e.target.value)} className="h-7 text-[11px] bg-[#0F1D32] border-white/10 text-[#F9FAFB]" />
       </div>
-      {(stage === "stt" || stage === "tts") && (
-        <LimitInput stage={stage} value={limitValue} onChange={setLimitValue} className="h-7 text-[11px] bg-[#0F1D32] border-white/10 text-[#F9FAFB]" />
+      {limitStage && (
+        <LimitInput stage={limitStage} value={limitValue} onChange={setLimitValue} className="h-7 text-[11px] bg-[#0F1D32] border-white/10 text-[#F9FAFB]" />
       )}
       <div className="flex gap-2">
         <Button size="sm" onClick={submit} disabled={saving || !provider || !providerLabel} className="bg-[#3B82F6] hover:bg-[#3B82F6]/80 text-white text-[11px] h-7">
@@ -78,21 +79,20 @@ export function AddProviderForm({ modelId, stage, apiFetch, onDone, onCancel }: 
 export interface EditProviderFormProps {
   provider: AiModelProviderEntry;
   modelId: string;
-  stage: string;
+  stages: string[];
   apiFetch: ReturnType<typeof useAdminFetch>;
   onDone: () => void;
   onCancel: () => void;
 }
 
-export function EditProviderForm({ provider, modelId, stage, apiFetch, onDone, onCancel }: EditProviderFormProps) {
+export function EditProviderForm({ provider, modelId, stages, apiFetch, onDone, onCancel }: EditProviderFormProps) {
+  const limitStage = getLimitStage(stages);
   const [pricePerMinute, setPricePerMinute] = useState(provider.pricePerMinute?.toString() ?? "");
   const [priceInputPerMToken, setPriceInputPerMToken] = useState(provider.priceInputPerMToken?.toString() ?? "");
   const [priceOutputPerMToken, setPriceOutputPerMToken] = useState(provider.priceOutputPerMToken?.toString() ?? "");
   const [pricePerKChars, setPricePerKChars] = useState(provider.pricePerKChars?.toString() ?? "");
-  const [limitValue, setLimitValue] = useState(extractLimitValue(stage, provider.limits));
+  const [limitValue, setLimitValue] = useState(limitStage ? extractLimitValue(limitStage, provider.limits) : "");
   const [saving, setSaving] = useState(false);
-
-  const hasLimitField = stage === "stt" || stage === "tts";
 
   const submit = async () => {
     setSaving(true);
@@ -104,7 +104,7 @@ export function EditProviderForm({ provider, modelId, stage, apiFetch, onDone, o
           ...(priceInputPerMToken ? { priceInputPerMToken: parseFloat(priceInputPerMToken) } : { priceInputPerMToken: null }),
           ...(priceOutputPerMToken ? { priceOutputPerMToken: parseFloat(priceOutputPerMToken) } : { priceOutputPerMToken: null }),
           ...(pricePerKChars ? { pricePerKChars: parseFloat(pricePerKChars) } : { pricePerKChars: null }),
-          ...(hasLimitField && { limits: buildLimitsPayload(stage, limitValue) ?? null }),
+          ...(limitStage && { limits: buildLimitsPayload(limitStage, limitValue) ?? null }),
         }),
       });
       onDone();
@@ -130,8 +130,8 @@ export function EditProviderForm({ provider, modelId, stage, apiFetch, onDone, o
           <Input placeholder="$/1K chars" value={pricePerKChars} onChange={(e) => setPricePerKChars(e.target.value)} className="h-6 text-[10px] bg-[#0F1D32] border-white/10 text-[#F9FAFB] col-span-2" />
         )}
       </div>
-      {hasLimitField ? (
-        <LimitInput stage={stage} value={limitValue} onChange={setLimitValue} className="h-6 text-[10px] bg-[#0F1D32] border-white/10 text-[#F9FAFB]" />
+      {limitStage ? (
+        <LimitInput stage={limitStage} value={limitValue} onChange={setLimitValue} className="h-6 text-[10px] bg-[#0F1D32] border-white/10 text-[#F9FAFB]" />
       ) : (
         <div />
       )}

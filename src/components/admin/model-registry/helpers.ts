@@ -29,6 +29,13 @@ export function formatMonthlyCost(cost: number | null): string {
   return `$${cost.toFixed(2)}/mo`;
 }
 
+/** Determine the primary limit-relevant stage for a multi-stage model */
+export function getLimitStage(stages: string[]): string | null {
+  if (stages.includes("stt")) return "stt";
+  if (stages.includes("tts")) return "tts";
+  return null;
+}
+
 export function buildLimitsPayload(stage: string, limitValue: string): Record<string, unknown> | undefined {
   if (!limitValue.trim()) return undefined;
   const num = parseFloat(limitValue);

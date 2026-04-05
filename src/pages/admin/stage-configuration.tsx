@@ -96,7 +96,7 @@ export default function StageConfiguration() {
 
   function getStageModels(stage: string) {
     return modelRegistry
-      .filter((m) => m.stage === stage)
+      .filter((m) => m.stages.includes(stage))
       .flatMap((m) =>
         m.providers.length > 0
           ? m.providers.map((p) => ({

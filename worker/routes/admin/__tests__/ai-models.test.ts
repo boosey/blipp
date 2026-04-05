@@ -17,7 +17,7 @@ describe("GET /", () => {
     mockPrisma.pipelineStep.findFirst.mockResolvedValue(null);
     mockPrisma.aiModel.findMany.mockResolvedValue([
       {
-        id: "m1", stage: "stt", modelId: "whisper-1", label: "Whisper v1",
+        id: "m1", stages: ["stt"], modelId: "whisper-1", label: "Whisper v1",
         developer: "openai", isActive: true, createdAt: new Date(),
         providers: [
           { id: "p1", aiModelId: "m1", provider: "openai", providerLabel: "OpenAI",
@@ -36,7 +36,7 @@ describe("GET /", () => {
     expect(body.data[0].providers).toHaveLength(1);
   });
 
-  it("filters by stage query param", async () => {
+  it("filters by stage query param using has", async () => {
     const mockPrisma = createMockPrisma();
     mockPrisma.pipelineStep.groupBy.mockResolvedValue([]);
     mockPrisma.pipelineStep.findFirst.mockResolvedValue(null);
@@ -45,22 +45,22 @@ describe("GET /", () => {
     const res = await app.request("/?stage=stt");
     expect(res.status).toBe(200);
     expect(mockPrisma.aiModel.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: expect.objectContaining({ stage: "stt" }) })
+      expect.objectContaining({ where: expect.objectContaining({ stages: { has: "stt" } }) })
     );
   });
 });
 
 describe("POST /", () => {
-  it("creates a new model", async () => {
+  it("creates a new model with stages array", async () => {
     const mockPrisma = createMockPrisma();
-    const created = { id: "m2", stage: "stt", modelId: "nova-x", label: "Nova X",
+    const created = { id: "m2", stages: ["stt"], modelId: "nova-x", label: "Nova X",
       developer: "deepgram", isActive: true, createdAt: new Date(), providers: [] };
     mockPrisma.aiModel.create.mockResolvedValue(created);
     const app = buildApp(mockPrisma);
     const res = await app.request("/", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ stage: "stt", modelId: "nova-x", label: "Nova X", developer: "deepgram" }),
+      body: JSON.stringify({ stages: ["stt"], modelId: "nova-x", label: "Nova X", developer: "deepgram" }),
     });
     expect(res.status).toBe(201);
     const body = await res.json() as any;
@@ -73,7 +73,18 @@ describe("POST /", () => {
     const res = await app.request("/", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ stage: "stt" }),
+      body: JSON.stringify({ stages: ["stt"] }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 if stages is empty", async () => {
+    const mockPrisma = createMockPrisma();
+    const app = buildApp(mockPrisma);
+    const res = await app.request("/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ stages: [], modelId: "x", label: "X", developer: "x" }),
     });
     expect(res.status).toBe(400);
   });

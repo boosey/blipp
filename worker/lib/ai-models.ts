@@ -20,7 +20,7 @@ export async function getModelRegistry(
   stage?: AIStage
 ): Promise<any[]> {
   return prisma.aiModel.findMany({
-    where: { isActive: true, ...(stage ? { stage } : {}) },
+    where: { isActive: true, ...(stage ? { stages: { has: stage } } : {}) },
     include: { providers: { where: { isAvailable: true }, orderBy: { isDefault: "desc" } } },
     orderBy: { label: "asc" },
   });

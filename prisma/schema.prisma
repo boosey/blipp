@@ -816,8 +816,8 @@ enum AiStage {
 
 model AiModel {
   id        String    @id @default(cuid())
-  stage     AiStage
-  modelId   String    // e.g. "whisper-1", "nova-3", "claude-sonnet-4-20250514"
+  stages    AiStage[] // pipeline stages this model is eligible for
+  modelId   String    @unique // e.g. "whisper-1", "nova-3", "claude-sonnet-4-20250514"
   label     String    // e.g. "Whisper v1", "Deepgram Nova-3"
   developer String    // e.g. "openai", "deepgram", "anthropic"
   notes     String?   // capabilities, value notes, limitations
@@ -825,8 +825,6 @@ model AiModel {
   createdAt DateTime  @default(now())
 
   providers AiModelProvider[]
-
-  @@unique([stage, modelId])
 }
 
 model AiModelProvider {

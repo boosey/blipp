@@ -139,7 +139,7 @@ async function findAlternativeProvider(
   // Look for other available providers for this stage
   const stageModels = await prisma.aiModel.findMany({
     where: {
-      stage,
+      stages: { has: stage },
       isActive: true,
       providers: {
         some: { isAvailable: true, provider: { not: excludeProvider } },

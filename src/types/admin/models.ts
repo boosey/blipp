@@ -18,13 +18,13 @@ export interface AiModelProviderEntry {
 
 export interface AiModelEntry {
   id: string;
-  stage: string;
+  stages: string[];
   modelId: string;
   label: string;
   developer: string;
   notes: string | null;
   isActive: boolean;
-  estMonthlyCost: number | null;
+  estMonthlyCosts: Record<string, number | null>;
   providers: AiModelProviderEntry[];
 }
 
