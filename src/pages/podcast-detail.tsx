@@ -1,7 +1,16 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { Heart, Search, X, Loader2, Check, Headphones, Sparkles } from "lucide-react";
+import { Heart, Search, X, Loader2, Check, Headphones, Sparkles, ArrowUpDown, SlidersHorizontal } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "../components/ui/dropdown-menu";
 import { CancelBlippDialog } from "../components/cancel-blipp-dialog";
 import { useApiFetch } from "../lib/api";
 import { useFetch } from "../lib/use-fetch";
@@ -14,6 +23,27 @@ import { VoicePresetPicker } from "../components/voice-preset-picker";
 import { ThumbButtons } from "../components/thumb-buttons";
 import type { PodcastDetail as PodcastDetailType, EpisodeSummary } from "../types/user";
 import type { DurationTier } from "../lib/duration-tiers";
+
+type EpisodeSort = "latest" | "earliest" | "for_you" | "most_blipps" | "top_rated" | "shortest" | "longest";
+type EpisodeFilter = "24h" | "week" | "month" | "year" | "unblipped";
+
+const SORT_LABELS: Record<EpisodeSort, string> = {
+  latest: "Latest",
+  earliest: "Earliest",
+  for_you: "For You",
+  most_blipps: "Most Blipps",
+  top_rated: "Top Rated",
+  shortest: "Shortest",
+  longest: "Longest",
+};
+
+const FILTER_LABELS: Record<EpisodeFilter, string> = {
+  "24h": "Last 24 Hours",
+  week: "Last Week",
+  month: "Last Month",
+  year: "Last Year",
+  unblipped: "Not Yet Blipped",
+};
 
 export function PodcastDetail({ podcastId: propPodcastId, scrollToEpisodeId }: { podcastId?: string; scrollToEpisodeId?: string | null } = {}) {
   const { podcastId: routePodcastId } = useParams<{ podcastId: string }>();
@@ -33,6 +63,8 @@ export function PodcastDetail({ podcastId: propPodcastId, scrollToEpisodeId }: {
   const [expandedEpisodeId, setExpandedEpisodeId] = useState<string | null>(null);
   const [episodeSearch, setEpisodeSearch] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
+  const [episodeSort, setEpisodeSort] = useState<EpisodeSort>("latest");
+  const [episodeFilter, setEpisodeFilter] = useState<EpisodeFilter | "">("");
   const [titleExpanded, setTitleExpanded] = useState(false);
   const [descExpanded, setDescExpanded] = useState(false);
   const [cancelTargetEpisodeId, setCancelTargetEpisodeId] = useState<string | null>(null);
@@ -44,6 +76,14 @@ export function PodcastDetail({ podcastId: propPodcastId, scrollToEpisodeId }: {
   const defaultTier = (meData?.user?.defaultDurationTier ?? 5) as DurationTier;
   const userAcceptsAnyVoice = meData?.user?.acceptAnyVoice ?? false;
   const episodeRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+
+  const fetchEpisodes = useCallback(async (sort: EpisodeSort, filter: EpisodeFilter | "") => {
+    if (!podcastId) return;
+    const params = new URLSearchParams({ sort });
+    if (filter) params.set("filter", filter);
+    const epData = await apiFetch<{ episodes: EpisodeSummary[] }>(`/podcasts/${podcastId}/episodes?${params}`);
+    setEpisodes(epData.episodes);
+  }, [podcastId, apiFetch]);
 
   const fetchData = useCallback(async () => {
     if (!podcastId) return;
@@ -66,6 +106,13 @@ export function PodcastDetail({ podcastId: propPodcastId, scrollToEpisodeId }: {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useEffect(() => {
+    if (loading) return;
+    fetchEpisodes(episodeSort, episodeFilter).catch(() => {
+      toast.error("Failed to load episodes");
+    });
+  }, [episodeSort, episodeFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Scroll to target episode after data loads
   useEffect(() => {
@@ -498,19 +545,67 @@ export function PodcastDetail({ podcastId: propPodcastId, scrollToEpisodeId }: {
             <>
               <h2 className="text-base font-semibold flex-1">Episodes</h2>
               {episodes.length > 0 && (
-                <button
-                  onClick={() => setSearchOpen(true)}
-                  className="p-1.5 rounded-full hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-                >
-                  <Search className="w-4 h-4" />
-                </button>
+                <>
+                  <button
+                    onClick={() => setSearchOpen(true)}
+                    className="p-1.5 rounded-full hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                  >
+                    <Search className="w-4 h-4" />
+                  </button>
+
+                  {/* Sort */}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button className={`p-1.5 rounded-full hover:bg-muted transition-colors ${episodeSort !== "latest" ? "text-primary" : "text-muted-foreground hover:text-foreground"}`}>
+                        <ArrowUpDown className="w-4 h-4" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-44">
+                      <DropdownMenuLabel className="text-xs">Sort by</DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuRadioGroup value={episodeSort} onValueChange={(v) => setEpisodeSort(v as EpisodeSort)}>
+                        {(Object.keys(SORT_LABELS) as EpisodeSort[]).map((key) => (
+                          <DropdownMenuRadioItem key={key} value={key}>
+                            {SORT_LABELS[key]}
+                          </DropdownMenuRadioItem>
+                        ))}
+                      </DropdownMenuRadioGroup>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+
+                  {/* Filter */}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button className={`relative p-1.5 rounded-full hover:bg-muted transition-colors ${episodeFilter ? "text-primary" : "text-muted-foreground hover:text-foreground"}`}>
+                        <SlidersHorizontal className="w-4 h-4" />
+                        {episodeFilter && (
+                          <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-primary rounded-full" />
+                        )}
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-44">
+                      <DropdownMenuLabel className="text-xs">Filter by</DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuRadioGroup value={episodeFilter} onValueChange={(v) => setEpisodeFilter(v as EpisodeFilter | "")}>
+                        <DropdownMenuRadioItem value="">All Episodes</DropdownMenuRadioItem>
+                        {(Object.keys(FILTER_LABELS) as EpisodeFilter[]).map((key) => (
+                          <DropdownMenuRadioItem key={key} value={key}>
+                            {FILTER_LABELS[key]}
+                          </DropdownMenuRadioItem>
+                        ))}
+                      </DropdownMenuRadioGroup>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </>
               )}
             </>
           )}
         </div>
         {episodes.length === 0 ? (
           <p className="text-muted-foreground text-sm">
-            No episodes yet. Episodes appear after a feed refresh.
+            {podcast && podcast.episodeCount > 0
+              ? "No episodes match your current filter."
+              : "No episodes yet. Episodes appear after a feed refresh."}
           </p>
         ) : (
           <div className="space-y-2">

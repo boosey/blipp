@@ -741,7 +741,11 @@ podcasts.get("/:id", async (c) => {
 
 /**
  * GET /:id/episodes — List episodes for a podcast.
- * Returns episodes from the local database, ordered by publish date descending.
+ * Returns episodes from the local database ordered by the requested sort.
+ *
+ * Query params:
+ *   sort    = latest | earliest | for_you | most_blipps | top_rated | shortest | longest (default: latest)
+ *   filter  = 24h | week | month | year | unblipped (default: none)
  *
  * @param id - The podcast's database ID
  * @returns Array of episode summaries
@@ -751,15 +755,43 @@ podcasts.get("/:id/episodes", async (c) => {
   const prisma = c.get("prisma") as any;
   const user = await getCurrentUser(c, prisma);
 
+  const sortParam = c.req.query("sort") ?? "latest";
+  const filterParam = c.req.query("filter");
+
   // Verify podcast exists
   await prisma.podcast.findUniqueOrThrow({
     where: { id: podcastId },
   });
 
-  const episodes = await prisma.episode.findMany({
-    where: { podcastId, contentStatus: { not: "NOT_DELIVERABLE" } },
-    orderBy: { publishedAt: "desc" },
-    take: 50,
+  // Build publishedAt date filter
+  const now = new Date();
+  const dateOffsets: Record<string, number> = {
+    "24h": 24 * 60 * 60 * 1000,
+    "week": 7 * 24 * 60 * 60 * 1000,
+    "month": 30 * 24 * 60 * 60 * 1000,
+    "year": 365 * 24 * 60 * 60 * 1000,
+  };
+  const dateGte = filterParam && filterParam in dateOffsets
+    ? new Date(now.getTime() - dateOffsets[filterParam])
+    : undefined;
+
+  // Aggregate sorts (most_blipps, top_rated, for_you) fetch all episodes then re-order in JS
+  const isAggregateSort = ["most_blipps", "top_rated", "for_you"].includes(sortParam);
+  let orderBy: any = { publishedAt: "desc" };
+  if (!isAggregateSort) {
+    if (sortParam === "earliest") orderBy = { publishedAt: "asc" };
+    else if (sortParam === "shortest") orderBy = [{ durationSeconds: "asc" }, { publishedAt: "desc" }];
+    else if (sortParam === "longest") orderBy = [{ durationSeconds: "desc" }, { publishedAt: "desc" }];
+  }
+
+  let episodes: any[] = await prisma.episode.findMany({
+    where: {
+      podcastId,
+      contentStatus: { not: "NOT_DELIVERABLE" },
+      ...(dateGte ? { publishedAt: { gte: dateGte } } : {}),
+    },
+    orderBy,
+    take: 200,
     select: {
       id: true,
       title: true,
@@ -792,6 +824,42 @@ podcasts.get("/:id/episodes", async (c) => {
     if (!blippMap.has(fi.episodeId)) {
       blippMap.set(fi.episodeId, { status: fi.status, listened: fi.listened });
     }
+  }
+
+  // Apply aggregate sorts — fetch global counts then re-order in JS
+  if (isAggregateSort) {
+    const blippCounts = await prisma.feedItem.groupBy({
+      by: ["episodeId"],
+      where: { episodeId: { in: episodeIds }, status: { not: "CANCELLED" } },
+      _count: { episodeId: true },
+    });
+    const blippCountMap = new Map<string, number>(blippCounts.map((b: any) => [b.episodeId as string, Number(b._count.episodeId)]));
+
+    if (sortParam === "most_blipps") {
+      episodes.sort((a: any, b: any) =>
+        (blippCountMap.get(b.id) ?? 0) - (blippCountMap.get(a.id) ?? 0)
+      );
+    } else if (sortParam === "top_rated") {
+      const voteTotals = await prisma.episodeVote.groupBy({
+        by: ["episodeId"],
+        where: { episodeId: { in: episodeIds } },
+        _sum: { vote: true },
+      });
+      const netVoteMap = new Map<string, number>(voteTotals.map((v: any) => [v.episodeId as string, Number(v._sum.vote ?? 0)]));
+      episodes.sort((a: any, b: any) =>
+        (netVoteMap.get(b.id) ?? 0) - (netVoteMap.get(a.id) ?? 0)
+      );
+    } else if (sortParam === "for_you") {
+      // Unblipped episodes by this user, ordered by global blipp popularity
+      episodes = episodes
+        .filter((e: any) => !blippMap.has(e.id))
+        .sort((a: any, b: any) => (blippCountMap.get(b.id) ?? 0) - (blippCountMap.get(a.id) ?? 0));
+    }
+  }
+
+  // Apply "unblipped" filter — episodes this user hasn't created a briefing for
+  if (filterParam === "unblipped") {
+    episodes = episodes.filter((e: any) => !blippMap.has(e.id));
   }
 
   return c.json({
