@@ -87,6 +87,12 @@ model User {
   defaultDurationTier   Int      @default(5)
   defaultVoicePresetId  String?
   acceptAnyVoice        Boolean  @default(false)
+  preferredCategories   String[]          // explicit interest categories for recommendations
+  excludedCategories    String[]          // categories to never recommend
+  preferredTopics       String[]          // free-text topic interests, e.g. ["AI", "NBA"]
+  excludedTopics        String[]          // topics to suppress from recommendations
+  dmaCode               String?           // Cloudflare cf.metroCode (Nielsen DMA) for local sports
+  profileCompletedAt    DateTime?         // when user last saved interest preferences
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
@@ -108,6 +114,7 @@ model User {
   feedback                  Feedback[]
   blippFeedback             BlippFeedback[]
   listenOriginalEvents      ListenOriginalEvent[] @relation("ListenOriginalEvents")
+  sportsTeams               UserSportsTeam[]
 }
 
 // ── Podcast Favorites (interest signals for recommendations) ──
@@ -190,12 +197,14 @@ model Podcast {
   feedHealth     String?   // "excellent" | "good" | "fair" | "poor" | "broken"
   feedError      String?
   episodeCount   Int       @default(0)
-  status         String    @default("active") // "active" | "paused" | "archived"
+  status         String    @default("active") // "active" | "paused" | "archived" | "pending_deletion" | "evicted"
   deliverable    Boolean   @default(true)     // false when no deliverable episodes exist
-  appleRank      Int?      // Position in Apple Top 200 chart (1-200, null if unranked)
-  source         String?   // "trending" | "user_request" | "manual"
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  appleRank          Int?      // Position in Apple Top 200 chart (1-200, null if unranked)
+  piRank             Int?      // Best position across PI trending categories (1 = most trending). Updated each discovery run.
+  lastDetailViewedAt DateTime? // Last time any user fetched this podcast's detail page
+  source             String?   // "trending" | "user_request" | "manual"
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   episodes          Episode[]
   subscriptions     Subscription[]
@@ -1169,17 +1178,18 @@ model SportsDivision {
 }
 
 model SportsTeam {
-  id           String             @id @default(cuid())
-  name         String             // "Kansas City Chiefs"
-  city         String             // "Kansas City"
-  nickname     String             // "Chiefs"
-  abbreviation String             // "KC"
-  keywords     String[]           // title-match terms: ["Chiefs", "Kansas City Chiefs"]
-  leagueId     String
+  id             String             @id @default(cuid())
+  name           String             // "Kansas City Chiefs"
+  city           String             // "Kansas City"
+  nickname       String             // "Chiefs"
+  abbreviation   String             // "KC"
+  keywords       String[]           // title-match terms: ["Chiefs", "Kansas City Chiefs"]
+  leagueId       String
   divisionId   String?
   league       SportsLeague       @relation(fields: [leagueId], references: [id], onDelete: Cascade)
   division     SportsDivision?    @relation(fields: [divisionId], references: [id])
-  markets      SportsTeamMarket[]
+  markets        SportsTeamMarket[]
+  userSelections UserSportsTeam[]
   createdAt    DateTime           @default(now())
   updatedAt    DateTime           @updatedAt
 
@@ -1194,4 +1204,16 @@ model SportsTeamMarket {
 
   @@unique([teamId, dmaCode])
   @@index([dmaCode])
+}
+
+model UserSportsTeam {
+  id        String     @id @default(cuid())
+  userId    String
+  teamId    String
+  createdAt DateTime   @default(now())
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team      SportsTeam @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, teamId])
+  @@index([userId])
 }

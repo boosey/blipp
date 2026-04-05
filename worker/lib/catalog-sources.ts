@@ -11,6 +11,7 @@ export interface DiscoveredPodcast {
   categories?: { genreId: string; name: string }[];
   appleMetadata?: Record<string, unknown>;
   appleRank?: number;
+  piRank?: number;
 }
 
 export interface CatalogSource {
@@ -128,10 +129,21 @@ const PodcastIndexSource: CatalogSource = {
       const feeds = result.value;
       const prevSize = seen.size;
 
-      for (const p of feeds) {
-        if (!p.url || seen.has(p.url)) continue;
+      for (const [idx, p] of feeds.entries()) {
+        if (!p.url) continue;
         // Skip non-Latin titles (CJK, Arabic, etc.)
         if (/[^\u0000-\u024f\u1e00-\u1eff]/u.test(p.title)) continue;
+
+        const rank = idx + 1; // 1-indexed within this category
+        const existing = seen.get(p.url);
+
+        // Keep the best (lowest) rank across all category appearances
+        if (existing) {
+          if (rank < (existing.piRank ?? Infinity)) {
+            existing.piRank = rank;
+          }
+          continue;
+        }
 
         const categories = mapPiCategories(p.categories ?? {});
         // If no categories mapped from feed data, use the query category
@@ -148,6 +160,7 @@ const PodcastIndexSource: CatalogSource = {
           author: p.author,
           podcastIndexId: String(p.id),
           categories,
+          piRank: rank,
         });
       }
 
@@ -160,9 +173,20 @@ const PodcastIndexSource: CatalogSource = {
     try {
       const overall = await client.trending(100, "en");
       let added = 0;
-      for (const p of overall) {
-        if (!p.url || seen.has(p.url)) continue;
+      for (const [idx, p] of overall.entries()) {
+        if (!p.url) continue;
         if (/[^\u0000-\u024f\u1e00-\u1eff]/u.test(p.title)) continue;
+
+        const rank = idx + 1;
+        const existing = seen.get(p.url);
+
+        if (existing) {
+          if (rank < (existing.piRank ?? Infinity)) {
+            existing.piRank = rank;
+          }
+          continue;
+        }
+
         seen.set(p.url, {
           feedUrl: p.url,
           title: p.title,
@@ -171,6 +195,7 @@ const PodcastIndexSource: CatalogSource = {
           author: p.author,
           podcastIndexId: String(p.id),
           categories: mapPiCategories(p.categories ?? {}),
+          piRank: rank,
         });
         added++;
       }

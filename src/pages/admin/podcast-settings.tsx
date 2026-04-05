@@ -28,7 +28,8 @@ const CONFIG_GROUPS: ConfigGroup[] = [
     title: "Catalog Discovery",
     description: "How new podcasts are discovered and added to the library",
     items: [
-      { key: "catalog.seedSize", label: "Discovery Batch Size", type: "number", description: "Podcasts to fetch during catalog refresh", default: 200 },
+      { key: "catalog.seedSize", label: "Discovery Batch Size", type: "number", description: "Podcasts to fetch during catalog refresh", default: 20 },
+      { key: "catalog.maxSize", label: "Catalog Size Limit", type: "number", description: "Max podcasts in catalog. Least-ranked PI podcasts are evicted when full.", default: 10000 },
       { key: "catalog.refreshAllPodcasts", label: "Refresh All Podcasts", type: "boolean", description: "Refresh all catalog podcasts (not just subscribed)", default: false },
     ],
   },

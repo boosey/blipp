@@ -721,6 +721,11 @@ podcasts.get("/:id", async (c) => {
     prisma.episode.count({ where: { podcastId } }),
   ]);
 
+  // Track detail-view timestamp for catalog eviction decisions (non-blocking)
+  c.executionCtx.waitUntil(
+    prisma.podcast.update({ where: { id: podcastId }, data: { lastDetailViewedAt: new Date() } })
+  );
+
   return c.json({
     podcast: {
       id: podcast.id,

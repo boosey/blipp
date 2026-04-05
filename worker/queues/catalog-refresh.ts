@@ -4,8 +4,9 @@ import { createPrismaClient, type PrismaClient } from "../lib/db";
 import { getConfig } from "../lib/config";
 import { getCatalogSource } from "../lib/catalog-sources";
 import type { DiscoveredPodcast } from "../lib/catalog-sources";
+import { evictToFit } from "../lib/catalog-eviction";
 
-const DEFAULT_DISCOVER_COUNT = 2000;
+const DEFAULT_DISCOVER_COUNT = 20;
 
 export async function handleCatalogRefresh(
   batch: MessageBatch<CatalogRefreshMessage>,
@@ -55,8 +56,24 @@ export async function handleCatalogRefresh(
           if (discovered.length > 0) {
             // Update appleRank for all discovered podcasts (existing + new)
             await updateAppleRanks(prisma, discovered);
+            // Update piRank for PI-sourced podcasts
+            await updatePiRanks(prisma, discovered);
 
-            const newPodcasts = await filterNewPodcasts(prisma, discovered);
+            let newPodcasts = await filterNewPodcasts(prisma, discovered);
+
+            // Enforce catalog size limit: evict least-valuable podcasts to make room
+            if (newPodcasts.length > 0) {
+              const maxSize = Number(await getConfig(prisma, "catalog.maxSize", 10000));
+              const { evicted, shortfall } = await evictToFit(prisma, newPodcasts.length, maxSize);
+              if (evicted > 0) {
+                console.log(JSON.stringify({ level: "info", action: "catalog_eviction", evicted, ts: new Date().toISOString() }));
+              }
+              if (shortfall > 0) {
+                console.warn(JSON.stringify({ level: "warn", action: "catalog_eviction_shortfall", shortfall, message: "All remaining podcasts have engagement signals", ts: new Date().toISOString() }));
+                newPodcasts = newPodcasts.slice(0, newPodcasts.length - shortfall);
+              }
+            }
+
             if (newPodcasts.length > 0) {
               newIds = await bulkInsertPodcasts(prisma, newPodcasts, categoryIdMap, sourceId);
             }
@@ -202,12 +219,38 @@ async function filterNewPodcasts(prisma: PrismaClient, discovered: DiscoveredPod
     const batch = feedUrls.slice(i, i + BATCH);
     const existing = await prisma.podcast.findMany({
       where: { feedUrl: { in: batch } },
-      select: { feedUrl: true },
+      select: { feedUrl: true, status: true },
     });
+    // Skip both existing active podcasts AND evicted ones (prevent churn)
     for (const p of existing) existingUrls.add(p.feedUrl);
   }
 
   return discovered.filter((p) => p.feedUrl && !existingUrls.has(p.feedUrl));
+}
+
+/**
+ * Updates piRank for existing PI-sourced podcasts based on their trending position.
+ */
+async function updatePiRanks(prisma: PrismaClient, discovered: DiscoveredPodcast[]): Promise<void> {
+  const withRank = discovered.filter((p) => p.podcastIndexId && p.piRank != null);
+  if (withRank.length === 0) return;
+
+  const BATCH = 50;
+  let updated = 0;
+  for (let i = 0; i < withRank.length; i += BATCH) {
+    const chunk = withRank.slice(i, i + BATCH);
+    const results = await Promise.all(
+      chunk.map((p) =>
+        prisma.podcast.updateMany({
+          where: { podcastIndexId: p.podcastIndexId },
+          data: { piRank: p.piRank },
+        })
+      )
+    );
+    updated += results.reduce((sum, r) => sum + r.count, 0);
+  }
+
+  console.log(JSON.stringify({ level: "info", action: "catalog_refresh_pi_ranks_updated", discovered: withRank.length, updated, ts: new Date().toISOString() }));
 }
 
 async function upsertCategories(prisma: PrismaClient, discovered: DiscoveredPodcast[]): Promise<Map<string, string>> {
@@ -262,6 +305,7 @@ async function bulkInsertPodcasts(
         feedUrl: p.feedUrl,
         status: "active",
         appleRank: p.appleRank ?? null,
+        piRank: p.piRank ?? null,
       })),
       skipDuplicates: true,
     });

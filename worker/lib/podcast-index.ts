@@ -14,6 +14,11 @@ export interface PodcastIndexFeed {
   categories: Record<string, string>;
 }
 
+/** PodcastIndexFeed with a computed trending rank (1 = most trending in at least one category) */
+export interface RankedPodcastIndexFeed extends PodcastIndexFeed {
+  piRank: number;
+}
+
 /** @internal Result shape from Podcast Index episodes endpoints */
 export interface PodcastIndexEpisode {
   id: number;
