@@ -68,7 +68,9 @@ podcasts.get("/catalog", async (c) => {
   const skip = (page - 1) * pageSize;
 
   const sort = c.req.query("sort") || "rank";
-  const excludedCategories: string[] = user.excludedCategories ?? [];
+  const explicit = c.req.query("explicit") === "true";
+  // Skip exclusions when user explicitly selected this category
+  const excludedCategories: string[] = explicit ? [] : (user.excludedCategories ?? []);
 
   const where: any = { deliverable: true };
   if (category) {

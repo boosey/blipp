@@ -14,6 +14,10 @@ import { usePodcastSheet } from "../contexts/podcast-sheet-context";
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "../components/ui/accordion";
 import type { CuratedResponse, EpisodeBrowseItem, EpisodeBrowseResponse } from "../types/recommendations";
 
+interface UserPrefs {
+  preferredCategories: string[];
+}
+
 interface CatalogPodcast {
   id: string;
   title: string;
@@ -49,6 +53,10 @@ export function Discover() {
   const [sortBy, setSortBy] = useState<"rank" | "popularity" | "subscriptions" | "favorites">("rank");
   const [showSortMenu, setShowSortMenu] = useState(false);
 
+  // User preferences for pill ordering
+  const { data: meData } = useFetch<{ user: UserPrefs }>("/me");
+  const preferredCategories = meData?.user?.preferredCategories ?? [];
+
   // Dynamic category pills from API
   const { data: categoryData } = useFetch<{
     categories: { id: string; name: string; podcastCount: number }[];
@@ -57,8 +65,12 @@ export function Discover() {
   const categoryNames = useMemo(() => {
     if (!categoryData?.categories) return ["All"];
     const unique = [...new Set(categoryData.categories.map((c) => c.name))];
-    return ["All", ...unique];
-  }, [categoryData?.categories]);
+    // Put user's preferred categories first
+    const prefSet = new Set(preferredCategories);
+    const preferred = unique.filter((c) => prefSet.has(c));
+    const rest = unique.filter((c) => !prefSet.has(c));
+    return ["All", ...preferred, ...rest];
+  }, [categoryData?.categories, preferredCategories]);
 
   // Reset selection if selected category disappears from the list
   useEffect(() => {
@@ -76,7 +88,9 @@ export function Discover() {
   >([]);
 
   // --- Curated rows ---
-  const curatedEndpoint = `/recommendations/curated${selectedCategory !== "All" ? `?genre=${encodeURIComponent(selectedCategory)}` : ""}`;
+  const curatedEndpoint = selectedCategory !== "All"
+    ? `/recommendations/curated?genre=${encodeURIComponent(selectedCategory)}&explicit=true`
+    : "/recommendations/curated";
   const { data: curatedData, loading: curatedLoading } = useFetch<CuratedResponse>(curatedEndpoint);
 
   // --- Local discovery ---
@@ -99,7 +113,7 @@ export function Discover() {
   const fetchEpisodePage = useCallback(async (page: number, reset = false) => {
     setEpisodeLoading(true);
     try {
-      const genreParam = selectedCategory !== "All" ? `&genre=${encodeURIComponent(selectedCategory)}` : "";
+      const genreParam = selectedCategory !== "All" ? `&genre=${encodeURIComponent(selectedCategory)}&explicit=true` : "";
       const searchParam = debouncedSearch.trim() ? `&search=${encodeURIComponent(debouncedSearch.trim())}` : "";
       const sortParam = `&sort=${sortBy}`;
       const data = await apiFetch<EpisodeBrowseResponse>(
@@ -159,7 +173,7 @@ export function Discover() {
     setBrowseLoading(true);
     setBrowseError(null);
     try {
-      const genreParam = selectedCategory !== "All" ? `&category=${encodeURIComponent(selectedCategory)}` : "";
+      const genreParam = selectedCategory !== "All" ? `&category=${encodeURIComponent(selectedCategory)}&explicit=true` : "";
       const searchParam = debouncedSearch.trim() ? `&q=${encodeURIComponent(debouncedSearch.trim())}` : "";
       const sortParam = `&sort=${sortBy}`;
       const data = await apiFetch<CatalogResponse>(

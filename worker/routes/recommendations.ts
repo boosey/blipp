@@ -51,15 +51,16 @@ function diversifyEpisodes(episodes: any[], maxPerPodcast = 2, limit = 15): any[
 async function generateCuratedRows(
   user: any,
   prisma: any,
-  genre: string | null
+  genre: string | null,
+  explicit = false
 ): Promise<CuratedRow[]> {
   const rows: CuratedRow[] = [];
   const fourteenDaysAgo = new Date(Date.now() - 14 * 86400000);
   const userId = user.id;
 
-  // User preference exclusions
-  const userExcludedCategories: string[] = user.excludedCategories ?? [];
-  const userExcludedTopics: string[] = user.excludedTopics ?? [];
+  // User preference exclusions — skip when user explicitly selected this genre
+  const userExcludedCategories: string[] = explicit ? [] : (user.excludedCategories ?? []);
+  const userExcludedTopics: string[] = explicit ? [] : (user.excludedTopics ?? []);
   const excludedTopicSet = new Set(userExcludedTopics.map((t: string) => t.toLowerCase()));
 
   // Get user's subscribed + downvoted podcast IDs to exclude from discovery rows
@@ -306,8 +307,9 @@ recommendations.get("/curated", async (c) => {
   const prisma = c.get("prisma") as any;
   const user = await getCurrentUser(c, prisma);
   const genre = c.req.query("genre") || null;
+  const explicit = c.req.query("explicit") === "true";
 
-  const rows = await generateCuratedRows(user, prisma, genre);
+  const rows = await generateCuratedRows(user, prisma, genre, explicit);
   return c.json({ rows, podcastSuggestions: [] });
 });
 
@@ -318,6 +320,7 @@ recommendations.get("/episodes", async (c) => {
   const genre = c.req.query("genre") || null;
   const search = c.req.query("search") || null;
   const sort = c.req.query("sort") || "recent";
+  const explicit = c.req.query("explicit") === "true";
   const page = parseInt(c.req.query("page") || "1", 10);
   const pageSize = Math.min(parseInt(c.req.query("pageSize") || "20", 10), 50);
   const skip = (page - 1) * pageSize;
@@ -329,8 +332,9 @@ recommendations.get("/episodes", async (c) => {
   });
   const userDownvotedIds = userDownvotes.map((d: any) => d.podcastId);
 
-  const excludedCategories: string[] = user.excludedCategories ?? [];
-  const excludedTopics: string[] = user.excludedTopics ?? [];
+  // Skip exclusions when user explicitly selected this genre
+  const excludedCategories: string[] = explicit ? [] : (user.excludedCategories ?? []);
+  const excludedTopics: string[] = explicit ? [] : (user.excludedTopics ?? []);
   const excludedTopicSet = new Set(excludedTopics.map((t: string) => t.toLowerCase()));
 
   const where: any = {};
