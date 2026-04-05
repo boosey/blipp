@@ -53,6 +53,12 @@ const JOB_DEFINITIONS = [
     description: "Aggregates listen-to-original conversion events into daily publisher report batches",
     defaultIntervalMinutes: 1440,
   },
+  {
+    jobKey: "stale-job-reaper",
+    label: "Stale Job Reaper",
+    description: "Marks stalled PipelineJobs, FeedItems, and EpisodeRefreshJobs as failed",
+    defaultIntervalMinutes: 30,
+  },
 ] as const;
 
 const VALID_JOB_KEYS = JOB_DEFINITIONS.map((j) => j.jobKey);

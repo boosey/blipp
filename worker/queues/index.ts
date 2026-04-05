@@ -14,6 +14,7 @@ import { runPipelineTriggerJob } from "../lib/cron/pipeline-trigger";
 import { runMonitoringJob } from "../lib/cron/monitoring";
 import { runUserLifecycleJob } from "../lib/cron/user-lifecycle";
 import { runDataRetentionJob } from "../lib/cron/data-retention";
+import { runStaleJobReaperJob } from "../lib/cron/stale-job-reaper";
 import { runRecommendationsJob } from "../lib/cron/recommendations";
 import { runAppleDiscoveryJob, runPodcastIndexDiscoveryJob } from "../lib/cron/podcast-discovery";
 import { runListenOriginalAggregationJob } from "../lib/cron/listen-original-aggregation";
@@ -149,7 +150,7 @@ export async function handleQueue(
  * Cron heartbeat handler — fires every 5 minutes and dispatches all named jobs.
  * Each job manages its own enable toggle and run interval via PlatformConfig.
  *
- * Jobs: apple-discovery, podcast-index-discovery, pipeline-trigger, monitoring, user-lifecycle, data-retention, recommendations
+ * Jobs: apple-discovery, podcast-index-discovery, pipeline-trigger, monitoring, user-lifecycle, data-retention, recommendations, listen-original-aggregation, stale-job-reaper
  *
  * @param event - Cloudflare scheduled event
  * @param env - Worker environment bindings
@@ -216,11 +217,17 @@ export async function scheduled(
         defaultIntervalMinutes: 1440,
         execute: (logger) => runListenOriginalAggregationJob(prisma as any, logger),
       }),
+      runJob({
+        jobKey: "stale-job-reaper",
+        prisma: prisma as any,
+        defaultIntervalMinutes: 30,
+        execute: (logger) => runStaleJobReaperJob(prisma as any, logger),
+      }),
     ]);
 
     const jobKeys = [
       "apple-discovery", "podcast-index-discovery", "pipeline-trigger", "monitoring",
-      "user-lifecycle", "data-retention", "recommendations", "listen-original-aggregation",
+      "user-lifecycle", "data-retention", "recommendations", "listen-original-aggregation", "stale-job-reaper",
     ];
     for (let i = 0; i < results.length; i++) {
       const r = results[i];
