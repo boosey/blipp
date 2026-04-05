@@ -1,7 +1,7 @@
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback } from "react";
 import {
   Sun, Moon, Monitor, Download, Trash2, LogOut, MapPin,
-  User, Mic, Smartphone, ShieldCheck, ChevronRight, ChevronLeft,
+  User, Mic, Smartphone, ShieldCheck,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
@@ -20,6 +20,7 @@ import { useAppConfig } from "../lib/app-config";
 import { StorageSettings } from "../components/storage-settings";
 import { InterestPicker } from "../components/interest-picker";
 import { SportsTeamPicker } from "../components/sports-team-picker";
+import { ScrollableRow } from "../components/scrollable-row";
 import type { DurationTier } from "../lib/duration-tiers";
 import {
   Dialog,
@@ -798,67 +799,26 @@ function OptimisticInterestPicker({
 }
 
 function TabBar({ activeTab, onTabChange }: { activeTab: TabId; onTabChange: (id: TabId) => void }) {
-  const scrollRef = useRef<HTMLElement>(null);
-  const [canScrollLeft, setCanScrollLeft] = useState(false);
-  const [canScrollRight, setCanScrollRight] = useState(false);
-
-  const checkScroll = useCallback(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    setCanScrollLeft(el.scrollLeft > 2);
-    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 2);
-  }, []);
-
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    checkScroll();
-    el.addEventListener("scroll", checkScroll, { passive: true });
-    window.addEventListener("resize", checkScroll);
-    return () => {
-      el.removeEventListener("scroll", checkScroll);
-      window.removeEventListener("resize", checkScroll);
-    };
-  }, [checkScroll]);
-
   return (
     <div className="sticky top-0 z-10 -mx-4 px-4 pt-2 pb-3 bg-background">
-      <div className="relative">
-        {canScrollLeft && (
-          <div className="absolute left-0 top-0 bottom-0 z-10 flex items-center pointer-events-none">
-            <div className="w-8 h-full bg-gradient-to-r from-background to-transparent" />
-            <ChevronLeft className="w-4 h-4 text-muted-foreground -ml-5" />
-          </div>
-        )}
-        <nav
-          ref={scrollRef}
-          className="flex gap-1 overflow-x-auto scrollbar-hide"
-          role="tablist"
-        >
-          {TABS.map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              role="tab"
-              aria-selected={activeTab === id}
-              onClick={() => onTabChange(id)}
-              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all shrink-0 ${
-                activeTab === id
-                  ? "bg-primary text-primary-foreground shadow-sm"
-                  : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground"
-              }`}
-            >
-              <Icon className="w-3.5 h-3.5" />
-              {label}
-            </button>
-          ))}
-        </nav>
-        {canScrollRight && (
-          <div className="absolute right-0 top-0 bottom-0 z-10 flex items-center pointer-events-none">
-            <div className="w-8 h-full bg-gradient-to-l from-background to-transparent" />
-            <ChevronRight className="w-4 h-4 text-muted-foreground -mr-5" />
-          </div>
-        )}
-      </div>
+      <ScrollableRow className="gap-1">
+        {TABS.map(({ id, label, icon: Icon }) => (
+          <button
+            key={id}
+            role="tab"
+            aria-selected={activeTab === id}
+            onClick={() => onTabChange(id)}
+            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all shrink-0 ${
+              activeTab === id
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground"
+            }`}
+          >
+            <Icon className="w-3.5 h-3.5" />
+            {label}
+          </button>
+        ))}
+      </ScrollableRow>
     </div>
   );
 }

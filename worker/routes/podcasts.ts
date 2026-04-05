@@ -60,14 +60,23 @@ podcasts.use("*", requireAuth);
  */
 podcasts.get("/catalog", async (c) => {
   const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
   const q = c.req.query("q")?.trim();
+  const category = c.req.query("category") || null;
   const page = Math.max(1, parseInt(c.req.query("page") || "1"));
   const pageSize = Math.min(100, Math.max(1, parseInt(c.req.query("pageSize") || "50")));
   const skip = (page - 1) * pageSize;
 
   const sort = c.req.query("sort") || "rank";
+  const excludedCategories: string[] = user.excludedCategories ?? [];
 
   const where: any = { deliverable: true };
+  if (category) {
+    where.categories = { has: category };
+  }
+  if (excludedCategories.length > 0) {
+    where.NOT = { categories: { hasSome: excludedCategories } };
+  }
   if (q) {
     where.OR = [
       { title: { contains: q, mode: "insensitive" } },

@@ -49,12 +49,18 @@ function diversifyEpisodes(episodes: any[], maxPerPodcast = 2, limit = 15): any[
 // --- Curated rows helper ---
 
 async function generateCuratedRows(
-  userId: string,
+  user: any,
   prisma: any,
   genre: string | null
 ): Promise<CuratedRow[]> {
   const rows: CuratedRow[] = [];
   const fourteenDaysAgo = new Date(Date.now() - 14 * 86400000);
+  const userId = user.id;
+
+  // User preference exclusions
+  const userExcludedCategories: string[] = user.excludedCategories ?? [];
+  const userExcludedTopics: string[] = user.excludedTopics ?? [];
+  const excludedTopicSet = new Set(userExcludedTopics.map((t: string) => t.toLowerCase()));
 
   // Get user's subscribed + downvoted podcast IDs to exclude from discovery rows
   const [subscriptions, downvotes] = await Promise.all([
@@ -73,12 +79,17 @@ async function generateCuratedRows(
 
   // Row 1: "Trending in {genre}" or "Trending Now"
   {
+    const podcastWhere: any = {
+      id: { notIn: [...excludeIds] },
+      ...(genre ? { categories: { has: genre } } : {}),
+    };
+    // Filter out podcasts in user's excluded categories
+    if (userExcludedCategories.length > 0) {
+      podcastWhere.NOT = { categories: { hasSome: userExcludedCategories } };
+    }
     const where: any = {
       publishedAt: { not: null, gte: fourteenDaysAgo },
-      podcast: {
-        id: { notIn: [...excludeIds] },
-        ...(genre ? { categories: { has: genre } } : {}),
-      },
+      podcast: podcastWhere,
     };
     const rawEpisodes = await prisma.episode.findMany({
       where,
@@ -93,7 +104,11 @@ async function generateCuratedRows(
         podcast: { select: { id: true, title: true, author: true, imageUrl: true, categories: true } },
       },
     });
-    const episodes = diversifyEpisodes(rawEpisodes, 2, 15);
+    // Post-filter episodes with excluded topics
+    const filtered = excludedTopicSet.size > 0
+      ? rawEpisodes.filter((ep: any) => !(ep.topicTags ?? []).some((t: string) => excludedTopicSet.has(t.toLowerCase())))
+      : rawEpisodes;
+    const episodes = diversifyEpisodes(filtered, 2, 15);
     if (episodes.length > 0) {
       rows.push({
         title: genre ? `Trending in ${genre}` : "Trending Now",
@@ -116,13 +131,17 @@ async function generateCuratedRows(
     if (userProfile) {
       const topicTags: string[] = userProfile.topicTags || [];
       if (topicTags.length > 0) {
+        const topicPodcastWhere: any = {
+          id: { notIn: [...excludeIds] },
+          ...(genre ? { categories: { has: genre } } : {}),
+        };
+        if (userExcludedCategories.length > 0) {
+          topicPodcastWhere.NOT = { categories: { hasSome: userExcludedCategories } };
+        }
         const where: any = {
           publishedAt: { gte: fourteenDaysAgo },
           topicTags: { hasSome: topicTags },
-          podcast: {
-            id: { notIn: [...excludeIds] },
-            ...(genre ? { categories: { has: genre } } : {}),
-          },
+          podcast: topicPodcastWhere,
         };
         const rawTopicEpisodes = await prisma.episode.findMany({
           where,
@@ -137,7 +156,10 @@ async function generateCuratedRows(
             podcast: { select: { id: true, title: true, author: true, imageUrl: true, categories: true } },
           },
         });
-        const episodes = diversifyEpisodes(rawTopicEpisodes, 2, 15);
+        const filteredTopicEpisodes = excludedTopicSet.size > 0
+          ? rawTopicEpisodes.filter((ep: any) => !(ep.topicTags ?? []).some((t: string) => excludedTopicSet.has(t.toLowerCase())))
+          : rawTopicEpisodes;
+        const episodes = diversifyEpisodes(filteredTopicEpisodes, 2, 15);
         if (episodes.length > 0) {
           rows.push({
             title: "New on topics you follow",
@@ -199,18 +221,22 @@ async function generateCuratedRows(
 
     const sourcePodcast = favorite?.podcast;
     if (sourcePodcast && sourcePodcast.categories?.length > 0) {
+      const similarPodcastWhere: any = {
+        id: { notIn: [...excludeIds, sourcePodcast.id] },
+        categories: { hasSome: sourcePodcast.categories },
+        ...(genre ? { categories: { has: genre } } : {}),
+      };
+      if (userExcludedCategories.length > 0) {
+        similarPodcastWhere.NOT = { categories: { hasSome: userExcludedCategories } };
+      }
       const where: any = {
         publishedAt: { gte: fourteenDaysAgo },
-        podcast: {
-          id: { notIn: [...excludeIds, sourcePodcast.id] },
-          categories: { hasSome: sourcePodcast.categories },
-          ...(genre ? { categories: { has: genre } } : {}),
-        },
+        podcast: similarPodcastWhere,
       };
-      const episodes = await prisma.episode.findMany({
+      const rawSimilarEpisodes = await prisma.episode.findMany({
         where,
         orderBy: { publishedAt: "desc" },
-        take: 15,
+        take: 30,
         select: {
           id: true,
           title: true,
@@ -220,6 +246,9 @@ async function generateCuratedRows(
           podcast: { select: { id: true, title: true, author: true, imageUrl: true, categories: true } },
         },
       });
+      const episodes = excludedTopicSet.size > 0
+        ? rawSimilarEpisodes.filter((ep: any) => !(ep.topicTags ?? []).some((t: string) => excludedTopicSet.has(t.toLowerCase()))).slice(0, 15)
+        : rawSimilarEpisodes.slice(0, 15);
       if (episodes.length > 0) {
         rows.push({
           title: `Because you like ${sourcePodcast.title}`,
@@ -278,7 +307,7 @@ recommendations.get("/curated", async (c) => {
   const user = await getCurrentUser(c, prisma);
   const genre = c.req.query("genre") || null;
 
-  const rows = await generateCuratedRows(user.id, prisma, genre);
+  const rows = await generateCuratedRows(user, prisma, genre);
   return c.json({ rows, podcastSuggestions: [] });
 });
 
@@ -300,12 +329,19 @@ recommendations.get("/episodes", async (c) => {
   });
   const userDownvotedIds = userDownvotes.map((d: any) => d.podcastId);
 
+  const excludedCategories: string[] = user.excludedCategories ?? [];
+  const excludedTopics: string[] = user.excludedTopics ?? [];
+  const excludedTopicSet = new Set(excludedTopics.map((t: string) => t.toLowerCase()));
+
   const where: any = {};
   if (genre) {
     where.podcast = { ...(where.podcast || {}), categories: { has: genre } };
   }
   if (userDownvotedIds.length > 0) {
     where.podcast = { ...(where.podcast || {}), id: { notIn: userDownvotedIds } };
+  }
+  if (excludedCategories.length > 0) {
+    where.podcast = { ...(where.podcast || {}), NOT: { categories: { hasSome: excludedCategories } } };
   }
   if (search) {
     where.OR = [
@@ -341,8 +377,11 @@ recommendations.get("/episodes", async (c) => {
     prisma.episode.count({ where }),
   ]);
 
-  // Filter bad dates + diversify: max 3 episodes per podcast per page
-  const episodes = diversifyEpisodes(rawEpisodes, 3, pageSize);
+  // Post-filter episodes with excluded topics, then diversify
+  const topicFiltered = excludedTopicSet.size > 0
+    ? rawEpisodes.filter((ep: any) => !(ep.topicTags ?? []).some((t: string) => excludedTopicSet.has(t.toLowerCase())))
+    : rawEpisodes;
+  const episodes = diversifyEpisodes(topicFiltered, 3, pageSize);
 
   return c.json({
     episodes: episodes.map((ep: any) => ({
