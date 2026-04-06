@@ -715,6 +715,55 @@ Then proceed directly into the content.`;
   }
 
   console.log("Seeded sports leagues, divisions, and teams.");
+
+  // ── Cron Jobs ──
+  const cronJobs = [
+    { jobKey: "apple-discovery",             label: "Apple Discovery",                 description: "Discovers new podcasts from Apple Podcasts and adds them to the library",                        defaultIntervalMinutes: 10080 },
+    { jobKey: "podcast-index-discovery",     label: "Podcast Index Discovery",         description: "Discovers new podcasts from Podcast Index and adds them to the library",                        defaultIntervalMinutes: 10080 },
+    { jobKey: "pipeline-trigger",            label: "Fetch New Episodes",              description: "Checks all podcast feeds for new episodes and enqueues them for processing",                    defaultIntervalMinutes: 15 },
+    { jobKey: "monitoring",                  label: "Update AI Models",                description: "Refreshes AI model pricing and checks cost threshold alerts",                                   defaultIntervalMinutes: 60 },
+    { jobKey: "user-lifecycle",              label: "Promotion Aging",                 description: "Checks for users whose free trial has expired",                                                 defaultIntervalMinutes: 360 },
+    { jobKey: "data-retention",              label: "Data Pruning",                    description: "Counts/deletes aged episodes, stale podcasts, and old requests",                                 defaultIntervalMinutes: 1440 },
+    { jobKey: "recommendations",             label: "Compute Recommendations",         description: "Rebuilds podcast recommendation profiles for all users",                                        defaultIntervalMinutes: 10080 },
+    { jobKey: "listen-original-aggregation", label: "Listen-to-Original Aggregation",  description: "Aggregates listen-to-original conversion events into daily publisher report batches",            defaultIntervalMinutes: 1440 },
+    { jobKey: "stale-job-reaper",            label: "Stale Job Reaper",                description: "Marks stalled PipelineJobs, FeedItems, and EpisodeRefreshJobs as failed",                       defaultIntervalMinutes: 30 },
+    { jobKey: "geo-tagging",                 label: "Podcast Geo-Tagging",             description: "Tags podcasts with geographic profiles using keyword matching and LLM classification",            defaultIntervalMinutes: 10080 },
+  ];
+  for (const job of cronJobs) {
+    await prisma.cronJob.upsert({
+      where: { jobKey: job.jobKey },
+      update: { label: job.label, description: job.description, defaultIntervalMinutes: job.defaultIntervalMinutes },
+      create: { ...job, intervalMinutes: job.defaultIntervalMinutes },
+    });
+  }
+
+  // Migrate any existing PlatformConfig cron overrides into CronJob rows (one-time)
+  const cronConfigs = await prisma.platformConfig.findMany({
+    where: { key: { startsWith: "cron." } },
+  });
+  for (const cfg of cronConfigs) {
+    const match = cfg.key.match(/^cron\.(.+)\.(enabled|intervalMinutes|lastRunAt)$/);
+    if (!match) continue;
+    const [, jobKey, field] = match;
+    const cronJob = await prisma.cronJob.findUnique({ where: { jobKey } });
+    if (!cronJob) continue;
+
+    const data: Record<string, unknown> = {};
+    if (field === "enabled" && typeof cfg.value === "boolean") {
+      data.enabled = cfg.value;
+    } else if (field === "enabled" && typeof cfg.value === "string") {
+      data.enabled = cfg.value === "true";
+    } else if (field === "intervalMinutes") {
+      data.intervalMinutes = Number(cfg.value);
+    } else if (field === "lastRunAt" && cfg.value && !cronJob.lastRunAt) {
+      data.lastRunAt = new Date(cfg.value as string);
+    }
+
+    if (Object.keys(data).length > 0) {
+      await prisma.cronJob.update({ where: { jobKey }, data });
+    }
+  }
+  console.log("Seeded cron jobs.");
 }
 
 main()

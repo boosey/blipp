@@ -165,78 +165,32 @@ export async function scheduled(
   const prisma = createPrismaClient(env.HYPERDRIVE);
 
   try {
-    // One-time idempotent migration: copy old lastRunAt keys to cron.* namespace
-    await migrateLegacyConfigKeys(prisma);
+    // Job registry: jobKey → execute function
+    const jobExecutors: Record<string, (logger: any) => Promise<Record<string, unknown>>> = {
+      "apple-discovery": (logger) => runAppleDiscoveryJob(prisma as any, logger, env),
+      "podcast-index-discovery": (logger) => runPodcastIndexDiscoveryJob(prisma as any, logger, env),
+      "pipeline-trigger": (logger) => runPipelineTriggerJob(prisma as any, env, logger),
+      "monitoring": (logger) => runMonitoringJob(prisma as any, logger),
+      "user-lifecycle": (logger) => runUserLifecycleJob(prisma as any, logger),
+      "data-retention": (logger) => runDataRetentionJob(prisma as any, logger),
+      "recommendations": (logger) => runRecommendationsJob(prisma as any, logger, env),
+      "listen-original-aggregation": (logger) => runListenOriginalAggregationJob(prisma as any, logger),
+      "stale-job-reaper": (logger) => runStaleJobReaperJob(prisma as any, logger),
+      "geo-tagging": (logger) => runGeoTaggingJob(prisma as any, logger, env),
+    };
 
-    // Dispatch all jobs — each checks its own enabled flag and interval
-    const results = await Promise.allSettled([
-      runJob({
-        jobKey: "apple-discovery",
-        prisma: prisma as any,
-        defaultIntervalMinutes: 10080,
-        execute: (logger) => runAppleDiscoveryJob(prisma as any, logger, env),
-      }),
-      runJob({
-        jobKey: "podcast-index-discovery",
-        prisma: prisma as any,
-        defaultIntervalMinutes: 10080,
-        execute: (logger) => runPodcastIndexDiscoveryJob(prisma as any, logger, env),
-      }),
-      runJob({
-        jobKey: "pipeline-trigger",
-        prisma: prisma as any,
-        defaultIntervalMinutes: 15,
-        execute: (logger) => runPipelineTriggerJob(prisma as any, env, logger),
-      }),
-      runJob({
-        jobKey: "monitoring",
-        prisma: prisma as any,
-        defaultIntervalMinutes: 60,
-        execute: (logger) => runMonitoringJob(prisma as any, logger),
-      }),
-      runJob({
-        jobKey: "user-lifecycle",
-        prisma: prisma as any,
-        defaultIntervalMinutes: 360,
-        execute: (logger) => runUserLifecycleJob(prisma as any, logger),
-      }),
-      runJob({
-        jobKey: "data-retention",
-        prisma: prisma as any,
-        defaultIntervalMinutes: 1440,
-        execute: (logger) => runDataRetentionJob(prisma as any, logger),
-      }),
-      runJob({
-        jobKey: "recommendations",
-        prisma: prisma as any,
-        defaultIntervalMinutes: 10080,
-        execute: (logger) => runRecommendationsJob(prisma as any, logger, env),
-      }),
-      runJob({
-        jobKey: "listen-original-aggregation",
-        prisma: prisma as any,
-        defaultIntervalMinutes: 1440,
-        execute: (logger) => runListenOriginalAggregationJob(prisma as any, logger),
-      }),
-      runJob({
-        jobKey: "stale-job-reaper",
-        prisma: prisma as any,
-        defaultIntervalMinutes: 30,
-        execute: (logger) => runStaleJobReaperJob(prisma as any, logger),
-      }),
-      runJob({
-        jobKey: "geo-tagging",
-        prisma: prisma as any,
-        defaultIntervalMinutes: 10080,
-        execute: (logger) => runGeoTaggingJob(prisma as any, logger, env),
-      }),
-    ]);
+    // Dispatch all registered jobs — each checks its own enabled flag and interval via CronJob table
+    const jobKeys = Object.keys(jobExecutors);
+    const results = await Promise.allSettled(
+      jobKeys.map((jobKey) =>
+        runJob({
+          jobKey,
+          prisma: prisma as any,
+          execute: jobExecutors[jobKey],
+        })
+      )
+    );
 
-    const jobKeys = [
-      "apple-discovery", "podcast-index-discovery", "pipeline-trigger", "monitoring",
-      "user-lifecycle", "data-retention", "recommendations", "listen-original-aggregation", "stale-job-reaper",
-      "geo-tagging",
-    ];
     for (let i = 0; i < results.length; i++) {
       const r = results[i];
       if (r.status === "rejected") {
@@ -255,28 +209,3 @@ export async function scheduled(
   }
 }
 
-/**
- * Migrates legacy PlatformConfig lastRunAt keys to the unified cron.* namespace.
- * Idempotent — skips if the new key already exists.
- */
-async function migrateLegacyConfigKeys(prisma: {
-  platformConfig: {
-    findUnique: (args: any) => Promise<any>;
-    create: (args: any) => Promise<any>;
-  };
-}) {
-  const migrations = [
-    { from: "pricing.lastRefreshedAt", to: "cron.monitoring.lastRunAt" },
-    { from: "recommendations.lastProfileRefresh", to: "cron.recommendations.lastRunAt" },
-  ];
-
-  for (const { from, to } of migrations) {
-    const exists = await prisma.platformConfig.findUnique({ where: { key: to } });
-    if (exists) continue;
-    const legacy = await prisma.platformConfig.findUnique({ where: { key: from } });
-    if (!legacy) continue;
-    await prisma.platformConfig.create({
-      data: { key: to, value: legacy.value, description: `Migrated from ${from}` },
-    });
-  }
-}

@@ -21,6 +21,7 @@ export type CronJob = {
   description: string;
   enabled: boolean;
   intervalMinutes: number;
+  defaultIntervalMinutes: number;
   lastRunAt: string | null;
   latestRun: LatestRun | null;
 };

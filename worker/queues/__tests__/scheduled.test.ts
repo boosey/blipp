@@ -49,8 +49,6 @@ beforeEach(() => {
   mockEvent = { scheduledTime: Date.now(), cron: "*/5 * * * *" } as ScheduledEvent;
   (createPrismaClient as any).mockReturnValue(mockPrisma);
   mockRunJob.mockResolvedValue(undefined);
-  // Migration calls platformConfig.findUnique — return null to skip by default
-  mockPrisma.platformConfig.findUnique.mockResolvedValue(null);
 });
 
 describe("scheduled", () => {
@@ -79,35 +77,12 @@ describe("scheduled", () => {
     }
   });
 
-  it("migrates legacy config keys when they exist", async () => {
-    // cron.monitoring.lastRunAt does NOT exist, but legacy key DOES
-    mockPrisma.platformConfig.findUnique
-      .mockResolvedValueOnce(null) // cron.monitoring.lastRunAt
-      .mockResolvedValueOnce({ key: "pricing.lastRefreshedAt", value: "2026-01-01T00:00:00Z" })
-      // Remaining migration pair: new key exists or no legacy
-      .mockResolvedValueOnce(null) // cron.recommendations.lastRunAt
-      .mockResolvedValueOnce(null); // recommendations.lastProfileRefresh (no legacy)
-
-    mockPrisma.platformConfig.create.mockResolvedValue({});
-
+  it("does not pass defaultIntervalMinutes — config comes from CronJob table", async () => {
     await scheduled(mockEvent, mockEnv, mockCtx);
 
-    expect(mockPrisma.platformConfig.create).toHaveBeenCalledWith({
-      data: {
-        key: "cron.monitoring.lastRunAt",
-        value: "2026-01-01T00:00:00Z",
-        description: "Migrated from pricing.lastRefreshedAt",
-      },
-    });
-  });
-
-  it("skips migration when new keys already exist", async () => {
-    // All new keys already exist — findUnique returns a record for each
-    mockPrisma.platformConfig.findUnique.mockResolvedValue({ key: "exists", value: "yes" });
-
-    await scheduled(mockEvent, mockEnv, mockCtx);
-
-    expect(mockPrisma.platformConfig.create).not.toHaveBeenCalled();
+    for (const call of mockRunJob.mock.calls) {
+      expect(call[0]).not.toHaveProperty("defaultIntervalMinutes");
+    }
   });
 
   it("continues when runJob rejects (allSettled)", async () => {

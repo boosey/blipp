@@ -933,11 +933,29 @@ model RecommendationDismissal {
   @@index([userId])
 }
 
+// ── Scheduled Jobs ──
+
+model CronJob {
+  id                      String    @id @default(cuid())
+  jobKey                  String    @unique
+  label                   String
+  description             String
+  enabled                 Boolean   @default(true)
+  intervalMinutes         Int
+  defaultIntervalMinutes  Int
+  lastRunAt               DateTime?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  runs CronRun[]
+}
+
 // ── Scheduled Job Runs ──
 
 model CronRun {
   id           String        @id @default(cuid())
   jobKey       String
+  job          CronJob?      @relation(fields: [jobKey], references: [jobKey])
   startedAt    DateTime      @default(now())
   completedAt  DateTime?
   durationMs   Int?
