@@ -78,6 +78,27 @@ cronJobsRoutes.patch("/:jobKey", async (c) => {
   return c.json({ success: true });
 });
 
+/** POST /api/admin/cron-jobs/:jobKey/trigger — queue job to run on next cron tick */
+cronJobsRoutes.post("/:jobKey/trigger", async (c) => {
+  const { jobKey } = c.req.param();
+  const prisma = c.get("prisma") as any;
+
+  const job = await prisma.cronJob.findUnique({ where: { jobKey } });
+  if (!job) {
+    return c.json({ error: `Unknown jobKey: ${jobKey}` }, 404);
+  }
+  if (!job.enabled) {
+    return c.json({ error: "Job is disabled — enable it first" }, 400);
+  }
+
+  // Clear lastRunAt so the runner picks it up on the next cron tick (≤5 min)
+  await prisma.cronJob.update({
+    where: { jobKey },
+    data: { lastRunAt: null },
+  });
+  return c.json({ success: true, message: "Job will run on the next cron tick (within 5 minutes)" });
+});
+
 /** PATCH /api/admin/cron-jobs/:jobKey/reset — reset interval to default */
 cronJobsRoutes.patch("/:jobKey/reset", async (c) => {
   const { jobKey } = c.req.param();
