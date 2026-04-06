@@ -620,7 +620,7 @@ podcastsRoutes.post("/requests/:id/approve", async (c) => {
   try {
     const resp = await fetch(request.feedUrl);
     const xml = await resp.text();
-    feedData = parseRssFeed(xml);
+    feedData = parseRssFeed(xml, 50);
   } catch (err) {
     return c.json({ error: `Failed to fetch feed: ${err instanceof Error ? err.message : String(err)}` }, 422);
   }

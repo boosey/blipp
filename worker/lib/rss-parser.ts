@@ -70,31 +70,54 @@ export function parseDuration(raw: string | number | undefined): number | null {
 }
 
 /**
+ * Truncate RSS XML to only the first `maxItems` <item> elements.
+ * RSS feeds list episodes as <item>...</item> blocks inside <channel>.
+ * Feeds with thousands of episodes blow the XML entity expansion limit.
+ * By cutting after the Nth </item> and closing the XML structure, we avoid
+ * parsing episodes we'll never use (feed-refresh only keeps the latest N).
+ */
+export function truncateRssItems(xml: string, maxItems: number): string {
+  let pos = 0;
+  let count = 0;
+  const closeTag = "</item>";
+
+  while (count < maxItems) {
+    const idx = xml.indexOf(closeTag, pos);
+    if (idx === -1) return xml; // fewer items than maxItems — return as-is
+    pos = idx + closeTag.length;
+    count++;
+  }
+
+  // Slice after the Nth </item> and close out the XML structure
+  return xml.slice(0, pos) + "\n</channel>\n</rss>";
+}
+
+/**
  * Parses an RSS/Atom podcast feed XML string into structured data.
  * Uses fast-xml-parser (Workers-compatible, no DOM dependency).
  * Extracts podcast:transcript URLs from items when present.
  *
  * @param xml - Raw RSS feed XML string
+ * @param maxItems - Max items to parse (truncates XML before parsing to avoid entity expansion limits)
  * @returns Parsed feed with metadata and episodes
  * @throws Error if the XML has no recognizable channel/item structure
  */
-export function parseRssFeed(xml: string): ParsedFeed {
+export function parseRssFeed(xml: string, maxItems?: number): ParsedFeed {
+  const toParse = maxItems ? truncateRssItems(xml, maxItems) : xml;
+
   const parser = new XMLParser({
     ignoreAttributes: false,
     attributeNamePrefix: "@_",
     // Ensure items is always an array even with a single episode
     isArray: (tagName) =>
       tagName === "item" || tagName === "podcast:transcript",
-    // Some podcast feeds (e.g. with thousands of episodes) exceed the default
-    // entity expansion limit of 1000. Raise it to handle large feeds safely.
-    processEntities: { enabled: true, maxTotalExpansions: 5000 },
   });
 
-  const parsed = parser.parse(xml);
+  const parsed = parser.parse(toParse);
   const channel = parsed?.rss?.channel;
 
   if (!channel) {
-    const preview = xml.slice(0, 200).replace(/\s+/g, " ").trim();
+    const preview = toParse.slice(0, 200).replace(/\s+/g, " ").trim();
     throw new Error(`Invalid RSS feed: no channel element found. Response preview: ${preview}`);
   }
 

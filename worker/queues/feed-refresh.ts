@@ -74,7 +74,10 @@ async function processPodcast(
     clearTimeout(timeout);
   }
 
-  const feed = parseRssFeed(xml);
+  // Pass maxEpisodes * 3 to truncate XML before parsing — gives headroom
+  // for episodes that may be filtered out (missing guid/audioUrl) while
+  // avoiding entity expansion limits on feeds with thousands of episodes.
+  const feed = parseRssFeed(xml, maxEpisodes * 3);
 
   // Write the RSS language tag to the podcast record
   if (feed.language) {
