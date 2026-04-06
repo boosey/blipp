@@ -221,17 +221,17 @@ async function writeGeoProfiles(
   for (const match of matches) {
     await prisma.podcastGeoProfile.upsert({
       where: {
-        podcastId_city_state_teamId: {
+        podcastId_city_state: {
           podcastId,
           city: match.city,
           state: match.state,
-          teamId: match.teamId ?? null,
         },
       },
       update: {
         confidence: match.confidence,
         scope: match.scope,
         source,
+        teamId: match.teamId ?? null,
       },
       create: {
         podcastId,

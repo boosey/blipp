@@ -1259,7 +1259,7 @@ model PodcastGeoProfile {
   podcast    Podcast     @relation(fields: [podcastId], references: [id], onDelete: Cascade)
   team       SportsTeam? @relation(fields: [teamId], references: [id])
 
-  @@unique([podcastId, city, state, teamId])
+  @@unique([podcastId, city, state])
   @@index([city, state])
   @@index([podcastId])
 }
