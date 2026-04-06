@@ -275,9 +275,8 @@ export default function PodcastSettings() {
           </div>
         </div>
       ))}
-      </div>
 
-      {/* Geo-Tagging section — full width */}
+      {/* Geo-Tagging */}
       <div className="bg-[#0F1D32] border border-white/5 rounded-lg overflow-hidden">
         <div className="px-4 py-3 border-b border-white/10 border-l-2 border-l-[#8B5CF6] bg-white/[0.03] flex items-center gap-2">
           <MapPin className="h-4 w-4 text-[#8B5CF6]" />
@@ -354,6 +353,7 @@ export default function PodcastSettings() {
             </div>
           </div>
         </div>
+      </div>
       </div>
     </div>
   );

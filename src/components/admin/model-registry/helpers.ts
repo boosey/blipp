@@ -2,7 +2,7 @@ import { Input } from "@/components/ui/input";
 import type { AiModelProviderEntry } from "@/types/admin";
 import type { AIStage } from "@/lib/ai-models";
 
-export const STAGES: AIStage[] = ["stt", "distillation", "narrative", "tts"];
+export const STAGES: AIStage[] = ["stt", "distillation", "narrative", "tts", "geoClassification"];
 
 export function formatPrice(p: AiModelProviderEntry): string {
   if (p.pricePerMinute != null) return `$${p.pricePerMinute.toFixed(5)}/min`;
