@@ -63,12 +63,22 @@ export async function runGeoTaggingJob(
   for (const podcast of podcasts) {
     const title = podcast.title ?? "";
     const description = podcast.description ?? "";
+    const categories: string[] = podcast.categories ?? [];
+    const isSports = categories.some(
+      (c: string) => c.toLowerCase().includes("sport")
+    );
 
-    // Check sports team keywords first
+    // Check sports team keywords — standalone nicknames (single-word keywords
+    // like "Saints", "Bears", "Eagles") are too ambiguous for non-Sports podcasts
+    // so we only match those against Sports-category pods. Multi-word keywords
+    // like "New Orleans Saints" or "Da Bears" are specific enough to match anywhere.
     const teamMatches: GeoMatch[] = [];
     for (const team of sportsTeams) {
       const keywords: string[] = team.keywords ?? [];
       for (const keyword of keywords) {
+        const isSingleWord = !keyword.includes(" ");
+        if (isSingleWord && !isSports) continue; // skip ambiguous nicknames for non-sports pods
+
         const pattern = new RegExp(`\\b${keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
         if (pattern.test(title) || pattern.test(description)) {
           for (const market of team.markets) {
@@ -76,7 +86,7 @@ export async function runGeoTaggingJob(
               city: market.city,
               state: market.state,
               scope: "city",
-              confidence: 0.95,
+              confidence: isSingleWord ? 0.85 : 0.95, // lower confidence for nickname-only matches
               teamId: team.id,
             });
           }
@@ -98,11 +108,7 @@ export async function runGeoTaggingJob(
       await writeGeoProfiles(prisma, podcast.id, deduped, "keyword");
       pass1Matched++;
     } else {
-      // Check if this is a Sports podcast — candidate for LLM pass
-      const categories: string[] = podcast.categories ?? [];
-      const isSports = categories.some(
-        (c: string) => c.toLowerCase().includes("sport")
-      );
+      // Unmatched Sports podcasts are candidates for LLM pass
       if (isSports) {
         unmatchedSports.push(podcast);
       }
