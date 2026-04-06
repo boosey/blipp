@@ -47,8 +47,9 @@ export const CONFIG_REGISTRY: Record<string, ConfigEntry> = {
   "pipeline.feedRefresh.batchConcurrency":      { type: "number", defaultValue: 10,    description: "Feed refresh queue send batch size" },
 
   // ── Geo Classification ──
-  "geoClassification.llmProviderId": { type: "string",  defaultValue: "",    description: "AiProvider ID for LLM-based geo classification (pass 2)" },
+  "geoClassification.llmProviderId": { type: "string",  defaultValue: "",    description: "AiModelProvider ID for LLM-based geo classification (pass 2)" },
   "geoClassification.batchSize":     { type: "number",  defaultValue: 500,   description: "Max podcasts to geo-tag per cron run" },
+  "geoClassification.llmBatchSize":  { type: "number",  defaultValue: 10,    description: "Podcasts per LLM batch call in geo classification" },
 
   // ── Recommendations ──
   "recommendations.enabled":                  { type: "boolean", defaultValue: true,  description: "Enable recommendation engine" },

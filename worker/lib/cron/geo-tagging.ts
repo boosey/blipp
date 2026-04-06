@@ -121,7 +121,7 @@ export async function runGeoTaggingJob(
     });
   }
 
-  // ── Pass 2: LLM classification for unmatched Sports podcasts ──
+  // ── Pass 2: Batched LLM classification for unmatched Sports podcasts ──
   let pass2Matched = 0;
   const pass2Attempted = unmatchedSports.length;
 
@@ -133,29 +133,32 @@ export async function runGeoTaggingJob(
     );
 
     if (llmProviderId) {
-      // Resolve the LLM provider from AiProvider table
-      const aiProvider = await prisma.aiProvider.findUnique({
+      const aiProvider = await prisma.aiModelProvider.findUnique({
         where: { id: llmProviderId },
       });
 
       if (aiProvider) {
         const provider = getLlmProviderImpl(aiProvider.provider);
         const model = aiProvider.providerModelId;
+        const llmBatchSize = await getConfig<number>(
+          prisma,
+          "geoClassification.llmBatchSize",
+          10
+        );
 
-        for (const podcast of unmatchedSports) {
+        // Process in batches
+        for (let i = 0; i < unmatchedSports.length; i += llmBatchSize) {
+          const batch = unmatchedSports.slice(i, i + llmBatchSize);
           try {
             const result = await provider.complete(
               [
                 {
                   role: "user",
-                  content: buildGeoClassificationPrompt(
-                    podcast.title ?? "",
-                    podcast.description ?? ""
-                  ),
+                  content: buildBatchGeoClassificationPrompt(batch),
                 },
               ],
               model,
-              256,
+              256 * batch.length,
               env,
               {
                 system:
@@ -163,14 +166,17 @@ export async function runGeoTaggingJob(
               }
             );
 
-            const parsed = parseGeoClassificationResponse(result.text);
-            if (parsed.length > 0) {
-              await writeGeoProfiles(prisma, podcast.id, parsed, "llm");
-              pass2Matched++;
+            const batchResults = parseBatchGeoClassificationResponse(result.text, batch);
+            for (const [podcastId, matches] of Object.entries(batchResults)) {
+              if (matches.length > 0) {
+                await writeGeoProfiles(prisma, podcastId, matches, "llm");
+                pass2Matched++;
+              }
             }
           } catch (err) {
-            await logger.warn("geo_tagging_llm_error", {
-              podcastId: podcast.id,
+            await logger.warn("geo_tagging_llm_batch_error", {
+              batchSize: batch.length,
+              batchStart: i,
               error: err instanceof Error ? err.message : String(err),
             });
           }
@@ -178,7 +184,7 @@ export async function runGeoTaggingJob(
       } else {
         await logger.warn("geo_tagging_no_provider", {
           llmProviderId,
-          message: "AiProvider not found",
+          message: "AiModelProvider not found",
         });
       }
     } else {
@@ -252,50 +258,71 @@ async function writeGeoProfiles(
   }
 }
 
-function buildGeoClassificationPrompt(title: string, description: string): string {
-  return `Analyze this podcast and determine if it targets a specific US geographic market.
+function buildBatchGeoClassificationPrompt(
+  podcasts: { id: string; title: string | null; description: string | null }[]
+): string {
+  const entries = podcasts
+    .map((p, i) => `[${i + 1}] id=${p.id}\nTitle: ${p.title ?? ""}\nDescription: ${(p.description ?? "").slice(0, 300)}`)
+    .join("\n\n");
 
-Title: ${title}
-Description: ${description}
+  return `Classify each podcast by US geographic market.
 
-If this podcast targets a specific US city or region, return JSON:
-[{"city": "<city name>", "state": "<full state name>", "scope": "city"|"state"|"regional", "confidence": 0.0-1.0}]
+${entries}
 
-For state-level matches, set city to an empty string "".
-
-Examples:
-- City-level: [{"city": "Chicago", "state": "Illinois", "scope": "city", "confidence": 0.9}]
-- State-level: [{"city": "", "state": "Texas", "scope": "state", "confidence": 0.7}]
-
-If the podcast is NOT geographically specific, return: []`;
+Return a JSON object mapping podcast ID to its geo matches:
+{
+  "<podcast_id>": [{"city": "<city>", "state": "<full state name>", "scope": "city"|"state"|"regional", "confidence": 0.0-1.0}],
+  "<podcast_id>": []
 }
 
-function parseGeoClassificationResponse(text: string): GeoMatch[] {
-  try {
-    // Extract JSON array from response
-    const jsonMatch = text.match(/\[[\s\S]*?\]/);
-    if (!jsonMatch) return [];
-    const parsed = JSON.parse(jsonMatch[0]);
-    if (!Array.isArray(parsed)) return [];
+Rules:
+- For state-level matches, set city to ""
+- For podcasts with no geographic bias, use an empty array []
+- scope must be one of: "city", "state", "regional"
+- confidence should reflect how certain you are (0.5-1.0)`;
+}
 
-    return parsed
-      .filter(
-        (item: any) =>
-          typeof item.city === "string" &&
-          typeof item.state === "string" &&
-          typeof item.scope === "string" &&
-          typeof item.confidence === "number" &&
-          ["city", "state", "regional"].includes(item.scope) &&
-          item.confidence >= 0 &&
-          item.confidence <= 1
-      )
-      .map((item: any) => ({
-        city: item.city,
-        state: item.state,
-        scope: item.scope as "city" | "state" | "regional",
-        confidence: item.confidence,
-      }));
-  } catch {
-    return [];
+function parseBatchGeoClassificationResponse(
+  text: string,
+  podcasts: { id: string }[]
+): Record<string, GeoMatch[]> {
+  const results: Record<string, GeoMatch[]> = {};
+  // Initialize all podcast IDs with empty arrays
+  for (const p of podcasts) {
+    results[p.id] = [];
   }
+
+  try {
+    // Extract the JSON object from response
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return results;
+    const parsed = JSON.parse(jsonMatch[0]);
+    if (typeof parsed !== "object" || parsed === null) return results;
+
+    for (const [podcastId, matches] of Object.entries(parsed)) {
+      if (!results.hasOwnProperty(podcastId) || !Array.isArray(matches)) continue;
+
+      results[podcastId] = (matches as any[])
+        .filter(
+          (item: any) =>
+            typeof item.city === "string" &&
+            typeof item.state === "string" &&
+            typeof item.scope === "string" &&
+            typeof item.confidence === "number" &&
+            ["city", "state", "regional"].includes(item.scope) &&
+            item.confidence >= 0 &&
+            item.confidence <= 1
+        )
+        .map((item: any) => ({
+          city: item.city,
+          state: item.state,
+          scope: item.scope as "city" | "state" | "regional",
+          confidence: item.confidence,
+        }));
+    }
+  } catch {
+    // Parse failure — return empty results for all
+  }
+
+  return results;
 }
