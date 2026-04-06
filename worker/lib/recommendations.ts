@@ -55,10 +55,31 @@ export function jaccardSimilarity(a: string[], b: string[]): number {
   return union > 0 ? intersection / union : 0;
 }
 
-// Compute profiles for ALL podcasts (run weekly via cron)
-export async function computePodcastProfiles(prisma: any, env?: any): Promise<number> {
+export interface ProfileBatchResult {
+  processed: number;
+  cursor: string | null; // null = batch complete, all podcasts processed
+}
+
+/**
+ * Compute recommendation profiles for a batch of podcasts.
+ * Called repeatedly by the cron job with cursor-based pagination.
+ * Each call processes `batchSize` podcasts and returns a cursor for the next batch.
+ * When cursor is null, all podcasts have been processed and the cycle resets.
+ */
+export async function computePodcastProfiles(
+  prisma: any,
+  env?: any,
+  cursor?: string | null,
+): Promise<ProfileBatchResult> {
+  const batchSize = await getConfig(prisma, "recommendations.profileBatchSize", 25) as number;
+
   const podcasts = await prisma.podcast.findMany({
-    where: { status: "active" },
+    where: {
+      status: "active",
+      ...(cursor ? { id: { gt: cursor } } : {}),
+    },
+    orderBy: { id: "asc" },
+    take: batchSize,
     select: {
       id: true,
       title: true,
@@ -66,7 +87,6 @@ export async function computePodcastProfiles(prisma: any, env?: any): Promise<nu
       categories: true,
       _count: { select: { subscriptions: true } },
       votes: { select: { vote: true } },
-      subscriptions: { select: { userId: true } },
       episodes: {
         where: { distillation: { status: "COMPLETED" } },
         orderBy: { publishedAt: "desc" },
@@ -76,18 +96,18 @@ export async function computePodcastProfiles(prisma: any, env?: any): Promise<nu
     },
   });
 
-  if (podcasts.length === 0) return 0;
-
-  const maxSubs = Math.max(1, ...podcasts.map((p: any) => p._count.subscriptions));
-
-  // Build subscriber sets for overlap computation
-  const subscriberSets = new Map<string, Set<string>>();
-  for (const podcast of podcasts) {
-    subscriberSets.set(
-      podcast.id,
-      new Set((podcast.subscriptions || []).map((s: any) => s.userId))
-    );
+  if (podcasts.length === 0) {
+    return { processed: 0, cursor: null };
   }
+
+  // Get max subs across all active podcasts (cached query, not per-batch)
+  const maxSubsResult = await prisma.subscription.groupBy({
+    by: ["podcastId"],
+    _count: true,
+    orderBy: { _count: { podcastId: "desc" } },
+    take: 1,
+  });
+  const maxSubs = Math.max(1, maxSubsResult[0]?._count ?? 1);
 
   // Check if embeddings are enabled
   const embeddingsEnabled = env?.AI
@@ -125,6 +145,7 @@ export async function computePodcastProfiles(prisma: any, env?: any): Promise<nu
     let podcastTopics: string[] = [];
     if (env?.R2 && podcast.episodes.length > 0) {
       const topicWeights = new Map<string, number>();
+      const episodeTopicUpdates: { id: string; tags: string[] }[] = [];
 
       for (let i = 0; i < podcast.episodes.length; i++) {
         const episode = podcast.episodes[i];
@@ -142,16 +163,18 @@ export async function computePodcastProfiles(prisma: any, env?: any): Promise<nu
             topicWeights.set(t.topic, (topicWeights.get(t.topic) || 0) + t.weight * recencyWeight);
           }
 
-          // Store episode-level topics
-          const episodeTopics = topics.map((t) => t.topic);
-          await prisma.episode.update({
-            where: { id: episode.id },
-            data: { topicTags: episodeTopics },
-          });
+          episodeTopicUpdates.push({ id: episode.id, tags: topics.map((t) => t.topic) });
         } catch {
           // Skip episodes with missing/invalid claims
         }
       }
+
+      // Batch episode topic updates
+      await Promise.all(
+        episodeTopicUpdates.map((u) =>
+          prisma.episode.update({ where: { id: u.id }, data: { topicTags: u.tags } })
+        )
+      );
 
       // Take top 30 podcast-level topics
       podcastTopics = [...topicWeights.entries()]
@@ -191,7 +214,9 @@ export async function computePodcastProfiles(prisma: any, env?: any): Promise<nu
     });
   }
 
-  return podcasts.length;
+  // Return cursor: last podcast ID in this batch, or null if we got fewer than batchSize (done)
+  const nextCursor = podcasts.length < batchSize ? null : podcasts[podcasts.length - 1].id;
+  return { processed: podcasts.length, cursor: nextCursor };
 }
 
 /** Compute Jaccard overlap between a candidate podcast's subscribers and the user's co-subscribers. */

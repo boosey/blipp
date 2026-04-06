@@ -59,10 +59,18 @@ describe("cosineSimilarity", () => {
 });
 
 describe("computePodcastProfiles", () => {
-  it("returns 0 when no active podcasts", async () => {
+  beforeEach(() => {
+    // Default: mock subscription.groupBy to return a max of 10 subs
+    mockPrisma.subscription.groupBy.mockResolvedValue([{ podcastId: "pod1", _count: 10 }]);
+    // Return defaults for config lookups (mock replaces the real function including fallback logic)
+    (getConfig as any).mockImplementation((_p: any, key: string, fallback: any) => Promise.resolve(fallback));
+  });
+
+  it("returns processed 0 when no active podcasts", async () => {
     mockPrisma.podcast.findMany.mockResolvedValue([]);
-    const count = await computePodcastProfiles(mockPrisma);
-    expect(count).toBe(0);
+    const result = await computePodcastProfiles(mockPrisma);
+    expect(result.processed).toBe(0);
+    expect(result.cursor).toBeNull();
     expect(mockPrisma.podcastProfile.upsert).not.toHaveBeenCalled();
   });
 
@@ -76,7 +84,6 @@ describe("computePodcastProfiles", () => {
         categories: ["Technology", "Science"],
         _count: { subscriptions: 10 },
         votes: [{ vote: 1 }, { vote: 1 }, { vote: -1 }],
-        subscriptions: [{ userId: "u1" }, { userId: "u2" }],
         episodes: [{ id: "ep1", publishedAt: now }],
       },
       {
@@ -86,14 +93,14 @@ describe("computePodcastProfiles", () => {
         categories: [],
         _count: { subscriptions: 5 },
         votes: [],
-        subscriptions: [],
         episodes: [],
       },
     ]);
     mockPrisma.podcastProfile.upsert.mockResolvedValue({});
 
-    const count = await computePodcastProfiles(mockPrisma);
-    expect(count).toBe(2);
+    const result = await computePodcastProfiles(mockPrisma);
+    expect(result.processed).toBe(2);
+    expect(result.cursor).toBeNull(); // fewer than batchSize → done
     expect(mockPrisma.podcastProfile.upsert).toHaveBeenCalledTimes(2);
 
     const firstCall = mockPrisma.podcastProfile.upsert.mock.calls[0][0];
@@ -104,9 +111,10 @@ describe("computePodcastProfiles", () => {
   });
 
   it("normalizes popularity relative to max subscribers", async () => {
+    mockPrisma.subscription.groupBy.mockResolvedValue([{ podcastId: "pod1", _count: 100 }]);
     mockPrisma.podcast.findMany.mockResolvedValue([
-      { id: "pod1", title: "P1", description: null, categories: [], _count: { subscriptions: 100 }, votes: [], subscriptions: [], episodes: [] },
-      { id: "pod2", title: "P2", description: null, categories: [], _count: { subscriptions: 50 }, votes: [], subscriptions: [], episodes: [] },
+      { id: "pod1", title: "P1", description: null, categories: [], _count: { subscriptions: 100 }, votes: [], episodes: [] },
+      { id: "pod2", title: "P2", description: null, categories: [], _count: { subscriptions: 50 }, votes: [], episodes: [] },
     ]);
     mockPrisma.podcastProfile.upsert.mockResolvedValue({});
 
@@ -135,7 +143,6 @@ describe("computePodcastProfiles", () => {
         categories: ["Technology"],
         _count: { subscriptions: 5 },
         votes: [],
-        subscriptions: [],
         episodes: [
           { id: "ep1", publishedAt: now },
           { id: "ep2", publishedAt: new Date(now.getTime() - 86400000) },
@@ -188,7 +195,6 @@ describe("computePodcastProfiles", () => {
         categories: [],
         _count: { subscriptions: 1 },
         votes: [],
-        subscriptions: [],
         episodes: [{ id: "ep1", publishedAt: now }],
       },
     ]);
@@ -220,7 +226,6 @@ describe("computePodcastProfiles", () => {
         categories: ["Tech"],
         _count: { subscriptions: 1 },
         votes: [],
-        subscriptions: [],
         episodes: [{ id: "ep1", publishedAt: new Date() }],
       },
     ]);
