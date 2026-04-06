@@ -72,6 +72,7 @@ const CONFIG_GROUPS: ConfigGroup[] = [
     description: "Transcript and audio validation before pipeline processing",
     items: [
       { key: "pipeline.contentPrefetch.fetchTimeoutMs", label: "Fetch Timeout (ms)", type: "number", description: "Timeout for transcript/audio validation requests", default: 15000 },
+      { key: "recommendations.profileBatchSize", label: "Recommendation Batch Size", type: "number", description: "Podcasts processed per recommendation profile cron tick", default: 25 },
     ],
   },
   {

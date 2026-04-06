@@ -135,7 +135,6 @@ export async function runStaleJobReaperJob(
       where: { id: { in: nearCompleteIds } },
       data: {
         status: "complete",
-        error: "Auto-completed by reaper: >90% progress reached before stalling",
         completedAt: new Date(),
       },
     });
