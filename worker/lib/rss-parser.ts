@@ -111,6 +111,9 @@ export function parseRssFeed(xml: string, maxItems?: number): ParsedFeed {
     // Ensure items is always an array even with a single episode
     isArray: (tagName) =>
       tagName === "item" || tagName === "podcast:transcript",
+    // Some feeds use heavy entity references (e.g. &amp; &lt; in descriptions)
+    // that exceed the default 1000 expansion limit even after truncation.
+    processEntities: { enabled: true, maxTotalExpansions: 10000 },
   });
 
   const parsed = parser.parse(toParse);

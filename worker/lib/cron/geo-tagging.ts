@@ -135,11 +135,12 @@ export async function runGeoTaggingJob(
     if (llmProviderId) {
       const aiProvider = await prisma.aiModelProvider.findUnique({
         where: { id: llmProviderId },
+        include: { model: { select: { modelId: true } } },
       });
 
       if (aiProvider) {
         const provider = getLlmProviderImpl(aiProvider.provider);
-        const model = aiProvider.providerModelId;
+        const model = aiProvider.providerModelId ?? aiProvider.model.modelId;
         const llmBatchSize = await getConfig<number>(
           prisma,
           "geoClassification.llmBatchSize",

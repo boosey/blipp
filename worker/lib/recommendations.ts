@@ -1,7 +1,5 @@
 import { getConfig } from "./config";
-import { getWorkProduct } from "./work-products";
-import { wpKey } from "./work-products";
-import { fingerprint } from "./topic-extraction";
+import { extractTopicsFromText } from "./topic-extraction";
 import { buildEmbeddingText, computeEmbedding, averageEmbeddings, cosineSimilarityVec } from "./embeddings";
 
 // Types
@@ -88,10 +86,9 @@ export async function computePodcastProfiles(
       _count: { select: { subscriptions: true } },
       votes: { select: { vote: true } },
       episodes: {
-        where: { distillation: { status: "COMPLETED" } },
         orderBy: { publishedAt: "desc" },
-        take: 10,
-        select: { id: true, publishedAt: true },
+        take: 5,
+        select: { id: true, title: true, description: true, publishedAt: true, topicTags: true },
       },
     },
   });
@@ -113,6 +110,9 @@ export async function computePodcastProfiles(
   const embeddingsEnabled = env?.AI
     ? await getConfig(prisma, "recommendations.embeddings.enabled", false)
     : false;
+
+  // Process all podcasts and collect DB writes
+  const profileUpserts: Promise<any>[] = [];
 
   for (const podcast of podcasts) {
     // Category weights: equal weight for each category
@@ -141,47 +141,46 @@ export async function computePodcastProfiles(
       freshness = Math.max(0, 1 - daysSince / 30);
     }
 
-    // Topic extraction from R2 claims
-    let podcastTopics: string[] = [];
-    if (env?.R2 && podcast.episodes.length > 0) {
-      const topicWeights = new Map<string, number>();
-      const episodeTopicUpdates: { id: string; tags: string[] }[] = [];
-
-      for (let i = 0; i < podcast.episodes.length; i++) {
-        const episode = podcast.episodes[i];
-        try {
-          const key = wpKey({ type: "CLAIMS", episodeId: episode.id });
-          const data = await getWorkProduct(env.R2, key);
-          if (!data) continue;
-          const claims = JSON.parse(new TextDecoder().decode(data));
-          const topics = fingerprint(claims);
-
-          // Weight by recency: most recent = 1.0, older episodes decay to 0.5
-          const recencyWeight = 1.0 - (i / podcast.episodes.length) * 0.5;
-
-          for (const t of topics) {
-            topicWeights.set(t.topic, (topicWeights.get(t.topic) || 0) + t.weight * recencyWeight);
-          }
-
-          episodeTopicUpdates.push({ id: episode.id, tags: topics.map((t) => t.topic) });
-        } catch {
-          // Skip episodes with missing/invalid claims
-        }
+    // Topic extraction: merge claims-based topicTags (if available) with description-based extraction
+    // 1. Collect any existing claims-based topicTags from episodes (already computed by pipeline)
+    const claimsTopicWeights = new Map<string, number>();
+    for (let i = 0; i < podcast.episodes.length; i++) {
+      const tags: string[] = podcast.episodes[i].topicTags || [];
+      const recencyWeight = 1.0 - (i / Math.max(1, podcast.episodes.length)) * 0.5;
+      for (const tag of tags) {
+        claimsTopicWeights.set(tag, (claimsTopicWeights.get(tag) || 0) + recencyWeight);
       }
-
-      // Batch episode topic updates
-      await Promise.all(
-        episodeTopicUpdates.map((u) =>
-          prisma.episode.update({ where: { id: u.id }, data: { topicTags: u.tags } })
-        )
-      );
-
-      // Take top 30 podcast-level topics
-      podcastTopics = [...topicWeights.entries()]
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 30)
-        .map(([topic]) => topic);
     }
+
+    // 2. Extract topics from podcast + episode descriptions (always available)
+    const textInputs: { text: string; weight: number }[] = [];
+    if (podcast.description) {
+      textInputs.push({ text: podcast.description, weight: 2.0 }); // podcast description weighted highest
+    }
+    if (podcast.title) {
+      textInputs.push({ text: podcast.title, weight: 1.5 });
+    }
+    for (let i = 0; i < podcast.episodes.length; i++) {
+      const ep = podcast.episodes[i];
+      const recencyWeight = 1.0 - (i / Math.max(1, podcast.episodes.length)) * 0.5;
+      if (ep.title) textInputs.push({ text: ep.title, weight: recencyWeight });
+      if (ep.description) textInputs.push({ text: ep.description, weight: recencyWeight * 0.5 });
+    }
+    const descriptionTopics = extractTopicsFromText(textInputs);
+
+    // 3. Merge: claims-based topics get a boost since they're higher quality
+    const mergedWeights = new Map<string, number>();
+    for (const t of descriptionTopics) {
+      mergedWeights.set(t.topic, t.weight);
+    }
+    for (const [tag, w] of claimsTopicWeights) {
+      mergedWeights.set(tag, (mergedWeights.get(tag) || 0) + w * 2.0);
+    }
+
+    const podcastTopics = [...mergedWeights.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 30)
+      .map(([topic]) => topic);
 
     // Embedding computation
     let embedding: number[] | null = null;
@@ -190,7 +189,7 @@ export async function computePodcastProfiles(
       embedding = await computeEmbedding(env.AI, text);
     }
 
-    await prisma.podcastProfile.upsert({
+    profileUpserts.push(prisma.podcastProfile.upsert({
       where: { podcastId: podcast.id },
       create: {
         podcastId: podcast.id,
@@ -211,8 +210,11 @@ export async function computePodcastProfiles(
         ...(embedding ? { embedding } : {}),
         computedAt: new Date(),
       },
-    });
+    }));
   }
+
+  // Execute all profile upserts in parallel
+  await Promise.all(profileUpserts);
 
   // Return cursor: last podcast ID in this batch, or null if we got fewer than batchSize (done)
   const nextCursor = podcasts.length < batchSize ? null : podcasts[podcasts.length - 1].id;

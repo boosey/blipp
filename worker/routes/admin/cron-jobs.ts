@@ -91,6 +91,23 @@ cronJobsRoutes.post("/:jobKey/trigger", async (c) => {
     return c.json({ error: "Job is disabled — enable it first" }, 400);
   }
 
+  // Mark any stuck IN_PROGRESS runs as FAILED so the runner guard doesn't block
+  const stuckRun = await prisma.cronRun.findFirst({
+    where: { jobKey, status: "IN_PROGRESS" },
+    orderBy: { startedAt: "desc" },
+  });
+  if (stuckRun) {
+    await prisma.cronRun.update({
+      where: { id: stuckRun.id },
+      data: {
+        status: "FAILED",
+        completedAt: new Date(),
+        durationMs: Date.now() - new Date(stuckRun.startedAt).getTime(),
+        errorMessage: "Marked as failed: manually triggered re-run",
+      },
+    });
+  }
+
   // Clear lastRunAt so the runner picks it up on the next cron tick (≤5 min)
   await prisma.cronJob.update({
     where: { jobKey },

@@ -100,3 +100,31 @@ export function fingerprint(claims: Claim[]): WeightedTopic[] {
   const raw = extractTopicsFromClaims(claims);
   return normalizeTopics(raw);
 }
+
+/**
+ * Extract weighted topics from free-text descriptions (podcast + episode).
+ * Uses unigram + bigram extraction with TF weighting.
+ */
+export function extractTopicsFromText(texts: { text: string; weight: number }[]): WeightedTopic[] {
+  const weights = new Map<string, number>();
+
+  for (const { text, weight } of texts) {
+    if (!text) continue;
+    const tokens = tokenize(text);
+
+    for (const token of tokens) {
+      weights.set(token, (weights.get(token) || 0) + weight);
+    }
+
+    const bigrams = extractBigrams(tokens);
+    for (const bigram of bigrams) {
+      weights.set(bigram, (weights.get(bigram) || 0) + weight * 1.5);
+    }
+  }
+
+  const sorted = [...weights.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, MAX_TOPICS);
+
+  return normalizeTopics(sorted.map(([topic, weight]) => ({ topic, weight })));
+}

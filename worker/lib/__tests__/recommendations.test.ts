@@ -6,13 +6,9 @@ vi.mock("../config", () => ({
   getConfig: vi.fn(),
 }));
 
-vi.mock("../work-products", () => ({
-  getWorkProduct: vi.fn(),
-  wpKey: vi.fn((params: any) => `wp/claims/${params.episodeId}.json`),
-}));
-
 vi.mock("../topic-extraction", () => ({
   fingerprint: vi.fn(),
+  extractTopicsFromText: vi.fn().mockReturnValue([]),
 }));
 
 vi.mock("../embeddings", () => ({
@@ -23,8 +19,6 @@ vi.mock("../embeddings", () => ({
 }));
 
 import { getConfig } from "../config";
-import { getWorkProduct } from "../work-products";
-import { fingerprint } from "../topic-extraction";
 import { buildEmbeddingText, computeEmbedding, averageEmbeddings, cosineSimilarityVec } from "../embeddings";
 
 let mockPrisma: ReturnType<typeof createMockPrisma>;
@@ -84,7 +78,7 @@ describe("computePodcastProfiles", () => {
         categories: ["Technology", "Science"],
         _count: { subscriptions: 10 },
         votes: [{ vote: 1 }, { vote: 1 }, { vote: -1 }],
-        episodes: [{ id: "ep1", publishedAt: now }],
+        episodes: [{ id: "ep1", title: "Ep 1", description: null, publishedAt: now, topicTags: [] }],
       },
       {
         id: "pod2",
@@ -127,65 +121,60 @@ describe("computePodcastProfiles", () => {
     expect(pop2).toBe(0.5); // 50/100
   });
 
-  it("extracts topics from R2 claims when env is provided", async () => {
+  it("extracts topics from descriptions and merges with episode topicTags", async () => {
     const now = new Date();
-    const claimsData = [
-      { claim: "Machine learning advances rapidly", speaker: "host", importance: 3, novelty: 2, excerpt: "..." },
-      { claim: "Neural networks improve accuracy", speaker: "guest", importance: 2, novelty: 1, excerpt: "..." },
-    ];
-    const encoded = new TextEncoder().encode(JSON.stringify(claimsData));
+    const { extractTopicsFromText } = await import("../topic-extraction");
+
+    (extractTopicsFromText as any).mockReturnValue([
+      { topic: "artificial intelligence", weight: 3.0 },
+      { topic: "machine learning", weight: 2.0 },
+    ]);
 
     mockPrisma.podcast.findMany.mockResolvedValue([
       {
         id: "pod1",
         title: "AI Pod",
-        description: "AI topics",
+        description: "A podcast about artificial intelligence",
         categories: ["Technology"],
         _count: { subscriptions: 5 },
         votes: [],
         episodes: [
-          { id: "ep1", publishedAt: now },
-          { id: "ep2", publishedAt: new Date(now.getTime() - 86400000) },
+          { id: "ep1", title: "ML Basics", description: "Intro to ML", publishedAt: now, topicTags: ["neural networks", "deep learning"] },
+          { id: "ep2", title: "AI Ethics", description: "Ethics in AI", publishedAt: new Date(now.getTime() - 86400000), topicTags: [] },
         ],
       },
     ]);
     mockPrisma.podcastProfile.upsert.mockResolvedValue({});
-    mockPrisma.episode.update.mockResolvedValue({});
 
-    (getWorkProduct as any)
-      .mockResolvedValueOnce(encoded.buffer) // ep1
-      .mockResolvedValueOnce(encoded.buffer); // ep2
+    await computePodcastProfiles(mockPrisma);
 
-    (fingerprint as any)
-      .mockReturnValueOnce([
-        { topic: "machine learning", weight: 3.0 },
-        { topic: "neural networks", weight: 2.0 },
-      ])
-      .mockReturnValueOnce([
-        { topic: "machine learning", weight: 2.5 },
-        { topic: "deep learning", weight: 1.5 },
-      ]);
+    // extractTopicsFromText should be called with podcast + episode descriptions
+    expect(extractTopicsFromText).toHaveBeenCalledTimes(1);
+    const textInputs = (extractTopicsFromText as any).mock.calls[0][0];
+    expect(textInputs).toEqual(expect.arrayContaining([
+      expect.objectContaining({ text: "A podcast about artificial intelligence" }),
+      expect.objectContaining({ text: "AI Pod" }),
+      expect.objectContaining({ text: "ML Basics" }),
+    ]));
 
-    const mockEnv = { R2: { get: vi.fn() } };
-    await computePodcastProfiles(mockPrisma, mockEnv);
-
-    // Episode topics should be stored
-    expect(mockPrisma.episode.update).toHaveBeenCalledTimes(2);
-    expect(mockPrisma.episode.update).toHaveBeenCalledWith({
-      where: { id: "ep1" },
-      data: { topicTags: ["machine learning", "neural networks"] },
-    });
-
-    // Podcast profile should include aggregated topics
+    // Profile should include merged topics (description + claims-based topicTags)
     const upsertCall = mockPrisma.podcastProfile.upsert.mock.calls[0][0];
-    expect(upsertCall.create.topicTags).toContain("machine learning");
-    expect(upsertCall.create.topicTags.length).toBeGreaterThan(0);
+    expect(upsertCall.create.topicTags).toContain("artificial intelligence");
+    // Claims-based "neural networks" should also be merged in
+    expect(upsertCall.create.topicTags).toContain("neural networks");
   });
 
   it("computes embeddings when enabled and AI binding present", async () => {
     const now = new Date();
-    const claimsData = [{ claim: "test claim", speaker: "host", importance: 1, novelty: 1, excerpt: "..." }];
-    const encoded = new TextEncoder().encode(JSON.stringify(claimsData));
+    const { extractTopicsFromText } = await import("../topic-extraction");
+
+    (extractTopicsFromText as any).mockReturnValue([{ topic: "testing", weight: 1.0 }]);
+    (getConfig as any).mockImplementation((_p: any, key: string, fallback: any) => {
+      if (key === "recommendations.embeddings.enabled") return Promise.resolve(true);
+      return Promise.resolve(fallback);
+    });
+    (buildEmbeddingText as any).mockReturnValue("Test Pod A test podcast testing");
+    (computeEmbedding as any).mockResolvedValue([0.1, 0.2, 0.3]);
 
     mockPrisma.podcast.findMany.mockResolvedValue([
       {
@@ -195,19 +184,12 @@ describe("computePodcastProfiles", () => {
         categories: [],
         _count: { subscriptions: 1 },
         votes: [],
-        episodes: [{ id: "ep1", publishedAt: now }],
+        episodes: [{ id: "ep1", title: "Ep 1", description: null, publishedAt: now, topicTags: [] }],
       },
     ]);
     mockPrisma.podcastProfile.upsert.mockResolvedValue({});
-    mockPrisma.episode.update.mockResolvedValue({});
 
-    (getWorkProduct as any).mockResolvedValue(encoded.buffer);
-    (fingerprint as any).mockReturnValue([{ topic: "testing", weight: 1.0 }]);
-    (getConfig as any).mockResolvedValue(true); // embeddings enabled
-    (buildEmbeddingText as any).mockReturnValue("Test Pod A test podcast testing");
-    (computeEmbedding as any).mockResolvedValue([0.1, 0.2, 0.3]);
-
-    const mockEnv = { R2: { get: vi.fn() }, AI: { run: vi.fn() } };
+    const mockEnv = { AI: { run: vi.fn() } };
     await computePodcastProfiles(mockPrisma, mockEnv);
 
     expect(buildEmbeddingText).toHaveBeenCalledWith("Test Pod", "A test podcast", ["testing"]);
@@ -217,26 +199,28 @@ describe("computePodcastProfiles", () => {
     expect(upsertCall.create.embedding).toEqual([0.1, 0.2, 0.3]);
   });
 
-  it("skips topics and embeddings when env is not provided", async () => {
+  it("extracts topics from descriptions even without env", async () => {
+    const { extractTopicsFromText } = await import("../topic-extraction");
+    (extractTopicsFromText as any).mockReturnValue([{ topic: "tech", weight: 1.0 }]);
+
     mockPrisma.podcast.findMany.mockResolvedValue([
       {
         id: "pod1",
         title: "P1",
-        description: null,
+        description: "A tech podcast",
         categories: ["Tech"],
         _count: { subscriptions: 1 },
         votes: [],
-        episodes: [{ id: "ep1", publishedAt: new Date() }],
+        episodes: [{ id: "ep1", title: "Episode", description: null, publishedAt: new Date(), topicTags: [] }],
       },
     ]);
     mockPrisma.podcastProfile.upsert.mockResolvedValue({});
 
     await computePodcastProfiles(mockPrisma);
 
-    expect(getWorkProduct).not.toHaveBeenCalled();
-    expect(fingerprint).not.toHaveBeenCalled();
+    expect(extractTopicsFromText).toHaveBeenCalled();
     const upsertCall = mockPrisma.podcastProfile.upsert.mock.calls[0][0];
-    expect(upsertCall.create.topicTags).toEqual([]);
+    expect(upsertCall.create.topicTags).toContain("tech");
   });
 });
 
