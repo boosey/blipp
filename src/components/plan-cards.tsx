@@ -78,6 +78,8 @@ export function PlanCards({ currentPlanSlug, onCheckout, compact }: PlanCardsPro
     return <p className="text-muted-foreground text-sm text-center py-8">Loading plans...</p>;
   }
 
+  const lastIdx = plans.length - 1;
+
   return (
     <div>
       {hasAnnual && (
@@ -117,29 +119,49 @@ export function PlanCards({ currentPlanSlug, onCheckout, compact }: PlanCardsPro
           const isCurrent = currentPlanSlug === plan.slug;
           const currentIdx = plans.findIndex((p) => p.slug === currentPlanSlug);
           const isUpgrade = currentIdx >= 0 && idx > currentIdx;
-          const isNextUp = currentIdx >= 0 && idx === currentIdx + 1;
+          const isBelow = currentIdx >= 0 && idx < currentIdx;
+          const isTopTier = idx === lastIdx;
           const isFree = plan.priceCentsMonthly === 0;
           const savings = interval === "annual" ? annualSavingsPercent(plan) : null;
+
+          // Rank-relative styling:
+          // - Below current plan → plain (like free card)
+          // - Current plan → thick blue/purple border
+          // - Above current, top tier → golden glow
+          // - Above current, not top → blue/purple glow
+          let cardClass: string;
+          if (isCurrent) {
+            cardClass = "bg-card border-3 border-primary ring-1 ring-primary/30";
+          } else if (isBelow) {
+            cardClass = "bg-card border border-border";
+          } else if (isUpgrade && isTopTier) {
+            cardClass = `plan-card-glow-gold bg-card border-2 border-amber-500/50 ring-1 ring-amber-500/20 ${!compact ? "md:scale-105 md:z-10" : ""}`;
+          } else if (isUpgrade) {
+            cardClass = "plan-card-glow bg-card border-2 border-primary/60 ring-1 ring-primary/30";
+          } else {
+            // No current plan set (signed out) — plain styling
+            cardClass = "bg-card border border-border";
+          }
 
           return (
             <div
               key={plan.id}
-              className={`rounded-xl ${compact ? "p-4" : "p-6"} flex flex-col relative transition-all duration-300 ${
-                isCurrent
-                  ? "bg-emerald-950/30 border-2 border-emerald-500/60 ring-1 ring-emerald-500/20"
-                  : plan.highlighted
-                    ? `plan-card-glow bg-card border-2 border-primary/60 ring-1 ring-primary/30 ${!compact ? "md:scale-105 md:z-10" : ""}`
-                    : "bg-card border border-border hover:border-muted-foreground/30"
-              }`}
+              className={`rounded-xl ${compact ? "p-4" : "p-6"} flex flex-col relative transition-all duration-300 ${cardClass}`}
             >
               {/* Badge */}
               {isCurrent && (
-                <span className="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-emerald-400 mb-2">
+                <span className="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-primary mb-2">
                   <Check className="w-3 h-3" />
                   Your Current Plan
                 </span>
               )}
-              {!isCurrent && plan.highlighted && (
+              {isUpgrade && isTopTier && (
+                <span className="inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-amber-400 mb-2">
+                  <Star className="w-3 h-3 fill-current" />
+                  Best Experience
+                </span>
+              )}
+              {isUpgrade && !isTopTier && (
                 <span className="inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-primary mb-2">
                   <Star className="w-3 h-3 fill-current" />
                   Recommended
@@ -148,11 +170,17 @@ export function PlanCards({ currentPlanSlug, onCheckout, compact }: PlanCardsPro
 
               {/* Plan name + price */}
               <div className="flex items-baseline justify-between">
-                <h2 className={`${compact ? "text-lg" : "text-2xl"} font-bold ${plan.highlighted && !isCurrent ? "text-foreground" : ""}`}>
+                <h2 className={`${compact ? "text-lg" : "text-2xl"} font-bold`}>
                   {plan.name}
                 </h2>
                 <div className="text-right">
-                  <p className={`${compact ? "text-xl" : "text-3xl"} font-bold ${plan.highlighted && !isCurrent ? "text-primary" : ""}`}>
+                  <p className={`${compact ? "text-xl" : "text-3xl"} font-bold ${
+                    isUpgrade && isTopTier
+                      ? "text-amber-400"
+                      : isUpgrade
+                        ? "text-primary"
+                        : ""
+                  }`}>
                     {displayPrice(plan)}
                     {!isFree && (
                       <span className="text-sm font-normal text-muted-foreground">/mo</span>
@@ -178,11 +206,13 @@ export function PlanCards({ currentPlanSlug, onCheckout, compact }: PlanCardsPro
                     className={`flex items-start gap-2 ${compact ? "text-xs" : "text-sm"} text-foreground/80`}
                   >
                     <Check className={`w-3.5 h-3.5 mt-0.5 flex-shrink-0 ${
-                      plan.highlighted && !isCurrent
-                        ? "text-primary"
-                        : isCurrent
-                          ? "text-emerald-400"
-                          : "text-muted-foreground"
+                      isUpgrade && isTopTier
+                        ? "text-amber-400"
+                        : isUpgrade
+                          ? "text-primary"
+                          : isCurrent
+                            ? "text-primary"
+                            : "text-muted-foreground"
                     }`} />
                     {feature}
                   </li>
@@ -192,7 +222,7 @@ export function PlanCards({ currentPlanSlug, onCheckout, compact }: PlanCardsPro
               {/* CTA */}
               <div className={compact ? "mt-3" : "mt-6"}>
                 {isCurrent ? (
-                  <span className="block text-center py-2 text-sm text-emerald-400/70 font-medium">
+                  <span className="block text-center py-2 text-sm text-primary/70 font-medium">
                     Current plan
                   </span>
                 ) : isUpgrade ? (
@@ -202,13 +232,13 @@ export function PlanCards({ currentPlanSlug, onCheckout, compact }: PlanCardsPro
                         onClick={() => handleCheckout(plan)}
                         disabled={checkoutLoading === plan.id}
                         className={`w-full py-2.5 rounded-lg font-semibold text-sm transition-all disabled:opacity-50 ${
-                          plan.highlighted || isNextUp
-                            ? "plan-cta-shimmer bg-primary text-primary-foreground hover:brightness-110 shadow-lg shadow-primary/25"
-                            : "bg-muted border border-border hover:bg-accent hover:border-muted-foreground/30"
+                          isTopTier
+                            ? "plan-cta-shimmer bg-amber-500 text-amber-950 hover:brightness-110 shadow-lg shadow-amber-500/25"
+                            : "plan-cta-shimmer bg-primary text-primary-foreground hover:brightness-110 shadow-lg shadow-primary/25"
                         }`}
                       >
                         <span className="relative z-10 flex items-center justify-center gap-1.5">
-                          {plan.highlighted && <Sparkles className="w-3.5 h-3.5" />}
+                          {isTopTier && <Sparkles className="w-3.5 h-3.5" />}
                           {checkoutLoading === plan.id ? "Redirecting..." : "Upgrade"}
                         </span>
                       </button>
@@ -217,13 +247,13 @@ export function PlanCards({ currentPlanSlug, onCheckout, compact }: PlanCardsPro
                       <SignInButton>
                         <button
                           className={`w-full py-2.5 rounded-lg font-semibold text-sm transition-all ${
-                            plan.highlighted || isNextUp
-                              ? "plan-cta-shimmer bg-primary text-primary-foreground hover:brightness-110 shadow-lg shadow-primary/25"
-                              : "bg-muted border border-border hover:bg-accent hover:border-muted-foreground/30"
+                            isTopTier
+                              ? "plan-cta-shimmer bg-amber-500 text-amber-950 hover:brightness-110 shadow-lg shadow-amber-500/25"
+                              : "plan-cta-shimmer bg-primary text-primary-foreground hover:brightness-110 shadow-lg shadow-primary/25"
                           }`}
                         >
                           <span className="relative z-10 flex items-center justify-center gap-1.5">
-                            {plan.highlighted && <Sparkles className="w-3.5 h-3.5" />}
+                            {isTopTier && <Sparkles className="w-3.5 h-3.5" />}
                             Get Started
                           </span>
                         </button>

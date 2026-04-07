@@ -189,11 +189,11 @@ describe("PlanComparison", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText("5 briefings per week")).toBeInTheDocument();
-      expect(screen.getByText("3 minute maximum")).toBeInTheDocument();
-      expect(screen.getByText("Unlimited briefings")).toBeInTheDocument();
-      expect(screen.getByText("Ad-free")).toBeInTheDocument();
-      expect(screen.getByText("Priority processing")).toBeInTheDocument();
+      expect(screen.getByText("· 5 briefings per week")).toBeInTheDocument();
+      expect(screen.getByText("· 3 minute maximum")).toBeInTheDocument();
+      expect(screen.getByText("· Unlimited briefings")).toBeInTheDocument();
+      expect(screen.getByText("· Ad-free")).toBeInTheDocument();
+      expect(screen.getByText("· Priority processing")).toBeInTheDocument();
     });
   });
 

@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Check, Star, Sparkles } from "lucide-react";
 import { useApiFetch } from "../lib/api";
 import { Skeleton } from "./ui/skeleton";
 
@@ -58,25 +57,17 @@ export function PlanComparison({
         return (
           <div
             key={p.id}
-            className={`bg-card border rounded-xl p-4 space-y-3 transition-all ${
+            className={`bg-card border rounded-xl p-4 space-y-3 ${
               isCurrent
-                ? "border-emerald-500/60 bg-emerald-950/20"
+                ? "border-foreground"
                 : p.highlighted
-                  ? "plan-card-glow border-primary/50 ring-1 ring-primary/20"
+                  ? "border-muted-foreground/40"
                   : "border-border"
             }`}
           >
             <div className="flex items-center justify-between">
               <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="font-semibold">{p.name}</h3>
-                  {!isCurrent && p.highlighted && (
-                    <span className="inline-flex items-center gap-0.5 text-[10px] font-bold uppercase tracking-wider text-primary bg-primary/10 px-1.5 py-0.5 rounded-full">
-                      <Star className="w-2.5 h-2.5 fill-current" />
-                      Best value
-                    </span>
-                  )}
-                </div>
+                <h3 className="font-semibold">{p.name}</h3>
                 {p.description && (
                   <p className="text-xs text-muted-foreground mt-0.5">
                     {p.description}
@@ -87,7 +78,7 @@ export function PlanComparison({
                 {p.priceCentsMonthly === 0 ? (
                   <span className="text-sm font-medium">Free</span>
                 ) : (
-                  <span className={`text-sm font-medium ${p.highlighted && !isCurrent ? "text-primary" : ""}`}>
+                  <span className="text-sm font-medium">
                     ${(p.priceCentsMonthly / 100).toFixed(2)}/mo
                   </span>
                 )}
@@ -95,23 +86,13 @@ export function PlanComparison({
             </div>
             <ul className="text-xs text-muted-foreground space-y-1">
               {(p.features || []).map((f) => (
-                <li key={f} className="flex items-start gap-1.5">
-                  <Check className={`w-3 h-3 mt-0.5 flex-shrink-0 ${
-                    isCurrent
-                      ? "text-emerald-400"
-                      : p.highlighted
-                        ? "text-primary"
-                        : "text-muted-foreground"
-                  }`} />
-                  {f}
-                </li>
+                <li key={f}>· {f}</li>
               ))}
             </ul>
             {isCurrent ? (
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
-                  <span className="inline-flex items-center gap-1 text-xs text-emerald-400 bg-emerald-400/10 px-2.5 py-1 rounded-full font-medium">
-                    <Check className="w-3 h-3" />
+                  <span className="text-xs text-muted-foreground bg-muted px-2.5 py-1 rounded-full">
                     Current Plan
                   </span>
                   {p.priceCentsMonthly > 0 && (
@@ -139,18 +120,11 @@ export function PlanComparison({
               <button
                 onClick={() => onUpgrade(p)}
                 disabled={actionLoading === p.id}
-                className={`w-full py-2 text-xs font-semibold rounded-lg transition-all disabled:opacity-50 ${
-                  p.highlighted
-                    ? "plan-cta-shimmer bg-primary text-primary-foreground hover:brightness-110 shadow-md shadow-primary/20"
-                    : "bg-primary text-primary-foreground hover:bg-primary/90"
-                }`}
+                className="w-full py-2 bg-primary text-primary-foreground text-xs font-medium rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
               >
-                <span className="relative z-10 flex items-center justify-center gap-1">
-                  {p.highlighted && <Sparkles className="w-3 h-3" />}
-                  {actionLoading === p.id
-                    ? "Redirecting..."
-                    : `Upgrade to ${p.name}`}
-                </span>
+                {actionLoading === p.id
+                  ? "Redirecting..."
+                  : `Upgrade to ${p.name}`}
               </button>
             ) : currentIdx >= 0 ? (
               <button
