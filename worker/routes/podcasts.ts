@@ -761,7 +761,7 @@ podcasts.get("/:id", async (c) => {
  *
  * Query params:
  *   sort    = latest | earliest | for_you | most_blipps | top_rated | shortest | longest (default: latest)
- *   filter  = 24h | week | month | year | unblipped (default: none)
+ *   filter  = 24h | week | month | year | unblipped | listened | unlistened (default: none)
  *
  * @param id - The podcast's database ID
  * @returns Array of episode summaries
@@ -842,15 +842,16 @@ podcasts.get("/:id/episodes", async (c) => {
     }
   }
 
-  // Apply aggregate sorts — fetch global counts then re-order in JS
-  if (isAggregateSort) {
-    const blippCounts = await prisma.feedItem.groupBy({
-      by: ["episodeId"],
-      where: { episodeId: { in: episodeIds }, status: { not: "CANCELLED" } },
-      _count: { episodeId: true },
-    });
-    const blippCountMap = new Map<string, number>(blippCounts.map((b: any) => [b.episodeId as string, Number(b._count.episodeId)]));
+  // Fetch global blipp counts for all episodes (used for sorting + display)
+  const blippCounts = await prisma.feedItem.groupBy({
+    by: ["episodeId"],
+    where: { episodeId: { in: episodeIds }, status: { not: "CANCELLED" } },
+    _count: { episodeId: true },
+  });
+  const blippCountMap = new Map<string, number>(blippCounts.map((b: any) => [b.episodeId as string, Number(b._count.episodeId)]));
 
+  // Apply aggregate sorts
+  if (isAggregateSort) {
     if (sortParam === "most_blipps") {
       episodes.sort((a: any, b: any) =>
         (blippCountMap.get(b.id) ?? 0) - (blippCountMap.get(a.id) ?? 0)
@@ -873,9 +874,16 @@ podcasts.get("/:id/episodes", async (c) => {
     }
   }
 
-  // Apply "unblipped" filter — episodes this user hasn't created a briefing for
+  // Apply post-query filters
   if (filterParam === "unblipped") {
     episodes = episodes.filter((e: any) => !blippMap.has(e.id));
+  } else if (filterParam === "listened") {
+    episodes = episodes.filter((e: any) => blippMap.get(e.id)?.listened === true);
+  } else if (filterParam === "unlistened") {
+    episodes = episodes.filter((e: any) => {
+      const blipp = blippMap.get(e.id);
+      return blipp && !blipp.listened;
+    });
   }
 
   return c.json({
@@ -883,6 +891,7 @@ podcasts.get("/:id/episodes", async (c) => {
       ...e,
       userVote: voteMap.get(e.id) ?? 0,
       blippStatus: blippMap.get(e.id) ?? null,
+      blippCount: blippCountMap.get(e.id) ?? 0,
     })),
   });
 });

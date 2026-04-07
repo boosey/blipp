@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { Heart, Search, X, Loader2, Check, Headphones, Sparkles, ArrowUpDown, SlidersHorizontal, Share } from "lucide-react";
+import { Heart, Search, X, Loader2, Check, Headphones, Sparkles, ArrowUpDown, SlidersHorizontal, Share, Users } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,7 +25,7 @@ import type { PodcastDetail as PodcastDetailType, EpisodeSummary } from "../type
 import type { DurationTier } from "../lib/duration-tiers";
 
 type EpisodeSort = "latest" | "earliest" | "for_you" | "most_blipps" | "top_rated" | "shortest" | "longest";
-type EpisodeFilter = "24h" | "week" | "month" | "year" | "unblipped";
+type EpisodeFilter = "24h" | "week" | "month" | "year" | "unblipped" | "listened" | "unlistened";
 
 const SORT_LABELS: Record<EpisodeSort, string> = {
   latest: "Latest",
@@ -43,6 +43,8 @@ const FILTER_LABELS: Record<EpisodeFilter, string> = {
   month: "Last Month",
   year: "Last Year",
   unblipped: "Not Yet Blipped",
+  listened: "Listened",
+  unlistened: "Unlistened",
 };
 
 export function PodcastDetail({ podcastId: propPodcastId, scrollToEpisodeId }: { podcastId?: string; scrollToEpisodeId?: string | null } = {}) {
@@ -694,6 +696,11 @@ export function PodcastDetail({ podcastId: propPodcastId, scrollToEpisodeId }: {
                       <Share className="w-3.5 h-3.5" />
                     </button>
                   </div>
+                  {ep.blippCount > 0 && (
+                    <span className="flex items-center gap-1 px-2 py-1.5 text-xs text-muted-foreground" title={`${ep.blippCount} ${ep.blippCount === 1 ? "blipp" : "blipps"}`}>
+                      <Users className="w-3 h-3" /> {ep.blippCount}
+                    </span>
+                  )}
                   <div className="relative">
                     {requestingEpisodeId === ep.id ? (
                       <span className="text-xs text-muted-foreground px-3 py-1.5">
