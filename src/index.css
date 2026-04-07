@@ -243,7 +243,7 @@
   animation: plan-shimmer 2.5s ease-in-out infinite;
 }
 
-/* Plan card glow — box-shadow based for reliable rendering */
+/* Plan card glow — box-shadow with rgba for broad browser support */
 @keyframes plan-glow-pulse {
   0%, 100% { box-shadow: var(--glow-shadow-dim); }
   50% { box-shadow: var(--glow-shadow-bright); }
@@ -252,21 +252,21 @@
 /* Blue/purple glow for mid-tier upgrade cards */
 .plan-card-glow {
   --glow-shadow-dim:
-    0 0 8px oklch(0.55 0.18 260 / 0.3),
-    0 0 20px oklch(0.55 0.18 260 / 0.15);
+    0 0 10px rgba(90, 80, 220, 0.3),
+    0 0 24px rgba(90, 80, 220, 0.15);
   --glow-shadow-bright:
-    0 0 12px oklch(0.60 0.20 260 / 0.5),
-    0 0 30px oklch(0.60 0.20 260 / 0.25);
+    0 0 16px rgba(100, 90, 240, 0.5),
+    0 0 36px rgba(100, 90, 240, 0.25);
   animation: plan-glow-pulse 3s ease-in-out infinite;
 }
 
 /* Golden glow for top-tier upgrade card */
 .plan-card-glow-gold {
   --glow-shadow-dim:
-    0 0 8px oklch(0.70 0.16 75 / 0.35),
-    0 0 20px oklch(0.70 0.16 75 / 0.15);
+    0 0 10px rgba(210, 165, 50, 0.35),
+    0 0 24px rgba(210, 165, 50, 0.15);
   --glow-shadow-bright:
-    0 0 12px oklch(0.75 0.18 75 / 0.55),
-    0 0 30px oklch(0.75 0.18 75 / 0.3);
+    0 0 16px rgba(220, 175, 60, 0.55),
+    0 0 36px rgba(220, 175, 60, 0.3);
   animation: plan-glow-pulse 3s ease-in-out infinite;
 }
