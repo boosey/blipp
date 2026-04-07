@@ -243,43 +243,30 @@
   animation: plan-shimmer 2.5s ease-in-out infinite;
 }
 
-/* Plan card glow — shared pulse animation */
+/* Plan card glow — box-shadow based for reliable rendering */
 @keyframes plan-glow-pulse {
-  0%, 100% { opacity: 0.5; }
-  50% { opacity: 0.8; }
-}
-.plan-card-glow,
-.plan-card-glow-gold {
-  position: relative;
-}
-.plan-card-glow::before,
-.plan-card-glow-gold::before {
-  content: '';
-  position: absolute;
-  inset: -1px;
-  border-radius: inherit;
-  z-index: -1;
-  animation: plan-glow-pulse 3s ease-in-out infinite;
+  0%, 100% { box-shadow: var(--glow-shadow-dim); }
+  50% { box-shadow: var(--glow-shadow-bright); }
 }
 
 /* Blue/purple glow for mid-tier upgrade cards */
-.plan-card-glow::before {
-  background: linear-gradient(
-    135deg,
-    oklch(0.65 0.20 250) 0%,
-    oklch(0.60 0.22 280) 40%,
-    oklch(0.70 0.18 310) 70%,
-    oklch(0.65 0.20 250) 100%
-  );
+.plan-card-glow {
+  --glow-shadow-dim:
+    0 0 8px oklch(0.55 0.18 260 / 0.3),
+    0 0 20px oklch(0.55 0.18 260 / 0.15);
+  --glow-shadow-bright:
+    0 0 12px oklch(0.60 0.20 260 / 0.5),
+    0 0 30px oklch(0.60 0.20 260 / 0.25);
+  animation: plan-glow-pulse 3s ease-in-out infinite;
 }
 
 /* Golden glow for top-tier upgrade card */
-.plan-card-glow-gold::before {
-  background: linear-gradient(
-    135deg,
-    oklch(0.75 0.15 80) 0%,
-    oklch(0.70 0.18 60) 40%,
-    oklch(0.80 0.14 90) 70%,
-    oklch(0.75 0.15 80) 100%
-  );
+.plan-card-glow-gold {
+  --glow-shadow-dim:
+    0 0 8px oklch(0.70 0.16 75 / 0.35),
+    0 0 20px oklch(0.70 0.16 75 / 0.15);
+  --glow-shadow-bright:
+    0 0 12px oklch(0.75 0.18 75 / 0.55),
+    0 0 30px oklch(0.75 0.18 75 / 0.3);
+  animation: plan-glow-pulse 3s ease-in-out infinite;
 }
