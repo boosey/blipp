@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { Heart, Search, X, Loader2, Check, Headphones, Sparkles, ArrowUpDown, SlidersHorizontal } from "lucide-react";
+import { Heart, Search, X, Loader2, Check, Headphones, Sparkles, ArrowUpDown, SlidersHorizontal, Share } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -395,6 +395,21 @@ export function PodcastDetail({ podcastId: propPodcastId, scrollToEpisodeId }: {
                 className={`w-4 h-4 transition-colors ${isFavorited ? "fill-red-500 text-red-500" : "text-muted-foreground"}`}
               />
             </button>
+            <button
+              onClick={async () => {
+                const text = `Check out ${podcast.title} on Blipp`;
+                const url = `${window.location.origin}/discover/${podcast.id}`;
+                if (navigator.share) {
+                  try { await navigator.share({ title: podcast.title, text, url }); } catch { /* cancelled */ }
+                } else {
+                  try { await navigator.clipboard.writeText(`${text}\n${url}`); toast("Link copied to clipboard"); } catch { /* failed */ }
+                }
+              }}
+              className="p-1.5 rounded-full hover:bg-muted transition-colors"
+              title="Share podcast"
+            >
+              <Share className="w-4 h-4 text-muted-foreground" />
+            </button>
           </div>
         </div>
 
@@ -658,10 +673,27 @@ export function PodcastDetail({ podcastId: propPodcastId, scrollToEpisodeId }: {
                 )}
                 {/* Action row: thumbs left, blipp right */}
                 <div className="flex items-center justify-between mt-2">
-                  <ThumbButtons
-                    vote={ep.userVote}
-                    onVote={(v) => handleEpisodeVote(ep.id, v)}
-                  />
+                  <div className="flex items-center gap-0.5">
+                    <ThumbButtons
+                      vote={ep.userVote}
+                      onVote={(v) => handleEpisodeVote(ep.id, v)}
+                    />
+                    <button
+                      onClick={async () => {
+                        const text = `Check out "${ep.title}" from ${podcast.title} on Blipp`;
+                        const url = `${window.location.origin}/discover/${podcast.id}`;
+                        if (navigator.share) {
+                          try { await navigator.share({ title: ep.title, text, url }); } catch { /* cancelled */ }
+                        } else {
+                          try { await navigator.clipboard.writeText(`${text}\n${url}`); toast("Link copied to clipboard"); } catch { /* failed */ }
+                        }
+                      }}
+                      className="p-1 text-muted-foreground hover:text-foreground transition-colors"
+                      title="Share episode"
+                    >
+                      <Share className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                   <div className="relative">
                     {requestingEpisodeId === ep.id ? (
                       <span className="text-xs text-muted-foreground px-3 py-1.5">

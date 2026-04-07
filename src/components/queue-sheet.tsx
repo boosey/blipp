@@ -51,7 +51,7 @@ export function QueueSheet({
       <SheetContent
         side="bottom"
         showCloseButton={false}
-        className="h-[70dvh] rounded-t-2xl bg-background border-border flex flex-col px-0 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))]"
+        className="h-[92dvh] rounded-t-2xl bg-background border-border flex flex-col px-0 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))]"
       >
         {/* Header */}
         <div className="flex items-center justify-between px-4 pb-3 flex-shrink-0">
