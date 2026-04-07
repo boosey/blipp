@@ -141,6 +141,7 @@ export function SwipeableFeedItem({
   const directionLockedRef = useRef(false);
   const isHorizontalRef = useRef(false);
   const currentOffsetRef = useRef(0);
+  const baseOffsetRef = useRef(0); // snapped position at gesture start
   const [revealed, setRevealed] = useState<"left" | "right" | null>(null);
   const [removing, setRemoving] = useState(false);
 
@@ -174,6 +175,7 @@ export function SwipeableFeedItem({
       startTimeRef.current = Date.now();
       lastMoveTimeRef.current = Date.now();
       lastMoveXRef.current = e.touches[0].clientX;
+      baseOffsetRef.current = currentOffsetRef.current;
       swipingRef.current = false;
       directionLockedRef.current = false;
       isHorizontalRef.current = false;
@@ -216,8 +218,8 @@ export function SwipeableFeedItem({
     lastMoveTimeRef.current = Date.now();
     lastMoveXRef.current = touchX;
 
-    // Apply rubber-banding past BUTTON_WIDTH
-    const offset = rubberBand(deltaX, BUTTON_WIDTH);
+    // Apply rubber-banding past BUTTON_WIDTH, relative to snapped position
+    const offset = rubberBand(baseOffsetRef.current + deltaX, BUTTON_WIDTH);
 
     currentOffsetRef.current = offset;
     const card = cardRef.current;
