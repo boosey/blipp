@@ -69,7 +69,8 @@ export const CONFIG_REGISTRY: Record<string, ConfigEntry> = {
   "recommendations.exclusion.topicPenalty":    { type: "number",  defaultValue: 0.3,   description: "Per-topic exclusion penalty multiplier" },
   "recommendations.coldStart.explicitMinCategories": { type: "number", defaultValue: 2, description: "Min explicit categories to escape cold start" },
   "recommendations.coldStart.explicitMinTopics": { type: "number", defaultValue: 3,    description: "Min explicit topics to escape cold start" },
-  "recommendations.profileBatchSize":          { type: "number",  defaultValue: 25,   description: "Podcasts processed per recommendation profile cron tick" },
+  "recommendations.profileBatchSize":          { type: "number",  defaultValue: 25,   description: "Podcasts per recommendation profile batch" },
+  "recommendations.timeBudgetMs":              { type: "number",  defaultValue: 25000, description: "Max ms to spend looping through recommendation batches per cron run" },
 
   // ── Requests ──
   "requests.archiving.enabled": { type: "boolean", defaultValue: false, description: "Enable request archiving in data retention" },

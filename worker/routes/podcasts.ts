@@ -232,9 +232,9 @@ podcasts.post("/subscribe", async (c) => {
     },
   });
 
-  // Find latest episode and create FeedItem + pipeline request
+  // Find latest deliverable episode and create FeedItem + pipeline request
   const latestEpisode = await prisma.episode.findFirst({
-    where: { podcastId: podcast.id },
+    where: { podcastId: podcast.id, contentStatus: { not: "NOT_DELIVERABLE" } },
     orderBy: { publishedAt: "desc" },
   });
 

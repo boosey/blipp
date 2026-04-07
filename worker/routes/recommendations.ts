@@ -144,6 +144,7 @@ async function generateCuratedRows(
   {
     const podcastWhere: any = {
       id: { notIn: [...excludeIds] },
+      deliverable: true,
       ...(genre ? { categories: { has: genre } } : {}),
     };
     // Filter out podcasts in user's excluded categories
@@ -152,6 +153,7 @@ async function generateCuratedRows(
     }
     const where: any = {
       publishedAt: { not: null, gte: fourteenDaysAgo },
+      contentStatus: { not: "NOT_DELIVERABLE" },
       podcast: podcastWhere,
     };
     const rawEpisodes = await prisma.episode.findMany({
@@ -198,6 +200,7 @@ async function generateCuratedRows(
       if (topicTags.length > 0) {
         const topicPodcastWhere: any = {
           id: { notIn: [...excludeIds] },
+          deliverable: true,
           ...(genre ? { categories: { has: genre } } : {}),
         };
         if (userExcludedCategories.length > 0) {
@@ -205,6 +208,7 @@ async function generateCuratedRows(
         }
         const where: any = {
           publishedAt: { gte: fourteenDaysAgo },
+          contentStatus: { not: "NOT_DELIVERABLE" },
           topicTags: { hasSome: topicTags },
           podcast: topicPodcastWhere,
         };
@@ -289,6 +293,7 @@ async function generateCuratedRows(
     if (sourcePodcast && sourcePodcast.categories?.length > 0) {
       const similarPodcastWhere: any = {
         id: { notIn: [...excludeIds, sourcePodcast.id] },
+        deliverable: true,
         categories: { hasSome: sourcePodcast.categories },
         ...(genre ? { categories: { has: genre } } : {}),
       };
@@ -297,6 +302,7 @@ async function generateCuratedRows(
       }
       const where: any = {
         publishedAt: { gte: fourteenDaysAgo },
+        contentStatus: { not: "NOT_DELIVERABLE" },
         podcast: similarPodcastWhere,
       };
       const rawSimilarEpisodes = await prisma.episode.findMany({
@@ -351,7 +357,7 @@ recommendations.get("/local", async (c) => {
 
   // City-level matches + state-level matches
   const geoProfiles = await prisma.podcastGeoProfile.findMany({
-    where: { state: fullUser.state },
+    where: { state: fullUser.state, podcast: { deliverable: true } },
     include: {
       podcast: { select: { id: true, title: true, imageUrl: true, author: true, categories: true } },
       team: { select: { id: true, name: true, nickname: true, abbreviation: true } },
@@ -413,7 +419,7 @@ recommendations.get("/episodes", async (c) => {
   const excludedTopics: string[] = explicit ? [] : (user.excludedTopics ?? []);
   const excludedTopicSet = new Set(excludedTopics.map((t: string) => t.toLowerCase()));
 
-  const where: any = {};
+  const where: any = { contentStatus: { not: "NOT_DELIVERABLE" } };
   if (genre) {
     where.podcast = { ...(where.podcast || {}), categories: { has: genre } };
   }
@@ -601,7 +607,7 @@ recommendations.get("/similar/:podcastId", async (c) => {
   }
 
   const allProfiles = await prisma.podcastProfile.findMany({
-    where: { podcastId: { not: podcastId } },
+    where: { podcastId: { not: podcastId }, podcast: { deliverable: true } },
     include: { podcast: { select: { id: true, title: true, author: true, description: true, imageUrl: true, feedUrl: true, categories: true, episodeCount: true, _count: { select: { subscriptions: true } } } } },
   });
 

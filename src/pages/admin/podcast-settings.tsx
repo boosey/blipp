@@ -72,7 +72,8 @@ const CONFIG_GROUPS: ConfigGroup[] = [
     description: "Transcript and audio validation before pipeline processing",
     items: [
       { key: "pipeline.contentPrefetch.fetchTimeoutMs", label: "Fetch Timeout (ms)", type: "number", description: "Timeout for transcript/audio validation requests", default: 15000 },
-      { key: "recommendations.profileBatchSize", label: "Recommendation Batch Size", type: "number", description: "Podcasts processed per recommendation profile cron tick", default: 25 },
+      { key: "recommendations.profileBatchSize", label: "Recommendation Batch Size", type: "number", description: "Podcasts per batch (loops until cycle completes or time budget hit)", default: 25 },
+      { key: "recommendations.timeBudgetMs", label: "Time Budget (ms)", type: "number", description: "Max time to spend processing batches per cron run", default: 25000 },
     ],
   },
   {
