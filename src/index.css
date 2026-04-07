@@ -260,6 +260,15 @@
   animation: plan-glow-pulse 3s ease-in-out infinite;
 }
 
+/* Listening streak glow */
+@keyframes streak-pulse {
+  0%, 100% { filter: drop-shadow(0 0 2px rgba(249, 115, 22, 0.3)); }
+  50% { filter: drop-shadow(0 0 8px rgba(249, 115, 22, 0.6)); }
+}
+.streak-glow {
+  animation: streak-pulse 2s ease-in-out infinite;
+}
+
 /* Golden glow for top-tier upgrade card */
 .plan-card-glow-gold {
   --glow-shadow-dim:
