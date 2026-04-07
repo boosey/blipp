@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Play, Pause, RotateCcw, RotateCw, ChevronDown, Share2, ExternalLink } from "lucide-react";
+import { Play, Pause, RotateCcw, RotateCw, ChevronDown, Share2, ExternalLink, ListMusic } from "lucide-react";
 import { toast } from "sonner";
 import {
   Sheet,
@@ -14,6 +14,7 @@ import { usePlan } from "../contexts/plan-context";
 import { formatDuration } from "../lib/feed-utils";
 import { ThumbButtons } from "./thumb-buttons";
 import { BlippFeedbackSheet } from "./blipp-feedback-sheet";
+import { QueueSheet } from "./queue-sheet";
 
 const RATE_CYCLE = [1, 1.25, 1.5, 2, 0.75] as const;
 
@@ -44,6 +45,7 @@ export function PlayerSheet({
     adProgress,
     adDuration,
     adCurrentTime,
+    queue,
   } = useAudio();
   const apiFetch = useApiFetch();
 
@@ -53,6 +55,7 @@ export function PlayerSheet({
   // Episode vote state — reset when track changes
   const [episodeVote, setEpisodeVote] = useState(0);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [queueOpen, setQueueOpen] = useState(false);
   const lastEpisodeId = useRef<string | null>(null);
 
   useEffect(() => {
@@ -350,8 +353,17 @@ export function PlayerSheet({
                 </span>
               </button>
 
-              {/* Spacer to balance rate button */}
-              <div className="min-w-[3rem]" />
+              {/* Queue button */}
+              <button
+                onClick={() => setQueueOpen(true)}
+                className="relative text-xs font-medium text-muted-foreground bg-muted px-2.5 py-1 rounded-full min-w-[3rem] flex items-center justify-center gap-1 active:scale-[0.95] transition-transform duration-75"
+                aria-label="Open queue"
+              >
+                <ListMusic className="w-3.5 h-3.5" />
+                {queue.length > 0 && (
+                  <span className="text-primary font-bold">{queue.length}</span>
+                )}
+              </button>
             </>
           )}
         </div>
@@ -364,6 +376,7 @@ export function PlayerSheet({
           onOpenChange={setFeedbackOpen}
         />
       )}
+      <QueueSheet open={queueOpen} onOpenChange={setQueueOpen} />
     </Sheet>
   );
 }

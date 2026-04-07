@@ -1,8 +1,9 @@
 import { useState, useImperativeHandle, forwardRef } from "react";
-import { Play, Pause, ChevronUp, SkipForward } from "lucide-react";
+import { Play, Pause, ChevronUp, SkipForward, ListMusic } from "lucide-react";
 import { useAudio } from "../contexts/audio-context";
 import { usePodcastSheet } from "../contexts/podcast-sheet-context";
 import { PlayerSheet } from "./player-sheet";
+import { QueueSheet } from "./queue-sheet";
 
 export interface MiniPlayerHandle {
   closeSheet: () => void;
@@ -36,8 +37,10 @@ export const MiniPlayer = forwardRef<MiniPlayerHandle>(function MiniPlayer(_prop
     seek,
     adProgress,
     adState,
+    queue,
   } = useAudio();
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [queueOpen, setQueueOpen] = useState(false);
   const { open: openPodcast } = usePodcastSheet();
 
   useImperativeHandle(ref, () => ({
@@ -58,6 +61,11 @@ export const MiniPlayer = forwardRef<MiniPlayerHandle>(function MiniPlayer(_prop
     if (!inAd && duration > 0) {
       seek(Math.min(currentTime + 15, duration));
     }
+  }
+
+  function handleQueueClick(e: React.MouseEvent) {
+    e.stopPropagation();
+    setQueueOpen(true);
   }
 
   return (
@@ -127,6 +135,26 @@ export const MiniPlayer = forwardRef<MiniPlayerHandle>(function MiniPlayer(_prop
               </p>
             </div>
 
+            {/* Queue button — only show when items are queued */}
+            {!inAd && queue.length > 0 && (
+              <button
+                onClick={handleQueueClick}
+                className="flex-shrink-0 relative flex items-center justify-center w-8 h-8 rounded-lg transition-opacity active:opacity-60"
+                aria-label={`Queue: ${queue.length} items`}
+              >
+                <ListMusic className="w-4 h-4" style={{ color: "oklch(0.55 0.12 250)" }} />
+                <span
+                  className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] rounded-full flex items-center justify-center text-[9px] font-bold leading-none px-0.5"
+                  style={{
+                    background: "oklch(0.55 0.16 250)",
+                    color: "white",
+                  }}
+                >
+                  {queue.length}
+                </span>
+              </button>
+            )}
+
             {/* Skip +15 */}
             {!inAd && (
               <button
@@ -187,6 +215,7 @@ export const MiniPlayer = forwardRef<MiniPlayerHandle>(function MiniPlayer(_prop
       </div>
 
       <PlayerSheet open={sheetOpen} onOpenChange={setSheetOpen} />
+      <QueueSheet open={queueOpen} onOpenChange={setQueueOpen} />
     </>
   );
 });

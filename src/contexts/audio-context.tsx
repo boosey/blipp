@@ -46,9 +46,17 @@ interface AudioActions {
   setRate: (rate: number) => void;
   stop: () => void;
   addToQueue: (item: FeedItem) => void;
+  removeFromQueue: (itemId: string) => void;
+  clearQueue: () => void;
+  reorderQueue: (fromIndex: number, toIndex: number) => void;
+  skipToQueueItem: (itemId: string) => void;
 }
 
-type AudioContextValue = AudioState & AudioActions;
+interface AudioQueueState {
+  queue: FeedItem[];
+}
+
+type AudioContextValue = AudioState & AudioActions & AudioQueueState;
 
 const AudioContext = createContext<AudioContextValue | null>(null);
 
@@ -80,8 +88,10 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   // Guards against audio element events fired by the silent unlock WAV
   const unlockingRef = useRef(false);
 
-  // Queue for Play All
+  // Queue for Play All — ref for internal logic, state for UI reactivity
   const queueRef = useRef<FeedItem[]>([]);
+  const [queue, setQueue] = useState<FeedItem[]>([]);
+  const syncQueue = useCallback(() => setQueue([...queueRef.current]), []);
 
   // Playback position saving
   const saveTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -197,13 +207,14 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   // Called when an item fully finishes (content + postroll). Advances queue.
   const onPlaybackFinished = useCallback(() => {
     const next = queueRef.current.shift();
+    syncQueue();
     if (next) {
       playRef.current(next);
     } else {
       setAdState("none");
       setIsPlaying(false);
     }
-  }, []);
+  }, [syncQueue]);
 
   // IMA ads hook callbacks
   const onPrerollComplete = useCallback(() => {
@@ -317,7 +328,8 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     pendingItemRef.current = null;
     adFlowRef.current = null;
     queueRef.current = [];
-  }, [ima]);
+    syncQueue();
+  }, [ima, syncQueue]);
 
   const play = useCallback(
     async (item: FeedItem) => {
@@ -395,9 +407,10 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       if (items.length === 0) return;
       const [first, ...rest] = items;
       queueRef.current = rest;
+      syncQueue();
       play(first);
     },
-    [play]
+    [play, syncQueue]
   );
 
   const addToQueue = useCallback((item: FeedItem) => {
@@ -408,9 +421,37 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       // Avoid duplicates
       if (!queueRef.current.some((q) => q.id === item.id) && currentItem.id !== item.id) {
         queueRef.current.push(item);
+        syncQueue();
       }
     }
-  }, [currentItem, play]);
+  }, [currentItem, play, syncQueue]);
+
+  const removeFromQueue = useCallback((itemId: string) => {
+    queueRef.current = queueRef.current.filter((q) => q.id !== itemId);
+    syncQueue();
+  }, [syncQueue]);
+
+  const clearQueue = useCallback(() => {
+    queueRef.current = [];
+    syncQueue();
+  }, [syncQueue]);
+
+  const reorderQueue = useCallback((fromIndex: number, toIndex: number) => {
+    const arr = [...queueRef.current];
+    const [moved] = arr.splice(fromIndex, 1);
+    arr.splice(toIndex, 0, moved);
+    queueRef.current = arr;
+    syncQueue();
+  }, [syncQueue]);
+
+  const skipToQueueItem = useCallback((itemId: string) => {
+    const idx = queueRef.current.findIndex((q) => q.id === itemId);
+    if (idx === -1) return;
+    const target = queueRef.current[idx];
+    queueRef.current = queueRef.current.slice(idx + 1);
+    syncQueue();
+    play(target);
+  }, [play, syncQueue]);
 
   // Handle audio ended — sequence: intro-jingle -> content -> outro-jingle -> postroll
   const handleEnded = useCallback(async () => {
@@ -586,6 +627,8 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     adProgress: ima.adProgress,
     adDuration: ima.adDuration,
     adCurrentTime: ima.adCurrentTime,
+    // Queue
+    queue,
     // Actions
     play,
     playAll,
@@ -595,6 +638,10 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     setRate,
     stop,
     addToQueue,
+    removeFromQueue,
+    clearQueue,
+    reorderQueue,
+    skipToQueueItem,
   };
 
   return (
