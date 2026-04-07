@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { SignedIn, SignedOut, SignInButton } from "@clerk/clerk-react";
 import { toast } from "sonner";
+import { Sparkles, Check, Star } from "lucide-react";
 import { apiFetch } from "../lib/api";
 
 export interface Plan {
@@ -66,6 +67,13 @@ export function PlanCards({ currentPlanSlug, onCheckout, compact }: PlanCardsPro
     return `$${(cents / 100).toFixed(2)}`;
   }
 
+  function annualSavingsPercent(plan: Plan): number | null {
+    if (!plan.priceCentsAnnual || plan.priceCentsMonthly === 0) return null;
+    const monthlyTotal = plan.priceCentsMonthly * 12;
+    const savings = Math.round(((monthlyTotal - plan.priceCentsAnnual) / monthlyTotal) * 100);
+    return savings > 0 ? savings : null;
+  }
+
   if (loading) {
     return <p className="text-muted-foreground text-sm text-center py-8">Loading plans...</p>;
   }
@@ -87,75 +95,104 @@ export function PlanCards({ currentPlanSlug, onCheckout, compact }: PlanCardsPro
             </button>
             <button
               onClick={() => setInterval("annual")}
-              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors relative ${
                 interval === "annual"
                   ? "bg-primary text-primary-foreground"
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >
               Annual
+              {interval !== "annual" && (
+                <span className="absolute -top-2.5 -right-2 text-[10px] font-bold text-emerald-400 bg-emerald-400/10 px-1.5 py-0.5 rounded-full">
+                  Save
+                </span>
+              )}
             </button>
           </div>
         </div>
       )}
 
-      <div className={`grid gap-4 ${compact ? "grid-cols-1" : "grid-cols-1 md:grid-cols-3 gap-6"}`}>
+      <div className={`grid gap-4 ${compact ? "grid-cols-1" : "grid-cols-1 md:grid-cols-3 gap-6"} items-start`}>
         {plans.map((plan, idx) => {
           const isCurrent = currentPlanSlug === plan.slug;
           const currentIdx = plans.findIndex((p) => p.slug === currentPlanSlug);
           const isUpgrade = currentIdx >= 0 && idx > currentIdx;
           const isNextUp = currentIdx >= 0 && idx === currentIdx + 1;
           const isFree = plan.priceCentsMonthly === 0;
+          const savings = interval === "annual" ? annualSavingsPercent(plan) : null;
 
           return (
             <div
               key={plan.id}
-              className={`rounded-xl ${compact ? "p-4" : "p-6"} flex flex-col relative ${
+              className={`rounded-xl ${compact ? "p-4" : "p-6"} flex flex-col relative transition-all duration-300 ${
                 isCurrent
-                  ? "bg-muted border-2 border-emerald-500/50 ring-1 ring-emerald-500/20"
+                  ? "bg-emerald-950/30 border-2 border-emerald-500/60 ring-1 ring-emerald-500/20"
                   : plan.highlighted
-                    ? "bg-muted border-2 border-foreground ring-1 ring-foreground/20"
-                    : "bg-card border border-border"
+                    ? `plan-card-glow bg-card border-2 border-primary/60 ring-1 ring-primary/30 ${!compact ? "md:scale-105 md:z-10" : ""}`
+                    : "bg-card border border-border hover:border-muted-foreground/30"
               }`}
             >
+              {/* Badge */}
               {isCurrent && (
-                <span className="text-xs font-semibold uppercase tracking-wider text-emerald-400 mb-1">
+                <span className="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-emerald-400 mb-2">
+                  <Check className="w-3 h-3" />
                   Your Current Plan
                 </span>
               )}
               {!isCurrent && plan.highlighted && (
-                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">
-                  Most Popular
+                <span className="inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-primary mb-2">
+                  <Star className="w-3 h-3 fill-current" />
+                  Recommended
                 </span>
               )}
+
+              {/* Plan name + price */}
               <div className="flex items-baseline justify-between">
-                <h2 className={`${compact ? "text-lg" : "text-2xl"} font-bold`}>{plan.name}</h2>
-                <p className={`${compact ? "text-xl" : "text-3xl"} font-bold`}>
-                  {displayPrice(plan)}
-                  {!isFree && (
-                    <span className="text-sm font-normal text-muted-foreground">/mo</span>
+                <h2 className={`${compact ? "text-lg" : "text-2xl"} font-bold ${plan.highlighted && !isCurrent ? "text-foreground" : ""}`}>
+                  {plan.name}
+                </h2>
+                <div className="text-right">
+                  <p className={`${compact ? "text-xl" : "text-3xl"} font-bold ${plan.highlighted && !isCurrent ? "text-primary" : ""}`}>
+                    {displayPrice(plan)}
+                    {!isFree && (
+                      <span className="text-sm font-normal text-muted-foreground">/mo</span>
+                    )}
+                  </p>
+                  {savings && (
+                    <span className="text-[11px] font-semibold text-emerald-400">
+                      Save {savings}% annually
+                    </span>
                   )}
-                </p>
+                </div>
               </div>
+
               {plan.description && (
                 <p className="text-xs text-muted-foreground mt-1">{plan.description}</p>
               )}
 
+              {/* Features */}
               <ul className={`${compact ? "mt-3 space-y-1.5" : "mt-6 space-y-3"} flex-1`}>
                 {(plan.features || []).map((feature) => (
                   <li
                     key={feature}
                     className={`flex items-start gap-2 ${compact ? "text-xs" : "text-sm"} text-foreground/80`}
                   >
-                    <span className="text-muted-foreground mt-0.5">&#10003;</span>
+                    <Check className={`w-3.5 h-3.5 mt-0.5 flex-shrink-0 ${
+                      plan.highlighted && !isCurrent
+                        ? "text-primary"
+                        : isCurrent
+                          ? "text-emerald-400"
+                          : "text-muted-foreground"
+                    }`} />
                     {feature}
                   </li>
                 ))}
               </ul>
 
+              {/* CTA */}
               <div className={compact ? "mt-3" : "mt-6"}>
                 {isCurrent ? (
-                  <span className="block text-center py-2 text-sm text-muted-foreground">
+                  <span className="block text-center py-2 text-sm text-emerald-400/70 font-medium">
                     Current plan
                   </span>
                 ) : isUpgrade ? (
@@ -164,25 +201,31 @@ export function PlanCards({ currentPlanSlug, onCheckout, compact }: PlanCardsPro
                       <button
                         onClick={() => handleCheckout(plan)}
                         disabled={checkoutLoading === plan.id}
-                        className={`w-full py-2 rounded-lg font-medium text-sm transition-colors disabled:opacity-50 ${
-                          isNextUp
-                            ? "bg-primary text-primary-foreground hover:bg-primary/90"
-                            : "bg-muted border border-border hover:bg-accent"
+                        className={`w-full py-2.5 rounded-lg font-semibold text-sm transition-all disabled:opacity-50 ${
+                          plan.highlighted || isNextUp
+                            ? "plan-cta-shimmer bg-primary text-primary-foreground hover:brightness-110 shadow-lg shadow-primary/25"
+                            : "bg-muted border border-border hover:bg-accent hover:border-muted-foreground/30"
                         }`}
                       >
-                        {checkoutLoading === plan.id ? "Redirecting..." : "Upgrade"}
+                        <span className="relative z-10 flex items-center justify-center gap-1.5">
+                          {plan.highlighted && <Sparkles className="w-3.5 h-3.5" />}
+                          {checkoutLoading === plan.id ? "Redirecting..." : "Upgrade"}
+                        </span>
                       </button>
                     </SignedIn>
                     <SignedOut>
                       <SignInButton>
                         <button
-                          className={`w-full py-2 rounded-lg font-medium text-sm transition-colors ${
-                            isNextUp
-                              ? "bg-primary text-primary-foreground hover:bg-primary/90"
-                              : "bg-muted border border-border hover:bg-accent"
+                          className={`w-full py-2.5 rounded-lg font-semibold text-sm transition-all ${
+                            plan.highlighted || isNextUp
+                              ? "plan-cta-shimmer bg-primary text-primary-foreground hover:brightness-110 shadow-lg shadow-primary/25"
+                              : "bg-muted border border-border hover:bg-accent hover:border-muted-foreground/30"
                           }`}
                         >
-                          Get Started
+                          <span className="relative z-10 flex items-center justify-center gap-1.5">
+                            {plan.highlighted && <Sparkles className="w-3.5 h-3.5" />}
+                            Get Started
+                          </span>
                         </button>
                       </SignInButton>
                     </SignedOut>

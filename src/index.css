@@ -220,3 +220,49 @@
   height: 3px;
   animation: waveform-pulse 0.75s ease-in-out infinite;
 }
+
+/* Plan card upgrade shimmer on CTA buttons */
+@keyframes plan-shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+.plan-cta-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+.plan-cta-shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    oklch(1 0 0 / 20%) 50%,
+    transparent 100%
+  );
+  animation: plan-shimmer 2.5s ease-in-out infinite;
+}
+
+/* Highlighted plan card glow */
+@keyframes plan-glow-pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 0.8; }
+}
+.plan-card-glow {
+  position: relative;
+}
+.plan-card-glow::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  background: linear-gradient(
+    135deg,
+    oklch(0.65 0.20 250) 0%,
+    oklch(0.60 0.22 280) 40%,
+    oklch(0.70 0.18 310) 70%,
+    oklch(0.65 0.20 250) 100%
+  );
+  z-index: -1;
+  animation: plan-glow-pulse 3s ease-in-out infinite;
+}
