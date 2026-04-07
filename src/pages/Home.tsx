@@ -57,8 +57,26 @@ export function Home() {
 
   const { data: counts } = useFetch<FeedCounts>("/feed/counts");
   const { data: curatedData } = useFetch<CuratedResponse>("/recommendations/curated");
-  const { data: digest, refetch: refetchDigest } = useFetch<Digest>("/digest/today");
+  const { data: digestReal, refetch: refetchDigest } = useFetch<Digest>("/digest/today");
   const [digestDismissed, setDigestDismissed] = useState(false);
+
+  // TODO: remove mock once backend exists — toggle via: localStorage.setItem("digest-mock", "1")
+  const digest: Digest | null = digestReal ?? (localStorage.getItem("digest-mock") ? {
+    id: "mock-digest",
+    date: new Date().toISOString().slice(0, 10),
+    status: "READY",
+    durationTier: 10,
+    actualSeconds: 587,
+    listened: false,
+    createdAt: new Date().toISOString(),
+    audioUrl: "https://example.com/mock.mp3",
+    sources: [
+      { type: "subscribed", podcast: { id: "p1", title: "The Daily", imageUrl: "https://is1-ssl.mzstatic.com/image/thumb/Podcasts211/v4/5d/10/2e/5d102e3b-deaf-d40a-0076-511484350298/mza_15aborwzqkbjpnxm.jpg/300x300bb.webp" }, episodeTitle: "Monday Headlines", segmentSeconds: 180 },
+      { type: "subscribed", podcast: { id: "p2", title: "Hard Fork", imageUrl: "https://is1-ssl.mzstatic.com/image/thumb/Podcasts221/v4/a5/3c/c5/a53cc5e4-0e0c-bf3c-5c42-003e5c472e5f/mza_9498342093498498400.jpg/300x300bb.webp" }, episodeTitle: "AI's Next Act", segmentSeconds: 150 },
+      { type: "favorited", podcast: { id: "p3", title: "Lex Fridman", imageUrl: "https://is1-ssl.mzstatic.com/image/thumb/Podcasts211/v4/4c/0d/a6/4c0da60e-3e6e-cbb1-8eb3-28ada1c01762/mza_13291498498218498498.jpg/300x300bb.webp" }, episodeTitle: "Sam Altman Interview", segmentSeconds: 140 },
+      { type: "recommended", podcast: { id: "p4", title: "Acquired", imageUrl: "https://is1-ssl.mzstatic.com/image/thumb/Podcasts116/v4/5c/93/a7/5c93a781-e8bb-fb04-6463-bdc57b4af42b/mza_16534053381638498498.png/300x300bb.webp" }, episodeTitle: "NVIDIA Deep Dive", segmentSeconds: 117 },
+    ],
+  } : null);
 
   // Track "just onboarded" state via sessionStorage
   const justOnboarded = sessionStorage.getItem("blipp-just-onboarded") === "1";
