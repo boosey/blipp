@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Play, Pause, RotateCcw, RotateCw, ChevronDown, Share2, ExternalLink, ListMusic } from "lucide-react";
+import { Play, Pause, RotateCcw, RotateCw, ChevronDown, Share, ExternalLink, ListMusic } from "lucide-react";
 import { toast } from "sonner";
 import {
   Sheet,
@@ -153,12 +153,13 @@ export function PlayerSheet({
   const inAd = adState === "preroll" || adState === "postroll";
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Sheet open={open} onOpenChange={onOpenChange} modal={false}>
       <SheetContent
         ref={sheetRef}
         side="bottom"
         showCloseButton={false}
         className="h-[85dvh] rounded-t-2xl bg-background border-border flex flex-col items-center px-4 pt-3 pb-[max(1.5rem,env(safe-area-inset-bottom))] overflow-y-auto"
+        overlayClassName="pointer-events-none"
         onTouchStart={onSwipeStart}
         onTouchMove={onSwipeMove}
         onTouchEnd={onSwipeEnd}
@@ -237,7 +238,7 @@ export function PlayerSheet({
                   className="p-2 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                   aria-label="Share briefing"
                 >
-                  <Share2 className="w-4 h-4" />
+                  <Share className="w-4 h-4" />
                 </button>
               )}
             </div>
