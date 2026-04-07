@@ -442,10 +442,11 @@ export function Home() {
           <DigestCard
             digest={digest}
             onDismiss={() => setDigestDismissed(true)}
-            onDurationChange={(tier) => {
+            onDurationChange={(duration) => {
+              localStorage.setItem("digest-duration", String(duration));
               apiFetch("/digest/preferences", {
                 method: "PATCH",
-                body: JSON.stringify({ durationTier: tier }),
+                body: JSON.stringify({ durationTier: duration }),
               }).catch(() => {});
               refetchDigest();
             }}

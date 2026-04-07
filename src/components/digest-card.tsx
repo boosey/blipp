@@ -1,9 +1,7 @@
 import { useState } from "react";
 import { Play, Loader2, MoreHorizontal, Newspaper, X } from "lucide-react";
 import { useAudio } from "../contexts/audio-context";
-import { usePlan } from "../contexts/plan-context";
 import { formatDuration } from "../lib/feed-utils";
-import { TierPicker } from "./tier-picker";
 import { DigestSheet } from "./digest-sheet";
 import {
   Popover,
@@ -11,8 +9,10 @@ import {
   PopoverContent,
 } from "./ui/popover";
 import type { Digest } from "../types/digest";
-import type { DurationTier } from "../lib/duration-tiers";
 import type { FeedItem } from "../types/feed";
+
+const DIGEST_DURATIONS = [1, 3, 5] as const;
+type DigestDuration = (typeof DIGEST_DURATIONS)[number];
 
 function digestToFeedItem(d: Digest): FeedItem {
   const firstSource = d.sources[0];
@@ -76,10 +76,9 @@ export function DigestCard({
 }: {
   digest: Digest;
   onDismiss?: () => void;
-  onDurationChange?: (tier: DurationTier) => void;
+  onDurationChange?: (duration: number) => void;
 }) {
   const audio = useAudio();
-  const { maxDurationMinutes } = usePlan();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [popoverOpen, setPopoverOpen] = useState(false);
 
@@ -183,18 +182,28 @@ export function DigestCard({
                 <MoreHorizontal className="w-4 h-4" />
               </button>
             </PopoverTrigger>
-            <PopoverContent align="end" className="w-64 p-3">
+            <PopoverContent align="end" className="w-56 p-3">
               <p className="text-xs font-medium text-muted-foreground mb-2">
                 Digest duration
               </p>
-              <TierPicker
-                selected={digest.durationTier as DurationTier}
-                onSelect={(tier) => {
-                  onDurationChange?.(tier);
-                  setPopoverOpen(false);
-                }}
-                maxDurationMinutes={maxDurationMinutes}
-              />
+              <div className="flex gap-1.5">
+                {DIGEST_DURATIONS.map((d) => (
+                  <button
+                    key={d}
+                    onClick={() => {
+                      onDurationChange?.(d);
+                      setPopoverOpen(false);
+                    }}
+                    className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                      digest.durationTier === d
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted text-muted-foreground hover:bg-accent"
+                    }`}
+                  >
+                    {d}m
+                  </button>
+                ))}
+              </div>
               <button
                 onClick={() => {
                   setPopoverOpen(false);

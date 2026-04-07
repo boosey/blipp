@@ -547,6 +547,9 @@ function ContentTab({
         />
       </SettingsGroup>
 
+      {/* Daily Digest */}
+      <DigestSettings apiFetch={apiFetch} />
+
       {/* Interests */}
       {user && (
         <SettingsGroup title="Your Interests">
@@ -770,6 +773,83 @@ function AccountTab({
         </button>
       </section>
     </>
+  );
+}
+
+/* ─── Digest Settings ────────────────────────────────────── */
+
+const DIGEST_DURATIONS = [1, 3, 5] as const;
+type DigestDuration = (typeof DIGEST_DURATIONS)[number];
+
+function DigestSettings({ apiFetch }: { apiFetch: ReturnType<typeof useApiFetch> }) {
+  const [enabled, setEnabled] = useState<boolean>(() => localStorage.getItem("digest-enabled") !== "0");
+  const [duration, setDuration] = useState<DigestDuration>(() => {
+    const stored = localStorage.getItem("digest-duration");
+    const parsed = stored ? Number(stored) : 3;
+    return DIGEST_DURATIONS.includes(parsed as DigestDuration) ? (parsed as DigestDuration) : 3;
+  });
+
+  async function toggleEnabled() {
+    const next = !enabled;
+    setEnabled(next);
+    localStorage.setItem("digest-enabled", next ? "1" : "0");
+    try {
+      await apiFetch("/digest/preferences", {
+        method: "PATCH",
+        body: JSON.stringify({ enabled: next }),
+      });
+      toast.success(next ? "Daily Digest enabled" : "Daily Digest disabled");
+    } catch {
+      // API may not exist yet — persist locally
+    }
+  }
+
+  async function selectDuration(d: DigestDuration) {
+    const prev = duration;
+    setDuration(d);
+    localStorage.setItem("digest-duration", String(d));
+    try {
+      await apiFetch("/digest/preferences", {
+        method: "PATCH",
+        body: JSON.stringify({ durationTier: d }),
+      });
+      toast.success(`Digest duration set to ${d} min`);
+    } catch {
+      // API may not exist yet — persist locally
+    }
+  }
+
+  return (
+    <SettingsGroup title="Daily Digest">
+      <ToggleRow
+        label="Enable Daily Digest"
+        description="Get a single audio overview of new episodes from your subscriptions, favorites, and recommendations"
+        checked={enabled}
+        onToggle={toggleEnabled}
+      />
+      {enabled && (
+        <div className="mt-4 pt-3 border-t border-border">
+          <p className="text-xs text-muted-foreground mb-2">
+            Digest length
+          </p>
+          <div className="flex gap-1.5">
+            {DIGEST_DURATIONS.map((d) => (
+              <button
+                key={d}
+                onClick={() => selectDuration(d)}
+                className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                  duration === d
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted text-muted-foreground hover:bg-accent"
+                }`}
+              >
+                {d}m
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </SettingsGroup>
   );
 }
 
