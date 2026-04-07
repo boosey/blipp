@@ -17,6 +17,8 @@ import { useAudio } from "../contexts/audio-context";
 import { InstallPrompt } from "../components/install-prompt";
 import { CancelBlippDialog } from "../components/cancel-blipp-dialog";
 import { ScrollableRow } from "../components/scrollable-row";
+import { DigestCard } from "../components/digest-card";
+import type { Digest } from "../types/digest";
 
 const FILTERS: { key: FeedFilter; label: string }[] = [
   { key: "all", label: "All" },
@@ -55,6 +57,8 @@ export function Home() {
 
   const { data: counts } = useFetch<FeedCounts>("/feed/counts");
   const { data: curatedData } = useFetch<CuratedResponse>("/recommendations/curated");
+  const { data: digest, refetch: refetchDigest } = useFetch<Digest>("/digest/today");
+  const [digestDismissed, setDigestDismissed] = useState(false);
 
   // Track "just onboarded" state via sessionStorage
   const justOnboarded = sessionStorage.getItem("blipp-just-onboarded") === "1";
@@ -413,6 +417,23 @@ export function Home() {
       </div>
 
       <InstallPrompt />
+
+      {/* Daily Digest — hidden when listened or dismissed */}
+      {digest && !digestDismissed && !digest.listened && filter !== "creating" && filter !== "on_demand" && (
+        <div className="mb-3 feed-item-enter">
+          <DigestCard
+            digest={digest}
+            onDismiss={() => setDigestDismissed(true)}
+            onDurationChange={(tier) => {
+              apiFetch("/digest/preferences", {
+                method: "PATCH",
+                body: JSON.stringify({ durationTier: tier }),
+              }).catch(() => {});
+              refetchDigest();
+            }}
+          />
+        </div>
+      )}
 
       {/* Swipe hint — first session only */}
       {!swipeHintDismissed && items.length > 0 && (

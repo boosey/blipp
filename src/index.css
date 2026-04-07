@@ -279,3 +279,42 @@
     0 0 36px rgba(220, 175, 60, 0.3);
   animation: plan-glow-pulse 3s ease-in-out infinite;
 }
+
+/* Digest card — gradient left border */
+.digest-border-gradient {
+  border-left: 3px solid;
+  border-image: linear-gradient(
+    to bottom,
+    var(--primary),
+    oklch(0.65 0.18 310)
+  ) 1;
+}
+.dark .digest-border-gradient {
+  border-image: linear-gradient(
+    to bottom,
+    var(--primary),
+    oklch(0.70 0.18 310)
+  ) 1;
+}
+
+/* Digest — overlapping micro-avatars */
+.digest-avatars {
+  display: flex;
+  align-items: center;
+}
+.digest-avatars > img {
+  margin-left: -6px;
+  border: 2px solid var(--card);
+  border-radius: 9999px;
+  object-fit: cover;
+}
+.digest-avatars > img:first-child {
+  margin-left: 0;
+}
+
+/* Digest — source breakdown bar segment colors */
+.digest-bar-subscribed { background: var(--primary); }
+.digest-bar-favorited { background: oklch(0.65 0.18 310); }
+.digest-bar-recommended { background: oklch(0.65 0.15 170); }
+.dark .digest-bar-favorited { background: oklch(0.70 0.18 310); }
+.dark .digest-bar-recommended { background: oklch(0.70 0.15 170); }
