@@ -96,6 +96,10 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   // Playback position saving
   const saveTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Delayed listened marker — fires after 30s of content playback
+  const listenedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const listenedFiredRef = useRef<string | null>(null);
+
   const savePlaybackPosition = useCallback(
     (itemId: string, position: number | null) => {
       apiFetch(`/feed/${itemId}/progress`, {
@@ -143,11 +147,10 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
         setError("Failed to play audio");
       });
 
-      // Fire-and-forget listened PATCH
-      if (!item.listened) {
-        apiFetch(`/feed/${item.id}/listened`, { method: "PATCH" }).catch(
-          () => {}
-        );
+      // Reset listened timer — will be marked via effect after 30s of playback
+      if (listenedTimerRef.current) {
+        clearTimeout(listenedTimerRef.current);
+        listenedTimerRef.current = null;
       }
 
       // Media Session API
@@ -329,6 +332,11 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     adFlowRef.current = null;
     queueRef.current = [];
     syncQueue();
+    if (listenedTimerRef.current) {
+      clearTimeout(listenedTimerRef.current);
+      listenedTimerRef.current = null;
+    }
+    listenedFiredRef.current = null;
   }, [ima, syncQueue]);
 
   const play = useCallback(
@@ -601,6 +609,35 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       saveTimerRef.current = null;
     }
   }, [isPlaying, adState, currentItem, savePlaybackPosition]);
+
+  // Mark as listened after 30s of content playback.
+  // Timer starts when content plays, pauses when paused, resets on track change.
+  useEffect(() => {
+    if (
+      isPlaying &&
+      adState === "content" &&
+      currentItem &&
+      !currentItem.listened &&
+      listenedFiredRef.current !== currentItem.id
+    ) {
+      const itemId = currentItem.id;
+      const audio = audioRef.current;
+      // Account for already-elapsed time (e.g. resumed playback)
+      const elapsed = audio ? audio.currentTime : 0;
+      const remaining = Math.max(0, 30 - elapsed) * 1000;
+      listenedTimerRef.current = setTimeout(() => {
+        apiFetch(`/feed/${itemId}/listened`, { method: "PATCH" }).catch(() => {});
+        listenedFiredRef.current = itemId;
+        listenedTimerRef.current = null;
+      }, remaining);
+      return () => {
+        if (listenedTimerRef.current) {
+          clearTimeout(listenedTimerRef.current);
+          listenedTimerRef.current = null;
+        }
+      };
+    }
+  }, [isPlaying, adState, currentItem, apiFetch]);
 
   // Sync mediaSession position state
   useEffect(() => {
