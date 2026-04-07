@@ -1,18 +1,10 @@
 import { useState } from "react";
-import { Play, Loader2, MoreHorizontal, Newspaper, X } from "lucide-react";
+import { Play, Loader2, Newspaper, X } from "lucide-react";
 import { useAudio } from "../contexts/audio-context";
 import { formatDuration } from "../lib/feed-utils";
 import { DigestSheet } from "./digest-sheet";
-import {
-  Popover,
-  PopoverTrigger,
-  PopoverContent,
-} from "./ui/popover";
 import type { Digest } from "../types/digest";
 import type { FeedItem } from "../types/feed";
-
-const DIGEST_DURATIONS = [1, 3, 5] as const;
-type DigestDuration = (typeof DIGEST_DURATIONS)[number];
 
 function digestToFeedItem(d: Digest): FeedItem {
   const firstSource = d.sources[0];
@@ -72,15 +64,12 @@ function sourceArtwork(d: Digest): string[] {
 export function DigestCard({
   digest,
   onDismiss,
-  onDurationChange,
 }: {
   digest: Digest;
   onDismiss?: () => void;
-  onDurationChange?: (duration: number) => void;
 }) {
   const audio = useAudio();
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [popoverOpen, setPopoverOpen] = useState(false);
 
   // Hidden when listened
   if (digest.listened) return null;
@@ -171,51 +160,17 @@ export function DigestCard({
             </button>
           )}
 
-          {/* Overflow menu */}
-          <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
-            <PopoverTrigger asChild>
-              <button
-                aria-label="Digest options"
-                onClick={(e) => e.stopPropagation()}
-                className="p-1 text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <MoreHorizontal className="w-4 h-4" />
-              </button>
-            </PopoverTrigger>
-            <PopoverContent align="end" className="w-56 p-3">
-              <p className="text-xs font-medium text-muted-foreground mb-2">
-                Digest duration
-              </p>
-              <div className="flex gap-1.5">
-                {DIGEST_DURATIONS.map((d) => (
-                  <button
-                    key={d}
-                    onClick={() => {
-                      onDurationChange?.(d);
-                      setPopoverOpen(false);
-                    }}
-                    className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
-                      digest.durationTier === d
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-muted text-muted-foreground hover:bg-accent"
-                    }`}
-                  >
-                    {d}m
-                  </button>
-                ))}
-              </div>
-              <button
-                onClick={() => {
-                  setPopoverOpen(false);
-                  setSheetOpen(true);
-                }}
-                className="mt-3 w-full text-left text-sm text-muted-foreground hover:text-foreground transition-colors flex items-center gap-2"
-              >
-                <Newspaper className="w-3.5 h-3.5" />
-                View sources
-              </button>
-            </PopoverContent>
-          </Popover>
+          {/* View sources */}
+          <button
+            aria-label="View digest sources"
+            onClick={(e) => {
+              e.stopPropagation();
+              setSheetOpen(true);
+            }}
+            className="p-1 text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <Newspaper className="w-4 h-4" />
+          </button>
         </div>
       </div>
     </div>
