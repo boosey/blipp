@@ -92,23 +92,23 @@ digestsRoutes.get("/:id", async (c) => {
   });
 });
 
-// POST /trigger — Admin manual trigger: generate digest for a specific user
+// POST /trigger — Admin manual trigger: generate digest for a specific user (by email)
 digestsRoutes.post("/trigger", async (c) => {
-  const body = await c.req.json<{ userId: string }>();
-  if (!body.userId) return c.json({ error: "userId required" }, 400);
+  const body = await c.req.json<{ email: string }>();
+  if (!body.email) return c.json({ error: "email required" }, 400);
 
   const prisma = c.get("prisma") as any;
-  const user = await prisma.user.findUnique({ where: { id: body.userId } });
-  if (!user) return c.json({ error: "User not found" }, 404);
+  const user = await prisma.user.findUnique({ where: { email: body.email } });
+  if (!user) return c.json({ error: `No user found with email: ${body.email}` }, 404);
 
   const today = new Date().toISOString().slice(0, 10);
 
   await c.env.DIGEST_ORCHESTRATOR_QUEUE.send({
-    userId: body.userId,
+    userId: user.id,
     date: today,
   });
 
-  return c.json({ data: { userId: body.userId, date: today, enqueued: true } }, 201);
+  return c.json({ data: { userId: user.id, email: user.email, date: today, enqueued: true } }, 201);
 });
 
 export { digestsRoutes };

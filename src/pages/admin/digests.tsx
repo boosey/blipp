@@ -197,23 +197,23 @@ function TriggerDialog({
   onSuccess: () => void;
 }) {
   const apiFetch = useAdminFetch();
-  const [userId, setUserId] = useState("");
+  const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   if (!open) return null;
 
   const handleTrigger = async () => {
-    if (!userId.trim()) return;
+    if (!email.trim()) return;
     setLoading(true);
     setError(null);
     try {
       await apiFetch("/digests/trigger", {
         method: "POST",
-        body: JSON.stringify({ userId: userId.trim() }),
+        body: JSON.stringify({ email: email.trim() }),
       });
       onOpenChange(false);
-      setUserId("");
+      setEmail("");
       onSuccess();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to trigger");
@@ -227,25 +227,26 @@ function TriggerDialog({
       <div className="bg-[#1A2942] border border-white/10 rounded-lg p-6 w-full max-w-sm mx-4">
         <h3 className="text-sm font-semibold mb-4">Trigger Digest</h3>
         <input
-          type="text"
-          value={userId}
-          onChange={(e) => setUserId(e.target.value)}
-          placeholder="User ID"
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="User email"
           className="w-full bg-white/5 border border-white/10 rounded px-3 py-2 text-sm text-[#F9FAFB] placeholder:text-[#9CA3AF]/60 mb-3"
+          onKeyDown={(e) => { if (e.key === "Enter") handleTrigger(); }}
         />
         {error && <p className="text-xs text-red-400 mb-3">{error}</p>}
         <div className="flex justify-end gap-2">
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => { onOpenChange(false); setUserId(""); setError(null); }}
+            onClick={() => { onOpenChange(false); setEmail(""); setError(null); }}
             className="text-[#9CA3AF]"
           >
             Cancel
           </Button>
           <Button
             size="sm"
-            disabled={!userId.trim() || loading}
+            disabled={!email.trim() || loading}
             onClick={handleTrigger}
             className="bg-[#3B82F6] hover:bg-[#3B82F6]/80 text-white text-xs"
           >
