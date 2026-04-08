@@ -20,7 +20,7 @@ function digestToFeedItem(d: Digest): FeedItem {
     listenedAt: null,
     playbackPositionSeconds: null,
     durationTier: count > 0 ? Math.ceil((count * 30) / 60) : 1,
-    createdAt: d.createdAt,
+    createdAt: d.createdAt ?? new Date().toISOString(),
     podcast: {
       id: firstSource?.podcast.id ?? "",
       title: "Your Digest",
@@ -30,7 +30,7 @@ function digestToFeedItem(d: Digest): FeedItem {
     episode: {
       id: d.id,
       title: `Digest — ${count} episodes`,
-      publishedAt: d.createdAt,
+      publishedAt: d.createdAt ?? new Date().toISOString(),
       durationSeconds: d.actualSeconds,
     },
     episodeVote: 0,

@@ -32,29 +32,32 @@ digest.get("/today", async (c) => {
     },
   });
 
-  if (!delivery) {
-    return c.json({ data: null });
+  if (!delivery || delivery.status === "FAILED") {
+    return c.json(null);
   }
 
-  return c.json({
-    data: {
-      id: delivery.id,
-      date: delivery.date,
-      status: delivery.status,
-      episodeCount: delivery.episodeCount,
-      actualSeconds: delivery.actualSeconds,
-      listened: delivery.listened,
-      audioUrl: delivery.audioKey ? `/api/digest/${delivery.id}/audio` : null,
-      sources: delivery.sources,
-      episodes: delivery.episodes.map((de: any) => ({
-        episodeId: de.episodeId,
-        sourceType: de.sourceType,
-        status: de.status,
-        episodeTitle: de.episode?.title ?? null,
-        podcastTitle: de.episode?.podcast?.title ?? null,
-        podcastImageUrl: de.episode?.podcast?.imageUrl ?? null,
-      })),
+  // Build sources from the episodes join (DB sources field may be stale/empty)
+  const sources = delivery.episodes.map((de: any) => ({
+    type: de.sourceType,
+    podcast: {
+      id: de.episode?.podcast?.id ?? "",
+      title: de.episode?.podcast?.title ?? "Unknown",
+      imageUrl: de.episode?.podcast?.imageUrl ?? null,
     },
+    episodeTitle: de.episode?.title ?? "Unknown",
+    segmentSeconds: 30,
+  }));
+
+  return c.json({
+    id: delivery.id,
+    date: delivery.date,
+    status: delivery.status,
+    episodeCount: delivery.episodes.length,
+    actualSeconds: delivery.actualSeconds,
+    listened: delivery.listened,
+    audioUrl: delivery.audioKey ? `/api/digest/${delivery.id}/audio` : null,
+    sources,
+    createdAt: delivery.createdAt.toISOString(),
   });
 });
 
