@@ -128,8 +128,12 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       // Fetch audio with auth token — <audio> element can't send Authorization headers
       try {
         const token = await getToken();
+        // Use clip.audioUrl if it's a path (e.g. digest audio), otherwise default to briefings endpoint
+        const audioPath = item.briefing.clip.audioUrl?.startsWith("/api/")
+          ? item.briefing.clip.audioUrl
+          : `/api/briefings/${item.briefing.id}/audio`;
         const res = await fetch(
-          `${getApiBase()}/api/briefings/${item.briefing.id}/audio`,
+          `${getApiBase()}${audioPath}`,
           { headers: token ? { Authorization: `Bearer ${token}` } : {} }
         );
         if (!res.ok) throw new Error(`Audio fetch failed: ${res.status}`);
