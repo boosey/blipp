@@ -245,7 +245,6 @@ async function dispatchExistingPipeline(
       status: "PROCESSING",
       targetMinutes: 10,
       items: [{ podcastId: "digest", episodeId, durationTier: 10, useLatest: false }],
-      source: "digest",
     },
   });
 
