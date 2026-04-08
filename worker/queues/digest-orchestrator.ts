@@ -155,12 +155,12 @@ export async function handleDigestOrchestrator(
           } else if (stage === "NARRATIVE_GENERATION") {
             // Needs 10-min narrative first — create a PipelineJob so the
             // existing orchestrator processes it and checkDigestProgress bridges back
-            await dispatchExistingPipeline(prisma, env, candidate.episodeId, "NARRATIVE_GENERATION", delivery.id);
+            await dispatchExistingPipeline(prisma, env, userId, candidate.episodeId, "NARRATIVE_GENERATION", delivery.id);
           } else if (stage === "DISTILLATION") {
-            await dispatchExistingPipeline(prisma, env, candidate.episodeId, "DISTILLATION", delivery.id);
+            await dispatchExistingPipeline(prisma, env, userId, candidate.episodeId, "DISTILLATION", delivery.id);
           } else {
             // TRANSCRIPTION — start from scratch
-            await dispatchExistingPipeline(prisma, env, candidate.episodeId, "TRANSCRIPTION", delivery.id);
+            await dispatchExistingPipeline(prisma, env, userId, candidate.episodeId, "TRANSCRIPTION", delivery.id);
           }
         }
 
@@ -216,6 +216,7 @@ export async function handleDigestOrchestrator(
 async function dispatchExistingPipeline(
   prisma: any,
   env: Env,
+  userId: string,
   episodeId: string,
   entryStage: string,
   deliveryId: string
@@ -241,7 +242,7 @@ async function dispatchExistingPipeline(
   // Create a minimal BriefingRequest to drive the pipeline
   const request = await prisma.briefingRequest.create({
     data: {
-      userId: "system", // system-initiated for digest
+      userId, // use actual user for FK constraint
       status: "PROCESSING",
       targetMinutes: 10,
       items: [{ podcastId: "digest", episodeId, durationTier: 10, useLatest: false }],
