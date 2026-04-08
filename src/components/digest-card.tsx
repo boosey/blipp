@@ -7,7 +7,9 @@ import type { Digest } from "../types/digest";
 import type { FeedItem } from "../types/feed";
 
 function digestToFeedItem(d: Digest): FeedItem {
-  const firstSource = d.sources[0];
+  const sources = Array.isArray(d.sources) ? d.sources : [];
+  const firstSource = sources[0];
+  const count = d.episodeCount ?? sources.length;
   return {
     id: d.id,
     requestId: null,
@@ -17,7 +19,7 @@ function digestToFeedItem(d: Digest): FeedItem {
     listened: d.listened,
     listenedAt: null,
     playbackPositionSeconds: null,
-    durationTier: d.sources.length > 0 ? Math.ceil((d.sources.length * 30) / 60) : 1,
+    durationTier: count > 0 ? Math.ceil((count * 30) / 60) : 1,
     createdAt: d.createdAt,
     podcast: {
       id: firstSource?.podcast.id ?? "",
@@ -27,7 +29,7 @@ function digestToFeedItem(d: Digest): FeedItem {
     },
     episode: {
       id: d.id,
-      title: `Digest — ${d.sources.length} episodes`,
+      title: `Digest — ${count} episodes`,
       publishedAt: d.createdAt,
       durationSeconds: d.actualSeconds,
     },
@@ -50,6 +52,7 @@ function digestToFeedItem(d: Digest): FeedItem {
 function sourceArtwork(d: Digest): string[] {
   const seen = new Set<string>();
   const result: string[] = [];
+  if (!Array.isArray(d.sources)) return result;
   for (const s of d.sources) {
     const url = s.podcast.imageUrl;
     if (url && !seen.has(url)) {
@@ -79,7 +82,8 @@ export function DigestCard({
   const isReady = digest.status === "READY" && digest.audioUrl;
   const isFailed = digest.status === "FAILED";
   const artwork = sourceArtwork(digest);
-  const episodeCount = digest.sources.length;
+  const sources = Array.isArray(digest.sources) ? digest.sources : [];
+  const episodeCount = digest.episodeCount ?? sources.length;
   const estimatedTier = episodeCount > 0 ? Math.ceil((episodeCount * 30) / 60) : 1;
   const durationStr = formatDuration(digest.actualSeconds, estimatedTier);
 

@@ -68,8 +68,9 @@ export function DigestSheet({
   onPlay?: () => void;
 }) {
   const isReady = digest.status === "READY" && digest.audioUrl;
+  const sources = Array.isArray(digest.sources) ? digest.sources : [];
   const grouped = new Map<DigestSource["type"], DigestSource[]>();
-  for (const s of digest.sources) {
+  for (const s of sources) {
     if (!grouped.has(s.type)) grouped.set(s.type, []);
     grouped.get(s.type)!.push(s);
   }
@@ -87,13 +88,13 @@ export function DigestSheet({
           </div>
           <SheetDescription>
             {formatDate(digest.date)} ·{" "}
-            {formatDuration(digest.actualSeconds, digest.sources.length > 0 ? Math.ceil((digest.sources.length * 30) / 60) : 1)}
+            {formatDuration(digest.actualSeconds, sources.length > 0 ? Math.ceil((sources.length * 30) / 60) : 1)}
           </SheetDescription>
         </SheetHeader>
 
         {/* Source breakdown bar */}
         <div className="px-4">
-          <SourceBreakdownBar sources={digest.sources} />
+          <SourceBreakdownBar sources={sources} />
           <div className="flex gap-4 mt-1.5">
             {SOURCE_ORDER.map((type) => {
               const count = grouped.get(type)?.length ?? 0;
