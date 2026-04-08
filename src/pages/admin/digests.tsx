@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { Link } from "react-router-dom";
 import { usePolling } from "@/hooks/use-polling";
 import {
   RefreshCw,
@@ -6,6 +7,8 @@ import {
   ChevronRight,
   Newspaper,
   Zap,
+  Copy,
+  ExternalLink,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +16,8 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAdminFetch } from "@/lib/admin-api";
+import { relativeTime } from "@/lib/admin-formatters";
+import { toast } from "sonner";
 import type { AdminDigestDelivery, AdminDigestEpisode } from "@/types/admin/digest";
 
 // ── Constants ──
@@ -158,26 +163,62 @@ function DigestRow({
           {delivery.completedEpisodes}/{delivery.totalEpisodes} ep
         </span>
         <span className="text-[#9CA3AF]">{formatDuration(delivery.actualSeconds)}</span>
-        <span className="text-[#9CA3AF] text-right">{formatDate(delivery.createdAt)}</span>
+        <span className="text-[#9CA3AF] text-right">{relativeTime(delivery.createdAt)}</span>
       </button>
 
       {/* Expanded detail */}
       {expanded && (
-        <div className="bg-[#0F1D32] border-t border-white/5">
+        <div className="bg-[#0F1D32] border-t border-white/5 px-3 pb-3 pl-10">
+          {/* Delivery ID + metadata row */}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 mb-1">
+            <span className="text-[10px] text-[#9CA3AF]/60 uppercase tracking-wider">Delivery</span>
+            <code
+              className="text-[10px] text-[#9CA3AF] font-mono cursor-pointer hover:text-[#F9FAFB] transition-colors"
+              title="Click to copy full ID"
+              onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(delivery.id); toast.success("Delivery ID copied"); }}
+            >
+              {delivery.id}
+            </code>
+            <Link
+              to={`/admin/worker-logs?template=digest-logs&deliveryId=${delivery.id}`}
+              className="text-[10px] text-[#3B82F6] hover:underline flex items-center gap-0.5"
+              onClick={(e) => e.stopPropagation()}
+            >
+              View Logs <ExternalLink className="h-2.5 w-2.5" />
+            </Link>
+            <span className="text-[10px] text-[#9CA3AF] font-mono">{delivery.date}</span>
+            {delivery.actualSeconds != null && (
+              <span className="text-[10px] text-[#10B981] font-mono">{formatDuration(delivery.actualSeconds)}</span>
+            )}
+          </div>
+
+          {/* Error message */}
+          {detail?.errorMessage && (
+            <div className="mb-2 px-2 py-1.5 rounded bg-[#EF4444]/10 border border-[#EF4444]/20">
+              <p className="text-[10px] text-[#EF4444]">{detail.errorMessage}</p>
+            </div>
+          )}
+
+          {/* Episode breakdown */}
           {detailLoading ? (
-            <div className="p-4 space-y-2">
+            <div className="space-y-2 py-2">
               {Array.from({ length: 3 }).map((_, i) => (
-                <Skeleton key={i} className="h-8 bg-white/5 rounded" />
+                <Skeleton key={i} className="h-10 bg-white/5 rounded" />
               ))}
             </div>
           ) : detail?.episodes && detail.episodes.length > 0 ? (
-            <div className="divide-y divide-white/5">
-              {detail.episodes.map((ep) => (
-                <EpisodeRow key={ep.episodeId} episode={ep} />
-              ))}
+            <div className="space-y-0.5">
+              <div className="text-[10px] text-[#9CA3AF]/60 uppercase tracking-wider mb-1">
+                Episodes ({detail.episodes.length})
+              </div>
+              <div className="rounded border border-white/5 divide-y divide-white/5 bg-white/[0.01]">
+                {detail.episodes.map((ep) => (
+                  <EpisodeRow key={ep.episodeId} episode={ep} />
+                ))}
+              </div>
             </div>
           ) : (
-            <div className="p-4 text-xs text-[#9CA3AF]">No episode data available</div>
+            <div className="text-[10px] text-[#9CA3AF] py-2">No episode data available</div>
           )}
         </div>
       )}

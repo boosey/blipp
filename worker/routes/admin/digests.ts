@@ -78,6 +78,7 @@ digestsRoutes.get("/:id", async (c) => {
       totalEpisodes: delivery.totalEpisodes,
       completedEpisodes: delivery.completedEpisodes,
       actualSeconds: delivery.actualSeconds,
+      errorMessage: delivery.errorMessage,
       createdAt: delivery.createdAt.toISOString(),
       episodes: delivery.episodes.map((de: any) => ({
         episodeId: de.episodeId,

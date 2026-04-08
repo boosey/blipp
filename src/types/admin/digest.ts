@@ -9,6 +9,7 @@ export interface AdminDigestDelivery {
   totalEpisodes: number;
   completedEpisodes: number;
   actualSeconds: number | null;
+  errorMessage?: string | null;
   createdAt: string;
   episodes?: AdminDigestEpisode[];
 }
