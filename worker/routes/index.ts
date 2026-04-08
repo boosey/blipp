@@ -20,6 +20,7 @@ import { blippFeedback } from "./blipp-feedback";
 import { logsRoutes } from "./logs";
 import { blipps } from "./blipps";
 import { events } from "./events";
+import { digest } from "./digest";
 
 /**
  * Combined route tree for the Blipp API.
@@ -42,6 +43,7 @@ routes.route("/feedback", feedback);
 routes.route("/feedback/blipp", blippFeedback);
 routes.route("/logs", logsRoutes);
 routes.route("/events", events);
+routes.route("/digest", digest);
 routes.route("/webhooks/clerk", clerkWebhooks);
 routes.route("/webhooks/stripe", stripeWebhooks);
 routes.route("/admin", adminRoutes);

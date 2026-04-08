@@ -1,5 +1,6 @@
 import { createPrismaClient, type PrismaClient } from "../lib/db";
 import { createPipelineLogger, type PipelineLogger } from "../lib/logger";
+import { checkDigestProgress } from "../lib/digest-helpers";
 import type {
   OrchestratorMessage, BriefingRequestItem,
   TranscriptionMessage, DistillationMessage, NarrativeGenerationMessage, AudioGenerationMessage,
@@ -380,6 +381,12 @@ async function handleJobStageComplete(
     await env[queueBinding].send(message);
 
     log.info("job_stage_advanced", { jobId, from: completedStage, to: nextStage });
+
+    // Bridge: check if this episode is part of a pending digest delivery
+    await checkDigestProgress(prisma, job.episodeId, env).catch((err) => {
+      log.error("digest_bridge_error", { jobId, episodeId: job.episodeId }, err);
+    });
+
     msg.ack();
   } else {
     // Final per-job stage (AUDIO_GENERATION) complete — advance job to BRIEFING_ASSEMBLY PENDING.
@@ -396,6 +403,11 @@ async function handleJobStageComplete(
     }
 
     log.info("job_advanced_to_assembly", { jobId });
+
+    // Bridge: check if this episode is part of a pending digest delivery
+    await checkDigestProgress(prisma, job.episodeId, env).catch((err) => {
+      log.error("digest_bridge_error", { jobId, episodeId: job.episodeId }, err);
+    });
 
     // Dispatch assembly once no jobs remain in stages 1–4 (all are FAILED or queued for assembly)
     const allJobs = await prisma.pipelineJob.findMany({

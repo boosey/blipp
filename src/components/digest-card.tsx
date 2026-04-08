@@ -17,7 +17,7 @@ function digestToFeedItem(d: Digest): FeedItem {
     listened: d.listened,
     listenedAt: null,
     playbackPositionSeconds: null,
-    durationTier: d.durationTier,
+    durationTier: d.sources.length > 0 ? Math.ceil((d.sources.length * 30) / 60) : 1,
     createdAt: d.createdAt,
     podcast: {
       id: firstSource?.podcast.id ?? "",
@@ -80,7 +80,8 @@ export function DigestCard({
   const isFailed = digest.status === "FAILED";
   const artwork = sourceArtwork(digest);
   const episodeCount = digest.sources.length;
-  const durationStr = formatDuration(digest.actualSeconds, digest.durationTier);
+  const estimatedTier = episodeCount > 0 ? Math.ceil((episodeCount * 30) / 60) : 1;
+  const durationStr = formatDuration(digest.actualSeconds, estimatedTier);
 
   function handlePlay(e: React.MouseEvent) {
     e.stopPropagation();

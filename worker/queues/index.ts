@@ -8,6 +8,10 @@ import { handleOrchestrator } from "./orchestrator";
 import { handleCatalogRefresh } from "./catalog-refresh";
 import { handleContentPrefetch } from "./content-prefetch";
 import type { ContentPrefetchMessage } from "./content-prefetch";
+import { handleDigestOrchestrator } from "./digest-orchestrator";
+import { handleDigestNarrative } from "./digest-narrative";
+import { handleDigestClip } from "./digest-clip";
+import { handleDigestAssembly } from "./digest-assembly";
 import { createPrismaClient } from "../lib/db";
 import { runJob } from "../lib/cron/runner";
 import { runPipelineTriggerJob } from "../lib/cron/pipeline-trigger";
@@ -19,6 +23,7 @@ import { runRecommendationsJob } from "../lib/cron/recommendations";
 import { runAppleDiscoveryJob, runPodcastIndexDiscoveryJob } from "../lib/cron/podcast-discovery";
 import { runListenOriginalAggregationJob } from "../lib/cron/listen-original-aggregation";
 import { runGeoTaggingJob } from "../lib/cron/geo-tagging";
+import { runDailyDigestJob } from "../lib/cron/daily-digest";
 import type {
   TranscriptionMessage,
   DistillationMessage,
@@ -28,6 +33,10 @@ import type {
   OrchestratorMessage,
   FeedRefreshMessage,
   CatalogRefreshMessage,
+  DigestOrchestratorMessage,
+  DigestNarrativeMessage,
+  DigestClipMessage,
+  DigestAssemblyMessage,
 } from "../lib/queue-messages";
 import type { Env } from "../types";
 
@@ -108,6 +117,30 @@ export async function handleQueue(
         env,
         ctx
       );
+    case "digest-orchestrator":
+      return handleDigestOrchestrator(
+        batch as MessageBatch<DigestOrchestratorMessage>,
+        env,
+        ctx
+      );
+    case "digest-narrative":
+      return handleDigestNarrative(
+        batch as MessageBatch<DigestNarrativeMessage>,
+        env,
+        ctx
+      );
+    case "digest-clip":
+      return handleDigestClip(
+        batch as MessageBatch<DigestClipMessage>,
+        env,
+        ctx
+      );
+    case "digest-assembly":
+      return handleDigestAssembly(
+        batch as MessageBatch<DigestAssemblyMessage>,
+        env,
+        ctx
+      );
     case "dead-letter":
       for (const msg of batch.messages) {
         const body = msg.body as Record<string, unknown>;
@@ -177,6 +210,7 @@ export async function scheduled(
       "listen-original-aggregation": (logger) => runListenOriginalAggregationJob(prisma as any, logger),
       "stale-job-reaper": (logger) => runStaleJobReaperJob(prisma as any, logger),
       "geo-tagging": (logger) => runGeoTaggingJob(prisma as any, logger, env),
+      "daily-digest": (logger) => runDailyDigestJob(prisma as any, env, logger),
     };
 
     // Dispatch all registered jobs — each checks its own enabled flag and interval via CronJob table

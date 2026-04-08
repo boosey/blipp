@@ -78,6 +78,22 @@
 			{
 				"binding": "CONTENT_PREFETCH_QUEUE",
 				"queue": "content-prefetch-staging"
+			},
+			{
+				"binding": "DIGEST_ORCHESTRATOR_QUEUE",
+				"queue": "digest-orchestrator-staging"
+			},
+			{
+				"binding": "DIGEST_NARRATIVE_QUEUE",
+				"queue": "digest-narrative-staging"
+			},
+			{
+				"binding": "DIGEST_CLIP_QUEUE",
+				"queue": "digest-clip-staging"
+			},
+			{
+				"binding": "DIGEST_ASSEMBLY_QUEUE",
+				"queue": "digest-assembly-staging"
 			}
 		],
 		"consumers": [
@@ -141,6 +157,34 @@
 				"max_batch_size": 10,
 				"max_retries": 2,
 				"max_concurrency": 20,
+				"dead_letter_queue": "dead-letter-staging"
+			},
+			{
+				"queue": "digest-orchestrator-staging",
+				"max_batch_size": 1,
+				"max_retries": 2,
+				"max_concurrency": 10,
+				"dead_letter_queue": "dead-letter-staging"
+			},
+			{
+				"queue": "digest-narrative-staging",
+				"max_batch_size": 5,
+				"max_retries": 3,
+				"max_concurrency": 5,
+				"dead_letter_queue": "dead-letter-staging"
+			},
+			{
+				"queue": "digest-clip-staging",
+				"max_batch_size": 5,
+				"max_retries": 3,
+				"max_concurrency": 5,
+				"dead_letter_queue": "dead-letter-staging"
+			},
+			{
+				"queue": "digest-assembly-staging",
+				"max_batch_size": 1,
+				"max_retries": 2,
+				"max_concurrency": 10,
 				"dead_letter_queue": "dead-letter-staging"
 			},
 			{

@@ -778,44 +778,74 @@ function AccountTab({
 
 /* ─── Digest Settings ────────────────────────────────────── */
 
-const DIGEST_DURATIONS = [1, 3, 5] as const;
-type DigestDuration = (typeof DIGEST_DURATIONS)[number];
+const DIGEST_SOURCES = [
+  { key: "digestIncludeSubscriptions", label: "Subscriptions" },
+  { key: "digestIncludeFavorites", label: "Favorites" },
+  { key: "digestIncludeRecommended", label: "Recommended" },
+] as const;
 
 function DigestSettings({ apiFetch }: { apiFetch: ReturnType<typeof useApiFetch> }) {
-  const [enabled, setEnabled] = useState<boolean>(() => localStorage.getItem("digest-enabled") !== "0");
-  const [duration, setDuration] = useState<DigestDuration>(() => {
-    const stored = localStorage.getItem("digest-duration");
-    const parsed = stored ? Number(stored) : 3;
-    return DIGEST_DURATIONS.includes(parsed as DigestDuration) ? (parsed as DigestDuration) : 3;
+  const [enabled, setEnabled] = useState(true);
+  const [sources, setSources] = useState({
+    digestIncludeSubscriptions: true,
+    digestIncludeFavorites: true,
+    digestIncludeRecommended: true,
   });
+  const [loaded, setLoaded] = useState(false);
+
+  // Load current preferences from server
+  useEffect(() => {
+    apiFetch<{ user: { digestEnabled: boolean; digestIncludeSubscriptions: boolean; digestIncludeFavorites: boolean; digestIncludeRecommended: boolean } }>("/me")
+      .then(({ user }) => {
+        setEnabled(user.digestEnabled);
+        setSources({
+          digestIncludeSubscriptions: user.digestIncludeSubscriptions,
+          digestIncludeFavorites: user.digestIncludeFavorites,
+          digestIncludeRecommended: user.digestIncludeRecommended,
+        });
+        setLoaded(true);
+      })
+      .catch(() => setLoaded(true));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-detect timezone on mount and save
+  useEffect(() => {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (tz) {
+      apiFetch("/digest/preferences", {
+        method: "PATCH",
+        body: JSON.stringify({ timezone: tz }),
+      }).catch(() => {});
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function toggleEnabled() {
     const next = !enabled;
     setEnabled(next);
-    localStorage.setItem("digest-enabled", next ? "1" : "0");
     try {
       await apiFetch("/digest/preferences", {
         method: "PATCH",
-        body: JSON.stringify({ enabled: next }),
+        body: JSON.stringify({ digestEnabled: next }),
       });
       toast.success(next ? "Daily Digest enabled" : "Daily Digest disabled");
     } catch {
-      // API may not exist yet — persist locally
+      setEnabled(!next);
+      toast.error("Failed to update digest preference");
     }
   }
 
-  async function selectDuration(d: DigestDuration) {
-    const prev = duration;
-    setDuration(d);
-    localStorage.setItem("digest-duration", String(d));
+  async function toggleSource(key: keyof typeof sources) {
+    const next = !sources[key];
+    const prev = { ...sources };
+    setSources((s) => ({ ...s, [key]: next }));
     try {
       await apiFetch("/digest/preferences", {
         method: "PATCH",
-        body: JSON.stringify({ durationTier: d }),
+        body: JSON.stringify({ [key]: next }),
       });
-      toast.success(`Digest duration set to ${d} min`);
     } catch {
-      // API may not exist yet — persist locally
+      setSources(prev);
+      toast.error("Failed to update source preference");
     }
   }
 
@@ -823,27 +853,27 @@ function DigestSettings({ apiFetch }: { apiFetch: ReturnType<typeof useApiFetch>
     <SettingsGroup title="Daily Digest">
       <ToggleRow
         label="Enable Daily Digest"
-        description="Get a single audio overview of new episodes from your subscriptions, favorites, and recommendations"
+        description="Get a 30-second summary of each new episode, delivered every morning"
         checked={enabled}
         onToggle={toggleEnabled}
       />
       {enabled && (
         <div className="mt-4 pt-3 border-t border-border">
           <p className="text-xs text-muted-foreground mb-2">
-            Digest length
+            Include episodes from
           </p>
           <div className="flex gap-1.5">
-            {DIGEST_DURATIONS.map((d) => (
+            {DIGEST_SOURCES.map(({ key, label }) => (
               <button
-                key={d}
-                onClick={() => selectDuration(d)}
+                key={key}
+                onClick={() => toggleSource(key)}
                 className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
-                  duration === d
+                  sources[key]
                     ? "bg-primary text-primary-foreground"
                     : "bg-muted text-muted-foreground hover:bg-accent"
                 }`}
               >
-                {d}m
+                {label}
               </button>
             ))}
           </div>

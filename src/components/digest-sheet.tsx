@@ -87,7 +87,7 @@ export function DigestSheet({
           </div>
           <SheetDescription>
             {formatDate(digest.date)} ·{" "}
-            {formatDuration(digest.actualSeconds, digest.durationTier)}
+            {formatDuration(digest.actualSeconds, digest.sources.length > 0 ? Math.ceil((digest.sources.length * 30) / 60) : 1)}
           </SheetDescription>
         </SheetHeader>
 

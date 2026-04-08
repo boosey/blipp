@@ -9,7 +9,7 @@ declare module "hono" {
   }
 }
 
-import type { FeedRefreshMessage, CatalogRefreshMessage } from "./lib/queue-messages";
+import type { FeedRefreshMessage, CatalogRefreshMessage, DigestOrchestratorMessage, DigestNarrativeMessage, DigestClipMessage, DigestAssemblyMessage } from "./lib/queue-messages";
 
 /**
  * Cloudflare Worker environment bindings for the Blipp API.
@@ -64,6 +64,14 @@ export type Env = {
   ORCHESTRATOR_QUEUE: Queue;
   /** Queue: slow content prefetch (transcript/audio validation) for episodes */
   CONTENT_PREFETCH_QUEUE: Queue;
+  /** Queue: digest orchestrator — collects episodes and dispatches per-user digest generation */
+  DIGEST_ORCHESTRATOR_QUEUE: Queue<DigestOrchestratorMessage>;
+  /** Queue: digest narrative — condenses 10-min narrative to 30-sec */
+  DIGEST_NARRATIVE_QUEUE: Queue<DigestNarrativeMessage>;
+  /** Queue: digest clip — TTS 30-sec condensed narrative */
+  DIGEST_CLIP_QUEUE: Queue<DigestClipMessage>;
+  /** Queue: digest assembly — concatenates clips into final user digest */
+  DIGEST_ASSEMBLY_QUEUE: Queue<DigestAssemblyMessage>;
   /** Deepgram API key for STT benchmark */
   DEEPGRAM_API_KEY: string;
   /** Groq API key for fast STT inference */

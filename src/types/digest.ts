@@ -10,7 +10,7 @@ export interface Digest {
   id: string;
   date: string;
   status: "PENDING" | "PROCESSING" | "READY" | "FAILED";
-  durationTier: number;
+  episodeCount: number;
   actualSeconds: number | null;
   sources: DigestSource[];
   audioUrl: string | null;

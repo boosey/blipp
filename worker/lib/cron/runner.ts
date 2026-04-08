@@ -77,6 +77,9 @@ export async function runJob(params: {
     if (elapsedMs < intervalMinutes * 60_000) return;
   }
 
+  // Time-of-day gate: if runAtHour is set, only run during that UTC hour
+  if (job.runAtHour != null && new Date().getUTCHours() !== job.runAtHour) return;
+
   // Guard: if there's already a recent IN_PROGRESS run, skip to prevent pile-up
   // (handles case where Worker was killed before updating status/lastRunAt)
   const stuckRun = await prisma.cronRun.findFirst({

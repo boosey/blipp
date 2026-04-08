@@ -80,3 +80,30 @@ export interface CatalogRefreshMessage {
   source?: "apple" | "podcast-index";
   seedJobId?: string;
 }
+
+/** Digest orchestrator queue — one message per user per day. */
+export interface DigestOrchestratorMessage {
+  userId: string;
+  date: string; // "2026-04-07"
+}
+
+/** Digest narrative queue — condense 10-min narrative to 30-sec. */
+export interface DigestNarrativeMessage {
+  episodeId: string;
+  deliveryId: string;
+  correlationId?: string;
+}
+
+/** Digest clip queue — TTS 30-sec condensed narrative. */
+export interface DigestClipMessage {
+  episodeId: string;
+  deliveryId: string;
+  voicePresetId?: string | null;
+  correlationId?: string;
+}
+
+/** Digest assembly queue — concatenate clips into final user digest. */
+export interface DigestAssemblyMessage {
+  deliveryId: string;
+  correlationId?: string;
+}

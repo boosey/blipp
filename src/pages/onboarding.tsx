@@ -4,7 +4,7 @@ import { useApiFetch } from "../lib/api";
 import { useFetch } from "../lib/use-fetch";
 import { useOnboarding } from "../contexts/onboarding-context";
 import { usePlan } from "../contexts/plan-context";
-import { AlertTriangle, Check, ChevronRight, Headphones, Loader2, Search, X } from "lucide-react";
+import { AlertTriangle, Check, ChevronRight, Headphones, Loader2, Newspaper, Search, X } from "lucide-react";
 import { InterestPicker } from "../components/interest-picker";
 import { SportsTeamPicker } from "../components/sports-team-picker";
 
@@ -29,11 +29,20 @@ export default function Onboarding() {
   const apiFetch = useApiFetch();
   const { markComplete } = useOnboarding();
   const { subscriptions, maxDurationMinutes } = usePlan();
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
   const [selectedPodcasts, setSelectedPodcasts] = useState<Map<string, CatalogPodcast>>(
     new Map()
   );
   const [saving, setSaving] = useState(false);
+
+  // Digest preferences (step 3)
+  const [digestEnabled, setDigestEnabled] = useState(true);
+  const [digestSources, setDigestSources] = useState({
+    digestIncludeSubscriptions: true,
+    digestIncludeFavorites: true,
+    digestIncludeRecommended: true,
+  });
+  const [savingDigest, setSavingDigest] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState("All");
   const [searchInput, setSearchInput] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -57,7 +66,7 @@ export default function Onboarding() {
 
   const { data: catalogData, loading: catalogLoading } = useFetch<{
     podcasts: CatalogPodcast[];
-  }>("/podcasts/catalog?pageSize=100", { enabled: step === 3 });
+  }>("/podcasts/catalog?pageSize=100", { enabled: step === 4 });
 
   const podcasts = catalogData?.podcasts ?? [];
 
@@ -171,7 +180,7 @@ export default function Onboarding() {
       sessionStorage.setItem("blipp-just-onboarded", "1");
     }
 
-    setStep(4);
+    setStep(5);
     setSaving(false);
   }
 
@@ -269,8 +278,117 @@ export default function Onboarding() {
     );
   }
 
-  // Step 3 — Subscribe to podcasts
+  // Step 3 — Digest preferences
   if (step === 3) {
+    const digestSourceOptions = [
+      { key: "digestIncludeSubscriptions" as const, label: "Subscriptions" },
+      { key: "digestIncludeFavorites" as const, label: "Favorites" },
+      { key: "digestIncludeRecommended" as const, label: "Recommended" },
+    ];
+
+    return (
+      <div className="min-h-screen bg-background text-foreground flex flex-col px-4 py-6">
+        <div className="space-y-6 flex-1">
+          <div className="text-center space-y-3 pt-4">
+            <div className="w-14 h-14 mx-auto bg-foreground/10 rounded-2xl flex items-center justify-center">
+              <Newspaper className="w-7 h-7 text-foreground" />
+            </div>
+            <h1 className="text-xl font-bold">Daily Digest</h1>
+            <p className="text-muted-foreground text-sm leading-relaxed max-w-xs mx-auto">
+              Get a 30-second summary of each new episode, delivered every morning.
+            </p>
+          </div>
+
+          <div className="bg-card border border-border rounded-xl p-4 space-y-4">
+            <div className="flex items-center justify-between gap-4">
+              <div className="min-w-0">
+                <h3 className="text-sm font-medium">Enable Daily Digest</h3>
+              </div>
+              <button
+                onClick={() => setDigestEnabled((v) => !v)}
+                className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${digestEnabled ? "bg-primary" : "bg-muted"}`}
+              >
+                <span
+                  className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full transition-transform ${digestEnabled ? "translate-x-5 bg-primary-foreground" : "bg-muted-foreground"}`}
+                />
+              </button>
+            </div>
+
+            {digestEnabled && (
+              <div className="pt-3 border-t border-border">
+                <p className="text-xs text-muted-foreground mb-2">
+                  Include episodes from
+                </p>
+                <div className="flex gap-1.5">
+                  {digestSourceOptions.map(({ key, label }) => (
+                    <button
+                      key={key}
+                      onClick={() =>
+                        setDigestSources((s) => ({ ...s, [key]: !s[key] }))
+                      }
+                      className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                        digestSources[key]
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-muted text-muted-foreground hover:bg-accent"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="sticky bottom-0 pt-4 pb-2 bg-background space-y-2">
+          <button
+            onClick={async () => {
+              setSavingDigest(true);
+              const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+              try {
+                await apiFetch("/digest/preferences", {
+                  method: "PATCH",
+                  body: JSON.stringify({
+                    digestEnabled,
+                    ...digestSources,
+                    timezone: tz || undefined,
+                  }),
+                });
+              } catch {
+                // Non-critical — continue anyway
+              }
+              setSavingDigest(false);
+              setStep(4);
+            }}
+            disabled={savingDigest}
+            className="w-full py-3 bg-primary text-primary-foreground font-semibold rounded-xl hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {savingDigest ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                Continue
+                <ChevronRight className="w-4 h-4" />
+              </>
+            )}
+          </button>
+          <button
+            onClick={() => setStep(4)}
+            className="w-full py-2 text-muted-foreground text-sm hover:text-foreground/70 transition-colors"
+          >
+            Skip for now
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Step 4 — Subscribe to podcasts
+  if (step === 4) {
     return (
       <div className="min-h-screen bg-background text-foreground flex flex-col px-4 py-6">
         <div className="space-y-4 flex-1">
@@ -441,7 +559,7 @@ export default function Onboarding() {
     );
   }
 
-  // Step 3 — Confirmation (subscribed vs skipped variants)
+  // Step 5 — Confirmation (subscribed vs skipped variants)
   const subscribed = selectedPodcasts.size > 0;
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center px-6">
