@@ -104,6 +104,15 @@ digestsRoutes.post("/trigger", async (c) => {
 
   const today = new Date().toISOString().slice(0, 10);
 
+  // Delete any existing delivery for today so the orchestrator starts fresh
+  const existing = await prisma.digestDelivery.findUnique({
+    where: { userId_date: { userId: user.id, date: today } },
+  });
+  if (existing) {
+    await prisma.digestDeliveryEpisode.deleteMany({ where: { deliveryId: existing.id } });
+    await prisma.digestDelivery.delete({ where: { id: existing.id } });
+  }
+
   await c.env.DIGEST_ORCHESTRATOR_QUEUE.send({
     userId: user.id,
     date: today,
