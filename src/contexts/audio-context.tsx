@@ -635,9 +635,10 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       const itemId = currentItem.id;
       const audio = audioRef.current;
       // Account for already-elapsed time (e.g. resumed playback)
-      const elapsed = audio ? audio.currentTime : 0;
-      const remaining = Math.max(0, 30 - elapsed) * 1000;
       const isDigest = isDigestItem(currentItem);
+      const listenedThreshold = isDigest ? 10 : 30; // Digest is short, mark listened sooner
+      const elapsed = audio ? audio.currentTime : 0;
+      const remaining = Math.max(0, listenedThreshold - elapsed) * 1000;
       listenedTimerRef.current = setTimeout(() => {
         const listenedPath = isDigest
           ? `/digest/${itemId}/listened`

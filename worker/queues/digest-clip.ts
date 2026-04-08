@@ -92,6 +92,7 @@ export async function handleDigestClip(
 
         // Try each TTS model in the chain
         let audio: ArrayBuffer | undefined;
+        let clipActualSeconds: number | null = null;
         for (let i = 0; i < modelChain.length; i++) {
           const resolved = modelChain[i];
           const tts = getTtsProviderImpl(resolved.provider);
@@ -110,9 +111,13 @@ export async function handleDigestClip(
             );
             recordSuccess(resolved.provider);
             audio = result.audio;
+            clipActualSeconds = result.usage?.audioSeconds
+              ? Math.round(result.usage.audioSeconds)
+              : null;
             log.info("clip_generated", {
               episodeId,
               sizeBytes: audio.byteLength,
+              actualSeconds: clipActualSeconds,
               model: resolved.providerModelId,
             });
             break;
@@ -136,10 +141,10 @@ export async function handleDigestClip(
           },
         });
 
-        // Mark READY in this delivery
+        // Mark READY in this delivery with actual duration
         await prisma.digestDeliveryEpisode.updateMany({
           where: { deliveryId, episodeId },
-          data: { status: "READY" },
+          data: { status: "READY", actualSeconds: clipActualSeconds },
         });
 
         // Mark READY in any other deliveries referencing this episode

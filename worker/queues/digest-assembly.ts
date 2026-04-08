@@ -2,7 +2,6 @@ import { createPrismaClient } from "../lib/db";
 import { createPipelineLogger } from "../lib/logger";
 import { wpKey, putWorkProduct, getWorkProduct } from "../lib/work-products";
 import { concatenateAudioChunks, createSilenceFrame } from "../lib/tts/chunking";
-import { ASSUMED_BITRATE_BYTES_PER_SEC } from "../lib/constants";
 import type { DigestAssemblyMessage } from "../lib/queue-messages";
 import type { Env } from "../types";
 
@@ -103,8 +102,9 @@ export async function handleDigestAssembly(
         const silence = createSilenceFrame();
         const finalAudio = concatenateAudioChunks(audioChunks, silence);
 
-        // Calculate duration from audio size
-        const actualSeconds = Math.round(finalAudio.byteLength / ASSUMED_BITRATE_BYTES_PER_SEC);
+        // Sum actual clip durations from DigestDeliveryEpisode records
+        const episodeDurations = readyEpisodes.map((dde: any) => dde.actualSeconds ?? 0);
+        const actualSeconds = episodeDurations.reduce((sum: number, s: number) => sum + s, 0) || null;
 
         // Store in R2
         const audioKey = wpKey({ type: "DIGEST_AUDIO", userId: delivery.userId, date: delivery.date });

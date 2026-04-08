@@ -1306,8 +1306,9 @@ model DigestDeliveryEpisode {
   deliveryId String
   episodeId  String
   sourceType String  // "subscribed" | "favorited" | "recommended"
-  status     String  @default("PENDING") // PENDING | PROCESSING | READY | FAILED
-  entryStage String? // Which pipeline stage this episode entered at
+  status        String  @default("PENDING") // PENDING | PROCESSING | READY | FAILED
+  entryStage    String? // Which pipeline stage this episode entered at
+  actualSeconds Int?    // Actual TTS audio duration in seconds
 
   delivery DigestDelivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
   episode  Episode        @relation(fields: [episodeId], references: [id], onDelete: Cascade)
