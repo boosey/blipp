@@ -55,14 +55,21 @@ export async function handleDigestOrchestrator(
           continue;
         }
 
-        // Check for duplicate delivery
+        // Check for duplicate delivery — allow retry if previous one failed
         const existing = await prisma.digestDelivery.findUnique({
           where: { userId_date: { userId, date } },
         });
         if (existing) {
-          log.info("delivery_exists", { userId, date, deliveryId: existing.id });
-          msg.ack();
-          continue;
+          if (existing.status === "FAILED") {
+            // Delete the failed delivery so we can retry
+            await prisma.digestDeliveryEpisode.deleteMany({ where: { deliveryId: existing.id } });
+            await prisma.digestDelivery.delete({ where: { id: existing.id } });
+            log.info("deleted_failed_delivery", { userId, date, deliveryId: existing.id });
+          } else {
+            log.info("delivery_exists", { userId, date, deliveryId: existing.id, status: existing.status });
+            msg.ack();
+            continue;
+          }
         }
 
         // Collect eligible episodes
