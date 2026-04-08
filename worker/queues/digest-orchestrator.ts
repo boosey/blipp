@@ -236,6 +236,7 @@ async function dispatchExistingPipeline(
     data: {
       userId: "system", // system-initiated for digest
       status: "PROCESSING",
+      targetMinutes: 10,
       items: [{ podcastId: "digest", episodeId, durationTier: 10, useLatest: false }],
       source: "digest",
     },
