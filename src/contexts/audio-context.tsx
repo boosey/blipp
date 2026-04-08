@@ -100,14 +100,22 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   const listenedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const listenedFiredRef = useRef<string | null>(null);
 
+  const isDigestItem = useCallback(
+    (item: FeedItem | null) =>
+      item?.briefing?.clip?.audioUrl?.startsWith("/api/digest") ?? false,
+    []
+  );
+
   const savePlaybackPosition = useCallback(
     (itemId: string, position: number | null) => {
+      // Skip progress saves for digest items (short, no resume needed)
+      if (currentItem && isDigestItem(currentItem)) return;
       apiFetch(`/feed/${itemId}/progress`, {
         method: "PATCH",
         body: JSON.stringify({ positionSeconds: position }),
       }).catch(() => {});
     },
-    [apiFetch]
+    [apiFetch, isDigestItem, currentItem]
   );
 
   // Begin content playback — sets src to briefing audio, fires listened PATCH
@@ -629,8 +637,12 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       // Account for already-elapsed time (e.g. resumed playback)
       const elapsed = audio ? audio.currentTime : 0;
       const remaining = Math.max(0, 30 - elapsed) * 1000;
+      const isDigest = isDigestItem(currentItem);
       listenedTimerRef.current = setTimeout(() => {
-        apiFetch(`/feed/${itemId}/listened`, { method: "PATCH" }).catch(() => {});
+        const listenedPath = isDigest
+          ? `/digest/${itemId}/listened`
+          : `/feed/${itemId}/listened`;
+        apiFetch(listenedPath, { method: "PATCH" }).catch(() => {});
         listenedFiredRef.current = itemId;
         listenedTimerRef.current = null;
       }, remaining);

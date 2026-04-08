@@ -84,8 +84,11 @@ export function DigestCard({
   const artwork = sourceArtwork(digest);
   const sources = Array.isArray(digest.sources) ? digest.sources : [];
   const episodeCount = digest.episodeCount ?? sources.length;
-  const estimatedTier = episodeCount > 0 ? Math.ceil((episodeCount * 30) / 60) : 1;
-  const durationStr = formatDuration(digest.actualSeconds, estimatedTier);
+  const estimatedSeconds = episodeCount * 30;
+  // Don't trust DB actualSeconds (bitrate estimate is unreliable) — use episode count × 30s
+  const durationStr = estimatedSeconds > 0
+    ? `${Math.floor(estimatedSeconds / 60)}:${(estimatedSeconds % 60).toString().padStart(2, "0")}`
+    : "1m";
 
   function handlePlay(e: React.MouseEvent) {
     e.stopPropagation();
