@@ -87,6 +87,20 @@ model User {
   defaultDurationTier   Int      @default(5)
   defaultVoicePresetId  String?
   acceptAnyVoice        Boolean  @default(false)
+  preferredCategories   String[]          // explicit interest categories for recommendations
+  excludedCategories    String[]          // categories to never recommend
+  preferredTopics       String[]          // free-text topic interests, e.g. ["AI", "NBA"]
+  excludedTopics        String[]          // topics to suppress from recommendations
+  zipCode               String?           // user-entered US zip code
+  city                  String?           // resolved from zip code or Cloudflare cf.city
+  state                 String?           // resolved from zip code or Cloudflare cf.region
+  country               String?  @default("US")  // resolved from zip code or Cloudflare cf.country
+  profileCompletedAt    DateTime?         // when user last saved interest preferences
+  digestEnabled              Boolean  @default(true)
+  digestIncludeSubscriptions Boolean  @default(true)
+  digestIncludeFavorites     Boolean  @default(true)
+  digestIncludeRecommended   Boolean  @default(true)
+  timezone                   String?  // IANA timezone e.g. "America/New_York"; null = UTC
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
@@ -108,6 +122,8 @@ model User {
   feedback                  Feedback[]
   blippFeedback             BlippFeedback[]
   listenOriginalEvents      ListenOriginalEvent[] @relation("ListenOriginalEvents")
+  sportsTeams               UserSportsTeam[]
+  digestDeliveries          DigestDelivery[]
 }
 
 // ── Podcast Favorites (interest signals for recommendations) ──
@@ -190,13 +206,16 @@ model Podcast {
   feedHealth     String?   // "excellent" | "good" | "fair" | "poor" | "broken"
   feedError      String?
   episodeCount   Int       @default(0)
-  status         String    @default("active") // "active" | "paused" | "archived"
+  status         String    @default("active") // "active" | "paused" | "archived" | "pending_deletion" | "evicted"
   deliverable    Boolean   @default(true)     // false when no deliverable episodes exist
-  appleRank      Int?      // Position in Apple Top 200 chart (1-200, null if unranked)
-  source         String?   // "trending" | "user_request" | "manual"
-  slug           String?   @unique // URL-safe slug e.g. "lex-fridman"
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  geoProcessedAt DateTime?                     // null = not geo-processed yet
+  appleRank          Int?      // Position in Apple Top 200 chart (1-200, null if unranked)
+  piRank             Int?      // Best position across PI trending categories (1 = most trending). Updated each discovery run.
+  lastDetailViewedAt DateTime? // Last time any user fetched this podcast's detail page
+  source             String?   // "trending" | "user_request" | "manual"
+  slug               String?   @unique // URL-safe slug e.g. "lex-fridman"
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   episodes          Episode[]
   subscriptions     Subscription[]
@@ -206,6 +225,7 @@ model Podcast {
   votes             PodcastVote[]
   podcastCategories          PodcastCategory[]
   profile                    PodcastProfile?
+  geoProfiles                PodcastGeoProfile[]
   recommendationDismissals   RecommendationDismissal[]
 }
 
@@ -239,6 +259,7 @@ model Episode {
   claimsBenchmarkResults ClaimsBenchmarkResult[]
   blippFeedback          BlippFeedback[]
   listenOriginalEvents   ListenOriginalEvent[] @relation("ListenOriginalEvents")
+  digestDeliveryEpisodes DigestDeliveryEpisode[]
 
   @@unique([podcastId, guid])
   @@unique([podcastId, slug])
@@ -532,6 +553,9 @@ enum WorkProductType {
   AUDIO_CLIP
   BRIEFING_AUDIO
   SOURCE_AUDIO
+  DIGEST_NARRATIVE
+  DIGEST_CLIP
+  DIGEST_AUDIO
 }
 
 model PipelineEvent {
@@ -816,12 +840,13 @@ enum AiStage {
   distillation
   narrative
   tts
+  geoClassification
 }
 
 model AiModel {
   id        String    @id @default(cuid())
-  stage     AiStage
-  modelId   String    // e.g. "whisper-1", "nova-3", "claude-sonnet-4-20250514"
+  stages    AiStage[] // pipeline stages this model is eligible for
+  modelId   String    @unique // e.g. "whisper-1", "nova-3", "claude-sonnet-4-20250514"
   label     String    // e.g. "Whisper v1", "Deepgram Nova-3"
   developer String    // e.g. "openai", "deepgram", "anthropic"
   notes     String?   // capabilities, value notes, limitations
@@ -829,8 +854,6 @@ model AiModel {
   createdAt DateTime  @default(now())
 
   providers AiModelProvider[]
-
-  @@unique([stage, modelId])
 }
 
 model AiModelProvider {
@@ -925,11 +948,30 @@ model RecommendationDismissal {
   @@index([userId])
 }
 
+// ── Scheduled Jobs ──
+
+model CronJob {
+  id                      String    @id @default(cuid())
+  jobKey                  String    @unique
+  label                   String
+  description             String
+  enabled                 Boolean   @default(true)
+  intervalMinutes         Int
+  defaultIntervalMinutes  Int
+  runAtHour               Int?      // 0-23 UTC hour; when set, job only runs during this hour
+  lastRunAt               DateTime?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  runs CronRun[]
+}
+
 // ── Scheduled Job Runs ──
 
 model CronRun {
   id           String        @id @default(cuid())
   jobKey       String
+  job          CronJob?      @relation(fields: [jobKey], references: [jobKey])
   startedAt    DateTime      @default(now())
   completedAt  DateTime?
   durationMs   Int?
@@ -1145,4 +1187,138 @@ model PublisherReportBatch {
   generatedAt    DateTime @default(now())
 
   @@index([publisherId, periodStart])
+}
+
+// ── Sports Teams & Markets ──
+
+model SportsLeague {
+  id        String           @id @default(cuid())
+  name      String           @unique // "NFL", "NBA", "Premier League"
+  sport     String           // "football", "basketball", "soccer"
+  country   String?          // "us", "gb" — null for international
+  divisions SportsDivision[]
+  teams     SportsTeam[]
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+}
+
+model SportsDivision {
+  id        String           @id @default(cuid())
+  name      String           // "AFC", "AFC East", "Eastern Conference"
+  leagueId  String
+  parentId  String?
+  league    SportsLeague     @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  parent    SportsDivision?  @relation("DivisionHierarchy", fields: [parentId], references: [id])
+  children  SportsDivision[] @relation("DivisionHierarchy")
+  teams     SportsTeam[]
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@unique([leagueId, name])
+}
+
+model SportsTeam {
+  id             String             @id @default(cuid())
+  name           String             // "Kansas City Chiefs"
+  city           String             // "Kansas City"
+  nickname       String             // "Chiefs"
+  abbreviation   String             // "KC"
+  keywords       String[]           // title-match terms: ["Chiefs", "Kansas City Chiefs"]
+  leagueId       String
+  divisionId   String?
+  league       SportsLeague       @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  division     SportsDivision?    @relation(fields: [divisionId], references: [id])
+  markets        SportsTeamMarket[]
+  userSelections UserSportsTeam[]
+  geoProfiles    PodcastGeoProfile[]
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  @@unique([leagueId, abbreviation])
+}
+
+model SportsTeamMarket {
+  id      String     @id @default(cuid())
+  teamId  String
+  city    String
+  state   String
+  team    SportsTeam @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, city, state])
+  @@index([city, state])
+}
+
+model UserSportsTeam {
+  id        String     @id @default(cuid())
+  userId    String
+  teamId    String
+  createdAt DateTime   @default(now())
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team      SportsTeam @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, teamId])
+  @@index([userId])
+}
+
+model PodcastGeoProfile {
+  id         String      @id @default(cuid())
+  podcastId  String
+  city       String      // city name (empty string for state-level matches)
+  state      String      // full state name
+  country    String      @default("US")
+  scope      String      // "city" | "regional" | "state"
+  teamId     String?     // links to SportsTeam if team-specific
+  confidence Float       // 0-1
+  source     String      // "keyword" | "llm"
+  createdAt  DateTime    @default(now())
+
+  podcast    Podcast     @relation(fields: [podcastId], references: [id], onDelete: Cascade)
+  team       SportsTeam? @relation(fields: [teamId], references: [id])
+
+  @@unique([podcastId, city, state])
+  @@index([city, state])
+  @@index([podcastId])
+}
+
+// ── Daily Digest ──
+
+model DigestDelivery {
+  id                String   @id @default(cuid())
+  userId            String
+  date              String   // "2026-04-07" — the day this digest covers
+  status            String   @default("PENDING") // PENDING | PROCESSING | READY | FAILED
+  totalEpisodes     Int      @default(0)
+  completedEpisodes Int      @default(0)
+  audioKey          String?  // R2 key for concatenated digest audio
+  actualSeconds     Int?     // total audio duration in seconds
+  episodeCount      Int      @default(0)
+  sources           Json     @default("[]") // DigestSource[] for frontend display
+  listened          Boolean  @default(false)
+  errorMessage      String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user     User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  episodes DigestDeliveryEpisode[]
+
+  @@unique([userId, date])
+  @@index([userId])
+  @@index([status])
+}
+
+model DigestDeliveryEpisode {
+  id         String  @id @default(cuid())
+  deliveryId String
+  episodeId  String
+  sourceType String  // "subscribed" | "favorited" | "recommended"
+  status        String  @default("PENDING") // PENDING | PROCESSING | READY | FAILED
+  entryStage    String? // Which pipeline stage this episode entered at
+  actualSeconds Int?    // Actual TTS audio duration in seconds
+
+  delivery DigestDelivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  episode  Episode        @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+
+  @@unique([deliveryId, episodeId])
+  @@index([deliveryId])
+  @@index([episodeId, status])
 }

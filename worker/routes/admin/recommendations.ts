@@ -28,11 +28,12 @@ recommendationsRoutes.get("/stats", async (c) => {
   });
 });
 
-// POST /recompute
+// POST /recompute — processes one batch per call; returns cursor for next batch
 recommendationsRoutes.post("/recompute", async (c) => {
   const prisma = c.get("prisma") as any;
-  const count = await computePodcastProfiles(prisma);
-  return c.json({ data: { recomputed: count } });
+  const cursor = c.req.query("cursor") || null;
+  const result = await computePodcastProfiles(prisma, undefined, cursor);
+  return c.json({ data: { processed: result.processed, cursor: result.cursor } });
 });
 
 // GET /users
@@ -316,9 +317,9 @@ recommendationsRoutes.post("/embeddings/recompute", async (c) => {
     update: { value: true },
   });
 
-  const count = await computePodcastProfiles(prisma);
+  const result = await computePodcastProfiles(prisma);
 
-  return c.json({ data: { recomputed: count, message: "Profiles recomputed. Embeddings will be computed on next cron run with AI binding." } });
+  return c.json({ data: { processed: result.processed, cursor: result.cursor, message: "First batch recomputed. Remaining batches will be processed by cron. Embeddings will be computed on next cron run with AI binding." } });
 });
 
 // GET /config — All recommendation config keys

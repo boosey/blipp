@@ -16,7 +16,7 @@ import { useAdminFetch } from "@/lib/admin-api";
 import { STAGE_LABELS } from "@/lib/ai-models";
 import type { AIStage } from "@/lib/ai-models";
 import type { AiModelEntry } from "@/types/admin";
-import { formatPrice, formatLimits, formatMonthlyCost } from "./helpers";
+import { STAGES, formatPrice, formatLimits, formatMonthlyCost, getLimitStage } from "./helpers";
 import { AddProviderForm, EditProviderForm } from "./provider-forms";
 
 type SmokeTestState = { status: "idle" } | { status: "running" } | { status: "pass"; latencyMs: number } | { status: "fail"; error: string };
@@ -53,9 +53,9 @@ export function ModelTable({
   return (
     <div className="border border-white/5 rounded-lg overflow-hidden">
       {/* Header row */}
-      <div className="grid grid-cols-[2fr_1fr_1fr_80px_80px_2fr_auto] gap-4 px-4 py-2.5 bg-[#0F1D32] text-[10px] font-medium text-[#9CA3AF] uppercase tracking-wider border-b border-white/5">
+      <div className="grid grid-cols-[2fr_1fr_1fr_80px_100px_2fr_auto] gap-4 px-4 py-2.5 bg-[#0F1D32] text-[10px] font-medium text-[#9CA3AF] uppercase tracking-wider border-b border-white/5">
         <div>Model</div>
-        <div>Stage</div>
+        <div>Stages</div>
         <div>Providers</div>
         <div>Developer</div>
         <div>Est. Cost</div>
@@ -69,7 +69,7 @@ export function ModelTable({
           <div key={model.id}>
             {/* Model row */}
             <div
-              className="grid grid-cols-[2fr_1fr_1fr_80px_80px_2fr_auto] gap-4 px-4 py-3 items-center border-b border-white/5 hover:bg-white/[0.02] cursor-pointer transition-colors"
+              className="grid grid-cols-[2fr_1fr_1fr_80px_100px_2fr_auto] gap-4 px-4 py-3 items-center border-b border-white/5 hover:bg-white/[0.02] cursor-pointer transition-colors"
               onClick={() => setExpandedId(isExpanded ? null : model.id)}
             >
               <div className="flex items-center gap-2">
@@ -83,13 +83,16 @@ export function ModelTable({
                   <span className="ml-2 text-[10px] font-mono text-[#9CA3AF]">{model.modelId}</span>
                 </div>
               </div>
-              <div>
-                <Badge
-                  variant="outline"
-                  className="text-[10px] border-white/10 text-[#9CA3AF] font-normal"
-                >
-                  {STAGE_LABELS[model.stage as AIStage] ?? model.stage}
-                </Badge>
+              <div className="flex flex-wrap gap-1">
+                {model.stages.map((s) => (
+                  <Badge
+                    key={s}
+                    variant="outline"
+                    className="text-[10px] border-white/10 text-[#9CA3AF] font-normal"
+                  >
+                    {STAGE_LABELS[s as AIStage] ?? s}
+                  </Badge>
+                ))}
               </div>
               <div className="flex flex-col gap-0.5">
                 {model.providers.length === 0 ? (
@@ -103,8 +106,16 @@ export function ModelTable({
                 )}
               </div>
               <div className="text-xs text-[#9CA3AF]">{model.developer}</div>
-              <div className="text-xs font-mono text-[#9CA3AF]" title="Based on last 30 days of usage">
-                {formatMonthlyCost(model.estMonthlyCost)}
+              <div className="flex flex-col gap-0.5" title="Based on last 30 days of usage">
+                {Object.entries(model.estMonthlyCosts).map(([stage, cost]) => (
+                  <div key={stage} className="flex items-center gap-1">
+                    <span className="text-[9px] text-[#6B7280] uppercase">{stage.slice(0, 3)}</span>
+                    <span className="text-[11px] font-mono text-[#9CA3AF]">{formatMonthlyCost(cost)}</span>
+                  </div>
+                ))}
+                {Object.keys(model.estMonthlyCosts).length === 0 && (
+                  <span className="text-xs font-mono text-[#9CA3AF]">&mdash;</span>
+                )}
               </div>
               <div className="text-[11px] text-[#9CA3AF] leading-snug whitespace-normal">{model.notes ?? "\u2014"}</div>
               <div className="w-20 flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
@@ -133,6 +144,9 @@ export function ModelTable({
             {isExpanded && (
               <div className="bg-[#0A1628]/50 border-b border-white/5">
                 <div className="px-8 py-2">
+                  {/* Stage editor */}
+                  <StageEditor model={model} apiFetch={apiFetch} onRefresh={onRefresh} />
+
                   {/* Provider header */}
                   <div className="grid grid-cols-[2fr_2fr_1.5fr_1fr_auto] gap-4 py-2 text-[10px] font-medium text-[#9CA3AF] uppercase tracking-wider">
                     <div>Provider</div>
@@ -163,7 +177,7 @@ export function ModelTable({
                   {addingProviderFor === model.id ? (
                     <AddProviderForm
                       modelId={model.id}
-                      stage={model.stage}
+                      stages={model.stages}
                       apiFetch={apiFetch}
                       onDone={() => { setAddingProviderFor(null); onRefresh(); }}
                       onCancel={() => setAddingProviderFor(null)}
@@ -185,6 +199,62 @@ export function ModelTable({
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function StageEditor({
+  model,
+  apiFetch,
+  onRefresh,
+}: {
+  model: AiModelEntry;
+  apiFetch: ReturnType<typeof useAdminFetch>;
+  onRefresh: () => void;
+}) {
+  const [saving, setSaving] = useState(false);
+
+  const toggleStage = async (stage: AIStage) => {
+    const current = model.stages as string[];
+    const next = current.includes(stage)
+      ? current.filter((s) => s !== stage)
+      : [...current, stage];
+    if (next.length === 0) return; // must keep at least one
+    setSaving(true);
+    try {
+      await apiFetch(`/ai-models/${model.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ stages: next }),
+      });
+      onRefresh();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-3 py-2 border-b border-white/5">
+      <span className="text-[10px] font-medium text-[#9CA3AF] uppercase tracking-wider">Stages</span>
+      <div className="flex gap-1.5">
+        {STAGES.map((s) => {
+          const active = (model.stages as string[]).includes(s);
+          return (
+            <button
+              key={s}
+              onClick={() => toggleStage(s)}
+              disabled={saving || (active && model.stages.length === 1)}
+              className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                active
+                  ? "bg-[#3B82F6]/20 text-[#3B82F6] ring-1 ring-[#3B82F6]/40"
+                  : "bg-[#1A2942] text-[#6B7280] hover:text-[#9CA3AF]"
+              } ${saving ? "opacity-50" : ""}`}
+              title={active && model.stages.length === 1 ? "Must keep at least one stage" : ""}
+            >
+              {STAGE_LABELS[s]}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -235,7 +305,7 @@ function ProviderRow({
         <EditProviderForm
           provider={prov}
           modelId={model.id}
-          stage={model.stage}
+          stages={model.stages}
           apiFetch={apiFetch}
           onDone={() => { setEditingProvider(null); onRefresh(); }}
           onCancel={() => setEditingProvider(null)}

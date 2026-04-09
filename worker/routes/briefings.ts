@@ -55,10 +55,13 @@ briefings.post("/generate", async (c) => {
     const episode = await prisma.episode.findUniqueOrThrow({
       where: { id: episodeId },
     });
+    if (episode.contentStatus === "NOT_DELIVERABLE") {
+      return c.json({ error: "This episode is currently unavailable" }, 422);
+    }
     podcastId = episode.podcastId;
   } else {
     const episode = await prisma.episode.findFirst({
-      where: { podcastId: body.podcastId },
+      where: { podcastId: body.podcastId, contentStatus: { not: "NOT_DELIVERABLE" } },
       orderBy: { publishedAt: "desc" },
     });
     if (!episode) {

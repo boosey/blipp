@@ -1,5 +1,5 @@
 import { useCallback, useRef, useLayoutEffect, useState } from "react";
-import { Share2, Trash2, ListPlus } from "lucide-react";
+import { Share, Trash2, ListPlus } from "lucide-react";
 import { toast } from "sonner";
 import type { FeedItem } from "../types/feed";
 import { formatDuration } from "../lib/feed-utils";
@@ -145,7 +145,7 @@ export function FeedItemCard({
                 onClick={handleShare}
                 className="p-1 text-muted-foreground hover:text-foreground transition-colors"
               >
-                <Share2 className="w-3.5 h-3.5" />
+                <Share className="w-3.5 h-3.5" />
               </button>
             )}
             {onEpisodeVote && (

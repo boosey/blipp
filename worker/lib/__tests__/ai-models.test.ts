@@ -35,11 +35,11 @@ describe("getModelConfig", () => {
 });
 
 describe("getModelRegistry", () => {
-  it("returns models for a given stage from DB", async () => {
+  it("returns models for a given stage using has filter", async () => {
     const mockPrisma = { aiModel: { findMany: vi.fn() } };
     mockPrisma.aiModel.findMany.mockResolvedValue([
       {
-        id: "m1", stage: "stt", modelId: "whisper-1", label: "Whisper v1",
+        id: "m1", stages: ["stt"], modelId: "whisper-1", label: "Whisper v1",
         developer: "openai", isActive: true, createdAt: new Date(),
         providers: [
           { id: "p1", provider: "openai", providerLabel: "OpenAI",
@@ -52,7 +52,7 @@ describe("getModelRegistry", () => {
     expect(result[0].modelId).toBe("whisper-1");
     expect(result[0].providers).toHaveLength(1);
     expect(mockPrisma.aiModel.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { stage: "stt", isActive: true } })
+      expect.objectContaining({ where: { stages: { has: "stt" }, isActive: true } })
     );
   });
 

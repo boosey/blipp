@@ -23,7 +23,8 @@ export const CONFIG_REGISTRY: Record<string, ConfigEntry> = {
 
   // ── Catalog ──
   "catalog.source":               { type: "string",  defaultValue: "podcast-index", description: "Default catalog source (apple or podcast-index)" },
-  "catalog.seedSize":             { type: "number",  defaultValue: 200,  description: "Number of podcasts to discover per seed run" },
+  "catalog.seedSize":             { type: "number",  defaultValue: 20,   description: "Number of podcasts to discover per seed run" },
+  "catalog.maxSize":              { type: "number",  defaultValue: 10000, description: "Hard upper limit on active catalog size. When full, least-ranked PI podcasts with no engagement signals are soft-deleted." },
   "catalog.refreshAllPodcasts":   { type: "boolean", defaultValue: false, description: "Refresh all podcasts (not just active subscribed)" },
   "catalog.requests.enabled":     { type: "boolean", defaultValue: true,  description: "Allow user podcast requests" },
   "catalog.requests.maxPerUser":  { type: "number",  defaultValue: 5,     description: "Max pending requests per user" },
@@ -45,6 +46,11 @@ export const CONFIG_REGISTRY: Record<string, ConfigEntry> = {
   "pipeline.feedRefresh.fetchTimeoutMs":        { type: "number", defaultValue: 10000, description: "Feed refresh timeout (ms)" },
   "pipeline.feedRefresh.batchConcurrency":      { type: "number", defaultValue: 10,    description: "Feed refresh queue send batch size" },
 
+  // ── Geo Classification ──
+  "geoClassification.llmProviderId": { type: "string",  defaultValue: "",    description: "AiModelProvider ID for LLM-based geo classification (pass 2)" },
+  "geoClassification.batchSize":     { type: "number",  defaultValue: 500,   description: "Max podcasts to geo-tag per cron run" },
+  "geoClassification.llmBatchSize":  { type: "number",  defaultValue: 10,    description: "Podcasts per LLM batch call in geo classification" },
+
   // ── Recommendations ──
   "recommendations.enabled":                  { type: "boolean", defaultValue: true,  description: "Enable recommendation engine" },
   "recommendations.embeddings.enabled":       { type: "boolean", defaultValue: false, description: "Enable embedding-based similarity" },
@@ -56,6 +62,15 @@ export const CONFIG_REGISTRY: Record<string, ConfigEntry> = {
   "recommendations.weights.subscriberOverlap": { type: "number", defaultValue: 0.15,  description: "Subscriber overlap weight" },
   "recommendations.weights.topic":            { type: "number",  defaultValue: 0.15,  description: "Topic similarity weight" },
   "recommendations.weights.embedding":        { type: "number",  defaultValue: 0.15,  description: "Embedding similarity weight" },
+  "recommendations.weights.explicitTopicBonus": { type: "number", defaultValue: 0.05, description: "Additive bonus for explicit topic matches" },
+  "recommendations.weights.localBoost":        { type: "number",  defaultValue: 0.10,  description: "Local content scoring weight" },
+  "recommendations.explicit.categoryBoost":   { type: "number",  defaultValue: 1.0,   description: "Weight boost per explicit preferred category" },
+  "recommendations.explicit.topicBoostFactor": { type: "number", defaultValue: 1.5,   description: "Factor above max implicit weight for explicit topics" },
+  "recommendations.exclusion.topicPenalty":    { type: "number",  defaultValue: 0.3,   description: "Per-topic exclusion penalty multiplier" },
+  "recommendations.coldStart.explicitMinCategories": { type: "number", defaultValue: 2, description: "Min explicit categories to escape cold start" },
+  "recommendations.coldStart.explicitMinTopics": { type: "number", defaultValue: 3,    description: "Min explicit topics to escape cold start" },
+  "recommendations.profileBatchSize":          { type: "number",  defaultValue: 25,   description: "Podcasts per recommendation profile batch" },
+  "recommendations.timeBudgetMs":              { type: "number",  defaultValue: 25000, description: "Max ms to spend looping through recommendation batches per cron run" },
 
   // ── Requests ──
   "requests.archiving.enabled": { type: "boolean", defaultValue: false, description: "Enable request archiving in data retention" },

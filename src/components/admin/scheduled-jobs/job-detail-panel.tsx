@@ -1,4 +1,4 @@
-import { RefreshCw, Loader2 } from "lucide-react";
+import { RefreshCw, Loader2, Play } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,8 @@ export interface JobDetailPanelProps {
   configEntries: { key: string; value: unknown }[];
   onPatch: (jobKey: string, update: { enabled?: boolean; intervalMinutes?: number }) => void;
   onPatchConfig: (key: string, value: unknown) => void;
+  onTrigger: (jobKey: string) => void;
+  triggering: boolean;
 }
 
 export function JobDetailPanel({
@@ -39,6 +41,8 @@ export function JobDetailPanel({
   configEntries,
   onPatch,
   onPatchConfig,
+  onTrigger,
+  triggering,
 }: JobDetailPanelProps) {
   return (
     <>
@@ -89,6 +93,19 @@ export function JobDetailPanel({
           </div>
 
           <Separator orientation="vertical" className="h-5 bg-white/10" />
+
+          {/* Run Now */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onTrigger(job.jobKey)}
+            disabled={triggering || !job.enabled}
+            className="h-7 text-[11px] text-[#9CA3AF] hover:text-[#F9FAFB] hover:bg-white/5 gap-1.5"
+            title={job.enabled ? "Queue job to run on next cron tick (≤5 min)" : "Enable job first"}
+          >
+            <Play className={cn("h-3 w-3", triggering && "animate-pulse")} />
+            {triggering ? "Queued" : "Run Now"}
+          </Button>
 
           {/* Refresh runs */}
           <Button

@@ -4,6 +4,7 @@ import type {
   OrchestratorMessage, BriefingRequestItem,
   TranscriptionMessage, DistillationMessage, NarrativeGenerationMessage, AudioGenerationMessage,
 } from "../lib/queue-messages";
+import { DURATION_TIERS } from "../lib/constants";
 import type { Env } from "../types";
 
 const TERMINAL_STATUSES = ["COMPLETED", "COMPLETED_DEGRADED", "FAILED", "CANCELLED"] as const;
@@ -167,6 +168,35 @@ async function handleEvaluate(
     log.info("request_failed", { requestId: request.id, reason: "No episodes resolved" });
     msg.ack();
     return;
+  }
+
+  // Cap durationTier when episode is shorter than requested
+  const episodeDurations = await prisma.episode.findMany({
+    where: { id: { in: resolvedItems.map(r => r.episodeId) } },
+    select: { id: true, durationSeconds: true },
+  });
+  const durationMap = new Map(episodeDurations.map(e => [e.id, e.durationSeconds]));
+  for (const item of resolvedItems) {
+    const episodeSecs = durationMap.get(item.episodeId);
+    if (episodeSecs && episodeSecs < item.durationTier * 60) {
+      const adjusted = [...DURATION_TIERS].reverse().find(t => t * 60 < episodeSecs);
+      if (adjusted) {
+        log.info("duration_capped", {
+          episodeId: item.episodeId,
+          originalTier: item.durationTier,
+          adjustedTier: adjusted,
+          episodeDurationSeconds: episodeSecs,
+        });
+        item.durationTier = adjusted;
+      } else {
+        // Episode is shorter than the smallest tier — skip it
+        log.info("episode_too_short", {
+          episodeId: item.episodeId,
+          durationTier: item.durationTier,
+          episodeDurationSeconds: episodeSecs,
+        });
+      }
+    }
   }
 
   // Set request to PROCESSING

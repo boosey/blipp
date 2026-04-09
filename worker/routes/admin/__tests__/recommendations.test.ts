@@ -30,7 +30,7 @@ describe("Admin recommendations routes", () => {
     app.route("/", recommendationsRoutes);
 
     // Re-set mocks after clearAllMocks (Vitest v4 clears mockResolvedValue)
-    (computePodcastProfiles as any).mockResolvedValue(0);
+    (computePodcastProfiles as any).mockResolvedValue({ processed: 0, cursor: null });
     (getConfig as any).mockResolvedValue(false);
   });
 
@@ -67,14 +67,14 @@ describe("Admin recommendations routes", () => {
   });
 
   describe("POST /recompute", () => {
-    it("triggers profile recompute and returns count", async () => {
-      (computePodcastProfiles as any).mockResolvedValue(87);
+    it("triggers profile recompute and returns batch result", async () => {
+      (computePodcastProfiles as any).mockResolvedValue({ processed: 25, cursor: "pod25" });
 
       const res = await app.request("/recompute", { method: "POST" });
       expect(res.status).toBe(200);
       const body = await res.json() as any;
-      expect(body.data.recomputed).toBe(87);
-      expect(computePodcastProfiles).toHaveBeenCalledWith(mockPrisma);
+      expect(body.data.processed).toBe(25);
+      expect(body.data.cursor).toBe("pod25");
     });
   });
 
@@ -174,13 +174,13 @@ describe("Admin recommendations routes", () => {
   describe("POST /embeddings/recompute", () => {
     it("enables embeddings and triggers recompute", async () => {
       mockPrisma.platformConfig.upsert.mockResolvedValue({});
-      (computePodcastProfiles as any).mockResolvedValue(25);
+      (computePodcastProfiles as any).mockResolvedValue({ processed: 25, cursor: null });
 
       const res = await app.request("/embeddings/recompute", { method: "POST" });
       expect(res.status).toBe(200);
       const body = await res.json() as any;
-      expect(body.data.recomputed).toBe(25);
-      expect(body.data.message).toContain("Profiles recomputed");
+      expect(body.data.processed).toBe(25);
+      expect(body.data.message).toContain("First batch recomputed");
 
       expect(mockPrisma.platformConfig.upsert).toHaveBeenCalledWith(
         expect.objectContaining({

@@ -117,7 +117,7 @@ describe("POST /generate (on-demand)", () => {
     expect(res.status).toBe(201);
     expect(mockPrisma.episode.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { podcastId: "pod1" },
+        where: { podcastId: "pod1", contentStatus: { not: "NOT_DELIVERABLE" } },
         orderBy: { publishedAt: "desc" },
       })
     );

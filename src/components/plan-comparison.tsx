@@ -54,16 +54,26 @@ export function PlanComparison({
         const isCurrent = currentPlanSlug === p.slug;
         const currentIdx = plans.findIndex((pl) => pl.slug === currentPlanSlug);
         const isUpgrade = currentIdx >= 0 && idx > currentIdx;
+        const isBelow = currentIdx >= 0 && idx < currentIdx;
+        const isTopTier = idx === plans.length - 1;
+
+        let cardClass: string;
+        if (isCurrent) {
+          cardClass = "bg-card border-2 border-primary ring-1 ring-primary/30";
+        } else if (isBelow) {
+          cardClass = "bg-card border border-border";
+        } else if (isUpgrade && isTopTier) {
+          cardClass = "plan-card-glow-gold bg-card border-2 border-amber-500/50 ring-1 ring-amber-500/20";
+        } else if (isUpgrade) {
+          cardClass = "plan-card-glow bg-card border-2 border-primary/60 ring-1 ring-primary/30";
+        } else {
+          cardClass = "bg-card border border-border";
+        }
+
         return (
           <div
             key={p.id}
-            className={`bg-card border rounded-xl p-4 space-y-3 ${
-              isCurrent
-                ? "border-foreground"
-                : p.highlighted
-                  ? "border-muted-foreground/40"
-                  : "border-border"
-            }`}
+            className={`rounded-xl p-4 space-y-3 transition-all duration-300 ${cardClass}`}
           >
             <div className="flex items-center justify-between">
               <div>
@@ -120,11 +130,17 @@ export function PlanComparison({
               <button
                 onClick={() => onUpgrade(p)}
                 disabled={actionLoading === p.id}
-                className="w-full py-2 bg-primary text-primary-foreground text-xs font-medium rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
+                className={`w-full py-2.5 rounded-lg font-semibold text-xs transition-all disabled:opacity-50 ${
+                  isTopTier
+                    ? "plan-cta-shimmer bg-amber-500 text-amber-950 hover:brightness-110 shadow-lg shadow-amber-500/25"
+                    : "plan-cta-shimmer bg-primary text-primary-foreground hover:brightness-110 shadow-lg shadow-primary/25"
+                }`}
               >
-                {actionLoading === p.id
-                  ? "Redirecting..."
-                  : `Upgrade to ${p.name}`}
+                <span className="relative z-10">
+                  {actionLoading === p.id
+                    ? "Redirecting..."
+                    : `Upgrade to ${p.name}`}
+                </span>
               </button>
             ) : currentIdx >= 0 ? (
               <button

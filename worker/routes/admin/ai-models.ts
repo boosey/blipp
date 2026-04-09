@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { Env } from "../../types";
 import { runSmokeTest } from "../../lib/smoke-test";
 
-// Maps AiModel.stage (AiStage) to PipelineStep.stage (PipelineStage)
+// Maps AiModel.stages (AiStage) to PipelineStep.stage (PipelineStage)
 const STAGE_TO_PIPELINE: Record<string, string> = {
   stt: "TRANSCRIPTION",
   distillation: "DISTILLATION",
@@ -33,11 +33,11 @@ aiModelsRoutes.get("/", async (c) => {
   const [models, stageWorkloads, firstStep] = await Promise.all([
     prisma.aiModel.findMany({
       where: {
-        ...(stage ? { stage } : {}),
+        ...(stage ? { stages: { has: stage } } : {}),
         ...(!includeInactive && { isActive: true }),
       },
       include: { providers: { orderBy: { isDefault: "desc" } } },
-      orderBy: [{ stage: "asc" }, { label: "asc" }],
+      orderBy: [{ label: "asc" }],
     }),
     // Aggregate total workload per pipeline stage over last 30 days
     prisma.pipelineStep.groupBy({
@@ -74,20 +74,26 @@ aiModelsRoutes.get("/", async (c) => {
   }
 
   const data = models.map((m: any) => {
-    const pipelineStage = STAGE_TO_PIPELINE[m.stage];
-    const workload = pipelineStage ? workloadMap.get(pipelineStage) : null;
-    let estMonthlyCost: number | null = null;
+    const estMonthlyCosts: Record<string, number | null> = {};
 
-    if (workload && m.providers.length > 0) {
-      // Use the default provider's pricing, or first available
-      const prov = m.providers.find((p: any) => p.isDefault) ?? m.providers[0];
-      const rawCost = calculateModelCostForWorkload(m.stage, prov, workload);
-      if (rawCost != null) {
-        estMonthlyCost = Math.round(rawCost * monthlyMultiplier * 100) / 100;
+    for (const aiStage of m.stages as string[]) {
+      const pipelineStage = STAGE_TO_PIPELINE[aiStage];
+      const workload = pipelineStage ? workloadMap.get(pipelineStage) : null;
+
+      if (workload && m.providers.length > 0) {
+        const prov = m.providers.find((p: any) => p.isDefault) ?? m.providers[0];
+        const rawCost = calculateModelCostForWorkload(aiStage, prov, workload);
+        if (rawCost != null) {
+          estMonthlyCosts[aiStage] = Math.round(rawCost * monthlyMultiplier * 100) / 100;
+        } else {
+          estMonthlyCosts[aiStage] = null;
+        }
+      } else {
+        estMonthlyCosts[aiStage] = null;
       }
     }
 
-    return { ...m, estMonthlyCost };
+    return { ...m, estMonthlyCosts };
   });
 
   return c.json({ data });
@@ -148,12 +154,12 @@ function calculateModelCostForWorkload(
 aiModelsRoutes.post("/", async (c) => {
   const prisma = c.get("prisma") as any;
   const body = await c.req.json();
-  const { stage, modelId, label, developer, notes } = body;
-  if (!stage || !modelId || !label || !developer) {
-    return c.json({ error: "stage, modelId, label, and developer are required" }, 400);
+  const { stages, modelId, label, developer, notes } = body;
+  if (!stages || !Array.isArray(stages) || stages.length === 0 || !modelId || !label || !developer) {
+    return c.json({ error: "stages (non-empty array), modelId, label, and developer are required" }, 400);
   }
   const data = await prisma.aiModel.create({
-    data: { stage, modelId, label, developer, notes: notes ?? null },
+    data: { stages, modelId, label, developer, notes: notes ?? null },
     include: { providers: true },
   });
   return c.json({ data }, 201);
@@ -193,6 +199,7 @@ aiModelsRoutes.patch("/:id", async (c) => {
     data: {
       ...("isActive" in body && { isActive: body.isActive }),
       ...("notes" in body && { notes: body.notes }),
+      ...("stages" in body && Array.isArray(body.stages) && { stages: body.stages }),
     },
     include: { providers: true },
   });
@@ -236,15 +243,17 @@ aiModelsRoutes.post("/:id/providers/:providerId/smoke-test", async (c) => {
 
   const providerRow = await prisma.aiModelProvider.findUnique({
     where: { id: providerId },
-    include: { model: { select: { stage: true, modelId: true } } },
+    include: { model: { select: { stages: true, modelId: true } } },
   });
 
   if (!providerRow || providerRow.aiModelId !== modelId) {
     return c.json({ error: "Provider not found" }, 404);
   }
 
+  // Use the first stage to determine the smoke test type
+  const stage = providerRow.model.stages[0];
   const result = await runSmokeTest(
-    providerRow.model.stage,
+    stage,
     providerRow.provider,
     providerRow.providerModelId ?? providerRow.model.modelId,
     c.env

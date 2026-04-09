@@ -29,6 +29,9 @@ vi.mock("../../lib/cron/podcast-discovery", () => ({
   runAppleDiscoveryJob: vi.fn(),
   runPodcastIndexDiscoveryJob: vi.fn(),
 }));
+vi.mock("../../lib/cron/stale-job-reaper", () => ({
+  runStaleJobReaperJob: vi.fn(),
+}));
 
 import { createPrismaClient } from "../../lib/db";
 import { scheduled } from "../index";
@@ -46,15 +49,13 @@ beforeEach(() => {
   mockEvent = { scheduledTime: Date.now(), cron: "*/5 * * * *" } as ScheduledEvent;
   (createPrismaClient as any).mockReturnValue(mockPrisma);
   mockRunJob.mockResolvedValue(undefined);
-  // Migration calls platformConfig.findUnique — return null to skip by default
-  mockPrisma.platformConfig.findUnique.mockResolvedValue(null);
 });
 
 describe("scheduled", () => {
-  it("dispatches all 7 cron jobs via runJob", async () => {
+  it("dispatches all cron jobs via runJob", async () => {
     await scheduled(mockEvent, mockEnv, mockCtx);
 
-    expect(mockRunJob).toHaveBeenCalledTimes(8);
+    expect(mockRunJob).toHaveBeenCalledTimes(10);
     const jobKeys = mockRunJob.mock.calls.map((c: any) => c[0].jobKey);
     expect(jobKeys).toContain("apple-discovery");
     expect(jobKeys).toContain("podcast-index-discovery");
@@ -64,6 +65,8 @@ describe("scheduled", () => {
     expect(jobKeys).toContain("data-retention");
     expect(jobKeys).toContain("recommendations");
     expect(jobKeys).toContain("listen-original-aggregation");
+    expect(jobKeys).toContain("stale-job-reaper");
+    expect(jobKeys).toContain("geo-tagging");
   });
 
   it("passes prisma to each runJob call", async () => {
@@ -74,35 +77,12 @@ describe("scheduled", () => {
     }
   });
 
-  it("migrates legacy config keys when they exist", async () => {
-    // cron.monitoring.lastRunAt does NOT exist, but legacy key DOES
-    mockPrisma.platformConfig.findUnique
-      .mockResolvedValueOnce(null) // cron.monitoring.lastRunAt
-      .mockResolvedValueOnce({ key: "pricing.lastRefreshedAt", value: "2026-01-01T00:00:00Z" })
-      // Remaining migration pair: new key exists or no legacy
-      .mockResolvedValueOnce(null) // cron.recommendations.lastRunAt
-      .mockResolvedValueOnce(null); // recommendations.lastProfileRefresh (no legacy)
-
-    mockPrisma.platformConfig.create.mockResolvedValue({});
-
+  it("does not pass defaultIntervalMinutes — config comes from CronJob table", async () => {
     await scheduled(mockEvent, mockEnv, mockCtx);
 
-    expect(mockPrisma.platformConfig.create).toHaveBeenCalledWith({
-      data: {
-        key: "cron.monitoring.lastRunAt",
-        value: "2026-01-01T00:00:00Z",
-        description: "Migrated from pricing.lastRefreshedAt",
-      },
-    });
-  });
-
-  it("skips migration when new keys already exist", async () => {
-    // All new keys already exist — findUnique returns a record for each
-    mockPrisma.platformConfig.findUnique.mockResolvedValue({ key: "exists", value: "yes" });
-
-    await scheduled(mockEvent, mockEnv, mockCtx);
-
-    expect(mockPrisma.platformConfig.create).not.toHaveBeenCalled();
+    for (const call of mockRunJob.mock.calls) {
+      expect(call[0]).not.toHaveProperty("defaultIntervalMinutes");
+    }
   });
 
   it("continues when runJob rejects (allSettled)", async () => {
@@ -111,7 +91,7 @@ describe("scheduled", () => {
     // Should not throw — Promise.allSettled handles rejections
     await scheduled(mockEvent, mockEnv, mockCtx);
 
-    expect(mockRunJob).toHaveBeenCalledTimes(8);
+    expect(mockRunJob).toHaveBeenCalledTimes(10);
   });
 
   it("disconnects prisma in finally block", async () => {

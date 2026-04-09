@@ -60,14 +60,25 @@ podcasts.use("*", requireAuth);
  */
 podcasts.get("/catalog", async (c) => {
   const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
   const q = c.req.query("q")?.trim();
+  const category = c.req.query("category") || null;
   const page = Math.max(1, parseInt(c.req.query("page") || "1"));
   const pageSize = Math.min(100, Math.max(1, parseInt(c.req.query("pageSize") || "50")));
   const skip = (page - 1) * pageSize;
 
   const sort = c.req.query("sort") || "rank";
+  const explicit = c.req.query("explicit") === "true";
+  // Skip exclusions when user explicitly selected this category
+  const excludedCategories: string[] = explicit ? [] : (user.excludedCategories ?? []);
 
   const where: any = { deliverable: true };
+  if (category) {
+    where.categories = { has: category };
+  }
+  if (excludedCategories.length > 0) {
+    where.NOT = { categories: { hasSome: excludedCategories } };
+  }
   if (q) {
     where.OR = [
       { title: { contains: q, mode: "insensitive" } },
@@ -221,9 +232,9 @@ podcasts.post("/subscribe", async (c) => {
     },
   });
 
-  // Find latest episode and create FeedItem + pipeline request
+  // Find latest deliverable episode and create FeedItem + pipeline request
   const latestEpisode = await prisma.episode.findFirst({
-    where: { podcastId: podcast.id },
+    where: { podcastId: podcast.id, contentStatus: { not: "NOT_DELIVERABLE" } },
     orderBy: { publishedAt: "desc" },
   });
 
@@ -721,6 +732,11 @@ podcasts.get("/:id", async (c) => {
     prisma.episode.count({ where: { podcastId } }),
   ]);
 
+  // Track detail-view timestamp for catalog eviction decisions (non-blocking)
+  c.executionCtx.waitUntil(
+    prisma.podcast.update({ where: { id: podcastId }, data: { lastDetailViewedAt: new Date() } })
+  );
+
   return c.json({
     podcast: {
       id: podcast.id,
@@ -741,7 +757,11 @@ podcasts.get("/:id", async (c) => {
 
 /**
  * GET /:id/episodes — List episodes for a podcast.
- * Returns episodes from the local database, ordered by publish date descending.
+ * Returns episodes from the local database ordered by the requested sort.
+ *
+ * Query params:
+ *   sort    = latest | earliest | for_you | most_blipps | top_rated | shortest | longest (default: latest)
+ *   filter  = 24h | week | month | year | unblipped | listened | unlistened (default: none)
  *
  * @param id - The podcast's database ID
  * @returns Array of episode summaries
@@ -751,15 +771,43 @@ podcasts.get("/:id/episodes", async (c) => {
   const prisma = c.get("prisma") as any;
   const user = await getCurrentUser(c, prisma);
 
+  const sortParam = c.req.query("sort") ?? "latest";
+  const filterParam = c.req.query("filter");
+
   // Verify podcast exists
   await prisma.podcast.findUniqueOrThrow({
     where: { id: podcastId },
   });
 
-  const episodes = await prisma.episode.findMany({
-    where: { podcastId, contentStatus: { not: "NOT_DELIVERABLE" } },
-    orderBy: { publishedAt: "desc" },
-    take: 50,
+  // Build publishedAt date filter
+  const now = new Date();
+  const dateOffsets: Record<string, number> = {
+    "24h": 24 * 60 * 60 * 1000,
+    "week": 7 * 24 * 60 * 60 * 1000,
+    "month": 30 * 24 * 60 * 60 * 1000,
+    "year": 365 * 24 * 60 * 60 * 1000,
+  };
+  const dateGte = filterParam && filterParam in dateOffsets
+    ? new Date(now.getTime() - dateOffsets[filterParam])
+    : undefined;
+
+  // Aggregate sorts (most_blipps, top_rated, for_you) fetch all episodes then re-order in JS
+  const isAggregateSort = ["most_blipps", "top_rated", "for_you"].includes(sortParam);
+  let orderBy: any = { publishedAt: "desc" };
+  if (!isAggregateSort) {
+    if (sortParam === "earliest") orderBy = { publishedAt: "asc" };
+    else if (sortParam === "shortest") orderBy = [{ durationSeconds: "asc" }, { publishedAt: "desc" }];
+    else if (sortParam === "longest") orderBy = [{ durationSeconds: "desc" }, { publishedAt: "desc" }];
+  }
+
+  let episodes: any[] = await prisma.episode.findMany({
+    where: {
+      podcastId,
+      contentStatus: { not: "NOT_DELIVERABLE" },
+      ...(dateGte ? { publishedAt: { gte: dateGte } } : {}),
+    },
+    orderBy,
+    take: 200,
     select: {
       id: true,
       title: true,
@@ -794,11 +842,56 @@ podcasts.get("/:id/episodes", async (c) => {
     }
   }
 
+  // Fetch global blipp counts for all episodes (used for sorting + display)
+  const blippCounts = await prisma.feedItem.groupBy({
+    by: ["episodeId"],
+    where: { episodeId: { in: episodeIds }, status: { not: "CANCELLED" } },
+    _count: { episodeId: true },
+  });
+  const blippCountMap = new Map<string, number>(blippCounts.map((b: any) => [b.episodeId as string, Number(b._count.episodeId)]));
+
+  // Apply aggregate sorts
+  if (isAggregateSort) {
+    if (sortParam === "most_blipps") {
+      episodes.sort((a: any, b: any) =>
+        (blippCountMap.get(b.id) ?? 0) - (blippCountMap.get(a.id) ?? 0)
+      );
+    } else if (sortParam === "top_rated") {
+      const voteTotals = await prisma.episodeVote.groupBy({
+        by: ["episodeId"],
+        where: { episodeId: { in: episodeIds } },
+        _sum: { vote: true },
+      });
+      const netVoteMap = new Map<string, number>(voteTotals.map((v: any) => [v.episodeId as string, Number(v._sum.vote ?? 0)]));
+      episodes.sort((a: any, b: any) =>
+        (netVoteMap.get(b.id) ?? 0) - (netVoteMap.get(a.id) ?? 0)
+      );
+    } else if (sortParam === "for_you") {
+      // Unblipped episodes by this user, ordered by global blipp popularity
+      episodes = episodes
+        .filter((e: any) => !blippMap.has(e.id))
+        .sort((a: any, b: any) => (blippCountMap.get(b.id) ?? 0) - (blippCountMap.get(a.id) ?? 0));
+    }
+  }
+
+  // Apply post-query filters
+  if (filterParam === "unblipped") {
+    episodes = episodes.filter((e: any) => !blippMap.has(e.id));
+  } else if (filterParam === "listened") {
+    episodes = episodes.filter((e: any) => blippMap.get(e.id)?.listened === true);
+  } else if (filterParam === "unlistened") {
+    episodes = episodes.filter((e: any) => {
+      const blipp = blippMap.get(e.id);
+      return blipp && !blipp.listened;
+    });
+  }
+
   return c.json({
     episodes: episodes.map((e: any) => ({
       ...e,
       userVote: voteMap.get(e.id) ?? 0,
       blippStatus: blippMap.get(e.id) ?? null,
+      blippCount: blippCountMap.get(e.id) ?? 0,
     })),
   });
 });

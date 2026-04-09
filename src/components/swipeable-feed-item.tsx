@@ -141,6 +141,7 @@ export function SwipeableFeedItem({
   const directionLockedRef = useRef(false);
   const isHorizontalRef = useRef(false);
   const currentOffsetRef = useRef(0);
+  const baseOffsetRef = useRef(0); // snapped position at gesture start
   const [revealed, setRevealed] = useState<"left" | "right" | null>(null);
   const [removing, setRemoving] = useState(false);
 
@@ -174,6 +175,7 @@ export function SwipeableFeedItem({
       startTimeRef.current = Date.now();
       lastMoveTimeRef.current = Date.now();
       lastMoveXRef.current = e.touches[0].clientX;
+      baseOffsetRef.current = currentOffsetRef.current;
       swipingRef.current = false;
       directionLockedRef.current = false;
       isHorizontalRef.current = false;
@@ -216,8 +218,15 @@ export function SwipeableFeedItem({
     lastMoveTimeRef.current = Date.now();
     lastMoveXRef.current = touchX;
 
-    // Apply rubber-banding past BUTTON_WIDTH
-    const offset = rubberBand(deltaX, BUTTON_WIDTH);
+    // Apply rubber-banding past BUTTON_WIDTH, relative to snapped position.
+    // When closing from a revealed state, clamp at center so the opposite
+    // side's button isn't exposed during the drag.
+    const base = baseOffsetRef.current;
+    let raw = base + deltaX;
+    if (base !== 0 && Math.sign(raw) !== Math.sign(base)) {
+      raw = 0; // clamp at center
+    }
+    const offset = rubberBand(raw, BUTTON_WIDTH);
 
     currentOffsetRef.current = offset;
     const card = cardRef.current;
@@ -243,7 +252,14 @@ export function SwipeableFeedItem({
         timeSinceLastMove > 0 ? dxSinceLastMove / timeSinceLastMove : 0; // px/ms, signed
 
       const distanceThreshold = BUTTON_WIDTH * DISTANCE_SNAP_RATIO;
+
+      // When closing from a revealed state, don't allow snapping to the opposite side.
+      // The user must return to center first, then swipe again to open the other side.
+      const base = baseOffsetRef.current;
+      const crossedCenter = base !== 0 && Math.sign(dx) !== Math.sign(base);
+
       const shouldSnapOpen =
+        !crossedCenter &&
         (Math.abs(dx) >= distanceThreshold || Math.abs(velocity) >= VELOCITY_SNAP_THRESHOLD) &&
         // Velocity must agree with displacement direction (or displacement alone is enough)
         (Math.abs(dx) >= distanceThreshold || Math.sign(velocity) === Math.sign(dx));

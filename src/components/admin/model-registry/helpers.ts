@@ -2,7 +2,7 @@ import { Input } from "@/components/ui/input";
 import type { AiModelProviderEntry } from "@/types/admin";
 import type { AIStage } from "@/lib/ai-models";
 
-export const STAGES: AIStage[] = ["stt", "distillation", "narrative", "tts"];
+export const STAGES: AIStage[] = ["stt", "distillation", "narrative", "tts", "geoClassification"];
 
 export function formatPrice(p: AiModelProviderEntry): string {
   if (p.pricePerMinute != null) return `$${p.pricePerMinute.toFixed(5)}/min`;
@@ -27,6 +27,13 @@ export function formatMonthlyCost(cost: number | null): string {
   if (cost == null) return "\u2014";
   if (cost < 0.01) return "<$0.01/mo";
   return `$${cost.toFixed(2)}/mo`;
+}
+
+/** Determine the primary limit-relevant stage for a multi-stage model */
+export function getLimitStage(stages: string[]): string | null {
+  if (stages.includes("stt")) return "stt";
+  if (stages.includes("tts")) return "tts";
+  return null;
 }
 
 export function buildLimitsPayload(stage: string, limitValue: string): Record<string, unknown> | undefined {

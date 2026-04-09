@@ -210,3 +210,72 @@
 .animate-slide-up {
   animation: slide-up 0.3s ease-out;
 }
+
+/* Mini-player waveform bars */
+@keyframes waveform-pulse {
+  0%, 100% { height: 3px; }
+  50% { height: 11px; }
+}
+.waveform-bar {
+  height: 3px;
+  animation: waveform-pulse 0.75s ease-in-out infinite;
+}
+
+/* Plan card upgrade shimmer on CTA buttons */
+@keyframes plan-shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+.plan-cta-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+.plan-cta-shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    oklch(1 0 0 / 20%) 50%,
+    transparent 100%
+  );
+  animation: plan-shimmer 2.5s ease-in-out infinite;
+}
+
+/* Plan card glow — box-shadow with rgba for broad browser support */
+@keyframes plan-glow-pulse {
+  0%, 100% { box-shadow: var(--glow-shadow-dim); }
+  50% { box-shadow: var(--glow-shadow-bright); }
+}
+
+/* Blue/purple glow for mid-tier upgrade cards */
+.plan-card-glow {
+  --glow-shadow-dim:
+    0 0 10px rgba(90, 80, 220, 0.3),
+    0 0 24px rgba(90, 80, 220, 0.15);
+  --glow-shadow-bright:
+    0 0 16px rgba(100, 90, 240, 0.5),
+    0 0 36px rgba(100, 90, 240, 0.25);
+  animation: plan-glow-pulse 3s ease-in-out infinite;
+}
+
+/* Listening streak glow */
+@keyframes streak-pulse {
+  0%, 100% { filter: drop-shadow(0 0 2px rgba(249, 115, 22, 0.3)); }
+  50% { filter: drop-shadow(0 0 8px rgba(249, 115, 22, 0.6)); }
+}
+.streak-glow {
+  animation: streak-pulse 2s ease-in-out infinite;
+}
+
+/* Golden glow for top-tier upgrade card */
+.plan-card-glow-gold {
+  --glow-shadow-dim:
+    0 0 10px rgba(210, 165, 50, 0.35),
+    0 0 24px rgba(210, 165, 50, 0.15);
+  --glow-shadow-bright:
+    0 0 16px rgba(220, 175, 60, 0.55),
+    0 0 36px rgba(220, 175, 60, 0.3);
+  animation: plan-glow-pulse 3s ease-in-out infinite;
+}

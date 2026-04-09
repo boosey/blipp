@@ -1,5 +1,8 @@
 import { useEffect, useState, useCallback } from "react";
-import { Sun, Moon, Monitor, Download, Trash2, LogOut } from "lucide-react";
+import {
+  Sun, Moon, Monitor, Download, Trash2, LogOut, MapPin,
+  User, Mic, Smartphone, ShieldCheck,
+} from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { useClerk } from "@clerk/clerk-react";
@@ -15,6 +18,9 @@ import { useTheme, type Theme } from "../contexts/theme-context";
 import { usePlan } from "../contexts/plan-context";
 import { useAppConfig } from "../lib/app-config";
 import { StorageSettings } from "../components/storage-settings";
+import { InterestPicker } from "../components/interest-picker";
+import { SportsTeamPicker } from "../components/sports-team-picker";
+import { ScrollableRow } from "../components/scrollable-row";
 import type { DurationTier } from "../lib/duration-tiers";
 import {
   Dialog,
@@ -38,6 +44,15 @@ interface UserInfo {
   defaultDurationTier: number;
   defaultVoicePresetId: string | null;
   acceptAnyVoice: boolean;
+  preferredCategories: string[];
+  excludedCategories: string[];
+  preferredTopics: string[];
+  excludedTopics: string[];
+  profileCompletedAt: string | null;
+  zipCode: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
 }
 
 interface UsageData {
@@ -54,9 +69,19 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   return Uint8Array.from(rawData, (char) => char.charCodeAt(0));
 }
 
+const TABS = [
+  { id: "profile", label: "Profile", icon: User },
+  { id: "content", label: "Content", icon: Mic },
+  { id: "app", label: "App", icon: Smartphone },
+  { id: "account", label: "Account", icon: ShieldCheck },
+] as const;
+
+type TabId = (typeof TABS)[number]["id"];
+
 export function Settings() {
   const apiFetch = useApiFetch();
   const { signOut } = useClerk();
+  const [activeTab, setActiveTab] = useState<TabId>("profile");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushLoading, setPushLoading] = useState(false);
@@ -68,7 +93,6 @@ export function Settings() {
   const { data: userData, loading: userLoading, refetch: refetchUser } = useFetch<{ user: UserInfo }>("/me");
   const { data: usageData, loading: usageLoading, refetch: refetchUsage } = useFetch<{ data: UsageData }>("/me/usage");
 
-  // Re-fetch user/usage when returning from Stripe portal or checkout
   useEffect(() => {
     const onVisible = () => {
       if (document.visibilityState === "visible") {
@@ -79,6 +103,7 @@ export function Settings() {
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, [refetchUser, refetchUsage]);
+
   const planUsage = usePlan();
   const [defaultTier, setDefaultTier] = useState<number | null>(null);
   const [defaultVoicePresetId, setDefaultVoicePresetId] = useState<string | null>(null);
@@ -86,7 +111,6 @@ export function Settings() {
 
   const user = userData?.user ?? null;
 
-  // Sync defaults from user data
   useEffect(() => {
     if (user && defaultTier === null) {
       setDefaultTier(user.defaultDurationTier);
@@ -98,9 +122,9 @@ export function Settings() {
       setAcceptAnyVoice(user.acceptAnyVoice ?? false);
     }
   }, [user, defaultTier, defaultVoicePresetId, acceptAnyVoice]);
+
   const usage = usageData?.data ?? null;
 
-  // Check push state on mount
   useEffect(() => {
     if ("serviceWorker" in navigator && "PushManager" in window) {
       navigator.serviceWorker.ready.then((reg) => {
@@ -228,225 +252,473 @@ export function Settings() {
   }
 
   return (
-    <div className="max-w-lg space-y-8">
-      <h1 className="text-2xl font-bold">Settings</h1>
+    <div className="max-w-lg">
+      <h1 className="text-2xl font-bold mb-1">Settings</h1>
 
+      {/* Sticky tab bar */}
+      <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
+
+      {/* Tab panels */}
+      <div className="space-y-6 pt-1">
+        {activeTab === "profile" && (
+          <ProfileTab
+            user={user}
+            userLoading={userLoading}
+            usage={usage}
+            usageLoading={usageLoading}
+            actionLoading={actionLoading}
+            onUpgrade={handleUpgrade}
+            onManage={handleManage}
+          />
+        )}
+        {activeTab === "content" && (
+          <ContentTab
+            user={user}
+            defaultTier={defaultTier}
+            setDefaultTier={setDefaultTier}
+            defaultVoicePresetId={defaultVoicePresetId}
+            setDefaultVoicePresetId={setDefaultVoicePresetId}
+            acceptAnyVoice={acceptAnyVoice}
+            setAcceptAnyVoice={setAcceptAnyVoice}
+            maxDurationMinutes={planUsage.maxDurationMinutes}
+            apiFetch={apiFetch}
+            refetchUser={refetchUser}
+          />
+        )}
+        {activeTab === "app" && (
+          <AppTab
+            pushEnabled={pushEnabled}
+            pushLoading={pushLoading}
+            onTogglePush={togglePush}
+          />
+        )}
+        {activeTab === "account" && (
+          <AccountTab
+            exportLoading={exportLoading}
+            onExport={handleExport}
+            onDeleteOpen={() => setDeleteOpen(true)}
+            onSignOut={async () => {
+              if (Capacitor.isNativePlatform()) {
+                try {
+                  const SocialLogin: any = registerPlugin("SocialLogin");
+                  await SocialLogin.logout({ provider: "google" });
+                } catch (e) {
+                  // Ignore — may not be signed in via Google
+                }
+              }
+              signOut({ redirectUrl: "/" });
+            }}
+          />
+        )}
+      </div>
+
+      {/* Delete account dialog (always mounted for state preservation) */}
+      <Dialog open={deleteOpen} onOpenChange={(open) => { setDeleteOpen(open); if (!open) setDeleteConfirm(""); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Account</DialogTitle>
+            <DialogDescription>
+              This action is permanent and cannot be undone. All your data, briefings,
+              and subscriptions will be permanently deleted.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">
+              Type <span className="font-mono font-bold">DELETE</span> to confirm
+            </label>
+            <input
+              type="text"
+              value={deleteConfirm}
+              onChange={(e) => setDeleteConfirm(e.target.value)}
+              placeholder="DELETE"
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+            />
+          </div>
+          <DialogFooter>
+            <button
+              onClick={() => { setDeleteOpen(false); setDeleteConfirm(""); }}
+              className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-muted transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleDeleteAccount}
+              disabled={deleteConfirm !== "DELETE" || deleteLoading}
+              className="px-4 py-2 text-sm rounded-lg bg-red-600 text-white hover:bg-red-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {deleteLoading ? "Deleting..." : "Delete My Account"}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+/* ─── Profile Tab ─────────────────────────────────────────── */
+
+function ProfileTab({
+  user,
+  userLoading,
+  usage,
+  usageLoading,
+  actionLoading,
+  onUpgrade,
+  onManage,
+}: {
+  user: UserInfo | null;
+  userLoading: boolean;
+  usage: UsageData | null;
+  usageLoading: boolean;
+  actionLoading: string | null;
+  onUpgrade: (p: PlanDetail) => void;
+  onManage: () => void;
+}) {
+  return (
+    <>
       {/* Account */}
-      <section className="space-y-4">
-        <h2 className="text-lg font-semibold">Account</h2>
-        <div className="bg-card border border-border rounded-xl p-4">
-          {userLoading ? (
-            <div className="flex items-center gap-3">
-              <Skeleton className="w-12 h-12 rounded-full" />
-              <div className="space-y-2">
-                <Skeleton className="h-4 w-32" />
-                <Skeleton className="h-3 w-48" />
-              </div>
+      <SettingsGroup title="Account">
+        {userLoading ? (
+          <div className="flex items-center gap-3">
+            <Skeleton className="w-12 h-12 rounded-full" />
+            <div className="space-y-2">
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="h-3 w-48" />
             </div>
-          ) : user ? (
-            <div className="flex items-center gap-3">
-              {user.imageUrl ? (
-                <img
-                  src={user.imageUrl}
-                  alt={user.name ?? "Avatar"}
-                  className="w-12 h-12 rounded-full object-cover"
-                />
-              ) : (
-                <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center text-muted-foreground text-lg font-semibold">
-                  {(user.name ?? user.email)?.[0]?.toUpperCase() ?? "?"}
-                </div>
-              )}
-              <div>
-                <p className="font-bold">{user.name ?? "Blipp User"}</p>
-                <p className="text-sm text-muted-foreground">{user.email}</p>
+          </div>
+        ) : user ? (
+          <div className="flex items-center gap-3">
+            {user.imageUrl ? (
+              <img
+                src={user.imageUrl}
+                alt={user.name ?? "Avatar"}
+                className="w-12 h-12 rounded-full object-cover"
+              />
+            ) : (
+              <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center text-muted-foreground text-lg font-semibold">
+                {(user.name ?? user.email)?.[0]?.toUpperCase() ?? "?"}
               </div>
+            )}
+            <div>
+              <p className="font-bold">{user.name ?? "Blipp User"}</p>
+              <p className="text-sm text-muted-foreground">{user.email}</p>
             </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">Failed to load account info</p>
-          )}
-        </div>
-      </section>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">Failed to load account info</p>
+        )}
+      </SettingsGroup>
 
       {/* Usage */}
-      <section className="space-y-4">
-        <h2 className="text-lg font-semibold">Usage</h2>
-        <div className="bg-card border border-border rounded-xl p-4 space-y-4">
-          {usageLoading ? (
-            <div className="space-y-3">
-              <Skeleton className="h-4 w-40" />
-              <Skeleton className="h-2 w-full rounded-full" />
-              <Skeleton className="h-4 w-40" />
-              <Skeleton className="h-2 w-full rounded-full" />
-            </div>
-          ) : usage ? (
-            <>
-              <UsageMeter
-                label="Briefings"
-                used={usage.briefingsUsed}
-                limit={usage.briefingsLimit}
-              />
-              <UsageMeter
-                label="Subscriptions"
-                used={usage.subscriptionsUsed}
-                limit={usage.subscriptionsLimit}
-              />
-            </>
-          ) : (
-            <p className="text-sm text-muted-foreground">Failed to load usage data</p>
-          )}
-        </div>
-      </section>
+      <SettingsGroup title="Usage">
+        {usageLoading ? (
+          <div className="space-y-3">
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="h-2 w-full rounded-full" />
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="h-2 w-full rounded-full" />
+          </div>
+        ) : usage ? (
+          <div className="space-y-4">
+            <UsageMeter label="Briefings" used={usage.briefingsUsed} limit={usage.briefingsLimit} />
+            <UsageMeter label="Subscriptions" used={usage.subscriptionsUsed} limit={usage.subscriptionsLimit} />
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">Failed to load usage data</p>
+        )}
+      </SettingsGroup>
 
       {/* Plans */}
-      <section className="space-y-4">
-        <h2 className="text-lg font-semibold">Plans</h2>
+      <section className="space-y-3">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground px-1">Plans</h2>
         {!user ? (
           <Skeleton className="h-32 w-full" />
         ) : (
           <PlanComparison
             currentPlanSlug={user.plan.slug}
             subscriptionEndsAt={user.subscriptionEndsAt}
-            onUpgrade={handleUpgrade}
-            onManage={handleManage}
+            onUpgrade={onUpgrade}
+            onManage={onManage}
             actionLoading={actionLoading}
           />
         )}
       </section>
+    </>
+  );
+}
 
-      {/* Appearance */}
-      <section className="space-y-4">
-        <h2 className="text-lg font-semibold">Appearance</h2>
-        <ThemeSelector />
-      </section>
+/* ─── Content Tab ─────────────────────────────────────────── */
 
-      {/* App Config */}
-      <AppConfigSection />
-
-      {/* Push Notifications */}
-      <section className="space-y-4">
-        <h2 className="text-lg font-semibold">Notifications</h2>
-        <div className="bg-card border border-border rounded-xl p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-medium">Push Notifications</h3>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Get notified when briefings are ready
-              </p>
-            </div>
-            <button
-              onClick={togglePush}
-              disabled={pushLoading}
-              className={`relative w-11 h-6 rounded-full transition-colors ${pushEnabled ? "bg-primary" : "bg-muted"}`}
-            >
-              <span
-                className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full transition-transform ${pushEnabled ? "translate-x-5 bg-primary-foreground" : "bg-muted-foreground"}`}
-              />
-            </button>
-          </div>
-        </div>
-      </section>
-
-      {/* Storage & Downloads */}
-      <StorageSettings />
-
-      {/* Default Blipp Duration */}
-      <section className="space-y-4">
-        <h2 className="text-lg font-semibold">Default Blipp Duration</h2>
-        <div className="bg-card border border-border rounded-xl p-4 space-y-2">
-          <p className="text-xs text-muted-foreground">
-            Tap a duration to set your default. The Blipp button will use this length.
-          </p>
-          <TierPicker
-            selected={(defaultTier ?? 5) as DurationTier}
-            onSelect={async (tier) => {
-              const prev = defaultTier;
-              setDefaultTier(tier);
-              try {
-                await apiFetch("/me/preferences", {
-                  method: "PATCH",
-                  body: JSON.stringify({ defaultDurationTier: tier }),
-                });
-                toast.success(`Default duration set to ${tier} minutes`);
-              } catch {
-                setDefaultTier(prev);
-                toast.error("Failed to update preference");
-              }
-            }}
-            maxDurationMinutes={planUsage.maxDurationMinutes}
-          />
-        </div>
-      </section>
+function ContentTab({
+  user,
+  defaultTier,
+  setDefaultTier,
+  defaultVoicePresetId,
+  setDefaultVoicePresetId,
+  acceptAnyVoice,
+  setAcceptAnyVoice,
+  maxDurationMinutes,
+  apiFetch,
+  refetchUser,
+}: {
+  user: UserInfo | null;
+  defaultTier: number | null;
+  setDefaultTier: (v: number | null) => void;
+  defaultVoicePresetId: string | null;
+  setDefaultVoicePresetId: (v: string | null) => void;
+  acceptAnyVoice: boolean | null;
+  setAcceptAnyVoice: (v: boolean | null) => void;
+  maxDurationMinutes: number;
+  apiFetch: ReturnType<typeof useApiFetch>;
+  refetchUser: () => void;
+}) {
+  return (
+    <>
+      {/* Default Duration */}
+      <SettingsGroup title="Default Blipp Duration">
+        <p className="text-xs text-muted-foreground mb-2">
+          Tap a duration to set your default. The Blipp button will use this length.
+        </p>
+        <TierPicker
+          selected={(defaultTier ?? 5) as DurationTier}
+          onSelect={async (tier) => {
+            const prev = defaultTier;
+            setDefaultTier(tier);
+            try {
+              await apiFetch("/me/preferences", {
+                method: "PATCH",
+                body: JSON.stringify({ defaultDurationTier: tier }),
+              });
+              toast.success(`Default duration set to ${tier} minutes`);
+            } catch {
+              setDefaultTier(prev);
+              toast.error("Failed to update preference");
+            }
+          }}
+          maxDurationMinutes={maxDurationMinutes}
+        />
+      </SettingsGroup>
 
       {/* Default Voice */}
-      <section className="space-y-4">
-        <h2 className="text-lg font-semibold">Default Voice</h2>
-        <div className="bg-card border border-border rounded-xl p-4 space-y-2">
-          <p className="text-xs text-muted-foreground">
-            Choose the default voice style for your briefings.
-          </p>
-          <VoicePresetPicker
-            selected={defaultVoicePresetId}
-            onSelect={async (presetId) => {
-              const prev = defaultVoicePresetId;
-              setDefaultVoicePresetId(presetId);
-              try {
-                await apiFetch("/me/preferences", {
-                  method: "PATCH",
-                  body: JSON.stringify({ defaultVoicePresetId: presetId }),
-                });
-                toast.success("Default voice updated");
-              } catch {
-                setDefaultVoicePresetId(prev);
-                toast.error("Failed to update preference");
-              }
-            }}
+      <SettingsGroup title="Default Voice">
+        <p className="text-xs text-muted-foreground mb-2">
+          Choose the default voice style for your briefings.
+        </p>
+        <VoicePresetPicker
+          selected={defaultVoicePresetId}
+          onSelect={async (presetId) => {
+            const prev = defaultVoicePresetId;
+            setDefaultVoicePresetId(presetId);
+            try {
+              await apiFetch("/me/preferences", {
+                method: "PATCH",
+                body: JSON.stringify({ defaultVoicePresetId: presetId }),
+              });
+              toast.success("Default voice updated");
+            } catch {
+              setDefaultVoicePresetId(prev);
+              toast.error("Failed to update preference");
+            }
+          }}
+        />
+      </SettingsGroup>
+
+      {/* Voice Delivery */}
+      <SettingsGroup title="Voice Delivery">
+        <ToggleRow
+          label="Accept any available voice"
+          description="Get briefings faster by accepting any cached voice instead of waiting for your preferred one"
+          checked={!!acceptAnyVoice}
+          onToggle={async () => {
+            const prev = acceptAnyVoice;
+            const next = !prev;
+            setAcceptAnyVoice(next);
+            try {
+              await apiFetch("/me/preferences", {
+                method: "PATCH",
+                body: JSON.stringify({ acceptAnyVoice: next }),
+              });
+              toast.success(next ? "Voice bypass enabled" : "Voice bypass disabled");
+            } catch {
+              setAcceptAnyVoice(prev);
+              toast.error("Failed to update preference");
+            }
+          }}
+        />
+      </SettingsGroup>
+
+      {/* Interests */}
+      {user && (
+        <SettingsGroup title="Your Interests">
+          <OptimisticInterestPicker user={user} apiFetch={apiFetch} refetchUser={refetchUser} />
+        </SettingsGroup>
+      )}
+
+      {/* Location */}
+      <SettingsGroup title="Location">
+        <p className="text-xs text-muted-foreground mb-3">
+          Enter your zip code for local sports and podcast recommendations.
+        </p>
+        <ZipCodeInput user={user} apiFetch={apiFetch} refetchUser={refetchUser} />
+      </SettingsGroup>
+
+      {/* Sports Teams */}
+      <SettingsGroup title="Sports Teams">
+        <p className="text-xs text-muted-foreground mb-3">
+          Follow teams to boost related podcast recommendations.
+        </p>
+        <SportsTeamPicker />
+      </SettingsGroup>
+    </>
+  );
+}
+
+/* ─── Zip Code Input ─────────────────────────────────────── */
+
+function ZipCodeInput({
+  user,
+  apiFetch,
+  refetchUser,
+}: {
+  user: UserInfo | null;
+  apiFetch: ReturnType<typeof useApiFetch>;
+  refetchUser: () => void;
+}) {
+  const [zip, setZip] = useState(user?.zipCode ?? "");
+  const [saving, setSaving] = useState(false);
+
+  const handleBlur = async () => {
+    // Only submit if it's a valid 5-digit zip and different from current
+    if (!/^\d{5}$/.test(zip)) return;
+    if (zip === user?.zipCode) return;
+
+    setSaving(true);
+    try {
+      await apiFetch("/me/preferences", {
+        method: "PATCH",
+        body: JSON.stringify({ zipCode: zip }),
+      });
+      toast.success("Location updated");
+      refetchUser();
+    } catch {
+      toast.error("Invalid zip code");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleClear = async () => {
+    setSaving(true);
+    try {
+      await apiFetch("/me/preferences", {
+        method: "PATCH",
+        body: JSON.stringify({ zipCode: null }),
+      });
+      setZip("");
+      toast.success("Location cleared");
+      refetchUser();
+    } catch {
+      toast.error("Failed to clear location");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="relative flex gap-2">
+        <div className="relative flex-1">
+          <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+          <input
+            type="text"
+            inputMode="numeric"
+            maxLength={5}
+            placeholder="Enter zip code"
+            value={zip}
+            onChange={(e) => setZip(e.target.value.replace(/\D/g, "").slice(0, 5))}
+            onBlur={handleBlur}
+            onKeyDown={(e) => { if (e.key === "Enter") handleBlur(); }}
+            disabled={saving}
+            className="w-full pl-9 pr-3 py-2 rounded-lg border border-border bg-background text-sm"
           />
         </div>
-      </section>
-
-      {/* Voice Bypass */}
-      <section className="space-y-4">
-        <h2 className="text-lg font-semibold">Voice Delivery</h2>
-        <div className="bg-card border border-border rounded-xl p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-medium">Accept any available voice</h3>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Get briefings faster by accepting any cached voice instead of waiting for your preferred one
-              </p>
-            </div>
-            <button
-              onClick={async () => {
-                const prev = acceptAnyVoice;
-                const next = !prev;
-                setAcceptAnyVoice(next);
-                try {
-                  await apiFetch("/me/preferences", {
-                    method: "PATCH",
-                    body: JSON.stringify({ acceptAnyVoice: next }),
-                  });
-                  toast.success(next ? "Voice bypass enabled" : "Voice bypass disabled");
-                } catch {
-                  setAcceptAnyVoice(prev);
-                  toast.error("Failed to update preference");
-                }
-              }}
-              className={`relative w-11 h-6 rounded-full transition-colors ${acceptAnyVoice ? "bg-primary" : "bg-muted"}`}
-            >
-              <span
-                className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full transition-transform ${acceptAnyVoice ? "translate-x-5 bg-primary-foreground" : "bg-muted-foreground"}`}
-              />
-            </button>
-          </div>
-        </div>
-      </section>
-
-      {/* Data & Privacy */}
-      <section className="space-y-4">
-        <h2 className="text-lg font-semibold">Data & Privacy</h2>
-        <div className="bg-card border border-border rounded-xl p-4 space-y-3">
+        {user?.zipCode && (
           <button
-            onClick={handleExport}
+            onClick={handleClear}
+            disabled={saving}
+            className="px-3 py-2 rounded-lg border border-border bg-background text-sm text-muted-foreground hover:text-foreground"
+          >
+            Clear
+          </button>
+        )}
+      </div>
+      {user?.city && user?.state && (
+        <p className="text-xs text-muted-foreground pl-1">
+          {user.city}, {user.state}{user.country && user.country !== "US" ? `, ${user.country}` : ""}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/* ─── App Tab ─────────────────────────────────────────────── */
+
+function AppTab({
+  pushEnabled,
+  pushLoading,
+  onTogglePush,
+}: {
+  pushEnabled: boolean;
+  pushLoading: boolean;
+  onTogglePush: () => void;
+}) {
+  return (
+    <>
+      {/* Appearance */}
+      <SettingsGroup title="Appearance">
+        <ThemeSelector />
+      </SettingsGroup>
+
+      {/* Card Artwork */}
+      <AppConfigSection />
+
+      {/* Notifications */}
+      <SettingsGroup title="Notifications">
+        <ToggleRow
+          label="Push Notifications"
+          description="Get notified when briefings are ready"
+          checked={pushEnabled}
+          disabled={pushLoading}
+          onToggle={onTogglePush}
+        />
+      </SettingsGroup>
+
+      {/* Storage */}
+      <StorageSettings />
+    </>
+  );
+}
+
+/* ─── Account Tab ─────────────────────────────────────────── */
+
+function AccountTab({
+  exportLoading,
+  onExport,
+  onDeleteOpen,
+  onSignOut,
+}: {
+  exportLoading: boolean;
+  onExport: () => void;
+  onDeleteOpen: () => void;
+  onSignOut: () => void;
+}) {
+  return (
+    <>
+      {/* Data & Privacy */}
+      <SettingsGroup title="Data & Privacy">
+        <div className="space-y-3">
+          <button
+            onClick={onExport}
             disabled={exportLoading}
             className="flex items-center gap-2 text-sm text-foreground hover:text-foreground/80 transition-colors disabled:opacity-50"
           >
@@ -455,58 +727,18 @@ export function Settings() {
           </button>
           <div className="border-t border-border" />
           <button
-            onClick={() => setDeleteOpen(true)}
+            onClick={onDeleteOpen}
             className="flex items-center gap-2 text-sm text-red-500 hover:text-red-400 transition-colors"
           >
             <Trash2 className="w-4 h-4" />
             Delete Account
           </button>
         </div>
-
-        <Dialog open={deleteOpen} onOpenChange={(open) => { setDeleteOpen(open); if (!open) setDeleteConfirm(""); }}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Delete Account</DialogTitle>
-              <DialogDescription>
-                This action is permanent and cannot be undone. All your data, briefings,
-                and subscriptions will be permanently deleted.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">
-                Type <span className="font-mono font-bold">DELETE</span> to confirm
-              </label>
-              <input
-                type="text"
-                value={deleteConfirm}
-                onChange={(e) => setDeleteConfirm(e.target.value)}
-                placeholder="DELETE"
-                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-              />
-            </div>
-            <DialogFooter>
-              <button
-                onClick={() => { setDeleteOpen(false); setDeleteConfirm(""); }}
-                className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-muted transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleDeleteAccount}
-                disabled={deleteConfirm !== "DELETE" || deleteLoading}
-                className="px-4 py-2 text-sm rounded-lg bg-red-600 text-white hover:bg-red-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {deleteLoading ? "Deleting..." : "Delete My Account"}
-              </button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </section>
+      </SettingsGroup>
 
       {/* About */}
-      <section className="space-y-4">
-        <h2 className="text-lg font-semibold">About</h2>
-        <div className="bg-card border border-border rounded-xl p-4 space-y-3">
+      <SettingsGroup title="About">
+        <div className="space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">Version</span>
             <span className="text-sm font-mono">{__APP_VERSION__}</span>
@@ -525,29 +757,141 @@ export function Settings() {
             Privacy Policy
           </Link>
         </div>
-      </section>
+      </SettingsGroup>
 
       {/* Sign Out */}
       <section>
         <button
-          onClick={async () => {
-            // Sign out of native social login providers on mobile
-            if (Capacitor.isNativePlatform()) {
-              try {
-                const SocialLogin: any = registerPlugin("SocialLogin");
-                await SocialLogin.logout({ provider: "google" });
-              } catch (e) {
-                // Ignore — may not be signed in via Google
-              }
-            }
-            signOut({ redirectUrl: "/" });
-          }}
+          onClick={onSignOut}
           className="w-full bg-card border border-border rounded-xl p-4 text-red-500 hover:text-red-400 font-medium transition-colors flex items-center justify-center gap-2"
         >
           <LogOut className="w-4 h-4" />
           Sign Out
         </button>
       </section>
+    </>
+  );
+}
+
+/* ─── Shared Components ───────────────────────────────────── */
+
+function OptimisticInterestPicker({
+  user,
+  apiFetch,
+  refetchUser,
+}: {
+  user: UserInfo;
+  apiFetch: ReturnType<typeof useApiFetch>;
+  refetchUser: () => void;
+}) {
+  const [interests, setInterests] = useState({
+    preferredCategories: user.preferredCategories ?? [],
+    excludedCategories: user.excludedCategories ?? [],
+    preferredTopics: user.preferredTopics ?? [],
+    excludedTopics: user.excludedTopics ?? [],
+  });
+
+  // Sync from server when user data changes (e.g. after refetch from another tab)
+  const userKey = JSON.stringify([
+    user.preferredCategories,
+    user.excludedCategories,
+    user.preferredTopics,
+    user.excludedTopics,
+  ]);
+  useEffect(() => {
+    setInterests({
+      preferredCategories: user.preferredCategories ?? [],
+      excludedCategories: user.excludedCategories ?? [],
+      preferredTopics: user.preferredTopics ?? [],
+      excludedTopics: user.excludedTopics ?? [],
+    });
+  }, [userKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <InterestPicker
+      {...interests}
+      onChange={async (prefs) => {
+        const prev = interests;
+        setInterests(prefs);
+        try {
+          await apiFetch("/me/preferences", {
+            method: "PATCH",
+            body: JSON.stringify(prefs),
+          });
+          refetchUser();
+        } catch {
+          setInterests(prev);
+          toast.error("Failed to update interests");
+        }
+      }}
+    />
+  );
+}
+
+function TabBar({ activeTab, onTabChange }: { activeTab: TabId; onTabChange: (id: TabId) => void }) {
+  return (
+    <div className="sticky top-0 z-10 -mx-4 px-4 pt-2 pb-3 bg-background">
+      <ScrollableRow className="gap-1">
+        {TABS.map(({ id, label, icon: Icon }) => (
+          <button
+            key={id}
+            role="tab"
+            aria-selected={activeTab === id}
+            onClick={() => onTabChange(id)}
+            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all shrink-0 ${
+              activeTab === id
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground"
+            }`}
+          >
+            <Icon className="w-3.5 h-3.5" />
+            {label}
+          </button>
+        ))}
+      </ScrollableRow>
+    </div>
+  );
+}
+
+function SettingsGroup({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="space-y-3">
+      <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground px-1">{title}</h2>
+      <div className="bg-card border border-border rounded-xl p-4">
+        {children}
+      </div>
+    </section>
+  );
+}
+
+function ToggleRow({
+  label,
+  description,
+  checked,
+  disabled,
+  onToggle,
+}: {
+  label: string;
+  description: string;
+  checked: boolean;
+  disabled?: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <div className="min-w-0">
+        <h3 className="text-sm font-medium">{label}</h3>
+        <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
+      </div>
+      <button
+        onClick={onToggle}
+        disabled={disabled}
+        className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${checked ? "bg-primary" : "bg-muted"}`}
+      >
+        <span
+          className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full transition-transform ${checked ? "translate-x-5 bg-primary-foreground" : "bg-muted-foreground"}`}
+        />
+      </button>
     </div>
   );
 }
@@ -586,43 +930,35 @@ function UsageMeter({
 }
 
 const ARTWORK_SIZES: { value: number; label: string }[] = [
-  { value: 100, label: "XS" },
-  { value: 120, label: "S" },
-  { value: 140, label: "M" },
-  { value: 160, label: "L" },
-  { value: 180, label: "XL" },
+  { value: 100, label: "S" },
+  { value: 120, label: "M" },
+  { value: 140, label: "L" },
 ];
 
 function AppConfigSection() {
   const [config, updateConfig] = useAppConfig();
 
   return (
-    <section className="space-y-4">
-      <h2 className="text-lg font-semibold">App Config</h2>
-      <div className="bg-card border border-border rounded-xl p-4 space-y-3">
-        <div>
-          <h3 className="text-sm font-medium">Card Artwork Size</h3>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Adjust the artwork size on podcast and episode cards.
-          </p>
-        </div>
-        <div className="flex gap-2">
-          {ARTWORK_SIZES.map(({ value, label }) => (
-            <button
-              key={value}
-              onClick={() => updateConfig({ artworkSize: value })}
-              className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
-                config.artworkSize === value
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-muted text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+    <SettingsGroup title="Card Artwork Size">
+      <p className="text-xs text-muted-foreground mb-2">
+        Adjust the artwork size on podcast and episode cards.
+      </p>
+      <div className="flex gap-2">
+        {ARTWORK_SIZES.map(({ value, label }) => (
+          <button
+            key={value}
+            onClick={() => updateConfig({ artworkSize: value })}
+            className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
+              config.artworkSize === value
+                ? "bg-primary text-primary-foreground"
+                : "bg-muted text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
       </div>
-    </section>
+    </SettingsGroup>
   );
 }
 
@@ -636,23 +972,21 @@ function ThemeSelector() {
   const { theme, setTheme } = useTheme();
 
   return (
-    <div className="bg-card border border-border rounded-xl p-4">
-      <div className="flex gap-2">
-        {themeOptions.map(({ value, label, icon: Icon }) => (
-          <button
-            key={value}
-            onClick={() => setTheme(value)}
-            className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-medium transition-colors ${
-              theme === value
-                ? "bg-primary text-primary-foreground"
-                : "bg-muted text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <Icon className="w-4 h-4" />
-            {label}
-          </button>
-        ))}
-      </div>
+    <div className="flex gap-2">
+      {themeOptions.map(({ value, label, icon: Icon }) => (
+        <button
+          key={value}
+          onClick={() => setTheme(value)}
+          className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-medium transition-colors ${
+            theme === value
+              ? "bg-primary text-primary-foreground"
+              : "bg-muted text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <Icon className="w-4 h-4" />
+          {label}
+        </button>
+      ))}
     </div>
   );
 }

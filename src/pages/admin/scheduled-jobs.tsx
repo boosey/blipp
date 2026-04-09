@@ -20,6 +20,7 @@ export default function ScheduledJobs() {
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [localJobs, setLocalJobs] = useState<CronJob[]>([]);
   const [saving, setSaving] = useState<string | null>(null);
+  const [triggering, setTriggering] = useState(false);
   const adminFetch = useAdminFetch();
 
   // Platform config entries for job-specific settings
@@ -67,6 +68,19 @@ export default function ScheduledJobs() {
     { enabled: !!selectedKey }
   );
   const runs = runsData?.data ?? [];
+
+  async function trigger(jobKey: string) {
+    setTriggering(true);
+    try {
+      await adminFetch(`/cron-jobs/${jobKey}/trigger`, { method: "POST" });
+      // Clear lastRunAt in local state so UI reflects "pending"
+      setLocalJobs((prev) =>
+        prev.map((j) => (j.jobKey === jobKey ? { ...j, lastRunAt: null } : j))
+      );
+    } finally {
+      setTriggering(false);
+    }
+  }
 
   async function patch(jobKey: string, update: { enabled?: boolean; intervalMinutes?: number }) {
     const key = Object.keys(update)[0]!;
@@ -149,6 +163,8 @@ export default function ScheduledJobs() {
             configEntries={configEntries}
             onPatch={patch}
             onPatchConfig={patchConfig}
+            onTrigger={trigger}
+            triggering={triggering}
           />
         ) : (
           <div className="flex items-center justify-center flex-1">

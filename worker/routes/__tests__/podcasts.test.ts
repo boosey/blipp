@@ -92,6 +92,17 @@ describe("Podcast Routes", () => {
       clerkId: "user_test123",
       plan: { maxDurationMinutes: 15, maxPodcastSubscriptions: null },
     });
+
+    // Mock getCurrentUser lookup (used by catalog endpoint)
+    mockPrisma.user.findUniqueOrThrow.mockResolvedValue({
+      id: "usr_1",
+      clerkId: "user_test123",
+      status: "active",
+      excludedCategories: [],
+      excludedTopics: [],
+      preferredCategories: [],
+      preferredTopics: [],
+    });
   });
 
   describe("GET /podcasts/catalog", () => {

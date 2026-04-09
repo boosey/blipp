@@ -17,6 +17,15 @@ interface CuratedRow {
   items: any[];
 }
 
+// Categories where local podcasts naturally have fewer listeners but high relevance
+const LOCAL_BIASED_CATEGORIES = new Set([
+  "Sports",
+  "News",
+  "Government",
+  "Politics",
+  "Society & Culture",
+]);
+
 /** Cap episodes per podcast and interleave for diversity. */
 function diversifyEpisodes(episodes: any[], maxPerPodcast = 2, limit = 15): any[] {
   const byPodcast = new Map<string, any[]>();
@@ -46,15 +55,75 @@ function diversifyEpisodes(episodes: any[], maxPerPodcast = 2, limit = 15): any[
   return result;
 }
 
+/**
+ * Apply a soft locality boost to episode results when browsing a category
+ * with natural locality bias (Sports, News, etc.). Local pods have fewer
+ * listeners nationally but are highly relevant to the user's area.
+ *
+ * Episodes get a base score from their original rank position, then local
+ * pods receive an additive boost scaled by geo confidence. This lifts them
+ * in the list without forcing them to the top.
+ */
+function applyLocalBoost(
+  episodes: any[],
+  geoProfileMap: Map<string, number>, // podcastId → confidence (0-1)
+  boostWeight = 0.20,
+): any[] {
+  if (geoProfileMap.size === 0 || episodes.length === 0) return episodes;
+
+  const scored = episodes.map((ep, idx) => {
+    const pid = ep.podcast?.id ?? ep.podcastId;
+    // Base score: 1.0 for first, linearly decreasing
+    const baseScore = 1.0 - idx / episodes.length;
+    const geoConfidence = geoProfileMap.get(pid) ?? 0;
+    const boost = boostWeight * geoConfidence;
+    return { ep, score: baseScore + boost };
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+  return scored.map((s) => s.ep);
+}
+
 // --- Curated rows helper ---
 
 async function generateCuratedRows(
-  userId: string,
+  user: any,
   prisma: any,
-  genre: string | null
+  genre: string | null,
+  explicit = false
 ): Promise<CuratedRow[]> {
   const rows: CuratedRow[] = [];
   const fourteenDaysAgo = new Date(Date.now() - 14 * 86400000);
+  const userId = user.id;
+
+  // User preference exclusions — skip when user explicitly selected this genre
+  const userExcludedCategories: string[] = explicit ? [] : (user.excludedCategories ?? []);
+  const userExcludedTopics: string[] = explicit ? [] : (user.excludedTopics ?? []);
+  const excludedTopicSet = new Set(userExcludedTopics.map((t: string) => t.toLowerCase()));
+
+  // Load geo profiles for locality boost when browsing locality-biased categories
+  let geoProfileMap = new Map<string, number>();
+  const applyLocality = genre != null && LOCAL_BIASED_CATEGORIES.has(genre) && user.city && user.state;
+  if (applyLocality) {
+    const [cityProfiles, stateProfiles] = await Promise.all([
+      prisma.podcastGeoProfile.findMany({
+        where: { city: user.city, state: user.state },
+        select: { podcastId: true, confidence: true },
+      }),
+      prisma.podcastGeoProfile.findMany({
+        where: { state: user.state, NOT: { city: user.city } },
+        select: { podcastId: true, confidence: true },
+      }),
+    ]);
+    for (const gp of cityProfiles) {
+      const existing = geoProfileMap.get(gp.podcastId) || 0;
+      geoProfileMap.set(gp.podcastId, Math.max(existing, gp.confidence));
+    }
+    for (const gp of stateProfiles) {
+      const existing = geoProfileMap.get(gp.podcastId) || 0;
+      geoProfileMap.set(gp.podcastId, Math.max(existing, gp.confidence * 0.4));
+    }
+  }
 
   // Get user's subscribed + downvoted podcast IDs to exclude from discovery rows
   const [subscriptions, downvotes] = await Promise.all([
@@ -73,12 +142,19 @@ async function generateCuratedRows(
 
   // Row 1: "Trending in {genre}" or "Trending Now"
   {
+    const podcastWhere: any = {
+      id: { notIn: [...excludeIds] },
+      deliverable: true,
+      ...(genre ? { categories: { has: genre } } : {}),
+    };
+    // Filter out podcasts in user's excluded categories
+    if (userExcludedCategories.length > 0) {
+      podcastWhere.NOT = { categories: { hasSome: userExcludedCategories } };
+    }
     const where: any = {
       publishedAt: { not: null, gte: fourteenDaysAgo },
-      podcast: {
-        id: { notIn: [...excludeIds] },
-        ...(genre ? { categories: { has: genre } } : {}),
-      },
+      contentStatus: { not: "NOT_DELIVERABLE" },
+      podcast: podcastWhere,
     };
     const rawEpisodes = await prisma.episode.findMany({
       where,
@@ -93,7 +169,13 @@ async function generateCuratedRows(
         podcast: { select: { id: true, title: true, author: true, imageUrl: true, categories: true } },
       },
     });
-    const episodes = diversifyEpisodes(rawEpisodes, 2, 15);
+    // Post-filter episodes with excluded topics
+    let filtered = excludedTopicSet.size > 0
+      ? rawEpisodes.filter((ep: any) => !(ep.topicTags ?? []).some((t: string) => excludedTopicSet.has(t.toLowerCase())))
+      : rawEpisodes;
+    // Boost local pods when browsing locality-biased categories
+    if (applyLocality) filtered = applyLocalBoost(filtered, geoProfileMap);
+    const episodes = diversifyEpisodes(filtered, 2, 15);
     if (episodes.length > 0) {
       rows.push({
         title: genre ? `Trending in ${genre}` : "Trending Now",
@@ -116,13 +198,19 @@ async function generateCuratedRows(
     if (userProfile) {
       const topicTags: string[] = userProfile.topicTags || [];
       if (topicTags.length > 0) {
+        const topicPodcastWhere: any = {
+          id: { notIn: [...excludeIds] },
+          deliverable: true,
+          ...(genre ? { categories: { has: genre } } : {}),
+        };
+        if (userExcludedCategories.length > 0) {
+          topicPodcastWhere.NOT = { categories: { hasSome: userExcludedCategories } };
+        }
         const where: any = {
           publishedAt: { gte: fourteenDaysAgo },
+          contentStatus: { not: "NOT_DELIVERABLE" },
           topicTags: { hasSome: topicTags },
-          podcast: {
-            id: { notIn: [...excludeIds] },
-            ...(genre ? { categories: { has: genre } } : {}),
-          },
+          podcast: topicPodcastWhere,
         };
         const rawTopicEpisodes = await prisma.episode.findMany({
           where,
@@ -137,7 +225,11 @@ async function generateCuratedRows(
             podcast: { select: { id: true, title: true, author: true, imageUrl: true, categories: true } },
           },
         });
-        const episodes = diversifyEpisodes(rawTopicEpisodes, 2, 15);
+        let filteredTopicEpisodes = excludedTopicSet.size > 0
+          ? rawTopicEpisodes.filter((ep: any) => !(ep.topicTags ?? []).some((t: string) => excludedTopicSet.has(t.toLowerCase())))
+          : rawTopicEpisodes;
+        if (applyLocality) filteredTopicEpisodes = applyLocalBoost(filteredTopicEpisodes, geoProfileMap);
+        const episodes = diversifyEpisodes(filteredTopicEpisodes, 2, 15);
         if (episodes.length > 0) {
           rows.push({
             title: "New on topics you follow",
@@ -199,18 +291,24 @@ async function generateCuratedRows(
 
     const sourcePodcast = favorite?.podcast;
     if (sourcePodcast && sourcePodcast.categories?.length > 0) {
+      const similarPodcastWhere: any = {
+        id: { notIn: [...excludeIds, sourcePodcast.id] },
+        deliverable: true,
+        categories: { hasSome: sourcePodcast.categories },
+        ...(genre ? { categories: { has: genre } } : {}),
+      };
+      if (userExcludedCategories.length > 0) {
+        similarPodcastWhere.NOT = { categories: { hasSome: userExcludedCategories } };
+      }
       const where: any = {
         publishedAt: { gte: fourteenDaysAgo },
-        podcast: {
-          id: { notIn: [...excludeIds, sourcePodcast.id] },
-          categories: { hasSome: sourcePodcast.categories },
-          ...(genre ? { categories: { has: genre } } : {}),
-        },
+        contentStatus: { not: "NOT_DELIVERABLE" },
+        podcast: similarPodcastWhere,
       };
-      const episodes = await prisma.episode.findMany({
+      const rawSimilarEpisodes = await prisma.episode.findMany({
         where,
         orderBy: { publishedAt: "desc" },
-        take: 15,
+        take: 30,
         select: {
           id: true,
           title: true,
@@ -220,6 +318,11 @@ async function generateCuratedRows(
           podcast: { select: { id: true, title: true, author: true, imageUrl: true, categories: true } },
         },
       });
+      let similarFiltered = excludedTopicSet.size > 0
+        ? rawSimilarEpisodes.filter((ep: any) => !(ep.topicTags ?? []).some((t: string) => excludedTopicSet.has(t.toLowerCase())))
+        : rawSimilarEpisodes;
+      if (applyLocality) similarFiltered = applyLocalBoost(similarFiltered, geoProfileMap);
+      const episodes = similarFiltered.slice(0, 15);
       if (episodes.length > 0) {
         rows.push({
           title: `Because you like ${sourcePodcast.title}`,
@@ -238,13 +341,57 @@ async function generateCuratedRows(
   return rows;
 }
 
+// GET /local — local podcasts for user's city/state
+recommendations.get("/local", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
+
+  const fullUser = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: { city: true, state: true, country: true },
+  });
+
+  if (!fullUser?.city || !fullUser?.state) {
+    return c.json({ data: { local: [], localSports: [], location: null } });
+  }
+
+  // City-level matches + state-level matches
+  const geoProfiles = await prisma.podcastGeoProfile.findMany({
+    where: { state: fullUser.state, podcast: { deliverable: true } },
+    include: {
+      podcast: { select: { id: true, title: true, imageUrl: true, author: true, categories: true } },
+      team: { select: { id: true, name: true, nickname: true, abbreviation: true } },
+    },
+    orderBy: [{ confidence: "desc" }],
+  });
+
+  // Sort: city matches first (stronger relevance), then state-level
+  const sorted = geoProfiles.sort((a: any, b: any) => {
+    const aIsCity = a.city === fullUser.city ? 1 : 0;
+    const bIsCity = b.city === fullUser.city ? 1 : 0;
+    if (aIsCity !== bIsCity) return bIsCity - aIsCity;
+    return b.confidence - a.confidence;
+  });
+
+  const local = sorted.filter((gp: any) => !gp.teamId).map((gp: any) => ({
+    podcast: gp.podcast, scope: gp.scope, confidence: gp.confidence,
+  }));
+
+  const localSports = sorted.filter((gp: any) => gp.teamId).map((gp: any) => ({
+    podcast: gp.podcast, scope: gp.scope, confidence: gp.confidence, team: gp.team,
+  }));
+
+  return c.json({ data: { local, localSports, location: { city: fullUser.city, state: fullUser.state, country: fullUser.country } } });
+});
+
 // GET /curated — Netflix-style curated rows
 recommendations.get("/curated", async (c) => {
   const prisma = c.get("prisma") as any;
   const user = await getCurrentUser(c, prisma);
   const genre = c.req.query("genre") || null;
+  const explicit = c.req.query("explicit") === "true";
 
-  const rows = await generateCuratedRows(user.id, prisma, genre);
+  const rows = await generateCuratedRows(user, prisma, genre, explicit);
   return c.json({ rows, podcastSuggestions: [] });
 });
 
@@ -255,6 +402,7 @@ recommendations.get("/episodes", async (c) => {
   const genre = c.req.query("genre") || null;
   const search = c.req.query("search") || null;
   const sort = c.req.query("sort") || "recent";
+  const explicit = c.req.query("explicit") === "true";
   const page = parseInt(c.req.query("page") || "1", 10);
   const pageSize = Math.min(parseInt(c.req.query("pageSize") || "20", 10), 50);
   const skip = (page - 1) * pageSize;
@@ -266,12 +414,20 @@ recommendations.get("/episodes", async (c) => {
   });
   const userDownvotedIds = userDownvotes.map((d: any) => d.podcastId);
 
-  const where: any = {};
+  // Skip exclusions when user explicitly selected this genre
+  const excludedCategories: string[] = explicit ? [] : (user.excludedCategories ?? []);
+  const excludedTopics: string[] = explicit ? [] : (user.excludedTopics ?? []);
+  const excludedTopicSet = new Set(excludedTopics.map((t: string) => t.toLowerCase()));
+
+  const where: any = { contentStatus: { not: "NOT_DELIVERABLE" } };
   if (genre) {
     where.podcast = { ...(where.podcast || {}), categories: { has: genre } };
   }
   if (userDownvotedIds.length > 0) {
     where.podcast = { ...(where.podcast || {}), id: { notIn: userDownvotedIds } };
+  }
+  if (excludedCategories.length > 0) {
+    where.podcast = { ...(where.podcast || {}), NOT: { categories: { hasSome: excludedCategories } } };
   }
   if (search) {
     where.OR = [
@@ -307,8 +463,36 @@ recommendations.get("/episodes", async (c) => {
     prisma.episode.count({ where }),
   ]);
 
-  // Filter bad dates + diversify: max 3 episodes per podcast per page
-  const episodes = diversifyEpisodes(rawEpisodes, 3, pageSize);
+  // Post-filter episodes with excluded topics, then diversify
+  let topicFiltered = excludedTopicSet.size > 0
+    ? rawEpisodes.filter((ep: any) => !(ep.topicTags ?? []).some((t: string) => excludedTopicSet.has(t.toLowerCase())))
+    : rawEpisodes;
+
+  // Boost local pods when browsing locality-biased categories
+  if (genre && LOCAL_BIASED_CATEGORIES.has(genre) && user.city && user.state) {
+    const [cityGeo, stateGeo] = await Promise.all([
+      prisma.podcastGeoProfile.findMany({
+        where: { city: user.city, state: user.state },
+        select: { podcastId: true, confidence: true },
+      }),
+      prisma.podcastGeoProfile.findMany({
+        where: { state: user.state, NOT: { city: user.city } },
+        select: { podcastId: true, confidence: true },
+      }),
+    ]);
+    const geoMap = new Map<string, number>();
+    for (const gp of cityGeo) {
+      const existing = geoMap.get(gp.podcastId) || 0;
+      geoMap.set(gp.podcastId, Math.max(existing, gp.confidence));
+    }
+    for (const gp of stateGeo) {
+      const existing = geoMap.get(gp.podcastId) || 0;
+      geoMap.set(gp.podcastId, Math.max(existing, gp.confidence * 0.4));
+    }
+    topicFiltered = applyLocalBoost(topicFiltered, geoMap);
+  }
+
+  const episodes = diversifyEpisodes(topicFiltered, 3, pageSize);
 
   return c.json({
     episodes: episodes.map((ep: any) => ({
@@ -423,7 +607,7 @@ recommendations.get("/similar/:podcastId", async (c) => {
   }
 
   const allProfiles = await prisma.podcastProfile.findMany({
-    where: { podcastId: { not: podcastId } },
+    where: { podcastId: { not: podcastId }, podcast: { deliverable: true } },
     include: { podcast: { select: { id: true, title: true, author: true, description: true, imageUrl: true, feedUrl: true, categories: true, episodeCount: true, _count: { select: { subscriptions: true } } } } },
   });
 

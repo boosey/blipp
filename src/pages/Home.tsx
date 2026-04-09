@@ -16,6 +16,7 @@ import { usePullToRefresh } from "../hooks/use-pull-to-refresh";
 import { useAudio } from "../contexts/audio-context";
 import { InstallPrompt } from "../components/install-prompt";
 import { CancelBlippDialog } from "../components/cancel-blipp-dialog";
+import { ScrollableRow } from "../components/scrollable-row";
 
 const FILTERS: { key: FeedFilter; label: string }[] = [
   { key: "all", label: "All" },
@@ -268,19 +269,21 @@ export function Home() {
         <h1 className="text-xl font-bold mb-3">Your Feed</h1>
 
         {/* Filter pills (dimmed during generating) */}
-        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide snap-x-mandatory mb-3 opacity-50 pointer-events-none">
-          {FILTERS.map(({ key, label }) => (
-            <button
-              key={key}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap ${
-                key === "all"
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-secondary text-secondary-foreground"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
+        <div className="opacity-50 pointer-events-none mb-3">
+          <ScrollableRow className="gap-2 pb-2">
+            {FILTERS.map(({ key, label }) => (
+              <button
+                key={key}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap shrink-0 ${
+                  key === "all"
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-secondary text-secondary-foreground"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </ScrollableRow>
         </div>
 
         <WelcomeCard
@@ -355,20 +358,22 @@ export function Home() {
     return (
       <div>
         <h1 className="text-xl font-bold mb-3">Your Feed</h1>
-        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide snap-x-mandatory mb-3">
-          {FILTERS.map(({ key, label }) => (
-            <button
-              key={key}
-              onClick={() => setFilter(key)}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors snap-start ${
-                filter === key
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-secondary text-secondary-foreground"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
+        <div className="mb-3">
+          <ScrollableRow className="gap-2 pb-2">
+            {FILTERS.map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => setFilter(key)}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors shrink-0 ${
+                  filter === key
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-secondary text-secondary-foreground"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </ScrollableRow>
         </div>
         <p className="text-center text-sm text-muted-foreground py-12">
           {filter === "creating" ? "No briefings are being created right now." : "Nothing here yet."}
@@ -383,26 +388,28 @@ export function Home() {
       <h1 className="text-xl font-bold mb-3">Your Feed</h1>
 
       {/* Filter pills */}
-      <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide snap-x-mandatory mb-3">
-        {FILTERS.map(({ key, label }) => {
-          const count = key === "new" ? counts?.unlistened
-            : key === "creating" ? counts?.pending
-            : key === "all" ? counts?.total
-            : undefined;
-          return (
-            <button
-              key={key}
-              onClick={() => setFilter(key)}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors snap-start ${
-                filter === key
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-secondary text-secondary-foreground"
-              }`}
-            >
-              {count ? `${label} (${count})` : label}
-            </button>
-          );
-        })}
+      <div className="mb-3">
+        <ScrollableRow className="gap-2 pb-2">
+          {FILTERS.map(({ key, label }) => {
+            const count = key === "new" ? counts?.unlistened
+              : key === "creating" ? counts?.pending
+              : key === "all" ? counts?.total
+              : undefined;
+            return (
+              <button
+                key={key}
+                onClick={() => setFilter(key)}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors shrink-0 ${
+                  filter === key
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-secondary text-secondary-foreground"
+                }`}
+              >
+                {count ? `${label} (${count})` : label}
+              </button>
+            );
+          })}
+        </ScrollableRow>
       </div>
 
       <InstallPrompt />

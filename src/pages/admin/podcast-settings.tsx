@@ -1,10 +1,26 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Check, MapPin } from "lucide-react";
 import { useAdminFetch } from "@/lib/admin-api";
 import type { PlatformConfigEntry } from "@/types/admin";
+
+interface AiProvider {
+  id: string;
+  provider: string;
+  providerLabel: string;
+  providerModelId: string | null;
+  model: { label: string; modelId: string };
+}
 
 interface ConfigDef {
   key: string;
@@ -28,7 +44,8 @@ const CONFIG_GROUPS: ConfigGroup[] = [
     title: "Catalog Discovery",
     description: "How new podcasts are discovered and added to the library",
     items: [
-      { key: "catalog.seedSize", label: "Discovery Batch Size", type: "number", description: "Podcasts to fetch during catalog refresh", default: 200 },
+      { key: "catalog.seedSize", label: "Discovery Batch Size", type: "number", description: "Podcasts to fetch during catalog refresh", default: 20 },
+      { key: "catalog.maxSize", label: "Catalog Size Limit", type: "number", description: "Max podcasts in catalog. Least-ranked PI podcasts are evicted when full.", default: 10000 },
       { key: "catalog.refreshAllPodcasts", label: "Refresh All Podcasts", type: "boolean", description: "Refresh all catalog podcasts (not just subscribed)", default: false },
     ],
   },
@@ -55,6 +72,8 @@ const CONFIG_GROUPS: ConfigGroup[] = [
     description: "Transcript and audio validation before pipeline processing",
     items: [
       { key: "pipeline.contentPrefetch.fetchTimeoutMs", label: "Fetch Timeout (ms)", type: "number", description: "Timeout for transcript/audio validation requests", default: 15000 },
+      { key: "recommendations.profileBatchSize", label: "Recommendation Batch Size", type: "number", description: "Podcasts per batch (loops until cycle completes or time budget hit)", default: 25 },
+      { key: "recommendations.timeBudgetMs", label: "Time Budget (ms)", type: "number", description: "Max time to spend processing batches per cron run", default: 25000 },
     ],
   },
   {
@@ -67,6 +86,59 @@ const CONFIG_GROUPS: ConfigGroup[] = [
     ],
   },
 ];
+
+/** Number input that holds local state and saves on blur to avoid focus loss. */
+function NumberConfigInput({
+  value,
+  onSave,
+  saving,
+}: {
+  value: number;
+  onSave: (val: number) => void;
+  saving: boolean;
+}) {
+  const [local, setLocal] = useState(String(value));
+  const [saved, setSaved] = useState(false);
+  const prevValue = useRef(value);
+
+  // Sync from server when the server value changes (not from our own save)
+  useEffect(() => {
+    if (value !== prevValue.current) {
+      setLocal(String(value));
+      prevValue.current = value;
+    }
+  }, [value]);
+
+  const commit = () => {
+    const num = Math.max(1, Number(local) || 1);
+    setLocal(String(num));
+    if (num !== value) {
+      onSave(num);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1500);
+    }
+  };
+
+  return (
+    <div className="relative">
+      <Input
+        type="number"
+        min={1}
+        value={local}
+        onChange={(e) => setLocal(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => { if (e.key === "Enter") { e.currentTarget.blur(); } }}
+        className="w-24 h-8 text-xs bg-[#1A2942] border-white/10 text-[#F9FAFB] font-mono tabular-nums text-center"
+      />
+      {saving && (
+        <span className="absolute -right-5 top-1/2 -translate-y-1/2 text-[#9CA3AF] text-[10px]">…</span>
+      )}
+      {saved && !saving && (
+        <Check className="absolute -right-5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#14B8A6]" />
+      )}
+    </div>
+  );
+}
 
 function PodcastSettingsSkeleton() {
   return (
@@ -83,8 +155,32 @@ function PodcastSettingsSkeleton() {
 export default function PodcastSettings() {
   const apiFetch = useAdminFetch();
   const [configs, setConfigs] = useState<PlatformConfigEntry[]>([]);
+  const [geoProviders, setGeoProviders] = useState<AiProvider[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
+
+  const loadProviders = useCallback(async () => {
+    try {
+      const res = await apiFetch<{ data: { id: string; label: string; modelId: string; providers: any[] }[] }>("/ai-models?stage=geoClassification");
+      const providers: AiProvider[] = [];
+      for (const model of res.data) {
+        for (const p of model.providers) {
+          if (p.isAvailable) {
+            providers.push({
+              id: p.id,
+              provider: p.provider,
+              providerLabel: p.providerLabel,
+              providerModelId: p.providerModelId,
+              model: { label: model.label, modelId: model.modelId },
+            });
+          }
+        }
+      }
+      setGeoProviders(providers);
+    } catch {
+      // ignore — providers just won't be available
+    }
+  }, [apiFetch]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -98,7 +194,7 @@ export default function PodcastSettings() {
     }
   }, [apiFetch]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); loadProviders(); }, [load, loadProviders]);
 
   const updateConfig = useCallback(
     async (key: string, value: unknown) => {
@@ -117,6 +213,11 @@ export default function PodcastSettings() {
     },
     [apiFetch, load]
   );
+
+  function getStringConfig(key: string, defaultValue: string): string {
+    const entry = configs.find((c) => c.key === key);
+    return entry?.value != null ? String(entry.value) : defaultValue;
+  }
 
   function getConfigValue(key: string, defaultValue: number | boolean): number | boolean {
     const entry = configs.find((c) => c.key === key);
@@ -163,16 +264,10 @@ export default function PodcastSettings() {
                     ) : cfg.type === "readonly" ? (
                       <span className="text-xs font-mono text-[#9CA3AF] tabular-nums">{cfg.default}</span>
                     ) : (
-                      <Input
-                        type="number"
-                        min={1}
+                      <NumberConfigInput
                         value={currentValue as number}
-                        onChange={(e) => {
-                          const val = Math.max(1, Number(e.target.value));
-                          updateConfig(cfg.key, val);
-                        }}
-                        disabled={saving === cfg.key}
-                        className="w-24 h-8 text-xs bg-[#1A2942] border-white/10 text-[#F9FAFB] font-mono tabular-nums text-center"
+                        onSave={(val) => updateConfig(cfg.key, val)}
+                        saving={saving === cfg.key}
                       />
                     )}
                   </div>
@@ -182,6 +277,85 @@ export default function PodcastSettings() {
           </div>
         </div>
       ))}
+
+      {/* Geo-Tagging */}
+      <div className="bg-[#0F1D32] border border-white/5 rounded-lg overflow-hidden">
+        <div className="px-4 py-3 border-b border-white/10 border-l-2 border-l-[#8B5CF6] bg-white/[0.03] flex items-center gap-2">
+          <MapPin className="h-4 w-4 text-[#8B5CF6]" />
+          <div>
+            <h3 className="text-sm font-bold text-[#F9FAFB]">Geo-Tagging</h3>
+            <p className="text-xs text-[#6B7280] mt-0.5">
+              Classify podcasts by geographic market. Pass 1 uses keyword matching; Pass 2 uses LLM for unmatched Sports podcasts.
+            </p>
+          </div>
+        </div>
+
+        <div className="divide-y divide-white/5">
+          {/* LLM Provider */}
+          <div className="px-4 py-3 hover:bg-white/[0.02] transition-colors">
+            <div className="flex items-center justify-between">
+              <div className="min-w-0 flex-1 mr-4">
+                <Label className="text-xs text-[#F9FAFB]">LLM Provider</Label>
+                <p className="text-[10px] text-[#9CA3AF] mt-0.5">
+                  Model used for Pass 2 classification of unmatched Sports podcasts. Leave empty to skip LLM pass.
+                </p>
+              </div>
+              <Select
+                value={getStringConfig("geoClassification.llmProviderId", "") || "__none__"}
+                onValueChange={(v) => updateConfig("geoClassification.llmProviderId", v === "__none__" ? "" : v)}
+                disabled={saving === "geoClassification.llmProviderId"}
+              >
+                <SelectTrigger className="w-56 h-8 text-[11px] bg-[#1A2942] border-white/10 text-[#F9FAFB]">
+                  <SelectValue placeholder="None (keyword only)" />
+                </SelectTrigger>
+                <SelectContent className="bg-[#1A2942] border-white/10 text-[#F9FAFB]">
+                  <SelectItem value="__none__" className="text-xs">None (keyword only)</SelectItem>
+                  {geoProviders.map((p) => (
+                    <SelectItem key={p.id} value={p.id} className="text-xs">
+                      {p.model.label} — {p.providerLabel}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {geoProviders.length === 0 && (
+              <p className="text-[10px] text-[#F59E0B] mt-2">
+                No models tagged with geoClassification stage. Add one in AI → Model Registry.
+              </p>
+            )}
+          </div>
+
+          {/* Batch Size */}
+          <div className="px-4 py-3 hover:bg-white/[0.02] transition-colors">
+            <div className="flex items-center justify-between">
+              <div className="min-w-0 flex-1 mr-4">
+                <Label className="text-xs text-[#F9FAFB]">Podcasts per Run</Label>
+                <p className="text-[10px] text-[#9CA3AF] mt-0.5">Max podcasts to process per cron run (both passes)</p>
+              </div>
+              <NumberConfigInput
+                value={getConfigValue("geoClassification.batchSize", 500) as number}
+                onSave={(val) => updateConfig("geoClassification.batchSize", val)}
+                saving={saving === "geoClassification.batchSize"}
+              />
+            </div>
+          </div>
+
+          {/* LLM Batch Size */}
+          <div className="px-4 py-3 hover:bg-white/[0.02] transition-colors">
+            <div className="flex items-center justify-between">
+              <div className="min-w-0 flex-1 mr-4">
+                <Label className="text-xs text-[#F9FAFB]">Podcasts per LLM Call</Label>
+                <p className="text-[10px] text-[#9CA3AF] mt-0.5">How many podcasts to classify in a single LLM request (reduces API calls)</p>
+              </div>
+              <NumberConfigInput
+                value={getConfigValue("geoClassification.llmBatchSize", 10) as number}
+                onSave={(val) => updateConfig("geoClassification.llmBatchSize", val)}
+                saving={saving === "geoClassification.llmBatchSize"}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
       </div>
     </div>
   );

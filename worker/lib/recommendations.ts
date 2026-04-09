@@ -1,7 +1,5 @@
 import { getConfig } from "./config";
-import { getWorkProduct } from "./work-products";
-import { wpKey } from "./work-products";
-import { fingerprint } from "./topic-extraction";
+import { extractTopicsFromText } from "./topic-extraction";
 import { buildEmbeddingText, computeEmbedding, averageEmbeddings, cosineSimilarityVec } from "./embeddings";
 
 // Types
@@ -55,10 +53,31 @@ export function jaccardSimilarity(a: string[], b: string[]): number {
   return union > 0 ? intersection / union : 0;
 }
 
-// Compute profiles for ALL podcasts (run weekly via cron)
-export async function computePodcastProfiles(prisma: any, env?: any): Promise<number> {
+export interface ProfileBatchResult {
+  processed: number;
+  cursor: string | null; // null = batch complete, all podcasts processed
+}
+
+/**
+ * Compute recommendation profiles for a batch of podcasts.
+ * Called repeatedly by the cron job with cursor-based pagination.
+ * Each call processes `batchSize` podcasts and returns a cursor for the next batch.
+ * When cursor is null, all podcasts have been processed and the cycle resets.
+ */
+export async function computePodcastProfiles(
+  prisma: any,
+  env?: any,
+  cursor?: string | null,
+): Promise<ProfileBatchResult> {
+  const batchSize = await getConfig(prisma, "recommendations.profileBatchSize", 25) as number;
+
   const podcasts = await prisma.podcast.findMany({
-    where: { status: "active" },
+    where: {
+      status: "active",
+      ...(cursor ? { id: { gt: cursor } } : {}),
+    },
+    orderBy: { id: "asc" },
+    take: batchSize,
     select: {
       id: true,
       title: true,
@@ -66,33 +85,34 @@ export async function computePodcastProfiles(prisma: any, env?: any): Promise<nu
       categories: true,
       _count: { select: { subscriptions: true } },
       votes: { select: { vote: true } },
-      subscriptions: { select: { userId: true } },
       episodes: {
-        where: { distillation: { status: "COMPLETED" } },
         orderBy: { publishedAt: "desc" },
-        take: 10,
-        select: { id: true, publishedAt: true },
+        take: 5,
+        select: { id: true, title: true, description: true, publishedAt: true, topicTags: true },
       },
     },
   });
 
-  if (podcasts.length === 0) return 0;
-
-  const maxSubs = Math.max(1, ...podcasts.map((p: any) => p._count.subscriptions));
-
-  // Build subscriber sets for overlap computation
-  const subscriberSets = new Map<string, Set<string>>();
-  for (const podcast of podcasts) {
-    subscriberSets.set(
-      podcast.id,
-      new Set((podcast.subscriptions || []).map((s: any) => s.userId))
-    );
+  if (podcasts.length === 0) {
+    return { processed: 0, cursor: null };
   }
+
+  // Get max subs across all active podcasts (cached query, not per-batch)
+  const maxSubsResult = await prisma.subscription.groupBy({
+    by: ["podcastId"],
+    _count: true,
+    orderBy: { _count: { podcastId: "desc" } },
+    take: 1,
+  });
+  const maxSubs = Math.max(1, maxSubsResult[0]?._count ?? 1);
 
   // Check if embeddings are enabled
   const embeddingsEnabled = env?.AI
     ? await getConfig(prisma, "recommendations.embeddings.enabled", false)
     : false;
+
+  // Process all podcasts and collect DB writes
+  const profileUpserts: Promise<any>[] = [];
 
   for (const podcast of podcasts) {
     // Category weights: equal weight for each category
@@ -121,44 +141,46 @@ export async function computePodcastProfiles(prisma: any, env?: any): Promise<nu
       freshness = Math.max(0, 1 - daysSince / 30);
     }
 
-    // Topic extraction from R2 claims
-    let podcastTopics: string[] = [];
-    if (env?.R2 && podcast.episodes.length > 0) {
-      const topicWeights = new Map<string, number>();
-
-      for (let i = 0; i < podcast.episodes.length; i++) {
-        const episode = podcast.episodes[i];
-        try {
-          const key = wpKey({ type: "CLAIMS", episodeId: episode.id });
-          const data = await getWorkProduct(env.R2, key);
-          if (!data) continue;
-          const claims = JSON.parse(new TextDecoder().decode(data));
-          const topics = fingerprint(claims);
-
-          // Weight by recency: most recent = 1.0, older episodes decay to 0.5
-          const recencyWeight = 1.0 - (i / podcast.episodes.length) * 0.5;
-
-          for (const t of topics) {
-            topicWeights.set(t.topic, (topicWeights.get(t.topic) || 0) + t.weight * recencyWeight);
-          }
-
-          // Store episode-level topics
-          const episodeTopics = topics.map((t) => t.topic);
-          await prisma.episode.update({
-            where: { id: episode.id },
-            data: { topicTags: episodeTopics },
-          });
-        } catch {
-          // Skip episodes with missing/invalid claims
-        }
+    // Topic extraction: merge claims-based topicTags (if available) with description-based extraction
+    // 1. Collect any existing claims-based topicTags from episodes (already computed by pipeline)
+    const claimsTopicWeights = new Map<string, number>();
+    for (let i = 0; i < podcast.episodes.length; i++) {
+      const tags: string[] = podcast.episodes[i].topicTags || [];
+      const recencyWeight = 1.0 - (i / Math.max(1, podcast.episodes.length)) * 0.5;
+      for (const tag of tags) {
+        claimsTopicWeights.set(tag, (claimsTopicWeights.get(tag) || 0) + recencyWeight);
       }
-
-      // Take top 30 podcast-level topics
-      podcastTopics = [...topicWeights.entries()]
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 30)
-        .map(([topic]) => topic);
     }
+
+    // 2. Extract topics from podcast + episode descriptions (always available)
+    const textInputs: { text: string; weight: number }[] = [];
+    if (podcast.description) {
+      textInputs.push({ text: podcast.description, weight: 2.0 }); // podcast description weighted highest
+    }
+    if (podcast.title) {
+      textInputs.push({ text: podcast.title, weight: 1.5 });
+    }
+    for (let i = 0; i < podcast.episodes.length; i++) {
+      const ep = podcast.episodes[i];
+      const recencyWeight = 1.0 - (i / Math.max(1, podcast.episodes.length)) * 0.5;
+      if (ep.title) textInputs.push({ text: ep.title, weight: recencyWeight });
+      if (ep.description) textInputs.push({ text: ep.description, weight: recencyWeight * 0.5 });
+    }
+    const descriptionTopics = extractTopicsFromText(textInputs);
+
+    // 3. Merge: claims-based topics get a boost since they're higher quality
+    const mergedWeights = new Map<string, number>();
+    for (const t of descriptionTopics) {
+      mergedWeights.set(t.topic, t.weight);
+    }
+    for (const [tag, w] of claimsTopicWeights) {
+      mergedWeights.set(tag, (mergedWeights.get(tag) || 0) + w * 2.0);
+    }
+
+    const podcastTopics = [...mergedWeights.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 30)
+      .map(([topic]) => topic);
 
     // Embedding computation
     let embedding: number[] | null = null;
@@ -167,7 +189,7 @@ export async function computePodcastProfiles(prisma: any, env?: any): Promise<nu
       embedding = await computeEmbedding(env.AI, text);
     }
 
-    await prisma.podcastProfile.upsert({
+    profileUpserts.push(prisma.podcastProfile.upsert({
       where: { podcastId: podcast.id },
       create: {
         podcastId: podcast.id,
@@ -188,10 +210,15 @@ export async function computePodcastProfiles(prisma: any, env?: any): Promise<nu
         ...(embedding ? { embedding } : {}),
         computedAt: new Date(),
       },
-    });
+    }));
   }
 
-  return podcasts.length;
+  // Execute all profile upserts in parallel
+  await Promise.all(profileUpserts);
+
+  // Return cursor: last podcast ID in this batch, or null if we got fewer than batchSize (done)
+  const nextCursor = podcasts.length < batchSize ? null : podcasts[podcasts.length - 1].id;
+  return { processed: podcasts.length, cursor: nextCursor };
 }
 
 /** Compute Jaccard overlap between a candidate podcast's subscribers and the user's co-subscribers. */
@@ -219,7 +246,7 @@ function subscriberOverlap(
 
 // Compute a single user's recommendation profile
 export async function computeUserProfile(userId: string, prisma: any): Promise<void> {
-  const [subscriptions, favorites, podcastVotes, episodeVotes, listenCount] = await Promise.all([
+  const [subscriptions, favorites, podcastVotes, episodeVotes, listenCount, userRecord] = await Promise.all([
     prisma.subscription.findMany({
       where: { userId },
       include: { podcast: { select: { categories: true } } },
@@ -238,6 +265,15 @@ export async function computeUserProfile(userId: string, prisma: any): Promise<v
     }),
     prisma.feedItem.count({
       where: { userId, listened: true },
+    }),
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        preferredCategories: true,
+        excludedCategories: true,
+        preferredTopics: true,
+        excludedTopics: true,
+      },
     }),
   ]);
 
@@ -268,6 +304,16 @@ export async function computeUserProfile(userId: string, prisma: any): Promise<v
     for (const cat of (ev.episode?.podcast?.categories || [])) {
       categoryWeights[cat] = (categoryWeights[cat] || 0) + w;
     }
+  }
+
+  // Blend explicit category preferences (before normalization)
+  const explicitPreferred = userRecord?.preferredCategories ?? [];
+  const explicitExcluded = userRecord?.excludedCategories ?? [];
+  for (const cat of explicitPreferred) {
+    categoryWeights[cat] = (categoryWeights[cat] || 0) + 1.0;
+  }
+  for (const cat of explicitExcluded) {
+    categoryWeights[cat] = 0;
   }
 
   // Normalize weights to 0-1 range (clamp negatives to 0)
@@ -311,8 +357,21 @@ export async function computeUserProfile(userId: string, prisma: any): Promise<v
       }
     }
 
-    // Take top 30 user topics
+    // Inject explicit topic preferences with guaranteed high weight
+    const explicitTopics = userRecord?.preferredTopics ?? [];
+    const excludedTopicSet = new Set(userRecord?.excludedTopics ?? []);
+    if (explicitTopics.length > 0) {
+      const maxImplicit = topicWeights.size > 0 ? Math.max(...topicWeights.values()) : 1.0;
+      const explicitWeight = maxImplicit * 1.5;
+      for (const topic of explicitTopics) {
+        const existing = topicWeights.get(topic) || 0;
+        topicWeights.set(topic, Math.max(existing, explicitWeight));
+      }
+    }
+
+    // Take top 30 user topics, filtering out excluded topics
     userTopics = [...topicWeights.entries()]
+      .filter(([topic]) => !excludedTopicSet.has(topic))
       .sort((a, b) => b[1] - a[1])
       .slice(0, 30)
       .map(([topic]) => topic);
@@ -325,6 +384,11 @@ export async function computeUserProfile(userId: string, prisma: any): Promise<v
     if (subscribedEmbeddings.length > 0) {
       userEmbedding = averageEmbeddings(subscribedEmbeddings);
     }
+  } else {
+    // No subscriptions/upvotes — use explicit topics only (cold-start with prefs)
+    const explicitTopics = userRecord?.preferredTopics ?? [];
+    const excludedTopicSet = new Set(userRecord?.excludedTopics ?? []);
+    userTopics = explicitTopics.filter((t: string) => !excludedTopicSet.has(t)).slice(0, 30);
   }
 
   await prisma.userRecommendationProfile.upsert({
@@ -351,7 +415,7 @@ export async function computeUserProfile(userId: string, prisma: any): Promise<v
 export async function scoreRecommendations(
   userId: string,
   prisma: any,
-  maxResults?: number
+  maxResults?: number,
 ): Promise<RecommendationResult> {
   const configMax = await getConfig(prisma, "recommendations.cache.maxResults", 20);
   const limit = maxResults ?? (configMax as number);
@@ -362,6 +426,52 @@ export async function scoreRecommendations(
   const wOverlap = await getConfig(prisma, "recommendations.weights.subscriberOverlap", 0.15);
   const wTopic = await getConfig(prisma, "recommendations.weights.topic", 0.15);
   const wEmbedding = await getConfig(prisma, "recommendations.weights.embedding", 0.15);
+  const wLocalBoost = await getConfig(prisma, "recommendations.weights.localBoost", 0.10);
+  const wExplicitTopic = await getConfig(prisma, "recommendations.weights.explicitTopicBonus", 0.05);
+  const exclusionTopicPenalty = await getConfig(prisma, "recommendations.exclusion.topicPenalty", 0.3);
+  const explicitMinCats = await getConfig(prisma, "recommendations.coldStart.explicitMinCategories", 2);
+  const explicitMinTopics = await getConfig(prisma, "recommendations.coldStart.explicitMinTopics", 3);
+
+  // Load user's explicit preferences for filtering and scoring
+  const userRecord = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      preferredCategories: true,
+      excludedCategories: true,
+      preferredTopics: true,
+      excludedTopics: true,
+      city: true,
+      state: true,
+    },
+  });
+  const excludedCategorySet = new Set<string>(userRecord?.excludedCategories ?? []);
+  const excludedTopicSet = new Set<string>(userRecord?.excludedTopics ?? []);
+  const userExplicitTopics: string[] = userRecord?.preferredTopics ?? [];
+
+  // Load geo-profiles for user's city/state (pre-computed by cron)
+  const userCity = userRecord?.city;
+  const userState = userRecord?.state;
+  let geoProfileMap = new Map<string, number>(); // podcastId → max confidence
+  if (userCity && userState) {
+    const [cityProfiles, stateProfiles] = await Promise.all([
+      prisma.podcastGeoProfile.findMany({
+        where: { city: userCity, state: userState },
+        select: { podcastId: true, confidence: true },
+      }),
+      prisma.podcastGeoProfile.findMany({
+        where: { state: userState, NOT: { city: userCity } },
+        select: { podcastId: true, confidence: true },
+      }),
+    ]);
+    for (const gp of cityProfiles) {
+      const existing = geoProfileMap.get(gp.podcastId) || 0;
+      geoProfileMap.set(gp.podcastId, Math.max(existing, gp.confidence));
+    }
+    for (const gp of stateProfiles) {
+      const existing = geoProfileMap.get(gp.podcastId) || 0;
+      geoProfileMap.set(gp.podcastId, Math.max(existing, gp.confidence * 0.4));
+    }
+  }
 
   // Get user's subscribed, downvoted, and dismissed podcast IDs to exclude
   const [subscriptions, downvotes, dismissals] = await Promise.all([
@@ -384,22 +494,90 @@ export async function scoreRecommendations(
   const dismissedIds = new Set(dismissals.map((d: any) => d.podcastId));
   const excludeIds = new Set([...subscribedIds, ...downvotedIds, ...dismissedIds]);
 
-  // Cold start: if user has fewer than minSubs subscriptions, return popular
+  // Cold start: if user has fewer than minSubs subscriptions
+  const hasExplicitPrefs =
+    (userRecord?.preferredCategories?.length ?? 0) >= (explicitMinCats as number) ||
+    (userRecord?.preferredTopics?.length ?? 0) >= (explicitMinTopics as number);
+
   if (subscribedIds.size < (minSubs as number)) {
-    // Prefer Apple chart rank ordering, fall back to popularity score
+    if (hasExplicitPrefs) {
+      // Explicit-preferences cold start: use declared interests to personalize
+      const preferredCats = new Set<string>(userRecord?.preferredCategories ?? []);
+
+      const candidates = await prisma.podcastProfile.findMany({
+        where: { podcastId: { notIn: [...excludeIds] }, podcast: { deliverable: true } },
+        include: { podcast: { select: { title: true, categories: true } } },
+      });
+
+      const scored: ScoredRecommendation[] = [];
+      for (const profile of candidates) {
+        const podcastCats: string[] = profile.podcast?.categories ?? [];
+        // Hard-filter: skip if all categories are excluded
+        if (podcastCats.length > 0 && podcastCats.every((c: string) => excludedCategorySet.has(c))) continue;
+
+        const reasons: string[] = [];
+        const podcastWeights = profile.categoryWeights as CategoryWeights;
+
+        // Synthetic category weights from explicit preferences
+        const syntheticWeights: CategoryWeights = {};
+        for (const cat of preferredCats) syntheticWeights[cat] = 1.0;
+        const catAffinity = cosineSimilarity(syntheticWeights, podcastWeights);
+        if (catAffinity > 0.3) {
+          const matchedCat = podcastCats.find((c: string) => preferredCats.has(c));
+          if (matchedCat) reasons.push(`Matches your interest in ${matchedCat}`);
+        }
+
+        // Topic matching
+        const podcastTopics = (profile.topicTags as string[]) || [];
+        const topicOverlap = userExplicitTopics.filter((t) => new Set(podcastTopics).has(t)).length;
+        const topicScore = userExplicitTopics.length > 0 ? topicOverlap / userExplicitTopics.length : 0;
+        if (topicScore > 0) {
+          const matchedTopic = userExplicitTopics.find((t) => new Set(podcastTopics).has(t));
+          if (matchedTopic) reasons.push(`Covers ${matchedTopic}`);
+        }
+
+        // Excluded topic penalty
+        const excludedOverlap = podcastTopics.filter((t: string) => excludedTopicSet.has(t)).length;
+        let penalty = 1;
+        if (excludedOverlap > 0) penalty = Math.max(0.1, 1 - excludedOverlap * (exclusionTopicPenalty as number));
+
+        const score = (
+          0.35 * catAffinity +
+          0.25 * topicScore +
+          0.20 * profile.popularity +
+          0.10 * profile.freshness +
+          0.10 * (userExplicitTopics.length > 0 ? topicScore : 0)
+        ) * penalty;
+
+        if (reasons.length === 0) reasons.push("Based on your preferences");
+        scored.push({ podcastId: profile.podcastId, score, reasons });
+      }
+
+      scored.sort((a, b) => b.score - a.score);
+      return { recommendations: scored.slice(0, limit), source: "personalized" };
+    }
+
+    // No explicit prefs: prefer Apple chart rank ordering, fall back to popularity
     const ranked = await prisma.podcast.findMany({
       where: { id: { notIn: [...excludeIds] }, deliverable: true, appleRank: { not: null } },
       orderBy: { appleRank: "asc" },
-      take: limit,
+      take: limit * 3, // over-fetch to allow exclusion filtering
       select: { id: true, title: true, author: true, description: true, imageUrl: true, feedUrl: true, categories: true, episodeCount: true, appleRank: true },
     });
 
-    // If not enough ranked podcasts, backfill with popularity
-    let results = ranked.map((p: any) => ({
-      podcastId: p.id,
-      score: 1 - (p.appleRank - 1) / 200,
-      reasons: [`#${p.appleRank} on Apple Podcasts`],
-    }));
+    // Filter out excluded categories even in chart fallback
+    let results = ranked
+      .filter((p: any) => {
+        const cats: string[] = p.categories ?? [];
+        if (cats.length > 0 && cats.every((c: string) => excludedCategorySet.has(c))) return false;
+        return true;
+      })
+      .slice(0, limit)
+      .map((p: any) => ({
+        podcastId: p.id,
+        score: 1 - (p.appleRank - 1) / 200,
+        reasons: [`#${p.appleRank} on Apple Podcasts`],
+      }));
 
     if (results.length < limit) {
       const rankedIds = new Set(ranked.map((p: any) => p.id));
@@ -435,7 +613,7 @@ export async function scoreRecommendations(
 
   const podcastProfiles = await prisma.podcastProfile.findMany({
     where: { podcastId: { notIn: [...excludeIds] }, podcast: { deliverable: true } },
-    include: { podcast: { select: { subscriptions: { select: { userId: true } } } } },
+    include: { podcast: { select: { title: true, categories: true, subscriptions: { select: { userId: true } } } } },
   });
 
   // Build subscriber sets for overlap computation
@@ -464,6 +642,12 @@ export async function scoreRecommendations(
   const userWeights = userProfile.categoryWeights as CategoryWeights;
 
   for (const profile of podcastProfiles) {
+    // Hard exclusion: skip if all categories are in the excluded set
+    const podcastCats: string[] = profile.podcast?.categories ?? [];
+    if (excludedCategorySet.size > 0 && podcastCats.length > 0 && podcastCats.every((c: string) => excludedCategorySet.has(c))) {
+      continue;
+    }
+
     const podcastWeights = profile.categoryWeights as CategoryWeights;
     const reasons: string[] = [];
 
@@ -504,6 +688,35 @@ export async function scoreRecommendations(
       if (embScore > 0.7) reasons.push("Semantically similar to podcasts you enjoy");
     }
 
+    // Local content boost (geo-profile based)
+    let localBoost = 0;
+    const geoConfidence = geoProfileMap.get(profile.podcastId);
+    if (geoConfidence) {
+      localBoost = (wLocalBoost as number) * geoConfidence;
+      reasons.push("Local to your area");
+    }
+
+    // Explicit topic bonus (additive, like localBoost)
+    let explicitTopicBonus = 0;
+    if (userExplicitTopics.length > 0) {
+      const podcastTopicSet = new Set(podcastTopics);
+      const matchCount = userExplicitTopics.filter((t) => podcastTopicSet.has(t)).length;
+      explicitTopicBonus = (wExplicitTopic as number) * (matchCount / userExplicitTopics.length);
+      if (matchCount > 0 && !reasons.some(r => r.startsWith("Both cover"))) {
+        const matchedTopic = userExplicitTopics.find((t) => podcastTopicSet.has(t));
+        if (matchedTopic) reasons.push(`Covers your interest in ${matchedTopic}`);
+      }
+    }
+
+    // Excluded topic penalty
+    let excludedTopicPenalty = 1;
+    if (excludedTopicSet.size > 0) {
+      const excludedOverlap = podcastTopics.filter((t: string) => excludedTopicSet.has(t)).length;
+      if (excludedOverlap > 0) {
+        excludedTopicPenalty = Math.max(0.1, 1 - excludedOverlap * (exclusionTopicPenalty as number));
+      }
+    }
+
     let score: number;
     if (hasEmbedding) {
       score =
@@ -512,7 +725,9 @@ export async function scoreRecommendations(
         (wEmbedding as number) * embScore +
         (wPopularity as number) * profile.popularity +
         (wFreshness as number) * profile.freshness +
-        (wOverlap as number) * overlapScore;
+        (wOverlap as number) * overlapScore +
+        localBoost +
+        explicitTopicBonus;
     } else {
       // Redistribute embedding weight proportionally to other signals
       const totalOther = (wCategory as number) + (wTopic as number) + (wPopularity as number) + (wFreshness as number) + (wOverlap as number);
@@ -522,8 +737,13 @@ export async function scoreRecommendations(
         (wTopic as number) * scale * topicScore +
         (wPopularity as number) * scale * profile.popularity +
         (wFreshness as number) * scale * profile.freshness +
-        (wOverlap as number) * scale * overlapScore;
+        (wOverlap as number) * scale * overlapScore +
+        localBoost +
+        explicitTopicBonus;
     }
+
+    // Apply excluded topic penalty
+    score *= excludedTopicPenalty;
 
     if (reasons.length === 0) reasons.push("Recommended for you");
 

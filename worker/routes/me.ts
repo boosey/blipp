@@ -10,6 +10,7 @@ import { validateBody } from "../lib/validation";
 import { DURATION_TIERS } from "../lib/constants";
 import { checkVoicePresetAccess } from "../lib/voice-presets";
 import { createStripeClient } from "../lib/stripe";
+import { computeUserProfile, recomputeRecommendationCache } from "../lib/recommendations";
 
 const OnboardingCompleteSchema = z.object({
   reset: z.boolean().optional(),
@@ -24,6 +25,11 @@ const PreferencesSchema = z.object({
     .optional(),
   defaultVoicePresetId: z.string().nullable().optional(),
   acceptAnyVoice: z.boolean().optional(),
+  preferredCategories: z.array(z.string()).max(10).optional(),
+  excludedCategories: z.array(z.string()).max(10).optional(),
+  preferredTopics: z.array(z.string().max(50)).max(20).optional(),
+  excludedTopics: z.array(z.string().max(50)).max(20).optional(),
+  zipCode: z.string().regex(/^\d{5}$/).nullable().optional(),
 });
 
 const DeleteAccountSchema = z.object({
@@ -55,8 +61,32 @@ me.get("/", async (c) => {
   const user = await getCurrentUser(c, prisma);
   const fullUser = await prisma.user.findUnique({
     where: { id: user.id },
-    include: { plan: true },
+    include: {
+      plan: true,
+      sportsTeams: { include: { team: { select: { id: true, name: true, nickname: true, abbreviation: true } } } },
+    },
   });
+
+  // Opportunistically store city/state/country from Cloudflare IP geolocation —
+  // only when user has no zipCode yet (first visit). Once set (by auto-detect
+  // or user choice), we don't overwrite so the user's explicit selection sticks.
+  if (!fullUser.zipCode && !fullUser.city) {
+    const cf = (c.req.raw as any).cf;
+    const detectedCity = cf?.city as string | undefined;
+    const detectedState = cf?.region as string | undefined;
+    const detectedCountry = cf?.country as string | undefined;
+    if (detectedCity && detectedState) {
+      try {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { city: detectedCity, state: detectedState, country: detectedCountry ?? "US" },
+        });
+        fullUser.city = detectedCity;
+        fullUser.state = detectedState;
+        fullUser.country = detectedCountry ?? "US";
+      } catch { /* non-critical */ }
+    }
+  }
 
   const flags = await getActiveFlags(prisma, {
     userId: fullUser.clerkId,
@@ -115,6 +145,16 @@ me.get("/", async (c) => {
       defaultDurationTier: fullUser.defaultDurationTier,
       defaultVoicePresetId: fullUser.defaultVoicePresetId,
       acceptAnyVoice: fullUser.acceptAnyVoice,
+      preferredCategories: fullUser.preferredCategories ?? [],
+      excludedCategories: fullUser.excludedCategories ?? [],
+      preferredTopics: fullUser.preferredTopics ?? [],
+      excludedTopics: fullUser.excludedTopics ?? [],
+      profileCompletedAt: fullUser.profileCompletedAt?.toISOString() ?? null,
+      zipCode: fullUser.zipCode ?? null,
+      city: fullUser.city ?? null,
+      state: fullUser.state ?? null,
+      country: fullUser.country ?? null,
+      sportsTeams: (fullUser.sportsTeams ?? []).map((st: any) => st.team),
       featureFlags: flags,
     },
   });
@@ -159,17 +199,78 @@ me.patch("/preferences", async (c) => {
   if (body.defaultDurationTier !== undefined) data.defaultDurationTier = body.defaultDurationTier;
   if (body.defaultVoicePresetId !== undefined) data.defaultVoicePresetId = body.defaultVoicePresetId;
   if (body.acceptAnyVoice !== undefined) data.acceptAnyVoice = body.acceptAnyVoice;
+  if (body.preferredCategories !== undefined) data.preferredCategories = body.preferredCategories;
+  if (body.excludedCategories !== undefined) data.excludedCategories = body.excludedCategories;
+  if (body.preferredTopics !== undefined) data.preferredTopics = body.preferredTopics;
+  if (body.excludedTopics !== undefined) data.excludedTopics = body.excludedTopics;
+  // Resolve zip code to city/state/country via external API
+  if (body.zipCode !== undefined) {
+    if (body.zipCode === null) {
+      // Clear location
+      data.zipCode = null;
+      data.city = null;
+      data.state = null;
+      data.country = null;
+    } else {
+      try {
+        const resp = await fetch(`https://api.zippopotam.us/us/${body.zipCode}`);
+        if (!resp.ok) {
+          return c.json({ error: "Invalid zip code" }, 400);
+        }
+        const zipData = await resp.json() as any;
+        const place = zipData.places?.[0];
+        if (!place) {
+          return c.json({ error: "Invalid zip code" }, 400);
+        }
+        data.zipCode = body.zipCode;
+        data.city = place["place name"];
+        data.state = place.state;
+        data.country = zipData.country ?? "US";
+      } catch {
+        return c.json({ error: "Failed to resolve zip code" }, 502);
+      }
+    }
+  }
+
+  // Mark profile as completed if any interest prefs are being set
+  const hasInterestUpdate = body.preferredCategories !== undefined
+    || body.excludedCategories !== undefined
+    || body.preferredTopics !== undefined
+    || body.excludedTopics !== undefined;
+  if (hasInterestUpdate) data.profileCompletedAt = new Date();
 
   const updated = await prisma.user.update({
     where: { id: user.id },
     data,
   });
 
+  // Recompute recommendation profile in background when interests or location change
+  if (hasInterestUpdate || body.zipCode !== undefined) {
+    try {
+      await computeUserProfile(user.id, prisma);
+      await recomputeRecommendationCache(user.id, prisma);
+    } catch (err) {
+      console.error(JSON.stringify({
+        action: "recompute_after_prefs_error",
+        userId: user.id,
+        error: err instanceof Error ? err.message : String(err),
+      }));
+    }
+  }
+
   return c.json({
     data: {
       defaultDurationTier: updated.defaultDurationTier,
       defaultVoicePresetId: updated.defaultVoicePresetId,
       acceptAnyVoice: updated.acceptAnyVoice,
+      preferredCategories: updated.preferredCategories,
+      excludedCategories: updated.excludedCategories,
+      preferredTopics: updated.preferredTopics,
+      excludedTopics: updated.excludedTopics,
+      zipCode: updated.zipCode,
+      city: updated.city,
+      state: updated.state,
+      country: updated.country,
     },
   });
 });
@@ -279,4 +380,136 @@ me.get("/push/vapid-key", async (c) => {
     return c.json({ error: "Push notifications not configured" }, 503);
   }
   return c.json({ data: { publicKey: key } });
+});
+
+/**
+ * GET /sports-teams — Browse available sports teams + user's selections.
+ * Query params: ?search=chiefs — filter teams by name/city/nickname
+ * Returns: { selected, local, leagues }
+ */
+me.get("/sports-teams", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
+  const search = c.req.query("search")?.trim().toLowerCase();
+
+  // Fetch user's current selections
+  const userTeams = await prisma.userSportsTeam.findMany({
+    where: { userId: user.id },
+    select: { teamId: true },
+  });
+  const selectedIds = new Set(userTeams.map((t: any) => t.teamId));
+
+  // Fetch user's city/state for local teams
+  const fullUser = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: { city: true, state: true },
+  });
+
+  // Resolve local team IDs from city/state
+  let localTeamIds = new Set<string>();
+  if (fullUser?.city && fullUser?.state) {
+    const markets = await prisma.sportsTeamMarket.findMany({
+      where: { OR: [
+        { city: fullUser.city, state: fullUser.state },
+        { state: fullUser.state },
+      ]},
+      select: { teamId: true },
+    });
+    localTeamIds = new Set(markets.map((m: any) => m.teamId));
+  }
+
+  // Fetch all teams with league info
+  const teams = await prisma.sportsTeam.findMany({
+    include: {
+      league: { select: { id: true, name: true, sport: true } },
+    },
+    orderBy: [{ league: { name: "asc" } }, { city: "asc" }],
+  });
+
+  // Apply search filter
+  const filtered = search
+    ? teams.filter((t: any) =>
+        t.name.toLowerCase().includes(search) ||
+        t.city.toLowerCase().includes(search) ||
+        t.nickname.toLowerCase().includes(search) ||
+        t.abbreviation.toLowerCase().includes(search)
+      )
+    : teams;
+
+  // Build response
+  const mapTeam = (t: any) => ({
+    id: t.id,
+    name: t.name,
+    city: t.city,
+    nickname: t.nickname,
+    abbreviation: t.abbreviation,
+    leagueId: t.leagueId,
+    leagueName: t.league?.name,
+    selected: selectedIds.has(t.id),
+  });
+
+  const local = filtered.filter((t: any) => localTeamIds.has(t.id)).map(mapTeam);
+
+  // Group remaining by league
+  const leagueMap = new Map<string, { id: string; name: string; sport: string; teams: any[] }>();
+  for (const team of filtered) {
+    const lid = team.league?.id;
+    if (!lid) continue;
+    if (!leagueMap.has(lid)) {
+      leagueMap.set(lid, {
+        id: lid,
+        name: team.league.name,
+        sport: team.league.sport,
+        teams: [],
+      });
+    }
+    leagueMap.get(lid)!.teams.push(mapTeam(team));
+  }
+
+  const selected = filtered.filter((t: any) => selectedIds.has(t.id)).map(mapTeam);
+
+  return c.json({
+    data: {
+      selected,
+      local,
+      leagues: [...leagueMap.values()],
+    },
+  });
+});
+
+const SportsTeamsSchema = z.object({
+  teamIds: z.array(z.string()).max(50),
+});
+
+/**
+ * PUT /sports-teams — Set user's selected sports teams.
+ * Body: { teamIds: string[] }
+ */
+me.put("/sports-teams", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
+  const body = await validateBody(c, SportsTeamsSchema);
+
+  // Delete all existing selections and create new ones
+  await prisma.userSportsTeam.deleteMany({ where: { userId: user.id } });
+
+  if (body.teamIds.length > 0) {
+    await prisma.userSportsTeam.createMany({
+      data: body.teamIds.map((teamId: string) => ({ userId: user.id, teamId })),
+      skipDuplicates: true,
+    });
+  }
+
+  // Recompute recommendations since team preferences changed
+  try {
+    await recomputeRecommendationCache(user.id, prisma);
+  } catch (err) {
+    console.error(JSON.stringify({
+      action: "recompute_after_sports_teams_error",
+      userId: user.id,
+      error: err instanceof Error ? err.message : String(err),
+    }));
+  }
+
+  return c.json({ data: { teamIds: body.teamIds } });
 });

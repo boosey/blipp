@@ -1,10 +1,8 @@
-import { getConfig } from "../config";
-
 // Loose prisma type — tightens automatically after prisma generate
 type PrismaLike = {
-  platformConfig: {
+  cronJob: {
     findUnique: (args: any) => Promise<any>;
-    upsert: (args: any) => Promise<any>;
+    update: (args: any) => Promise<any>;
   };
   cronRun: {
     create: (args: any) => Promise<any>;
@@ -54,36 +52,29 @@ function createCronLogger(runId: string, prisma: PrismaLike): CronLogger {
 /**
  * Runs a named cron job with interval gating, run-record lifecycle, and log capture.
  *
- * - Returns immediately (no record) if the job is disabled.
+ * - Reads config (enabled, intervalMinutes, lastRunAt) from the CronJob table.
+ * - Returns immediately (no record) if the job is disabled or missing from DB.
  * - Returns immediately (no record) if the interval has not elapsed since the last run.
  * - Creates a CronRun(IN_PROGRESS), calls execute(), marks SUCCESS or FAILED.
- * - Always writes cron.{jobKey}.lastRunAt after execution.
+ * - Updates CronJob.lastRunAt after execution.
  */
 export async function runJob(params: {
   jobKey: string;
   prisma: PrismaLike;
-  defaultIntervalMinutes?: number;
   execute: (logger: CronLogger) => Promise<Record<string, unknown>>;
 }): Promise<void> {
-  const { jobKey, prisma, defaultIntervalMinutes = 60, execute } = params;
+  const { jobKey, prisma, execute } = params;
 
-  // Check enabled (cached is fine — manual change, 60s lag acceptable)
-  const enabled = await getConfig(prisma as any, `cron.${jobKey}.enabled`, true);
-  if (!enabled) return;
+  // Read job config from CronJob table
+  const job = await prisma.cronJob.findUnique({ where: { jobKey } });
+  if (!job || !job.enabled) return;
 
-  // Read intervalMinutes (cached) + lastRunAt (direct DB read — bypass cache)
-  const intervalMinutes = await getConfig<number>(
-    prisma as any,
-    `cron.${jobKey}.intervalMinutes`,
-    defaultIntervalMinutes
-  );
-  const lastRunConfig = await prisma.platformConfig.findUnique({
-    where: { key: `cron.${jobKey}.lastRunAt` },
-  });
-  const lastRunAt = lastRunConfig?.value as string | null;
-  if (lastRunAt) {
-    const elapsedMs = Date.now() - new Date(lastRunAt).getTime();
-    if (elapsedMs < (intervalMinutes as number) * 60_000) return;
+  const intervalMinutes: number = job.intervalMinutes;
+
+  // Check if interval has elapsed since last run
+  if (job.lastRunAt) {
+    const elapsedMs = Date.now() - new Date(job.lastRunAt).getTime();
+    if (elapsedMs < intervalMinutes * 60_000) return;
   }
 
   // Guard: if there's already a recent IN_PROGRESS run, skip to prevent pile-up
@@ -94,7 +85,7 @@ export async function runJob(params: {
   });
   if (stuckRun) {
     const stuckAgeMs = Date.now() - new Date(stuckRun.startedAt).getTime();
-    const staleThresholdMs = (intervalMinutes as number) * 60_000;
+    const staleThresholdMs = intervalMinutes * 60_000;
     if (stuckAgeMs < staleThresholdMs) {
       // Recent IN_PROGRESS run exists — skip this tick
       return;
@@ -113,14 +104,10 @@ export async function runJob(params: {
 
   // Write lastRunAt BEFORE execution so that if the Worker is killed mid-run,
   // the next cron tick won't immediately re-trigger this job
-  await prisma.platformConfig.upsert({
-    where: { key: `cron.${jobKey}.lastRunAt` },
-    update: { value: new Date().toISOString() },
-    create: {
-      key: `cron.${jobKey}.lastRunAt`,
-      value: new Date().toISOString(),
-      description: `Last run timestamp for cron job: ${jobKey}`,
-    },
+  const now = new Date();
+  await prisma.cronJob.update({
+    where: { jobKey },
+    data: { lastRunAt: now },
   });
 
   // Create run record

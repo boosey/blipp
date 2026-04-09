@@ -26,6 +26,11 @@
 	"routes": [
 		{ "pattern": "staging.podblipp.com", "custom_domain": true }
 	],
+	"triggers": {
+		"crons": [
+			"*/5 * * * *"
+		]
+	},
 	"hyperdrive": [
 		{
 			"binding": "HYPERDRIVE",
@@ -131,7 +136,7 @@
 			{
 				"queue": "catalog-refresh-staging",
 				"max_batch_size": 1,
-				"max_retries": 1,
+				"max_retries": 3,
 				"dead_letter_queue": "dead-letter-staging"
 			},
 			{

@@ -59,6 +59,11 @@ vi.mock("../contexts/audio-context", () => ({
     adProgress: 0,
     adDuration: 0,
     adCurrentTime: 0,
+    queue: [],
+    removeFromQueue: vi.fn(),
+    clearQueue: vi.fn(),
+    reorderQueue: vi.fn(),
+    skipToQueueItem: vi.fn(),
   }),
 }));
 

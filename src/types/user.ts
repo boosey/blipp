@@ -23,4 +23,5 @@ export interface EpisodeSummary {
   durationSeconds: number | null;
   userVote: number; // 1 = up, -1 = down, 0 = none
   blippStatus: { status: "PENDING" | "PROCESSING" | "READY" | "FAILED" | "CANCELLED"; listened: boolean } | null;
+  blippCount: number;
 }

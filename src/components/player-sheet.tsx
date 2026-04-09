@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Play, Pause, RotateCcw, RotateCw, ChevronDown, Share2, ExternalLink } from "lucide-react";
+import { Play, Pause, RotateCcw, RotateCw, ChevronDown, Share, ExternalLink, ListMusic } from "lucide-react";
 import { toast } from "sonner";
 import {
   Sheet,
@@ -14,6 +14,7 @@ import { usePlan } from "../contexts/plan-context";
 import { formatDuration } from "../lib/feed-utils";
 import { ThumbButtons } from "./thumb-buttons";
 import { BlippFeedbackSheet } from "./blipp-feedback-sheet";
+import { QueueSheet } from "./queue-sheet";
 
 const RATE_CYCLE = [1, 1.25, 1.5, 2, 0.75] as const;
 
@@ -44,6 +45,7 @@ export function PlayerSheet({
     adProgress,
     adDuration,
     adCurrentTime,
+    queue,
   } = useAudio();
   const apiFetch = useApiFetch();
 
@@ -53,6 +55,7 @@ export function PlayerSheet({
   // Episode vote state — reset when track changes
   const [episodeVote, setEpisodeVote] = useState(0);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [queueOpen, setQueueOpen] = useState(false);
   const lastEpisodeId = useRef<string | null>(null);
 
   useEffect(() => {
@@ -150,12 +153,13 @@ export function PlayerSheet({
   const inAd = adState === "preroll" || adState === "postroll";
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Sheet open={open} onOpenChange={onOpenChange} modal={false}>
       <SheetContent
         ref={sheetRef}
         side="bottom"
         showCloseButton={false}
         className="h-[85dvh] rounded-t-2xl bg-background border-border flex flex-col items-center px-4 pt-3 pb-[max(1.5rem,env(safe-area-inset-bottom))] overflow-y-auto"
+        overlayClassName="pointer-events-none"
         onTouchStart={onSwipeStart}
         onTouchMove={onSwipeMove}
         onTouchEnd={onSwipeEnd}
@@ -234,7 +238,7 @@ export function PlayerSheet({
                   className="p-2 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                   aria-label="Share briefing"
                 >
-                  <Share2 className="w-4 h-4" />
+                  <Share className="w-4 h-4" />
                 </button>
               )}
             </div>
@@ -350,8 +354,17 @@ export function PlayerSheet({
                 </span>
               </button>
 
-              {/* Spacer to balance rate button */}
-              <div className="min-w-[3rem]" />
+              {/* Queue button */}
+              <button
+                onClick={() => setQueueOpen(true)}
+                className="relative text-xs font-medium text-muted-foreground bg-muted px-2.5 py-1 rounded-full min-w-[3rem] flex items-center justify-center gap-1 active:scale-[0.95] transition-transform duration-75"
+                aria-label="Open queue"
+              >
+                <ListMusic className="w-3.5 h-3.5" />
+                {queue.length > 0 && (
+                  <span className="text-primary font-bold">{queue.length}</span>
+                )}
+              </button>
             </>
           )}
         </div>
@@ -364,6 +377,7 @@ export function PlayerSheet({
           onOpenChange={setFeedbackOpen}
         />
       )}
+      <QueueSheet open={queueOpen} onOpenChange={setQueueOpen} />
     </Sheet>
   );
 }
