@@ -13,7 +13,10 @@ import { NativeSignIn } from "./components/native-sign-in";
 import { Landing } from "./pages/landing";
 import { Pricing } from "./pages/pricing";
 import { About } from "./pages/about";
+import { HowItWorks } from "./pages/how-it-works";
 import { Contact } from "./pages/contact";
+import { BlogWhyYouDontNeedToListen } from "./pages/blog/why-you-dont-need-to-listen";
+import { BlogBestWayToKeepUp } from "./pages/blog/best-way-to-keep-up";
 import { CookieConsent } from "./components/cookie-consent";
 import { NotFound } from "./pages/not-found";
 import { Home } from "./pages/Home";
@@ -82,6 +85,9 @@ export default function App() {
       <Route path="/pricing" element={<Pricing />} />
       <Route path="/about" element={<About />} />
       <Route path="/contact" element={<Contact />} />
+      <Route path="/how-it-works" element={<HowItWorks />} />
+      <Route path="/blog/why-you-dont-need-to-listen-to-every-podcast" element={<BlogWhyYouDontNeedToListen />} />
+      <Route path="/blog/best-way-to-keep-up-with-podcasts" element={<BlogBestWayToKeepUp />} />
       <Route path="/tos" element={<Suspense fallback={null}><TermsOfService /></Suspense>} />
       <Route path="/privacy" element={<Suspense fallback={null}><PrivacyPolicy /></Suspense>} />
 
