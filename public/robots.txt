@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /home
+Disallow: /settings
+Disallow: /admin
+
+Sitemap: https://podblipp.com/sitemap.xml

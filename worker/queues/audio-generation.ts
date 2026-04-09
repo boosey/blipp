@@ -369,6 +369,29 @@ export async function handleAudioGeneration(
           finalClipId = newClip.id;
         }
 
+        // Auto-publish: set publicPage on episode if podcast is deliverable and clip has narrativeText
+        try {
+          const clipWithNarrative = await prisma.clip.findUnique({
+            where: { id: finalClipId },
+            select: { narrativeText: true, episode: { select: { id: true, publicPage: true, podcast: { select: { deliverable: true, slug: true } } } } },
+          });
+          if (
+            clipWithNarrative?.narrativeText &&
+            clipWithNarrative.episode?.podcast?.deliverable &&
+            clipWithNarrative.episode.podcast.slug &&
+            !clipWithNarrative.episode.publicPage
+          ) {
+            await prisma.episode.update({
+              where: { id: clipWithNarrative.episode.id },
+              data: { publicPage: true },
+            });
+            log.info("auto_publish_episode", { episodeId });
+          }
+        } catch (autoPublishErr) {
+          // Non-fatal — don't block pipeline on auto-publish failure
+          log.info("auto_publish_failed", { episodeId, error: autoPublishErr instanceof Error ? autoPublishErr.message : String(autoPublishErr) });
+        }
+
         // Mark step COMPLETED
         await prisma.pipelineStep.update({
           where: { id: step.id },

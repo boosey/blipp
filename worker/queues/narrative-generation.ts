@@ -265,7 +265,7 @@ export async function handleNarrativeGeneration(
         });
         await writeEvent(prisma, step.id, "INFO", "Saved narrative to R2", { r2Key: narrativeR2Key, wordCount });
 
-        // Upsert Clip record (narrative content lives in R2 only)
+        // Upsert Clip record — also persist narrativeText for public Blipp pages
         const distillation = await prisma.distillation.findUnique({ where: { episodeId } });
         const voicePresetId = job.voicePresetId ?? null;
         const existingClip = await prisma.clip.findFirst({
@@ -276,6 +276,7 @@ export async function handleNarrativeGeneration(
             where: { id: existingClip.id },
             data: {
               wordCount,
+              narrativeText: narrative!,
               ...(distillation ? { distillationId: distillation.id } : {}),
             },
           });
@@ -288,6 +289,7 @@ export async function handleNarrativeGeneration(
               voicePresetId,
               status: "PENDING",
               wordCount,
+              narrativeText: narrative!,
             },
           });
         }

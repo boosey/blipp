@@ -308,4 +308,65 @@ episodesRoutes.post("/aging-execute", async (c) => {
   });
 });
 
+// POST /public-pages/bulk - Bulk toggle publicPage on episodes
+episodesRoutes.post("/public-pages/bulk", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const { episodeIds, publicPage } = await c.req.json<{ episodeIds: string[]; publicPage: boolean }>();
+
+  if (!episodeIds?.length || typeof publicPage !== "boolean") {
+    return c.json({ error: "episodeIds (string[]) and publicPage (boolean) required" }, 400);
+  }
+
+  const result = await prisma.episode.updateMany({
+    where: { id: { in: episodeIds } },
+    data: { publicPage },
+  });
+
+  return c.json({ data: { updated: result.count } });
+});
+
+// POST /public-pages/bulk-by-podcast - Enable publicPage for all episodes of given podcasts that have completed clips with narrativeText
+episodesRoutes.post("/public-pages/bulk-by-podcast", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const { podcastIds, publicPage } = await c.req.json<{ podcastIds: string[]; publicPage?: boolean }>();
+
+  if (!podcastIds?.length) {
+    return c.json({ error: "podcastIds (string[]) required" }, 400);
+  }
+
+  const enable = publicPage !== false;
+
+  if (enable) {
+    // Only enable for episodes that have at least one COMPLETED clip with narrativeText
+    const eligibleEpisodes = await prisma.episode.findMany({
+      where: {
+        podcastId: { in: podcastIds },
+        publicPage: false,
+        slug: { not: null },
+        clips: { some: { status: "COMPLETED", narrativeText: { not: null } } },
+      },
+      select: { id: true },
+    });
+
+    if (eligibleEpisodes.length === 0) {
+      return c.json({ data: { updated: 0 } });
+    }
+
+    const result = await prisma.episode.updateMany({
+      where: { id: { in: eligibleEpisodes.map((e: any) => e.id) } },
+      data: { publicPage: true },
+    });
+
+    return c.json({ data: { updated: result.count } });
+  } else {
+    // Disable all public pages for these podcasts
+    const result = await prisma.episode.updateMany({
+      where: { podcastId: { in: podcastIds }, publicPage: true },
+      data: { publicPage: false },
+    });
+
+    return c.json({ data: { updated: result.count } });
+  }
+});
+
 export { episodesRoutes };

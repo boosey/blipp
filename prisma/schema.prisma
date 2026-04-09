@@ -194,6 +194,7 @@ model Podcast {
   deliverable    Boolean   @default(true)     // false when no deliverable episodes exist
   appleRank      Int?      // Position in Apple Top 200 chart (1-200, null if unranked)
   source         String?   // "trending" | "user_request" | "manual"
+  slug           String?   @unique // URL-safe slug e.g. "lex-fridman"
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
@@ -222,6 +223,8 @@ model Episode {
   transcriptR2Key String?
   audioR2Key      String?
   topicTags       String[]  // Extracted topic fingerprints from claims
+  slug            String?   // URL-safe slug, unique per podcast e.g. "ep-412-sam-altman"
+  publicPage      Boolean   @default(false) // Whether this episode has a public Blipp page
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
@@ -238,6 +241,7 @@ model Episode {
   listenOriginalEvents   ListenOriginalEvent[] @relation("ListenOriginalEvents")
 
   @@unique([podcastId, guid])
+  @@unique([podcastId, slug])
   @@index([podcastId, publishedAt])
 }
 
@@ -858,6 +862,7 @@ model Category {
   id           String            @id @default(cuid())
   appleGenreId String            @unique
   name         String
+  slug         String?           @unique // URL-safe slug e.g. "technology"
   podcasts     PodcastCategory[]
   createdAt    DateTime          @default(now())
   updatedAt    DateTime          @updatedAt
