@@ -7,12 +7,13 @@ declare global {
 }
 
 const ADS_CONVERSION_ID = "AW-18076796933";
+const SIGNUP_CONVERSION_LABEL = "5Z83CPrJlJkcEIWQ2KtD";
 
 /** Fire a Google Ads conversion event (e.g. sign-up). */
 export function trackSignUpConversion() {
   if (typeof window.gtag === "function") {
     window.gtag("event", "conversion", {
-      send_to: `${ADS_CONVERSION_ID}/sign_up`,
+      send_to: `${ADS_CONVERSION_ID}/${SIGNUP_CONVERSION_LABEL}`,
     });
   }
 }
