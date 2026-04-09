@@ -51,8 +51,8 @@ async function fetchUsage(apiKey, startingAt, endingAt, bucketWidth = "1h") {
     starting_at: startingAt,
     ending_at: endingAt,
     bucket_width: bucketWidth,
-    group_by: "model",
   });
+  params.append("group_by[]", "model");
   const resp = await fetch(`${API_BASE}?${params}`, {
     headers: {
       "x-api-key": apiKey,
