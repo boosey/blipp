@@ -96,6 +96,11 @@ model User {
   state                 String?           // resolved from zip code or Cloudflare cf.region
   country               String?  @default("US")  // resolved from zip code or Cloudflare cf.country
   profileCompletedAt    DateTime?         // when user last saved interest preferences
+  digestEnabled              Boolean  @default(true)
+  digestIncludeSubscriptions Boolean  @default(true)
+  digestIncludeFavorites     Boolean  @default(true)
+  digestIncludeRecommended   Boolean  @default(true)
+  timezone                   String?  // IANA timezone e.g. "America/New_York"; null = UTC
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
@@ -118,6 +123,7 @@ model User {
   blippFeedback             BlippFeedback[]
   listenOriginalEvents      ListenOriginalEvent[] @relation("ListenOriginalEvents")
   sportsTeams               UserSportsTeam[]
+  digestDeliveries          DigestDelivery[]
 }
 
 // ── Podcast Favorites (interest signals for recommendations) ──
@@ -250,6 +256,7 @@ model Episode {
   claimsBenchmarkResults ClaimsBenchmarkResult[]
   blippFeedback          BlippFeedback[]
   listenOriginalEvents   ListenOriginalEvent[] @relation("ListenOriginalEvents")
+  digestDeliveryEpisodes DigestDeliveryEpisode[]
 
   @@unique([podcastId, guid])
   @@index([podcastId, publishedAt])
@@ -542,6 +549,9 @@ enum WorkProductType {
   AUDIO_CLIP
   BRIEFING_AUDIO
   SOURCE_AUDIO
+  DIGEST_NARRATIVE
+  DIGEST_CLIP
+  DIGEST_AUDIO
 }
 
 model PipelineEvent {
@@ -943,6 +953,7 @@ model CronJob {
   enabled                 Boolean   @default(true)
   intervalMinutes         Int
   defaultIntervalMinutes  Int
+  runAtHour               Int?      // 0-23 UTC hour; when set, job only runs during this hour
   lastRunAt               DateTime?
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
@@ -1262,4 +1273,47 @@ model PodcastGeoProfile {
   @@unique([podcastId, city, state])
   @@index([city, state])
   @@index([podcastId])
+}
+
+// ── Daily Digest ──
+
+model DigestDelivery {
+  id                String   @id @default(cuid())
+  userId            String
+  date              String   // "2026-04-07" — the day this digest covers
+  status            String   @default("PENDING") // PENDING | PROCESSING | READY | FAILED
+  totalEpisodes     Int      @default(0)
+  completedEpisodes Int      @default(0)
+  audioKey          String?  // R2 key for concatenated digest audio
+  actualSeconds     Int?     // total audio duration in seconds
+  episodeCount      Int      @default(0)
+  sources           Json     @default("[]") // DigestSource[] for frontend display
+  listened          Boolean  @default(false)
+  errorMessage      String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user     User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  episodes DigestDeliveryEpisode[]
+
+  @@unique([userId, date])
+  @@index([userId])
+  @@index([status])
+}
+
+model DigestDeliveryEpisode {
+  id         String  @id @default(cuid())
+  deliveryId String
+  episodeId  String
+  sourceType String  // "subscribed" | "favorited" | "recommended"
+  status        String  @default("PENDING") // PENDING | PROCESSING | READY | FAILED
+  entryStage    String? // Which pipeline stage this episode entered at
+  actualSeconds Int?    // Actual TTS audio duration in seconds
+
+  delivery DigestDelivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  episode  Episode        @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+
+  @@unique([deliveryId, episodeId])
+  @@index([deliveryId])
+  @@index([episodeId, status])
 }
