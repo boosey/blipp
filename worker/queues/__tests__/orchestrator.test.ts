@@ -49,6 +49,10 @@ describe("handleOrchestrator", () => {
       }
     });
     mockPrisma.$disconnect.mockResolvedValue(undefined);
+    // Default: no plan limits (user without plan skips concurrent job check)
+    mockPrisma.user.findUnique.mockResolvedValue(null);
+    // Default: no episode duration data (skip duration capping)
+    mockPrisma.episode.findMany.mockResolvedValue([]);
     // Default: no cached work products (evaluate probes these for stage routing)
     mockPrisma.workProduct.findMany.mockResolvedValue([]);
     mockPrisma.clip.findMany.mockResolvedValue([]);
