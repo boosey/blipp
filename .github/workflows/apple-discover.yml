@@ -32,11 +32,11 @@ jobs:
         env:
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           APP_ORIGIN: ${{ secrets.STAGING_ORIGIN }}
-          SCRIPT_TOKEN: ${{ secrets.SCRIPT_TOKEN }}
+          ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
       - name: Run Apple discovery (production)
         if: inputs.environment == 'production'
         run: node scripts/apple-discover.mjs --production --country=${{ inputs.country }} --limit=${{ inputs.limit }}
         env:
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY_PROD }}
           APP_ORIGIN: ${{ secrets.PROD_ORIGIN }}
-          SCRIPT_TOKEN: ${{ secrets.SCRIPT_TOKEN }}
+          ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}

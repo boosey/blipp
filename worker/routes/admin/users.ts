@@ -56,6 +56,150 @@ usersRoutes.get("/segments", async (c) => {
   });
 });
 
+// GET /pending-welcome - New users who have not yet received a welcome email,
+// with an activity summary so support can personalize the email.
+usersRoutes.get("/pending-welcome", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const { page, pageSize, skip } = parsePagination(c);
+
+  // Optional: only consider users created within the last N days (default 30)
+  const sinceDays = Number(c.req.query("sinceDays") ?? 30);
+  const since = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000);
+
+  const where = {
+    welcomeEmailSentAt: null,
+    createdAt: { gte: since },
+    status: "active",
+  };
+
+  const [users, total] = await Promise.all([
+    prisma.user.findMany({
+      where,
+      skip,
+      take: pageSize,
+      orderBy: { createdAt: "desc" },
+      include: {
+        plan: { select: { id: true, name: true, slug: true } },
+        _count: {
+          select: {
+            subscriptions: true,
+            feedItems: true,
+            briefings: true,
+            podcastFavorites: true,
+          },
+        },
+      },
+    }),
+    prisma.user.count({ where }),
+  ]);
+
+  const userIds = users.map((u: any) => u.id);
+
+  const [lastFeedItems, topSubscriptions, topFavorites] = userIds.length > 0
+    ? await Promise.all([
+        prisma.feedItem.findMany({
+          where: { userId: { in: userIds } },
+          orderBy: { createdAt: "desc" },
+          distinct: ["userId"],
+          select: { userId: true, createdAt: true },
+        }),
+        prisma.subscription.findMany({
+          where: { userId: { in: userIds } },
+          orderBy: { createdAt: "desc" },
+          take: userIds.length * 5,
+          include: { podcast: { select: { title: true } } },
+        }),
+        prisma.podcastFavorite.findMany({
+          where: { userId: { in: userIds } },
+          orderBy: { createdAt: "desc" },
+          take: userIds.length * 5,
+          include: { podcast: { select: { title: true } } },
+        }),
+      ])
+    : [[], [], []];
+
+  const lastActivityMap = new Map(lastFeedItems.map((f: any) => [f.userId, f.createdAt]));
+
+  const subsByUser = new Map<string, string[]>();
+  for (const s of topSubscriptions as any[]) {
+    const list = subsByUser.get(s.userId) ?? [];
+    if (list.length < 5 && s.podcast?.title) list.push(s.podcast.title);
+    subsByUser.set(s.userId, list);
+  }
+
+  const favsByUser = new Map<string, string[]>();
+  for (const f of topFavorites as any[]) {
+    const list = favsByUser.get(f.userId) ?? [];
+    if (list.length < 5 && f.podcast?.title) list.push(f.podcast.title);
+    favsByUser.set(f.userId, list);
+  }
+
+  const data = users.map((u: any) => {
+    const lastActive = lastActivityMap.get(u.id) as Date | undefined;
+    return {
+      id: u.id,
+      email: u.email,
+      name: u.name,
+      imageUrl: u.imageUrl,
+      plan: { id: u.plan.id, name: u.plan.name, slug: u.plan.slug },
+      createdAt: u.createdAt.toISOString(),
+      lastActiveAt: lastActive?.toISOString(),
+      onboardingComplete: u.onboardingComplete,
+      profileCompletedAt: u.profileCompletedAt?.toISOString(),
+      city: u.city,
+      state: u.state,
+      country: u.country,
+      preferredCategories: u.preferredCategories,
+      preferredTopics: u.preferredTopics,
+      activity: {
+        feedItemCount: u._count.feedItems,
+        briefingCount: u._count.briefings,
+        subscriptionCount: u._count.subscriptions,
+        favoriteCount: u._count.podcastFavorites,
+        topSubscriptions: subsByUser.get(u.id) ?? [],
+        topFavorites: favsByUser.get(u.id) ?? [],
+      },
+    };
+  });
+
+  return c.json(paginatedResponse(data, total, page, pageSize));
+});
+
+// POST /:id/mark-welcomed - Record that a welcome email has been sent
+usersRoutes.post("/:id/mark-welcomed", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const id = c.req.param("id");
+
+  const existing = await prisma.user.findUnique({
+    where: { id },
+    select: { id: true, welcomeEmailSentAt: true },
+  });
+  if (!existing) return c.json({ error: "User not found" }, 404);
+
+  const updated = await prisma.user.update({
+    where: { id },
+    data: { welcomeEmailSentAt: new Date() },
+    select: { id: true, welcomeEmailSentAt: true },
+  });
+
+  const auth = getAuth(c);
+  writeAuditLog(prisma, {
+    actorId: auth!.userId!,
+    action: "user.welcome_email.sent",
+    entityType: "User",
+    entityId: id,
+    before: { welcomeEmailSentAt: existing.welcomeEmailSentAt },
+    after: { welcomeEmailSentAt: updated.welcomeEmailSentAt },
+  }).catch(() => {});
+
+  return c.json({
+    data: {
+      id: updated.id,
+      welcomeEmailSentAt: updated.welcomeEmailSentAt?.toISOString(),
+    },
+  });
+});
+
 // GET / - Paginated user list
 usersRoutes.get("/", async (c) => {
   const prisma = c.get("prisma") as any;

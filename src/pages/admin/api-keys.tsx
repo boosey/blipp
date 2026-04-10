@@ -16,14 +16,43 @@ interface ApiKeyEntry {
   createdAt: string;
 }
 
+// Keep in sync with worker/middleware/admin.ts (requireAdmin + FINE_GRAINED_ROUTE_SCOPES)
+const AVAILABLE_SCOPES: Array<{
+  value: string;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: "admin:read",
+    label: "Admin (read-only)",
+    description: "All GET endpoints under /api/admin/*",
+  },
+  {
+    value: "admin:write",
+    label: "Admin (full)",
+    description: "All admin endpoints including mutations — grant sparingly",
+  },
+  {
+    value: "users:welcome",
+    label: "Users: welcome",
+    description: "Mark users as having received a welcome email",
+  },
+];
+
 export default function AdminApiKeys() {
   const adminFetch = useAdminFetch();
   const [keys, setKeys] = useState<ApiKeyEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [newKeyName, setNewKeyName] = useState("");
-  const [newKeyScopes, setNewKeyScopes] = useState("health:read");
+  const [newKeyScopes, setNewKeyScopes] = useState<string[]>([]);
   const [createdKey, setCreatedKey] = useState<string | null>(null);
+
+  function toggleScope(scope: string) {
+    setNewKeyScopes((prev) =>
+      prev.includes(scope) ? prev.filter((s) => s !== scope) : [...prev, scope]
+    );
+  }
 
   useEffect(() => {
     loadKeys();
@@ -41,20 +70,22 @@ export default function AdminApiKeys() {
   }
 
   async function createKey() {
+    if (newKeyScopes.length === 0) {
+      toast.error("Select at least one scope");
+      return;
+    }
     try {
       const data = await adminFetch<{ data: { key: string } }>("/api-keys", {
         method: "POST",
         body: JSON.stringify({
           name: newKeyName,
-          scopes: newKeyScopes
-            .split(",")
-            .map((s) => s.trim())
-            .filter(Boolean),
+          scopes: newKeyScopes,
         }),
       });
       setCreatedKey(data.data.key);
       toast.success("API key created");
       setNewKeyName("");
+      setNewKeyScopes([]);
       setShowCreate(false);
       loadKeys();
     } catch {
@@ -130,16 +161,40 @@ export default function AdminApiKeys() {
             placeholder="Key name (e.g. Monitoring)"
             className="bg-[#0F1D32] border-white/10 text-sm text-[#F9FAFB] placeholder:text-[#9CA3AF]/60"
           />
-          <Input
-            value={newKeyScopes}
-            onChange={(e) => setNewKeyScopes(e.target.value)}
-            placeholder="Scopes (comma-separated)"
-            className="bg-[#0F1D32] border-white/10 text-sm text-[#F9FAFB] placeholder:text-[#9CA3AF]/60"
-          />
+          <div className="space-y-1.5">
+            <p className="text-xs text-[#9CA3AF] font-medium">Scopes</p>
+            <div className="space-y-1">
+              {AVAILABLE_SCOPES.map((s) => {
+                const checked = newKeyScopes.includes(s.value);
+                return (
+                  <label
+                    key={s.value}
+                    className="flex items-start gap-2 p-2 rounded hover:bg-white/5 cursor-pointer"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleScope(s.value)}
+                      className="mt-0.5 accent-[#3B82F6]"
+                    />
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-[#F9FAFB]">{s.label}</span>
+                        <code className="text-[10px] text-[#9CA3AF] font-mono">
+                          {s.value}
+                        </code>
+                      </div>
+                      <p className="text-xs text-[#9CA3AF]/80">{s.description}</p>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
           <Button
             size="sm"
             onClick={createKey}
-            disabled={!newKeyName.trim()}
+            disabled={!newKeyName.trim() || newKeyScopes.length === 0}
             className="bg-[#3B82F6] hover:bg-[#3B82F6]/80 text-white text-xs"
           >
             Create

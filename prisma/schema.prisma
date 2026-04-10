@@ -96,6 +96,7 @@ model User {
   state                 String?           // resolved from zip code or Cloudflare cf.region
   country               String?  @default("US")  // resolved from zip code or Cloudflare cf.country
   profileCompletedAt    DateTime?         // when user last saved interest preferences
+  welcomeEmailSentAt    DateTime?         // set by support when a welcome email has been sent
   digestEnabled              Boolean  @default(true)
   digestIncludeSubscriptions Boolean  @default(true)
   digestIncludeFavorites     Boolean  @default(true)

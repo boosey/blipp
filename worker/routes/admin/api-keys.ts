@@ -1,7 +1,6 @@
 import { Hono } from "hono";
 import type { Env } from "../../types";
-import { parsePagination, paginatedResponse } from "../../lib/admin-helpers";
-import { getAuth } from "../../middleware/auth";
+import { parsePagination, paginatedResponse, getCurrentUser } from "../../lib/admin-helpers";
 
 const apiKeysRoutes = new Hono<{ Bindings: Env }>();
 
@@ -37,7 +36,6 @@ apiKeysRoutes.get("/", async (c) => {
 // POST / — Create a new API key (returns plaintext ONCE)
 apiKeysRoutes.post("/", async (c) => {
   const prisma = c.get("prisma") as any;
-  const auth = getAuth(c);
   const body = await c.req.json<{
     name: string;
     scopes: string[];
@@ -47,6 +45,9 @@ apiKeysRoutes.post("/", async (c) => {
   if (!body.name || !body.scopes?.length) {
     return c.json({ error: "name and scopes are required" }, 400);
   }
+
+  // Resolve Clerk auth → DB User.id (ApiKey.userId is an FK to User.id, not clerkId)
+  const currentUser = await getCurrentUser(c, prisma);
 
   // Generate random key
   const randomBytes = new Uint8Array(32);
@@ -71,7 +72,7 @@ apiKeysRoutes.post("/", async (c) => {
       keyHash,
       keyPrefix,
       scopes: body.scopes,
-      userId: auth!.userId!,
+      userId: currentUser.id,
       expiresAt: body.expiresAt ? new Date(body.expiresAt) : null,
     },
   });

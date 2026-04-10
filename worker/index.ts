@@ -7,7 +7,6 @@
  * - `scheduled` — Cron trigger handler (enqueues feed refresh every 30 min)
  */
 import { Hono } from "hono";
-import { createMiddleware } from "hono/factory";
 import { cors } from "hono/cors";
 import { clerkMiddleware } from "./middleware/auth";
 import { prismaMiddleware } from "./middleware/prisma";
@@ -24,7 +23,6 @@ import { rateLimit } from "./middleware/rate-limit";
 import { securityHeaders } from "./middleware/security-headers";
 import { cacheResponse } from "./middleware/cache";
 import { deepHealthCheck } from "./lib/health";
-import { catalogSeedRoutes } from "./routes/admin/catalog-seed";
 import { publicPages } from "./routes/public-pages";
 import type { Env } from "./types";
 
@@ -129,54 +127,18 @@ app.all("/__clerk/*", async (c) => {
   return proxyResp;
 });
 
-// ── Catalog-seed routes: script-token OR Clerk session ──
-// Script/CI requests bypass Clerk entirely via X-Script-Token or Bearer CLERK_SECRET_KEY.
-// Browser admin requests fall through to Clerk + requireAdmin (normal admin flow).
-const scriptOrClerkAuth = createMiddleware<{ Bindings: Env }>(async (c, next) => {
-  // Script token bypass (GH Actions, CI)
-  const scriptToken = c.req.header("X-Script-Token");
-  if (scriptToken) {
-    if (c.env.SCRIPT_TOKEN && scriptToken === c.env.SCRIPT_TOKEN) {
-      c.set("scriptAuth", true);
-      return next();
-    }
-    // Script token present but invalid — reject immediately
-    return c.json({ error: "Invalid script token" }, 401);
-  }
-  // Bearer secret bypass
-  const authHeader = c.req.header("Authorization");
-  if (authHeader?.startsWith("Bearer ")) {
-    const token = authHeader.slice(7);
-    if (token === c.env.CLERK_SECRET_KEY) {
-      c.set("scriptAuth", true);
-      return next();
-    }
-  }
-  // Browser request — run Clerk middleware, then requireAdmin
-  return clerkMiddleware()(c, async () => {
-    const { requireAdmin } = await import("./middleware/admin");
-    await requireAdmin(c, next);
-  });
-});
-for (const path of ["/api/admin/catalog-seed", "/api/admin/catalog-seed/*"] as const) {
-  app.use(path, prismaMiddleware);
-  app.use(path, scriptOrClerkAuth);
-}
-app.route("/api/admin/catalog-seed", catalogSeedRoutes);
-
-// Clerk auth middleware — populates auth context for all API routes
-// Skip Clerk for server-to-server requests already authenticated via scriptOrClerkAuth,
-// or using Bearer CLERK_SECRET_KEY
+// Clerk auth middleware — populates auth context for all API routes.
+// Skips Clerk entirely for server-to-server requests that authenticate via
+// Bearer CLERK_SECRET_KEY or an api key (Bearer blp_live_...). The latter is
+// validated downstream by apiKeyAuth.
 app.use("/api/*", async (c, next) => {
-  // Already authenticated by scriptOrClerkAuth middleware (catalog-seed routes)
-  if (c.get("scriptAuth")) return next();
-  // Public logs API handles its own auth via SCRIPT_TOKEN
-  if (c.req.path.startsWith("/api/logs")) return next();
-  // Bearer secret bypass (server-to-server)
   const authHeader = c.req.header("Authorization");
   if (authHeader?.startsWith("Bearer ")) {
     const token = authHeader.slice(7);
     if (token === c.env.CLERK_SECRET_KEY) {
+      return next();
+    }
+    if (token.startsWith("blp_live_")) {
       return next();
     }
   }

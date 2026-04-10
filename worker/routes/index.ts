@@ -17,7 +17,6 @@ import { assetsRoutes } from "./assets";
 import { cleanR2Routes } from "./admin/clean-r2";
 import { feedback } from "./feedback";
 import { blippFeedback } from "./blipp-feedback";
-import { logsRoutes } from "./logs";
 import { blipps } from "./blipps";
 import { events } from "./events";
 
@@ -40,7 +39,6 @@ routes.route("/recommendations", recommendations);
 routes.route("/voice-presets", voicePresets);
 routes.route("/feedback", feedback);
 routes.route("/feedback/blipp", blippFeedback);
-routes.route("/logs", logsRoutes);
 routes.route("/events", events);
 routes.route("/webhooks/clerk", clerkWebhooks);
 routes.route("/webhooks/stripe", stripeWebhooks);

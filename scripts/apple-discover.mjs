@@ -49,16 +49,16 @@ function getConfig() {
   // In CI (GitHub Actions), read from environment variables
   if (process.env.GITHUB_ACTIONS) {
     const appOrigin = process.env.APP_ORIGIN;
-    const scriptToken = process.env.SCRIPT_TOKEN;
+    const adminApiKey = process.env.ADMIN_API_KEY;
     if (!appOrigin) throw new Error("APP_ORIGIN env var not set");
-    if (!scriptToken) throw new Error("SCRIPT_TOKEN env var not set");
-    return { appOrigin, scriptToken };
+    if (!adminApiKey) throw new Error("ADMIN_API_KEY env var not set");
+    return { appOrigin, adminApiKey };
   }
 
   // Locally, read from files — use CLERK_SECRET_KEY as Bearer fallback
   const clerkSecret = readEnvFile(".dev.vars", "CLERK_SECRET_KEY");
   const appOrigin = APP_ORIGINS[env];
-  return { appOrigin, scriptToken: undefined, clerkSecret };
+  return { appOrigin, adminApiKey: undefined, clerkSecret };
 }
 
 function readEnvFile(filePath, key) {
@@ -189,12 +189,12 @@ async function lookupBatch(appleIds) {
 
 const INGEST_CHUNK_SIZE = 50;
 
-async function apiPost(url, body, { scriptToken, clerkSecret } = {}) {
+async function apiPost(url, body, { adminApiKey, clerkSecret } = {}) {
   const headers = {
     "Content-Type": "application/json",
   };
-  if (scriptToken) {
-    headers["X-Script-Token"] = scriptToken;
+  if (adminApiKey) {
+    headers["Authorization"] = `Bearer ${adminApiKey}`;
   } else if (clerkSecret) {
     headers["Authorization"] = `Bearer ${clerkSecret}`;
   }
@@ -272,7 +272,7 @@ async function main() {
   // Step 4: Create catalog seed job via API
   const config = getConfig();
   const { appOrigin } = config;
-  const auth = { scriptToken: config.scriptToken, clerkSecret: config.clerkSecret };
+  const auth = { adminApiKey: config.adminApiKey, clerkSecret: config.clerkSecret };
   console.log(`\nCreating catalog seed job at ${appOrigin}...`);
 
   const jobResult = await apiPost(`${appOrigin}/api/admin/catalog-seed`, {
