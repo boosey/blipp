@@ -58,6 +58,11 @@ describe("Admin API Keys", () => {
   });
 
   it("POST creates key and returns plaintext once", async () => {
+    mockPrisma.user.findUniqueOrThrow.mockResolvedValueOnce({
+      id: "user_db_1",
+      clerkId: "admin_1",
+      status: "active",
+    });
     mockPrisma.apiKey.create.mockResolvedValueOnce({
       id: "key_1",
       name: "Test Key",
