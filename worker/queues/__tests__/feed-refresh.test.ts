@@ -137,10 +137,14 @@ describe("handleFeedRefresh", () => {
     const podcast1 = {
       id: "pod-1",
       feedUrl: "https://fail.example.com/feed.xml",
+      title: "Pod 1",
+      slug: "pod-1",
     };
     const podcast2 = {
       id: "pod-2",
       feedUrl: "https://ok.example.com/feed.xml",
+      title: "Pod 2",
+      slug: "pod-2",
     };
     mockPrisma.podcast.findMany.mockResolvedValue([podcast1, podcast2]);
 
@@ -184,7 +188,7 @@ describe("handleFeedRefresh", () => {
     it("fetches only the specified podcast when podcastId is in message", async () => {
       (getConfig as any).mockResolvedValue(true);
 
-      const podcast = { id: "pod-1", feedUrl: "https://example.com/feed.xml" };
+      const podcast = { id: "pod-1", feedUrl: "https://example.com/feed.xml", title: "Test Podcast", slug: "test-podcast" };
       mockPrisma.podcast.findMany.mockResolvedValue([podcast]);
       mockPrisma.episode.findMany.mockResolvedValue([{ guid: "guid-1" }]);
       mockPrisma.episode.upsert.mockResolvedValue({
@@ -222,7 +226,7 @@ describe("handleFeedRefresh", () => {
         { podcastId: "pod-1" },
       ]);
 
-      const podcast = { id: "pod-1", feedUrl: "https://example.com/feed.xml" };
+      const podcast = { id: "pod-1", feedUrl: "https://example.com/feed.xml", title: "Test Podcast", slug: "test-podcast" };
       mockPrisma.podcast.findMany.mockResolvedValue([podcast]);
       mockPrisma.episode.findMany.mockResolvedValue([{ guid: "guid-1" }]);
       mockPrisma.episode.upsert.mockResolvedValue({
@@ -285,7 +289,7 @@ describe("handleFeedRefresh", () => {
     it("creates FeedItems and dispatches pipeline for new episodes with subscribers", async () => {
       (getConfig as any).mockResolvedValue(true);
 
-      const podcast = { id: "pod-1", feedUrl: "https://example.com/feed.xml" };
+      const podcast = { id: "pod-1", feedUrl: "https://example.com/feed.xml", title: "Test Podcast", slug: "test-podcast" };
       mockPrisma.podcast.findMany.mockResolvedValue([podcast]);
 
       // No existing episodes — GUID is new
@@ -348,7 +352,7 @@ describe("handleFeedRefresh", () => {
     it("does not create FeedItems for existing (non-new) episodes", async () => {
       (getConfig as any).mockResolvedValue(true);
 
-      const podcast = { id: "pod-1", feedUrl: "https://example.com/feed.xml" };
+      const podcast = { id: "pod-1", feedUrl: "https://example.com/feed.xml", title: "Test Podcast", slug: "test-podcast" };
       mockPrisma.podcast.findMany.mockResolvedValue([podcast]);
 
       // GUID already exists — not a new episode
@@ -382,7 +386,7 @@ describe("handleFeedRefresh", () => {
     it("skips subscriber notification when no subscriptions for podcast", async () => {
       (getConfig as any).mockResolvedValue(true);
 
-      const podcast = { id: "pod-1", feedUrl: "https://example.com/feed.xml" };
+      const podcast = { id: "pod-1", feedUrl: "https://example.com/feed.xml", title: "Test Podcast", slug: "test-podcast" };
       mockPrisma.podcast.findMany.mockResolvedValue([podcast]);
 
       // No existing episodes — GUID is new
@@ -414,7 +418,7 @@ describe("handleFeedRefresh", () => {
     it("groups subscribers by durationTier for efficient pipeline requests", async () => {
       (getConfig as any).mockResolvedValue(true);
 
-      const podcast = { id: "pod-1", feedUrl: "https://example.com/feed.xml" };
+      const podcast = { id: "pod-1", feedUrl: "https://example.com/feed.xml", title: "Test Podcast", slug: "test-podcast" };
       mockPrisma.podcast.findMany.mockResolvedValue([podcast]);
 
       // No existing episodes — GUID is new
@@ -471,7 +475,7 @@ describe("handleFeedRefresh", () => {
     it("detects new episodes by GUID not existing in database", async () => {
       (getConfig as any).mockResolvedValue(true);
 
-      const podcast = { id: "pod-1", feedUrl: "https://example.com/feed.xml" };
+      const podcast = { id: "pod-1", feedUrl: "https://example.com/feed.xml", title: "Test Podcast", slug: "test-podcast" };
       mockPrisma.podcast.findMany.mockResolvedValue([podcast]);
 
       // No existing episodes — guid-1 from the feed is new
@@ -504,7 +508,7 @@ describe("handleFeedRefresh", () => {
       // Should query existing GUIDs
       expect(mockPrisma.episode.findMany).toHaveBeenCalledWith({
         where: { podcastId: "pod-1" },
-        select: { guid: true },
+        select: { guid: true, slug: true },
       });
 
       // New GUID triggers subscriber pipeline
@@ -515,7 +519,7 @@ describe("handleFeedRefresh", () => {
     it("treats episodes with already-known GUIDs as not new", async () => {
       (getConfig as any).mockResolvedValue(true);
 
-      const podcast = { id: "pod-1", feedUrl: "https://example.com/feed.xml" };
+      const podcast = { id: "pod-1", feedUrl: "https://example.com/feed.xml", title: "Test Podcast", slug: "test-podcast" };
       mockPrisma.podcast.findMany.mockResolvedValue([podcast]);
 
       // guid-1 already exists in database
