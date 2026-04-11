@@ -383,7 +383,7 @@ episodesRoutes.post("/backfill-slugs", async (c) => {
     where: { slug: { not: null } },
     select: { slug: true },
   });
-  const podcastSlugSet = new Set(existingPodcastSlugs.map((p: any) => p.slug as string));
+  const podcastSlugSet = new Set<string>(existingPodcastSlugs.map((p: any) => p.slug));
 
   let podcastsUpdated = 0;
   for (const podcast of podcastsWithoutSlug) {
