@@ -22,9 +22,19 @@ export function rateLimit(config: RateLimitConfig) {
       throw new Error("RATE_LIMIT_KV binding is required but not configured");
     }
 
-    const auth = getAuth(c);
+    // API-key auth bypasses clerkMiddleware, so getAuth would throw. Prefer the
+    // api-key user id when present, otherwise fall back to Clerk auth.
+    const apiKeyUserId = c.get("apiKeyUserId") as string | undefined;
+    let clerkUserId: string | undefined;
+    if (!apiKeyUserId) {
+      try {
+        clerkUserId = getAuth(c)?.userId ?? undefined;
+      } catch {
+        clerkUserId = undefined;
+      }
+    }
     const identifier =
-      auth?.userId ?? c.req.header("cf-connecting-ip") ?? "unknown";
+      apiKeyUserId ?? clerkUserId ?? c.req.header("cf-connecting-ip") ?? "unknown";
     const bucket = Math.floor(Date.now() / config.windowMs);
     const key = `${config.keyPrefix}:${identifier}:${bucket}`;
 

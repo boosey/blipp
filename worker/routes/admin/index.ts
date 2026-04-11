@@ -49,16 +49,21 @@ adminRoutes.use("*", async (c, next) => {
   await next();
   // Only log successful mutations (2xx)
   if (c.res.status >= 200 && c.res.status < 300) {
-    const auth = getAuth(c);
+    // Prefer api-key identity; fall back to Clerk (which throws if skipped).
+    const apiKeyUserId = c.get("apiKeyUserId") as string | undefined;
+    let actorId: string | undefined = apiKeyUserId;
+    if (!actorId) {
+      try { actorId = getAuth(c)?.userId ?? undefined; } catch { actorId = undefined; }
+    }
     const prisma = c.get("prisma") as any;
-    if (prisma && auth?.userId) {
+    if (prisma && actorId) {
       const path = c.req.path;
       // Extract entity type from route path (e.g. /admin/podcasts/123 → podcast)
       const segments = path.replace(/^\/api\/admin\//, "").split("/");
       const entityType = segments[0]?.replace(/-/g, "_") ?? "unknown";
       const entityId = segments[1] ?? "";
       writeAuditLog(prisma, {
-        actorId: auth.userId,
+        actorId,
         action: `${c.req.method.toLowerCase()}_${entityType}`,
         entityType,
         entityId,
