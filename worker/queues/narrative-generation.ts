@@ -2,6 +2,7 @@ import { createPrismaClient } from "../lib/db";
 import { createPipelineLogger, logDbError } from "../lib/logger";
 import { checkStageEnabled } from "../lib/queue-helpers";
 import { generateNarrative, selectClaimsForDuration, type EpisodeMetadata } from "../lib/distillation";
+import { clampTierToEpisodeLength } from "../lib/constants";
 import { resolveModelChain } from "../lib/model-resolution";
 import { getLlmProviderImpl } from "../lib/llm-providers";
 import { wpKey, putWorkProduct, getWorkProduct } from "../lib/work-products";
@@ -138,10 +139,33 @@ export async function handleNarrativeGeneration(
         const allClaims = JSON.parse(new TextDecoder().decode(claimsData)) as any[];
         await writeEvent(prisma, step.id, "INFO", `Loaded ${allClaims.length} claims from R2`);
 
-        // Select claims for this duration tier (filters by importance/novelty composite score)
+        // Load episode metadata (needed for clamp + narrative intro)
+        const episode = await prisma.episode.findUnique({
+          where: { id: episodeId },
+          select: {
+            title: true,
+            publishedAt: true,
+            durationSeconds: true,
+            podcast: { select: { title: true } },
+          },
+        });
+
+        // Clamp requested tier so the narrative can't exceed ~75% of episode length.
+        const effectiveTier = clampTierToEpisodeLength(durationTier, episode?.durationSeconds);
+        if (effectiveTier !== durationTier) {
+          await writeEvent(
+            prisma,
+            step.id,
+            "INFO",
+            `Clamping tier: requested ${durationTier}min → ${effectiveTier}min (episode is ${episode?.durationSeconds}s)`,
+            { requestedTier: durationTier, effectiveTier, episodeDurationSeconds: episode?.durationSeconds }
+          );
+        }
+
+        // Select claims for the effective duration tier
         const hasExcerpts = allClaims.length > 0 && "excerpt" in allClaims[0];
         const claims = hasExcerpts
-          ? selectClaimsForDuration(allClaims, durationTier)
+          ? selectClaimsForDuration(allClaims, effectiveTier)
           : allClaims;
 
         // Resolve model chain: primary -> secondary -> tertiary
@@ -154,24 +178,13 @@ export async function handleNarrativeGeneration(
           chainLength: modelChain.length,
         });
 
-        // Load episode metadata for narrative intro
-        const episode = await prisma.episode.findUnique({
-          where: { id: episodeId },
-          select: {
-            title: true,
-            publishedAt: true,
-            durationSeconds: true,
-            podcast: { select: { title: true } },
-          },
-        });
-
         const episodeMetadata: EpisodeMetadata | undefined = episode
           ? {
               podcastTitle: episode.podcast.title,
               episodeTitle: episode.title,
               publishedAt: episode.publishedAt,
               durationSeconds: episode.durationSeconds,
-              briefingMinutes: durationTier,
+              briefingMinutes: effectiveTier,
             }
           : undefined;
 
@@ -188,11 +201,12 @@ export async function handleNarrativeGeneration(
           narrativeModel = resolved.providerModelId;
           narrativeProvider = resolved.provider;
 
-          await writeEvent(prisma, step.id, "INFO", `Generating ${durationTier}-minute narrative from ${claims.length}/${allClaims.length} claims via ${tier}: ${llm.name} (${resolved.providerModelId})`, {
+          await writeEvent(prisma, step.id, "INFO", `Generating ${effectiveTier}-minute narrative from ${claims.length}/${allClaims.length} claims via ${tier}: ${llm.name} (${resolved.providerModelId})`, {
             tier,
             claimCount: claims.length,
             totalClaims: allClaims.length,
             durationTier,
+            effectiveTier,
             model: resolved.providerModelId,
             provider: resolved.provider,
           });
@@ -203,7 +217,7 @@ export async function handleNarrativeGeneration(
               prisma,
               llm,
               claims,
-              durationTier,
+              effectiveTier,
               resolved.providerModelId,
               8192,
               env,

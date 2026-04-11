@@ -19,6 +19,31 @@ export function isValidDurationTier(n: number): n is DurationTier {
 }
 
 /**
+ * Clamp a requested duration tier to the highest tier that is strictly less
+ * than 75% of the episode length. Prevents producing a briefing longer than
+ * (or nearly equal to) the source episode.
+ *
+ * If episodeDurationSeconds is unknown (null/undefined/0), returns the
+ * requested tier unchanged. If no tier satisfies the constraint (episode is
+ * shorter than ~2.67 minutes), returns the smallest tier so a briefing still
+ * gets produced.
+ */
+export function clampTierToEpisodeLength(
+  requestedTier: number,
+  episodeDurationSeconds: number | null | undefined
+): DurationTier {
+  if (!episodeDurationSeconds || episodeDurationSeconds <= 0) {
+    return (isValidDurationTier(requestedTier) ? requestedTier : DURATION_TIERS[0]);
+  }
+  const maxAllowedMinutes = (episodeDurationSeconds * 0.75) / 60;
+  const candidates = DURATION_TIERS.filter(
+    (t) => t <= requestedTier && t < maxAllowedMinutes
+  );
+  if (candidates.length === 0) return DURATION_TIERS[0];
+  return candidates[candidates.length - 1];
+}
+
+/**
  * Pipeline stage enum value -> human-readable display name.
  * Keyed by Prisma PipelineStage enum values.
  * Includes CLIP_GENERATION for legacy data display.
