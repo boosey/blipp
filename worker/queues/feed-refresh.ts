@@ -5,6 +5,7 @@ import { parseRssFeed, type ParsedEpisode } from "../lib/rss-parser";
 import type { FeedRefreshMessage } from "../lib/queue-messages";
 import { isRefreshJobActive, tryCompleteRefreshJob } from "../lib/queue-helpers";
 import { safeFetch } from "../lib/url-validation";
+import { slugify, uniqueSlug } from "../lib/slugify";
 import type { Env } from "../types";
 
 /**
@@ -102,20 +103,37 @@ async function processPodcast(
     }
   }
 
+  // Ensure podcast has a slug for public SEO pages
+  if (!podcast.slug) {
+    const existingPodcastSlugs = await prisma.podcast.findMany({
+      where: { slug: { not: null } },
+      select: { slug: true },
+    });
+    const podcastSlugSet = new Set(existingPodcastSlugs.map((p: any) => p.slug as string));
+    const newSlug = uniqueSlug(podcast.title, podcastSlugSet);
+    await prisma.podcast.update({
+      where: { id: podcast.id },
+      data: { slug: newSlug },
+    });
+    podcast.slug = newSlug;
+  }
+
   const recent = latestEpisodes(feed.episodes, maxEpisodes);
   const newEpisodeIds: string[] = [];
 
-  // Collect existing GUIDs for this podcast to detect truly new episodes
+  // Collect existing GUIDs and slugs for this podcast to detect truly new episodes
   const existingEpisodes = await prisma.episode.findMany({
     where: { podcastId: podcast.id },
-    select: { guid: true },
+    select: { guid: true, slug: true },
   });
   const existingGuids = new Set(existingEpisodes.map((e: any) => e.guid));
+  const existingEpSlugs = new Set(existingEpisodes.map((e: any) => e.slug).filter(Boolean) as string[]);
 
   for (const ep of recent) {
     // Belt-and-suspenders: parser already filters these, but guard against malformed input
     if (!ep.guid || !ep.audioUrl) continue;
 
+    const epSlug = uniqueSlug(ep.title, existingEpSlugs);
     const episode = await prisma.episode.upsert({
       where: {
         podcastId_guid: {
@@ -133,8 +151,10 @@ async function processPodcast(
         durationSeconds: ep.durationSeconds,
         guid: ep.guid,
         transcriptUrl: ep.transcriptUrl,
+        slug: epSlug,
       },
     });
+    existingEpSlugs.add(epSlug);
 
     // New episode = GUID wasn't in the database before this refresh
     if (!existingGuids.has(ep.guid)) {

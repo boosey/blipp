@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { Env } from "../../types";
 import { PIPELINE_STAGE_NAMES } from "../../lib/constants";
 import { parsePagination, parseSort, paginatedResponse } from "../../lib/admin-helpers";
+import { slugify, uniqueSlug } from "../../lib/slugify";
 
 const episodesRoutes = new Hono<{ Bindings: Env }>();
 
@@ -367,6 +368,80 @@ episodesRoutes.post("/public-pages/bulk-by-podcast", async (c) => {
 
     return c.json({ data: { updated: result.count } });
   }
+});
+
+// POST /backfill-slugs - Generate slugs for all podcasts/episodes missing them, then set publicPage for eligible episodes
+episodesRoutes.post("/backfill-slugs", async (c) => {
+  const prisma = c.get("prisma") as any;
+
+  // 1. Backfill podcast slugs
+  const podcastsWithoutSlug = await prisma.podcast.findMany({
+    where: { slug: null },
+    select: { id: true, title: true },
+  });
+  const existingPodcastSlugs = await prisma.podcast.findMany({
+    where: { slug: { not: null } },
+    select: { slug: true },
+  });
+  const podcastSlugSet = new Set(existingPodcastSlugs.map((p: any) => p.slug as string));
+
+  let podcastsUpdated = 0;
+  for (const podcast of podcastsWithoutSlug) {
+    const slug = uniqueSlug(podcast.title, podcastSlugSet);
+    await prisma.podcast.update({ where: { id: podcast.id }, data: { slug } });
+    podcastSlugSet.add(slug);
+    podcastsUpdated++;
+  }
+
+  // 2. Backfill episode slugs (per podcast)
+  const podcastsWithEpisodes = await prisma.podcast.findMany({
+    select: { id: true },
+  });
+
+  let episodeSlugsUpdated = 0;
+  for (const podcast of podcastsWithEpisodes) {
+    const episodes = await prisma.episode.findMany({
+      where: { podcastId: podcast.id },
+      select: { id: true, title: true, slug: true },
+    });
+    const epSlugSet = new Set(episodes.map((e: any) => e.slug).filter(Boolean) as string[]);
+
+    for (const ep of episodes) {
+      if (ep.slug) continue;
+      const slug = uniqueSlug(ep.title, epSlugSet);
+      await prisma.episode.update({ where: { id: ep.id }, data: { slug } });
+      epSlugSet.add(slug);
+      episodeSlugsUpdated++;
+    }
+  }
+
+  // 3. Set publicPage=true for episodes with completed clips + narrative text + slug
+  const eligible = await prisma.episode.findMany({
+    where: {
+      publicPage: false,
+      slug: { not: null },
+      clips: { some: { status: "COMPLETED", narrativeText: { not: null } } },
+      podcast: { slug: { not: null }, deliverable: true },
+    },
+    select: { id: true },
+  });
+
+  let publicPagesEnabled = 0;
+  if (eligible.length > 0) {
+    const result = await prisma.episode.updateMany({
+      where: { id: { in: eligible.map((e: any) => e.id) } },
+      data: { publicPage: true },
+    });
+    publicPagesEnabled = result.count;
+  }
+
+  return c.json({
+    data: {
+      podcastSlugsBackfilled: podcastsUpdated,
+      episodeSlugsBackfilled: episodeSlugsUpdated,
+      publicPagesEnabled,
+    },
+  });
 });
 
 export { episodesRoutes };
