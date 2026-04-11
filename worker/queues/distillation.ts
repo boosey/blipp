@@ -265,6 +265,29 @@ export async function handleDistillation(
           data: { distillationId: existing.id },
         });
 
+        // Auto-publish: set publicPage on episode after distillation completes
+        try {
+          const epForPublish = await prisma.episode.findUnique({
+            where: { id: episodeId },
+            select: { publicPage: true, slug: true, podcast: { select: { deliverable: true, slug: true } } },
+          });
+          if (
+            epForPublish &&
+            !epForPublish.publicPage &&
+            epForPublish.slug &&
+            epForPublish.podcast?.deliverable &&
+            epForPublish.podcast.slug
+          ) {
+            await prisma.episode.update({
+              where: { id: episodeId },
+              data: { publicPage: true },
+            });
+            log.info("auto_publish_episode_distillation", { episodeId });
+          }
+        } catch (autoPublishErr) {
+          log.info("auto_publish_distillation_failed", { episodeId, error: autoPublishErr instanceof Error ? autoPublishErr.message : String(autoPublishErr) });
+        }
+
         // Report to orchestrator
         await env.ORCHESTRATOR_QUEUE.send({
           requestId: job.requestId,

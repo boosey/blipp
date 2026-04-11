@@ -415,13 +415,16 @@ episodesRoutes.post("/backfill-slugs", async (c) => {
     }
   }
 
-  // 3. Set publicPage=true for episodes with completed clips + narrative text + slug
+  // 3. Set publicPage=true for episodes that have at least completed distillation
   const eligible = await prisma.episode.findMany({
     where: {
       publicPage: false,
       slug: { not: null },
-      clips: { some: { status: "COMPLETED", narrativeText: { not: null } } },
       podcast: { slug: { not: null }, deliverable: true },
+      OR: [
+        { distillation: { status: "COMPLETED" } },
+        { clips: { some: { status: "COMPLETED" } } },
+      ],
     },
     select: { id: true },
   });

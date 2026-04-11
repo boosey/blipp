@@ -32,6 +32,7 @@ publicPages.get("/:showSlug/:episodeSlug", async (c) => {
     select: {
       title: true,
       slug: true,
+      description: true,
       publishedAt: true,
       durationSeconds: true,
       topicTags: true,
@@ -41,9 +42,25 @@ publicPages.get("/:showSlug/:episodeSlug", async (c) => {
         take: 1,
         select: { narrativeText: true },
       },
+      distillation: {
+        select: { claimsJson: true, status: true },
+      },
     },
   });
-  if (!episode || !episode.clips[0]?.narrativeText) return c.notFound();
+  if (!episode) return c.notFound();
+
+  // Use clip narrative if available, else summarize distillation claims, else episode description
+  let pageText = episode.clips[0]?.narrativeText;
+  if (!pageText && episode.distillation?.status === "COMPLETED" && episode.distillation.claimsJson) {
+    const claims = episode.distillation.claimsJson as any[];
+    pageText = claims
+      .slice(0, 20)
+      .map((claim: any) => typeof claim === "string" ? claim : claim.text || claim.claim || "")
+      .filter(Boolean)
+      .join("\n\n");
+  }
+  if (!pageText) pageText = episode.description || "";
+  if (!pageText) return c.notFound();
 
   // Find first category for this podcast
   const podcastCategory = await prisma.podcastCategory.findFirst({
@@ -59,7 +76,7 @@ publicPages.get("/:showSlug/:episodeSlug", async (c) => {
     podcastImageUrl: podcast.imageUrl,
     publishedAt: episode.publishedAt,
     durationSeconds: episode.durationSeconds,
-    narrativeText: episode.clips[0].narrativeText!,
+    narrativeText: pageText,
     topicTags: episode.topicTags,
     categoryName: podcastCategory?.category?.name,
     categorySlug: podcastCategory?.category?.slug,
