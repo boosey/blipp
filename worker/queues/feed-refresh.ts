@@ -45,7 +45,13 @@ async function processPodcast(
   try {
     let response: Response | undefined;
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-      response = await safeFetch(podcast.feedUrl, { signal: controller.signal });
+      response = await safeFetch(podcast.feedUrl, {
+        signal: controller.signal,
+        headers: {
+          "User-Agent": "Blipp/1.0 (+https://blipp.fm; podcast fetcher)",
+          "Accept": "application/rss+xml, application/xml;q=0.9, */*;q=0.8",
+        },
+      });
       if (response.ok || !RETRY_STATUSES.has(response.status) || attempt === MAX_RETRIES) break;
       const backoffMs = 1000 * Math.pow(2, attempt); // 1s, 2s, 4s
       log.info("feed_fetch_retry", {
