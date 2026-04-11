@@ -110,7 +110,7 @@ async function processPodcast(
       select: { slug: true },
     });
     const podcastSlugSet = new Set(existingPodcastSlugs.map((p: any) => p.slug as string));
-    const newSlug = uniqueSlug(podcast.title, podcastSlugSet);
+    const newSlug = uniqueSlug(podcast.title, podcastSlugSet, podcast.id);
     await prisma.podcast.update({
       where: { id: podcast.id },
       data: { slug: newSlug },
@@ -133,7 +133,7 @@ async function processPodcast(
     // Belt-and-suspenders: parser already filters these, but guard against malformed input
     if (!ep.guid || !ep.audioUrl) continue;
 
-    const epSlug = uniqueSlug(ep.title, existingEpSlugs);
+    const epSlug = uniqueSlug(ep.title, existingEpSlugs, ep.guid);
     const episode = await prisma.episode.upsert({
       where: {
         podcastId_guid: {

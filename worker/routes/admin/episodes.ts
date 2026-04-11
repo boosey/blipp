@@ -370,53 +370,84 @@ episodesRoutes.post("/public-pages/bulk-by-podcast", async (c) => {
   }
 });
 
-// POST /backfill-slugs - Generate slugs for all podcasts/episodes missing them, then set publicPage for eligible episodes
+// POST /backfill-slugs - Self-heal any podcast/episode rows missing a slug
+// (ingestion writes slugs automatically in feed-refresh; this covers stragglers)
+// then flip publicPage=true for episodes eligible for an SEO page.
+//
+// Bounded concurrency keeps this under the Worker CPU budget. For large
+// backfills, prefer scripts/backfill-slugs-prod.ts from a local machine.
 episodesRoutes.post("/backfill-slugs", async (c) => {
   const prisma = c.get("prisma") as any;
+  const CONCURRENCY = 10;
+  const MAX_EPISODES = 5000; // safety cap per invocation
 
-  // 1. Backfill podcast slugs
-  const podcastsWithoutSlug = await prisma.podcast.findMany({
+  async function runPool<T>(items: T[], worker: (item: T) => Promise<void>): Promise<void> {
+    let idx = 0;
+    const runners = Array.from({ length: CONCURRENCY }, async () => {
+      while (idx < items.length) {
+        const i = idx++;
+        await worker(items[i]!);
+      }
+    });
+    await Promise.all(runners);
+  }
+
+  // 1. Podcast slugs
+  const podcastsWithoutSlug: Array<{ id: string; title: string }> = await prisma.podcast.findMany({
     where: { slug: null },
     select: { id: true, title: true },
   });
-  const existingPodcastSlugs = await prisma.podcast.findMany({
+  const existingPodcastSlugs: Array<{ slug: string }> = await prisma.podcast.findMany({
     where: { slug: { not: null } },
     select: { slug: true },
   });
-  const podcastSlugSet = new Set<string>(existingPodcastSlugs.map((p: any) => p.slug));
-
-  let podcastsUpdated = 0;
-  for (const podcast of podcastsWithoutSlug) {
-    const slug = uniqueSlug(podcast.title, podcastSlugSet);
-    await prisma.podcast.update({ where: { id: podcast.id }, data: { slug } });
+  const podcastSlugSet = new Set<string>(existingPodcastSlugs.map((p) => p.slug));
+  const podcastWrites = podcastsWithoutSlug.map((p) => {
+    const slug = uniqueSlug(p.title, podcastSlugSet, p.id);
     podcastSlugSet.add(slug);
-    podcastsUpdated++;
-  }
-
-  // 2. Backfill episode slugs (per podcast)
-  const podcastsWithEpisodes = await prisma.podcast.findMany({
-    select: { id: true },
+    return { id: p.id, slug };
+  });
+  await runPool(podcastWrites, async ({ id, slug }) => {
+    await prisma.podcast.update({ where: { id }, data: { slug } });
   });
 
-  let episodeSlugsUpdated = 0;
-  for (const podcast of podcastsWithEpisodes) {
-    const episodes = await prisma.episode.findMany({
-      where: { podcastId: podcast.id },
-      select: { id: true, title: true, slug: true },
+  // 2. Episode slugs (scoped per podcast, capped)
+  const episodesWithoutSlug: Array<{ id: string; title: string; podcastId: string }> =
+    await prisma.episode.findMany({
+      where: { slug: null },
+      select: { id: true, title: true, podcastId: true },
+      take: MAX_EPISODES,
     });
-    const epSlugSet = new Set(episodes.map((e: any) => e.slug).filter(Boolean) as string[]);
 
-    for (const ep of episodes) {
-      if (ep.slug) continue;
-      const slug = uniqueSlug(ep.title, epSlugSet);
-      await prisma.episode.update({ where: { id: ep.id }, data: { slug } });
-      epSlugSet.add(slug);
-      episodeSlugsUpdated++;
-    }
+  const affectedPodcastIds = [...new Set(episodesWithoutSlug.map((e) => e.podcastId))];
+  const existingEpisodeSlugs: Array<{ podcastId: string; slug: string }> =
+    affectedPodcastIds.length > 0
+      ? await prisma.episode.findMany({
+          where: { podcastId: { in: affectedPodcastIds }, slug: { not: null } },
+          select: { podcastId: true, slug: true },
+        })
+      : [];
+
+  const byPodcast = new Map<string, Set<string>>();
+  for (const r of existingEpisodeSlugs) {
+    let set = byPodcast.get(r.podcastId);
+    if (!set) { set = new Set(); byPodcast.set(r.podcastId, set); }
+    set.add(r.slug);
   }
 
-  // 3. Set publicPage=true for episodes that have at least completed distillation
-  const eligible = await prisma.episode.findMany({
+  const episodeWrites = episodesWithoutSlug.map((e) => {
+    let set = byPodcast.get(e.podcastId);
+    if (!set) { set = new Set(); byPodcast.set(e.podcastId, set); }
+    const slug = uniqueSlug(e.title, set, e.id);
+    set.add(slug);
+    return { id: e.id, slug };
+  });
+  await runPool(episodeWrites, async ({ id, slug }) => {
+    await prisma.episode.update({ where: { id }, data: { slug } });
+  });
+
+  // 3. Flip publicPage=true for eligible episodes (distillation is the gate)
+  const result = await prisma.episode.updateMany({
     where: {
       publicPage: false,
       slug: { not: null },
@@ -426,23 +457,15 @@ episodesRoutes.post("/backfill-slugs", async (c) => {
         { clips: { some: { status: "COMPLETED" } } },
       ],
     },
-    select: { id: true },
+    data: { publicPage: true },
   });
-
-  let publicPagesEnabled = 0;
-  if (eligible.length > 0) {
-    const result = await prisma.episode.updateMany({
-      where: { id: { in: eligible.map((e: any) => e.id) } },
-      data: { publicPage: true },
-    });
-    publicPagesEnabled = result.count;
-  }
 
   return c.json({
     data: {
-      podcastSlugsBackfilled: podcastsUpdated,
-      episodeSlugsBackfilled: episodeSlugsUpdated,
-      publicPagesEnabled,
+      podcastSlugsBackfilled: podcastWrites.length,
+      episodeSlugsBackfilled: episodeWrites.length,
+      mayHaveMoreEpisodes: episodesWithoutSlug.length === MAX_EPISODES,
+      publicPagesEnabled: result.count,
     },
   });
 });

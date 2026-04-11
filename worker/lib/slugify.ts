@@ -21,17 +21,27 @@ export function slugify(text: string): string {
 
 /**
  * Generate a unique slug by appending a numeric suffix if needed.
- * `existingSlugs` should be the set of slugs already taken in the same scope.
+ * `existingSlugs` is the set of slugs already taken in the same scope.
+ * `idFallback` (optional) is used when `text` slugifies to empty —
+ * passing the row id avoids `item-<Date.now()>` collisions under rapid
+ * successive calls in the same millisecond.
  */
 export function uniqueSlug(
   text: string,
-  existingSlugs: Set<string>
+  existingSlugs: Set<string>,
+  idFallback?: string
 ): string {
   const base = slugify(text);
-  if (!base) return `item-${Date.now()}`;
-  if (!existingSlugs.has(base)) return base;
-
+  if (base) {
+    if (!existingSlugs.has(base)) return base;
+    let i = 2;
+    while (existingSlugs.has(`${base}-${i}`)) i++;
+    return `${base}-${i}`;
+  }
+  // Empty slugification — use a stable id-based fallback if provided.
+  const suffix = idFallback ? idFallback.slice(-10) : String(Date.now());
+  let slug = `item-${suffix}`;
   let i = 2;
-  while (existingSlugs.has(`${base}-${i}`)) i++;
-  return `${base}-${i}`;
+  while (existingSlugs.has(slug)) slug = `item-${suffix}-${i++}`;
+  return slug;
 }
