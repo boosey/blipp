@@ -102,12 +102,12 @@ async function handleEvaluate(
   request: any,
   msg: Message<OrchestratorMessage>
 ): Promise<void> {
-  // Enforce concurrent pipeline job limit
+  // Enforce concurrent pipeline job limit (skipped for seoOnly backfill jobs)
   const user = await prisma.user.findUnique({
     where: { id: request.userId },
     include: { plan: { select: { concurrentPipelineJobs: true } } },
   });
-  if (user?.plan) {
+  if (user?.plan && !request.seoOnly) {
     const { checkConcurrentJobLimit } = await import("../lib/plan-limits");
     const limitErr = await checkConcurrentJobLimit(
       request.userId,
@@ -234,38 +234,47 @@ async function handleEvaluate(
     let entryStage: string = "TRANSCRIPTION";
     let clipId: string | null = null;
 
-    // 1. Audio clip exists + Clip record is COMPLETED → skip to assembly
-    const hasAudio = products.some((wp) => wp.type === "AUDIO_CLIP" && wp.durationTier === durationTier && (wp.voice ?? "default") === voiceTag);
-    if (hasAudio) {
-      const completedClip = (completedClips as ClipRow[]).find((c) =>
-        c.episodeId === episodeId && c.durationTier === durationTier && (c.voicePresetId ?? null) === (resolved.voicePresetId ?? null)
-      );
-      if (completedClip) {
-        entryStage = "BRIEFING_ASSEMBLY";
-        clipId = completedClip.id;
-      } else {
-        entryStage = "AUDIO_GENERATION";
+    if (request.seoOnly) {
+      // SEO backfill only runs TRANSCRIPTION + DISTILLATION. Force entry stage
+      // based solely on transcript availability; ignore downstream caches since
+      // we stop after distillation regardless.
+      entryStage = products.some((wp) => wp.type === "TRANSCRIPT")
+        ? "DISTILLATION"
+        : "TRANSCRIPTION";
+    } else {
+      // 1. Audio clip exists + Clip record is COMPLETED → skip to assembly
+      const hasAudio = products.some((wp) => wp.type === "AUDIO_CLIP" && wp.durationTier === durationTier && (wp.voice ?? "default") === voiceTag);
+      if (hasAudio) {
+        const completedClip = (completedClips as ClipRow[]).find((c) =>
+          c.episodeId === episodeId && c.durationTier === durationTier && (c.voicePresetId ?? null) === (resolved.voicePresetId ?? null)
+        );
+        if (completedClip) {
+          entryStage = "BRIEFING_ASSEMBLY";
+          clipId = completedClip.id;
+        } else {
+          entryStage = "AUDIO_GENERATION";
+        }
       }
-    }
 
-    // 2. Narrative exists → start at audio generation
-    if (entryStage === "TRANSCRIPTION") {
-      if (products.some((wp) => wp.type === "NARRATIVE" && wp.durationTier === durationTier)) {
-        entryStage = "AUDIO_GENERATION";
+      // 2. Narrative exists → start at audio generation
+      if (entryStage === "TRANSCRIPTION") {
+        if (products.some((wp) => wp.type === "NARRATIVE" && wp.durationTier === durationTier)) {
+          entryStage = "AUDIO_GENERATION";
+        }
       }
-    }
 
-    // 3. Claims exist → start at narrative generation
-    if (entryStage === "TRANSCRIPTION") {
-      if (products.some((wp) => wp.type === "CLAIMS")) {
-        entryStage = "NARRATIVE_GENERATION";
+      // 3. Claims exist → start at narrative generation
+      if (entryStage === "TRANSCRIPTION") {
+        if (products.some((wp) => wp.type === "CLAIMS")) {
+          entryStage = "NARRATIVE_GENERATION";
+        }
       }
-    }
 
-    // 4. Transcript exists → start at distillation
-    if (entryStage === "TRANSCRIPTION") {
-      if (products.some((wp) => wp.type === "TRANSCRIPT")) {
-        entryStage = "DISTILLATION";
+      // 4. Transcript exists → start at distillation
+      if (entryStage === "TRANSCRIPTION") {
+        if (products.some((wp) => wp.type === "TRANSCRIPT")) {
+          entryStage = "DISTILLATION";
+        }
       }
     }
 
@@ -380,6 +389,40 @@ async function handleJobStageComplete(
   // Drop if the job has already advanced past the reported stage
   if (completedIdx >= 0 && currentIdx >= 0 && completedIdx < currentIdx) {
     log.info("stage_already_advanced", { jobId, completedStage, currentStage: job.currentStage });
+    msg.ack();
+    return;
+  }
+
+  // SEO-only backfill stops at distillation — mark job COMPLETED and check
+  // whether the request is fully done. Never advance to narrative/audio/assembly.
+  if (request.seoOnly && completedStage === "DISTILLATION") {
+    const advanced = await prisma.pipelineJob.updateMany({
+      where: { id: jobId, status: { notIn: ["COMPLETED", "COMPLETED_DEGRADED"] } },
+      data: { status: "COMPLETED", completedAt: new Date() },
+    });
+
+    if (advanced.count === 0) {
+      log.info("seo_job_already_completed", { jobId });
+      msg.ack();
+      return;
+    }
+
+    log.info("seo_job_completed", { jobId });
+
+    const allJobs = await prisma.pipelineJob.findMany({
+      where: { requestId: request.id },
+      select: { status: true },
+    });
+    const allTerminal = allJobs.every((j: { status: string }) => isTerminal(j.status));
+    if (allTerminal) {
+      const anySuccess = allJobs.some((j: { status: string }) => isCompleted(j.status));
+      await prisma.briefingRequest.update({
+        where: { id: request.id },
+        data: { status: anySuccess ? "COMPLETED" : "FAILED" },
+      });
+      log.info("seo_request_completed", { requestId: request.id, jobCount: allJobs.length });
+    }
+
     msg.ack();
     return;
   }

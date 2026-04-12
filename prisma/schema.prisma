@@ -511,6 +511,7 @@ model BriefingRequest {
   targetMinutes Int
   items         Json                 // BriefingRequestItem[]
   isTest        Boolean              @default(false)
+  seoOnly       Boolean              @default(false)
   errorMessage  String?
   cancelledAt   DateTime?
   createdAt     DateTime             @default(now())

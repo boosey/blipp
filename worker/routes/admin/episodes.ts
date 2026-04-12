@@ -3,6 +3,7 @@ import type { Env } from "../../types";
 import { PIPELINE_STAGE_NAMES } from "../../lib/constants";
 import { parsePagination, parseSort, paginatedResponse } from "../../lib/admin-helpers";
 import { slugify, uniqueSlug } from "../../lib/slugify";
+import type { BriefingRequestItem, OrchestratorMessage } from "../../lib/queue-messages";
 
 const episodesRoutes = new Hono<{ Bindings: Env }>();
 
@@ -466,6 +467,125 @@ episodesRoutes.post("/backfill-slugs", async (c) => {
       episodeSlugsBackfilled: episodeWrites.length,
       mayHaveMoreEpisodes: episodesWithoutSlug.length === MAX_EPISODES,
       publicPagesEnabled: result.count,
+    },
+  });
+});
+
+// POST /distill-apple-latest - One-time SEO backfill: for every deliverable
+// Apple-sourced podcast, run the latest 3 episodes through transcription +
+// distillation so SEO pages get enabled. Uses a seoOnly BriefingRequest that
+// short-circuits the pipeline at distillation (no narrative/audio/assembly).
+// Skips episodes with a COMPLETED distillation. Safe to re-run.
+episodesRoutes.post("/distill-apple-latest", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const PODCAST_LIMIT = 500;
+  const EPISODES_PER_PODCAST = 3;
+  const PODCASTS_PER_REQUEST = 50; // chunk to keep single evaluate message bounded
+
+  const adminUser: { id: string } | null = await prisma.user.findFirst({
+    where: { isAdmin: true },
+    select: { id: true },
+    orderBy: { createdAt: "asc" },
+  });
+  if (!adminUser) return c.json({ error: "No admin user found to own the backfill request" }, 400);
+
+  const podcasts: Array<{ id: string }> = await prisma.podcast.findMany({
+    where: {
+      appleId: { not: null },
+      deliverable: true,
+      slug: { not: null },
+    },
+    select: { id: true },
+    take: PODCAST_LIMIT,
+    orderBy: { createdAt: "asc" },
+  });
+
+  const items: BriefingRequestItem[] = [];
+  let podcastsWithNoEligibleEpisodes = 0;
+  let episodesSkipped = 0;
+
+  for (const pod of podcasts) {
+    const episodes: Array<{ id: string; distillation: { status: string } | null }> =
+      await prisma.episode.findMany({
+        where: { podcastId: pod.id, slug: { not: null } },
+        select: { id: true, distillation: { select: { status: true } } },
+        orderBy: { publishedAt: "desc" },
+        take: EPISODES_PER_PODCAST,
+      });
+
+    let added = 0;
+    for (const ep of episodes) {
+      if (ep.distillation?.status === "COMPLETED") {
+        episodesSkipped++;
+        continue;
+      }
+      items.push({
+        podcastId: pod.id,
+        episodeId: ep.id,
+        durationTier: 5,
+        useLatest: false,
+      });
+      added++;
+    }
+    if (added === 0) podcastsWithNoEligibleEpisodes++;
+  }
+
+  if (items.length === 0) {
+    return c.json({
+      data: {
+        podcastsScanned: podcasts.length,
+        requestsCreated: 0,
+        episodesQueued: 0,
+        episodesSkipped,
+        podcastLimitReached: podcasts.length === PODCAST_LIMIT,
+      },
+    });
+  }
+
+  // Chunk items into multiple BriefingRequests, grouped by podcast so each
+  // request covers ~PODCASTS_PER_REQUEST podcasts. This keeps each orchestrator
+  // evaluate message bounded and avoids piling up too many jobs in one txn.
+  const itemsByPodcast = new Map<string, BriefingRequestItem[]>();
+  for (const it of items) {
+    let list = itemsByPodcast.get(it.podcastId);
+    if (!list) { list = []; itemsByPodcast.set(it.podcastId, list); }
+    list.push(it);
+  }
+  const podcastIds = [...itemsByPodcast.keys()];
+  const requestIds: string[] = [];
+  for (let i = 0; i < podcastIds.length; i += PODCASTS_PER_REQUEST) {
+    const chunkPodcasts = podcastIds.slice(i, i + PODCASTS_PER_REQUEST);
+    const chunkItems = chunkPodcasts.flatMap((pid) => itemsByPodcast.get(pid)!);
+
+    const req = await prisma.briefingRequest.create({
+      data: {
+        userId: adminUser.id,
+        status: "PENDING",
+        targetMinutes: 5,
+        items: chunkItems as any,
+        seoOnly: true,
+      },
+      select: { id: true },
+    });
+    requestIds.push(req.id);
+
+    const msg: OrchestratorMessage = {
+      requestId: req.id,
+      action: "evaluate",
+      correlationId: req.id,
+    };
+    await c.env.ORCHESTRATOR_QUEUE.send(msg);
+  }
+
+  return c.json({
+    data: {
+      podcastsScanned: podcasts.length,
+      podcastsWithNoEligibleEpisodes,
+      requestsCreated: requestIds.length,
+      episodesQueued: items.length,
+      episodesSkipped,
+      requestIds,
+      podcastLimitReached: podcasts.length === PODCAST_LIMIT,
     },
   });
 });
