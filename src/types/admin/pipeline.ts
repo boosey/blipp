@@ -96,7 +96,7 @@ export interface BriefingRequest {
   jobProgress?: JobProgress[];
 }
 
-export type BriefingRequestStatus = "PENDING" | "PROCESSING" | "CANCELLED" | "COMPLETED" | "FAILED";
+export type BriefingRequestStatus = "PENDING" | "PROCESSING" | "CANCELLED" | "COMPLETED" | "COMPLETED_DEGRADED" | "FAILED";
 
 export interface DeletePreviewRelatedRequest {
   id: string;

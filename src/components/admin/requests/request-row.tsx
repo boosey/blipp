@@ -25,6 +25,7 @@ const STATUS_STYLES: Record<
   PROCESSING: { bg: "#3B82F620", text: "#3B82F6", pulse: true },
   CANCELLED: { bg: "#6B728020", text: "#6B7280" },
   COMPLETED: { bg: "#10B98120", text: "#10B981" },
+  COMPLETED_DEGRADED: { bg: "#F59E0B20", text: "#F59E0B" },
   FAILED: { bg: "#EF444420", text: "#EF4444" },
 };
 
