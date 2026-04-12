@@ -87,6 +87,33 @@ export function extractHttpStatus(message: string): number | undefined {
 }
 
 /**
+ * Extract retry-after delay (ms) from a rate-limit error. Checks:
+ * 1. AiProviderError.rateLimitResetAt (absolute timestamp from headers)
+ * 2. Groq-style "try again in Xs" in error message
+ * Falls back to defaultMs.
+ */
+export function parseRetryAfterMs(err: unknown, defaultMs = 5_000): number {
+  if (err instanceof AiProviderError && err.rateLimitResetAt) {
+    const delta = err.rateLimitResetAt.getTime() - Date.now();
+    if (delta > 0) return Math.min(delta, 30_000);
+  }
+  const msg = err instanceof Error ? err.message : String(err);
+  const match = msg.match(/try again in ([\d.]+)s/i);
+  if (match) return Math.min(Math.ceil(parseFloat(match[1]) * 1_000), 30_000);
+  return defaultMs;
+}
+
+/**
+ * Whether an error is a rate-limit (429) that should be retried with backoff
+ * rather than treated as a provider failure.
+ */
+export function isRateLimitError(err: unknown): boolean {
+  if (err instanceof AiProviderError && err.httpStatus === 429) return true;
+  const { category } = classifyAiError(err);
+  return category === "rate_limit";
+}
+
+/**
  * Truncate and sanitize a raw error response body for storage.
  */
 export function sanitizeResponse(body: string | undefined): string | undefined {

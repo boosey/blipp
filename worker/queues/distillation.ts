@@ -6,7 +6,7 @@ import { resolveModelChain } from "../lib/model-resolution";
 import { getLlmProviderImpl } from "../lib/llm-providers";
 import { wpKey, putWorkProduct, getWorkProduct } from "../lib/work-products";
 import { writeEvent } from "../lib/pipeline-events";
-import { writeAiError, classifyAiError, AiProviderError } from "../lib/ai-errors";
+import { writeAiError, classifyAiError, AiProviderError, isRateLimitError, parseRetryAfterMs } from "../lib/ai-errors";
 import { recordSuccess, recordFailure } from "../lib/circuit-breaker";
 import type { DistillationMessage } from "../lib/queue-messages";
 import type { Env } from "../types";
@@ -179,41 +179,63 @@ export async function handleDistillation(
             provider: resolved.provider,
           });
 
-          try {
-            const elapsed = log.timer("claude_extraction");
-            const result = await extractClaims(prisma, llm, transcript, resolved.providerModelId, 8192, env, resolved.pricing);
-            recordSuccess(resolved.provider);
-            elapsed();
-            claims = result.claims;
-            claimsUsage = result.usage;
+          const RATE_LIMIT_RETRIES = 3;
+          let rateLimitAttempt = 0;
+          let succeeded = false;
+          while (rateLimitAttempt <= RATE_LIMIT_RETRIES) {
+            try {
+              const elapsed = log.timer("claude_extraction");
+              const result = await extractClaims(prisma, llm, transcript, resolved.providerModelId, 8192, env, resolved.pricing);
+              recordSuccess(resolved.provider);
+              elapsed();
+              claims = result.claims;
+              claimsUsage = result.usage;
 
-            await writeEvent(prisma, stepId, "INFO", `Extracted ${claims.length} claims via ${tier} ${llm.name}`, {
-              tier,
-              claimCount: claims.length,
-              attemptNumber: i + 1,
-            });
-            log.info("claims_extracted", { episodeId, claimCount: claims.length, tier });
-            break; // Success — stop trying
-          } catch (chainErr) {
-            const errMsg = chainErr instanceof Error ? chainErr.message : String(chainErr);
-            const httpStatus = (chainErr as any)?.httpStatus;
-            recordFailure(resolved.provider);
+              await writeEvent(prisma, stepId, "INFO", `Extracted ${claims.length} claims via ${tier} ${llm.name}`, {
+                tier,
+                claimCount: claims.length,
+                attemptNumber: i + 1,
+              });
+              log.info("claims_extracted", { episodeId, claimCount: claims.length, tier });
+              succeeded = true;
+              break;
+            } catch (chainErr) {
+              const errMsg = chainErr instanceof Error ? chainErr.message : String(chainErr);
+              const httpStatus = (chainErr as any)?.httpStatus;
 
-            await writeEvent(prisma, stepId, "WARN", `${tier} failed: ${llm.name} — ${errMsg.slice(0, 300)}`, {
-              tier,
-              provider: resolved.provider,
-              model: resolved.providerModelId,
-              httpStatus,
-              errorType: chainErr?.constructor?.name,
-              willRetryNext: i < modelChain.length - 1,
-            });
+              if (isRateLimitError(chainErr) && rateLimitAttempt < RATE_LIMIT_RETRIES) {
+                const waitMs = parseRetryAfterMs(chainErr);
+                rateLimitAttempt++;
+                await writeEvent(prisma, stepId, "WARN", `${tier} rate-limited — retrying in ${Math.ceil(waitMs / 1000)}s (attempt ${rateLimitAttempt}/${RATE_LIMIT_RETRIES})`, {
+                  tier, provider: resolved.provider, model: resolved.providerModelId, waitMs,
+                });
+                log.info("rate_limit_backoff", { provider: resolved.provider, waitMs, attempt: rateLimitAttempt });
+                await new Promise((r) => setTimeout(r, waitMs));
+                continue;
+              }
 
-            if (i === modelChain.length - 1) {
-              // All models exhausted — throw the last error
-              throw chainErr;
+              // Not a rate limit, or retries exhausted — record failure and fall to next model
+              if (!isRateLimitError(chainErr)) {
+                recordFailure(resolved.provider);
+              }
+
+              await writeEvent(prisma, stepId, "WARN", `${tier} failed: ${llm.name} — ${errMsg.slice(0, 300)}`, {
+                tier,
+                provider: resolved.provider,
+                model: resolved.providerModelId,
+                httpStatus,
+                errorType: chainErr?.constructor?.name,
+                willRetryNext: i < modelChain.length - 1,
+                rateLimitRetries: rateLimitAttempt,
+              });
+
+              if (i === modelChain.length - 1) {
+                throw chainErr;
+              }
+              break; // Fall to next model in chain
             }
-            // Otherwise continue to next model
           }
+          if (succeeded) break;
         }
 
         await writeEvent(prisma, stepId, "DEBUG", `Model: ${claimsUsage!.model}`, {
