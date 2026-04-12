@@ -123,8 +123,9 @@
 			},
 			{
 				"queue": "transcription-staging",
-				"max_batch_size": 5,
+				"max_batch_size": 1,
 				"max_retries": 3,
+				"max_concurrency": 5,
 				"dead_letter_queue": "dead-letter-staging"
 			},
 			{
@@ -304,8 +305,9 @@
 					},
 					{
 						"queue": "transcription",
-						"max_batch_size": 5,
+						"max_batch_size": 1,
 						"max_retries": 3,
+						"max_concurrency": 5,
 						"dead_letter_queue": "dead-letter"
 					},
 					{
