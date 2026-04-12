@@ -19,11 +19,15 @@ export async function runPipelineTriggerJob(
   env: Env,
   logger: CronLogger
 ): Promise<Record<string, unknown>> {
+  await logger.info("Querying active podcasts for feed refresh");
+
   const podcasts = await prisma.podcast.findMany({
     where: { status: { not: "archived" } },
     select: { id: true },
   });
   const podcastIds = podcasts.map((p: any) => p.id);
+
+  await logger.info(`Found ${podcastIds.length} active podcasts`);
 
   // Create tracking job
   const job = await prisma.episodeRefreshJob.create({
@@ -35,15 +39,16 @@ export async function runPipelineTriggerJob(
     },
   });
 
+  await logger.info("Created EpisodeRefreshJob", { refreshJobId: job.id });
+
   // Queue feed refresh in batched chunks
   const batchConcurrency = (await getConfig(prisma, "pipeline.feedRefresh.batchConcurrency", 10)) as number;
   await sendBatchedFeedRefresh(env.FEED_REFRESH_QUEUE, podcastIds, batchConcurrency, { type: "cron", refreshJobId: job.id });
 
-  await logger.info("feed_refresh_enqueued", {
-    trigger: "cron",
+  await logger.info("Feed refresh enqueued", {
     refreshJobId: job.id,
     podcastsTotal: podcastIds.length,
-    scope: "all",
+    batchConcurrency,
   });
   return { enqueued: true, trigger: "cron", refreshJobId: job.id, podcastsTotal: podcastIds.length };
 }

@@ -31,6 +31,8 @@ export async function runCatalogPregenJob(
   logger: CronLogger,
   env: Env
 ): Promise<Record<string, unknown>> {
+  await logger.info(`Scanning top ${CATALOG_PODCAST_LIMIT} ranked podcasts for catalog pre-generation`);
+
   // Find top podcasts by rank (appleRank is 1-200, lower = more popular)
   const podcasts = await prisma.podcast.findMany({
     where: {

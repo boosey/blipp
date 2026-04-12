@@ -17,11 +17,15 @@ export async function runUserLifecycleJob(
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - trialDays);
 
+  await logger.info(`Checking for users with expired ${trialDays}-day free trials`);
+
   const defaultPlan = await prisma.plan.findFirst({ where: { isDefault: true } });
   if (!defaultPlan) {
-    await logger.info("no_default_plan", {});
+    await logger.warn("No default plan found in database — cannot check trial expirations");
     return { checked: false, reason: "no_default_plan" };
   }
+
+  await logger.info(`Using default plan "${defaultPlan.id}", cutoff date ${cutoff.toISOString()}`);
 
   const expiredTrialUsers = await prisma.user.findMany({
     where: {
@@ -33,10 +37,11 @@ export async function runUserLifecycleJob(
     take: 100,
   });
 
-  await logger.info("trial_expiration_check", {
-    expiredCount: expiredTrialUsers.length,
-    trialDays,
-  });
+  if (expiredTrialUsers.length > 0) {
+    await logger.info(`Found ${expiredTrialUsers.length} user(s) with expired trials`);
+  } else {
+    await logger.info("No expired trial users found");
+  }
 
   // Future: send reminder emails, restrict features
   return { expiredCount: expiredTrialUsers.length, trialDays };

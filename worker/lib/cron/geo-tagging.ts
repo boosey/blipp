@@ -22,8 +22,10 @@ export async function runGeoTaggingJob(
   const batchSize = await getConfig<number>(
     prisma,
     "geoClassification.batchSize",
-    500
+    2000
   );
+
+  await logger.info(`Fetching up to ${batchSize} unprocessed podcasts for geo-tagging`);
 
   // Fetch unprocessed podcasts
   const podcasts = await prisma.podcast.findMany({
@@ -41,11 +43,11 @@ export async function runGeoTaggingJob(
   });
 
   if (podcasts.length === 0) {
-    await logger.info("geo_tagging_no_podcasts", { message: "No unprocessed podcasts" });
+    await logger.info("All podcasts already geo-processed — nothing to do");
     return { processed: 0, pass1Matched: 0, pass2Matched: 0, pass2Attempted: 0 };
   }
 
-  await logger.info("geo_tagging_start", { podcastCount: podcasts.length });
+  await logger.info(`Processing ${podcasts.length} podcast(s)`);
 
   // Load sports teams with keywords for team-level matching
   const sportsTeams = await prisma.sportsTeam.findMany({
@@ -120,6 +122,8 @@ export async function runGeoTaggingJob(
       data: { geoProcessedAt: new Date() },
     });
   }
+
+  await logger.info(`Pass 1 complete: ${pass1Matched} matched by keywords, ${unmatchedSports.length} unmatched Sports podcast(s) for LLM`);
 
   // ── Pass 2: Batched LLM classification for unmatched Sports podcasts ──
   let pass2Matched = 0;

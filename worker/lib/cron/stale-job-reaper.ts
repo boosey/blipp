@@ -29,6 +29,8 @@ export async function runStaleJobReaperJob(
   // ── PipelineJob + PipelineStep (30 min) ──
   const staleCutoff = new Date(Date.now() - 30 * 60 * 1000);
 
+  await logger.info("Checking for stale pipeline jobs (>30 min)");
+
   // Find stale jobs first so we can propagate failures to linked FeedItems
   const staleJobRecords = await prisma.pipelineJob.findMany({
     where: {
@@ -77,11 +79,15 @@ export async function runStaleJobReaperJob(
       });
     }
 
-    await logger.info("stale_jobs_reaped", { count: staleJobs });
+    await logger.info(`Reaped ${staleJobs} stale pipeline job(s)`, { linkedRequests: requestIds.length });
+  } else {
+    await logger.info("No stale pipeline jobs found");
   }
   result.staleJobsReaped = staleJobs;
 
   // ── Orphaned FeedItems (30 min) ──
+  await logger.info("Checking for orphaned feed items (>30 min)");
+
   const { count: staleFeedItems } = await prisma.feedItem.updateMany({
     where: {
       status: "PROCESSING",
@@ -93,11 +99,15 @@ export async function runStaleJobReaperJob(
     },
   });
   if (staleFeedItems > 0) {
-    await logger.info("stale_feed_items_reaped", { count: staleFeedItems });
+    await logger.info(`Reaped ${staleFeedItems} orphaned feed item(s)`);
+  } else {
+    await logger.info("No orphaned feed items found");
   }
   result.staleFeedItemsReaped = staleFeedItems;
 
   // ── EpisodeRefreshJob (6 hours) ──
+  await logger.info("Checking for stale refresh jobs (>6 hours)");
+
   // Previous fixes (ed9640a, 54dfc55) addressed prefetch counter drift, but
   // podcastsCompleted increments can still fail silently, leaving jobs stuck.
   // Jobs that reached >90% progress are marked complete instead of failed.
@@ -139,7 +149,7 @@ export async function runStaleJobReaperJob(
       },
     });
     staleRefreshCompleted = count;
-    await logger.info("stale_refresh_jobs_completed", { count });
+    await logger.info(`Completed ${count} near-complete refresh job(s) (>90% done)`);
   }
 
   let staleRefreshFailed = 0;
@@ -153,7 +163,11 @@ export async function runStaleJobReaperJob(
       },
     });
     staleRefreshFailed = count;
-    await logger.info("stale_refresh_jobs_reaped", { count });
+    await logger.info(`Reaped ${count} truly stale refresh job(s)`);
+  }
+
+  if (staleRefreshRecords.length === 0) {
+    await logger.info("No stale refresh jobs found");
   }
 
   result.staleRefreshJobsCompleted = staleRefreshCompleted;

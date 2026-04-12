@@ -25,6 +25,8 @@ export async function runDataRetentionJob(
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - (maxAgeDays as number));
 
+    await logger.info(`Checking episode aging (cutoff: ${maxAgeDays} days)`);
+
     const agingCount = await prisma.episode.count({
       where: {
         publishedAt: { lt: cutoff },
@@ -42,15 +44,20 @@ export async function runDataRetentionJob(
           description: "Episodes eligible for aging deletion",
         },
       });
+      await logger.info(`${agingCount} episode(s) eligible for aging deletion`);
+    } else {
+      await logger.info("No episodes eligible for aging");
     }
-
-    await logger.info("episode_aging_checked", { agingCount, maxAgeDays });
     result.episodeAgingCandidates = agingCount;
+  } else {
+    await logger.info("Episode aging: disabled");
   }
 
   // Catalog cleanup — count stale podcasts (no subscriptions, not archived)
   const cleanupEnabled = await getConfig(prisma as any, "catalog.cleanup.enabled", false);
   if (cleanupEnabled) {
+    await logger.info("Checking catalog cleanup candidates");
+
     const cleanupCount = await prisma.podcast.count({
       where: {
         status: { not: "archived" },
@@ -68,10 +75,13 @@ export async function runDataRetentionJob(
           description: "Podcasts eligible for cleanup",
         },
       });
+      await logger.info(`${cleanupCount} podcast(s) eligible for cleanup`);
+    } else {
+      await logger.info("No podcasts eligible for cleanup");
     }
-
-    await logger.info("catalog_cleanup_checked", { cleanupCount });
     result.catalogCleanupCandidates = cleanupCount;
+  } else {
+    await logger.info("Catalog cleanup: disabled");
   }
 
   // Briefing request archiving — hard delete old completed/failed requests
@@ -83,14 +93,24 @@ export async function runDataRetentionJob(
       30
     );
     const cutoff = new Date(Date.now() - (maxAgeDays as number) * 24 * 60 * 60 * 1000);
+
+    await logger.info(`Archiving completed/failed requests older than ${maxAgeDays} days`);
+
     const { count } = await prisma.briefingRequest.deleteMany({
       where: {
         status: { in: ["COMPLETED", "FAILED"] },
         createdAt: { lt: cutoff },
       },
     });
-    await logger.info("requests_archived", { count, maxAgeDays });
+
+    if (count > 0) {
+      await logger.info(`Archived ${count} old briefing request(s)`);
+    } else {
+      await logger.info("No briefing requests to archive");
+    }
     result.requestsArchived = count;
+  } else {
+    await logger.info("Request archiving: disabled");
   }
 
   return result;

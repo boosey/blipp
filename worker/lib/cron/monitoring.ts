@@ -18,12 +18,15 @@ export async function runMonitoringJob(
   prisma: PrismaLike,
   logger: CronLogger
 ): Promise<Record<string, unknown>> {
+  await logger.info("Refreshing AI model pricing");
+
   // Refresh AI model pricing
   const { refreshPricing } = await import("../pricing-updater");
   const { updated } = await refreshPricing(prisma as any);
-  await logger.info("pricing_refreshed", { updated });
+  await logger.info(`Pricing refreshed: ${updated} model(s) updated`);
 
   // Check cost thresholds
+  await logger.info("Checking cost thresholds");
   const costAlerts = await checkCostThresholds(prisma as any);
   if (costAlerts.length > 0) {
     await prisma.platformConfig.upsert({
@@ -35,9 +38,9 @@ export async function runMonitoringJob(
         description: "Active cost threshold alerts",
       },
     });
-    await logger.warn("cost_threshold_exceeded", { alerts: costAlerts as any });
+    await logger.warn(`${costAlerts.length} cost threshold(s) exceeded`, { alerts: costAlerts as any });
   } else {
-    await logger.info("cost_check_ok", { alertCount: 0 });
+    await logger.info("All cost thresholds OK");
   }
 
   return { pricingUpdated: updated, costAlerts: costAlerts.length };

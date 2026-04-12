@@ -26,10 +26,7 @@ export async function runListenOriginalAggregationJob(
   const periodStart = new Date(periodEnd);
   periodStart.setUTCDate(periodStart.getUTCDate() - 1); // start of yesterday
 
-  await logger.info("Starting listen-original aggregation", {
-    periodStart: periodStart.toISOString(),
-    periodEnd: periodEnd.toISOString(),
-  });
+  await logger.info(`Aggregating listen-original events for ${periodStart.toISOString().slice(0, 10)}`);
 
   // Check if there are any events to aggregate
   const totalEvents = await prisma.listenOriginalEvent.count({
@@ -40,9 +37,11 @@ export async function runListenOriginalAggregationJob(
   });
 
   if (totalEvents === 0) {
-    await logger.info("No unbatched events for period, skipping");
+    await logger.info("No unbatched events for this period — nothing to do");
     return { batchesCreated: 0, eventsProcessed: 0 };
   }
+
+  await logger.info(`Found ${totalEvents} unbatched event(s) to aggregate`);
 
   // Group by publisher
   const publisherGroups = await prisma.listenOriginalEvent.groupBy({

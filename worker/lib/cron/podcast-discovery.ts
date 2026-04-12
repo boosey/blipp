@@ -10,6 +10,8 @@ export async function runAppleDiscoveryJob(
   logger: CronLogger,
   env: Env
 ): Promise<Record<string, unknown>> {
+  await logger.info("Creating Apple Podcasts catalog seed job");
+
   const job = await prisma.catalogSeedJob.create({
     data: { mode: "additive", source: "apple", trigger: "cron" },
   });
@@ -21,7 +23,7 @@ export async function runAppleDiscoveryJob(
     seedJobId: job.id,
   });
 
-  await logger.info("apple_discovery_queued", { seedJobId: job.id });
+  await logger.info("Apple discovery queued", { seedJobId: job.id });
   return { seedJobId: job.id };
 }
 
@@ -34,6 +36,8 @@ export async function runPodcastIndexDiscoveryJob(
   logger: CronLogger,
   env: Env
 ): Promise<Record<string, unknown>> {
+  await logger.info("Creating Podcast Index catalog seed job");
+
   const job = await prisma.catalogSeedJob.create({
     data: { mode: "additive", source: "podcast-index", trigger: "cron" },
   });
@@ -45,6 +49,6 @@ export async function runPodcastIndexDiscoveryJob(
     seedJobId: job.id,
   });
 
-  await logger.info("podcast_index_discovery_queued", { seedJobId: job.id });
+  await logger.info("Podcast Index discovery queued", { seedJobId: job.id });
   return { seedJobId: job.id };
 }

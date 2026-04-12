@@ -23,6 +23,10 @@ export async function runRecommendationsJob(
   let batches = 0;
   let cursor = await getConfig(prisma as any, "recommendations.profileCursor", null) as string | null;
 
+  await logger.info(cursor
+    ? `Resuming recommendation profiles from cursor ${cursor}`
+    : "Starting new recommendation profile cycle", { timeBudgetMs });
+
   // Loop through batches until cycle completes or time budget is exhausted
   while (true) {
     const result = await computePodcastProfiles(prisma as any, env, cursor);
