@@ -1,10 +1,7 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { Check, ChevronRight, Loader2, Search } from "lucide-react";
-import { useApiFetch } from "../lib/api";
 import { useFetch } from "../lib/use-fetch";
-import { usePlan } from "../contexts/plan-context";
-import { useOnboarding } from "../contexts/onboarding-context";
 import { ScrollableRow } from "./scrollable-row";
 
 // ── Types ──
@@ -114,7 +111,6 @@ export function PodcastPickerCard({
   onSubscribe,
   onSkip,
 }: PodcastPickerCardProps) {
-  const { subscriptions, maxDurationMinutes } = usePlan();
   const [selectedPodcasts, setSelectedPodcasts] = useState<
     Map<string, CatalogPodcast>
   >(new Map());
@@ -142,11 +138,6 @@ export function PodcastPickerCard({
     });
   }, [podcasts, preferredCategories]);
 
-  const planLimit = subscriptions.limit;
-  const effectiveRemaining =
-    planLimit === null ? Infinity : Math.max(0, planLimit - subscriptions.used);
-  const atLimit =
-    planLimit !== null && selectedPodcasts.size >= effectiveRemaining;
   const count = selectedPodcasts.size;
 
   function toggle(podcast: CatalogPodcast) {
@@ -155,7 +146,6 @@ export function PodcastPickerCard({
       if (next.has(podcast.id)) {
         next.delete(podcast.id);
       } else {
-        if (planLimit !== null && next.size >= effectiveRemaining) return prev;
         next.set(podcast.id, podcast);
       }
       return next;
@@ -186,19 +176,17 @@ export function PodcastPickerCard({
         <ScrollableRow className="gap-3 pb-1 -mx-5 px-5">
           {sortedPodcasts.map((podcast) => {
             const isSelected = selectedPodcasts.has(podcast.id);
-            const disabled = !isSelected && atLimit;
             return (
               <button
                 key={podcast.id}
                 onClick={() => toggle(podcast)}
-                disabled={disabled}
-                className={`flex-shrink-0 w-[100px] text-left ${disabled ? "opacity-40" : ""}`}
+                className="flex-shrink-0 w-[100px] text-left active:scale-95 transition-transform"
               >
                 <div
                   className={`w-[100px] h-[100px] rounded-[10px] overflow-hidden border-2 transition-all duration-200 relative ${
                     isSelected
                       ? "border-primary shadow-[0_0_16px_rgba(109,93,252,0.25)]"
-                      : "border-transparent"
+                      : "border-transparent hover:border-border"
                   }`}
                 >
                   {podcast.imageUrl ? (
@@ -225,7 +213,7 @@ export function PodcastPickerCard({
                   className={`text-[11px] font-medium mt-1.5 line-clamp-2 leading-tight transition-colors ${
                     isSelected
                       ? "text-foreground"
-                      : "text-muted-foreground"
+                      : "text-foreground/70"
                   }`}
                 >
                   {podcast.title}

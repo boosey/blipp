@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { Headphones, Play } from "lucide-react";
 import { toast } from "sonner";
 import { useApiFetch } from "../lib/api";
@@ -49,6 +50,7 @@ function buildFilterParams(filter: FeedFilter): string {
 export function Home() {
   const apiFetch = useApiFetch();
   const audio = useAudio();
+  const navigate = useNavigate();
   const { needsOnboarding, markComplete } = useOnboarding();
   const { maxDurationMinutes } = usePlan();
   const [items, setItems] = useState<FeedItem[]>([]);
@@ -57,12 +59,6 @@ export function Home() {
   const [swipeHintDismissed, setSwipeHintDismissed] = useState(() => !!localStorage.getItem("swipe-hint-seen"));
   const [generatingTimedOut, setGeneratingTimedOut] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<string | null>(null);
-
-  // Inline onboarding state
-  const [showTopicsCard, setShowTopicsCard] = useState(true);
-  const [showPodcastCard, setShowPodcastCard] = useState(true);
-  const [preferredCategories, setPreferredCategories] = useState<string[]>([]);
-  const [subscribing, setSubscribing] = useState(false); // locks UI during subscribe
 
   const { data: counts } = useFetch<FeedCounts>("/feed/counts");
   const { data: curatedData } = useFetch<CuratedResponse>("/recommendations/curated");
@@ -264,12 +260,24 @@ export function Home() {
     }
   }
 
-  // ── Inline onboarding handlers ──
+  // ── Inline onboarding helpers ──
+  // Every onboarding action immediately marks complete (fires starter pack on backend)
+  // and flips needsOnboarding → false so cards never reappear.
+
+  async function completeOnboarding() {
+    markComplete();
+    sessionStorage.setItem("blipp-just-onboarded", "1");
+    generatingStartRef.current = Date.now();
+    try {
+      await apiFetch("/me/onboarding-complete", { method: "PATCH" });
+    } catch {
+      // Non-critical
+    }
+  }
 
   async function handleTopicsDone(categories: string[]) {
-    setPreferredCategories(categories);
-    setShowTopicsCard(false);
-    // Save preferences in background — non-blocking
+    // Save preferences, mark complete, navigate to discover
+    completeOnboarding();
     try {
       await apiFetch("/me/preferences", {
         method: "PATCH",
@@ -283,16 +291,18 @@ export function Home() {
     } catch {
       // Non-critical
     }
+    navigate("/discover");
   }
 
   function handleTopicsSkip() {
-    setShowTopicsCard(false);
+    completeOnboarding();
+    fetchFeed();
   }
 
   async function handlePodcastSubscribe(
     podcasts: { id: string; title: string; feedUrl: string; description: string | null; imageUrl: string | null; author: string | null }[]
   ) {
-    setSubscribing(true);
+    completeOnboarding();
     const durationTier = Math.min(maxDurationMinutes, 5);
 
     await Promise.allSettled(
@@ -310,33 +320,11 @@ export function Home() {
         })
       )
     );
-
-    // Mark onboarding complete (triggers starter pack delivery on backend)
-    try {
-      await apiFetch("/me/onboarding-complete", { method: "PATCH" });
-    } catch {
-      // Non-critical
-    }
-    markComplete();
-    setShowPodcastCard(false);
-    setSubscribing(false);
-
-    sessionStorage.setItem("blipp-just-onboarded", "1");
-    generatingStartRef.current = Date.now();
     fetchFeed();
   }
 
-  async function handlePodcastSkip() {
-    setShowPodcastCard(false);
-    // Mark onboarding complete even without subscriptions (triggers starter pack)
-    try {
-      await apiFetch("/me/onboarding-complete", { method: "PATCH" });
-    } catch {
-      // Non-critical
-    }
-    markComplete();
-    sessionStorage.setItem("blipp-just-onboarded", "1");
-    generatingStartRef.current = Date.now();
+  function handlePodcastSkip() {
+    completeOnboarding();
     fetchFeed();
   }
 
@@ -345,7 +333,7 @@ export function Home() {
   }
 
   // ── Inline onboarding: show cards when user needs onboarding ──
-  if ((needsOnboarding || subscribing) && (showTopicsCard || showPodcastCard)) {
+  if (needsOnboarding) {
     return (
       <div>
         <h1 className="text-xl font-bold mb-3">Your Feed</h1>
@@ -368,17 +356,13 @@ export function Home() {
           </ScrollableRow>
         </div>
 
-        {showTopicsCard && (
-          <TopicsCard onDone={handleTopicsDone} onSkip={handleTopicsSkip} />
-        )}
+        <TopicsCard onDone={handleTopicsDone} onSkip={handleTopicsSkip} />
 
-        {showPodcastCard && (
-          <PodcastPickerCard
-            preferredCategories={preferredCategories}
-            onSubscribe={handlePodcastSubscribe}
-            onSkip={handlePodcastSkip}
-          />
-        )}
+        <PodcastPickerCard
+          preferredCategories={[]}
+          onSubscribe={handlePodcastSubscribe}
+          onSkip={handlePodcastSkip}
+        />
 
         <DiscoverNudge />
       </div>
