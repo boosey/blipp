@@ -55,11 +55,15 @@ If the rebase has conflicts, stop and tell the user — don't force push.
 
 GitHub Actions takes 30-60 seconds to create a new run after a push. If you check immediately, you'll find the *previous* build (already completed) and falsely report success. This has happened repeatedly — it's the single most common failure mode of this workflow.
 
-**You MUST run this sleep as its own standalone Bash call. Do not skip it, do not combine it with other commands, do not reason your way out of it.**
+**The harness blocks standalone `sleep` ≥ 2s. You MUST run the wait via Bash with `run_in_background: true` so the harness notifies you on completion. Do NOT poll, do NOT reason your way out of waiting.**
+
+Run this as a backgrounded Bash call (`run_in_background: true`) and wait for the completion notification before moving to Step 4:
 
 ```bash
-sleep 30
+sleep 30 && gh run list --limit 5 --json databaseId,startedAt,status,event,headBranch --jq '.[] | select(.headBranch=="main" and .event=="push")'
 ```
+
+Combining the sleep with the first `gh run list` in one backgrounded call gives you both the wait and the first lookup in a single notification — no second round trip needed.
 
 ### Step 4: Find the CI run
 
@@ -69,13 +73,13 @@ IGNORE any run ID from the PostToolUse hook — it references a stale completed 
 gh run list --limit 5 --json databaseId,startedAt,status,event,headBranch --jq '.[] | select(.headBranch=="main" and .event=="push")'
 ```
 
-Check the `startedAt` timestamp — only use a run that started within the last 90 seconds. If none found, retry every 5 seconds for up to 60 more seconds:
+Check the `startedAt` timestamp — only use a run that started within the last 90 seconds. If none found, retry by running this in the background (`run_in_background: true`) and waiting for the completion notification:
 
 ```bash
-sleep 5 && gh run list --limit 5 --json databaseId,startedAt,status,event,headBranch --jq '.[] | select(.headBranch=="main" and .event=="push")'
+sleep 10 && gh run list --limit 5 --json databaseId,startedAt,status,event,headBranch --jq '.[] | select(.headBranch=="main" and .event=="push")'
 ```
 
-If still nothing after ~90 seconds total, tell the user no CI run was detected.
+Repeat up to ~6 times. If still nothing after that, tell the user no CI run was detected. Never call `sleep` as a standalone foreground Bash command — the harness blocks it.
 
 **Red flags that you grabbed the wrong run:**
 - `status` is already `completed` — a run that finished in under 30 seconds is almost certainly the old one
@@ -95,10 +99,10 @@ Monitoring CI run #<RUN_ID>...
 
 #### 5b: Poll loop
 
-Poll every 15 seconds using:
+Poll every 15 seconds. The harness blocks standalone foreground `sleep`, so combine the sleep and the `gh run view` into one Bash call run with `run_in_background: true`, then wait for the completion notification before reading the output:
 
 ```bash
-gh run view <RUN_ID> --json jobs --jq '.jobs[0].steps[] | "\(.status)\t\(.conclusion)\t\(.name)"'
+sleep 15 && gh run view <RUN_ID> --json jobs --jq '.jobs[0].steps[] | "\(.status)\t\(.conclusion)\t\(.name)"'
 ```
 
 After each poll, print the **full updated checklist** of the CI steps that matter. The deploy-staging workflow has these meaningful steps (skip the internal GitHub "Set up job" / "Complete job" / "Post" steps — only show steps that correspond to real build work):
@@ -139,7 +143,7 @@ Example output during a run:
 ⬜ Commit version bump
 ```
 
-Keep polling and reprinting until the overall run status is `completed`. To avoid flooding the chat, use `sleep 15` between polls (run sleep as its own Bash call, same as Step 3).
+Keep polling and reprinting until the overall run status is `completed`. Each poll must be a single backgrounded Bash call (`sleep 15 && gh run view ...` with `run_in_background: true`); wait for the completion notification before reading output and starting the next poll. Never call `sleep` standalone in the foreground.
 
 #### 5c: Final result
 
