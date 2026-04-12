@@ -7,6 +7,7 @@ For each claim, include:
 - "importance": 1-10 rating (10 = critical takeaway, 1 = minor detail)
 - "novelty": 1-10 rating (10 = surprising/counterintuitive, 1 = common knowledge)
 - "excerpt": the verbatim passage from the transcript that contains or supports this claim — include enough surrounding context that someone could write a detailed summary from the excerpt alone (may be one sentence or a full exchange)
+- "topic": a short label (2-5 words) grouping this claim with related claims (e.g., "Anthropic funding", "Iran conflict", "AI regulation"). Claims about the same subject should share the same topic label.
 - "notable_quote": (optional) if the claim contains a particularly vivid, memorable, or authoritative direct quote from a speaker, include it here verbatim. Not every claim needs one — only when the speaker's exact words add impact or authority. Omit this field entirely if no quote stands out.
 
 Guidelines:

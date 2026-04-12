@@ -269,6 +269,34 @@ describe("selectClaimsForDuration", () => {
     const result = selectClaimsForDuration([], 5);
     expect(result).toHaveLength(0);
   });
+
+  it("guarantees at least one claim per topic even at short tiers", () => {
+    const topicClaims: Claim[] = [
+      { claim: "AI claim 1", speaker: "Host", importance: 10, novelty: 8, excerpt: "e1", topic: "AI funding" },
+      { claim: "AI claim 2", speaker: "Host", importance: 9, novelty: 7, excerpt: "e2", topic: "AI funding" },
+      { claim: "AI claim 3", speaker: "Host", importance: 8, novelty: 6, excerpt: "e3", topic: "AI funding" },
+      { claim: "War claim 1", speaker: "Host", importance: 7, novelty: 5, excerpt: "e4", topic: "Iran conflict" },
+      { claim: "War claim 2", speaker: "Host", importance: 6, novelty: 4, excerpt: "e5", topic: "Iran conflict" },
+      { claim: "Trade claim 1", speaker: "Host", importance: 5, novelty: 3, excerpt: "e6", topic: "Trade policy" },
+    ];
+    // 1-minute tier: targetCount = 3 — without topic diversity, all 3 would be AI
+    const result = selectClaimsForDuration(topicClaims, 1);
+    expect(result).toHaveLength(3);
+    const topics = new Set(result.map((c) => c.topic));
+    expect(topics.size).toBe(3);
+    expect(topics).toContain("AI funding");
+    expect(topics).toContain("Iran conflict");
+    expect(topics).toContain("Trade policy");
+  });
+
+  it("falls back to score-only selection when claims lack topics", () => {
+    const result = selectClaimsForDuration(claims, 1);
+    expect(result).toHaveLength(3);
+    // Should be top 3 by score — same as before
+    expect(result[0].claim).toBe("Claim 1");
+    expect(result[1].claim).toBe("Claim 2");
+    expect(result[2].claim).toBe("Claim 3");
+  });
 });
 
 describe("WORDS_PER_MINUTE", () => {

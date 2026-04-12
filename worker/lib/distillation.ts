@@ -15,6 +15,7 @@ export interface Claim {
   novelty: number;
   excerpt: string;
   notable_quote?: string;
+  topic?: string;
 }
 
 /** Episode metadata for the narrative intro. */
@@ -33,6 +34,7 @@ const ClaimSchema = z.object({
   novelty: z.number().min(1).max(10),
   excerpt: z.string(),
   notable_quote: z.string().optional(),
+  topic: z.string().optional(),
 });
 
 const ClaimsArraySchema = z.array(ClaimSchema).min(1);
@@ -111,6 +113,10 @@ export async function extractClaims(
 
 /**
  * Selects and prioritizes claims for a target duration tier.
+ *
+ * When claims have `topic` labels, guarantees at least one claim per topic
+ * before filling remaining slots by score. This prevents shorter tiers from
+ * dropping entire topics.
  */
 export function selectClaimsForDuration(
   claims: Claim[],
@@ -127,7 +133,38 @@ export function selectClaimsForDuration(
     Math.max(3, Math.ceil(durationMinutes * 2.5))
   );
 
-  return scored.slice(0, targetCount).map(({ _score, ...claim }) => claim);
+  const hasTopic = scored.some((c) => c.topic);
+  if (!hasTopic) {
+    return scored.slice(0, targetCount).map(({ _score, ...claim }) => claim);
+  }
+
+  // Guarantee the top claim from each topic
+  const selected: typeof scored = [];
+  const seenTopics = new Set<string>();
+
+  for (const c of scored) {
+    const t = c.topic ?? "__none__";
+    if (!seenTopics.has(t)) {
+      seenTopics.add(t);
+      selected.push(c);
+    }
+  }
+
+  // Fill remaining slots by score, skipping already-selected claims
+  const selectedSet = new Set(selected);
+  for (const c of scored) {
+    if (selected.length >= targetCount) break;
+    if (!selectedSet.has(c)) {
+      selected.push(c);
+      selectedSet.add(c);
+    }
+  }
+
+  // Re-sort by score so narrative gets them in importance order
+  return selected
+    .sort((a, b) => b._score - a._score)
+    .slice(0, targetCount)
+    .map(({ _score, ...claim }) => claim);
 }
 
 /**
