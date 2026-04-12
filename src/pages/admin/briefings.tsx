@@ -13,6 +13,9 @@ import {
   Megaphone,
   Cpu,
   Zap,
+  ChevronDown,
+  ChevronRight,
+  Package,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -21,6 +24,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
+import { StepWorkProductPanel } from "@/components/admin/requests/work-product-panel";
 import {
   Select,
   SelectContent,
@@ -168,37 +172,77 @@ const STAGE_NAMES: Record<string, string> = {
 };
 
 function PipelineStepRow({ step }: { step: BriefingPipelineStep }) {
+  const [expanded, setExpanded] = useState(false);
+  const hasWp = step.workProducts && step.workProducts.length > 0;
+
   return (
-    <div className="flex items-center gap-2 rounded-md bg-[#0A1628] border border-white/5 p-2 text-[10px]">
-      <span className="text-[#9CA3AF] w-24 shrink-0">{STAGE_NAMES[step.stage] ?? step.stage}</span>
-      <Badge className={cn("text-[8px] uppercase shrink-0", statusBadge(step.status))}>
-        {step.status}
-      </Badge>
-      {step.cached && (
-        <Badge className="bg-[#F59E0B]/15 text-[#F59E0B] text-[8px] px-1 py-0">
-          <Zap className="h-2 w-2 mr-0.5 inline" />
-          cached
-        </Badge>
-      )}
-      <div className="flex items-center gap-2 ml-auto font-mono tabular-nums shrink-0">
-        {step.durationMs != null && (
-          <span className="text-[#9CA3AF]">{step.durationMs}ms</span>
+    <div className="rounded-md bg-[#0A1628] border border-white/5 overflow-hidden">
+      {/* Step summary row — grid-aligned columns */}
+      <div
+        className={cn(
+          "grid grid-cols-[1fr_auto_auto_auto_auto_auto] items-center gap-x-3 px-2.5 py-2 text-[10px]",
+          hasWp && "cursor-pointer hover:bg-white/[0.02]"
         )}
-        {step.cost != null && (
-          <span className="text-[#10B981]">${step.cost.toFixed(4)}</span>
-        )}
-        {step.model && (
-          <span className="text-[#8B5CF6]" title={step.model}>
-            {step.model.split("+").map(m => m.split("-").slice(0, 3).join("-")).join("+")}
-          </span>
-        )}
-        {(step.inputTokens != null || step.outputTokens != null) && (
-          <span className="text-[#9CA3AF]" title={`In: ${step.inputTokens ?? 0} / Out: ${step.outputTokens ?? 0}`}>
-            {step.inputTokens != null ? `${step.inputTokens.toLocaleString()}in` : ""}
-            {step.outputTokens != null && step.outputTokens > 0 ? `/${step.outputTokens.toLocaleString()}out` : ""}
-          </span>
-        )}
+        onClick={() => hasWp && setExpanded(!expanded)}
+      >
+        {/* Stage name + expand indicator */}
+        <div className="flex items-center gap-1.5 min-w-0">
+          {hasWp ? (
+            expanded ? <ChevronDown className="h-2.5 w-2.5 text-[#9CA3AF] shrink-0" /> : <ChevronRight className="h-2.5 w-2.5 text-[#9CA3AF] shrink-0" />
+          ) : (
+            <span className="w-2.5 shrink-0" />
+          )}
+          <span className="text-[#F9FAFB] font-medium truncate">{STAGE_NAMES[step.stage] ?? step.stage}</span>
+          <Badge className={cn("text-[8px] uppercase shrink-0", statusBadge(step.status))}>
+            {step.status}
+          </Badge>
+          {step.cached && (
+            <Badge className="bg-[#F59E0B]/15 text-[#F59E0B] text-[8px] px-1 py-0 shrink-0">
+              <Zap className="h-2 w-2 mr-0.5 inline" />
+              cached
+            </Badge>
+          )}
+          {hasWp && (
+            <Package className="h-2.5 w-2.5 text-[#9CA3AF]/50 shrink-0" />
+          )}
+        </div>
+
+        {/* Duration */}
+        <span className="text-[#9CA3AF] font-mono tabular-nums text-right w-16 shrink-0">
+          {step.durationMs != null ? `${(step.durationMs / 1000).toFixed(1)}s` : "-"}
+        </span>
+
+        {/* Cost */}
+        <span className="text-[#10B981] font-mono tabular-nums text-right w-14 shrink-0">
+          {step.cost != null ? `$${step.cost.toFixed(4)}` : "-"}
+        </span>
+
+        {/* Model */}
+        <span className="text-[#8B5CF6] font-mono tabular-nums text-right w-28 shrink-0 truncate" title={step.model ?? ""}>
+          {step.model
+            ? step.model.split("+").map(m => m.split("-").slice(0, 3).join("-")).join("+")
+            : "-"}
+        </span>
+
+        {/* Input tokens */}
+        <span className="text-[#9CA3AF] font-mono tabular-nums text-right w-14 shrink-0">
+          {step.inputTokens != null ? `${step.inputTokens.toLocaleString()}` : "-"}
+        </span>
+
+        {/* Output tokens */}
+        <span className="text-[#9CA3AF] font-mono tabular-nums text-right w-14 shrink-0">
+          {step.outputTokens != null && step.outputTokens > 0 ? `${step.outputTokens.toLocaleString()}` : "-"}
+        </span>
       </div>
+
+      {/* Expanded work product panel */}
+      {expanded && hasWp && (
+        <div className="border-t border-white/5 px-2.5 py-2 space-y-1.5">
+          {step.workProducts!.map((wp) => (
+            <StepWorkProductPanel key={wp.id} wp={wp} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -406,6 +450,15 @@ export default function BriefingsPage() {
                         </span>
                       ) : null;
                     })()}
+                  </div>
+                  {/* Column headers */}
+                  <div className="grid grid-cols-[1fr_auto_auto_auto_auto_auto] items-center gap-x-3 px-2.5 text-[9px] text-[#6B7280] uppercase tracking-wider font-medium">
+                    <span>Stage</span>
+                    <span className="text-right w-16">Duration</span>
+                    <span className="text-right w-14">Cost</span>
+                    <span className="text-right w-28">Model</span>
+                    <span className="text-right w-14">In Tok</span>
+                    <span className="text-right w-14">Out Tok</span>
                   </div>
                   <div className="space-y-1.5">
                     {selected.pipelineSteps.map((step) => (

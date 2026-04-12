@@ -28,6 +28,7 @@ export interface BriefingPipelineStep {
   model?: string;
   inputTokens?: number;
   outputTokens?: number;
+  workProducts?: import("./pipeline").WorkProductSummary[];
 }
 
 export interface AdminBriefingDetail {

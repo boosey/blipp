@@ -91,13 +91,37 @@ briefingsRoutes.get("/:id", async (c) => {
 
   if (!briefing) return c.json({ error: "Briefing not found" }, 404);
 
-  // Load pipeline steps for the episode to show AI usage
+  // Load pipeline steps for the episode to show AI usage + work products
   let pipelineSteps: any[] = [];
   try {
     const jobs = await prisma.pipelineJob.findMany({
       where: { episodeId: briefing.clip.episodeId },
-      include: { steps: { orderBy: { createdAt: "asc" } } },
+      include: {
+        steps: {
+          orderBy: { createdAt: "asc" },
+          include: {
+            workProduct: {
+              select: { id: true, type: true, r2Key: true, sizeBytes: true, metadata: true, createdAt: true },
+            },
+          },
+        },
+      },
     });
+
+    // Also load all work products for this episode for matching by stage
+    const episodeWps = await prisma.workProduct.findMany({
+      where: { episodeId: briefing.clip.episodeId },
+      select: { id: true, type: true, r2Key: true, sizeBytes: true, metadata: true, createdAt: true },
+    });
+
+    const STAGE_TO_WP_TYPE: Record<string, string[]> = {
+      TRANSCRIPTION: ["TRANSCRIPT"],
+      DISTILLATION: ["CLAIMS"],
+      NARRATIVE_GENERATION: ["NARRATIVE"],
+      AUDIO_GENERATION: ["AUDIO_CLIP"],
+      BRIEFING_ASSEMBLY: ["BRIEFING_AUDIO"],
+    };
+
     // Flatten steps, take the latest per stage
     const stageMap = new Map<string, any>();
     for (const job of jobs) {
@@ -108,16 +132,44 @@ briefingsRoutes.get("/:id", async (c) => {
         }
       }
     }
-    pipelineSteps = Array.from(stageMap.values()).map((s: any) => ({
-      stage: s.stage,
-      status: s.status,
-      cached: s.cached,
-      durationMs: s.durationMs,
-      cost: s.cost,
-      model: s.model ?? undefined,
-      inputTokens: s.inputTokens ?? undefined,
-      outputTokens: s.outputTokens ?? undefined,
-    }));
+    pipelineSteps = Array.from(stageMap.values()).map((s: any) => {
+      // Collect work products: directly linked + type-matched from episode
+      const wpTypes = STAGE_TO_WP_TYPE[s.stage] ?? [];
+      const matched = episodeWps
+        .filter((wp: any) => wpTypes.includes(wp.type))
+        .map((wp: any) => ({
+          id: wp.id,
+          type: wp.type,
+          r2Key: wp.r2Key,
+          sizeBytes: wp.sizeBytes,
+          metadata: wp.metadata,
+          createdAt: wp.createdAt?.toISOString?.() ?? wp.createdAt,
+        }));
+
+      // Include directly linked workProduct if not already matched
+      if (s.workProduct && !matched.some((m: any) => m.id === s.workProduct.id)) {
+        matched.push({
+          id: s.workProduct.id,
+          type: s.workProduct.type,
+          r2Key: s.workProduct.r2Key,
+          sizeBytes: s.workProduct.sizeBytes,
+          metadata: s.workProduct.metadata,
+          createdAt: s.workProduct.createdAt?.toISOString?.() ?? s.workProduct.createdAt,
+        });
+      }
+
+      return {
+        stage: s.stage,
+        status: s.status,
+        cached: s.cached,
+        durationMs: s.durationMs,
+        cost: s.cost,
+        model: s.model ?? undefined,
+        inputTokens: s.inputTokens ?? undefined,
+        outputTokens: s.outputTokens ?? undefined,
+        workProducts: matched.length > 0 ? matched : undefined,
+      };
+    });
   } catch {
     // PipelineJob may not exist
   }
