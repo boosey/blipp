@@ -480,7 +480,8 @@ episodesRoutes.post("/distill-apple-latest", async (c) => {
   const prisma = c.get("prisma") as any;
   const PODCAST_LIMIT = 500;
   const EPISODES_PER_PODCAST = 3;
-  const PODCASTS_PER_REQUEST = 50; // chunk to keep single evaluate message bounded
+  const PODCASTS_PER_REQUEST = 10; // small batches (~30 items) to avoid queue stampede
+  const STAGGER_DELAY_MS = 30_000; // 30s between batches — lets transcription drain
 
   const adminUser: { id: string } | null = await prisma.user.findFirst({
     where: { isAdmin: true },
@@ -553,6 +554,9 @@ episodesRoutes.post("/distill-apple-latest", async (c) => {
   }
   const podcastIds = [...itemsByPodcast.keys()];
   const requestIds: string[] = [];
+  const chunks: Array<{ reqId: string; itemCount: number }> = [];
+
+  // Create all BriefingRequests up front so we can return IDs immediately
   for (let i = 0; i < podcastIds.length; i += PODCASTS_PER_REQUEST) {
     const chunkPodcasts = podcastIds.slice(i, i + PODCASTS_PER_REQUEST);
     const chunkItems = chunkPodcasts.flatMap((pid) => itemsByPodcast.get(pid)!);
@@ -568,13 +572,33 @@ episodesRoutes.post("/distill-apple-latest", async (c) => {
       select: { id: true },
     });
     requestIds.push(req.id);
+    chunks.push({ reqId: req.id, itemCount: chunkItems.length });
+  }
 
+  // Send first batch immediately, stagger the rest via waitUntil so the
+  // HTTP response returns right away while batches trickle into the queue.
+  const sendBatch = async (reqId: string) => {
     const msg: OrchestratorMessage = {
-      requestId: req.id,
+      requestId: reqId,
       action: "evaluate",
-      correlationId: req.id,
+      correlationId: reqId,
     };
     await c.env.ORCHESTRATOR_QUEUE.send(msg);
+  };
+
+  // First batch — send now
+  await sendBatch(chunks[0].reqId);
+
+  // Remaining batches — stagger with delays in the background
+  if (chunks.length > 1) {
+    c.executionCtx.waitUntil(
+      (async () => {
+        for (let i = 1; i < chunks.length; i++) {
+          await new Promise((r) => setTimeout(r, STAGGER_DELAY_MS * i));
+          await sendBatch(chunks[i].reqId);
+        }
+      })()
+    );
   }
 
   return c.json({
@@ -585,6 +609,8 @@ episodesRoutes.post("/distill-apple-latest", async (c) => {
       episodesQueued: items.length,
       episodesSkipped,
       requestIds,
+      staggerDelayMs: STAGGER_DELAY_MS,
+      estimatedCompletionMinutes: Math.ceil((chunks.length * STAGGER_DELAY_MS) / 60_000),
       podcastLimitReached: podcasts.length === PODCAST_LIMIT,
     },
   });
