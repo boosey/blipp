@@ -21,3 +21,7 @@ secrets-*.env
 
 # Build analysis
 bundle-stats.*
+
+# Transient local state
+.tmp-*.json
+.claude/scheduled_tasks.lock
