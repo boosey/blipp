@@ -1,9 +1,8 @@
 import { useState } from "react";
-import { ChevronRight, Heart, Lock } from "lucide-react";
+import { ChevronRight, Heart } from "lucide-react";
 import { useApiFetch } from "../lib/api";
 import { usePodcastSheet } from "../contexts/podcast-sheet-context";
 import { ThumbButtons } from "./thumb-buttons";
-import { useCanSubscribe } from "../contexts/plan-context";
 
 export interface PodcastCardProps {
   id: string;
@@ -26,7 +25,6 @@ export function PodcastCard({
 }: PodcastCardProps) {
   const { open } = usePodcastSheet();
   const apiFetch = useApiFetch();
-  const { allowed: canSubscribe } = useCanSubscribe();
   const [vote, setVote] = useState(0);
   const [favorited, setFavorited] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -74,11 +72,6 @@ export function PodcastCard({
               <span className="text-xl font-bold text-muted-foreground">
                 {title.charAt(0).toUpperCase()}
               </span>
-            </div>
-          )}
-          {!canSubscribe && (
-            <div className="absolute inset-0 rounded bg-background/60 flex items-center justify-center">
-              <Lock className="w-4 h-4 text-amber-500" />
             </div>
           )}
         </div>
