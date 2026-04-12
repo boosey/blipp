@@ -1,4 +1,5 @@
 import type { Env } from "../types";
+import { decodeHtmlEntities } from "./html-entities";
 
 export interface DiscoveredPodcast {
   feedUrl: string;
@@ -154,10 +155,10 @@ const PodcastIndexSource: CatalogSource = {
 
         seen.set(p.url, {
           feedUrl: p.url,
-          title: p.title,
-          description: p.description,
+          title: decodeHtmlEntities(p.title),
+          description: decodeHtmlEntities(p.description ?? "") || undefined,
           imageUrl: p.image,
-          author: p.author,
+          author: decodeHtmlEntities(p.author ?? "") || undefined,
           podcastIndexId: String(p.id),
           categories,
           piRank: rank,
@@ -189,10 +190,10 @@ const PodcastIndexSource: CatalogSource = {
 
         seen.set(p.url, {
           feedUrl: p.url,
-          title: p.title,
-          description: p.description,
+          title: decodeHtmlEntities(p.title),
+          description: decodeHtmlEntities(p.description ?? "") || undefined,
           imageUrl: p.image,
-          author: p.author,
+          author: decodeHtmlEntities(p.author ?? "") || undefined,
           podcastIndexId: String(p.id),
           categories: mapPiCategories(p.categories ?? {}),
           piRank: rank,
@@ -217,10 +218,10 @@ const PodcastIndexSource: CatalogSource = {
     const results = await client.searchByTerm(query);
     return results.map((p) => ({
       feedUrl: p.url,
-      title: p.title,
-      description: p.description,
+      title: decodeHtmlEntities(p.title),
+      description: decodeHtmlEntities(p.description ?? "") || undefined,
       imageUrl: p.image,
-      author: p.author,
+      author: decodeHtmlEntities(p.author ?? "") || undefined,
       podcastIndexId: String(p.id),
       categories: mapPiCategories(p.categories ?? {}),
     }));

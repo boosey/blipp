@@ -1,4 +1,5 @@
 import { XMLParser } from "fast-xml-parser";
+import { decodeHtmlEntities } from "./html-entities";
 
 /**
  * Parsed episode from an RSS feed.
@@ -156,8 +157,8 @@ export function parseRssFeed(xml: string, maxItems?: number): ParsedFeed {
     );
 
     const episode: ParsedEpisode = {
-      title: String((item as any).title ?? ""),
-      description: String((item as any).description ?? (item as any)["itunes:summary"] ?? ""),
+      title: decodeHtmlEntities(String((item as any).title ?? "")),
+      description: decodeHtmlEntities(String((item as any).description ?? (item as any)["itunes:summary"] ?? "")),
       audioUrl: (item as any).enclosure?.["@_url"] ?? "",
       publishedAt: (() => {
         if (!(item as any).pubDate) return null;
@@ -180,13 +181,13 @@ export function parseRssFeed(xml: string, maxItems?: number): ParsedFeed {
   }
 
   return {
-    title: channel.title ?? "",
-    description: channel.description ?? "",
+    title: decodeHtmlEntities(channel.title ?? ""),
+    description: decodeHtmlEntities(channel.description ?? ""),
     imageUrl:
       channel["itunes:image"]?.["@_href"] ??
       channel.image?.url ??
       null,
-    author: channel["itunes:author"] ?? channel.author ?? null,
+    author: decodeHtmlEntities(channel["itunes:author"] ?? channel.author ?? "") || null,
     language: channel.language || undefined,
     episodes,
   };

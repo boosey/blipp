@@ -7,6 +7,7 @@ import { isRefreshJobActive, tryCompleteRefreshJob } from "../lib/queue-helpers"
 import { safeFetch } from "../lib/url-validation";
 import { slugify, uniqueSlug } from "../lib/slugify";
 import { PodcastIndexClient } from "../lib/podcast-index";
+import { decodeHtmlEntities } from "../lib/html-entities";
 import type { Env } from "../types";
 
 /**
@@ -110,8 +111,8 @@ async function fetchViaPodcastIndex(
     imageUrl: null,
     author: null,
     episodes: episodes.map((ep) => ({
-      title: ep.title,
-      description: ep.description,
+      title: decodeHtmlEntities(ep.title),
+      description: decodeHtmlEntities(ep.description),
       audioUrl: ep.enclosureUrl,
       publishedAt: ep.datePublished
         ? new Date(ep.datePublished * 1000).toISOString()
