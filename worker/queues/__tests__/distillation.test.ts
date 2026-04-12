@@ -87,6 +87,8 @@ vi.mock("../../lib/ai-errors", () => {
   return {
     writeAiError: vi.fn().mockResolvedValue(undefined),
     classifyAiError: vi.fn().mockReturnValue({ category: "unknown", severity: "transient" }),
+    isRateLimitError: vi.fn().mockReturnValue(false),
+    parseRetryAfterMs: vi.fn().mockReturnValue(100),
     AiProviderError,
   };
 });
