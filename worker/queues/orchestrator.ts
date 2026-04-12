@@ -102,12 +102,12 @@ async function handleEvaluate(
   request: any,
   msg: Message<OrchestratorMessage>
 ): Promise<void> {
-  // Enforce concurrent pipeline job limit (skipped for seoOnly backfill jobs)
+  // Enforce concurrent pipeline job limit (skipped for non-USER modes)
   const user = await prisma.user.findUnique({
     where: { id: request.userId },
     include: { plan: { select: { concurrentPipelineJobs: true } } },
   });
-  if (user?.plan && !request.seoOnly) {
+  if (user?.plan && request.mode === "USER") {
     const { checkConcurrentJobLimit } = await import("../lib/plan-limits");
     const limitErr = await checkConcurrentJobLimit(
       request.userId,
@@ -234,7 +234,7 @@ async function handleEvaluate(
     let entryStage: string = "TRANSCRIPTION";
     let clipId: string | null = null;
 
-    if (request.seoOnly) {
+    if (request.mode === "SEO_BACKFILL") {
       // SEO backfill only runs TRANSCRIPTION + DISTILLATION. Force entry stage
       // based solely on transcript availability; ignore downstream caches since
       // we stop after distillation regardless.
@@ -393,9 +393,9 @@ async function handleJobStageComplete(
     return;
   }
 
-  // SEO-only backfill stops at distillation — mark job COMPLETED and check
+  // SEO backfill stops at distillation — mark job COMPLETED and check
   // whether the request is fully done. Never advance to narrative/audio/assembly.
-  if (request.seoOnly && completedStage === "DISTILLATION") {
+  if (request.mode === "SEO_BACKFILL" && completedStage === "DISTILLATION") {
     const advanced = await prisma.pipelineJob.updateMany({
       where: { id: jobId, status: { notIn: ["COMPLETED", "COMPLETED_DEGRADED"] } },
       data: { status: "COMPLETED", completedAt: new Date() },

@@ -14,11 +14,16 @@ export async function assembleBriefings(
   requestId: string,
   log: PipelineLogger
 ): Promise<{ successCount: number; failureCount: number }> {
+  const request = await prisma.briefingRequest.findUnique({
+    where: { id: requestId },
+    select: { mode: true },
+  });
+
   const jobs = await prisma.pipelineJob.findMany({
     where: { requestId },
   });
 
-  log.info("jobs_loaded", { requestId, total: jobs.length });
+  log.info("jobs_loaded", { requestId, mode: request?.mode, total: jobs.length });
 
   let successCount = 0;
   let failureCount = 0;
@@ -70,24 +75,58 @@ export async function assembleBriefings(
         throw new Error("No clip found for episode/durationTier");
       }
 
-      const feedItems = await prisma.feedItem.findMany({
-        where: { requestId, episodeId: job.episodeId, durationTier: job.durationTier },
-        select: { id: true, userId: true },
-      });
-
-      await writeEvent(prisma, step.id, "INFO", `Assembling ${feedItems.length} feed item(s)`);
-
-      for (const fi of feedItems) {
-        const briefing = await prisma.briefing.upsert({
-          where: { userId_clipId: { userId: fi.userId, clipId: clipId! } },
-          create: { userId: fi.userId, clipId: clipId! },
-          update: {},
+      // CATALOG mode: create a CatalogBriefing record instead of user-scoped Briefing + FeedItem
+      if (request.mode === "CATALOG") {
+        const episode = await prisma.episode.findUnique({
+          where: { id: job.episodeId },
+          select: { podcastId: true },
         });
 
-        await prisma.feedItem.update({
-          where: { id: fi.id },
-          data: { status: "READY", briefingId: briefing.id },
+        if (!episode) {
+          throw new Error(`Episode ${job.episodeId} not found`);
+        }
+
+        await prisma.catalogBriefing.upsert({
+          where: { episodeId_durationTier: { episodeId: job.episodeId, durationTier: job.durationTier } },
+          create: {
+            episodeId: job.episodeId,
+            podcastId: episode.podcastId,
+            durationTier: job.durationTier,
+            clipId: clipId!,
+            requestId,
+          },
+          update: {
+            clipId: clipId!,
+            requestId,
+            stale: false,
+          },
         });
+
+        await writeEvent(prisma, step.id, "INFO", "CatalogBriefing upserted", {
+          episodeId: job.episodeId,
+          durationTier: job.durationTier,
+        });
+      } else {
+        // USER mode: create per-user Briefing + mark FeedItems READY
+        const feedItems = await prisma.feedItem.findMany({
+          where: { requestId, episodeId: job.episodeId, durationTier: job.durationTier },
+          select: { id: true, userId: true },
+        });
+
+        await writeEvent(prisma, step.id, "INFO", `Assembling ${feedItems.length} feed item(s)`);
+
+        for (const fi of feedItems) {
+          const briefing = await prisma.briefing.upsert({
+            where: { userId_clipId: { userId: fi.userId, clipId: clipId! } },
+            create: { userId: fi.userId, clipId: clipId! },
+            update: {},
+          });
+
+          await prisma.feedItem.update({
+            where: { id: fi.id },
+            data: { status: "READY", briefingId: briefing.id },
+          });
+        }
       }
 
       await writeEvent(prisma, step.id, "INFO", "Briefing assembly complete");
@@ -147,10 +186,13 @@ export async function assembleBriefings(
 
   // Update request-level status
   if (successCount === 0) {
-    await prisma.feedItem.updateMany({
-      where: { requestId },
-      data: { status: "FAILED", errorMessage: "No completed clips available" },
-    });
+    // Only update FeedItems for USER mode (CATALOG/SEO_BACKFILL have none)
+    if (request?.mode !== "CATALOG" && request?.mode !== "SEO_BACKFILL") {
+      await prisma.feedItem.updateMany({
+        where: { requestId },
+        data: { status: "FAILED", errorMessage: "No completed clips available" },
+      });
+    }
 
     await prisma.briefingRequest.update({
       where: { id: requestId },

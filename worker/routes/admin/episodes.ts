@@ -473,8 +473,8 @@ episodesRoutes.post("/backfill-slugs", async (c) => {
 
 // POST /distill-apple-latest - One-time SEO backfill: for every deliverable
 // Apple-sourced podcast, run the latest 3 episodes through transcription +
-// distillation so SEO pages get enabled. Uses a seoOnly BriefingRequest that
-// short-circuits the pipeline at distillation (no narrative/audio/assembly).
+// distillation so SEO pages get enabled. Uses SEO_BACKFILL mode BriefingRequest
+// that short-circuits the pipeline at distillation (no narrative/audio/assembly).
 // Skips episodes with a COMPLETED distillation. Safe to re-run.
 episodesRoutes.post("/distill-apple-latest", async (c) => {
   const prisma = c.get("prisma") as any;
@@ -563,7 +563,7 @@ episodesRoutes.post("/distill-apple-latest", async (c) => {
         status: "PENDING",
         targetMinutes: 5,
         items: chunkItems as any,
-        seoOnly: true,
+        mode: "SEO_BACKFILL",
       },
       select: { id: true },
     });

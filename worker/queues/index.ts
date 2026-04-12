@@ -19,6 +19,7 @@ import { runRecommendationsJob } from "../lib/cron/recommendations";
 import { runAppleDiscoveryJob, runPodcastIndexDiscoveryJob } from "../lib/cron/podcast-discovery";
 import { runListenOriginalAggregationJob } from "../lib/cron/listen-original-aggregation";
 import { runGeoTaggingJob } from "../lib/cron/geo-tagging";
+import { runCatalogPregenJob } from "../lib/cron/catalog-pregen";
 import type {
   TranscriptionMessage,
   DistillationMessage,
@@ -177,6 +178,7 @@ export async function scheduled(
       "listen-original-aggregation": (logger) => runListenOriginalAggregationJob(prisma as any, logger),
       "stale-job-reaper": (logger) => runStaleJobReaperJob(prisma as any, logger),
       "geo-tagging": (logger) => runGeoTaggingJob(prisma as any, logger, env),
+      "catalog-pregen": (logger) => runCatalogPregenJob(prisma as any, logger, env),
     };
 
     // Dispatch all registered jobs — each checks its own enabled flag and interval via CronJob table

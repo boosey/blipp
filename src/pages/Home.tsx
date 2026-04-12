@@ -9,6 +9,9 @@ import { EmptyState } from "../components/empty-state";
 import { CuratedRow } from "../components/curated-row";
 import { WelcomeCard } from "../components/welcome-card";
 import { SubscribeNudge } from "../components/subscribe-nudge";
+import { TopicsCard, PodcastPickerCard, DiscoverNudge } from "../components/inline-onboarding-cards";
+import { useOnboarding } from "../contexts/onboarding-context";
+import { usePlan } from "../contexts/plan-context";
 import type { FeedItem, FeedFilter, FeedCounts } from "../types/feed";
 import type { CuratedResponse } from "../types/recommendations";
 import { groupByDate } from "../lib/feed-utils";
@@ -46,12 +49,20 @@ function buildFilterParams(filter: FeedFilter): string {
 export function Home() {
   const apiFetch = useApiFetch();
   const audio = useAudio();
+  const { needsOnboarding, markComplete } = useOnboarding();
+  const { maxDurationMinutes } = usePlan();
   const [items, setItems] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FeedFilter>("all");
   const [swipeHintDismissed, setSwipeHintDismissed] = useState(() => !!localStorage.getItem("swipe-hint-seen"));
   const [generatingTimedOut, setGeneratingTimedOut] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<string | null>(null);
+
+  // Inline onboarding state
+  const [showTopicsCard, setShowTopicsCard] = useState(true);
+  const [showPodcastCard, setShowPodcastCard] = useState(true);
+  const [preferredCategories, setPreferredCategories] = useState<string[]>([]);
+  const [subscribing, setSubscribing] = useState(false); // locks UI during subscribe
 
   const { data: counts } = useFetch<FeedCounts>("/feed/counts");
   const { data: curatedData } = useFetch<CuratedResponse>("/recommendations/curated");
@@ -253,8 +264,125 @@ export function Home() {
     }
   }
 
+  // ── Inline onboarding handlers ──
+
+  async function handleTopicsDone(categories: string[]) {
+    setPreferredCategories(categories);
+    setShowTopicsCard(false);
+    // Save preferences in background — non-blocking
+    try {
+      await apiFetch("/me/preferences", {
+        method: "PATCH",
+        body: JSON.stringify({
+          preferredCategories: categories,
+          excludedCategories: [],
+          preferredTopics: [],
+          excludedTopics: [],
+        }),
+      });
+    } catch {
+      // Non-critical
+    }
+  }
+
+  function handleTopicsSkip() {
+    setShowTopicsCard(false);
+  }
+
+  async function handlePodcastSubscribe(
+    podcasts: { id: string; title: string; feedUrl: string; description: string | null; imageUrl: string | null; author: string | null }[]
+  ) {
+    setSubscribing(true);
+    const durationTier = Math.min(maxDurationMinutes, 5);
+
+    await Promise.allSettled(
+      podcasts.map((p) =>
+        apiFetch("/podcasts/subscribe", {
+          method: "POST",
+          body: JSON.stringify({
+            feedUrl: p.feedUrl,
+            title: p.title,
+            durationTier,
+            description: p.description,
+            imageUrl: p.imageUrl,
+            author: p.author,
+          }),
+        })
+      )
+    );
+
+    // Mark onboarding complete (triggers starter pack delivery on backend)
+    try {
+      await apiFetch("/me/onboarding-complete", { method: "PATCH" });
+    } catch {
+      // Non-critical
+    }
+    markComplete();
+    setShowPodcastCard(false);
+    setSubscribing(false);
+
+    sessionStorage.setItem("blipp-just-onboarded", "1");
+    generatingStartRef.current = Date.now();
+    fetchFeed();
+  }
+
+  async function handlePodcastSkip() {
+    setShowPodcastCard(false);
+    // Mark onboarding complete even without subscriptions (triggers starter pack)
+    try {
+      await apiFetch("/me/onboarding-complete", { method: "PATCH" });
+    } catch {
+      // Non-critical
+    }
+    markComplete();
+    sessionStorage.setItem("blipp-just-onboarded", "1");
+    generatingStartRef.current = Date.now();
+    fetchFeed();
+  }
+
   if (loading) {
     return <FeedSkeleton />;
+  }
+
+  // ── Inline onboarding: show cards when user needs onboarding ──
+  if ((needsOnboarding || subscribing) && (showTopicsCard || showPodcastCard)) {
+    return (
+      <div>
+        <h1 className="text-xl font-bold mb-3">Your Feed</h1>
+
+        {/* Dimmed filter pills during onboarding */}
+        <div className="opacity-50 pointer-events-none mb-3">
+          <ScrollableRow className="gap-2 pb-2">
+            {FILTERS.map(({ key, label }) => (
+              <button
+                key={key}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap shrink-0 ${
+                  key === "all"
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-secondary text-secondary-foreground"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </ScrollableRow>
+        </div>
+
+        {showTopicsCard && (
+          <TopicsCard onDone={handleTopicsDone} onSkip={handleTopicsSkip} />
+        )}
+
+        {showPodcastCard && (
+          <PodcastPickerCard
+            preferredCategories={preferredCategories}
+            onSubscribe={handlePodcastSubscribe}
+            onSkip={handlePodcastSkip}
+          />
+        )}
+
+        <DiscoverNudge />
+      </div>
+    );
   }
 
   // Post-onboarding generating state

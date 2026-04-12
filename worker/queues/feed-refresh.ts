@@ -1,11 +1,12 @@
 import { createPrismaClient, type PrismaClient } from "../lib/db";
 import { getConfig } from "../lib/config";
 import { createPipelineLogger, type PipelineLogger } from "../lib/logger";
-import { parseRssFeed, type ParsedEpisode } from "../lib/rss-parser";
+import { parseRssFeed, type ParsedEpisode, type ParsedFeed } from "../lib/rss-parser";
 import type { FeedRefreshMessage } from "../lib/queue-messages";
 import { isRefreshJobActive, tryCompleteRefreshJob } from "../lib/queue-helpers";
 import { safeFetch } from "../lib/url-validation";
 import { slugify, uniqueSlug } from "../lib/slugify";
+import { PodcastIndexClient } from "../lib/podcast-index";
 import type { Env } from "../types";
 
 /**
@@ -23,6 +24,106 @@ function latestEpisodes(episodes: ParsedEpisode[], max: number): ParsedEpisode[]
 }
 
 /**
+ * Fetch and parse a podcast's RSS feed directly.
+ * Returns null with the HTTP status on non-retryable failure (e.g. 403).
+ */
+async function fetchRssDirect(
+  feedUrl: string,
+  maxEpisodes: number,
+  fetchTimeoutMs: number,
+  log: PipelineLogger,
+  podcastId: string,
+): Promise<{ feed: ParsedFeed } | { status: number; statusText: string }> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), fetchTimeoutMs);
+  const MAX_RETRIES = 3;
+  const RETRY_STATUSES = new Set([429, 500, 502, 503, 504]);
+
+  try {
+    let response: Response | undefined;
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      response = await safeFetch(feedUrl, {
+        signal: controller.signal,
+        headers: {
+          "User-Agent": "Blipp/1.0 (+https://blipp.fm; podcast fetcher)",
+          "Accept": "application/rss+xml, application/xml;q=0.9, */*;q=0.8",
+        },
+      });
+      if (response.ok || !RETRY_STATUSES.has(response.status) || attempt === MAX_RETRIES) break;
+      const backoffMs = 1000 * Math.pow(2, attempt); // 1s, 2s, 4s
+      log.info("feed_fetch_retry", {
+        podcastId,
+        status: response.status,
+        attempt: attempt + 1,
+        backoffMs,
+      });
+      await new Promise((r) => setTimeout(r, backoffMs));
+    }
+    if (!response!.ok) {
+      return { status: response!.status, statusText: response!.statusText };
+    }
+    const xml = await response!.text();
+    const feed = parseRssFeed(xml, maxEpisodes * 3);
+    return { feed };
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      log.error("feed_fetch_timeout", {
+        podcastId,
+        feedUrl,
+        timeoutMs: fetchTimeoutMs,
+      });
+      throw new Error(`RSS fetch timed out after ${fetchTimeoutMs}ms: ${feedUrl}`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/**
+ * Fallback: fetch episodes from the Podcast Index API when direct RSS is blocked.
+ * Returns a synthetic ParsedFeed constructed from PI episode data.
+ */
+async function fetchViaPodcastIndex(
+  feedUrl: string,
+  maxEpisodes: number,
+  env: Env,
+  log: PipelineLogger,
+  podcastId: string,
+): Promise<ParsedFeed> {
+  const pi = new PodcastIndexClient(env.PODCAST_INDEX_KEY, env.PODCAST_INDEX_SECRET);
+  const episodes = await pi.episodesByFeedUrl(feedUrl, maxEpisodes);
+
+  if (!episodes.length) {
+    throw new Error(`Podcast Index returned no episodes for: ${feedUrl}`);
+  }
+
+  log.info("podcast_index_fallback_success", {
+    podcastId,
+    feedUrl,
+    episodeCount: episodes.length,
+  });
+
+  return {
+    title: "",
+    description: "",
+    imageUrl: null,
+    author: null,
+    episodes: episodes.map((ep) => ({
+      title: ep.title,
+      description: ep.description,
+      audioUrl: ep.enclosureUrl,
+      publishedAt: ep.datePublished
+        ? new Date(ep.datePublished * 1000).toISOString()
+        : null,
+      durationSeconds: ep.duration || null,
+      guid: ep.guid,
+      transcriptUrl: ep.transcriptUrl ?? null,
+    })),
+  };
+}
+
+/**
  * Process a single podcast: fetch RSS, parse, upsert episodes, notify subscribers.
  */
 async function processPodcast(
@@ -34,57 +135,30 @@ async function processPodcast(
   fetchTimeoutMs: number,
   refreshJobId?: string
 ): Promise<void> {
-  // Fetch RSS with timeout — covers both headers and body streaming
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), fetchTimeoutMs);
+  // Try direct RSS fetch first
+  const directResult = await fetchRssDirect(
+    podcast.feedUrl, maxEpisodes, fetchTimeoutMs, log, podcast.id,
+  );
 
-  let xml: string;
-  const MAX_RETRIES = 3;
-  const RETRY_STATUSES = new Set([429, 500, 502, 503, 504]);
+  let feed: ParsedFeed;
 
-  try {
-    let response: Response | undefined;
-    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-      response = await safeFetch(podcast.feedUrl, {
-        signal: controller.signal,
-        headers: {
-          "User-Agent": "Blipp/1.0 (+https://blipp.fm; podcast fetcher)",
-          "Accept": "application/rss+xml, application/xml;q=0.9, */*;q=0.8",
-        },
-      });
-      if (response.ok || !RETRY_STATUSES.has(response.status) || attempt === MAX_RETRIES) break;
-      const backoffMs = 1000 * Math.pow(2, attempt); // 1s, 2s, 4s
-      log.info("feed_fetch_retry", {
-        podcastId: podcast.id,
-        status: response.status,
-        attempt: attempt + 1,
-        backoffMs,
-      });
-      await new Promise((r) => setTimeout(r, backoffMs));
-    }
-    if (!response!.ok) {
-      throw new Error(`RSS feed returned HTTP ${response!.status} ${response!.statusText}: ${podcast.feedUrl}`);
-    }
-    xml = await response!.text();
-  } catch (err) {
-    if (err instanceof DOMException && err.name === "AbortError") {
-      log.error("feed_fetch_timeout", {
-        podcastId: podcast.id,
-        title: podcast.title,
-        feedUrl: podcast.feedUrl,
-        timeoutMs: fetchTimeoutMs,
-      });
-      throw new Error(`RSS fetch timed out after ${fetchTimeoutMs}ms: ${podcast.feedUrl}`);
-    }
-    throw err;
-  } finally {
-    clearTimeout(timeout);
+  if ("feed" in directResult) {
+    feed = directResult.feed;
+  } else if (directResult.status === 403) {
+    // Direct fetch blocked — fall back to Podcast Index API
+    log.info("feed_fetch_403_fallback", {
+      podcastId: podcast.id,
+      title: podcast.title,
+      feedUrl: podcast.feedUrl,
+    });
+    feed = await fetchViaPodcastIndex(
+      podcast.feedUrl, maxEpisodes, env, log, podcast.id,
+    );
+  } else {
+    throw new Error(
+      `RSS feed returned HTTP ${directResult.status} ${directResult.statusText}: ${podcast.feedUrl}`
+    );
   }
-
-  // Pass maxEpisodes * 3 to truncate XML before parsing — gives headroom
-  // for episodes that may be filtered out (missing guid/audioUrl) while
-  // avoiding entity expansion limits on feeds with thousands of episodes.
-  const feed = parseRssFeed(xml, maxEpisodes * 3);
 
   // Write the RSS language tag to the podcast record
   if (feed.language) {

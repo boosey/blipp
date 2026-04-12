@@ -112,8 +112,16 @@ export function parseRssFeed(xml: string, maxItems?: number): ParsedFeed {
     isArray: (tagName) =>
       tagName === "item" || tagName === "podcast:transcript",
     // Some feeds use heavy entity references (e.g. &amp; &lt; in descriptions)
-    // that exceed the default 1000 expansion limit even after truncation.
-    processEntities: { enabled: true, maxTotalExpansions: 100000 },
+    // that exceed fast-xml-parser's conservative defaults even after truncation.
+    // Set all limits generously — XML is already truncated to ~15 items.
+    processEntities: {
+      enabled: true,
+      maxTotalExpansions: 500_000,
+      maxEntitySize: 100_000,
+      maxEntityCount: 1_000,
+      maxExpandedLength: 5_000_000,
+      maxExpansionDepth: 50,
+    },
   });
 
   const parsed = parser.parse(toParse);

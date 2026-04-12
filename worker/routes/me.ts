@@ -10,6 +10,7 @@ import { validateBody } from "../lib/validation";
 import { DURATION_TIERS } from "../lib/constants";
 import { checkVoicePresetAccess } from "../lib/voice-presets";
 import { createStripeClient } from "../lib/stripe";
+import { deliverStarterPack } from "../lib/starter-pack";
 import { computeUserProfile, recomputeRecommendationCache } from "../lib/recommendations";
 
 const OnboardingCompleteSchema = z.object({
@@ -163,6 +164,9 @@ me.get("/", async (c) => {
 /**
  * PATCH /onboarding-complete — Mark onboarding as complete (or reset for admins).
  * Body (optional): { reset: true } — resets onboarding (admin only)
+ *
+ * When completing onboarding, if the user has no subscriptions, delivers a
+ * starter pack of pre-generated catalog briefings for instant first experience.
  */
 me.patch("/onboarding-complete", async (c) => {
   const prisma = c.get("prisma") as any;
@@ -176,7 +180,34 @@ me.patch("/onboarding-complete", async (c) => {
     data: { onboardingComplete: complete },
   });
 
-  return c.json({ data: { onboardingComplete: complete } });
+  // Deliver starter pack for new users completing onboarding
+  let starterPack: { delivered: number; requestId: string | null } = { delivered: 0, requestId: null };
+  if (complete) {
+    try {
+      const fullUser = await prisma.user.findUnique({
+        where: { id: user.id },
+        select: { preferredCategories: true },
+      });
+
+      starterPack = await deliverStarterPack({
+        userId: user.id,
+        preferredCategories: fullUser?.preferredCategories ?? [],
+        prisma,
+        orchestratorQueue: c.env.ORCHESTRATOR_QUEUE,
+      });
+    } catch {
+      // Non-critical — don't block onboarding completion
+    }
+  }
+
+  return c.json({
+    data: {
+      onboardingComplete: complete,
+      starterPack: starterPack.delivered > 0
+        ? { delivered: starterPack.delivered, requestId: starterPack.requestId }
+        : null,
+    },
+  });
 });
 
 /**

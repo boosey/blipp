@@ -31,6 +31,7 @@ import { workerLogsRoutes } from "./worker-logs";
 import { feedbackRoutes } from "./feedback";
 import { blippFeedbackRoutes } from "./blipp-feedback";
 import { publisherReportsRoutes } from "./publisher-reports";
+import { catalogPregenRoutes } from "./catalog-pregen";
 
 /**
  * Admin route tree. All routes require admin authentication.
@@ -101,5 +102,6 @@ adminRoutes.route("/worker-logs", workerLogsRoutes);
 adminRoutes.route("/feedback", feedbackRoutes);
 adminRoutes.route("/blipp-feedback", blippFeedbackRoutes);
 adminRoutes.route("/publisher-reports", publisherReportsRoutes);
+adminRoutes.route("/catalog-pregen", catalogPregenRoutes);
 
 export { adminRoutes };

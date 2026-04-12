@@ -228,6 +228,7 @@ model Podcast {
   profile                    PodcastProfile?
   geoProfiles                PodcastGeoProfile[]
   recommendationDismissals   RecommendationDismissal[]
+  catalogBriefings           CatalogBriefing[]
 }
 
 model Episode {
@@ -261,6 +262,7 @@ model Episode {
   blippFeedback          BlippFeedback[]
   listenOriginalEvents   ListenOriginalEvent[] @relation("ListenOriginalEvents")
   digestDeliveryEpisodes DigestDeliveryEpisode[]
+  catalogBriefings       CatalogBriefing[]
 
   @@unique([podcastId, guid])
   @@unique([podcastId, slug])
@@ -322,6 +324,7 @@ model Clip {
   distillation Distillation @relation(fields: [distillationId], references: [id], onDelete: Cascade)
   voicePreset  VoicePreset? @relation(fields: [voicePresetId], references: [id])
   briefings    Briefing[]
+  catalogBriefings CatalogBriefing[]
 
   @@unique([episodeId, durationTier, voicePresetId])
 }
@@ -342,6 +345,27 @@ model Briefing {
   feedItems FeedItem[]
 
   @@unique([userId, clipId])
+}
+
+// ── Catalog Briefings (pre-generated, not tied to a user) ──
+
+model CatalogBriefing {
+  id           String   @id @default(cuid())
+  episodeId    String
+  podcastId    String
+  durationTier Int      @default(5)
+  clipId       String
+  requestId    String
+  stale        Boolean  @default(false) // true when a newer episode supersedes this one
+  createdAt    DateTime @default(now())
+
+  episode  Episode         @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  podcast  Podcast         @relation(fields: [podcastId], references: [id], onDelete: Cascade)
+  clip     Clip            @relation(fields: [clipId], references: [id], onDelete: Cascade)
+  request  BriefingRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@unique([episodeId, durationTier])
+  @@index([podcastId, stale, createdAt])
 }
 
 enum ClipStatus {
@@ -404,6 +428,7 @@ enum FeedItemSource {
   SUBSCRIPTION
   ON_DEMAND
   SHARED
+  CATALOG // Delivered from pre-generated catalog on signup
 }
 
 enum FeedItemStatus {
@@ -511,14 +536,21 @@ model BriefingRequest {
   targetMinutes Int
   items         Json                 // BriefingRequestItem[]
   isTest        Boolean              @default(false)
-  seoOnly       Boolean              @default(false)
+  mode          BriefingRequestMode  @default(USER)
   errorMessage  String?
   cancelledAt   DateTime?
   createdAt     DateTime             @default(now())
   updatedAt     DateTime             @updatedAt
 
-  user User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  jobs PipelineJob[]
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobs              PipelineJob[]
+  catalogBriefings  CatalogBriefing[]
+}
+
+enum BriefingRequestMode {
+  USER           // Normal user-triggered (subscription, on-demand)
+  SEO_BACKFILL   // Transcription + distillation only, for SEO pages
+  CATALOG        // Full pipeline, pre-generated for instant delivery on signup
 }
 
 enum BriefingRequestStatus {
