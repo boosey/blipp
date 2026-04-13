@@ -352,12 +352,17 @@ recommendations.get("/local", async (c) => {
   });
 
   if (!fullUser?.city || !fullUser?.state) {
-    return c.json({ data: { local: [], localSports: [], location: null } });
+    return c.json({ data: { localInterests: [], location: null } });
   }
 
-  // City-level matches + state-level matches
+  // City-level matches only — require confidence >= 0.7 to filter out
+  // low-quality state-level matches (e.g. podcasts that just mention the state name)
   const geoProfiles = await prisma.podcastGeoProfile.findMany({
-    where: { state: fullUser.state, podcast: { deliverable: true } },
+    where: {
+      state: fullUser.state,
+      confidence: { gte: 0.7 },
+      podcast: { deliverable: true },
+    },
     include: {
       podcast: { select: { id: true, title: true, imageUrl: true, author: true, categories: true } },
       team: { select: { id: true, name: true, nickname: true, abbreviation: true } },
@@ -365,23 +370,30 @@ recommendations.get("/local", async (c) => {
     orderBy: [{ confidence: "desc" }],
   });
 
-  // Sort: city matches first (stronger relevance), then state-level
-  const sorted = geoProfiles.sort((a: any, b: any) => {
-    const aIsCity = a.city === fullUser.city ? 1 : 0;
-    const bIsCity = b.city === fullUser.city ? 1 : 0;
-    if (aIsCity !== bIsCity) return bIsCity - aIsCity;
-    return b.confidence - a.confidence;
-  });
+  // Sort: user's city first, then by confidence; deduplicate by podcast ID
+  const seen = new Set<string>();
+  const sorted = geoProfiles
+    .sort((a: any, b: any) => {
+      const aIsCity = a.city === fullUser.city ? 1 : 0;
+      const bIsCity = b.city === fullUser.city ? 1 : 0;
+      if (aIsCity !== bIsCity) return bIsCity - aIsCity;
+      return b.confidence - a.confidence;
+    })
+    .filter((gp: any) => {
+      if (seen.has(gp.podcast.id)) return false;
+      seen.add(gp.podcast.id);
+      return true;
+    });
 
-  const local = sorted.filter((gp: any) => !gp.teamId).map((gp: any) => ({
-    podcast: gp.podcast, scope: gp.scope, confidence: gp.confidence,
+  // Single combined list, capped at 3
+  const localInterests = sorted.slice(0, 3).map((gp: any) => ({
+    podcast: gp.podcast,
+    scope: gp.scope,
+    confidence: gp.confidence,
+    team: gp.team ?? null,
   }));
 
-  const localSports = sorted.filter((gp: any) => gp.teamId).map((gp: any) => ({
-    podcast: gp.podcast, scope: gp.scope, confidence: gp.confidence, team: gp.team,
-  }));
-
-  return c.json({ data: { local, localSports, location: { city: fullUser.city, state: fullUser.state, country: fullUser.country } } });
+  return c.json({ data: { localInterests, location: { city: fullUser.city, state: fullUser.state, country: fullUser.country } } });
 });
 
 // GET /curated — Netflix-style curated rows

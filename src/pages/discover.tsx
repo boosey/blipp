@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
-import { Search, X, Plus, Loader2, ArrowUpDown, MapPin, Trophy } from "lucide-react";
+import { Search, X, Plus, Loader2, ArrowUpDown, MapPin } from "lucide-react";
 import { toast } from "sonner";
 import { useApiFetch } from "../lib/api";
 import { useFetch } from "../lib/use-fetch";
@@ -96,8 +96,7 @@ export function Discover() {
   // --- Local discovery ---
   const { data: localData } = useFetch<{
     data: {
-      local: { podcast: { id: string; title: string; imageUrl: string | null; author: string | null; categories: string[] }; scope: string; confidence: number }[];
-      localSports: { podcast: { id: string; title: string; imageUrl: string | null; author: string | null; categories: string[] }; scope: string; confidence: number; team: { id: string; name: string; nickname: string; abbreviation: string } }[];
+      localInterests: { podcast: { id: string; title: string; imageUrl: string | null; author: string | null; categories: string[] }; scope: string; confidence: number; team: { id: string; name: string; nickname: string; abbreviation: string } | null }[];
       location: { city: string; state: string; country: string } | null;
     };
   }>("/recommendations/local");
@@ -334,55 +333,18 @@ export function Discover() {
       </ScrollableRow>
 
       {/* Local discovery sections */}
-      {localData?.data?.location && (localData.data.local.length > 0 || localData.data.localSports.length > 0) && (
-        <Accordion type="multiple" defaultValue={["local", "local-sports"]}>
-          {localData.data.local.length > 0 && (
-            <AccordionItem value="local">
+      {localData?.data?.location && localData.data.localInterests.length > 0 && (
+        <Accordion type="multiple" defaultValue={["local-interests"]}>
+            <AccordionItem value="local-interests">
               <AccordionTrigger>
                 <span className="flex items-center gap-2">
                   <MapPin className="w-4 h-4" />
-                  Local Podcasts
+                  Local Interests
                 </span>
               </AccordionTrigger>
               <AccordionContent>
                 <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
-                  {localData.data.local.map((item) => (
-                    <button
-                      key={item.podcast.id}
-                      onClick={() => openPodcast(item.podcast.id)}
-                      className="text-left"
-                    >
-                      {item.podcast.imageUrl ? (
-                        <img
-                          src={item.podcast.imageUrl}
-                          className="w-full aspect-square rounded-lg object-cover"
-                          alt=""
-                        />
-                      ) : (
-                        <div className="w-full aspect-square rounded-lg bg-muted flex items-center justify-center">
-                          <span className="text-2xl font-bold text-muted-foreground">
-                            {item.podcast.title.charAt(0).toUpperCase()}
-                          </span>
-                        </div>
-                      )}
-                      <p className="text-xs font-medium mt-1.5 truncate">{item.podcast.title}</p>
-                    </button>
-                  ))}
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-          )}
-          {localData.data.localSports.length > 0 && (
-            <AccordionItem value="local-sports">
-              <AccordionTrigger>
-                <span className="flex items-center gap-2">
-                  <Trophy className="w-4 h-4" />
-                  Local Sports
-                </span>
-              </AccordionTrigger>
-              <AccordionContent>
-                <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
-                  {localData.data.localSports.map((item) => (
+                  {localData.data.localInterests.map((item) => (
                     <button
                       key={item.podcast.id}
                       onClick={() => openPodcast(item.podcast.id)}
@@ -412,7 +374,6 @@ export function Discover() {
                 </div>
               </AccordionContent>
             </AccordionItem>
-          )}
         </Accordion>
       )}
 

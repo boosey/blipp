@@ -147,10 +147,11 @@ describe("findRegionalMatches", () => {
     expect(matches[0].confidence).toBe(0.6); // description-only
   });
 
-  it("matches the Midwest", () => {
-    const matches = findRegionalMatches("the Midwest Report", "");
-    expect(matches.length).toBeGreaterThanOrEqual(4);
-    expect(matches[0].scope).toBe("regional");
+  it("does not match removed ambiguous phrases like the South or the Midwest", () => {
+    const south = findRegionalMatches("the South Report", "");
+    expect(south).toHaveLength(0);
+    const midwest = findRegionalMatches("the Midwest Report", "");
+    expect(midwest).toHaveLength(0);
   });
 
   it("returns empty for non-regional phrases", () => {

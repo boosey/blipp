@@ -89,10 +89,10 @@ export const REGIONAL_PHRASES: Map<string, { city: string; state: string }[]> = 
   ["Bay Area", [{ city: "San Francisco", state: "California" }, { city: "San Jose", state: "California" }]],
   ["Pacific Northwest", [{ city: "Seattle", state: "Washington" }, { city: "Portland", state: "Oregon" }]],
   ["Tri-State", [{ city: "New York", state: "New York" }]],
-  ["the South", [{ city: "Atlanta", state: "Georgia" }, { city: "Miami", state: "Florida" }, { city: "New Orleans", state: "Louisiana" }, { city: "Nashville", state: "Tennessee" }, { city: "Birmingham", state: "Alabama" }]],
+  // "the South" and "the Midwest" removed — too ambiguous, matches South Africa,
+  // South Carolina, South Coast UK, Midwest Airlines, etc.
   ["New England", [{ city: "Boston", state: "Massachusetts" }, { city: "Hartford", state: "Connecticut" }]],
   ["Southern California", [{ city: "Los Angeles", state: "California" }, { city: "San Diego", state: "California" }]],
-  ["the Midwest", [{ city: "Chicago", state: "Illinois" }, { city: "Detroit", state: "Michigan" }, { city: "Minneapolis", state: "Minnesota" }, { city: "Milwaukee", state: "Wisconsin" }]],
 ]);
 
 // ── Ambiguous city names (exist in multiple states) ──

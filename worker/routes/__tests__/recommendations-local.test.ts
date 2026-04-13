@@ -45,12 +45,11 @@ describe("GET /local", () => {
     const res = await app.request("/local");
     expect(res.status).toBe(200);
     const data = await res.json() as any;
-    expect(data.data.local).toHaveLength(0);
-    expect(data.data.localSports).toHaveLength(0);
+    expect(data.data.localInterests).toHaveLength(0);
     expect(data.data.location).toBeNull();
   });
 
-  it("returns local and localSports when user has city/state", async () => {
+  it("returns combined localInterests when user has city/state", async () => {
     mockPrisma.user.findUnique.mockResolvedValue({ city: "New York", state: "New York", country: "US" });
     mockPrisma.podcastGeoProfile.findMany.mockResolvedValue([
       {
@@ -79,10 +78,59 @@ describe("GET /local", () => {
     expect(res.status).toBe(200);
     const data = await res.json() as any;
     expect(data.data.location).toEqual({ city: "New York", state: "New York", country: "US" });
-    expect(data.data.local).toHaveLength(1);
-    expect(data.data.local[0].podcast.id).toBe("pod1");
-    expect(data.data.localSports).toHaveLength(1);
-    expect(data.data.localSports[0].podcast.id).toBe("pod2");
-    expect(data.data.localSports[0].team.nickname).toBe("Yankees");
+    expect(data.data.localInterests).toHaveLength(2);
+    expect(data.data.localInterests[0].podcast.id).toBe("pod1");
+    expect(data.data.localInterests[1].podcast.id).toBe("pod2");
+    expect(data.data.localInterests[1].team.nickname).toBe("Yankees");
+  });
+
+  it("caps localInterests at 3", async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({ city: "New York", state: "New York", country: "US" });
+    mockPrisma.podcastGeoProfile.findMany.mockResolvedValue(
+      Array.from({ length: 6 }, (_, i) => ({
+        id: `gp${i}`,
+        teamId: null,
+        city: "New York",
+        state: "New York",
+        scope: "city",
+        confidence: 0.9 - i * 0.05,
+        podcast: { id: `pod${i}`, title: `Podcast ${i}`, imageUrl: null, author: "Author", categories: ["News"] },
+        team: null,
+      }))
+    );
+
+    const res = await app.request("/local");
+    const data = await res.json() as any;
+    expect(data.data.localInterests).toHaveLength(3);
+  });
+
+  it("deduplicates podcasts appearing in multiple geo profiles", async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({ city: "New York", state: "New York", country: "US" });
+    mockPrisma.podcastGeoProfile.findMany.mockResolvedValue([
+      {
+        id: "gp1",
+        teamId: null,
+        city: "New York",
+        state: "New York",
+        scope: "city",
+        confidence: 0.9,
+        podcast: { id: "pod1", title: "NYC News", imageUrl: null, author: "Author", categories: ["News"] },
+        team: null,
+      },
+      {
+        id: "gp2",
+        teamId: null,
+        city: "",
+        state: "New York",
+        scope: "state",
+        confidence: 0.7,
+        podcast: { id: "pod1", title: "NYC News", imageUrl: null, author: "Author", categories: ["News"] },
+        team: null,
+      },
+    ]);
+
+    const res = await app.request("/local");
+    const data = await res.json() as any;
+    expect(data.data.localInterests).toHaveLength(1);
   });
 });
