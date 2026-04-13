@@ -11,6 +11,7 @@ import { writeEvent } from "../lib/pipeline-events";
 import { writeAiError, classifyAiError, AiProviderError } from "../lib/ai-errors";
 import { recordSuccess, recordFailure } from "../lib/circuit-breaker";
 import { chunkNarrativeText, createSilenceFrame, concatenateAudioChunks, parseInputLimitError, limitToSafeMaxChars } from "../lib/tts/chunking";
+import { normalizeForTts } from "../lib/tts/normalize";
 import { DEFAULT_TTS_MAX_INPUT_CHARS } from "../lib/constants";
 import type { AudioGenerationMessage } from "../lib/queue-messages";
 import type { Env } from "../types";
@@ -149,9 +150,10 @@ export async function handleAudioGeneration(
           await writeEvent(prisma, step.id, "ERROR", "No narrative in R2 — narrative stage must run first");
           throw new Error("No narrative found — narrative stage must run first");
         }
-        const narrative = new TextDecoder().decode(narrativeData);
+        const rawNarrative = new TextDecoder().decode(narrativeData);
+        const narrative = normalizeForTts(rawNarrative);
         narrativeLength = narrative.length;
-        await writeEvent(prisma, step.id, "INFO", `Loaded narrative from R2 (${narrative.length} bytes)`);
+        await writeEvent(prisma, step.id, "INFO", `Loaded narrative from R2 (${rawNarrative.length} bytes, ${narrative.length} after TTS normalization)`);
 
         // Resolve model chain: primary -> secondary -> tertiary
         const modelChain = await resolveModelChain(prisma, "tts");
