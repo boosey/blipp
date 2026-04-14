@@ -17,11 +17,26 @@ export async function deliverStarterPack(params: {
 }): Promise<{ delivered: number; requestId: string | null }> {
   const { userId, preferredCategories, prisma, orchestratorQueue, maxItems = 5 } = params;
 
-  // Check if user already has subscriptions (they picked podcasts during onboarding)
-  const subscriptionCount = await prisma.subscription.count({ where: { userId } });
-  if (subscriptionCount > 0) {
+  // Skip if user already has enough READY feed items (e.g. from instant clip delivery)
+  const readyCount = await prisma.feedItem.count({
+    where: { userId, status: "READY" },
+  });
+  if (readyCount >= 3) {
     return { delivered: 0, requestId: null };
   }
+
+  // Fill the gap: only deliver enough to reach a satisfying first experience
+  const adjustedMax = maxItems - readyCount;
+
+  // Exclude podcasts the user already subscribed to (avoid duplicates)
+  const subscribedPodcastIds = (await prisma.subscription.findMany({
+    where: { userId },
+    select: { podcastId: true },
+  })).map((s: any) => s.podcastId);
+
+  const excludeSubscribed = subscribedPodcastIds.length > 0
+    ? { podcastId: { notIn: subscribedPodcastIds } }
+    : {};
 
   // Query fresh catalog briefings, preferring those matching user interests
   let catalogItems: any[];
@@ -31,6 +46,7 @@ export async function deliverStarterPack(params: {
     catalogItems = await prisma.catalogBriefing.findMany({
       where: {
         stale: false,
+        ...excludeSubscribed,
         podcast: {
           categories: { hasSome: preferredCategories },
         },
@@ -40,36 +56,37 @@ export async function deliverStarterPack(params: {
         episode: { select: { id: true } },
       },
       orderBy: { podcast: { appleRank: "asc" } },
-      take: maxItems,
+      take: adjustedMax,
     });
 
     // Backfill with popular podcasts if not enough matches
-    if (catalogItems.length < maxItems) {
+    if (catalogItems.length < adjustedMax) {
       const excludeIds = catalogItems.map((ci: any) => ci.id);
       const backfill = await prisma.catalogBriefing.findMany({
         where: {
           stale: false,
           id: { notIn: excludeIds },
+          ...excludeSubscribed,
         },
         include: {
           podcast: { select: { id: true, categories: true, appleRank: true } },
           episode: { select: { id: true } },
         },
         orderBy: { podcast: { appleRank: "asc" } },
-        take: maxItems - catalogItems.length,
+        take: adjustedMax - catalogItems.length,
       });
       catalogItems = [...catalogItems, ...backfill];
     }
   } else {
     // No preferences — deliver top podcasts by rank
     catalogItems = await prisma.catalogBriefing.findMany({
-      where: { stale: false },
+      where: { stale: false, ...excludeSubscribed },
       include: {
         podcast: { select: { id: true, categories: true, appleRank: true } },
         episode: { select: { id: true } },
       },
       orderBy: { podcast: { appleRank: "asc" } },
-      take: maxItems,
+      take: adjustedMax,
     });
   }
 

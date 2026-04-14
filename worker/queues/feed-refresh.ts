@@ -378,6 +378,67 @@ async function processPodcast(
     }
   }
 
+  // Auto-generate catalog clips for new episodes of Apple-ranked podcasts
+  // so they're ready for instant delivery when users subscribe
+  if (newEpisodeIds.length > 0 && podcast.appleRank != null) {
+    try {
+      // Check which new episodes already have a catalog briefing at tier 5
+      const existingCatalog = await prisma.catalogBriefing.findMany({
+        where: { episodeId: { in: newEpisodeIds }, durationTier: 5, stale: false },
+        select: { episodeId: true },
+      });
+      const alreadyCataloged = new Set(existingCatalog.map((cb: any) => cb.episodeId));
+
+      const catalogEpisodes = newEpisodeIds.filter((id: string) => !alreadyCataloged.has(id));
+
+      if (catalogEpisodes.length > 0) {
+        const adminUser = await prisma.user.findFirst({
+          where: { isAdmin: true },
+          select: { id: true },
+          orderBy: { createdAt: "asc" },
+        });
+
+        if (adminUser) {
+          const items = catalogEpisodes.map((episodeId: string) => ({
+            podcastId: podcast.id,
+            episodeId,
+            durationTier: 5,
+            useLatest: false,
+          }));
+
+          const request = await prisma.briefingRequest.create({
+            data: {
+              userId: adminUser.id,
+              status: "PENDING",
+              targetMinutes: 5,
+              items: items as any,
+              mode: "CATALOG",
+            },
+            select: { id: true },
+          });
+
+          await env.ORCHESTRATOR_QUEUE.send({
+            requestId: request.id,
+            action: "evaluate",
+          });
+
+          log.info("catalog_auto_gen_dispatched", {
+            podcastId: podcast.id,
+            appleRank: podcast.appleRank,
+            episodeCount: catalogEpisodes.length,
+            requestId: request.id,
+          });
+        }
+      }
+    } catch (catalogErr) {
+      // Non-critical — don't fail the feed refresh
+      log.error("catalog_auto_gen_failed", {
+        podcastId: podcast.id,
+        error: catalogErr instanceof Error ? catalogErr.message : String(catalogErr),
+      });
+    }
+  }
+
   // Update last fetched timestamp
   await prisma.podcast.update({
     where: { id: podcast.id },

@@ -240,61 +240,112 @@ podcasts.post("/subscribe", async (c) => {
 
   let feedItem = null;
   if (latestEpisode) {
-    feedItem = await prisma.feedItem.upsert({
+    // Check for a completed clip that can be delivered instantly
+    const existingClip = await prisma.clip.findFirst({
       where: {
-        userId_episodeId_durationTier: {
-          userId: user.id,
-          episodeId: latestEpisode.id,
-          durationTier: body.durationTier,
-        },
-      },
-      create: {
-        userId: user.id,
         episodeId: latestEpisode.id,
-        podcastId: podcast.id,
         durationTier: body.durationTier,
-        source: "SUBSCRIPTION",
-        status: "PENDING",
+        voicePresetId: voicePresetId ?? null,
+        status: "COMPLETED",
       },
-      update: {},
+      select: { id: true },
     });
 
-    // Reset failed feed items so the user can retry
-    if (feedItem.status === "FAILED") {
-      await prisma.feedItem.update({
-        where: { id: feedItem.id },
-        data: { status: "PENDING", requestId: null, briefingId: null },
+    if (existingClip) {
+      // Instant path: create Briefing + READY FeedItem, skip pipeline queue
+      const briefing = await prisma.briefing.upsert({
+        where: { userId_clipId: { userId: user.id, clipId: existingClip.id } },
+        create: { userId: user.id, clipId: existingClip.id },
+        update: {},
       });
-      feedItem.status = "PENDING";
-    }
 
-    // Only dispatch pipeline if the FeedItem isn't already processed
-    if (feedItem.status === "PENDING") {
-      const request = await prisma.briefingRequest.create({
-        data: {
-          userId: user.id,
-          targetMinutes: body.durationTier,
-          items: [{
-            podcastId: podcast.id,
+      feedItem = await prisma.feedItem.upsert({
+        where: {
+          userId_episodeId_durationTier: {
+            userId: user.id,
             episodeId: latestEpisode.id,
             durationTier: body.durationTier,
-            voicePresetId: voicePresetId ?? undefined,
-            useLatest: false,
-          }],
-          isTest: false,
+          },
+        },
+        create: {
+          userId: user.id,
+          episodeId: latestEpisode.id,
+          podcastId: podcast.id,
+          durationTier: body.durationTier,
+          source: "SUBSCRIPTION",
+          status: "READY",
+          briefingId: briefing.id,
+        },
+        update: {},
+      });
+
+      console.log(JSON.stringify({
+        level: "info",
+        action: "instant_clip_delivered",
+        userId: user.id,
+        episodeId: latestEpisode.id,
+        clipId: existingClip.id,
+        durationTier: body.durationTier,
+        ts: new Date().toISOString(),
+      }));
+    } else {
+      // Pipeline path: queue for processing
+      feedItem = await prisma.feedItem.upsert({
+        where: {
+          userId_episodeId_durationTier: {
+            userId: user.id,
+            episodeId: latestEpisode.id,
+            durationTier: body.durationTier,
+          },
+        },
+        create: {
+          userId: user.id,
+          episodeId: latestEpisode.id,
+          podcastId: podcast.id,
+          durationTier: body.durationTier,
+          source: "SUBSCRIPTION",
           status: "PENDING",
         },
+        update: {},
       });
 
-      await prisma.feedItem.update({
-        where: { id: feedItem.id },
-        data: { requestId: request.id, status: "PROCESSING" },
-      });
+      // Reset failed feed items so the user can retry
+      if (feedItem.status === "FAILED") {
+        await prisma.feedItem.update({
+          where: { id: feedItem.id },
+          data: { status: "PENDING", requestId: null, briefingId: null },
+        });
+        feedItem.status = "PENDING";
+      }
 
-      await c.env.ORCHESTRATOR_QUEUE.send({
-        requestId: request.id,
-        action: "evaluate",
-      });
+      // Only dispatch pipeline if the FeedItem isn't already processed
+      if (feedItem.status === "PENDING") {
+        const request = await prisma.briefingRequest.create({
+          data: {
+            userId: user.id,
+            targetMinutes: body.durationTier,
+            items: [{
+              podcastId: podcast.id,
+              episodeId: latestEpisode.id,
+              durationTier: body.durationTier,
+              voicePresetId: voicePresetId ?? undefined,
+              useLatest: false,
+            }],
+            isTest: false,
+            status: "PENDING",
+          },
+        });
+
+        await prisma.feedItem.update({
+          where: { id: feedItem.id },
+          data: { requestId: request.id, status: "PROCESSING" },
+        });
+
+        await c.env.ORCHESTRATOR_QUEUE.send({
+          requestId: request.id,
+          action: "evaluate",
+        });
+      }
     }
   }
 

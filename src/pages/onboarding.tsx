@@ -34,6 +34,8 @@ export default function Onboarding() {
     new Map()
   );
   const [saving, setSaving] = useState(false);
+  const [instantCount, setInstantCount] = useState(0);
+  const [queuedCount, setQueuedCount] = useState(0);
   const [categoryFilter, setCategoryFilter] = useState("All");
   const [searchInput, setSearchInput] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -136,15 +138,18 @@ export default function Onboarding() {
   async function handleFinish() {
     setSaving(true);
 
+    let ready = 0;
+    let queued = 0;
+
     // Subscribe to each selected podcast
     if (selectedPodcasts.size > 0) {
       const pods = Array.from(selectedPodcasts.values());
       // Use the smallest duration tier available on the plan
       const durationTier = Math.min(maxDurationMinutes, 5);
 
-      await Promise.allSettled(
+      const results = await Promise.allSettled(
         pods.map((p) =>
-          apiFetch("/podcasts/subscribe", {
+          apiFetch<{ feedItem: { status: string } | null }>("/podcasts/subscribe", {
             method: "POST",
             body: JSON.stringify({
               feedUrl: p.feedUrl,
@@ -157,7 +162,18 @@ export default function Onboarding() {
           })
         )
       );
+
+      for (const r of results) {
+        if (r.status === "fulfilled" && r.value?.feedItem?.status === "READY") {
+          ready++;
+        } else {
+          queued++;
+        }
+      }
     }
+
+    setInstantCount(ready);
+    setQueuedCount(queued);
 
     // Mark onboarding complete in DB + local state
     try {
@@ -441,27 +457,52 @@ export default function Onboarding() {
     );
   }
 
-  // Step 3 — Confirmation (subscribed vs skipped variants)
+  // Step 4 — Confirmation (dynamic messaging based on instant delivery)
   const subscribed = selectedPodcasts.size > 0;
+  const allInstant = subscribed && queuedCount === 0 && instantCount > 0;
+  const hasQueued = queuedCount > 0;
+
+  let confirmHeading: string;
+  let confirmMessage: string;
+  let confirmButton: string;
+
+  if (allInstant) {
+    confirmHeading = "Your briefings are ready!";
+    confirmMessage = "Tap play to start listening.";
+    confirmButton = "Start Listening";
+  } else if (subscribed && instantCount > 0 && hasQueued) {
+    confirmHeading = "You're almost set!";
+    confirmMessage = `${instantCount} briefing${instantCount > 1 ? "s are" : " is"} ready to play. Your other subscription${queuedCount > 1 ? "s are" : " is"} being prepared and will appear shortly.`;
+    confirmButton = "Start Listening";
+  } else if (subscribed && hasQueued) {
+    confirmHeading = "You're all set!";
+    confirmMessage = "We've loaded some briefings for you to explore. Your subscriptions are being prepared and will appear shortly.";
+    confirmButton = "Go to Feed";
+  } else if (!subscribed) {
+    confirmHeading = "You're all set!";
+    confirmMessage = "We've loaded some briefings for you to explore. Subscribe to podcasts anytime to get personalized briefings.";
+    confirmButton = "Go to Feed";
+  } else {
+    confirmHeading = "You're subscribed!";
+    confirmMessage = "Your briefings are being prepared and will appear shortly.";
+    confirmButton = "Go to Feed";
+  }
+
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center px-6">
       <div className="max-w-sm text-center space-y-6">
         <div className="w-16 h-16 mx-auto bg-green-500/20 rounded-full flex items-center justify-center">
           <Check className="w-8 h-8 text-green-400" />
         </div>
-        <h1 className="text-2xl font-bold">
-          {subscribed ? "You're subscribed!" : "You're all set!"}
-        </h1>
+        <h1 className="text-2xl font-bold">{confirmHeading}</h1>
         <p className="text-muted-foreground text-sm leading-relaxed">
-          {subscribed
-            ? `We're creating briefings for your ${selectedPodcasts.size} subscription${selectedPodcasts.size > 1 ? "s" : ""}. They usually take 2-5 minutes — look for the "Creating" badge in your feed.`
-            : "Browse our catalog to find podcasts and subscribe. Your first briefings will be ready in 2-5 minutes."}
+          {confirmMessage}
         </p>
         <button
           onClick={() => navigate("/home")}
           className="w-full py-3 bg-primary text-primary-foreground font-semibold rounded-xl hover:bg-primary/90 transition-colors"
         >
-          Go to Feed
+          {confirmButton}
         </button>
       </div>
     </div>

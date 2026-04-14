@@ -13,7 +13,6 @@ type PrismaLike = {
   user: { findFirst: (args: any) => Promise<any> };
 };
 
-const CATALOG_PODCAST_LIMIT = 50;
 const PODCASTS_PER_REQUEST = 25;
 
 /**
@@ -31,7 +30,7 @@ export async function runCatalogPregenJob(
   logger: CronLogger,
   env: Env
 ): Promise<Record<string, unknown>> {
-  await logger.info(`Scanning top ${CATALOG_PODCAST_LIMIT} ranked podcasts for catalog pre-generation`);
+  await logger.info("Scanning all Apple-ranked podcasts for catalog pre-generation");
 
   // Find top podcasts by rank (appleRank is 1-200, lower = more popular)
   const podcasts = await prisma.podcast.findMany({
@@ -41,7 +40,6 @@ export async function runCatalogPregenJob(
     },
     select: { id: true, title: true, appleRank: true },
     orderBy: { appleRank: "asc" },
-    take: CATALOG_PODCAST_LIMIT,
   });
 
   if (podcasts.length === 0) {

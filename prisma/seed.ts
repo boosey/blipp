@@ -728,6 +728,7 @@ Then proceed directly into the content.`;
     { jobKey: "listen-original-aggregation", label: "Listen-to-Original Aggregation",  description: "Aggregates listen-to-original conversion events into daily publisher report batches",            defaultIntervalMinutes: 1440 },
     { jobKey: "stale-job-reaper",            label: "Stale Job Reaper",                description: "Marks stalled PipelineJobs, FeedItems, and EpisodeRefreshJobs as failed",                       defaultIntervalMinutes: 30 },
     { jobKey: "geo-tagging",                 label: "Podcast Geo-Tagging",             description: "Tags podcasts with geographic profiles using keyword matching and LLM classification",            defaultIntervalMinutes: 10080 },
+    { jobKey: "catalog-pregen",              label: "Catalog Pre-generation",          description: "Pre-generates 5-min briefings for all Apple-ranked podcasts so new users get instant content",    defaultIntervalMinutes: 60 },
   ];
   for (const job of cronJobs) {
     await prisma.cronJob.upsert({
