@@ -104,6 +104,35 @@ serviceKeysRoutes.post("/", async (c) => {
   const { encrypted, iv } = await encryptKey(body.value, masterKey);
   const masked = maskKey(body.value);
 
+  // Deduplicate: if a ServiceKey with the same provider, envKey, and masked preview
+  // already exists, reuse it instead of creating a duplicate
+  const existing = await prisma.serviceKey.findFirst({
+    where: {
+      provider: body.provider,
+      envKey: body.envKey,
+      maskedPreview: masked,
+    },
+  });
+
+  if (existing) {
+    // Return the existing key — caller can still assign it to a new context
+    return c.json(
+      {
+        data: {
+          id: existing.id,
+          name: existing.name,
+          provider: existing.provider,
+          envKey: existing.envKey,
+          maskedPreview: existing.maskedPreview,
+          isPrimary: existing.isPrimary,
+          createdAt: existing.createdAt,
+          reused: true,
+        },
+      },
+      200
+    );
+  }
+
   // If marking as primary, unset any existing primary for this envKey
   if (body.isPrimary) {
     await prisma.serviceKey.updateMany({
@@ -516,6 +545,47 @@ serviceKeysRoutes.patch("/:id/config", async (c) => {
       notes: updated.notes,
     },
   });
+});
+
+// ── POST /dedupe — Remove duplicate ServiceKey records, keeping the oldest ──
+
+serviceKeysRoutes.post("/dedupe", async (c) => {
+  const prisma = c.get("prisma") as any;
+
+  const allKeys = await prisma.serviceKey.findMany({
+    orderBy: { createdAt: "asc" },
+  });
+
+  // Group by provider+envKey+maskedPreview
+  const groups = new Map<string, typeof allKeys>();
+  for (const sk of allKeys) {
+    const key = `${sk.provider}:${sk.envKey}:${sk.maskedPreview}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(sk);
+  }
+
+  let deleted = 0;
+  for (const [, dupes] of groups) {
+    if (dupes.length <= 1) continue;
+    // Keep the first (oldest), delete the rest
+    const keep = dupes[0];
+    const toDelete = dupes.slice(1);
+
+    for (const dup of toDelete) {
+      // Reassign any context assignments pointing to the duplicate
+      await prisma.platformConfig.updateMany({
+        where: {
+          key: { startsWith: "serviceKey.assignment." },
+          value: dup.id,
+        },
+        data: { value: keep.id },
+      });
+      await prisma.serviceKey.delete({ where: { id: dup.id } });
+      deleted++;
+    }
+  }
+
+  return c.json({ data: { deleted, remaining: allKeys.length - deleted } });
 });
 
 // ── GET /contexts — List all available usage contexts with registered providers ──
