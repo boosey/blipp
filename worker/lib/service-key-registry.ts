@@ -25,6 +25,8 @@ export interface ServiceKeyContext {
   pipelineStages?: string[];
   /** Additional model filter for shared stages (e.g., "deepgram/" prefix) */
   modelPrefix?: string;
+  /** Paired secret envKey — when set, the UI asks for both key and secret together */
+  pairedSecretEnvKey?: string;
 }
 
 export type ServiceKeyGroup =
@@ -90,6 +92,7 @@ export const SERVICE_KEY_CONTEXTS: ServiceKeyContext[] = [
     label: "Podcast Discovery",
     provider: "podcast-index",
     envKey: "PODCAST_INDEX_KEY",
+    pairedSecretEnvKey: "PODCAST_INDEX_SECRET",
     group: "Catalog & Content",
     description: "Podcast Index API for trending and search discovery",
     healthCheckable: true,
@@ -100,6 +103,7 @@ export const SERVICE_KEY_CONTEXTS: ServiceKeyContext[] = [
     label: "Feed Refresh",
     provider: "podcast-index",
     envKey: "PODCAST_INDEX_KEY",
+    pairedSecretEnvKey: "PODCAST_INDEX_SECRET",
     group: "Catalog & Content",
     description: "Podcast Index for episode metadata during feed refresh",
     healthCheckable: true,
@@ -110,6 +114,7 @@ export const SERVICE_KEY_CONTEXTS: ServiceKeyContext[] = [
     label: "Transcript Lookup",
     provider: "podcast-index",
     envKey: "PODCAST_INDEX_KEY",
+    pairedSecretEnvKey: "PODCAST_INDEX_SECRET",
     group: "Catalog & Content",
     description: "Podcast Index transcript source before STT fallback",
     healthCheckable: true,
@@ -120,19 +125,10 @@ export const SERVICE_KEY_CONTEXTS: ServiceKeyContext[] = [
     label: "Content Prefetch",
     provider: "podcast-index",
     envKey: "PODCAST_INDEX_KEY",
+    pairedSecretEnvKey: "PODCAST_INDEX_SECRET",
     group: "Catalog & Content",
     description: "Episode content availability check via Podcast Index",
     healthCheckable: true,
-    usageTrackable: false,
-  },
-  {
-    context: "catalog.podcast-index-secret",
-    label: "Podcast Index Secret",
-    provider: "podcast-index",
-    envKey: "PODCAST_INDEX_SECRET",
-    group: "Catalog & Content",
-    description: "Podcast Index API secret (paired with key for HMAC auth)",
-    healthCheckable: false,
     usageTrackable: false,
   },
   {

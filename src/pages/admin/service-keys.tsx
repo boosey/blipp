@@ -49,6 +49,7 @@ interface ContextDef {
   description: string;
   healthCheckable: boolean;
   usageTrackable: boolean;
+  pairedSecretEnvKey?: string;
 }
 
 interface UsageData {
@@ -758,6 +759,7 @@ export default function ServiceKeys() {
                           provider={ctx.provider}
                           envKey={ctx.envKey}
                           contextKey={ctx.context}
+                          pairedSecretEnvKey={ctx.pairedSecretEnvKey}
                           assignedKey={
                             assignments[ctx.context]
                               ? keys.find((k) => k.id === assignments[ctx.context])
@@ -846,6 +848,7 @@ function KeySlot({
   envKey,
   contextKey,
   assignedKey,
+  pairedSecretEnvKey,
   adminFetch,
   onChanged,
 }: {
@@ -854,19 +857,27 @@ function KeySlot({
   envKey: string;
   contextKey: string;
   assignedKey?: ServiceKeyEntry;
+  /** When set, shows a second input for the paired secret (e.g. Podcast Index key+secret) */
+  pairedSecretEnvKey?: string;
   adminFetch: ReturnType<typeof useAdminFetch>;
   onChanged: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState("");
+  const [secretValue, setSecretValue] = useState("");
   const [showValue, setShowValue] = useState(false);
   const [saving, setSaving] = useState(false);
+  const hasPairedSecret = !!pairedSecretEnvKey;
 
   async function saveKey() {
     if (!value.trim()) return;
+    if (hasPairedSecret && !secretValue.trim()) {
+      toast.error("Both key and secret are required");
+      return;
+    }
     setSaving(true);
     try {
-      // Create the key and assign it in one flow
+      // Create the key and assign it
       const res = await adminFetch<{ data: { id: string } }>("/service-keys", {
         method: "POST",
         body: JSON.stringify({
@@ -877,14 +888,33 @@ function KeySlot({
           isPrimary: false,
         }),
       });
-      // Assign to this context
       await adminFetch(`/service-keys/assignments/${contextKey}`, {
         method: "PUT",
         body: JSON.stringify({ serviceKeyId: res.data.id }),
       });
-      toast.success("Key saved");
+
+      // Create and assign the paired secret
+      if (hasPairedSecret && secretValue.trim()) {
+        const secretRes = await adminFetch<{ data: { id: string } }>("/service-keys", {
+          method: "POST",
+          body: JSON.stringify({
+            name: `${label} Secret — ${contextKey}`,
+            provider,
+            envKey: pairedSecretEnvKey,
+            value: secretValue.trim(),
+            isPrimary: false,
+          }),
+        });
+        await adminFetch(`/service-keys/assignments/${contextKey}.secret`, {
+          method: "PUT",
+          body: JSON.stringify({ serviceKeyId: secretRes.data.id }),
+        });
+      }
+
+      toast.success(hasPairedSecret ? "Key and secret saved" : "Key saved");
       setEditing(false);
       setValue("");
+      setSecretValue("");
       onChanged();
     } catch {
       toast.error("Failed to save key");
@@ -897,7 +927,6 @@ function KeySlot({
     if (!value.trim() || !assignedKey) return;
     setSaving(true);
     try {
-      // Update the existing key's value
       await adminFetch(`/service-keys/${assignedKey.id}`, {
         method: "PUT",
         body: JSON.stringify({ value: value.trim() }),
@@ -905,6 +934,7 @@ function KeySlot({
       toast.success("Key updated");
       setEditing(false);
       setValue("");
+      setSecretValue("");
       onChanged();
     } catch {
       toast.error("Failed to update key");
@@ -933,43 +963,82 @@ function KeySlot({
       </span>
 
       {editing ? (
-        <div className="flex items-center gap-1.5 flex-1">
-          <div className="relative flex-1">
-            <Input
-              type={showValue ? "text" : "password"}
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-              placeholder="Paste key value"
-              autoFocus
-              onKeyDown={(e) => {
-                if (e.key === "Enter") assignedKey ? replaceKey() : saveKey();
-                if (e.key === "Escape") { setEditing(false); setValue(""); }
-              }}
-              className="h-7 bg-[#0F1D32] border-white/10 text-xs text-[#F9FAFB] font-mono pr-8"
-            />
-            <button
-              onClick={() => setShowValue(!showValue)}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-[#9CA3AF] hover:text-[#F9FAFB]"
-            >
-              {showValue ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
-            </button>
+        <div className="flex-1 space-y-1.5">
+          <div className="flex items-center gap-1.5">
+            <div className="relative flex-1">
+              <Input
+                type={showValue ? "text" : "password"}
+                value={value}
+                onChange={(e) => setValue(e.target.value)}
+                placeholder={hasPairedSecret ? "Paste API key" : "Paste key value"}
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !hasPairedSecret) assignedKey ? replaceKey() : saveKey();
+                  if (e.key === "Escape") { setEditing(false); setValue(""); setSecretValue(""); }
+                }}
+                className="h-7 bg-[#0F1D32] border-white/10 text-xs text-[#F9FAFB] font-mono pr-8"
+              />
+              <button
+                onClick={() => setShowValue(!showValue)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-[#9CA3AF] hover:text-[#F9FAFB]"
+              >
+                {showValue ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+              </button>
+            </div>
+            {!hasPairedSecret && (
+              <>
+                <Button
+                  size="sm"
+                  onClick={assignedKey ? replaceKey : saveKey}
+                  disabled={!value.trim() || saving}
+                  className="h-7 bg-[#3B82F6] text-white text-[10px] px-2"
+                >
+                  {saving ? "..." : "Save"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => { setEditing(false); setValue(""); }}
+                  className="h-7 text-[10px] text-[#9CA3AF] px-1.5"
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              </>
+            )}
           </div>
-          <Button
-            size="sm"
-            onClick={assignedKey ? replaceKey : saveKey}
-            disabled={!value.trim() || saving}
-            className="h-7 bg-[#3B82F6] text-white text-[10px] px-2"
-          >
-            {saving ? "..." : "Save"}
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => { setEditing(false); setValue(""); }}
-            className="h-7 text-[10px] text-[#9CA3AF] px-1.5"
-          >
-            <X className="h-3 w-3" />
-          </Button>
+          {hasPairedSecret && (
+            <div className="flex items-center gap-1.5">
+              <div className="relative flex-1">
+                <Input
+                  type={showValue ? "text" : "password"}
+                  value={secretValue}
+                  onChange={(e) => setSecretValue(e.target.value)}
+                  placeholder="Paste API secret"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") assignedKey ? replaceKey() : saveKey();
+                    if (e.key === "Escape") { setEditing(false); setValue(""); setSecretValue(""); }
+                  }}
+                  className="h-7 bg-[#0F1D32] border-white/10 text-xs text-[#F9FAFB] font-mono pr-8"
+                />
+              </div>
+              <Button
+                size="sm"
+                onClick={assignedKey ? replaceKey : saveKey}
+                disabled={!value.trim() || !secretValue.trim() || saving}
+                className="h-7 bg-[#3B82F6] text-white text-[10px] px-2"
+              >
+                {saving ? "..." : "Save"}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => { setEditing(false); setValue(""); setSecretValue(""); }}
+                className="h-7 text-[10px] text-[#9CA3AF] px-1.5"
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+          )}
         </div>
       ) : assignedKey ? (
         <div className="flex items-center gap-2 flex-1">
