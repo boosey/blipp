@@ -255,7 +255,7 @@ export default function Requests() {
           <span>User</span>
           <span>Duration</span>
           <span>Items</span>
-          <span>Type</span>
+          <span>Source</span>
           <span>Cost</span>
           <span>Created</span>
           <span />

@@ -83,6 +83,7 @@ export interface BriefingRequest {
   targetMinutes: number;
   items: BriefingRequestItem[];
   isTest: boolean;
+  source?: "SUBSCRIPTION" | "ON_DEMAND" | "SHARED" | "CATALOG" | null;
   briefingId: string | null;
   errorMessage: string | null;
   cancelledAt: string | null;

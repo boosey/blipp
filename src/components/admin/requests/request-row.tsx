@@ -118,7 +118,7 @@ export function RequestRow({
           {itemCount}
         </div>
         <div className="text-xs text-[#9CA3AF]">
-          {request.isTest ? "Test" : "User"}
+          {request.isTest ? "Test" : request.source === "ON_DEMAND" ? "On Demand" : request.source === "SUBSCRIPTION" ? "Subscription" : request.source ?? "User"}
         </div>
         <div className="text-[10px] text-[#10B981] font-mono tabular-nums">
           {request.totalCost != null ? `$${request.totalCost.toFixed(4)}` : "\u2014"}
