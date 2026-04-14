@@ -91,12 +91,43 @@ geoTaggingRoutes.get("/costs", async (c) => {
   return c.json({ data: runs });
 });
 
-// DELETE /:id — delete a single geo profile
+// PATCH /:id — edit a geo profile (marks as manual to prevent cron overwrite)
+geoTaggingRoutes.patch("/:id", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const id = c.req.param("id");
+  const body = await c.req.json();
+
+  const data: any = { source: "manual" };
+  if (body.city !== undefined) data.city = body.city;
+  if (body.state !== undefined) data.state = body.state;
+  if (body.scope !== undefined) data.scope = body.scope;
+  if (body.confidence !== undefined) data.confidence = body.confidence;
+
+  const updated = await prisma.podcastGeoProfile.update({
+    where: { id },
+    data,
+  });
+
+  return c.json({ data: updated });
+});
+
+// DELETE /:id — delete a geo profile and leave a manual suppression marker
+// so the cron never re-tags this podcast for the same city/state
 geoTaggingRoutes.delete("/:id", async (c) => {
   const prisma = c.get("prisma") as any;
   const id = c.req.param("id");
 
-  await prisma.podcastGeoProfile.delete({ where: { id } });
+  // Read the profile before deleting so we can create a suppression marker
+  const profile = await prisma.podcastGeoProfile.findUnique({ where: { id } });
+  if (!profile) return c.json({ error: "Not found" }, 404);
+
+  // Replace with a zero-confidence manual marker — cron skips manual-source
+  // profiles, and the /local endpoint filters by confidence >= 0.7
+  await prisma.podcastGeoProfile.update({
+    where: { id },
+    data: { source: "manual", confidence: 0 },
+  });
+
   return c.json({ success: true });
 });
 

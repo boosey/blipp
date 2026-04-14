@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAdminFetch } from "@/lib/admin-api";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -19,7 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Trash2, ChevronLeft, ChevronRight } from "lucide-react";
+import { Trash2, ChevronLeft, ChevronRight, Pencil, Check, X } from "lucide-react";
 
 interface GeoProfile {
   id: string;
@@ -50,6 +50,13 @@ interface CronRun {
   errorMessage: string | null;
 }
 
+interface EditState {
+  city: string;
+  state: string;
+  scope: string;
+  confidence: string;
+}
+
 export default function AdminGeoTagging() {
   const adminFetch = useAdminFetch();
   const [profiles, setProfiles] = useState<GeoProfile[]>([]);
@@ -58,6 +65,9 @@ export default function AdminGeoTagging() {
   const [stats, setStats] = useState<GeoStats | null>(null);
   const [runs, setRuns] = useState<CronRun[]>([]);
   const [loading, setLoading] = useState(true);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editState, setEditState] = useState<EditState>({ city: "", state: "", scope: "city", confidence: "0.9" });
+  const editCityRef = useRef<HTMLInputElement>(null);
 
   // Filters
   const [stateFilter, setStateFilter] = useState("");
@@ -96,10 +106,45 @@ export default function AdminGeoTagging() {
     }
   }
 
+  function startEdit(gp: GeoProfile) {
+    setEditingId(gp.id);
+    setEditState({
+      city: gp.city,
+      state: gp.state,
+      scope: gp.scope,
+      confidence: gp.confidence.toFixed(2),
+    });
+    setTimeout(() => editCityRef.current?.focus(), 50);
+  }
+
+  async function saveEdit(id: string) {
+    const conf = parseFloat(editState.confidence);
+    if (isNaN(conf) || conf < 0 || conf > 1) {
+      toast.error("Confidence must be 0–1");
+      return;
+    }
+    try {
+      await adminFetch(`/geo-tagging/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          city: editState.city,
+          state: editState.state,
+          scope: editState.scope,
+          confidence: conf,
+        }),
+      });
+      toast.success("Profile updated (marked as manual)");
+      setEditingId(null);
+      loadData();
+    } catch {
+      toast.error("Failed to update profile");
+    }
+  }
+
   async function deleteProfile(id: string) {
     try {
       await adminFetch(`/geo-tagging/${id}`, { method: "DELETE" });
-      toast.success("Profile deleted");
+      toast.success("Profile suppressed — cron will skip this podcast");
       loadData();
     } catch {
       toast.error("Failed to delete profile");
@@ -112,11 +157,12 @@ export default function AdminGeoTagging() {
     <div className="space-y-6">
       {/* Stats cards */}
       {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <StatCard label="Total Profiles" value={stats.totalProfiles} />
           <StatCard label="Unprocessed" value={stats.unprocessed} />
           <StatCard label="Keyword" value={stats.bySource.keyword ?? 0} />
           <StatCard label="LLM" value={stats.bySource.llm ?? 0} />
+          <StatCard label="Manual" value={stats.bySource.manual ?? 0} />
         </div>
       )}
 
@@ -228,6 +274,7 @@ export default function AdminGeoTagging() {
             <SelectItem value="all">All Sources</SelectItem>
             <SelectItem value="keyword">Keyword</SelectItem>
             <SelectItem value="llm">LLM</SelectItem>
+            <SelectItem value="manual">Manual</SelectItem>
           </SelectContent>
         </Select>
         <Select value={scopeFilter} onValueChange={(v) => { setScopeFilter(v); setPage(1); }}>
@@ -255,7 +302,7 @@ export default function AdminGeoTagging() {
               <TableHead>Confidence</TableHead>
               <TableHead>Source</TableHead>
               <TableHead>Team</TableHead>
-              <TableHead className="w-10"></TableHead>
+              <TableHead className="w-20"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -268,49 +315,133 @@ export default function AdminGeoTagging() {
                 <TableCell colSpan={8} className="text-center text-muted-foreground py-8">No geo profiles found</TableCell>
               </TableRow>
             ) : (
-              profiles.map((gp) => (
-                <TableRow key={gp.id}>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      {gp.podcast.imageUrl && (
-                        <img src={gp.podcast.imageUrl} className="w-8 h-8 rounded object-cover flex-shrink-0" alt="" />
-                      )}
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium truncate max-w-[200px]">{gp.podcast.title}</p>
-                        <p className="text-[10px] text-muted-foreground truncate">
-                          {gp.podcast.categories.join(", ")}
-                        </p>
+              profiles.map((gp) => {
+                const isEditing = editingId === gp.id;
+                const isSuppressed = gp.source === "manual" && gp.confidence === 0;
+
+                return (
+                  <TableRow key={gp.id} className={isSuppressed ? "opacity-40" : undefined}>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        {gp.podcast.imageUrl && (
+                          <img src={gp.podcast.imageUrl} className="w-8 h-8 rounded object-cover flex-shrink-0" alt="" />
+                        )}
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate max-w-[200px]">{gp.podcast.title}</p>
+                          <p className="text-[10px] text-muted-foreground truncate">
+                            {gp.podcast.categories.join(", ")}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-sm">{gp.city || "—"}</TableCell>
-                  <TableCell className="text-sm">{gp.state}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className="text-[10px]">{gp.scope}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <span className={`text-sm font-mono ${gp.confidence >= 0.9 ? "text-green-400" : gp.confidence >= 0.7 ? "text-yellow-400" : "text-red-400"}`}>
-                      {gp.confidence.toFixed(2)}
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={gp.source === "llm" ? "default" : "secondary"} className="text-[10px]">
-                      {gp.source}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-xs">{gp.team?.nickname ?? "—"}</TableCell>
-                  <TableCell>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                      onClick={() => deleteProfile(gp.id)}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))
+                    </TableCell>
+
+                    {isEditing ? (
+                      <>
+                        <TableCell>
+                          <Input
+                            ref={editCityRef}
+                            value={editState.city}
+                            onChange={(e) => setEditState({ ...editState, city: e.target.value })}
+                            className="h-7 w-28 text-xs"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            value={editState.state}
+                            onChange={(e) => setEditState({ ...editState, state: e.target.value })}
+                            className="h-7 w-28 text-xs"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Select value={editState.scope} onValueChange={(v) => setEditState({ ...editState, scope: v })}>
+                            <SelectTrigger className="h-7 w-24 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="city">city</SelectItem>
+                              <SelectItem value="state">state</SelectItem>
+                              <SelectItem value="regional">regional</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            value={editState.confidence}
+                            onChange={(e) => setEditState({ ...editState, confidence: e.target.value })}
+                            className="h-7 w-16 text-xs font-mono"
+                          />
+                        </TableCell>
+                      </>
+                    ) : (
+                      <>
+                        <TableCell className="text-sm">{gp.city || "—"}</TableCell>
+                        <TableCell className="text-sm">{gp.state}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="text-[10px]">{gp.scope}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          <span className={`text-sm font-mono ${gp.confidence >= 0.9 ? "text-green-400" : gp.confidence >= 0.7 ? "text-yellow-400" : "text-red-400"}`}>
+                            {gp.confidence.toFixed(2)}
+                          </span>
+                        </TableCell>
+                      </>
+                    )}
+
+                    <TableCell>
+                      <Badge
+                        variant={gp.source === "manual" ? "outline" : gp.source === "llm" ? "default" : "secondary"}
+                        className={`text-[10px] ${gp.source === "manual" ? "border-blue-500 text-blue-400" : ""}`}
+                      >
+                        {gp.source}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-xs">{gp.team?.nickname ?? "—"}</TableCell>
+                    <TableCell>
+                      <div className="flex gap-1">
+                        {isEditing ? (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-green-400 hover:text-green-300"
+                              onClick={() => saveEdit(gp.id)}
+                            >
+                              <Check className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-muted-foreground"
+                              onClick={() => setEditingId(null)}
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                              onClick={() => startEdit(gp)}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                              onClick={() => deleteProfile(gp.id)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
             )}
           </TableBody>
         </Table>

@@ -30,10 +30,19 @@ export async function runGeoTaggingJob(
 
   await logger.info(`Fetching up to ${batchSize} unprocessed podcasts for geo-tagging`);
 
+  // Skip podcasts that have any manually curated geo profiles — admin edits
+  // and deletions are sacred and should never be overwritten by automation.
+  const manualPodcastIds = (await prisma.podcastGeoProfile.findMany({
+    where: { source: "manual" },
+    select: { podcastId: true },
+    distinct: ["podcastId"],
+  })).map((r: any) => r.podcastId);
+
   const podcasts = await prisma.podcast.findMany({
     where: {
       geoProcessedAt: null,
       status: "active",
+      ...(manualPodcastIds.length > 0 ? { id: { notIn: manualPodcastIds } } : {}),
     },
     select: {
       id: true,
