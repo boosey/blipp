@@ -3,7 +3,7 @@ import { getAuth } from "../../middleware/auth";
 import type { Env } from "../../types";
 import { writeAuditLog } from "../../lib/audit-log";
 import { DURATION_TIERS } from "../../lib/constants";
-import { getOwnedKeys, isDynamicKeyOwned, CONFIG_REGISTRY } from "../../lib/config-registry";
+import { getOwnedKeys, isDynamicKeyOwned, isDynamicKeyOwnedBy, CONFIG_REGISTRY } from "../../lib/config-registry";
 
 const configRoutes = new Hono<{ Bindings: Env }>();
 
@@ -27,11 +27,19 @@ configRoutes.get("/", async (c) => {
     return c.json({ data: [] });
   }
 
-  // Filter out keys that are owned by dedicated admin pages
+  // If ?owner= is set, return only keys owned by that page.
+  // Otherwise, filter out all owned keys (generic System Settings view).
+  const ownerFilter = c.req.query("owner");
   const ownedKeys = getOwnedKeys();
-  const systemConfigs = configs.filter(
-    (cfg: any) => !ownedKeys.has(cfg.key) && !isDynamicKeyOwned(cfg.key)
-  );
+  const systemConfigs = ownerFilter
+    ? configs.filter(
+        (cfg: any) =>
+          CONFIG_REGISTRY[cfg.key]?.ownedBy === ownerFilter ||
+          isDynamicKeyOwnedBy(cfg.key, ownerFilter)
+      )
+    : configs.filter(
+        (cfg: any) => !ownedKeys.has(cfg.key) && !isDynamicKeyOwned(cfg.key)
+      );
 
   // Group by key prefix (e.g., "pipeline.timeout" -> "pipeline")
   const grouped = new Map<string, typeof systemConfigs>();

@@ -1358,3 +1358,26 @@ model DigestDeliveryEpisode {
   @@index([deliveryId])
   @@index([episodeId, status])
 }
+
+// ── Service Keys ──
+
+model ServiceKey {
+  id              String    @id @default(cuid())
+  name            String                          // Human label, e.g. "Anthropic - Production"
+  provider        String                          // "anthropic" | "openai" | "groq" | "deepgram" | "clerk" | "stripe" | "podcast-index" | "neon" | "cloudflare"
+  envKey          String                          // Which Env field this maps to, e.g. "ANTHROPIC_API_KEY"
+  encryptedValue  String                          // AES-256-GCM encrypted key value (base64)
+  iv              String                          // Initialization vector for decryption (base64)
+  maskedPreview   String                          // "sk-ant-...Le0B" — safe for display
+  isPrimary       Boolean   @default(false)       // If true, syncs to CF Workers secret on update
+  lastValidated   DateTime?
+  lastValidatedOk Boolean?
+  lastRotated     DateTime?
+  rotateAfterDays Int?
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([provider])
+  @@index([envKey, isPrimary])
+}

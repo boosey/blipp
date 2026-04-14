@@ -135,6 +135,7 @@ export const CONFIG_PATTERNS: { pattern: RegExp; type: ConfigEntry["type"]; desc
   { pattern: /^ai\.\w+\.model(\.secondary|\.tertiary)?$/, type: "json", description: "AI model config ({provider, model})", ownedBy: "stage-configuration" },
   { pattern: /^prompt\./,                           type: "string",  description: "Prompt template override", ownedBy: "prompt-management" },
   { pattern: /^feature\./,                          type: "boolean", description: "Feature flag", ownedBy: "feature-flags" },
+  { pattern: /^serviceKey\.assignment\..+$/,        type: "string",  description: "Per-context service key assignment (ServiceKey.id)", ownedBy: "service-keys" },
 ];
 
 /**
@@ -155,6 +156,16 @@ export function getOwnedKeys(): Set<string> {
 export function isDynamicKeyOwned(key: string): boolean {
   for (const { pattern, ownedBy } of CONFIG_PATTERNS) {
     if (ownedBy && pattern.test(key)) return true;
+  }
+  return false;
+}
+
+/**
+ * Check if a dynamic key is owned by a specific admin page.
+ */
+export function isDynamicKeyOwnedBy(key: string, owner: string): boolean {
+  for (const { pattern, ownedBy } of CONFIG_PATTERNS) {
+    if (ownedBy === owner && pattern.test(key)) return true;
   }
   return false;
 }

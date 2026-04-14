@@ -186,7 +186,7 @@ export default function PodcastSettings() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await apiFetch<{ data: { category: string; entries: PlatformConfigEntry[] }[] }>("/config");
+      const res = await apiFetch<{ data: { category: string; entries: PlatformConfigEntry[] }[] }>("/config?owner=podcast-settings");
       setConfigs(res.data.flatMap((g) => g.entries));
     } catch (e) {
       console.error("Failed to load config:", e);

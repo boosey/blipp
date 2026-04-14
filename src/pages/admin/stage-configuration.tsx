@@ -62,7 +62,7 @@ export default function StageConfiguration() {
   const load = useCallback(async () => {
     try {
       const [configRes, modelsRes, promptsRes] = await Promise.all([
-        apiFetch<{ data: { category: string; entries: PlatformConfigEntry[] }[] }>("/config"),
+        apiFetch<{ data: { category: string; entries: PlatformConfigEntry[] }[] }>("/config?owner=stage-configuration"),
         apiFetch<{ data: AiModelEntry[] }>("/ai-models"),
         apiFetch<{ data: PromptEntry[] }>("/prompts"),
       ]);

@@ -32,9 +32,16 @@ export function usePipelineConfig() {
 
   const load = useCallback(async () => {
     try {
-      const res = await apiFetch<{ data: { category: string; entries: PlatformConfigEntry[] }[] }>("/config");
-      // API returns grouped by category — flatten to a single array
-      const flat = res.data.flatMap((group) => group.entries);
+      // Fetch unowned keys (pipeline.enabled, etc.) and stage-owned keys
+      // (pipeline.stage.*.enabled) in parallel — both are needed here.
+      const [baseRes, stageRes] = await Promise.all([
+        apiFetch<{ data: { category: string; entries: PlatformConfigEntry[] }[] }>("/config"),
+        apiFetch<{ data: { category: string; entries: PlatformConfigEntry[] }[] }>("/config?owner=stage-configuration"),
+      ]);
+      const flat = [
+        ...baseRes.data.flatMap((group) => group.entries),
+        ...stageRes.data.flatMap((group) => group.entries),
+      ];
       setConfigs(flat);
     } catch (e) {
       console.error("Failed to load pipeline config:", e);

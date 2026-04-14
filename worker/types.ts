@@ -91,4 +91,8 @@ export type Env = {
   CF_API_TOKEN?: string;
   /** Cloudflare account ID for API calls */
   CF_ACCOUNT_ID?: string;
+  /** AES-256 master key (64-char hex) for encrypting service keys at rest in the DB */
+  SERVICE_KEY_ENCRYPTION_KEY?: string;
+  /** Worker script name for CF API secret sync ("blipp" or "blipp-staging") */
+  WORKER_SCRIPT_NAME?: string;
 };
