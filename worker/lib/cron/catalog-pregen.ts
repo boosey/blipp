@@ -9,6 +9,7 @@ type PrismaLike = {
     findMany: (args: any) => Promise<any[]>;
     updateMany: (args: any) => Promise<any>;
   };
+  pipelineJob: { findMany: (args: any) => Promise<any[]> };
   briefingRequest: { create: (args: any) => Promise<any> };
   user: { findFirst: (args: any) => Promise<any> };
 };
@@ -59,13 +60,24 @@ export async function runCatalogPregenJob(
 
   const latestByPodcast = new Map(latestEpisodes.map((e: any) => [e.podcastId, e]));
 
-  // Check which episodes already have catalog briefings
+  // Check which episodes already have catalog briefings OR in-flight pipeline jobs
   const latestEpisodeIds = latestEpisodes.map((e: any) => e.id);
-  const existingCatalog = await prisma.catalogBriefing.findMany({
-    where: { episodeId: { in: latestEpisodeIds }, durationTier: 5, stale: false },
-    select: { episodeId: true },
-  });
+  const [existingCatalog, inFlightJobs] = await Promise.all([
+    prisma.catalogBriefing.findMany({
+      where: { episodeId: { in: latestEpisodeIds }, durationTier: 5, stale: false },
+      select: { episodeId: true },
+    }),
+    prisma.pipelineJob.findMany({
+      where: {
+        episodeId: { in: latestEpisodeIds },
+        durationTier: 5,
+        status: { in: ["PENDING", "IN_PROGRESS"] },
+      },
+      select: { episodeId: true },
+    }),
+  ]);
   const alreadyCataloged = new Set(existingCatalog.map((cb: any) => cb.episodeId));
+  const alreadyInFlight = new Set(inFlightJobs.map((j: any) => j.episodeId));
 
   // Build items for episodes that need catalog generation
   const items: BriefingRequestItem[] = [];
@@ -75,7 +87,7 @@ export async function runCatalogPregenJob(
     const latestEp = latestByPodcast.get(podcast.id);
     if (!latestEp) continue;
 
-    if (alreadyCataloged.has(latestEp.id)) continue;
+    if (alreadyCataloged.has(latestEp.id) || alreadyInFlight.has(latestEp.id)) continue;
 
     items.push({
       podcastId: podcast.id,
@@ -105,8 +117,9 @@ export async function runCatalogPregenJob(
     await logger.info("all_current", {
       podcastsScanned: podcasts.length,
       alreadyCataloged: alreadyCataloged.size,
+      alreadyInFlight: alreadyInFlight.size,
     });
-    return { podcastsScanned: podcasts.length, episodesQueued: 0, alreadyCataloged: alreadyCataloged.size };
+    return { podcastsScanned: podcasts.length, episodesQueued: 0, alreadyCataloged: alreadyCataloged.size, alreadyInFlight: alreadyInFlight.size };
   }
 
   // Need an admin user to own the requests

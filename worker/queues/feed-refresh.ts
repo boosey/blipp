@@ -382,14 +382,25 @@ async function processPodcast(
   // so they're ready for instant delivery when users subscribe
   if (newEpisodeIds.length > 0 && podcast.appleRank != null) {
     try {
-      // Check which new episodes already have a catalog briefing at tier 5
-      const existingCatalog = await prisma.catalogBriefing.findMany({
-        where: { episodeId: { in: newEpisodeIds }, durationTier: 5, stale: false },
-        select: { episodeId: true },
-      });
+      // Check which new episodes already have a catalog briefing or in-flight pipeline job at tier 5
+      const [existingCatalog, inFlightJobs] = await Promise.all([
+        prisma.catalogBriefing.findMany({
+          where: { episodeId: { in: newEpisodeIds }, durationTier: 5, stale: false },
+          select: { episodeId: true },
+        }),
+        prisma.pipelineJob.findMany({
+          where: {
+            episodeId: { in: newEpisodeIds },
+            durationTier: 5,
+            status: { in: ["PENDING", "IN_PROGRESS"] },
+          },
+          select: { episodeId: true },
+        }),
+      ]);
       const alreadyCataloged = new Set(existingCatalog.map((cb: any) => cb.episodeId));
+      const alreadyInFlight = new Set(inFlightJobs.map((j: any) => j.episodeId));
 
-      const catalogEpisodes = newEpisodeIds.filter((id: string) => !alreadyCataloged.has(id));
+      const catalogEpisodes = newEpisodeIds.filter((id: string) => !alreadyCataloged.has(id) && !alreadyInFlight.has(id));
 
       if (catalogEpisodes.length > 0) {
         const adminUser = await prisma.user.findFirst({
