@@ -102,6 +102,7 @@ export default function ServiceKeys() {
   const [newRotateDays, setNewRotateDays] = useState("");
   const [newNotes, setNewNotes] = useState("");
   const [showNewValue, setShowNewValue] = useState(false);
+  const [newAssignContexts, setNewAssignContexts] = useState<string[]>([]);
 
   // ── Edit state ──
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -138,7 +139,7 @@ export default function ServiceKeys() {
       return;
     }
     try {
-      await adminFetch("/service-keys", {
+      const res = await adminFetch<{ data: { id: string } }>("/service-keys", {
         method: "POST",
         body: JSON.stringify({
           name: newName,
@@ -150,7 +151,24 @@ export default function ServiceKeys() {
           notes: newNotes || undefined,
         }),
       });
-      toast.success("Service key created");
+
+      // Assign to selected contexts
+      if (newAssignContexts.length > 0 && res.data?.id) {
+        await Promise.all(
+          newAssignContexts.map((ctx) =>
+            adminFetch(`/service-keys/assignments/${ctx}`, {
+              method: "PUT",
+              body: JSON.stringify({ serviceKeyId: res.data.id }),
+            })
+          )
+        );
+      }
+
+      toast.success(
+        newAssignContexts.length > 0
+          ? `Service key created and assigned to ${newAssignContexts.length} context(s)`
+          : "Service key created"
+      );
       resetCreateForm();
       load();
     } catch {
@@ -168,6 +186,7 @@ export default function ServiceKeys() {
     setNewRotateDays("");
     setNewNotes("");
     setShowNewValue(false);
+    setNewAssignContexts([]);
   }
 
   async function validateKey(id: string) {
@@ -434,6 +453,18 @@ export default function ServiceKeys() {
             placeholder="Notes (optional)"
             className="bg-[#0F1D32] border-white/10 text-sm text-[#F9FAFB] placeholder:text-[#9CA3AF]/60"
           />
+
+          {/* Context assignment — show relevant contexts for the selected provider */}
+          {newProvider && (
+            <ContextAssignmentPicker
+              provider={newProvider}
+              contexts={contexts}
+              registeredProviders={registeredProviders}
+              selected={newAssignContexts}
+              onChange={setNewAssignContexts}
+            />
+          )}
+
           <div className="flex gap-2">
             <Button
               size="sm"
@@ -699,67 +730,42 @@ export default function ServiceKeys() {
                       </div>
 
                       {hasProviderSlots ? (
-                        /* Per-provider key slots for pipeline stages */
                         <div className="space-y-1.5 pl-3 border-l border-white/5">
                           {providers.map((provider) => {
-                            const providerKeys = keys.filter(
-                              (k) => k.provider === provider
-                            );
                             const assignmentKey = `${ctx.context}.${provider}`;
-                            const currentAssignment = assignments[assignmentKey] ?? "";
+                            const assignedKeyId = assignments[assignmentKey];
+                            const assignedKey = assignedKeyId
+                              ? keys.find((k) => k.id === assignedKeyId)
+                              : undefined;
 
                             return (
-                              <div
+                              <KeySlot
                                 key={provider}
-                                className="flex items-center justify-between"
-                              >
-                                <span className="text-xs text-[#9CA3AF] capitalize min-w-[100px]">
-                                  {provider}
-                                </span>
-                                <select
-                                  value={currentAssignment}
-                                  onChange={(e) =>
-                                    setAssignment(
-                                      assignmentKey,
-                                      e.target.value || null
-                                    )
-                                  }
-                                  className="bg-[#0F1D32] border border-white/10 rounded px-2 py-1 text-xs text-[#F9FAFB] min-w-[180px]"
-                                >
-                                  <option value="">Default (env)</option>
-                                  {providerKeys.map((k) => (
-                                    <option key={k.id} value={k.id}>
-                                      {k.name} ({k.maskedPreview})
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
+                                label={provider}
+                                provider={provider}
+                                envKey={ctx.envKey}
+                                contextKey={assignmentKey}
+                                assignedKey={assignedKey}
+                                adminFetch={adminFetch}
+                                onChanged={load}
+                              />
                             );
                           })}
                         </div>
                       ) : (
-                        /* Simple single-key assignment for non-pipeline contexts */
-                        <div className="flex justify-end">
-                          <select
-                            value={assignments[ctx.context] ?? ""}
-                            onChange={(e) =>
-                              setAssignment(
-                                ctx.context,
-                                e.target.value || null
-                              )
-                            }
-                            className="bg-[#0F1D32] border border-white/10 rounded px-2 py-1 text-xs text-[#F9FAFB] min-w-[180px]"
-                          >
-                            <option value="">Default (env)</option>
-                            {keys
-                              .filter((k) => k.envKey === ctx.envKey)
-                              .map((k) => (
-                                <option key={k.id} value={k.id}>
-                                  {k.name} ({k.maskedPreview})
-                                </option>
-                              ))}
-                          </select>
-                        </div>
+                        <KeySlot
+                          label={ctx.label}
+                          provider={ctx.provider}
+                          envKey={ctx.envKey}
+                          contextKey={ctx.context}
+                          assignedKey={
+                            assignments[ctx.context]
+                              ? keys.find((k) => k.id === assignments[ctx.context])
+                              : undefined
+                          }
+                          adminFetch={adminFetch}
+                          onChanged={load}
+                        />
                       )}
                     </div>
                   );
@@ -827,6 +833,269 @@ function HealthBadge({
       <X className="h-2.5 w-2.5" />
       Failed
     </Badge>
+  );
+}
+
+/**
+ * Inline key slot — paste a key directly into a context assignment.
+ * Creates the ServiceKey and assigns it in one step.
+ */
+function KeySlot({
+  label,
+  provider,
+  envKey,
+  contextKey,
+  assignedKey,
+  adminFetch,
+  onChanged,
+}: {
+  label: string;
+  provider: string;
+  envKey: string;
+  contextKey: string;
+  assignedKey?: ServiceKeyEntry;
+  adminFetch: ReturnType<typeof useAdminFetch>;
+  onChanged: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState("");
+  const [showValue, setShowValue] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  async function saveKey() {
+    if (!value.trim()) return;
+    setSaving(true);
+    try {
+      // Create the key and assign it in one flow
+      const res = await adminFetch<{ data: { id: string } }>("/service-keys", {
+        method: "POST",
+        body: JSON.stringify({
+          name: `${label} — ${contextKey}`,
+          provider,
+          envKey,
+          value: value.trim(),
+          isPrimary: false,
+        }),
+      });
+      // Assign to this context
+      await adminFetch(`/service-keys/assignments/${contextKey}`, {
+        method: "PUT",
+        body: JSON.stringify({ serviceKeyId: res.data.id }),
+      });
+      toast.success("Key saved");
+      setEditing(false);
+      setValue("");
+      onChanged();
+    } catch {
+      toast.error("Failed to save key");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function replaceKey() {
+    if (!value.trim() || !assignedKey) return;
+    setSaving(true);
+    try {
+      // Update the existing key's value
+      await adminFetch(`/service-keys/${assignedKey.id}`, {
+        method: "PUT",
+        body: JSON.stringify({ value: value.trim() }),
+      });
+      toast.success("Key updated");
+      setEditing(false);
+      setValue("");
+      onChanged();
+    } catch {
+      toast.error("Failed to update key");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function clearKey() {
+    try {
+      await adminFetch(`/service-keys/assignments/${contextKey}`, {
+        method: "PUT",
+        body: JSON.stringify({ serviceKeyId: null }),
+      });
+      toast.success("Reverted to default (env)");
+      onChanged();
+    } catch {
+      toast.error("Failed to clear assignment");
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-2 min-h-[32px]">
+      <span className="text-xs text-[#9CA3AF] capitalize min-w-[100px] shrink-0">
+        {label}
+      </span>
+
+      {editing ? (
+        <div className="flex items-center gap-1.5 flex-1">
+          <div className="relative flex-1">
+            <Input
+              type={showValue ? "text" : "password"}
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              placeholder="Paste key value"
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === "Enter") assignedKey ? replaceKey() : saveKey();
+                if (e.key === "Escape") { setEditing(false); setValue(""); }
+              }}
+              className="h-7 bg-[#0F1D32] border-white/10 text-xs text-[#F9FAFB] font-mono pr-8"
+            />
+            <button
+              onClick={() => setShowValue(!showValue)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-[#9CA3AF] hover:text-[#F9FAFB]"
+            >
+              {showValue ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+            </button>
+          </div>
+          <Button
+            size="sm"
+            onClick={assignedKey ? replaceKey : saveKey}
+            disabled={!value.trim() || saving}
+            className="h-7 bg-[#3B82F6] text-white text-[10px] px-2"
+          >
+            {saving ? "..." : "Save"}
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => { setEditing(false); setValue(""); }}
+            className="h-7 text-[10px] text-[#9CA3AF] px-1.5"
+          >
+            <X className="h-3 w-3" />
+          </Button>
+        </div>
+      ) : assignedKey ? (
+        <div className="flex items-center gap-2 flex-1">
+          <code className="text-xs font-mono text-[#9CA3AF]">
+            {assignedKey.maskedPreview}
+          </code>
+          <HealthBadge validated={assignedKey.lastValidated} ok={assignedKey.lastValidatedOk} />
+          <div className="flex items-center gap-0.5 ml-auto">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setEditing(true)}
+              className="h-6 text-[10px] text-[#9CA3AF] hover:text-[#F9FAFB] px-1.5"
+            >
+              Change
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={clearKey}
+              className="h-6 text-[10px] text-[#9CA3AF] hover:text-[#EF4444] px-1.5"
+            >
+              Clear
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <button
+          onClick={() => setEditing(true)}
+          className="flex items-center gap-1.5 text-xs text-[#9CA3AF]/60 hover:text-[#3B82F6] transition-colors"
+        >
+          <Plus className="h-3 w-3" />
+          Set key
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Shows checkboxes for assigning a new key to contexts during creation.
+ * Includes both provider-scoped pipeline contexts and general contexts
+ * that match the selected provider.
+ */
+function ContextAssignmentPicker({
+  provider,
+  contexts,
+  registeredProviders,
+  selected,
+  onChange,
+}: {
+  provider: string;
+  contexts: Record<string, ContextDef[]>;
+  registeredProviders: Record<string, string[]>;
+  selected: string[];
+  onChange: (val: string[]) => void;
+}) {
+  // Build list of assignable context keys for this provider
+  const assignable: Array<{ key: string; label: string; group: string }> = [];
+
+  for (const [group, ctxList] of Object.entries(contexts)) {
+    for (const ctx of ctxList) {
+      // Check if this context has provider-scoped slots
+      const providers = registeredProviders[ctx.context];
+      if (providers?.includes(provider)) {
+        // Provider-scoped pipeline slot
+        assignable.push({
+          key: `${ctx.context}.${provider}`,
+          label: `${ctx.label} (${provider})`,
+          group,
+        });
+      } else if (ctx.provider === provider) {
+        // General context that matches this provider directly
+        assignable.push({
+          key: ctx.context,
+          label: ctx.label,
+          group,
+        });
+      }
+    }
+  }
+
+  if (assignable.length === 0) return null;
+
+  function toggle(key: string) {
+    onChange(
+      selected.includes(key)
+        ? selected.filter((k) => k !== key)
+        : [...selected, key]
+    );
+  }
+
+  // Group the assignable items
+  const grouped: Record<string, typeof assignable> = {};
+  for (const item of assignable) {
+    if (!grouped[item.group]) grouped[item.group] = [];
+    grouped[item.group].push(item);
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <p className="text-xs text-[#9CA3AF] font-medium">
+        Assign to contexts
+      </p>
+      {Object.entries(grouped).map(([group, items]) => (
+        <div key={group} className="space-y-0.5">
+          <p className="text-[10px] text-[#9CA3AF]/60 uppercase tracking-wider">
+            {group}
+          </p>
+          {items.map((item) => (
+            <label
+              key={item.key}
+              className="flex items-center gap-2 p-1.5 rounded hover:bg-white/5 cursor-pointer"
+            >
+              <input
+                type="checkbox"
+                checked={selected.includes(item.key)}
+                onChange={() => toggle(item.key)}
+                className="accent-[#3B82F6]"
+              />
+              <span className="text-sm text-[#F9FAFB]">{item.label}</span>
+            </label>
+          ))}
+        </div>
+      ))}
+    </div>
   );
 }
 
