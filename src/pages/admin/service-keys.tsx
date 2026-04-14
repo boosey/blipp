@@ -83,6 +83,7 @@ export default function ServiceKeys() {
   const [keys, setKeys] = useState<ServiceKeyEntry[]>([]);
   const [contexts, setContexts] = useState<Record<string, ContextDef[]>>({});
   const [assignments, setAssignments] = useState<Record<string, string>>({});
+  const [registeredProviders, setRegisteredProviders] = useState<Record<string, string[]>>({});
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [validatingAll, setValidatingAll] = useState(false);
@@ -111,11 +112,12 @@ export default function ServiceKeys() {
     try {
       const [keysRes, ctxRes, assignRes] = await Promise.all([
         adminFetch<{ data: ServiceKeyEntry[] }>("/service-keys"),
-        adminFetch<{ data: Record<string, ContextDef[]> }>("/service-keys/contexts"),
+        adminFetch<{ data: Record<string, ContextDef[]>; registeredProviders: Record<string, string[]> }>("/service-keys/contexts"),
         adminFetch<{ data: Record<string, string> }>("/service-keys/assignments"),
       ]);
       setKeys(keysRes.data || []);
       setContexts(ctxRes.data || {});
+      setRegisteredProviders(ctxRes.registeredProviders || {});
       setAssignments(assignRes.data || {});
     } catch {
       toast.error("Failed to load service keys");
@@ -684,39 +686,81 @@ export default function ServiceKeys() {
             {expandedContextGroups[group] !== false && (
               <div className="border-t border-white/5 divide-y divide-white/5">
                 {ctxList.map((ctx) => {
-                  const matchingKeys = keys.filter(
-                    (k) => k.envKey === ctx.envKey
-                  );
-                  const currentAssignment = assignments[ctx.context] ?? "";
+                  const providers = registeredProviders[ctx.context];
+                  const hasProviderSlots = providers && providers.length > 0;
 
                   return (
-                    <div
-                      key={ctx.context}
-                      className="flex items-center justify-between p-3"
-                    >
+                    <div key={ctx.context} className="p-3 space-y-2">
                       <div className="min-w-0">
                         <p className="text-sm text-[#F9FAFB]">{ctx.label}</p>
                         <p className="text-[10px] text-[#9CA3AF]/60">
                           {ctx.description}
                         </p>
                       </div>
-                      <select
-                        value={currentAssignment}
-                        onChange={(e) =>
-                          setAssignment(
-                            ctx.context,
-                            e.target.value || null
-                          )
-                        }
-                        className="bg-[#0F1D32] border border-white/10 rounded px-2 py-1 text-xs text-[#F9FAFB] min-w-[180px]"
-                      >
-                        <option value="">Default (env)</option>
-                        {matchingKeys.map((k) => (
-                          <option key={k.id} value={k.id}>
-                            {k.name} ({k.maskedPreview})
-                          </option>
-                        ))}
-                      </select>
+
+                      {hasProviderSlots ? (
+                        /* Per-provider key slots for pipeline stages */
+                        <div className="space-y-1.5 pl-3 border-l border-white/5">
+                          {providers.map((provider) => {
+                            const providerKeys = keys.filter(
+                              (k) => k.provider === provider
+                            );
+                            const assignmentKey = `${ctx.context}.${provider}`;
+                            const currentAssignment = assignments[assignmentKey] ?? "";
+
+                            return (
+                              <div
+                                key={provider}
+                                className="flex items-center justify-between"
+                              >
+                                <span className="text-xs text-[#9CA3AF] capitalize min-w-[100px]">
+                                  {provider}
+                                </span>
+                                <select
+                                  value={currentAssignment}
+                                  onChange={(e) =>
+                                    setAssignment(
+                                      assignmentKey,
+                                      e.target.value || null
+                                    )
+                                  }
+                                  className="bg-[#0F1D32] border border-white/10 rounded px-2 py-1 text-xs text-[#F9FAFB] min-w-[180px]"
+                                >
+                                  <option value="">Default (env)</option>
+                                  {providerKeys.map((k) => (
+                                    <option key={k.id} value={k.id}>
+                                      {k.name} ({k.maskedPreview})
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        /* Simple single-key assignment for non-pipeline contexts */
+                        <div className="flex justify-end">
+                          <select
+                            value={assignments[ctx.context] ?? ""}
+                            onChange={(e) =>
+                              setAssignment(
+                                ctx.context,
+                                e.target.value || null
+                              )
+                            }
+                            className="bg-[#0F1D32] border border-white/10 rounded px-2 py-1 text-xs text-[#F9FAFB] min-w-[180px]"
+                          >
+                            <option value="">Default (env)</option>
+                            {keys
+                              .filter((k) => k.envKey === ctx.envKey)
+                              .map((k) => (
+                                <option key={k.id} value={k.id}>
+                                  {k.name} ({k.maskedPreview})
+                                </option>
+                              ))}
+                          </select>
+                        </div>
+                      )}
                     </div>
                   );
                 })}

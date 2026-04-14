@@ -518,11 +518,59 @@ serviceKeysRoutes.patch("/:id/config", async (c) => {
   });
 });
 
-// ── GET /contexts — List all available usage contexts ──
+// ── GET /contexts — List all available usage contexts with registered providers ──
 
 serviceKeysRoutes.get("/contexts", async (c) => {
+  const prisma = c.get("prisma") as any;
   const groups = getContextsByGroup();
-  return c.json({ data: groups });
+
+  // For AI Pipeline contexts, fetch registered providers from the model registry
+  // so the UI can show a key slot per provider per stage
+  const STAGE_TO_AI_STAGE: Record<string, string> = {
+    "pipeline.distillation": "distillation",
+    "pipeline.narrative": "narrative",
+    "pipeline.tts": "tts",
+    "pipeline.stt": "stt",
+    "catalog.geo-classification": "distillation",
+  };
+
+  let registeredProviders: Record<string, string[]> = {};
+  try {
+    // Get all active model providers grouped by stage
+    const models = await prisma.aiModel.findMany({
+      where: { isActive: true },
+      select: {
+        stages: true,
+        providers: {
+          where: { isAvailable: true },
+          select: { provider: true },
+        },
+      },
+    });
+
+    // Build stage → provider[] map
+    const stageProviders: Record<string, Set<string>> = {};
+    for (const model of models) {
+      for (const stage of (model.stages as string[])) {
+        if (!stageProviders[stage]) stageProviders[stage] = new Set();
+        for (const p of model.providers) {
+          stageProviders[stage].add(p.provider);
+        }
+      }
+    }
+
+    // Map context identifiers to their registered providers
+    for (const [ctx, aiStage] of Object.entries(STAGE_TO_AI_STAGE)) {
+      const providers = stageProviders[aiStage];
+      if (providers) {
+        registeredProviders[ctx] = [...providers].sort();
+      }
+    }
+  } catch {
+    // Model registry may not be populated yet
+  }
+
+  return c.json({ data: groups, registeredProviders });
 });
 
 // ── GET /assignments — Get all context→key assignments ──
@@ -548,19 +596,30 @@ serviceKeysRoutes.get("/assignments", async (c) => {
 });
 
 // ── PUT /assignments/:context — Set context key assignment ──
+// Supports both simple (context) and provider-scoped (context.provider) assignments.
+// For pipeline stages, use provider-scoped: PUT /assignments/pipeline.distillation.anthropic
 
 serviceKeysRoutes.put("/assignments/:context", async (c) => {
   const prisma = c.get("prisma") as any;
-  const context = c.req.param("context");
+  const rawContext = c.req.param("context");
 
-  // Validate context exists
-  const ctxDef = getContextDef(context);
+  // Parse context — may be "pipeline.distillation.anthropic" (provider-scoped)
+  // or "billing.stripe" (simple)
+  const parts = rawContext.split(".");
+  const baseContext = parts.length >= 3 && parts[0] === "pipeline"
+    ? `${parts[0]}.${parts[1]}`
+    : parts.length >= 3 && parts[0] === "catalog"
+      ? `${parts[0]}.${parts[1]}`
+      : rawContext;
+
+  // Validate the base context exists in the registry
+  const ctxDef = getContextDef(baseContext);
   if (!ctxDef) {
-    return c.json({ error: `Unknown context: ${context}` }, 400);
+    return c.json({ error: `Unknown context: ${baseContext}` }, 400);
   }
 
   const body = await c.req.json<{ serviceKeyId: string | null }>();
-  const configKey = `serviceKey.assignment.${context}`;
+  const configKey = `serviceKey.assignment.${rawContext}`;
 
   if (body.serviceKeyId === null) {
     // Remove assignment (revert to env default)
@@ -568,7 +627,7 @@ serviceKeysRoutes.put("/assignments/:context", async (c) => {
       .delete({ where: { key: configKey } })
       .catch(() => {});
   } else {
-    // Verify the key exists and matches the expected provider
+    // Verify the key exists
     const sk = await prisma.serviceKey.findUnique({
       where: { id: body.serviceKeyId },
     });
@@ -586,11 +645,11 @@ serviceKeysRoutes.put("/assignments/:context", async (c) => {
     actorId: getActorId(c),
     action: "service_key.assign",
     entityType: "ServiceKeyAssignment",
-    entityId: context,
+    entityId: rawContext,
     metadata: { serviceKeyId: body.serviceKeyId },
   }).catch(() => {});
 
-  return c.json({ data: { context, serviceKeyId: body.serviceKeyId } });
+  return c.json({ data: { context: rawContext, serviceKeyId: body.serviceKeyId } });
 });
 
 // ── CF Secret Sync ──

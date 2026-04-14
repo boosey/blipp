@@ -14,26 +14,46 @@ import { decryptKey } from "./service-key-crypto";
 import { getConfig } from "./config";
 
 /**
- * Resolve the API key value for a given env key, optionally scoped to a usage context.
+ * Resolve the API key value for a given env key, optionally scoped to a usage context and provider.
  *
- * @param prisma  - Prisma client for DB lookups
- * @param env     - Worker env bindings (for fallback and encryption key)
- * @param envKey  - The Env property name, e.g. "ANTHROPIC_API_KEY"
- * @param context - Optional usage context, e.g. "pipeline.distillation"
+ * @param prisma   - Prisma client for DB lookups
+ * @param env      - Worker env bindings (for fallback and encryption key)
+ * @param envKey   - The Env property name, e.g. "ANTHROPIC_API_KEY"
+ * @param context  - Optional usage context, e.g. "pipeline.distillation"
+ * @param provider - Optional provider name, e.g. "anthropic" — enables provider-scoped assignments
  */
 export async function resolveApiKey(
   prisma: any,
   env: Env,
   envKey: string,
-  context?: string
+  context?: string,
+  provider?: string
 ): Promise<string> {
   const masterKey = env.SERVICE_KEY_ENCRYPTION_KEY;
 
   // If no encryption key is configured, skip DB lookups entirely
   if (masterKey) {
     try {
-      // Step 1: Check context-specific assignment
       if (context) {
+        // Step 1a: Check provider-scoped assignment (e.g. "pipeline.distillation.anthropic")
+        if (provider) {
+          const providerKeyId = await getConfig<string | null>(
+            prisma,
+            `serviceKey.assignment.${context}.${provider}`,
+            null
+          );
+          if (providerKeyId) {
+            const sk = await prisma.serviceKey.findUnique({
+              where: { id: providerKeyId },
+              select: { encryptedValue: true, iv: true },
+            });
+            if (sk) {
+              return decryptKey(sk.encryptedValue, sk.iv, masterKey);
+            }
+          }
+        }
+
+        // Step 1b: Check context-only assignment (e.g. "pipeline.distillation")
         const assignedKeyId = await getConfig<string | null>(
           prisma,
           `serviceKey.assignment.${context}`,
@@ -66,6 +86,7 @@ export async function resolveApiKey(
           action: "service_key_resolve_error",
           envKey,
           context,
+          provider,
           error: err instanceof Error ? err.message : String(err),
           ts: new Date().toISOString(),
         })
