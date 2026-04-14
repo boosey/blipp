@@ -1,5 +1,5 @@
 import { getConfig } from "./config";
-import { extractTopicsFromText } from "./topic-extraction";
+import { extractTopicsFromText, type TopicExtractionConfig } from "./topic-extraction";
 import { buildEmbeddingText, computeEmbedding, averageEmbeddings, cosineSimilarityVec } from "./embeddings";
 
 // Types
@@ -111,6 +111,12 @@ export async function computePodcastProfiles(
     ? await getConfig(prisma, "recommendations.embeddings.enabled", false)
     : false;
 
+  // Read topic extraction config
+  const topicConfig: TopicExtractionConfig = {
+    maxTopics: await getConfig(prisma, "topicExtraction.maxTopics", 20) as number,
+    minTokenLength: await getConfig(prisma, "topicExtraction.minTokenLength", 3) as number,
+  };
+
   // Process all podcasts and collect DB writes
   const profileUpserts: Promise<any>[] = [];
 
@@ -166,7 +172,7 @@ export async function computePodcastProfiles(
       if (ep.title) textInputs.push({ text: ep.title, weight: recencyWeight });
       if (ep.description) textInputs.push({ text: ep.description, weight: recencyWeight * 0.5 });
     }
-    const descriptionTopics = extractTopicsFromText(textInputs);
+    const descriptionTopics = extractTopicsFromText(textInputs, topicConfig);
 
     // 3. Merge: claims-based topics get a boost since they're higher quality
     const mergedWeights = new Map<string, number>();
@@ -634,9 +640,10 @@ export async function scoreRecommendations(
   }
 
   // Engagement multiplier: users who listen more get sharper personalization
-  // listenCount 0 → 1.0 (neutral), 50+ → 1.3 (30% boost to category signal)
+  const maxBoostPercent = await getConfig(prisma, "recommendations.engagement.maxBoostPercent", 30) as number;
+  const maxBoostListens = await getConfig(prisma, "recommendations.engagement.maxBoostListens", 167) as number;
   const listenCount = userProfile.listenCount ?? 0;
-  const engagementMultiplier = 1.0 + Math.min(0.3, listenCount / 167);
+  const engagementMultiplier = 1.0 + Math.min(maxBoostPercent / 100, listenCount / maxBoostListens);
 
   const scored: ScoredRecommendation[] = [];
   const userWeights = userProfile.categoryWeights as CategoryWeights;
@@ -652,8 +659,9 @@ export async function scoreRecommendations(
     const reasons: string[] = [];
 
     // Category affinity (boosted by engagement)
+    const catAffinityThreshold = await getConfig(prisma, "recommendations.categoryAffinityThreshold", 0.5) as number;
     const catAffinity = cosineSimilarity(userWeights, podcastWeights) * engagementMultiplier;
-    if (catAffinity > 0.5) {
+    if (catAffinity > catAffinityThreshold) {
       const topCat = Object.entries(podcastWeights).sort(([,a],[,b]) => (b as number) - (a as number))[0];
       if (topCat) reasons.push(`Matches your interest in ${topCat[0]}`);
     }

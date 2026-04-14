@@ -5,6 +5,15 @@ import { getCurrentUser } from "../lib/admin-helpers";
 import { getConfig } from "../lib/config";
 import { scoreRecommendations, cosineSimilarity, recomputeUserProfile } from "../lib/recommendations";
 
+/** Read diversify config from PlatformConfig with fallback defaults. */
+async function getDiversifyConfig(prisma: any): Promise<{ maxPerPodcast: number; limit: number }> {
+  const [maxPerPodcast, limit] = await Promise.all([
+    getConfig(prisma, "recommendations.diversify.maxPerPodcast", 2) as Promise<number>,
+    getConfig(prisma, "recommendations.diversify.limit", 15) as Promise<number>,
+  ]);
+  return { maxPerPodcast, limit };
+}
+
 export const recommendations = new Hono<{ Bindings: Env }>();
 
 recommendations.use("*", requireAuth);
@@ -95,6 +104,7 @@ async function generateCuratedRows(
   const rows: CuratedRow[] = [];
   const fourteenDaysAgo = new Date(Date.now() - 14 * 86400000);
   const userId = user.id;
+  const diversify = await getDiversifyConfig(prisma);
 
   // User preference exclusions — skip when user explicitly selected this genre
   const userExcludedCategories: string[] = explicit ? [] : (user.excludedCategories ?? []);
@@ -175,7 +185,7 @@ async function generateCuratedRows(
       : rawEpisodes;
     // Boost local pods when browsing locality-biased categories
     if (applyLocality) filtered = applyLocalBoost(filtered, geoProfileMap);
-    const episodes = diversifyEpisodes(filtered, 2, 15);
+    const episodes = diversifyEpisodes(filtered, diversify.maxPerPodcast, diversify.limit);
     if (episodes.length > 0) {
       rows.push({
         title: genre ? `Trending in ${genre}` : "Trending Now",
@@ -229,7 +239,7 @@ async function generateCuratedRows(
           ? rawTopicEpisodes.filter((ep: any) => !(ep.topicTags ?? []).some((t: string) => excludedTopicSet.has(t.toLowerCase())))
           : rawTopicEpisodes;
         if (applyLocality) filteredTopicEpisodes = applyLocalBoost(filteredTopicEpisodes, geoProfileMap);
-        const episodes = diversifyEpisodes(filteredTopicEpisodes, 2, 15);
+        const episodes = diversifyEpisodes(filteredTopicEpisodes, diversify.maxPerPodcast, diversify.limit);
         if (episodes.length > 0) {
           rows.push({
             title: "New on topics you follow",

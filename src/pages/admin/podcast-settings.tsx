@@ -64,6 +64,7 @@ const CONFIG_GROUPS: ConfigGroup[] = [
       { key: "pipeline.feedRefresh.maxEpisodesPerPodcast", label: "Max Episodes per Podcast", type: "number", description: "Episodes ingested per podcast during feed refresh", default: 5 },
       { key: "pipeline.feedRefresh.batchConcurrency", label: "Batch Concurrency", type: "number", description: "Podcasts processed in parallel per queue message", default: 10 },
       { key: "pipeline.feedRefresh.fetchTimeoutMs", label: "RSS Fetch Timeout (ms)", type: "number", description: "Timeout for each RSS feed request", default: 10000 },
+      { key: "pipeline.feedRefresh.maxRetries", label: "Max Fetch Retries", type: "number", description: "Retry attempts on retryable HTTP errors (429, 5xx) with exponential backoff", default: 3 },
       { key: "pipeline.feedRefresh.maxConcurrentConsumers", label: "Max Concurrent Consumers", type: "readonly", description: "Max parallel queue workers (deploy-time constant, requires redeploy)", default: FEED_REFRESH_MAX_CONSUMERS },
     ],
   },

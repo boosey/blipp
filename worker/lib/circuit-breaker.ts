@@ -6,6 +6,10 @@
  * When OPEN, calls fail immediately without hitting the provider.
  * After cooldown, transitions to HALF_OPEN and allows one test call.
  * If test succeeds -> CLOSED. If test fails -> OPEN again.
+ *
+ * Config is loaded from PlatformConfig (circuitBreaker.* keys) via
+ * initCircuitBreakerConfig(). Call this once per queue handler execution.
+ * Falls back to hardcoded defaults if never initialized.
  */
 
 interface CircuitState {
@@ -15,7 +19,7 @@ interface CircuitState {
   lastSuccessAt: number;
 }
 
-interface CircuitBreakerConfig {
+export interface CircuitBreakerConfig {
   failureThreshold: number; // failures before opening (default: 5)
   cooldownMs: number; // ms before trying again (default: 30000)
   windowMs: number; // failure counting window (default: 60000)
@@ -26,6 +30,12 @@ const DEFAULT_CONFIG: CircuitBreakerConfig = {
   cooldownMs: 30_000,
   windowMs: 60_000,
 };
+
+/**
+ * Active config — starts as DEFAULT_CONFIG, updated via initCircuitBreakerConfig().
+ * All checkCircuit/recordFailure calls use this unless an explicit override is passed.
+ */
+let activeConfig: CircuitBreakerConfig = { ...DEFAULT_CONFIG };
 
 // Per-provider circuit state (in-memory, resets on redeploy)
 const circuits = new Map<string, CircuitState>();
@@ -50,6 +60,23 @@ export class CircuitOpenError extends Error {
 }
 
 /**
+ * Load circuit breaker config from PlatformConfig and cache module-level.
+ * Uses getConfig's 60-second in-memory cache, so repeated calls are cheap.
+ * Call once at the start of each queue handler to pick up config changes.
+ */
+export async function initCircuitBreakerConfig(
+  prisma: { platformConfig: { findUnique: (args: any) => Promise<any> } }
+): Promise<void> {
+  const { getConfig } = await import("./config");
+  const [failureThreshold, cooldownMs, windowMs] = await Promise.all([
+    getConfig(prisma, "circuitBreaker.failureThreshold", DEFAULT_CONFIG.failureThreshold) as Promise<number>,
+    getConfig(prisma, "circuitBreaker.cooldownMs", DEFAULT_CONFIG.cooldownMs) as Promise<number>,
+    getConfig(prisma, "circuitBreaker.windowMs", DEFAULT_CONFIG.windowMs) as Promise<number>,
+  ]);
+  activeConfig = { failureThreshold, cooldownMs, windowMs };
+}
+
+/**
  * Check if a provider call should be allowed.
  * Throws CircuitOpenError if the circuit is open.
  */
@@ -57,7 +84,7 @@ export function checkCircuit(
   provider: string,
   config: Partial<CircuitBreakerConfig> = {}
 ): void {
-  const cfg = { ...DEFAULT_CONFIG, ...config };
+  const cfg = { ...activeConfig, ...config };
   const state = getState(provider);
   const now = Date.now();
 
@@ -92,7 +119,7 @@ export function recordFailure(
   provider: string,
   config: Partial<CircuitBreakerConfig> = {}
 ): void {
-  const cfg = { ...DEFAULT_CONFIG, ...config };
+  const cfg = { ...activeConfig, ...config };
   const state = getState(provider);
   const now = Date.now();
 

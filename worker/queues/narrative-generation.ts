@@ -8,7 +8,7 @@ import { getLlmProviderImpl } from "../lib/llm-providers";
 import { wpKey, putWorkProduct, getWorkProduct } from "../lib/work-products";
 import { writeEvent } from "../lib/pipeline-events";
 import { writeAiError, classifyAiError, AiProviderError } from "../lib/ai-errors";
-import { recordSuccess, recordFailure } from "../lib/circuit-breaker";
+import { recordSuccess, recordFailure, initCircuitBreakerConfig } from "../lib/circuit-breaker";
 import type { NarrativeGenerationMessage } from "../lib/queue-messages";
 import type { Env } from "../types";
 
@@ -29,6 +29,7 @@ export async function handleNarrativeGeneration(
 ): Promise<void> {
   const prisma = createPrismaClient(env.HYPERDRIVE);
   const log = await createPipelineLogger({ stage: "narrative-generation", prisma });
+  await initCircuitBreakerConfig(prisma);
 
   try {
     log.info("batch_start", { messageCount: batch.messages.length });

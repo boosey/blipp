@@ -7,7 +7,8 @@ import { getLlmProviderImpl } from "../lib/llm-providers";
 import { wpKey, putWorkProduct, getWorkProduct } from "../lib/work-products";
 import { writeEvent } from "../lib/pipeline-events";
 import { writeAiError, classifyAiError, AiProviderError, isRateLimitError, parseRetryAfterMs } from "../lib/ai-errors";
-import { recordSuccess, recordFailure } from "../lib/circuit-breaker";
+import { recordSuccess, recordFailure, initCircuitBreakerConfig } from "../lib/circuit-breaker";
+import { getConfig } from "../lib/config";
 import type { DistillationMessage } from "../lib/queue-messages";
 import type { Env } from "../types";
 
@@ -25,6 +26,7 @@ export async function handleDistillation(
   ctx: ExecutionContext
 ): Promise<void> {
   const prisma = createPrismaClient(env.HYPERDRIVE);
+  await initCircuitBreakerConfig(prisma);
 
   try {
     const log = await createPipelineLogger({ stage: "distillation", prisma });
@@ -179,10 +181,10 @@ export async function handleDistillation(
             provider: resolved.provider,
           });
 
-          const RATE_LIMIT_RETRIES = 3;
+          const rateLimitRetries = await getConfig(prisma, "pipeline.distillation.rateLimitRetries", 3) as number;
           let rateLimitAttempt = 0;
           let succeeded = false;
-          while (rateLimitAttempt <= RATE_LIMIT_RETRIES) {
+          while (rateLimitAttempt <= rateLimitRetries) {
             try {
               const elapsed = log.timer("claude_extraction");
               const result = await extractClaims(prisma, llm, transcript, resolved.providerModelId, 8192, env, resolved.pricing);
@@ -203,10 +205,10 @@ export async function handleDistillation(
               const errMsg = chainErr instanceof Error ? chainErr.message : String(chainErr);
               const httpStatus = (chainErr as any)?.httpStatus;
 
-              if (isRateLimitError(chainErr) && rateLimitAttempt < RATE_LIMIT_RETRIES) {
+              if (isRateLimitError(chainErr) && rateLimitAttempt < rateLimitRetries) {
                 const waitMs = parseRetryAfterMs(chainErr);
                 rateLimitAttempt++;
-                await writeEvent(prisma, stepId, "WARN", `${tier} rate-limited — retrying in ${Math.ceil(waitMs / 1000)}s (attempt ${rateLimitAttempt}/${RATE_LIMIT_RETRIES})`, {
+                await writeEvent(prisma, stepId, "WARN", `${tier} rate-limited — retrying in ${Math.ceil(waitMs / 1000)}s (attempt ${rateLimitAttempt}/${rateLimitRetries})`, {
                   tier, provider: resolved.provider, model: resolved.providerModelId, waitMs,
                 });
                 log.info("rate_limit_backoff", { provider: resolved.provider, waitMs, attempt: rateLimitAttempt });

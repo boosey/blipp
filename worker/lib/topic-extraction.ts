@@ -5,8 +5,9 @@ export interface WeightedTopic {
   weight: number;
 }
 
-const MAX_TOPICS = 20;
-const MIN_TOKEN_LENGTH = 3;
+/** Defaults — callers can override via PlatformConfig values. */
+const DEFAULT_MAX_TOPICS = 20;
+const DEFAULT_MIN_TOKEN_LENGTH = 3;
 
 // Common English stopwords to filter out
 const STOPWORDS = new Set([
@@ -25,12 +26,12 @@ const STOPWORDS = new Set([
   "him", "his", "me", "over", "down", "off", "once", "during", "every",
 ]);
 
-function tokenize(text: string): string[] {
+function tokenize(text: string, minTokenLength = DEFAULT_MIN_TOKEN_LENGTH): string[] {
   return text
     .toLowerCase()
     .replace(/[^a-z0-9\s-]/g, " ")
     .split(/\s+/)
-    .filter((t) => t.length >= MIN_TOKEN_LENGTH && !STOPWORDS.has(t));
+    .filter((t) => t.length >= minTokenLength && !STOPWORDS.has(t));
 }
 
 function extractBigrams(tokens: string[]): string[] {
@@ -41,19 +42,26 @@ function extractBigrams(tokens: string[]): string[] {
   return bigrams;
 }
 
+export interface TopicExtractionConfig {
+  maxTopics?: number;
+  minTokenLength?: number;
+}
+
 /**
  * Extract weighted topics from podcast episode claims.
  * Tokenizes claim text, filters stopwords, extracts unigrams + bigrams,
- * weights by claim importance, and returns top 20 topics.
+ * weights by claim importance, and returns top N topics.
  */
-export function extractTopicsFromClaims(claims: Claim[]): WeightedTopic[] {
+export function extractTopicsFromClaims(claims: Claim[], config?: TopicExtractionConfig): WeightedTopic[] {
   if (claims.length === 0) return [];
 
+  const maxTopics = config?.maxTopics ?? DEFAULT_MAX_TOPICS;
+  const minTokenLength = config?.minTokenLength ?? DEFAULT_MIN_TOKEN_LENGTH;
   const weights = new Map<string, number>();
 
   for (const claim of claims) {
     const importance = claim.importance || 1;
-    const tokens = tokenize(claim.claim);
+    const tokens = tokenize(claim.claim, minTokenLength);
 
     // Accumulate unigram weights
     for (const token of tokens) {
@@ -70,7 +78,7 @@ export function extractTopicsFromClaims(claims: Claim[]): WeightedTopic[] {
   // Sort by weight descending and take top N
   const sorted = [...weights.entries()]
     .sort((a, b) => b[1] - a[1])
-    .slice(0, MAX_TOPICS);
+    .slice(0, maxTopics);
 
   return sorted.map(([topic, weight]) => ({ topic, weight }));
 }
@@ -95,9 +103,9 @@ export function normalizeTopics(topics: WeightedTopic[]): WeightedTopic[] {
 /**
  * Full pipeline: extract topics from claims, then normalize.
  */
-export function fingerprint(claims: Claim[]): WeightedTopic[] {
+export function fingerprint(claims: Claim[], config?: TopicExtractionConfig): WeightedTopic[] {
   if (claims.length === 0) return [];
-  const raw = extractTopicsFromClaims(claims);
+  const raw = extractTopicsFromClaims(claims, config);
   return normalizeTopics(raw);
 }
 
@@ -105,12 +113,14 @@ export function fingerprint(claims: Claim[]): WeightedTopic[] {
  * Extract weighted topics from free-text descriptions (podcast + episode).
  * Uses unigram + bigram extraction with TF weighting.
  */
-export function extractTopicsFromText(texts: { text: string; weight: number }[]): WeightedTopic[] {
+export function extractTopicsFromText(texts: { text: string; weight: number }[], config?: TopicExtractionConfig): WeightedTopic[] {
+  const maxTopics = config?.maxTopics ?? DEFAULT_MAX_TOPICS;
+  const minTokenLength = config?.minTokenLength ?? DEFAULT_MIN_TOKEN_LENGTH;
   const weights = new Map<string, number>();
 
   for (const { text, weight } of texts) {
     if (!text) continue;
-    const tokens = tokenize(text);
+    const tokens = tokenize(text, minTokenLength);
 
     for (const token of tokens) {
       weights.set(token, (weights.get(token) || 0) + weight);
@@ -124,7 +134,7 @@ export function extractTopicsFromText(texts: { text: string; weight: number }[])
 
   const sorted = [...weights.entries()]
     .sort((a, b) => b[1] - a[1])
-    .slice(0, MAX_TOPICS);
+    .slice(0, maxTopics);
 
   return normalizeTopics(sorted.map(([topic, weight]) => ({ topic, weight })));
 }

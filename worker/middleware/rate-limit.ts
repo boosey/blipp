@@ -1,5 +1,6 @@
 import { createMiddleware } from "hono/factory";
 import { getAuth } from "./auth";
+import { getConfig } from "../lib/config";
 import type { Env } from "../types";
 
 interface RateLimitConfig {
@@ -8,6 +9,11 @@ interface RateLimitConfig {
   keyPrefix: string;
   /** Path prefixes to skip (e.g. ["/api/webhooks/", "/api/health"]) */
   skipPaths?: string[];
+  /** Optional PlatformConfig keys for dynamic overrides. Falls back to static values above. */
+  configKeys?: {
+    windowMs: string;
+    maxRequests: string;
+  };
 }
 
 export function rateLimit(config: RateLimitConfig) {
@@ -20,6 +26,18 @@ export function rateLimit(config: RateLimitConfig) {
     const kv = c.env.RATE_LIMIT_KV;
     if (!kv) {
       throw new Error("RATE_LIMIT_KV binding is required but not configured");
+    }
+
+    // Resolve dynamic config from PlatformConfig (60s cache) or fall back to static values
+    let { windowMs, maxRequests } = config;
+    if (config.configKeys) {
+      const prisma = c.get("prisma") as any;
+      if (prisma) {
+        [windowMs, maxRequests] = await Promise.all([
+          getConfig(prisma, config.configKeys.windowMs, config.windowMs),
+          getConfig(prisma, config.configKeys.maxRequests, config.maxRequests),
+        ]);
+      }
     }
 
     // API-key auth bypasses clerkMiddleware, so getAuth would throw. Prefer the
@@ -35,17 +53,17 @@ export function rateLimit(config: RateLimitConfig) {
     }
     const identifier =
       apiKeyUserId ?? clerkUserId ?? c.req.header("cf-connecting-ip") ?? "unknown";
-    const bucket = Math.floor(Date.now() / config.windowMs);
+    const bucket = Math.floor(Date.now() / windowMs);
     const key = `${config.keyPrefix}:${identifier}:${bucket}`;
 
     const val = await kv.get(key);
     const current = val ? parseInt(val, 10) : 0;
 
-    if (current >= config.maxRequests) {
-      const resetAt = (bucket + 1) * config.windowMs;
+    if (current >= maxRequests) {
+      const resetAt = (bucket + 1) * windowMs;
       const now = Date.now();
       return c.json({ error: "Rate limit exceeded" }, 429, {
-        "X-RateLimit-Limit": String(config.maxRequests),
+        "X-RateLimit-Limit": String(maxRequests),
         "X-RateLimit-Remaining": "0",
         "X-RateLimit-Reset": String(Math.ceil(resetAt / 1000)),
         "Retry-After": String(Math.ceil((resetAt - now) / 1000)),
@@ -53,15 +71,15 @@ export function rateLimit(config: RateLimitConfig) {
     }
 
     const newCount = current + 1;
-    const ttlSeconds = Math.ceil(config.windowMs / 1000) + 60;
+    const ttlSeconds = Math.ceil(windowMs / 1000) + 60;
     c.executionCtx.waitUntil(
       kv.put(key, String(newCount), { expirationTtl: ttlSeconds })
     );
 
-    c.header("X-RateLimit-Limit", String(config.maxRequests));
+    c.header("X-RateLimit-Limit", String(maxRequests));
     c.header(
       "X-RateLimit-Remaining",
-      String(Math.max(0, config.maxRequests - newCount))
+      String(Math.max(0, maxRequests - newCount))
     );
 
     await next();

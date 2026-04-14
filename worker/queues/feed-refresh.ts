@@ -34,15 +34,15 @@ async function fetchRssDirect(
   fetchTimeoutMs: number,
   log: PipelineLogger,
   podcastId: string,
+  maxRetries = 3,
 ): Promise<{ feed: ParsedFeed } | { status: number; statusText: string }> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), fetchTimeoutMs);
-  const MAX_RETRIES = 3;
   const RETRY_STATUSES = new Set([429, 500, 502, 503, 504]);
 
   try {
     let response: Response | undefined;
-    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
       response = await safeFetch(feedUrl, {
         signal: controller.signal,
         headers: {
@@ -50,7 +50,7 @@ async function fetchRssDirect(
           "Accept": "application/rss+xml, application/xml;q=0.9, */*;q=0.8",
         },
       });
-      if (response.ok || !RETRY_STATUSES.has(response.status) || attempt === MAX_RETRIES) break;
+      if (response.ok || !RETRY_STATUSES.has(response.status) || attempt === maxRetries) break;
       const backoffMs = 1000 * Math.pow(2, attempt); // 1s, 2s, 4s
       log.info("feed_fetch_retry", {
         podcastId,
@@ -134,11 +134,12 @@ async function processPodcast(
   log: PipelineLogger,
   maxEpisodes: number,
   fetchTimeoutMs: number,
-  refreshJobId?: string
+  refreshJobId?: string,
+  maxRetries = 3,
 ): Promise<void> {
   // Try direct RSS fetch first
   const directResult = await fetchRssDirect(
-    podcast.feedUrl, maxEpisodes, fetchTimeoutMs, log, podcast.id,
+    podcast.feedUrl, maxEpisodes, fetchTimeoutMs, log, podcast.id, maxRetries,
   );
 
   let feed: ParsedFeed;
@@ -453,6 +454,7 @@ export async function handleFeedRefresh(
 
     const maxEpisodes = (await getConfig(prisma, "pipeline.feedRefresh.maxEpisodesPerPodcast", 5)) as number;
     const fetchTimeoutMs = (await getConfig(prisma, "pipeline.feedRefresh.fetchTimeoutMs", 10000)) as number;
+    const maxRetries = (await getConfig(prisma, "pipeline.feedRefresh.maxRetries", 3)) as number;
 
     // Process all podcasts in parallel
     await Promise.allSettled(
@@ -469,7 +471,7 @@ export async function handleFeedRefresh(
         }
 
         try {
-          await processPodcast(podcast, prisma, env, log, maxEpisodes, fetchTimeoutMs, refreshJobId);
+          await processPodcast(podcast, prisma, env, log, maxEpisodes, fetchTimeoutMs, refreshJobId, maxRetries);
         } catch (err) {
           // Log and continue — don't let one failed feed block others
           log.error("podcast_error", { podcastId: podcast.id }, err);

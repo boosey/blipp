@@ -1,8 +1,10 @@
 import type { CronLogger } from "./runner";
+import { getConfig } from "../config";
 
 type PrismaLike = {
   plan: { findFirst: (args: any) => Promise<any> };
   user: { findMany: (args: any) => Promise<any[]> };
+  platformConfig: { findUnique: (args: any) => Promise<any> };
 };
 
 /**
@@ -13,7 +15,7 @@ export async function runUserLifecycleJob(
   prisma: PrismaLike,
   logger: CronLogger
 ): Promise<Record<string, unknown>> {
-  const trialDays = 14;
+  const trialDays = await getConfig(prisma, "user.trialDays", 14);
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - trialDays);
 

@@ -3,6 +3,7 @@ import { getAuth } from "../../middleware/auth";
 import type { Env } from "../../types";
 import { writeAuditLog } from "../../lib/audit-log";
 import { DURATION_TIERS } from "../../lib/constants";
+import { getOwnedKeys, isDynamicKeyOwned, CONFIG_REGISTRY } from "../../lib/config-registry";
 
 const configRoutes = new Hono<{ Bindings: Env }>();
 
@@ -26,9 +27,15 @@ configRoutes.get("/", async (c) => {
     return c.json({ data: [] });
   }
 
+  // Filter out keys that are owned by dedicated admin pages
+  const ownedKeys = getOwnedKeys();
+  const systemConfigs = configs.filter(
+    (cfg: any) => !ownedKeys.has(cfg.key) && !isDynamicKeyOwned(cfg.key)
+  );
+
   // Group by key prefix (e.g., "pipeline.timeout" -> "pipeline")
-  const grouped = new Map<string, typeof configs>();
-  for (const cfg of configs) {
+  const grouped = new Map<string, typeof systemConfigs>();
+  for (const cfg of systemConfigs) {
     const prefix = cfg.key.split(".")[0] ?? "general";
     if (!grouped.has(prefix)) grouped.set(prefix, []);
     grouped.get(prefix)!.push(cfg);
@@ -40,7 +47,8 @@ configRoutes.get("/", async (c) => {
       id: e.id,
       key: e.key,
       value: e.value,
-      description: e.description,
+      // Prefer registry description (always up-to-date) over DB description
+      description: CONFIG_REGISTRY[e.key]?.description ?? e.description,
       updatedAt: e.updatedAt.toISOString(),
       updatedBy: e.updatedBy,
     })),

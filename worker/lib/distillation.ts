@@ -1,10 +1,10 @@
 import { z } from "zod";
 import type { LlmProvider, LlmCompletionOptions } from "./llm-providers";
 import { calculateTokenCost, type AiUsage, type ModelPricing } from "./ai-usage";
-import { getRequiredConfig } from "./config";
+import { getConfig, getRequiredConfig } from "./config";
 import { PROMPT_CONFIG_KEYS } from "./prompt-defaults";
 
-/** Words spoken per minute for podcast-style narration. */
+/** Default speaking rate — overridable via PlatformConfig audio.wordsPerMinute. */
 export const WORDS_PER_MINUTE = 150;
 
 /** A single factual claim extracted from a podcast transcript. */
@@ -181,7 +181,8 @@ export async function generateNarrative(
   pricing: ModelPricing | null = null,
   metadata?: EpisodeMetadata
 ): Promise<{ narrative: string; usage: AiUsage }> {
-  const targetWords = Math.round(durationMinutes * WORDS_PER_MINUTE);
+  const wpm = await getConfig(prisma, "audio.wordsPerMinute", WORDS_PER_MINUTE) as number;
+  const targetWords = Math.round(durationMinutes * wpm);
   const hasExcerpts = claims.length > 0 && "excerpt" in claims[0];
 
   const systemPrompt = hasExcerpts
@@ -197,7 +198,7 @@ export async function generateNarrative(
   const userContent = (userTemplate as string)
     .replace("{{targetWords}}", String(targetWords))
     .replace("{{durationMinutes}}", String(durationMinutes))
-    .replace("{{wpm}}", String(WORDS_PER_MINUTE))
+    .replace("{{wpm}}", String(wpm))
     .replace("{{metadataBlock}}", metadataIntro as string)
     .replace("{{podcastTitle}}", metadata?.podcastTitle ?? "")
     .replace("{{episodeTitle}}", metadata?.episodeTitle ?? "")

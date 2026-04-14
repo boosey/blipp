@@ -10,7 +10,7 @@ import { calculateAudioCost, type AiUsage } from "../lib/ai-usage";
 import { safeFetch } from "../lib/url-validation";
 import { writeEvent } from "../lib/pipeline-events";
 import { writeAiError, classifyAiError, AiProviderError } from "../lib/ai-errors";
-import { recordSuccess, recordFailure } from "../lib/circuit-breaker";
+import { recordSuccess, recordFailure, initCircuitBreakerConfig } from "../lib/circuit-breaker";
 import { probeAudio, transcribeChunked } from "../lib/stt/audio-probe";
 import { DEFAULT_STT_CHUNK_SIZE, MIN_AUDIO_SIZE_BYTES, ASSUMED_BITRATE_BYTES_PER_SEC, STT_BYTES_PER_TOKEN } from "../lib/constants";
 import type { TranscriptionMessage } from "../lib/queue-messages";
@@ -24,6 +24,7 @@ export async function handleTranscription(
   ctx: ExecutionContext
 ): Promise<void> {
   const prisma = createPrismaClient(env.HYPERDRIVE);
+  await initCircuitBreakerConfig(prisma);
 
   try {
     const log = await createPipelineLogger({ stage: "transcription", prisma });

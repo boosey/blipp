@@ -61,6 +61,7 @@ vi.mock("../../lib/pipeline-events", () => ({
 vi.mock("../../lib/circuit-breaker", () => ({
   recordSuccess: vi.fn(),
   recordFailure: vi.fn(),
+  initCircuitBreakerConfig: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("../../lib/ai-errors", () => {

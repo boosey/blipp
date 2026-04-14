@@ -9,10 +9,11 @@ import { getTtsProviderImpl } from "../lib/tts/providers";
 import { wpKey, putWorkProduct, getWorkProduct } from "../lib/work-products";
 import { writeEvent } from "../lib/pipeline-events";
 import { writeAiError, classifyAiError, AiProviderError } from "../lib/ai-errors";
-import { recordSuccess, recordFailure } from "../lib/circuit-breaker";
+import { recordSuccess, recordFailure, initCircuitBreakerConfig } from "../lib/circuit-breaker";
 import { chunkNarrativeText, createSilenceFrame, concatenateAudioChunks, parseInputLimitError, limitToSafeMaxChars } from "../lib/tts/chunking";
 import { normalizeForTts } from "../lib/tts/normalize";
 import { DEFAULT_TTS_MAX_INPUT_CHARS } from "../lib/constants";
+import { getConfig } from "../lib/config";
 import type { AudioGenerationMessage } from "../lib/queue-messages";
 import type { Env } from "../types";
 
@@ -33,6 +34,7 @@ export async function handleAudioGeneration(
 ): Promise<void> {
   const prisma = createPrismaClient(env.HYPERDRIVE);
   const log = await createPipelineLogger({ stage: "audio-generation", prisma });
+  await initCircuitBreakerConfig(prisma);
 
   try {
     log.info("batch_start", { messageCount: batch.messages.length });
@@ -198,7 +200,10 @@ export async function handleAudioGeneration(
 
           try {
             const ttsTimer = log.timer("tts_generation");
-            const voiceConfig = extractProviderConfig(presetConfig, resolved.provider);
+            const rawVoiceConfig = extractProviderConfig(presetConfig, resolved.provider);
+            // If no voice set (no preset), use PlatformConfig default
+            const defaultVoice = rawVoiceConfig.voice ? undefined : await getConfig(prisma, "audio.defaultVoice", "coral") as string;
+            const voiceConfig = { ...rawVoiceConfig, voice: rawVoiceConfig.voice ?? defaultVoice };
 
             // generateChunked: shared logic for single-shot and chunked TTS
             const generateChunked = async (chunks: string[]) => {

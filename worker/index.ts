@@ -168,26 +168,34 @@ app.get("/api/health/deep", async (c) => {
 });
 
 // Rate limiting — applied after auth (uses userId) but before route tree.
-// Specific expensive endpoints get tighter limits.
+// Limits are configurable via PlatformConfig (60s cache); static values are fallback defaults.
 app.use(
   "/api/briefings/generate",
-  rateLimit({ windowMs: 3_600_000, maxRequests: 10, keyPrefix: "rl:generate" })
+  rateLimit({
+    windowMs: 3_600_000, maxRequests: 10, keyPrefix: "rl:generate",
+    configKeys: { windowMs: "rateLimit.briefingGenerate.windowMs", maxRequests: "rateLimit.briefingGenerate.maxRequests" },
+  })
 );
 app.use(
   "/api/voice-presets/*/preview",
-  rateLimit({ windowMs: 60_000, maxRequests: 20, keyPrefix: "rl:voice-preview" })
+  rateLimit({
+    windowMs: 60_000, maxRequests: 20, keyPrefix: "rl:voice-preview",
+    configKeys: { windowMs: "rateLimit.voicePreview.windowMs", maxRequests: "rateLimit.voicePreview.maxRequests" },
+  })
 );
 app.use(
   "/api/podcasts/subscribe",
-  rateLimit({ windowMs: 60_000, maxRequests: 5, keyPrefix: "rl:subscribe" })
+  rateLimit({
+    windowMs: 60_000, maxRequests: 5, keyPrefix: "rl:subscribe",
+    configKeys: { windowMs: "rateLimit.subscribe.windowMs", maxRequests: "rateLimit.subscribe.maxRequests" },
+  })
 );
-// General API rate limit (120 req/min). Webhooks are exempt — they're
+// General API rate limit. Webhooks are exempt — they're
 // server-to-server from Clerk/Stripe and don't carry user auth.
 app.use("/api/*", rateLimit({
-  windowMs: 60_000,
-  maxRequests: 120,
-  keyPrefix: "rl:api",
+  windowMs: 60_000, maxRequests: 120, keyPrefix: "rl:api",
   skipPaths: ["/api/webhooks/", "/api/health"],
+  configKeys: { windowMs: "rateLimit.api.windowMs", maxRequests: "rateLimit.api.maxRequests" },
 }));
 
 // Cache read-heavy endpoints
