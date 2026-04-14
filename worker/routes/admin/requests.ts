@@ -24,7 +24,7 @@ requestsRoutes.get("/", async (c) => {
       orderBy: { createdAt: "desc" },
       include: {
         user: { select: { name: true, email: true } },
-        feedItems: { select: { source: true }, take: 1 },
+        feedItems: { select: { source: true, briefingId: true }, take: 1 },
         jobs: {
           orderBy: { createdAt: "asc" },
           include: {
@@ -51,7 +51,7 @@ requestsRoutes.get("/", async (c) => {
       items: r.items as unknown as BriefingRequestItem[],
       isTest: r.isTest,
       source: r.feedItems?.[0]?.source ?? null,
-      briefingId: r.briefingId,
+      briefingId: r.feedItems?.[0]?.briefingId ?? null,
       errorMessage: r.errorMessage,
       podcastTitle: firstJob?.episode?.podcast?.title ?? null,
       episodeTitle: firstJob?.episode?.title ?? null,
