@@ -289,14 +289,15 @@ serviceKeysRoutes.delete("/:id", async (c) => {
   if (!existing) return c.json({ error: "Service key not found" }, 404);
 
   // Check if any context assignments reference this key
-  const assignments = await prisma.platformConfig.findMany({
-    where: {
-      key: { startsWith: "serviceKey.assignment." },
-      value: id,
-    },
+  const allAssignments = await prisma.platformConfig.findMany({
+    where: { key: { startsWith: "serviceKey.assignment." } },
   });
-  if (assignments.length > 0) {
-    const contexts = assignments.map((a: any) =>
+  const referencingAssignments = allAssignments.filter((a: any) => {
+    const val = typeof a.value === "string" ? a.value : String(a.value);
+    return val === id;
+  });
+  if (referencingAssignments.length > 0) {
+    const contexts = referencingAssignments.map((a: any) =>
       a.key.replace("serviceKey.assignment.", "")
     );
     return c.json(
@@ -564,22 +565,31 @@ serviceKeysRoutes.post("/dedupe", async (c) => {
     groups.get(key)!.push(sk);
   }
 
+  // Fetch all assignments once (value is Json, so we filter in code)
+  const allAssignments = await prisma.platformConfig.findMany({
+    where: { key: { startsWith: "serviceKey.assignment." } },
+  });
+
   let deleted = 0;
   for (const [, dupes] of groups) {
     if (dupes.length <= 1) continue;
-    // Keep the first (oldest), delete the rest
     const keep = dupes[0];
     const toDelete = dupes.slice(1);
 
     for (const dup of toDelete) {
       // Reassign any context assignments pointing to the duplicate
-      await prisma.platformConfig.updateMany({
-        where: {
-          key: { startsWith: "serviceKey.assignment." },
-          value: dup.id,
-        },
-        data: { value: keep.id },
-      });
+      for (const assignment of allAssignments) {
+        // PlatformConfig.value is Json — may be stored as quoted string
+        const val = typeof assignment.value === "string"
+          ? assignment.value
+          : JSON.stringify(assignment.value).replace(/"/g, "");
+        if (val === dup.id) {
+          await prisma.platformConfig.update({
+            where: { id: assignment.id },
+            data: { value: keep.id },
+          });
+        }
+      }
       await prisma.serviceKey.delete({ where: { id: dup.id } });
       deleted++;
     }
