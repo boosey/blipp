@@ -25,6 +25,8 @@ interface SystemConfigDef {
 
 const SYSTEM_CONFIGS: SystemConfigDef[] = [
   { key: "pipeline.logLevel", label: "Pipeline Log Level", type: "select", description: "Controls verbosity of pipeline console output", default: "info", options: ["error", "info", "debug"] },
+  { key: "geoClassification.batchSize", label: "Geo Tagging Batch Size", type: "number", description: "Max podcasts to geo-tag per cron run", default: 2000 },
+  { key: "geoClassification.llmBatchSize", label: "Geo Tagging LLM Batch Size", type: "number", description: "Podcasts per LLM classification call (10-20 recommended)", default: 10 },
 ];
 
 /** Number input that holds local state and saves on blur to avoid focus loss. */
