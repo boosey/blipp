@@ -1,13 +1,10 @@
 /**
- * One-shot cleanup: remove low-quality geo profiles created by overly broad
- * "the South"/"the Midwest" regional matching and weak state-level matches.
+ * One-shot cleanup: remove keyword-sourced geo profiles so the LLM-primary
+ * geo-tagging pipeline can re-evaluate all podcasts cleanly.
  *
- * Deletes:
- *   1. All "regional" scope profiles (from removed "the South"/"the Midwest" phrases)
- *   2. All "state" scope profiles with confidence < 0.7 (description-only state mentions)
- *
- * Then resets geoProcessedAt on affected podcasts so the geo-tagging cron
- * re-evaluates them with the tighter rules.
+ * Deletes all keyword-sourced PodcastGeoProfile records and resets
+ * geoProcessedAt on affected podcasts so the cron re-processes them.
+ * LLM-sourced profiles are kept as-is.
  *
  * Usage:
  *   npx tsx scripts/cleanup-geo-profiles.ts          # staging (dry run)
@@ -45,51 +42,47 @@ await client.connect();
 
 try {
   // Count what we're about to delete
-  const regionalCount = await client.query(
-    `SELECT COUNT(*) FROM "PodcastGeoProfile" WHERE "scope" = 'regional'`
+  const keywordCount = await client.query(
+    `SELECT COUNT(*) FROM "PodcastGeoProfile" WHERE "source" = 'keyword'`
   );
-  const stateCount = await client.query(
-    `SELECT COUNT(*) FROM "PodcastGeoProfile" WHERE "scope" = 'state' AND "confidence" < 0.7`
+  const affectedPodcasts = await client.query(
+    `SELECT COUNT(DISTINCT "podcastId") FROM "PodcastGeoProfile" WHERE "source" = 'keyword'`
+  );
+  const llmKept = await client.query(
+    `SELECT COUNT(*) FROM "PodcastGeoProfile" WHERE "source" = 'llm'`
   );
 
-  console.log(`Regional profiles to delete: ${regionalCount.rows[0].count}`);
-  console.log(`Low-confidence state profiles to delete: ${stateCount.rows[0].count}`);
-
-  // Find affected podcast IDs before deleting
-  const affectedPodcasts = await client.query(`
-    SELECT DISTINCT "podcastId" FROM "PodcastGeoProfile"
-    WHERE "scope" = 'regional'
-       OR ("scope" = 'state' AND "confidence" < 0.7)
-  `);
-  console.log(`Podcasts to re-process: ${affectedPodcasts.rows.length}\n`);
+  console.log(`Keyword profiles to delete: ${keywordCount.rows[0].count}`);
+  console.log(`Podcasts to re-process: ${affectedPodcasts.rows[0].count}`);
+  console.log(`LLM profiles kept: ${llmKept.rows[0].count}`);
 
   if (!isExec) {
-    console.log("Pass --exec to execute. Exiting dry run.");
+    console.log("\nPass --exec to execute. Exiting dry run.");
     process.exit(0);
   }
 
-  // Delete junk profiles
-  const delRegional = await client.query(
-    `DELETE FROM "PodcastGeoProfile" WHERE "scope" = 'regional'`
+  // Find affected podcast IDs before deleting
+  const podcastIds = await client.query(
+    `SELECT DISTINCT "podcastId" FROM "PodcastGeoProfile" WHERE "source" = 'keyword'`
   );
-  console.log(`Deleted ${delRegional.rowCount} regional profiles`);
 
-  const delState = await client.query(
-    `DELETE FROM "PodcastGeoProfile" WHERE "scope" = 'state' AND "confidence" < 0.7`
+  // Delete all keyword-sourced profiles
+  const deleted = await client.query(
+    `DELETE FROM "PodcastGeoProfile" WHERE "source" = 'keyword'`
   );
-  console.log(`Deleted ${delState.rowCount} low-confidence state profiles`);
+  console.log(`\nDeleted ${deleted.rowCount} keyword profiles`);
 
-  // Reset geoProcessedAt so cron re-evaluates these podcasts
-  const podcastIds = affectedPodcasts.rows.map((r: any) => r.podcastId);
-  if (podcastIds.length > 0) {
+  // Reset geoProcessedAt so cron re-evaluates these podcasts via LLM
+  const ids = podcastIds.rows.map((r: any) => r.podcastId);
+  if (ids.length > 0) {
     const reset = await client.query(
       `UPDATE "Podcast" SET "geoProcessedAt" = NULL WHERE "id" = ANY($1)`,
-      [podcastIds]
+      [ids]
     );
     console.log(`Reset geoProcessedAt on ${reset.rowCount} podcasts`);
   }
 
-  console.log("\nDone.");
+  console.log("\nDone. These podcasts will be re-processed by the LLM-primary geo-tagging cron.");
 } finally {
   await client.end();
 }

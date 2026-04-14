@@ -1,18 +1,21 @@
 import type { CronLogger } from "./runner";
 import type { Env } from "../../types";
 import { getConfig } from "../config";
-import {
-  findCityMatches,
-  findStateMatches,
-  findRegionalMatches,
-  type GeoMatch,
-} from "../geo-lookup";
+import { findCityMatches, type GeoMatch } from "../geo-lookup";
 import { getLlmProviderImpl } from "../llm-providers";
+import {
+  calculateTokenCost,
+  getModelPricing,
+  type ModelPricing,
+} from "../ai-usage";
 
 /**
  * Two-pass geo-tagging cron job:
- * 1. Keyword matching using geo-lookup tables + sports team keywords from DB
- * 2. LLM classification for unmatched Sports podcasts
+ * 1. Keyword matching — only unambiguous city-name matches in titles
+ * 2. LLM classification — everything else (sports teams, regional, state-level)
+ *
+ * The LLM approach eliminates false positives from keyword heuristics
+ * (e.g., Southampton "Saints" ≠ New Orleans Saints).
  */
 export async function runGeoTaggingJob(
   prisma: any,
@@ -27,7 +30,6 @@ export async function runGeoTaggingJob(
 
   await logger.info(`Fetching up to ${batchSize} unprocessed podcasts for geo-tagging`);
 
-  // Fetch unprocessed podcasts
   const podcasts = await prisma.podcast.findMany({
     where: {
       geoProcessedAt: null,
@@ -44,92 +46,48 @@ export async function runGeoTaggingJob(
 
   if (podcasts.length === 0) {
     await logger.info("All podcasts already geo-processed — nothing to do");
-    return { processed: 0, pass1Matched: 0, pass2Matched: 0, pass2Attempted: 0 };
+    return { processed: 0, pass1Matched: 0, pass2Matched: 0, pass2Attempted: 0, totalCost: 0, totalInputTokens: 0, totalOutputTokens: 0 };
   }
 
   await logger.info(`Processing ${podcasts.length} podcast(s)`);
 
-  // Load sports teams with keywords for team-level matching
-  const sportsTeams = await prisma.sportsTeam.findMany({
-    select: {
-      id: true,
-      keywords: true,
-      markets: { select: { city: true, state: true } },
-    },
-  });
-
-  // ── Pass 1: Keyword matching ──
+  // ── Pass 1: High-confidence city-name matches (title only) ──
   let pass1Matched = 0;
-  const unmatchedSports: typeof podcasts = [];
+  const llmCandidates: typeof podcasts = [];
 
   for (const podcast of podcasts) {
     const title = podcast.title ?? "";
-    const description = podcast.description ?? "";
-    const categories: string[] = podcast.categories ?? [];
-    const isSports = categories.some(
-      (c: string) => c.toLowerCase().includes("sport")
+    // Only keep title-based city matches (confidence 0.9) — skip description-only
+    const cityMatches = findCityMatches(title, "").filter(
+      (m) => m.confidence >= 0.9
     );
 
-    // Check sports team keywords — standalone nicknames (single-word keywords
-    // like "Saints", "Bears", "Eagles") are too ambiguous for non-Sports podcasts
-    // so we only match those against Sports-category pods. Multi-word keywords
-    // like "New Orleans Saints" or "Da Bears" are specific enough to match anywhere.
-    const teamMatches: GeoMatch[] = [];
-    for (const team of sportsTeams) {
-      const keywords: string[] = team.keywords ?? [];
-      for (const keyword of keywords) {
-        const isSingleWord = !keyword.includes(" ");
-        if (isSingleWord && !isSports) continue; // skip ambiguous nicknames for non-sports pods
-
-        const pattern = new RegExp(`\\b${keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
-        if (pattern.test(title) || pattern.test(description)) {
-          for (const market of team.markets) {
-            teamMatches.push({
-              city: market.city,
-              state: market.state,
-              scope: "city",
-              confidence: isSingleWord ? 0.85 : 0.95, // lower confidence for nickname-only matches
-              teamId: team.id,
-            });
-          }
-          break; // one keyword match per team is enough
-        }
-      }
-    }
-
-    // Geo-lookup matching
-    const cityMatches = findCityMatches(title, description);
-    const stateMatches = findStateMatches(title, description);
-    const regionalMatches = findRegionalMatches(title, description);
-
-    const allMatches = [...teamMatches, ...cityMatches, ...stateMatches, ...regionalMatches];
-
-    if (allMatches.length > 0) {
-      // Deduplicate by city+state+teamId, keeping highest confidence
-      const deduped = deduplicateMatches(allMatches);
+    if (cityMatches.length > 0) {
+      const deduped = deduplicateMatches(cityMatches);
       await writeGeoProfiles(prisma, podcast.id, deduped, "keyword");
       pass1Matched++;
     } else {
-      // Unmatched Sports podcasts are candidates for LLM pass
-      if (isSports) {
-        unmatchedSports.push(podcast);
-      }
+      // Everything without a strong title match goes to LLM
+      llmCandidates.push(podcast);
     }
 
-    // Mark as geo-processed regardless of match
+    // Mark as geo-processed regardless
     await prisma.podcast.update({
       where: { id: podcast.id },
       data: { geoProcessedAt: new Date() },
     });
   }
 
-  await logger.info(`Pass 1 complete: ${pass1Matched} matched by keywords, ${unmatchedSports.length} unmatched Sports podcast(s) for LLM`);
+  await logger.info(`Pass 1 complete: ${pass1Matched} matched by city keywords, ${llmCandidates.length} candidate(s) for LLM`);
 
-  // ── Pass 2: Batched LLM classification for unmatched Sports podcasts ──
+  // ── Pass 2: LLM classification for everything else ──
   let pass2Matched = 0;
-  const pass2Attempted = unmatchedSports.length;
+  const pass2Attempted = llmCandidates.length;
+  let totalCost = 0;
+  let totalInputTokens = 0;
+  let totalOutputTokens = 0;
 
-  if (unmatchedSports.length > 0) {
+  if (llmCandidates.length > 0) {
     const llmProviderId = await getConfig<string>(
       prisma,
       "geoClassification.llmProviderId",
@@ -151,25 +109,50 @@ export async function runGeoTaggingJob(
           10
         );
 
-        // Process in batches
-        for (let i = 0; i < unmatchedSports.length; i += llmBatchSize) {
-          const batch = unmatchedSports.slice(i, i + llmBatchSize);
+        // Fetch pricing for cost tracking
+        const pricing: ModelPricing | null = {
+          priceInputPerMToken: aiProvider.priceInputPerMToken,
+          priceOutputPerMToken: aiProvider.priceOutputPerMToken,
+        };
+
+        // Load sports teams for context in the LLM prompt
+        const sportsTeams = await prisma.sportsTeam.findMany({
+          select: {
+            name: true,
+            nickname: true,
+            markets: { select: { city: true, state: true } },
+          },
+        });
+
+        for (let i = 0; i < llmCandidates.length; i += llmBatchSize) {
+          const batch = llmCandidates.slice(i, i + llmBatchSize);
           try {
             const result = await provider.complete(
               [
                 {
                   role: "user",
-                  content: buildBatchGeoClassificationPrompt(batch),
+                  content: buildBatchGeoClassificationPrompt(batch, sportsTeams),
                 },
               ],
               model,
               256 * batch.length,
               env,
               {
-                system:
-                  "You classify podcasts by US geographic market. Return valid JSON only.",
+                system: GEO_SYSTEM_PROMPT,
               }
             );
+
+            // Track tokens and cost
+            totalInputTokens += result.inputTokens;
+            totalOutputTokens += result.outputTokens;
+            const batchCost = calculateTokenCost(
+              pricing,
+              result.inputTokens,
+              result.outputTokens,
+              result.cacheCreationTokens,
+              result.cacheReadTokens
+            );
+            if (batchCost !== null) totalCost += batchCost;
 
             const batchResults = parseBatchGeoClassificationResponse(result.text, batch);
             for (const [podcastId, matches] of Object.entries(batchResults)) {
@@ -194,7 +177,7 @@ export async function runGeoTaggingJob(
       }
     } else {
       await logger.info("geo_tagging_llm_skipped", {
-        unmatchedSports: unmatchedSports.length,
+        llmCandidates: llmCandidates.length,
         message: "No LLM provider configured for geo classification",
       });
     }
@@ -205,6 +188,9 @@ export async function runGeoTaggingJob(
     pass1Matched,
     pass2Matched,
     pass2Attempted,
+    totalCost: `$${totalCost.toFixed(4)}`,
+    totalInputTokens,
+    totalOutputTokens,
   });
 
   return {
@@ -212,6 +198,9 @@ export async function runGeoTaggingJob(
     pass1Matched,
     pass2Matched,
     pass2Attempted,
+    totalCost: Math.round(totalCost * 10000) / 10000,
+    totalInputTokens,
+    totalOutputTokens,
   };
 }
 
@@ -263,16 +252,38 @@ async function writeGeoProfiles(
   }
 }
 
+const GEO_SYSTEM_PROMPT = `You classify podcasts by US geographic market. You must be precise:
+
+RULES:
+- Only tag podcasts that are PRIMARILY ABOUT a specific US city, state, or region
+- Sports teams: match to their HOME MARKET city/state (e.g., "New Orleans Saints" → New Orleans, Louisiana)
+- Do NOT tag podcasts that merely mention a location in passing
+- Do NOT tag international content to US markets (e.g., Southampton FC is UK, not US)
+- Do NOT tag national US content to specific markets unless it has a clear local focus
+- For podcasts with no US geographic focus, return an empty array []
+- confidence: 0.9+ for primary market, 0.7-0.8 for secondary/partial
+
+Return valid JSON only.`;
+
 function buildBatchGeoClassificationPrompt(
-  podcasts: { id: string; title: string | null; description: string | null }[]
+  podcasts: { id: string; title: string | null; description: string | null }[],
+  sportsTeams: { name: string; nickname: string; markets: { city: string; state: string }[] }[]
 ): string {
   const entries = podcasts
     .map((p, i) => `[${i + 1}] id=${p.id}\nTitle: ${p.title ?? ""}\nDescription: ${(p.description ?? "").slice(0, 300)}`)
     .join("\n\n");
 
+  // Provide sports team context so the LLM can disambiguate
+  const teamList = sportsTeams
+    .map((t) => `${t.name} (${t.nickname}) → ${t.markets.map((m) => `${m.city}, ${m.state}`).join("; ")}`)
+    .join("\n");
+
   return `Classify each podcast by US geographic market.
 
 ${entries}
+
+US Sports Teams for reference:
+${teamList}
 
 Return a JSON object mapping podcast ID to its geo matches:
 {
@@ -282,9 +293,11 @@ Return a JSON object mapping podcast ID to its geo matches:
 
 Rules:
 - For state-level matches, set city to ""
-- For podcasts with no geographic bias, use an empty array []
+- For podcasts with no US geographic focus, use an empty array []
 - scope must be one of: "city", "state", "regional"
-- confidence should reflect how certain you are (0.5-1.0)`;
+- confidence should reflect how certain you are (0.7-1.0)
+- Match sports podcasts to the team's HOME MARKET, not where the sport originated
+- International sports (Premier League, La Liga, etc.) should get empty arrays unless the podcast specifically covers a US market angle`;
 }
 
 function parseBatchGeoClassificationResponse(
@@ -292,13 +305,11 @@ function parseBatchGeoClassificationResponse(
   podcasts: { id: string }[]
 ): Record<string, GeoMatch[]> {
   const results: Record<string, GeoMatch[]> = {};
-  // Initialize all podcast IDs with empty arrays
   for (const p of podcasts) {
     results[p.id] = [];
   }
 
   try {
-    // Extract the JSON object from response
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return results;
     const parsed = JSON.parse(jsonMatch[0]);

@@ -343,21 +343,21 @@ export function Discover() {
                 </span>
               </AccordionTrigger>
               <AccordionContent>
-                <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+                <ScrollableRow className="gap-3 pb-2">
                   {localData.data.localInterests.map((item) => (
                     <button
                       key={item.podcast.id}
                       onClick={() => openPodcast(item.podcast.id)}
-                      className="text-left"
+                      className="flex-shrink-0 w-28 snap-start text-left"
                     >
                       {item.podcast.imageUrl ? (
                         <img
                           src={item.podcast.imageUrl}
-                          className="w-full aspect-square rounded-lg object-cover"
+                          className="w-28 h-28 rounded-lg object-cover"
                           alt=""
                         />
                       ) : (
-                        <div className="w-full aspect-square rounded-lg bg-muted flex items-center justify-center">
+                        <div className="w-28 h-28 rounded-lg bg-muted flex items-center justify-center">
                           <span className="text-2xl font-bold text-muted-foreground">
                             {item.podcast.title.charAt(0).toUpperCase()}
                           </span>
@@ -371,7 +371,7 @@ export function Discover() {
                       )}
                     </button>
                   ))}
-                </div>
+                </ScrollableRow>
               </AccordionContent>
             </AccordionItem>
         </Accordion>

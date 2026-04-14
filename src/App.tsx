@@ -46,6 +46,7 @@ const AdminAuditLog = lazy(() => import("./pages/admin/audit-log"));
 const AdminAiErrors = lazy(() => import("./pages/admin/ai-errors"));
 const AdminWorkerLogs = lazy(() => import("./pages/admin/worker-logs"));
 const AdminAds = lazy(() => import("./pages/admin/ads"));
+const GeoTagging = lazy(() => import("./pages/admin/geo-tagging"));
 const AdminRecommendations = lazy(() => import("./pages/admin/recommendations"));
 const CatalogDiscovery = lazy(() => import("./pages/admin/catalog-discovery"));
 const PodcastSources = lazy(() => import("./pages/admin/podcast-sources"));
@@ -170,6 +171,7 @@ export default function App() {
         <Route path="dlq" element={<Suspense fallback={<AdminLoading />}><DlqMonitor /></Suspense>} />
         <Route path="voice-presets" element={<Suspense fallback={<AdminLoading />}><VoicePresets /></Suspense>} />
         <Route path="episode-refresh" element={<Suspense fallback={<AdminLoading />}><EpisodeRefresh /></Suspense>} />
+        <Route path="geo-tagging" element={<Suspense fallback={<AdminLoading />}><GeoTagging /></Suspense>} />
       </Route>
 
       {/* Catch-all 404 for unauthenticated users */}

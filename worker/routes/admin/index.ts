@@ -32,6 +32,7 @@ import { feedbackRoutes } from "./feedback";
 import { blippFeedbackRoutes } from "./blipp-feedback";
 import { publisherReportsRoutes } from "./publisher-reports";
 import { catalogPregenRoutes } from "./catalog-pregen";
+import { geoTaggingRoutes } from "./geo-tagging";
 
 /**
  * Admin route tree. All routes require admin authentication.
@@ -103,5 +104,6 @@ adminRoutes.route("/feedback", feedbackRoutes);
 adminRoutes.route("/blipp-feedback", blippFeedbackRoutes);
 adminRoutes.route("/publisher-reports", publisherReportsRoutes);
 adminRoutes.route("/catalog-pregen", catalogPregenRoutes);
+adminRoutes.route("/geo-tagging", geoTaggingRoutes);
 
 export { adminRoutes };
