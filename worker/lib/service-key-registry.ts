@@ -126,6 +126,16 @@ export const SERVICE_KEY_CONTEXTS: ServiceKeyContext[] = [
     usageTrackable: false,
   },
   {
+    context: "catalog.podcast-index-secret",
+    label: "Podcast Index Secret",
+    provider: "podcast-index",
+    envKey: "PODCAST_INDEX_SECRET",
+    group: "Catalog & Content",
+    description: "Podcast Index API secret (paired with key for HMAC auth)",
+    healthCheckable: false,
+    usageTrackable: false,
+  },
+  {
     context: "catalog.geo-classification",
     label: "Geo Classification (LLM)",
     provider: "anthropic",
