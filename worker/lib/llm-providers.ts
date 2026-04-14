@@ -54,7 +54,8 @@ export interface LlmProvider {
     providerModelId: string,
     maxTokens: number,
     env: Env,
-    options?: LlmCompletionOptions
+    options?: LlmCompletionOptions,
+    apiKeyOverride?: string
   ): Promise<LlmResult>;
 }
 
@@ -66,10 +67,10 @@ const AnthropicProvider: LlmProvider = {
   name: "Anthropic",
   provider: "anthropic",
 
-  async complete(messages, providerModelId, maxTokens, env, options) {
+  async complete(messages, providerModelId, maxTokens, env, options, apiKeyOverride) {
     const start = Date.now();
     try {
-      const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
+      const client = new Anthropic({ apiKey: apiKeyOverride ?? env.ANTHROPIC_API_KEY });
 
       // Build system parameter with optional prompt caching
       let system: Anthropic.MessageCreateParams["system"] | undefined;
@@ -135,7 +136,7 @@ const GroqLlmProvider: LlmProvider = {
   name: "Groq",
   provider: "groq",
 
-  async complete(messages, providerModelId, maxTokens, env, options) {
+  async complete(messages, providerModelId, maxTokens, env, options, apiKeyOverride) {
     const start = Date.now();
     // Groq uses OpenAI-compatible format: system prompt goes as a system role message
     const groqMessages = options?.system
@@ -144,7 +145,7 @@ const GroqLlmProvider: LlmProvider = {
     const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${env.GROQ_API_KEY}`,
+        Authorization: `Bearer ${apiKeyOverride ?? env.GROQ_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -191,7 +192,7 @@ const CloudflareLlmProvider: LlmProvider = {
   name: "Cloudflare Workers AI",
   provider: "cloudflare",
 
-  async complete(messages, providerModelId, maxTokens, env, options) {
+  async complete(messages, providerModelId, maxTokens, env, options, _apiKeyOverride) {
     const start = Date.now();
     // Cloudflare Workers AI: system prompt as a system role message
     const cfMessages = options?.system

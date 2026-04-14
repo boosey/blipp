@@ -25,7 +25,7 @@ export interface SttProvider {
   provider: string;
   /** Whether this provider can accept a URL directly (no audio download needed). */
   supportsUrl: boolean;
-  transcribe(audio: AudioInput, durationSeconds: number, env: Env, providerModelId: string): Promise<SttResult>;
+  transcribe(audio: AudioInput, durationSeconds: number, env: Env, providerModelId: string, apiKeyOverride?: string): Promise<SttResult>;
   poll?(jobId: string, env: Env): Promise<SttPollResult>;
 }
 
@@ -74,13 +74,14 @@ const OpenAIProvider: SttProvider = {
   provider: "openai",
   supportsUrl: false,
 
-  async transcribe(audio: AudioInput, _durationSeconds: number, env: Env, providerModelId: string): Promise<SttResult> {
+  async transcribe(audio: AudioInput, _durationSeconds: number, env: Env, providerModelId: string, apiKeyOverride?: string): Promise<SttResult> {
     const start = Date.now();
     const audioBuffer = await resolveAudioBuffer(audio);
     const filename = "buffer" in audio ? audio.filename : "audio.mp3";
+    const effectiveKey = apiKeyOverride ?? env.OPENAI_API_KEY;
 
     if (audioBuffer.byteLength <= WHISPER_CHUNK_SIZE) {
-      return openaiSingleRequest(audioBuffer, filename, env, providerModelId, start);
+      return openaiSingleRequest(audioBuffer, filename, effectiveKey, providerModelId, start);
     }
 
     const totalBytes = audioBuffer.byteLength;
@@ -90,7 +91,7 @@ const OpenAIProvider: SttProvider = {
       const offset = i * WHISPER_CHUNK_SIZE;
       const slice = audioBuffer.slice(offset, Math.min(offset + WHISPER_CHUNK_SIZE, totalBytes));
       try {
-        const result = await openaiSingleRequest(slice, `chunk-${i + 1}.mp3`, env, providerModelId, start);
+        const result = await openaiSingleRequest(slice, `chunk-${i + 1}.mp3`, effectiveKey, providerModelId, start);
         if (result.transcript) chunks.push(result.transcript);
       } catch (chunkErr) {
         const msg = chunkErr instanceof Error ? chunkErr.message : String(chunkErr);
@@ -112,7 +113,7 @@ const OpenAIProvider: SttProvider = {
 async function openaiSingleRequest(
   buffer: ArrayBuffer,
   filename: string,
-  env: Env,
+  apiKey: string,
   providerModelId: string,
   start: number,
 ): Promise<SttResult> {
@@ -123,7 +124,7 @@ async function openaiSingleRequest(
 
   const resp = await fetch("https://api.openai.com/v1/audio/transcriptions", {
     method: "POST",
-    headers: { Authorization: `Bearer ${env.OPENAI_API_KEY}` },
+    headers: { Authorization: `Bearer ${apiKey}` },
     body: form,
   });
 
@@ -152,8 +153,9 @@ const DeepgramProvider: SttProvider = {
   provider: "deepgram",
   supportsUrl: true,
 
-  async transcribe(audio: AudioInput, _durationSeconds: number, env: Env, providerModelId: string): Promise<SttResult> {
+  async transcribe(audio: AudioInput, _durationSeconds: number, env: Env, providerModelId: string, apiKeyOverride?: string): Promise<SttResult> {
     const start = Date.now();
+    const effectiveKey = apiKeyOverride ?? env.DEEPGRAM_API_KEY;
 
     let resp: Response;
     if ("url" in audio) {
@@ -162,7 +164,7 @@ const DeepgramProvider: SttProvider = {
         {
           method: "POST",
           headers: {
-            Authorization: `Token ${env.DEEPGRAM_API_KEY}`,
+            Authorization: `Token ${effectiveKey}`,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({ url: audio.url }),
@@ -174,7 +176,7 @@ const DeepgramProvider: SttProvider = {
         {
           method: "POST",
           headers: {
-            Authorization: `Token ${env.DEEPGRAM_API_KEY}`,
+            Authorization: `Token ${effectiveKey}`,
             "Content-Type": "audio/mpeg",
           },
           body: audio.buffer,
@@ -212,22 +214,23 @@ const GroqProvider: SttProvider = {
   provider: "groq",
   supportsUrl: true,
 
-  async transcribe(audio: AudioInput, _durationSeconds: number, env: Env, providerModelId: string): Promise<SttResult> {
+  async transcribe(audio: AudioInput, _durationSeconds: number, env: Env, providerModelId: string, apiKeyOverride?: string): Promise<SttResult> {
     const start = Date.now();
+    const effectiveKey = apiKeyOverride ?? env.GROQ_API_KEY;
 
     // URL-based transcription (handler passes { url } when appropriate)
     if ("url" in audio) {
-      return groqUrlRequest(audio.url, env, providerModelId, start);
+      return groqUrlRequest(audio.url, effectiveKey, providerModelId, start);
     }
 
     // Buffer-based transcription (handler passes { buffer } chunks)
-    return groqSingleRequest(audio.buffer, audio.filename, env, providerModelId, start);
+    return groqSingleRequest(audio.buffer, audio.filename, effectiveKey, providerModelId, start);
   },
 };
 
 async function groqUrlRequest(
   url: string,
-  env: Env,
+  apiKey: string,
   providerModelId: string,
   start: number,
 ): Promise<SttResult> {
@@ -237,7 +240,7 @@ async function groqUrlRequest(
 
   const resp = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
     method: "POST",
-    headers: { Authorization: `Bearer ${env.GROQ_API_KEY}` },
+    headers: { Authorization: `Bearer ${apiKey}` },
     body: form,
   });
 
@@ -260,7 +263,7 @@ async function groqUrlRequest(
 async function groqSingleRequest(
   buffer: ArrayBuffer,
   filename: string,
-  env: Env,
+  apiKey: string,
   providerModelId: string,
   start: number,
 ): Promise<SttResult> {
@@ -271,7 +274,7 @@ async function groqSingleRequest(
 
   const resp = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
     method: "POST",
-    headers: { Authorization: `Bearer ${env.GROQ_API_KEY}` },
+    headers: { Authorization: `Bearer ${apiKey}` },
     body: form,
   });
 
@@ -300,7 +303,7 @@ const CloudflareDeepgramProvider: SttProvider = {
   provider: "cloudflare-deepgram",
   supportsUrl: false,
 
-  async transcribe(audio: AudioInput, _durationSeconds: number, env: Env, providerModelId: string): Promise<SttResult> {
+  async transcribe(audio: AudioInput, _durationSeconds: number, env: Env, providerModelId: string, _apiKeyOverride?: string): Promise<SttResult> {
     const start = Date.now();
     const audioBuffer = await resolveAudioBuffer(audio);
 
@@ -330,7 +333,7 @@ const CloudflareWhisperProvider: SttProvider = {
   provider: "cloudflare",
   supportsUrl: false,
 
-  async transcribe(audio: AudioInput, _durationSeconds: number, env: Env, providerModelId: string): Promise<SttResult> {
+  async transcribe(audio: AudioInput, _durationSeconds: number, env: Env, providerModelId: string, _apiKeyOverride?: string): Promise<SttResult> {
     const start = Date.now();
     const audioBuffer = await resolveAudioBuffer(audio);
 

@@ -52,6 +52,7 @@ const CatalogDiscovery = lazy(() => import("./pages/admin/catalog-discovery"));
 const PodcastSources = lazy(() => import("./pages/admin/podcast-sources"));
 const ScheduledJobs = lazy(() => import("./pages/admin/scheduled-jobs"));
 const SystemSettings = lazy(() => import("./pages/admin/system-settings"));
+const ServiceKeys = lazy(() => import("./pages/admin/service-keys"));
 const DlqMonitor = lazy(() => import("./pages/admin/dlq"));
 const VoicePresets = lazy(() => import("./pages/admin/voice-presets"));
 const EpisodeRefresh = lazy(() => import("./pages/admin/episode-refresh"));
@@ -167,6 +168,7 @@ export default function App() {
         <Route path="blipp-feedback" element={<Suspense fallback={<AdminLoading />}><AdminBlippFeedback /></Suspense>} />
         <Route path="recommendations" element={<Suspense fallback={<AdminLoading />}><AdminRecommendations /></Suspense>} />
         <Route path="scheduled-jobs" element={<Suspense fallback={<AdminLoading />}><ScheduledJobs /></Suspense>} />
+        <Route path="service-keys" element={<Suspense fallback={<AdminLoading />}><ServiceKeys /></Suspense>} />
         <Route path="prompt-management" element={<Navigate to="/admin/stage-configuration" replace />} />
         <Route path="dlq" element={<Suspense fallback={<AdminLoading />}><DlqMonitor /></Suspense>} />
         <Route path="voice-presets" element={<Suspense fallback={<AdminLoading />}><VoicePresets /></Suspense>} />

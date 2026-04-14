@@ -21,7 +21,8 @@ export interface TtsProvider {
     providerModelId: string,
     instructions: string | undefined,
     env: Env,
-    speed?: number
+    speed?: number,
+    apiKeyOverride?: string
   ): Promise<TtsResult>;
 }
 
@@ -33,10 +34,10 @@ const OpenAITtsProvider: TtsProvider = {
   name: "OpenAI",
   provider: "openai",
 
-  async synthesize(text, voice, providerModelId, instructions, env, speed) {
+  async synthesize(text, voice, providerModelId, instructions, env, speed, apiKeyOverride) {
     const start = Date.now();
     try {
-      const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+      const client = new OpenAI({ apiKey: apiKeyOverride ?? env.OPENAI_API_KEY });
       const response = await client.audio.speech.create({
         model: providerModelId,
         voice: voice as any,
@@ -70,12 +71,12 @@ const GroqTtsProvider: TtsProvider = {
   name: "Groq",
   provider: "groq",
 
-  async synthesize(text, voice, providerModelId, _instructions, env) {
+  async synthesize(text, voice, providerModelId, _instructions, env, _speed, apiKeyOverride) {
     const start = Date.now();
     const resp = await fetch("https://api.groq.com/openai/v1/audio/speech", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${env.GROQ_API_KEY}`,
+        Authorization: `Bearer ${apiKeyOverride ?? env.GROQ_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -111,7 +112,7 @@ const CloudflareTtsProvider: TtsProvider = {
   name: "Cloudflare Workers AI",
   provider: "cloudflare",
 
-  async synthesize(text, voice, providerModelId, _instructions, env) {
+  async synthesize(text, voice, providerModelId, _instructions, env, _speed, _apiKeyOverride) {
     const start = Date.now();
     try {
       const result = (await env.AI.run(providerModelId as any, {

@@ -34,6 +34,7 @@ import {
   ThumbsDown,
   ExternalLink,
   Settings2,
+  Shield,
   Menu,
   X,
 } from "lucide-react";
@@ -134,6 +135,7 @@ const sidebarEntries: SidebarEntry[] = [
       { path: "analytics", label: "Analytics", icon: BarChart3 },
       { path: "feature-flags", label: "Feature Flags", icon: Flag },
       { path: "api-keys", label: "API Keys", icon: Key },
+      { path: "service-keys", label: "Service Keys", icon: Shield },
       { path: "audit-log", label: "Audit Log", icon: ScrollText },
       { path: "worker-logs", label: "Worker Logs", icon: ScrollText },
       { path: "scheduled-jobs", label: "Scheduled Jobs", icon: Clock },
