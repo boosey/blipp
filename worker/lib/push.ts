@@ -148,7 +148,7 @@ export async function notifyUser(
 
   let sent = 0;
   for (const sub of subscriptions) {
-    const ok = await sendPushNotification(sub, payload, env);
+    const ok = await sendPushNotification(sub, payload, env, prisma);
     if (ok) {
       sent++;
     } else {

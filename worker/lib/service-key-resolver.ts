@@ -31,8 +31,8 @@ export async function resolveApiKey(
 ): Promise<string> {
   const masterKey = env.SERVICE_KEY_ENCRYPTION_KEY;
 
-  // If no encryption key is configured, skip DB lookups entirely
-  if (masterKey) {
+  // If no encryption key or no prisma client, skip DB lookups entirely
+  if (masterKey && prisma) {
     try {
       if (context) {
         // Step 1a: Check provider-scoped assignment (e.g. "pipeline.distillation.anthropic")
