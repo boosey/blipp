@@ -193,7 +193,7 @@ catalogSeedRoutes.post("/trigger-apple", async (c) => {
 
   // Detect environment from request origin or APP_ORIGIN
   const host = c.req.header("host") ?? "";
-  const isProduction = host.includes("podblipp.com") || c.env.APP_ORIGIN?.includes("podblipp.com");
+  const isProduction = (host === "podblipp.com" || host === "www.podblipp.com") || c.env.ENVIRONMENT === "production";
   const environment = body.environment ?? (isProduction ? "production" : "staging");
 
   const resp = await fetch(
