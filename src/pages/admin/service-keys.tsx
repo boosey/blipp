@@ -75,6 +75,7 @@ const PROVIDERS = [
   { value: "stripe", label: "Stripe", envKeys: ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET"] },
   { value: "podcast-index", label: "Podcast Index", envKeys: ["PODCAST_INDEX_KEY", "PODCAST_INDEX_SECRET"] },
   { value: "cloudflare", label: "Cloudflare", envKeys: ["CF_API_TOKEN"] },
+  { value: "github", label: "GitHub", envKeys: ["GITHUB_TOKEN"] },
   { value: "neon", label: "Neon", envKeys: ["NEON_API_KEY"] },
   { value: "vapid", label: "VAPID", envKeys: ["VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY"] },
 ];

@@ -208,6 +208,16 @@ export const SERVICE_KEY_CONTEXTS: ServiceKeyContext[] = [
     usageTrackable: false,
   },
   {
+    context: "infra.github",
+    label: "GitHub Actions",
+    provider: "github",
+    envKey: "GITHUB_TOKEN",
+    group: "Infrastructure",
+    description: "GitHub PAT for triggering Actions workflows (Apple catalog discovery)",
+    healthCheckable: true,
+    usageTrackable: false,
+  },
+  {
     context: "push.vapid",
     label: "VAPID Web Push",
     provider: "vapid",
