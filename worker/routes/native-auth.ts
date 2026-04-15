@@ -8,6 +8,7 @@
  */
 import { Hono } from "hono";
 import type { Env } from "../types";
+import { resolveApiKey } from "../lib/service-key-resolver";
 
 const CLERK_API = "https://api.clerk.com/v1";
 
@@ -157,7 +158,8 @@ routes.post("/native", async (c) => {
     return c.json({ error: "Missing provider or idToken" }, 400);
   }
 
-  const secretKey = c.env.CLERK_SECRET_KEY;
+  const prisma = c.get("prisma") as any;
+  const secretKey = await resolveApiKey(prisma, c.env, "CLERK_SECRET_KEY", "auth.clerk");
   if (!secretKey) {
     console.error("CLERK_SECRET_KEY not configured");
     return c.json({ error: "Server configuration error" }, 500);

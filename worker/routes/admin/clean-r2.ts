@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { Env } from "../../types";
 import { getConfig } from "../../lib/config";
 import { sendBatchedFeedRefresh } from "../../lib/queue-helpers";
+import { resolveApiKey } from "../../lib/service-key-resolver";
 
 const cleanR2Routes = new Hono<{ Bindings: Env }>();
 
@@ -13,7 +14,8 @@ const cleanR2Routes = new Hono<{ Bindings: Env }>();
 cleanR2Routes.delete("/work-products", async (c) => {
   const authHeader = c.req.header("Authorization");
   const token = authHeader?.replace("Bearer ", "");
-  if (!token || token !== c.env.CLERK_SECRET_KEY) {
+  const clerkSecret = await resolveApiKey(c.get("prisma") as any, c.env, "CLERK_SECRET_KEY", "auth.clerk");
+  if (!token || token !== clerkSecret) {
     return c.json({ error: "Unauthorized" }, 401);
   }
 
@@ -39,7 +41,8 @@ cleanR2Routes.delete("/work-products", async (c) => {
 cleanR2Routes.post("/bulk-refresh", async (c) => {
   const authHeader = c.req.header("Authorization");
   const token = authHeader?.replace("Bearer ", "");
-  if (!token || token !== c.env.CLERK_SECRET_KEY) {
+  const clerkSecret = await resolveApiKey(c.get("prisma") as any, c.env, "CLERK_SECRET_KEY", "auth.clerk");
+  if (!token || token !== clerkSecret) {
     return c.json({ error: "Unauthorized" }, 401);
   }
 

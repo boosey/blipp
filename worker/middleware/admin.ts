@@ -1,6 +1,7 @@
 import { createMiddleware } from "hono/factory";
 import { getAuth } from "./auth";
 import type { Env } from "../types";
+import { resolveApiKey } from "../lib/service-key-resolver";
 
 /**
  * Fine-grained api-key scopes that permit access to specific admin routes
@@ -29,7 +30,8 @@ export const requireAdmin = createMiddleware<{ Bindings: Env }>(
     const authHeader = c.req.header("Authorization");
     if (authHeader?.startsWith("Bearer ")) {
       const token = authHeader.slice(7);
-      if (token === c.env.CLERK_SECRET_KEY) {
+      const clerkSecret = await resolveApiKey(c.get("prisma") as any, c.env, "CLERK_SECRET_KEY", "auth.clerk");
+      if (token === clerkSecret) {
         await next();
         return;
       }

@@ -1,5 +1,6 @@
 import { safeFetch } from "../url-validation";
 import type { Env } from "../../types";
+import { resolveApiKey } from "../service-key-resolver";
 
 export interface TranscriptLookupContext {
   episodeGuid: string;
@@ -13,7 +14,7 @@ export interface TranscriptLookupContext {
 export interface TranscriptSource {
   name: string;
   identifier: string;
-  lookup(ctx: TranscriptLookupContext, env: Env): Promise<string | null>;
+  lookup(ctx: TranscriptLookupContext, env: Env, prisma?: any): Promise<string | null>;
 }
 
 const RssFeedSource: TranscriptSource = {
@@ -41,11 +42,15 @@ const RssFeedSource: TranscriptSource = {
 const PodcastIndexTranscriptSource: TranscriptSource = {
   name: "Podcast Index",
   identifier: "podcast-index",
-  async lookup(ctx, env) {
+  async lookup(ctx, env, prisma) {
     const { PodcastIndexClient } = await import("../podcast-index");
     const { lookupPodcastIndexTranscript } = await import("./podcast-index-source");
     const { fetchTranscript } = await import("./parser");
-    const client = new PodcastIndexClient(env.PODCAST_INDEX_KEY, env.PODCAST_INDEX_SECRET);
+    const [piKey, piSecret] = await Promise.all([
+      resolveApiKey(prisma, env, "PODCAST_INDEX_KEY", "catalog.transcript-lookup"),
+      resolveApiKey(prisma, env, "PODCAST_INDEX_SECRET", "catalog.transcript-lookup"),
+    ]);
+    const client = new PodcastIndexClient(piKey, piSecret);
     const url = await lookupPodcastIndexTranscript(
       client,
       ctx.podcastIndexId,

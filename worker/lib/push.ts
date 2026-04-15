@@ -1,4 +1,5 @@
 import type { Env } from "../types";
+import { resolveApiKey } from "./service-key-resolver";
 
 /**
  * Send a push notification using the Web Push protocol.
@@ -7,9 +8,12 @@ import type { Env } from "../types";
 export async function sendPushNotification(
   subscription: { endpoint: string; p256dh: string; auth: string },
   payload: { title: string; body: string; url?: string; icon?: string },
-  env: Env
+  env: Env,
+  prisma?: any
 ): Promise<boolean> {
-  if (!env.VAPID_PUBLIC_KEY || !env.VAPID_PRIVATE_KEY || !env.VAPID_SUBJECT) {
+  const vapidPublicKey = await resolveApiKey(prisma, env, "VAPID_PUBLIC_KEY", "push.vapid");
+  const vapidPrivateKey = await resolveApiKey(prisma, env, "VAPID_PRIVATE_KEY", "push.vapid");
+  if (!vapidPublicKey || !vapidPrivateKey || !env.VAPID_SUBJECT) {
     return false;
   }
 
@@ -21,14 +25,14 @@ export async function sendPushNotification(
     const vapidToken = await createVapidJwt(
       audience,
       env.VAPID_SUBJECT,
-      env.VAPID_PRIVATE_KEY
+      vapidPrivateKey
     );
 
     // Send push message
     const response = await fetch(subscription.endpoint, {
       method: "POST",
       headers: {
-        "Authorization": `vapid t=${vapidToken}, k=${env.VAPID_PUBLIC_KEY}`,
+        "Authorization": `vapid t=${vapidToken}, k=${vapidPublicKey}`,
         "Content-Type": "application/json",
         "TTL": "86400",
         "Urgency": "normal",

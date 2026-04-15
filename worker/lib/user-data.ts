@@ -1,5 +1,6 @@
 import { createClerkClient } from "@clerk/backend";
 import type { Env } from "../types";
+import { resolveApiKey } from "./service-key-resolver";
 
 /** Shape of the user data export (GDPR Article 20). */
 export interface UserDataExport {
@@ -152,7 +153,7 @@ export async function deleteUserAccount(
   if (user?.stripeCustomerId) {
     try {
       const { createStripeClient } = await import("./stripe");
-      const stripe = createStripeClient(env.STRIPE_SECRET_KEY);
+      const stripe = createStripeClient(await resolveApiKey(prisma, env, "STRIPE_SECRET_KEY", "billing.stripe"));
       await stripe.customers.del(user.stripeCustomerId);
     } catch (err) {
       console.error(
@@ -169,7 +170,7 @@ export async function deleteUserAccount(
 
   // 4. Delete Clerk user (best-effort)
   try {
-    const clerk = createClerkClient({ secretKey: env.CLERK_SECRET_KEY });
+    const clerk = createClerkClient({ secretKey: await resolveApiKey(prisma, env, "CLERK_SECRET_KEY", "auth.clerk") });
     await clerk.users.deleteUser(clerkId);
   } catch (err) {
     console.error(

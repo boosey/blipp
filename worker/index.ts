@@ -13,6 +13,7 @@ import { prismaMiddleware } from "./middleware/prisma";
 import { requestIdMiddleware } from "./middleware/request-id";
 import { requestLogger } from "./middleware/request-logger";
 import { classifyHttpError, type ApiErrorResponse } from "./lib/errors";
+import { resolveApiKey } from "./lib/service-key-resolver";
 import { routes } from "./routes/index";
 import { handleClerkProxy } from "./routes/clerk-proxy";
 import nativeAuthRoutes from "./routes/native-auth";
@@ -135,7 +136,8 @@ app.use("/api/*", async (c, next) => {
   const authHeader = c.req.header("Authorization");
   if (authHeader?.startsWith("Bearer ")) {
     const token = authHeader.slice(7);
-    if (token === c.env.CLERK_SECRET_KEY) {
+    const clerkSecret = await resolveApiKey(c.get("prisma") as any, c.env, "CLERK_SECRET_KEY", "auth.clerk");
+    if (token === clerkSecret) {
       return next();
     }
     if (token.startsWith("blp_live_")) {

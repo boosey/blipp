@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Env } from "../../types";
 import { createStripeClient } from "../../lib/stripe";
+import { resolveApiKey } from "../../lib/service-key-resolver";
 
 /**
  * Stripe webhook route handler.
@@ -35,7 +36,8 @@ async function planFromPriceId(priceId: string, prisma: any) {
  * Body must be raw (arrayBuffer) for signature verification.
  */
 stripeWebhooks.post("/", async (c) => {
-  const stripe = createStripeClient(c.env.STRIPE_SECRET_KEY);
+  const prisma = c.get("prisma") as any;
+  const stripe = createStripeClient(await resolveApiKey(prisma, c.env, "STRIPE_SECRET_KEY", "billing.stripe"));
   const signature = c.req.header("stripe-signature");
 
   if (!signature) {
@@ -48,10 +50,11 @@ stripeWebhooks.post("/", async (c) => {
   let event;
   try {
     // Workers require the async variant — sync constructEvent uses Node.js crypto
+    const webhookSecret = await resolveApiKey(prisma, c.env, "STRIPE_WEBHOOK_SECRET", "billing.stripe-webhook");
     event = await stripe.webhooks.constructEventAsync(
       body,
       signature,
-      c.env.STRIPE_WEBHOOK_SECRET
+      webhookSecret
     );
   } catch (err) {
     console.error(
@@ -60,8 +63,6 @@ stripeWebhooks.post("/", async (c) => {
     );
     return c.json({ error: "Invalid webhook signature" }, 400);
   }
-
-  const prisma = c.get("prisma") as any;
 
   // Log every webhook event for debugging
   const eventObj = event.data.object as any;

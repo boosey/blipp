@@ -1,5 +1,6 @@
 import type { Env } from "../types";
 import { decodeHtmlEntities } from "./html-entities";
+import { resolveApiKey } from "./service-key-resolver";
 
 export interface DiscoveredPodcast {
   feedUrl: string;
@@ -18,8 +19,8 @@ export interface DiscoveredPodcast {
 export interface CatalogSource {
   name: string;
   identifier: string;
-  discover(count: number, env: Env): Promise<DiscoveredPodcast[]>;
-  search(query: string, env: Env): Promise<DiscoveredPodcast[]>;
+  discover(count: number, env: Env, prisma?: any): Promise<DiscoveredPodcast[]>;
+  search(query: string, env: Env, prisma?: any): Promise<DiscoveredPodcast[]>;
 }
 
 /**
@@ -103,12 +104,13 @@ const PodcastIndexSource: CatalogSource = {
   name: "Podcast Index",
   identifier: "podcast-index",
 
-  async discover(count, env) {
+  async discover(count, env, prisma) {
     const { PodcastIndexClient } = await import("./podcast-index");
-    const client = new PodcastIndexClient(
-      env.PODCAST_INDEX_KEY,
-      env.PODCAST_INDEX_SECRET
-    );
+    const [piKey, piSecret] = await Promise.all([
+      resolveApiKey(prisma, env, "PODCAST_INDEX_KEY", "catalog.discovery"),
+      resolveApiKey(prisma, env, "PODCAST_INDEX_SECRET", "catalog.discovery"),
+    ]);
+    const client = new PodcastIndexClient(piKey, piSecret);
 
     const perCategory = Math.min(Math.ceil(count / TRENDING_CATEGORIES.length), 1000);
     const seen = new Map<string, DiscoveredPodcast>();
@@ -209,12 +211,13 @@ const PodcastIndexSource: CatalogSource = {
     return Array.from(seen.values());
   },
 
-  async search(query, env) {
+  async search(query, env, prisma) {
     const { PodcastIndexClient } = await import("./podcast-index");
-    const client = new PodcastIndexClient(
-      env.PODCAST_INDEX_KEY,
-      env.PODCAST_INDEX_SECRET
-    );
+    const [piKey, piSecret] = await Promise.all([
+      resolveApiKey(prisma, env, "PODCAST_INDEX_KEY", "catalog.discovery"),
+      resolveApiKey(prisma, env, "PODCAST_INDEX_SECRET", "catalog.discovery"),
+    ]);
+    const client = new PodcastIndexClient(piKey, piSecret);
     const results = await client.searchByTerm(query);
     return results.map((p) => ({
       feedUrl: p.url,

@@ -3,6 +3,7 @@ import { lookupPodcastIndexTranscript } from "./transcript/podcast-index-source"
 import { PodcastIndexClient } from "./podcast-index";
 import { safeFetch } from "./url-validation";
 import type { Env } from "../types";
+import { resolveApiKey } from "./service-key-resolver";
 
 /**
  * Checks content availability for a new episode and stores transcript in R2 if found.
@@ -29,7 +30,8 @@ export async function prefetchEpisodeContent(
   },
   env: Env,
   r2: R2Bucket,
-  fetchTimeoutMs = 15000
+  fetchTimeoutMs = 15000,
+  prisma?: any
 ): Promise<{
   contentStatus: "TRANSCRIPT_READY" | "AUDIO_READY" | "NOT_DELIVERABLE";
   transcriptR2Key: string | null;
@@ -49,7 +51,11 @@ export async function prefetchEpisodeContent(
   if (podcast.podcastIndexId) {
     console.log(`[content-prefetch] Looking up PI transcript for podcastIndexId=${podcast.podcastIndexId} (episode: ${episode.title})`);
     try {
-      const client = new PodcastIndexClient(env.PODCAST_INDEX_KEY, env.PODCAST_INDEX_SECRET);
+      const [piKey, piSecret] = await Promise.all([
+        resolveApiKey(prisma, env, "PODCAST_INDEX_KEY", "catalog.content-prefetch"),
+        resolveApiKey(prisma, env, "PODCAST_INDEX_SECRET", "catalog.content-prefetch"),
+      ]);
+      const client = new PodcastIndexClient(piKey, piSecret);
       const piUrl = await lookupPodcastIndexTranscript(
         client,
         podcast.podcastIndexId,

@@ -8,6 +8,7 @@ import { safeFetch } from "../lib/url-validation";
 import { slugify, uniqueSlug } from "../lib/slugify";
 import { PodcastIndexClient } from "../lib/podcast-index";
 import { decodeHtmlEntities } from "../lib/html-entities";
+import { resolveApiKey } from "../lib/service-key-resolver";
 import type { Env } from "../types";
 
 /**
@@ -91,8 +92,13 @@ async function fetchViaPodcastIndex(
   env: Env,
   log: PipelineLogger,
   podcastId: string,
+  prisma?: any,
 ): Promise<ParsedFeed> {
-  const pi = new PodcastIndexClient(env.PODCAST_INDEX_KEY, env.PODCAST_INDEX_SECRET);
+  const [piKey, piSecret] = await Promise.all([
+    resolveApiKey(prisma, env, "PODCAST_INDEX_KEY", "catalog.feed-refresh"),
+    resolveApiKey(prisma, env, "PODCAST_INDEX_SECRET", "catalog.feed-refresh"),
+  ]);
+  const pi = new PodcastIndexClient(piKey, piSecret);
   const episodes = await pi.episodesByFeedUrl(feedUrl, maxEpisodes);
 
   if (!episodes.length) {
@@ -154,7 +160,7 @@ async function processPodcast(
       feedUrl: podcast.feedUrl,
     });
     feed = await fetchViaPodcastIndex(
-      podcast.feedUrl, maxEpisodes, env, log, podcast.id,
+      podcast.feedUrl, maxEpisodes, env, log, podcast.id, prisma,
     );
   } else {
     throw new Error(

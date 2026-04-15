@@ -10,6 +10,7 @@ import { validateBody } from "../lib/validation";
 import { DURATION_TIERS } from "../lib/constants";
 import { checkVoicePresetAccess } from "../lib/voice-presets";
 import { createStripeClient } from "../lib/stripe";
+import { resolveApiKey } from "../lib/service-key-resolver";
 import { deliverStarterPack } from "../lib/starter-pack";
 import { computeUserProfile, recomputeRecommendationCache } from "../lib/recommendations";
 
@@ -96,9 +97,10 @@ me.get("/", async (c) => {
 
   // Fetch live cancellation status from Stripe (webhook may not have fired yet)
   let subscriptionEndsAt: string | null = fullUser.subscriptionEndsAt?.toISOString() ?? null;
-  if (fullUser.stripeCustomerId && c.env.STRIPE_SECRET_KEY) {
+  const stripeKey = await resolveApiKey(prisma, c.env, "STRIPE_SECRET_KEY", "billing.stripe");
+  if (fullUser.stripeCustomerId && stripeKey) {
     try {
-      const stripe = createStripeClient(c.env.STRIPE_SECRET_KEY);
+      const stripe = createStripeClient(stripeKey);
       const subs = await stripe.subscriptions.list({
         customer: fullUser.stripeCustomerId,
         status: "active",
@@ -406,7 +408,8 @@ me.delete("/push/subscribe", async (c) => {
  * GET /push/vapid-key — Get the VAPID public key for subscription.
  */
 me.get("/push/vapid-key", async (c) => {
-  const key = c.env.VAPID_PUBLIC_KEY;
+  const prismaVapid = c.get("prisma") as any;
+  const key = await resolveApiKey(prismaVapid, c.env, "VAPID_PUBLIC_KEY", "push.vapid");
   if (!key) {
     return c.json({ error: "Push notifications not configured" }, 503);
   }

@@ -2,6 +2,7 @@ import type { Context } from "hono";
 import { createClerkClient } from "@clerk/backend";
 import { getAuth } from "../middleware/auth";
 import type { Env } from "../types";
+import { resolveApiKey } from "./service-key-resolver";
 
 /** Parse page/pageSize from query params with defaults and max cap. */
 export function parsePagination(c: Context) {
@@ -60,7 +61,7 @@ export async function getCurrentUser(c: Context<{ Bindings: Env }>, prisma: any)
     // Re-throw suspension errors — don't fall through to user creation
     if (err?.message === "Account suspended") throw err;
     // User missing from DB — fetch from Clerk and create
-    const clerk = createClerkClient({ secretKey: c.env.CLERK_SECRET_KEY });
+    const clerk = createClerkClient({ secretKey: await resolveApiKey(prisma, c.env, "CLERK_SECRET_KEY", "auth.clerk") });
     const clerkUser = await clerk.users.getUser(clerkId);
 
     const defaultPlan = await prisma.plan.findFirst({ where: { isDefault: true } });

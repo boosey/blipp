@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { Env } from "../../types";
 import { verifyWebhook } from "@clerk/backend/webhooks";
 import type { WebhookEvent } from "@clerk/backend/webhooks";
+import { resolveApiKey } from "../../lib/service-key-resolver";
 
 /**
  * Clerk webhook route handler.
@@ -15,17 +16,17 @@ import type { WebhookEvent } from "@clerk/backend/webhooks";
 export const clerkWebhooks = new Hono<{ Bindings: Env }>();
 
 clerkWebhooks.post("/", async (c) => {
+  const prisma = c.get("prisma") as any;
   let event: WebhookEvent;
   try {
+    const clerkWebhookSecret = await resolveApiKey(prisma, c.env, "CLERK_WEBHOOK_SECRET", "auth.clerk-webhook");
     event = await verifyWebhook(c.req.raw, {
-      signingSecret: c.env.CLERK_WEBHOOK_SECRET,
+      signingSecret: clerkWebhookSecret,
     });
   } catch (err) {
     console.error("Clerk webhook verification failed:", err);
     return c.json({ error: "Invalid webhook signature" }, 400);
   }
-
-  const prisma = c.get("prisma") as any;
 
   switch (event.type) {
     case "user.created": {

@@ -5,6 +5,7 @@ import { requireAuth } from "../middleware/auth";
 import { getCurrentUser } from "../lib/admin-helpers";
 import { createStripeClient } from "../lib/stripe";
 import { validateBody } from "../lib/validation";
+import { resolveApiKey } from "../lib/service-key-resolver";
 
 /**
  * Billing routes for Stripe subscription management.
@@ -50,7 +51,7 @@ billing.post("/checkout", async (c) => {
 
   const user = await getCurrentUser(c, prisma);
 
-  const stripe = createStripeClient(c.env.STRIPE_SECRET_KEY);
+  const stripe = createStripeClient(await resolveApiKey(prisma, c.env, "STRIPE_SECRET_KEY", "billing.stripe"));
 
   const origin = c.env.APP_ORIGIN || c.req.header("origin");
   if (!origin) {
@@ -110,7 +111,7 @@ billing.post("/portal", async (c) => {
     return c.json({ error: "No active subscription found" }, 400);
   }
 
-  const stripe = createStripeClient(c.env.STRIPE_SECRET_KEY);
+  const stripe = createStripeClient(await resolveApiKey(prisma, c.env, "STRIPE_SECRET_KEY", "billing.stripe"));
   const origin = c.env.APP_ORIGIN || c.req.header("origin");
   if (!origin) {
     return c.json({ error: "Cannot determine app origin — APP_ORIGIN env var is missing and no Origin header" }, 500);

@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { Env } from "../../types";
+import { resolveApiKey } from "../../lib/service-key-resolver";
 
 const workerLogsRoutes = new Hono<{ Bindings: Env }>();
 
@@ -35,7 +36,9 @@ async function proxyCF(
   path: string
 ): Promise<Response> {
   const env = c.env as Env;
-  if (!env.CF_API_TOKEN || !env.CF_ACCOUNT_ID) {
+  const prisma = c.get("prisma") as any;
+  const cfToken = await resolveApiKey(prisma, env, "CF_API_TOKEN", "infra.cloudflare");
+  if (!cfToken || !env.CF_ACCOUNT_ID) {
     return c.json(
       { error: "CF_API_TOKEN or CF_ACCOUNT_ID not configured" },
       503
@@ -46,7 +49,7 @@ async function proxyCF(
   const resp = await fetch(url, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${env.CF_API_TOKEN}`,
+      Authorization: `Bearer ${cfToken}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify(body),

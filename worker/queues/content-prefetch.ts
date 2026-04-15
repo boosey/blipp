@@ -50,7 +50,8 @@ async function processEpisode(
     },
     env,
     env.R2,
-    fetchTimeoutMs
+    fetchTimeoutMs,
+    prisma
   );
 
   await prisma.episode.update({

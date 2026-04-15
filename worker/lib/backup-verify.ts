@@ -11,8 +11,11 @@ export interface BackupStatus {
 export async function verifyBackupStatus(env: {
   NEON_API_KEY?: string;
   NEON_PROJECT_ID?: string;
-}): Promise<BackupStatus> {
-  if (!env.NEON_API_KEY || !env.NEON_PROJECT_ID) {
+  SERVICE_KEY_ENCRYPTION_KEY?: string;
+}, prisma?: any): Promise<BackupStatus> {
+  const { resolveApiKey } = await import("./service-key-resolver");
+  const neonKey = await resolveApiKey(prisma, env as any, "NEON_API_KEY", "infra.neon");
+  if (!neonKey || !env.NEON_PROJECT_ID) {
     return {
       status: "unchecked",
       lastCheckedAt: null,
@@ -23,7 +26,7 @@ export async function verifyBackupStatus(env: {
   try {
     const resp = await fetch(
       `https://console.neon.tech/api/v2/projects/${env.NEON_PROJECT_ID}`,
-      { headers: { Authorization: `Bearer ${env.NEON_API_KEY}` } }
+      { headers: { Authorization: `Bearer ${neonKey}` } }
     );
 
     if (!resp.ok) {
