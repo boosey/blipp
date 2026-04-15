@@ -204,7 +204,12 @@ export async function handleNarrativeGeneration(
           narrativeProvider = resolved.provider;
 
           // Resolve DB-stored API key for this provider+context
-          const resolvedEnv = await resolveEnvForPipeline(prisma, env, "pipeline.narrative", resolved.provider);
+          const keyResult = await resolveEnvForPipeline(prisma, env, "pipeline.narrative", resolved.provider);
+          const resolvedEnv = keyResult.env;
+          if (!keyResult.fromDb && keyResult.envKey) {
+            await writeEvent(prisma, step.id, "WARN", `Using env var fallback for ${keyResult.envKey} — configure in Admin > Service Keys`, { envKey: keyResult.envKey, provider: resolved.provider });
+            writeAiError(prisma, { service: "narrative", provider: resolved.provider, model: resolved.providerModelId, operation: "key_resolution", correlationId: jobId, jobId, stepId: step.id, episodeId, category: "auth", severity: "permanent", errorMessage: `Env var fallback: ${keyResult.envKey} not configured in Service Keys DB for context pipeline.narrative.${resolved.provider}`, requestDurationMs: 0, timestamp: new Date(), retryCount: 0, maxRetries: 0, willRetry: false }).catch(() => {});
+          }
 
           await writeEvent(prisma, step.id, "INFO", `Generating ${effectiveTier}-minute narrative from ${claims.length}/${allClaims.length} claims via ${tier}: ${llm.name} (${resolved.providerModelId})`, {
             tier,

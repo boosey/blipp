@@ -94,8 +94,23 @@ export async function resolveApiKey(
     }
   }
 
-  // Step 3: Fall back to env var
-  return (env as Record<string, unknown>)[envKey] as string;
+  // Step 3: Fall back to env var — log a warning since DB should be providing keys
+  const envValue = (env as Record<string, unknown>)[envKey] as string;
+  if (envValue && masterKey) {
+    // Only warn if encryption is configured (meaning DB keys should be set up)
+    console.warn(
+      JSON.stringify({
+        level: "warn",
+        action: "service_key_env_fallback",
+        envKey,
+        context,
+        provider,
+        message: `Using env var fallback for ${envKey}${context ? ` (context: ${context})` : ""}. Configure a DB-stored key in Admin > Service Keys.`,
+        ts: new Date().toISOString(),
+      })
+    );
+  }
+  return envValue;
 }
 
 /**
@@ -138,14 +153,21 @@ const PROVIDER_ENV_KEY: Record<string, string> = {
   deepgram: "DEEPGRAM_API_KEY",
 };
 
+export interface ResolvedEnvResult {
+  env: Env;
+  /** True if the key came from the DB; false if it fell back to the env var */
+  fromDb: boolean;
+  /** The envKey that was resolved (e.g. "ANTHROPIC_API_KEY") */
+  envKey: string | null;
+}
+
 /**
  * Creates a shallow copy of `env` with DB-resolved API keys overlaid.
  * Use this at the top of queue handlers so all downstream code (which reads
  * env.ANTHROPIC_API_KEY etc.) automatically gets the DB-stored key.
  *
- * Usage in a queue handler:
- *   const resolvedEnv = await resolveEnvForPipeline(prisma, env, "pipeline.distillation", "anthropic");
- *   // Now pass resolvedEnv instead of env to all downstream functions
+ * Returns both the resolved env and a `fromDb` flag. When `fromDb` is false,
+ * the caller should log a warning — all keys should come from the DB.
  *
  * If resolution fails or no DB key is configured, the original env value is preserved.
  */
@@ -154,16 +176,18 @@ export async function resolveEnvForPipeline(
   env: Env,
   context: string,
   provider: string
-): Promise<Env> {
+): Promise<ResolvedEnvResult> {
   const envKey = PROVIDER_ENV_KEY[provider];
-  if (!envKey) return env;
+  if (!envKey) return { env, fromDb: true, envKey: null };
 
   const resolved = await resolveApiKey(prisma, env, envKey, context, provider);
   const original = (env as Record<string, unknown>)[envKey] as string | undefined;
 
-  // If resolution returned the same value as env, no need to copy
-  if (resolved === original) return env;
+  // If resolution returned the same value as env, it fell back
+  if (resolved === original) {
+    return { env, fromDb: false, envKey };
+  }
 
   // Create shallow copy with the resolved key overlaid
-  return { ...env, [envKey]: resolved } as Env;
+  return { env: { ...env, [envKey]: resolved } as Env, fromDb: true, envKey };
 }

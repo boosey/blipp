@@ -183,7 +183,12 @@ export async function handleAudioGeneration(
           audioProvider = resolved.provider;
 
           // Resolve DB-stored API key for this provider+context
-          const resolvedEnv = await resolveEnvForPipeline(prisma, env, "pipeline.tts", resolved.provider);
+          const keyResult = await resolveEnvForPipeline(prisma, env, "pipeline.tts", resolved.provider);
+          const resolvedEnv = keyResult.env;
+          if (!keyResult.fromDb && keyResult.envKey) {
+            await writeEvent(prisma, step.id, "WARN", `Using env var fallback for ${keyResult.envKey} — configure in Admin > Service Keys`, { envKey: keyResult.envKey, provider: resolved.provider });
+            writeAiError(prisma, { service: "tts", provider: resolved.provider, model: resolved.providerModelId, operation: "key_resolution", correlationId: jobId, jobId, stepId: step.id, episodeId, category: "auth", severity: "permanent", errorMessage: `Env var fallback: ${keyResult.envKey} not configured in Service Keys DB for context pipeline.tts.${resolved.provider}`, requestDurationMs: 0, timestamp: new Date(), retryCount: 0, maxRetries: 0, willRetry: false }).catch(() => {});
+          }
 
           // Determine chunk size from model limits
           const maxInputChars = (resolved.limits?.maxInputChars as number) ?? DEFAULT_TTS_MAX_INPUT_CHARS;
