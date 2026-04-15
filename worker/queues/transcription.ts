@@ -170,7 +170,7 @@ export async function handleTranscription(
           const source = getTranscriptSource(sourceId);
           if (!source) continue;
 
-          transcript = await source.lookup(lookupCtx, env);
+          transcript = await source.lookup(lookupCtx, env, prisma);
           if (transcript) {
             await writeEvent(prisma, step.id, "INFO", `Transcript found via ${source.name}`, { source: sourceId, bytes: transcript.length });
             log.info("transcript_fetched", { episodeId, bytes: transcript.length, source: sourceId });

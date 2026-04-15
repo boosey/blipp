@@ -138,7 +138,7 @@ podcasts.post("/search-podcasts", async (c) => {
 
   const sourceId = await getConfig(prisma, "catalog.source", "podcast-index") as string;
   const source = getCatalogSource(sourceId);
-  const results = await source.search(body.query.trim(), c.env);
+  const results = await source.search(body.query.trim(), c.env, prisma);
 
   // Check which results are already in catalog
   const feedUrls = results.map(r => r.feedUrl);

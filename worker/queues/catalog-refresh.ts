@@ -35,7 +35,7 @@ export async function handleCatalogRefresh(
         const discoverCount = sourceId === "apple"
           ? 100
           : Number(await getConfig(prisma, "catalog.seedSize", DEFAULT_DISCOVER_COUNT));
-        const discovered = await catalogSource.discover(discoverCount, env);
+        const discovered = await catalogSource.discover(discoverCount, env, prisma);
         console.log(JSON.stringify({ level: "info", action: "catalog_refresh_discovered", source: catalogSource.name, count: discovered.length, ts: new Date().toISOString() }));
 
         // ── Upsert categories ──
