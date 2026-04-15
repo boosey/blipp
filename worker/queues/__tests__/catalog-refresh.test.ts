@@ -139,7 +139,7 @@ describe("handleCatalogRefresh", () => {
     await handleCatalogRefresh(batch, mockEnv, mockCtx);
 
     expect(getCatalogSource).toHaveBeenCalledWith("apple");
-    expect(mockAppleDiscover).toHaveBeenCalledWith(100, mockEnv);
+    expect(mockAppleDiscover).toHaveBeenCalledWith(100, mockEnv, expect.anything());
   });
 
   it("upserts categories from discovered podcasts, filtering genreId 26", async () => {
