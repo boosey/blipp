@@ -30,7 +30,12 @@ export const requireAdmin = createMiddleware<{ Bindings: Env }>(
     const authHeader = c.req.header("Authorization");
     if (authHeader?.startsWith("Bearer ")) {
       const token = authHeader.slice(7);
-      const clerkSecret = await resolveApiKey(c.get("prisma") as any, c.env, "CLERK_SECRET_KEY", "auth.clerk");
+      let clerkSecret: string | undefined;
+      try {
+        clerkSecret = await resolveApiKey(c.get("prisma") as any, c.env, "CLERK_SECRET_KEY", "auth.clerk");
+      } catch {
+        clerkSecret = c.env.CLERK_SECRET_KEY;
+      }
       if (token === clerkSecret) {
         await next();
         return;

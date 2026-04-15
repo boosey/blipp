@@ -136,7 +136,14 @@ app.use("/api/*", async (c, next) => {
   const authHeader = c.req.header("Authorization");
   if (authHeader?.startsWith("Bearer ")) {
     const token = authHeader.slice(7);
-    const clerkSecret = await resolveApiKey(c.get("prisma") as any, c.env, "CLERK_SECRET_KEY", "auth.clerk");
+    // Server-to-server auth bypass — try DB key first, fall back to env.
+    // Must not throw here or it breaks all auth for browser users too.
+    let clerkSecret: string | undefined;
+    try {
+      clerkSecret = await resolveApiKey(c.get("prisma") as any, c.env, "CLERK_SECRET_KEY", "auth.clerk");
+    } catch {
+      clerkSecret = c.env.CLERK_SECRET_KEY;
+    }
     if (token === clerkSecret) {
       return next();
     }
