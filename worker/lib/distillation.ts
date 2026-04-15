@@ -49,7 +49,8 @@ export async function extractClaims(
   providerModelId: string,
   maxTokens: number,
   env: any,
-  pricing: ModelPricing | null = null
+  pricing: ModelPricing | null = null,
+  apiKeyOverride?: string
 ): Promise<{ claims: Claim[]; usage: AiUsage }> {
   const systemPrompt = await getRequiredConfig(prisma, PROMPT_CONFIG_KEYS.claimsSystem);
 
@@ -68,7 +69,8 @@ export async function extractClaims(
     providerModelId,
     maxTokens,
     env,
-    options
+    options,
+    apiKeyOverride
   );
 
   const text = result.text
@@ -179,7 +181,8 @@ export async function generateNarrative(
   maxTokens: number,
   env: any,
   pricing: ModelPricing | null = null,
-  metadata?: EpisodeMetadata
+  metadata?: EpisodeMetadata,
+  apiKeyOverride?: string
 ): Promise<{ narrative: string; usage: AiUsage }> {
   const wpm = await getConfig(prisma, "audio.wordsPerMinute", WORDS_PER_MINUTE) as number;
   const targetWords = Math.round(durationMinutes * wpm);
@@ -215,7 +218,8 @@ export async function generateNarrative(
     providerModelId,
     maxTokens,
     env,
-    options
+    options,
+    apiKeyOverride
   );
 
   const usage: AiUsage = {

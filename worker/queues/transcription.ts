@@ -13,6 +13,7 @@ import { writeAiError, classifyAiError, AiProviderError } from "../lib/ai-errors
 import { recordSuccess, recordFailure, initCircuitBreakerConfig } from "../lib/circuit-breaker";
 import { probeAudio, transcribeChunked } from "../lib/stt/audio-probe";
 import { DEFAULT_STT_CHUNK_SIZE, MIN_AUDIO_SIZE_BYTES, ASSUMED_BITRATE_BYTES_PER_SEC, STT_BYTES_PER_TOKEN } from "../lib/constants";
+import { resolveEnvForPipeline } from "../lib/service-key-resolver";
 import type { TranscriptionMessage } from "../lib/queue-messages";
 import type { Env } from "../types";
 
@@ -233,6 +234,9 @@ export async function handleTranscription(
             sttProvider = resolved.provider;
             sttModel = providerModelId;
 
+            // Resolve DB-stored API key for this provider+context
+            const resolvedEnv = await resolveEnvForPipeline(prisma, env, "pipeline.stt", resolved.provider);
+
             const maxFileSize = (resolved.limits?.maxFileSizeBytes as number) ?? DEFAULT_STT_CHUNK_SIZE;
 
             // Chunked byte-range transcription (URL-direct removed — podcast audio URLs
@@ -247,7 +251,7 @@ export async function handleTranscription(
               try {
                 const sttResult = await transcribeChunked(
                   episode.audioUrl, probe.contentLength, maxFileSize, ext,
-                  providerImpl, durationSeconds, env, providerModelId,
+                  providerImpl, durationSeconds, resolvedEnv, providerModelId,
                 );
 
                 transcript = sttResult.transcript;
@@ -289,7 +293,7 @@ export async function handleTranscription(
 
                 const sttResult = await providerImpl.transcribe(
                   { buffer, filename: `audio.${ext}`, sourceUrl: episode.audioUrl },
-                  durationSeconds, env, providerModelId,
+                  durationSeconds, resolvedEnv, providerModelId,
                 );
 
                 transcript = sttResult.transcript;

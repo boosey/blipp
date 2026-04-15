@@ -13,6 +13,7 @@ import { recordSuccess, recordFailure, initCircuitBreakerConfig } from "../lib/c
 import { chunkNarrativeText, createSilenceFrame, concatenateAudioChunks, parseInputLimitError, limitToSafeMaxChars } from "../lib/tts/chunking";
 import { normalizeForTts } from "../lib/tts/normalize";
 import { DEFAULT_TTS_MAX_INPUT_CHARS } from "../lib/constants";
+import { resolveEnvForPipeline } from "../lib/service-key-resolver";
 import { getConfig } from "../lib/config";
 import type { AudioGenerationMessage } from "../lib/queue-messages";
 import type { Env } from "../types";
@@ -181,6 +182,9 @@ export async function handleAudioGeneration(
           audioModel = resolved.providerModelId;
           audioProvider = resolved.provider;
 
+          // Resolve DB-stored API key for this provider+context
+          const resolvedEnv = await resolveEnvForPipeline(prisma, env, "pipeline.tts", resolved.provider);
+
           // Determine chunk size from model limits
           const maxInputChars = (resolved.limits?.maxInputChars as number) ?? DEFAULT_TTS_MAX_INPUT_CHARS;
           const textChunks = chunkNarrativeText(narrative, maxInputChars);
@@ -209,7 +213,7 @@ export async function handleAudioGeneration(
             const generateChunked = async (chunks: string[]) => {
               if (chunks.length <= 1) {
                 const result = await generateSpeech(
-                  tts, narrative, voiceConfig.voice, resolved.providerModelId, env,
+                  tts, narrative, voiceConfig.voice, resolved.providerModelId, resolvedEnv,
                   resolved.pricing, voiceConfig.instructions, voiceConfig.speed
                 );
                 return { audio: result.audio, contentType: result.contentType, usage: result.usage };
@@ -227,7 +231,7 @@ export async function handleAudioGeneration(
                   chunk: c + 1, totalChunks: chunks.length, chunkChars: chunks[c].length,
                 });
                 const result = await generateSpeech(
-                  tts, chunks[c], voiceConfig.voice, resolved.providerModelId, env,
+                  tts, chunks[c], voiceConfig.voice, resolved.providerModelId, resolvedEnv,
                   resolved.pricing, voiceConfig.instructions, voiceConfig.speed
                 );
                 audioChunks.push(result.audio);

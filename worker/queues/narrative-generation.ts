@@ -10,6 +10,7 @@ import { writeEvent } from "../lib/pipeline-events";
 import { writeAiError, classifyAiError, AiProviderError } from "../lib/ai-errors";
 import { recordSuccess, recordFailure, initCircuitBreakerConfig } from "../lib/circuit-breaker";
 import type { NarrativeGenerationMessage } from "../lib/queue-messages";
+import { resolveEnvForPipeline } from "../lib/service-key-resolver";
 import type { Env } from "../types";
 
 /**
@@ -202,6 +203,9 @@ export async function handleNarrativeGeneration(
           narrativeModel = resolved.providerModelId;
           narrativeProvider = resolved.provider;
 
+          // Resolve DB-stored API key for this provider+context
+          const resolvedEnv = await resolveEnvForPipeline(prisma, env, "pipeline.narrative", resolved.provider);
+
           await writeEvent(prisma, step.id, "INFO", `Generating ${effectiveTier}-minute narrative from ${claims.length}/${allClaims.length} claims via ${tier}: ${llm.name} (${resolved.providerModelId})`, {
             tier,
             claimCount: claims.length,
@@ -221,7 +225,7 @@ export async function handleNarrativeGeneration(
               effectiveTier,
               resolved.providerModelId,
               8192,
-              env,
+              resolvedEnv,
               resolved.pricing,
               episodeMetadata
             );

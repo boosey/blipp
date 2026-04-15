@@ -10,6 +10,7 @@ import { writeAiError, classifyAiError, AiProviderError, isRateLimitError, parse
 import { recordSuccess, recordFailure, initCircuitBreakerConfig } from "../lib/circuit-breaker";
 import { getConfig } from "../lib/config";
 import type { DistillationMessage } from "../lib/queue-messages";
+import { resolveEnvForPipeline } from "../lib/service-key-resolver";
 import type { Env } from "../types";
 
 /**
@@ -174,6 +175,9 @@ export async function handleDistillation(
           distillProvider = resolved.provider;
           distillModel = resolved.providerModelId;
 
+          // Resolve DB-stored API key for this provider+context
+          const resolvedEnv = await resolveEnvForPipeline(prisma, env, "pipeline.distillation", resolved.provider);
+
           await writeEvent(prisma, stepId, "INFO", `Sending transcript to ${tier}: ${llm.name} (${resolved.providerModelId}) for claim extraction`, {
             tier,
             transcriptBytes: transcript.length,
@@ -187,7 +191,7 @@ export async function handleDistillation(
           while (rateLimitAttempt <= rateLimitRetries) {
             try {
               const elapsed = log.timer("claude_extraction");
-              const result = await extractClaims(prisma, llm, transcript, resolved.providerModelId, 8192, env, resolved.pricing);
+              const result = await extractClaims(prisma, llm, transcript, resolved.providerModelId, 8192, resolvedEnv, resolved.pricing);
               recordSuccess(resolved.provider);
               elapsed();
               claims = result.claims;

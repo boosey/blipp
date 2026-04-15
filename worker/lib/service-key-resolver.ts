@@ -126,3 +126,44 @@ export async function resolveKeysForContext(
   }
   return results;
 }
+
+/**
+ * Provider-to-envKey mapping for pipeline stages.
+ * Used by resolveEnvForPipeline to know which env key to resolve for each provider.
+ */
+const PROVIDER_ENV_KEY: Record<string, string> = {
+  anthropic: "ANTHROPIC_API_KEY",
+  openai: "OPENAI_API_KEY",
+  groq: "GROQ_API_KEY",
+  deepgram: "DEEPGRAM_API_KEY",
+};
+
+/**
+ * Creates a shallow copy of `env` with DB-resolved API keys overlaid.
+ * Use this at the top of queue handlers so all downstream code (which reads
+ * env.ANTHROPIC_API_KEY etc.) automatically gets the DB-stored key.
+ *
+ * Usage in a queue handler:
+ *   const resolvedEnv = await resolveEnvForPipeline(prisma, env, "pipeline.distillation", "anthropic");
+ *   // Now pass resolvedEnv instead of env to all downstream functions
+ *
+ * If resolution fails or no DB key is configured, the original env value is preserved.
+ */
+export async function resolveEnvForPipeline(
+  prisma: any,
+  env: Env,
+  context: string,
+  provider: string
+): Promise<Env> {
+  const envKey = PROVIDER_ENV_KEY[provider];
+  if (!envKey) return env;
+
+  const resolved = await resolveApiKey(prisma, env, envKey, context, provider);
+  const original = (env as Record<string, unknown>)[envKey] as string | undefined;
+
+  // If resolution returned the same value as env, no need to copy
+  if (resolved === original) return env;
+
+  // Create shallow copy with the resolved key overlaid
+  return { ...env, [envKey]: resolved } as Env;
+}
