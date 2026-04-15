@@ -3,6 +3,7 @@ import type { Env } from "../../types";
 import { parsePagination, paginatedResponse } from "../../lib/admin-helpers";
 import { getConfig } from "../../lib/config";
 import { sendBatchedFeedRefresh } from "../../lib/queue-helpers";
+import { resolveApiKey } from "../../lib/service-key-resolver";
 
 const ACTIVE_STATUSES = ["pending", "discovering", "upserting"];
 
@@ -181,7 +182,8 @@ catalogSeedRoutes.post("/", async (c) => {
 // ── POST /trigger-apple — Trigger GitHub Action for Apple discovery ──
 catalogSeedRoutes.post("/trigger-apple", async (c) => {
   const body = await c.req.json().catch(() => ({}));
-  const token = c.env.GITHUB_TOKEN;
+  const prisma = c.get("prisma") as any;
+  const token = await resolveApiKey(prisma, c.env, "GITHUB_TOKEN", "infra.github");
   if (!token) {
     return c.json({ error: "GITHUB_TOKEN not configured" }, 500);
   }
