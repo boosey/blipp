@@ -45,12 +45,7 @@ function MobileLayoutInner() {
               <ArrowLeft className="w-5 h-5" />
             </button>
           )}
-          <span className="text-lg font-bold flex items-center">
-            <span className="w-10 h-10 overflow-hidden rounded-md -mr-3 flex-shrink-0">
-              <img src="/blipp_icon_clean_128.png" alt="" className="w-[140%] h-[140%] object-cover -ml-[20%] -mt-[20%]" />
-            </span>
-            <span className="bg-gradient-to-r from-pink-300 via-purple-400 to-indigo-400 bg-clip-text text-transparent">lipp</span>
-          </span>
+          <img src="/blipp-wordmark.svg" alt="Blipp" className="h-8 w-auto" />
         </div>
         <div className="flex items-center gap-2">
           <button
