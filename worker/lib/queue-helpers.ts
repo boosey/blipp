@@ -106,7 +106,7 @@ export async function isRefreshJobActive(prisma: any, refreshJobId: string): Pro
  * CF sendBatch limit is 100 messages per call.
  */
 export async function sendBatchedFeedRefresh(
-  queue: { sendBatch(messages: { body: FeedRefreshMessage }[]): Promise<void> },
+  queue: { sendBatch(messages: { body: FeedRefreshMessage }[]): Promise<unknown> },
   podcastIds: string[],
   batchConcurrency: number,
   extra?: Omit<FeedRefreshMessage, "podcastId" | "podcastIds">

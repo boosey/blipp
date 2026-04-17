@@ -12,7 +12,7 @@ export async function deliverStarterPack(params: {
   userId: string;
   preferredCategories: string[];
   prisma: any;
-  orchestratorQueue: { send: (msg: OrchestratorMessage) => Promise<void> };
+  orchestratorQueue: { send: (msg: OrchestratorMessage) => Promise<unknown> };
   maxItems?: number;
 }): Promise<{ delivered: number; requestId: string | null }> {
   const { userId, preferredCategories, prisma, orchestratorQueue, maxItems = 5 } = params;
