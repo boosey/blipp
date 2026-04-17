@@ -185,7 +185,7 @@ export async function handleTranscription(
           // Phase 1: Probe audio metadata (HEAD + 12 bytes — no full download)
           const probe = await probeAudio(episode.audioUrl, episode.durationSeconds);
 
-          if (probe.contentType && !probe.contentType.startsWith("audio/") && probe.contentType !== "application/octet-stream") {
+          if (probe.contentType && !probe.contentType.startsWith("audio/") && !probe.contentType.endsWith("/octet-stream")) {
             throw new Error(`Audio URL returned non-audio content (${probe.contentType}). The episode audio may be unavailable.`);
           }
           if (probe.contentLength != null && probe.contentLength < MIN_AUDIO_SIZE_BYTES) {

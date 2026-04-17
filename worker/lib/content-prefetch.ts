@@ -92,7 +92,7 @@ export async function prefetchEpisodeContent(
         headRes.headers.get("content-type")?.split(";")[0].trim() ?? "";
       if (
         contentType.startsWith("audio/") ||
-        contentType === "application/octet-stream"
+        contentType.endsWith("/octet-stream")
       ) {
         console.log(`[content-prefetch] Audio OK (${contentType}) → AUDIO_READY (episode: ${episode.title})`);
         return { contentStatus: "AUDIO_READY", transcriptR2Key: null };
