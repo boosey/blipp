@@ -35,8 +35,7 @@ function layout(opts: {
 <title>${escapeHtml(opts.title)}</title>
 <meta name="description" content="${escapeHtml(opts.description)}">
 <link rel="canonical" href="${canonical}">
-<link rel="icon" type="image/svg+xml" href="/blipp-icon.svg">
-<link rel="icon" type="image/png" href="/blipp_icon_clean_128.png">
+<link rel="icon" type="image/png" href="/blipp-icon-transparent-192.png">
 <meta property="og:type" content="article">
 <meta property="og:url" content="${canonical}">
 <meta property="og:title" content="${escapeHtml(opts.title)}">
