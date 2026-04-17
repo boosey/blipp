@@ -45,7 +45,10 @@ function MobileLayoutInner() {
               <ArrowLeft className="w-5 h-5" />
             </button>
           )}
-          <img src="/blipp-wordmark.svg" alt="Blipp" className="h-8 w-auto" />
+          <div className="flex items-center gap-2">
+            <img src="/blipp-icon.svg" alt="" className="h-8 w-8" />
+            <img src="/blipp-wordmark.svg" alt="Blipp" className="h-6 w-auto" />
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <button

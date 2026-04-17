@@ -180,7 +180,10 @@ export default function App() {
       <Route path="*" element={
         <div className="min-h-screen bg-background text-foreground flex flex-col items-center">
           <header className="w-full flex items-center px-4 py-3 border-b border-border max-w-3xl">
-            <img src="/blipp-wordmark.svg" alt="Blipp" className="h-8 w-auto" />
+            <div className="flex items-center gap-2">
+              <img src="/blipp-icon.svg" alt="" className="h-8 w-8" />
+              <img src="/blipp-wordmark.svg" alt="Blipp" className="h-6 w-auto" />
+            </div>
           </header>
           <NotFound />
         </div>
