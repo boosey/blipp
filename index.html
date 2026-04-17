@@ -30,6 +30,15 @@
 
     <link rel="icon" type="image/png" href="/blipp-icon-transparent-192.png" />
     <link rel="apple-touch-icon" href="/blipp-icon-transparent-192.png" />
+    <link rel="preload" as="image" href="/splash.png" fetchpriority="high" />
+    <style>
+      html, body { margin: 0; background: #09090b; min-height: 100vh; }
+      .blipp-splash {
+        position: fixed;
+        inset: 0;
+        background: #09090b center / contain no-repeat url(/splash.png);
+      }
+    </style>
     <title>Blipp — All Your Podcasts in a Blipp | Podcast Summaries in Minutes</title>
     <meta name="description" content="Blipp turns full podcast episodes into short, voice-narrated summaries. Choose 2–30 minutes and get the key insights from any episode. Hear the signal without the noise." />
     <link rel="canonical" href="https://podblipp.com/" />
@@ -72,7 +81,7 @@
     </script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"><div class="blipp-splash" aria-hidden="true"></div></div>
     <script src="https://imasdk.googleapis.com/js/sdkloader/ima3.js" async></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>

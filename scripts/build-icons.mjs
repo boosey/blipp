@@ -19,11 +19,17 @@ const JOBS = [
   { src: "assets/source/icon.svg",     out: "public/blipp-icon-transparent-192.png", size: 192  },
   { src: "assets/source/icon.svg",     out: "public/blipp-icon-transparent-512.png", size: 512  },
   { src: "assets/source/icon.svg",     out: "assets/icon-only.png",                  size: 1024, flatten: true },
+  // iOS AppIcon — single 1024x1024 file consumed by Xcode via Contents.json
+  { src: "assets/source/icon.svg",     out: "ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png", size: 1024, flatten: true },
   // Wordmark (preserve aspect ratio, constrain height)
   { src: "assets/source/wordmark.svg", out: "public/blipp-wordmark-transparent.png", height: 256 },
   // Splash
   { src: "assets/source/splash.svg",   out: "public/splash.png",                     size: 1536, flatten: true },
   { src: "assets/source/splash.svg",   out: "assets/splash.png",                     size: 2732, flatten: true },
+  // iOS Splash — Xcode Splash.imageset wants three identical copies for @1x/@2x/@3x scales
+  { src: "assets/source/splash.svg",   out: "ios/App/App/Assets.xcassets/Splash.imageset/splash-2732x2732.png",   size: 2732, flatten: true },
+  { src: "assets/source/splash.svg",   out: "ios/App/App/Assets.xcassets/Splash.imageset/splash-2732x2732-1.png", size: 2732, flatten: true },
+  { src: "assets/source/splash.svg",   out: "ios/App/App/Assets.xcassets/Splash.imageset/splash-2732x2732-2.png", size: 2732, flatten: true },
 ];
 
 async function render(job) {
