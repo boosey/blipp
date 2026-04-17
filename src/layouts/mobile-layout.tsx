@@ -34,7 +34,10 @@ function MobileLayoutInner() {
     <div className="h-[100dvh] bg-background text-foreground flex flex-col max-w-3xl mx-auto lg:border-x lg:border-border">
       <OfflineIndicator />
       {/* Header */}
-      <header className="sticky top-0 z-50 flex items-center justify-between px-4 py-3 border-b border-border bg-background">
+      <header
+        className="sticky top-0 z-50 flex items-center justify-between px-4 py-3 border-b border-border bg-background"
+        style={{ paddingTop: "calc(env(safe-area-inset-top) + 0.75rem)" }}
+      >
         <div className="flex items-center gap-2">
           {isSubPage && (
             <button
