@@ -47,7 +47,7 @@ function MobileLayoutInner() {
           )}
           <div className="flex items-center gap-2">
             <img src="/blipp-icon-transparent-192.png" alt="" className="h-8 w-8" />
-            <img src="/blipp-wordmark-transparent.png" alt="Blipp" className="h-6 w-auto" />
+            <img src="/blipp-wordmark-transparent.png" alt="Blipp" className="h-6 w-auto translate-y-0.5" />
           </div>
         </div>
         <div className="flex items-center gap-2">

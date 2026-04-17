@@ -182,7 +182,7 @@ export default function App() {
           <header className="w-full flex items-center px-4 py-3 border-b border-border max-w-3xl">
             <div className="flex items-center gap-2">
               <img src="/blipp-icon-transparent-192.png" alt="" className="h-8 w-8" />
-              <img src="/blipp-wordmark-transparent.png" alt="Blipp" className="h-6 w-auto" />
+              <img src="/blipp-wordmark-transparent.png" alt="Blipp" className="h-6 w-auto translate-y-0.5" />
             </div>
           </header>
           <NotFound />
