@@ -125,7 +125,7 @@ export function Landing() {
           {/* Logo */}
           <div className="animate-fade-up mb-8 mt-12">
             <img
-              src="/blipp-icon-transparent.png"
+              src="/blipp-icon-transparent-192.png"
               alt="Blipp"
               className="w-20 h-20 mx-auto rounded-2xl"
               style={{ animation: "pulse-glow 3s ease-in-out infinite" }}

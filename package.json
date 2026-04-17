@@ -31,7 +31,9 @@
     "tail:prod": "npx wrangler tail blipp",
     "apple:discover": "node scripts/apple-discover.mjs",
     "apple:discover:production": "node scripts/apple-discover.mjs --production",
-    "apple:discover:dry": "node scripts/apple-discover.mjs --dry-run"
+    "apple:discover:dry": "node scripts/apple-discover.mjs --dry-run",
+    "icons:build": "node scripts/build-icons.mjs",
+    "icons:verify": "node scripts/build-icons.mjs --verify"
   },
   "repository": {
     "type": "git",
@@ -104,6 +106,7 @@
     "jsdom": "^28.1.0",
     "prisma": "^7.4.1",
     "rollup-plugin-visualizer": "^7.0.1",
+    "sharp": "^0.34.5",
     "tailwindcss": "^4.2.1",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
