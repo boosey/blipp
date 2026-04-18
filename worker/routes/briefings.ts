@@ -123,6 +123,7 @@ briefings.post("/generate", async (c) => {
         }],
         isTest: false,
         status: "PENDING",
+        source: "ON_DEMAND",
       },
     });
 

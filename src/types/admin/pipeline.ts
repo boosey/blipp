@@ -83,7 +83,7 @@ export interface BriefingRequest {
   targetMinutes: number;
   items: BriefingRequestItem[];
   isTest: boolean;
-  source?: "SUBSCRIPTION" | "ON_DEMAND" | "SHARED" | "CATALOG" | null;
+  source?: BriefingRequestSource | null;
   briefingId: string | null;
   errorMessage: string | null;
   cancelledAt: string | null;
@@ -98,6 +98,29 @@ export interface BriefingRequest {
 }
 
 export type BriefingRequestStatus = "PENDING" | "PROCESSING" | "CANCELLED" | "COMPLETED" | "COMPLETED_DEGRADED" | "FAILED";
+
+export type BriefingRequestSource =
+  | "ON_DEMAND"
+  | "SUBSCRIPTION"
+  | "SHARE"
+  | "STARTER_PACK"
+  | "CATALOG_PREGEN_FEED_REFRESH"
+  | "CATALOG_PREGEN_CRON"
+  | "CATALOG_PREGEN_ADMIN"
+  | "SEO_BACKFILL"
+  | "ADMIN_TEST";
+
+export const BRIEFING_REQUEST_SOURCE_LABELS: Record<BriefingRequestSource, string> = {
+  ON_DEMAND: "On Demand",
+  SUBSCRIPTION: "Subscription",
+  SHARE: "Share",
+  STARTER_PACK: "Starter Pack",
+  CATALOG_PREGEN_FEED_REFRESH: "Pre-Gen (Feed Refresh)",
+  CATALOG_PREGEN_CRON: "Pre-Gen (Cron)",
+  CATALOG_PREGEN_ADMIN: "Pre-Gen (Admin)",
+  SEO_BACKFILL: "SEO Backfill",
+  ADMIN_TEST: "Admin Test",
+};
 
 export interface DeletePreviewRelatedRequest {
   id: string;

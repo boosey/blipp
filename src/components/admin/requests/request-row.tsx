@@ -15,6 +15,7 @@ import type {
   BriefingRequestStatus,
   JobProgress,
 } from "@/types/admin";
+import { BRIEFING_REQUEST_SOURCE_LABELS } from "@/types/admin";
 import { RequestCostSummary, JobProgressTree } from "./job-progress-tree";
 
 const STATUS_STYLES: Record<
@@ -118,7 +119,7 @@ export function RequestRow({
           {itemCount}
         </div>
         <div className="text-xs text-[#9CA3AF]">
-          {request.isTest ? "Test" : request.source === "ON_DEMAND" ? "On Demand" : request.source === "SUBSCRIPTION" ? "Subscription" : request.source ?? "User"}
+          {request.source ? BRIEFING_REQUEST_SOURCE_LABELS[request.source] ?? request.source : "Unknown"}
         </div>
         <div className="text-[10px] text-[#10B981] font-mono tabular-nums">
           {request.totalCost != null ? `$${request.totalCost.toFixed(4)}` : "\u2014"}

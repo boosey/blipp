@@ -18,7 +18,7 @@ catalogPregenRoutes.post("/trigger", async (c) => {
     error: async (msg: string, data?: Record<string, unknown>) => { log.error(msg, data ?? {}); },
   };
 
-  const result = await runCatalogPregenJob(prisma, logger, c.env);
+  const result = await runCatalogPregenJob(prisma, logger, c.env, "CATALOG_PREGEN_ADMIN");
   return c.json({ data: result });
 });
 

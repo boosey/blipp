@@ -14,6 +14,8 @@ type PrismaLike = {
   user: { findFirst: (args: any) => Promise<any> };
 };
 
+type CatalogPregenSource = "CATALOG_PREGEN_CRON" | "CATALOG_PREGEN_ADMIN";
+
 const PODCASTS_PER_REQUEST = 25;
 
 /**
@@ -29,7 +31,8 @@ const PODCASTS_PER_REQUEST = 25;
 export async function runCatalogPregenJob(
   prisma: PrismaLike,
   logger: CronLogger,
-  env: Env
+  env: Env,
+  source: CatalogPregenSource = "CATALOG_PREGEN_CRON"
 ): Promise<Record<string, unknown>> {
   await logger.info("Scanning all Apple-ranked podcasts for catalog pre-generation");
 
@@ -145,6 +148,7 @@ export async function runCatalogPregenJob(
         targetMinutes: 5,
         items: chunk as any,
         mode: "CATALOG",
+        source,
       },
       select: { id: true },
     });

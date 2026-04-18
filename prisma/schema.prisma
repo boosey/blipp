@@ -537,28 +537,43 @@ enum PipelineEventLevel {
 // ── Briefing Requests (Demand-Driven Pipeline) ──
 
 model BriefingRequest {
-  id            String               @id @default(cuid())
+  id            String                 @id @default(cuid())
   userId        String
-  status        BriefingRequestStatus @default(PENDING)
+  status        BriefingRequestStatus  @default(PENDING)
   targetMinutes Int
-  items         Json                 // BriefingRequestItem[]
-  isTest        Boolean              @default(false)
-  mode          BriefingRequestMode  @default(USER)
+  items         Json                   // BriefingRequestItem[]
+  isTest        Boolean                @default(false)
+  mode          BriefingRequestMode    @default(USER)
+  source        BriefingRequestSource  @default(ON_DEMAND)
   errorMessage  String?
   cancelledAt   DateTime?
-  createdAt     DateTime             @default(now())
-  updatedAt     DateTime             @updatedAt
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
 
   user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   jobs              PipelineJob[]
   feedItems         FeedItem[]
   catalogBriefings  CatalogBriefing[]
+
+  @@index([source])
 }
 
 enum BriefingRequestMode {
   USER           // Normal user-triggered (subscription, on-demand)
   SEO_BACKFILL   // Transcription + distillation only, for SEO pages
   CATALOG        // Full pipeline, pre-generated for instant delivery on signup
+}
+
+enum BriefingRequestSource {
+  ON_DEMAND                     // User clicked Generate on a specific episode
+  SUBSCRIPTION                  // Auto-created from user's subscription on feed refresh
+  SHARE                         // Created when a user opens a shared briefing
+  STARTER_PACK                  // Onboarding auto-populate (deliverStarterPack)
+  CATALOG_PREGEN_FEED_REFRESH   // Inline auto-catalog from feed-refresh.ts
+  CATALOG_PREGEN_CRON           // Scheduled catalog-pregen cron job
+  CATALOG_PREGEN_ADMIN          // Admin clicked /api/admin/catalog-pregen/trigger
+  SEO_BACKFILL                  // Admin SEO backfill (episodes.ts)
+  ADMIN_TEST                    // Admin test-briefing endpoint
 }
 
 enum BriefingRequestStatus {

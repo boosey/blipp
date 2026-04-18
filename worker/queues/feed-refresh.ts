@@ -385,9 +385,18 @@ async function processPodcast(
   }
 
   // Auto-generate catalog clips for new episodes of Apple-ranked podcasts
-  // so they're ready for instant delivery when users subscribe
+  // so they're ready for instant delivery when users subscribe.
+  // Gated by the catalog-pregen cron's enabled flag so disabling catalog
+  // pre-gen stops all pre-gen paths — scheduled AND inline.
   if (newEpisodeIds.length > 0 && podcast.appleRank != null) {
     try {
+      const pregenJob = await prisma.cronJob.findUnique({
+        where: { jobKey: "catalog-pregen" },
+        select: { enabled: true },
+      });
+      if (!pregenJob?.enabled) {
+        log.info("catalog_auto_gen_skipped_disabled", { podcastId: podcast.id });
+      } else {
       // Check which new episodes already have a catalog briefing or in-flight pipeline job at tier 5
       const [existingCatalog, inFlightJobs] = await Promise.all([
         prisma.catalogBriefing.findMany({
@@ -430,6 +439,7 @@ async function processPodcast(
               targetMinutes: 5,
               items: items as any,
               mode: "CATALOG",
+              source: "CATALOG_PREGEN_FEED_REFRESH",
             },
             select: { id: true },
           });
@@ -446,6 +456,7 @@ async function processPodcast(
             requestId: request.id,
           });
         }
+      }
       }
     } catch (catalogErr) {
       // Non-critical — don't fail the feed refresh

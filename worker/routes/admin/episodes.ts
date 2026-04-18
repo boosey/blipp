@@ -564,6 +564,7 @@ episodesRoutes.post("/distill-apple-latest", async (c) => {
         targetMinutes: 5,
         items: chunkItems as any,
         mode: "SEO_BACKFILL",
+        source: "SEO_BACKFILL",
       },
       select: { id: true },
     });

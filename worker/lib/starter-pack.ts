@@ -110,6 +110,7 @@ export async function deliverStarterPack(params: {
       targetMinutes: 5,
       items: items as any,
       mode: "USER",
+      source: "STARTER_PACK",
     },
     select: { id: true },
   });

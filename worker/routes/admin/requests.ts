@@ -24,7 +24,7 @@ requestsRoutes.get("/", async (c) => {
       orderBy: { createdAt: "desc" },
       include: {
         user: { select: { name: true, email: true } },
-        feedItems: { select: { source: true, briefingId: true }, take: 1 },
+        feedItems: { select: { briefingId: true }, take: 1 },
         jobs: {
           orderBy: { createdAt: "asc" },
           include: {
@@ -50,7 +50,7 @@ requestsRoutes.get("/", async (c) => {
       targetMinutes: r.targetMinutes,
       items: r.items as unknown as BriefingRequestItem[],
       isTest: r.isTest,
-      source: r.feedItems?.[0]?.source ?? null,
+      source: r.source ?? null,
       briefingId: r.feedItems?.[0]?.briefingId ?? null,
       errorMessage: r.errorMessage,
       podcastTitle: firstJob?.episode?.podcast?.title ?? null,
@@ -347,6 +347,7 @@ requestsRoutes.post("/test-briefing", async (c) => {
       items: resolvedItems as any,
       isTest: true,
       status: "PENDING",
+      source: "ADMIN_TEST",
     },
   });
 

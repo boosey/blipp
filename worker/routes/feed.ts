@@ -185,6 +185,7 @@ feed.get("/shared/:briefingId", async (c) => {
         status: "PROCESSING",
         targetMinutes: source.durationTier,
         items: [{ podcastId: source.podcastId, episodeId: source.episodeId, durationTier: source.durationTier }],
+        source: "SHARE",
       },
     });
 

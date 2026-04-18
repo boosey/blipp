@@ -333,6 +333,7 @@ podcasts.post("/subscribe", async (c) => {
             }],
             isTest: false,
             status: "PENDING",
+            source: "SUBSCRIPTION",
           },
         });
 
