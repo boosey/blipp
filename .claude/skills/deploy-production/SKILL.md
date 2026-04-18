@@ -23,6 +23,30 @@ About to trigger a production deploy from main. Proceed?
 
 If the user already said "deploy to production" or similar, that counts as confirmation — skip this step.
 
+### Step 1.5: Pre-flight — schema migration sanity check
+
+Before triggering, verify production won't end up with a code/schema mismatch.
+
+1. **List recent migrations on disk vs. main:**
+   ```bash
+   ls -1 prisma/migrations/ | tail -5
+   git log --oneline --diff-filter=A -- prisma/migrations/ | head -5
+   ```
+2. **Check production's migration status:**
+   ```bash
+   npm run db:migrate:status:production
+   ```
+   - If output says "Database schema is up to date" → safe.
+   - If it lists "Following migrations have not yet been applied" → the deploy will apply them, expected.
+   - If it complains about **drift** ("Drift detected" or "schema is not up to date") → STOP. Production has manual changes that aren't in migration history. Resolve drift before deploying (often: `prisma migrate resolve --applied <name>` to mark out-of-band changes as applied).
+
+3. If `prisma/schema.prisma` was edited recently but no corresponding migration was committed (e.g. someone used `db:push:*:force` instead of `db:migrate:new`), the production deploy will succeed but **production DB won't get the new schema**, and code that depends on it will fail at runtime. Check:
+   ```bash
+   git log --oneline -10 prisma/schema.prisma
+   git log --oneline -10 prisma/migrations/
+   ```
+   If schema commits aren't paired with migration commits, stop and have the user generate/commit the missing migration first.
+
 ### Step 2: Trigger the workflow
 
 ```bash
@@ -92,7 +116,7 @@ After each poll, print the **full updated checklist** across both jobs. The depl
 4. npm ci
 5. Prisma generate
 6. Create Prisma barrel export
-7. Push schema to production database
+7. Apply migrations to production database
 8. Typecheck
 9. Tests
 10. Build for Production
@@ -115,7 +139,7 @@ Example output during a run:
 ✅ npm ci
 ✅ Prisma generate
 ✅ Create Prisma barrel export
-✅ Push schema to production database
+✅ Apply migrations to production database
 ✅ Typecheck
 ⏳ Tests
 ⬜ Build for Production

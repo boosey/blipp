@@ -13,6 +13,33 @@ After finishing work, the developer wants a single command that gets their chang
 
 ## The workflow
 
+### Step 0: Pre-flight — schema changes need migrations
+
+**Before committing**, check if `prisma/schema.prisma` is modified relative to `HEAD`:
+
+```bash
+git diff --name-only HEAD prisma/schema.prisma
+```
+
+If schema.prisma is modified, also check whether a new migration file accompanies it:
+
+```bash
+git status --short prisma/migrations/
+```
+
+If schema.prisma changed but no new `prisma/migrations/<ts>_<name>/migration.sql` is staged, **stop and tell the user**:
+
+> Schema is modified but no new migration file exists. CI runs `prisma migrate deploy`, which only applies migration files — it will NOT pick up bare schema.prisma edits. The deploy will succeed but the new schema won't reach the database, and code that depends on it will break at runtime.
+>
+> Run `npm run db:migrate:new <snake_case_name>` to generate the migration, review the SQL, then re-run this skill.
+
+If the user already pushed the schema directly via `npm run db:push:staging:force` (skipping migrations), they need to:
+1. Generate the migration anyway: `npm run db:migrate:new <name>`
+2. Mark it as already-applied on staging so CI doesn't re-run the SQL: `prisma migrate resolve --applied <migration_name>` against the staging DB
+3. Commit the migration file
+
+Otherwise CI will fail with "relation already exists" the first time the migration tries to apply. Skip step 0 if no schema changes.
+
 ### Step 1: Commit
 
 Run these in parallel:
@@ -112,7 +139,7 @@ After each poll, print the **full updated checklist** of the CI steps that matte
 3. npm ci
 4. Prisma generate
 5. Create Prisma barrel export
-6. Push schema to staging database
+6. Apply migrations to staging database
 7. Bump patch version
 8. Typecheck
 9. Tests
@@ -134,7 +161,7 @@ Example output during a run:
 ✅ npm ci
 ✅ Prisma generate
 ✅ Create Prisma barrel export
-✅ Push schema to staging database
+✅ Apply migrations to staging database
 ✅ Bump patch version
 ✅ Typecheck
 ⏳ Tests
@@ -153,7 +180,9 @@ When the run finishes:
   ```
   ✅ CI passed — staging deploy complete.
   ```
-- **Failure**: Print the final checklist (showing which step(s) got ❌), then report which step failed and offer to investigate.
+- **Failure**: Print the final checklist (showing which step(s) got ❌), then report which step failed and offer to investigate. Common failures:
+  - **Apply migrations to staging database**: Drift, broken migration SQL, or "relation already exists" if schema was previously force-pushed. Run `npm run db:migrate:status:staging` to investigate. If a migration is broken, fix the SQL and re-push. If staging DB is out of sync with migration history, `prisma migrate resolve --applied <name>` can re-sync.
+  - **typecheck/test/build**: Code issue — investigate.
 
 ## Important constraints
 
