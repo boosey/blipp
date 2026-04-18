@@ -40,11 +40,14 @@ For each Blipp plan that should be purchasable on iOS, create one subscription p
 ## 2. RevenueCat — Project Setup
 
 1. Sign in to [RevenueCat](https://app.revenuecat.com/)
-2. Create a project named **Blipp** (or per-environment: `Blipp Staging`, `Blipp Production`)
-3. **Project settings → Apps → + New App → App Store**
+2. In the **Projects** dropdown at the top of the dashboard, click **+ Create new project** and name it **Blipp** (or per-environment: `Blipp Staging`, `Blipp Production`). New projects ship with a **Test Store** by default — you can ignore it; we're adding a real App Store app next.
+3. **Project settings → Apps & providers → + New app → App Store**
    - Bundle ID: `com.blipp.app`
-   - In-App Purchase Key: upload the `.p8` from App Store Connect → Users and Access → Keys → In-App Purchase
    - App-Specific Shared Secret: paste from step 1.7
+   - Save the app, then open it and go to the **In-app purchase key configuration** tab:
+     - Upload the `.p8` generated at App Store Connect → **Users and Access → Integrations → In-App Purchase** (click *Generate In-App Purchase Key* — the `.p8` is a one-shot download, save it somewhere safe). Required for StoreKit 2 / Purchases v5+; without it, transactions silently fail to record.
+     - Paste the **Issuer ID** shown at the top of that same App Store Connect page. If you don't see an Issuer ID there, create any App Store Connect API key on the adjacent tab and the Issuer ID will appear (it's shared across both key types).
+     - Click **Save changes**.
 4. **Products** → import the products you created in App Store Connect (RevenueCat auto-discovers them once the IAP key is uploaded)
 5. **Entitlements → + New** → name it `pro` (one entitlement per access tier — most setups need just one)
 6. **Offerings → Default** → attach the products as packages:
