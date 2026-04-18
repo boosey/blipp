@@ -202,10 +202,10 @@ else
   fi
 fi
 
-# Push schema to dev database
-info "Pushing Prisma schema to dev database..."
-DATABASE_URL="$DEV_DATABASE_URL" npx prisma db push --skip-generate 2>&1 || warn "Prisma push failed — you may need to run it manually"
-success "Prisma schema pushed to dev"
+# Apply migrations to dev database
+info "Applying Prisma migrations to dev database..."
+DATABASE_URL="$DEV_DATABASE_URL" npx prisma migrate deploy 2>&1 || warn "Prisma migrate deploy failed — you may need to run it manually"
+success "Prisma migrations applied to dev"
 
 # ─────────────────────────────────────────────────────────
 # Phase 3: Cloudflare Infrastructure

@@ -59,11 +59,12 @@ jobs:
           echo 'export { PrismaClient } from "./client";' > src/generated/prisma/index.ts
           echo 'export * from "./enums";' >> src/generated/prisma/index.ts
 
-      - name: Push schema to production database
+      - name: Apply migrations to production database
         run: |
-          npx prisma db push 2>&1 || {
-            echo "::error::prisma db push failed — likely a destructive schema change."
-            echo "::error::Run manually with --accept-data-loss, then re-run this workflow."
+          npx prisma migrate deploy 2>&1 || {
+            echo "::error::prisma migrate deploy failed."
+            echo "::error::Drift detected, a migration failed, or a manual schema change is out of sync."
+            echo "::error::Run 'npx prisma migrate status' locally against production to investigate."
             exit 1
           }
         env:

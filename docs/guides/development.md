@@ -73,8 +73,8 @@ Webhook secrets (`CLERK_WEBHOOK_SECRET`, `STRIPE_WEBHOOK_SECRET`) use placeholde
 # Generate Prisma client (Cloudflare runtime + Node.js runtime)
 npx prisma generate
 
-# Push schema to Neon (creates all tables)
-npx prisma db push
+# Apply all migrations to Neon (creates all tables)
+npx prisma migrate deploy
 
 # Seed initial data (plans, AI model registry, etc.)
 npx prisma db seed
@@ -164,7 +164,11 @@ Completely free. Sign up and check your email for the API Key and API Secret.
 | `npm run clean:pipeline:production` | Clean pipeline data on production |
 | `npm run clean:stt-benchmark` | Clean STT benchmark data |
 | `npm run db:check` | Database health check (uses raw `pg`) |
-| `npm run db:push` | Push Prisma schema to database |
+| `npm run db:migrate:new <name>` | Generate a new migration from schema.prisma changes |
+| `npm run db:migrate:deploy:staging` | Apply pending migrations to staging |
+| `npm run db:migrate:deploy:production` | Apply pending migrations to production |
+| `npm run db:migrate:status:staging` | Show migration status on staging |
+| `npm run db:migrate:status:production` | Show migration status on production |
 | `npm run db:studio` | Open Prisma Studio |
 | `npm run deploy` | Build + deploy to staging |
 | `npm run deploy:production` | Build + deploy to production |
@@ -331,11 +335,13 @@ The app is configured as a Progressive Web App via `vite-plugin-pwa`:
 
 ```bash
 # Edit prisma/schema.prisma, then:
-npx prisma db push        # Sync schema to Neon (no migration files)
-npx prisma generate        # Regenerate client
+npm run db:migrate:new <snake_case_name>   # Generate migration SQL from the diff
+# review prisma/migrations/<ts>_<name>/migration.sql
+npx prisma generate                         # Regenerate client
+git add prisma/schema.prisma prisma/migrations/
 ```
 
-Use `db push` for prototyping. Switch to `prisma migrate dev` when you need migration history.
+See `docs/guides/prisma-migrations.md` for the full workflow, rollback, and break-glass guidance.
 
 ### Dual Generators
 

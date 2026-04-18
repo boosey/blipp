@@ -82,21 +82,21 @@ fi
 
 header "Staging Database"
 
-info "Pushing Prisma schema to staging..."
-DATABASE_URL="$STAGING_DATABASE_URL" npx prisma db push
-success "Schema pushed to staging"
+info "Applying Prisma migrations to staging..."
+DATABASE_URL="$STAGING_DATABASE_URL" npx prisma migrate deploy
+success "Migrations applied to staging"
 
 info "Seeding staging database..."
 DATABASE_URL="$STAGING_DATABASE_URL" npx prisma db seed
 success "Staging database seeded"
 
-# ── Push schema + seed to production ──
+# ── Apply migrations + seed to production ──
 
 header "Production Database"
 
-info "Pushing Prisma schema to production..."
-DATABASE_URL="$PRODUCTION_DATABASE_URL" npx prisma db push
-success "Schema pushed to production"
+info "Applying Prisma migrations to production..."
+DATABASE_URL="$PRODUCTION_DATABASE_URL" npx prisma migrate deploy
+success "Migrations applied to production"
 
 info "Seeding production database..."
 DATABASE_URL="$PRODUCTION_DATABASE_URL" npx prisma db seed

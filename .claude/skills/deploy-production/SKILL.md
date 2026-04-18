@@ -135,7 +135,7 @@ When the run finishes:
   ```
 - **Failure**: Print the final checklist (showing which step(s) got ❌), then read failed logs with `gh run view <RUN_ID> --log-failed`, report which step failed, and offer to investigate. Common failures:
   - **verify-staging**: Staging hasn't been deployed recently or last staging deploy failed
-  - **prisma db push**: Destructive schema change — needs manual `npm run db:push:production:force`
+  - **prisma migrate deploy**: Drift detected or a migration failed — run `npm run db:migrate:status:production` to investigate. If a migration SQL file is broken, fix it and redeploy. In emergencies only, `npm run db:force-sync:production` bypasses migrations (then `prisma migrate resolve` to re-sync history).
   - **Hyperdrive binding timeout**: Transient Cloudflare error — just re-run
   - **typecheck/test/build**: Code issue — investigate
 

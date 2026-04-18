@@ -9,9 +9,11 @@ npm run build            # Vite production build
 npm test                 # Run all tests (vitest)
 npm run typecheck        # TypeScript check (tsc --noEmit)
 npx prisma generate      # Regenerate Prisma client
-npx prisma db push       # Push schema to database (CI does this automatically for additive changes)
-npm run db:push:staging:force   # Force push schema to staging (for breaking changes)
-npm run db:push:production:force # Force push schema to production (for breaking changes)
+npm run db:migrate:new <name>           # Generate a new migration from schema.prisma changes
+npm run db:migrate:deploy:staging       # Apply pending migrations to staging (CI does this automatically)
+npm run db:migrate:deploy:production    # Apply pending migrations to production (CI does this automatically)
+npm run db:migrate:status:staging       # Show migration status on staging
+npm run db:migrate:status:production    # Show migration status on production
 npx prisma db seed       # Seed plans data
 npm run clean:pipeline   # Clean all user/pipeline data (feed, briefings, subscriptions, pipeline)
 npm run db:check         # Database health check
@@ -97,7 +99,7 @@ docs/             — Architecture, pipeline, API ref, data model, guides
 - **Tests OOM**: Run worker tests in batches or with `--max-old-space-size=4096`
 - **Vitest v4**: `vi.clearAllMocks()` clears `mockResolvedValue`; re-set mocks in `beforeEach`
 - **Clerk middleware**: Applied once globally — don't duplicate in route files
-- **Schema deploys**: CI runs `prisma db push` automatically before `wrangler deploy`. For breaking changes (column renames/drops), CI fails — run `db:push:*:force` locally first, then re-trigger CI
+- **Schema deploys**: CI runs `prisma migrate deploy` automatically before `wrangler deploy`. Workflow for schema changes: edit `prisma/schema.prisma` → `npm run db:migrate:new <snake_case_name>` to generate the migration SQL from the diff → review the generated `prisma/migrations/<ts>_<name>/migration.sql` → commit. CI applies it to staging on push, then to prod on the production deploy. `prisma migrate deploy` only rolls forward — destructive changes (renames/drops) must be expressed as explicit SQL in the migration file. If you need to bypass migrations (emergency break-glass only): `npm run db:force-sync:staging` or `db:force-sync:production` — these call `prisma db push --accept-data-loss` and will desync the migration history, requiring a `prisma migrate resolve` follow-up
 
 ## Documentation
 See `docs/` for comprehensive docs:

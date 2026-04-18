@@ -204,11 +204,11 @@ bash scripts/setup-db.sh neon-config.env
 
 ```bash
 # Staging
-DATABASE_URL="YOUR_STAGING_CONNECTION_STRING" npx prisma db push
+DATABASE_URL="YOUR_STAGING_CONNECTION_STRING" npx prisma migrate deploy
 DATABASE_URL="YOUR_STAGING_CONNECTION_STRING" npx prisma db seed
 
 # Production
-DATABASE_URL="YOUR_PRODUCTION_CONNECTION_STRING" npx prisma db push
+DATABASE_URL="YOUR_PRODUCTION_CONNECTION_STRING" npx prisma migrate deploy
 DATABASE_URL="YOUR_PRODUCTION_CONNECTION_STRING" npx prisma db seed
 ```
 
@@ -346,8 +346,8 @@ Go to https://github.com/boosey/blipp → **Settings > Secrets and variables > A
 - [ ] `CLOUDFLARE_API_TOKEN` — the Cloudflare API token from Phase 3.4
 - [ ] `VITE_CLERK_PUBLISHABLE_KEY_STAGING` — the **same `pk_test_...` value** you pasted into `secrets-staging.env` as `CLERK_PUBLISHABLE_KEY` in Phase 5a
 - [ ] `VITE_CLERK_PUBLISHABLE_KEY_PRODUCTION` — the **same `pk_live_...` value** you pasted into `secrets-production.env` as `CLERK_PUBLISHABLE_KEY` in Phase 5b
-- [ ] `STAGING_DATABASE_URL` — Neon staging pooler connection string (from `neon-config.env`). CI uses this to run `prisma db push` before deploying.
-- [ ] `PRODUCTION_DATABASE_URL` — Neon production pooler connection string (from `neon-config.env`). CI uses this to run `prisma db push` before deploying.
+- [ ] `STAGING_DATABASE_URL` — Neon staging pooler connection string (from `neon-config.env`). CI uses this to run `prisma migrate deploy` before deploying.
+- [ ] `PRODUCTION_DATABASE_URL` — Neon production pooler connection string (from `neon-config.env`). CI uses this to run `prisma migrate deploy` before deploying.
 
 ### 8.2 Add Repository Variable
 
@@ -728,7 +728,7 @@ Once approved:
 
 | Task | When |
 |------|------|
-| Reset staging DB | After schema changes: `prisma db push` + `prisma db seed` with staging URL |
+| Reset staging DB | After schema changes: `prisma migrate deploy` + `prisma db seed` with staging URL |
 | Trigger pipeline | Manually via admin UI (no cron) |
 | Check AI costs | Monthly — should be minimal (cheapest models) |
 
@@ -854,8 +854,8 @@ rm neon-config.env secrets-staging.env secrets-production.env
 | `CLOUDFLARE_API_TOKEN` | Secret | Cloudflare API token |
 | `VITE_CLERK_PUBLISHABLE_KEY_STAGING` | Secret | `pk_test_...` |
 | `VITE_CLERK_PUBLISHABLE_KEY_PRODUCTION` | Secret | `pk_live_...` |
-| `STAGING_DATABASE_URL` | Secret | Neon staging pooler connection string (for CI `prisma db push`) |
-| `PRODUCTION_DATABASE_URL` | Secret | Neon production pooler connection string (for CI `prisma db push`) |
+| `STAGING_DATABASE_URL` | Secret | Neon staging pooler connection string (for CI `prisma migrate deploy`) |
+| `PRODUCTION_DATABASE_URL` | Secret | Neon production pooler connection string (for CI `prisma migrate deploy`) |
 | `STAGING_URL` | Variable | `workers.dev` URL (set after first deploy) |
 
 ### Deploy Commands
