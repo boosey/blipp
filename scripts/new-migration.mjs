@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+// Generate a new Prisma migration by diffing migration history against schema.prisma
+// using the shadow database (configured in prisma.config.ts via SHADOW_DATABASE_URL
+// in neon-config.env). This is the canonical Prisma flow — it works regardless of
+// what state staging/production happen to be in.
 import { execSync } from "node:child_process";
 import { mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -12,16 +16,16 @@ if (!name || !/^[a-z0-9_]+$/.test(name)) {
 
 const configPath = "neon-config.env";
 if (!existsSync(configPath)) {
-  console.error(`missing ${configPath} — need STAGING_DATABASE_URL to diff against`);
+  console.error(`missing ${configPath} — need SHADOW_DATABASE_URL to diff against`);
   process.exit(1);
 }
 const envText = readFileSync(configPath, "utf8");
-const stagingMatch = envText.match(/^STAGING_DATABASE_URL=(.+)$/m);
-if (!stagingMatch) {
-  console.error("STAGING_DATABASE_URL not found in neon-config.env");
+const shadowMatch = envText.match(/^SHADOW_DATABASE_URL=(.+)$/m);
+if (!shadowMatch) {
+  console.error("SHADOW_DATABASE_URL not found in neon-config.env");
+  console.error("provision a throwaway Neon branch and paste its URL there");
   process.exit(1);
 }
-const stagingUrl = stagingMatch[1].trim();
 
 const ts = new Date().toISOString().replace(/\D/g, "").slice(0, 14);
 const dir = join("prisma", "migrations", `${ts}_${name}`);
@@ -30,20 +34,20 @@ if (existsSync(dir)) {
   process.exit(1);
 }
 
-console.log("diffing staging DB → schema.prisma (staging is treated as the last-applied state)");
-console.log("if other unapplied migrations exist locally, apply them to staging first via `npm run db:migrate:deploy:staging`\n");
+console.log("diffing migration history → schema.prisma via shadow DB");
+console.log("if the shadow DB has stale state, run: npm run db:shadow:reset\n");
 
 const sql = execSync(
-  "npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --script",
-  { encoding: "utf8", env: { ...process.env, DATABASE_URL: stagingUrl } },
+  "npx prisma migrate diff --from-migrations prisma/migrations --to-schema prisma/schema.prisma --script",
+  { encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] },
 );
 
 if (!sql.trim() || /^-- This is an empty migration\.?\s*$/m.test(sql.trim())) {
-  console.error("no schema changes detected vs staging — nothing to migrate");
+  console.error("\nno schema changes detected — nothing to migrate");
   process.exit(1);
 }
 
 mkdirSync(dir, { recursive: true });
 writeFileSync(join(dir, "migration.sql"), sql);
 console.log(`created ${dir}/migration.sql`);
-console.log("review the SQL, then apply with: npm run db:migrate:deploy:staging");
+console.log("review the SQL, then commit. CI will run migrate deploy on push.");

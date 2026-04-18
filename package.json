@@ -29,6 +29,7 @@
     "db:migrate:status:staging": "powershell -Command \"Get-Content neon-config.env | ForEach-Object { if($_ -match '^STAGING_DATABASE_URL=(.+)$') { $env:DATABASE_URL=$matches[1] } }; npx prisma migrate status\"",
     "db:migrate:status:production": "powershell -Command \"Get-Content neon-config.env | ForEach-Object { if($_ -match '^PRODUCTION_DATABASE_URL=(.+)$') { $env:DATABASE_URL=$matches[1] } }; npx prisma migrate status\"",
     "db:migrate:new": "node scripts/new-migration.mjs",
+    "db:shadow:reset": "node scripts/reset-shadow-db.mjs",
     "db:force-sync:staging": "powershell -Command \"Get-Content neon-config.env | ForEach-Object { if($_ -match '^STAGING_DATABASE_URL=(.+)$') { $env:DATABASE_URL=$matches[1] } }; npx prisma db push --accept-data-loss\"",
     "db:force-sync:production": "powershell -Command \"Get-Content neon-config.env | ForEach-Object { if($_ -match '^PRODUCTION_DATABASE_URL=(.+)$') { $env:DATABASE_URL=$matches[1] } }; npx prisma db push --accept-data-loss\"",
     "tail:prod": "npx wrangler tail blipp",

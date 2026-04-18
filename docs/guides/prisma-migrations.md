@@ -11,7 +11,7 @@ The project uses `prisma migrate deploy` for schema changes. Both staging and pr
    ```bash
    npm run db:migrate:new <snake_case_name>
    ```
-   This diffs the current **staging database** against `prisma/schema.prisma` and writes the SQL to `prisma/migrations/<timestamp>_<name>/migration.sql`. Staging is treated as the "last-applied state". If a teammate has a migration on main that hasn't hit staging yet, run `npm run db:migrate:deploy:staging` first to apply it, then generate your new migration.
+   This uses the canonical Prisma flow: replays all migrations on disk into the **shadow database** (configured via `SHADOW_DATABASE_URL` in `neon-config.env`), then diffs the result against `prisma/schema.prisma` and writes the SQL to `prisma/migrations/<timestamp>_<name>/migration.sql`. The shadow DB is independent from staging/production, so the script works regardless of what state those happen to be in.
 3. Review the generated SQL. For destructive changes (drops, renames) this is where you edit the SQL to preserve data — e.g. rewrite a column-rename as add-new + backfill + drop-old in follow-up migrations.
 4. Regenerate the Prisma client locally and commit both the schema and the migration:
    ```bash
@@ -19,6 +19,16 @@ The project uses `prisma migrate deploy` for schema changes. Both staging and pr
    git add prisma/schema.prisma prisma/migrations/
    ```
 5. Push. CI runs `prisma migrate deploy` against staging. When you promote to prod, the prod workflow runs `prisma migrate deploy` there too.
+
+### When the shadow DB gets stuck
+
+If `db:migrate:new` fails with `P3006` ("failed to apply cleanly to shadow database"), the shadow has leftover state from a previous run. Reset it:
+
+```bash
+npm run db:shadow:reset
+```
+
+This drops and recreates the `public` schema on the shadow DB. Safe to run any time — the shadow holds no real data.
 
 ## Status and manual control
 
@@ -44,8 +54,13 @@ npm run db:force-sync:production     # DO NOT USE unless you understand the cons
 
 After a force-sync, the `_prisma_migrations` history is out of sync with the DB. Fix it with `prisma migrate resolve --applied <migration_name>` (to mark a file as applied without running it) or `--rolled-back` (to clear a failed-migration record).
 
-## Why we don't use `prisma migrate dev`
+## How the shadow DB works
 
-Prisma's recommended local workflow is `prisma migrate dev`, which replays all migration files against a shadow database, diffs that against `schema.prisma`, and writes the new migration. That catches cases where the real DB has drifted from the migrations on disk.
+The shadow database is a throwaway Neon branch used by `db:migrate:new` to derive the "current" schema from migration history. The flow:
 
-We don't use it because the project doesn't have a `SHADOW_DATABASE_URL` provisioned. If you want that safety guarantee, add a throwaway Neon DB URL as `shadowDatabaseUrl` in `prisma.config.ts` and switch `scripts/new-migration.mjs` to run `migrate dev --create-only` instead.
+1. Prisma drops everything in the shadow.
+2. Replays every migration file in `prisma/migrations/` in order.
+3. Compares the resulting state to `schema.prisma`.
+4. Outputs the SQL diff as the new migration.
+
+This catches drift between migration files and what `schema.prisma` says, because the shadow is independent of staging/production. The shadow URL is stored in `SHADOW_DATABASE_URL` in `neon-config.env` (gitignored) and read by `prisma.config.ts`.
