@@ -1,0 +1,1161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Blipp — Inline Onboarding Prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #111113;
+    --bg-elevated: #1a1a1f;
+    --bg-card: #1e1e24;
+    --bg-card-hover: #25252d;
+    --text: #f0eff4;
+    --text-secondary: #8b8a94;
+    --text-tertiary: #5c5b66;
+    --primary: #6d5dfc;
+    --primary-soft: rgba(109, 93, 252, 0.12);
+    --primary-glow: rgba(109, 93, 252, 0.25);
+    --accent-warm: #f5a623;
+    --accent-warm-soft: rgba(245, 166, 35, 0.12);
+    --accent-green: #34d399;
+    --accent-green-soft: rgba(52, 211, 153, 0.1);
+    --border: rgba(255, 255, 255, 0.06);
+    --border-subtle: rgba(255, 255, 255, 0.03);
+    --radius: 14px;
+    --radius-sm: 10px;
+    --radius-xs: 7px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'DM Sans', -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100dvh;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ---- SHELL ---- */
+  .phone-frame {
+    max-width: 420px;
+    margin: 0 auto;
+    min-height: 100dvh;
+    position: relative;
+    border-left: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px 12px;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+  .logo-icon {
+    width: 26px;
+    height: 26px;
+    background: linear-gradient(135deg, var(--primary), #9d8dff);
+    border-radius: 7px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: 700;
+    color: white;
+  }
+  .logo-text {
+    font-family: 'Bricolage Grotesque', sans-serif;
+    font-size: 20px;
+    font-weight: 700;
+    background: linear-gradient(135deg, #c4bbff, #8d7dff);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: -0.5px;
+  }
+
+  .avatar {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #3b3b4f, #2a2a3a);
+    border: 1.5px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+  }
+
+  .main {
+    flex: 1;
+    padding: 0 20px 100px;
+    overflow-y: auto;
+  }
+
+  .page-title {
+    font-family: 'Bricolage Grotesque', sans-serif;
+    font-size: 24px;
+    font-weight: 700;
+    margin: 20px 0 16px;
+    letter-spacing: -0.3px;
+  }
+
+  .bottom-nav {
+    position: fixed;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 100%;
+    max-width: 420px;
+    display: flex;
+    justify-content: space-around;
+    padding: 10px 0 max(10px, env(safe-area-inset-bottom));
+    background: var(--bg-elevated);
+    border-top: 1px solid var(--border);
+    z-index: 50;
+  }
+  .nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--text-tertiary);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px 12px;
+    transition: color 0.15s;
+  }
+  .nav-item.active { color: var(--primary); }
+  .nav-item svg { width: 22px; height: 22px; }
+
+  /* ---- ONBOARDING CARDS ---- */
+
+  /* Shared card base */
+  .onboard-card {
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: 14px;
+    position: relative;
+    overflow: hidden;
+    animation: card-enter 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  @keyframes card-enter {
+    from { opacity: 0; transform: translateY(12px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  /* Card 1 — Quick-pick topics (replaces interest picker step) */
+  .topics-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+  }
+  .topics-card .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .topics-card .card-title {
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .topics-card .card-subtitle {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+  }
+  .topics-card .skip-btn {
+    font-size: 12px;
+    color: var(--text-tertiary);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 6px;
+    transition: all 0.15s;
+  }
+  .topics-card .skip-btn:hover { color: var(--text-secondary); background: rgba(255,255,255,0.04); }
+
+  .topic-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .topic-chip {
+    padding: 8px 14px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 500;
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .topic-chip:hover {
+    border-color: rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text);
+  }
+  .topic-chip.selected {
+    border-color: var(--primary);
+    background: var(--primary-soft);
+    color: var(--text);
+    box-shadow: 0 0 0 1px var(--primary), inset 0 0 12px var(--primary-soft);
+  }
+  .topic-chip .emoji { margin-right: 4px; }
+
+  .topics-done-btn {
+    margin-top: 14px;
+    width: 100%;
+    padding: 11px;
+    border-radius: var(--radius-sm);
+    border: none;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: var(--primary);
+    color: white;
+    opacity: 0;
+    transform: translateY(4px);
+    pointer-events: none;
+  }
+  .topics-done-btn.visible {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+  }
+  .topics-done-btn:active { transform: scale(0.98); }
+
+  /* Card 2 — Podcast picks (replaces subscription step) */
+  .podcasts-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+  }
+  .podcasts-card .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+  }
+  .podcasts-card .card-title {
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .podcasts-card .card-subtitle {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 14px;
+  }
+
+  .podcast-scroll {
+    display: flex;
+    gap: 12px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    margin: 0 -20px;
+    padding-left: 20px;
+    padding-right: 20px;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .podcast-scroll::-webkit-scrollbar { display: none; }
+
+  .podcast-tile {
+    flex-shrink: 0;
+    width: 100px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    position: relative;
+  }
+  .podcast-tile .art {
+    width: 100px;
+    height: 100px;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    border: 2px solid transparent;
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    position: relative;
+  }
+  .podcast-tile .art img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .podcast-tile.selected .art {
+    border-color: var(--primary);
+    box-shadow: 0 0 16px var(--primary-glow);
+  }
+  .podcast-tile .check {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transform: scale(0.5);
+    transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .podcast-tile.selected .check {
+    opacity: 1;
+    transform: scale(1);
+  }
+  .podcast-tile .check svg { width: 13px; height: 13px; color: white; }
+  .podcast-tile .name {
+    font-size: 11px;
+    font-weight: 500;
+    margin-top: 6px;
+    color: var(--text-secondary);
+    line-height: 1.3;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    transition: color 0.15s;
+  }
+  .podcast-tile.selected .name { color: var(--text); }
+
+  .subscribe-action {
+    margin-top: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .subscribe-count {
+    font-size: 12px;
+    color: var(--text-tertiary);
+  }
+  .subscribe-count strong {
+    color: var(--text-secondary);
+    font-weight: 600;
+  }
+  .subscribe-btn {
+    padding: 9px 20px;
+    border-radius: var(--radius-sm);
+    border: none;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: var(--primary);
+    color: white;
+    opacity: 0;
+    transform: translateY(4px);
+    pointer-events: none;
+  }
+  .subscribe-btn.visible {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+  }
+  .subscribe-btn:active { transform: scale(0.97); }
+
+  /* ---- GENERATING STATE ---- */
+  .generating-card {
+    background: linear-gradient(135deg, var(--primary-soft), rgba(109, 93, 252, 0.04));
+    border: 1px solid rgba(109, 93, 252, 0.15);
+    border-radius: var(--radius);
+    padding: 18px 20px;
+    margin-bottom: 14px;
+    animation: card-enter 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .generating-card .gen-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  .generating-card .gen-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: var(--primary-soft);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: icon-pulse 2s ease-in-out infinite;
+  }
+  @keyframes icon-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 var(--primary-glow); }
+    50% { box-shadow: 0 0 16px 4px var(--primary-glow); }
+  }
+  .generating-card .gen-title {
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .generating-card .gen-subtitle {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 1px;
+  }
+  .progress-track {
+    height: 3px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary), #9d8dff);
+    border-radius: 2px;
+    transition: width 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .progress-label {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    text-align: right;
+    margin-top: 6px;
+  }
+
+  /* ---- FEED ITEMS ---- */
+  .feed-item {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    padding: 12px 14px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 10px;
+    cursor: pointer;
+    transition: all 0.15s;
+    animation: card-enter 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .feed-item:active { transform: scale(0.985); background: var(--bg-card-hover); }
+
+  .feed-art {
+    width: 52px;
+    height: 52px;
+    border-radius: var(--radius-xs);
+    overflow: hidden;
+    flex-shrink: 0;
+    position: relative;
+  }
+  .feed-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .feed-art .play-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.35);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .feed-item:hover .play-overlay { opacity: 1; }
+  .play-overlay svg { width: 20px; height: 20px; color: white; }
+
+  .feed-meta { flex: 1; min-width: 0; }
+  .feed-podcast-name {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    margin-bottom: 2px;
+  }
+  .feed-title {
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.3;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .feed-duration {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    margin-top: 3px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .feed-duration .dot { width: 3px; height: 3px; border-radius: 50%; background: var(--text-tertiary); }
+  .new-badge {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--primary);
+    background: var(--primary-soft);
+    padding: 2px 7px;
+    border-radius: 4px;
+    letter-spacing: 0.2px;
+  }
+
+  /* ---- SKELETON (while generating) ---- */
+  .skeleton-item {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    padding: 12px 14px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 10px;
+    animation: card-enter 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .skeleton-art {
+    width: 52px;
+    height: 52px;
+    border-radius: var(--radius-xs);
+    background: rgba(255,255,255,0.04);
+    flex-shrink: 0;
+    animation: shimmer 1.8s ease-in-out infinite;
+  }
+  .skeleton-lines { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+  .skeleton-line {
+    height: 10px;
+    border-radius: 4px;
+    background: rgba(255,255,255,0.04);
+    animation: shimmer 1.8s ease-in-out infinite;
+  }
+  .skeleton-line:nth-child(1) { width: 35%; animation-delay: 0.1s; }
+  .skeleton-line:nth-child(2) { width: 75%; animation-delay: 0.2s; }
+  .skeleton-line:nth-child(3) { width: 50%; animation-delay: 0.3s; }
+
+  @keyframes shimmer {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 1; }
+  }
+
+  /* ---- CONTEXTUAL HINTS ---- */
+  .hint {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-radius: var(--radius-sm);
+    margin-bottom: 14px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    animation: hint-enter 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation-delay: 0.8s;
+    opacity: 0;
+  }
+  @keyframes hint-enter {
+    from { opacity: 0; transform: translateX(-8px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  .hint-swipe {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-subtle);
+  }
+  .hint-icon {
+    font-size: 16px;
+    flex-shrink: 0;
+    animation: hint-nudge 2s ease-in-out infinite;
+    animation-delay: 1.5s;
+  }
+  @keyframes hint-nudge {
+    0%, 70%, 100% { transform: translateX(0); }
+    80% { transform: translateX(-6px); }
+    90% { transform: translateX(0); }
+  }
+  .hint .dismiss {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--text-tertiary);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .hint .dismiss:hover { color: var(--text-secondary); background: rgba(255,255,255,0.04); }
+
+  /* ---- FIRST-BRIEFING CELEBRATION ---- */
+  .celebration {
+    text-align: center;
+    padding: 4px 0 8px;
+    margin-bottom: 6px;
+    animation: celebrate-enter 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  @keyframes celebrate-enter {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  .celebration .emoji-burst {
+    font-size: 28px;
+    margin-bottom: 4px;
+    animation: bounce-emoji 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  @keyframes bounce-emoji {
+    from { transform: scale(0) rotate(-10deg); }
+    to { transform: scale(1) rotate(0); }
+  }
+  .celebration .cel-text {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+  }
+  .celebration .cel-text strong { color: var(--accent-green); font-weight: 600; }
+
+  /* ---- PHASE CONTROLLER ---- */
+  .phase-controls {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+  .phase-controls .label {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+  }
+  .phase-btn {
+    padding: 7px 14px;
+    border-radius: var(--radius-xs);
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,0.03);
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-align: left;
+    white-space: nowrap;
+  }
+  .phase-btn:hover { background: rgba(255,255,255,0.06); color: var(--text); }
+  .phase-btn.active {
+    background: var(--primary-soft);
+    border-color: var(--primary);
+    color: var(--text);
+  }
+
+  /* ---- CARD EXIT ---- */
+  .card-exit {
+    animation: card-leave 0.35s cubic-bezier(0.4, 0, 1, 1) both;
+  }
+  @keyframes card-leave {
+    to { opacity: 0; transform: translateY(-8px) scale(0.97); height: 0; padding: 0; margin: 0; overflow: hidden; }
+  }
+
+  /* ---- DATE HEADER ---- */
+  .date-header {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin: 18px 0 10px;
+  }
+  .date-header:first-child { margin-top: 6px; }
+
+  /* ---- DISCOVER CTA in empty area ---- */
+  .discover-nudge {
+    text-align: center;
+    padding: 28px 20px;
+    border: 1px dashed rgba(255,255,255,0.08);
+    border-radius: var(--radius);
+    margin-top: 10px;
+    animation: card-enter 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation-delay: 0.3s;
+    opacity: 0;
+  }
+  .discover-nudge .nudge-text {
+    font-size: 13px;
+    color: var(--text-tertiary);
+    margin-bottom: 12px;
+    line-height: 1.5;
+  }
+  .discover-nudge .nudge-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--primary);
+    text-decoration: none;
+    padding: 8px 16px;
+    border-radius: var(--radius-sm);
+    background: var(--primary-soft);
+    transition: all 0.15s;
+  }
+  .discover-nudge .nudge-link:hover { background: var(--primary-glow); }
+
+  /* Filter pills */
+  .filters {
+    display: flex;
+    gap: 7px;
+    margin-bottom: 14px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+  .filters::-webkit-scrollbar { display: none; }
+  .filter-pill {
+    padding: 7px 14px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+    border: none;
+    cursor: pointer;
+    transition: all 0.15s;
+    flex-shrink: 0;
+  }
+  .filter-pill.active {
+    background: var(--primary);
+    color: white;
+  }
+  .filter-pill:not(.active) {
+    background: rgba(255,255,255,0.05);
+    color: var(--text-secondary);
+  }
+  .filter-pill:not(.active):hover {
+    background: rgba(255,255,255,0.08);
+    color: var(--text);
+  }
+
+  /* Responsive: hide phase controls on very small screens */
+  @media (max-width: 500px) {
+    .phase-controls {
+      top: auto;
+      bottom: 70px;
+      right: 10px;
+      left: 10px;
+      flex-direction: row;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .phase-controls .label { margin-bottom: 0; margin-right: 8px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Phase switcher (prototype control — not part of the design) -->
+<div class="phase-controls" id="controls">
+  <div class="label">Prototype Phase</div>
+  <button class="phase-btn active" onclick="setPhase('fresh')">1. First Visit</button>
+  <button class="phase-btn" onclick="setPhase('topics-done')">2. Topics Picked</button>
+  <button class="phase-btn" onclick="setPhase('subscribed')">3. Subscribed</button>
+  <button class="phase-btn" onclick="setPhase('generating')">4. Generating</button>
+  <button class="phase-btn" onclick="setPhase('first-briefing')">5. First Briefing</button>
+  <button class="phase-btn" onclick="setPhase('settled')">6. Settled User</button>
+</div>
+
+<div class="phone-frame">
+  <!-- Header -->
+  <div class="header">
+    <div class="logo">
+      <div class="logo-icon">B</div>
+      <span class="logo-text">lipp</span>
+    </div>
+    <div class="avatar">JB</div>
+  </div>
+
+  <!-- Main content (dynamically replaced) -->
+  <div class="main" id="content"></div>
+
+  <!-- Bottom nav -->
+  <div class="bottom-nav">
+    <button class="nav-item active">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      Home
+    </button>
+    <button class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      Discover
+    </button>
+    <button class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+      Library
+    </button>
+    <button class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      Settings
+    </button>
+  </div>
+</div>
+
+<script>
+const PODCASTS = [
+  { id: 1, name: "The Daily", art: "https://picsum.photos/seed/daily/200", color: "#1a73e8" },
+  { id: 2, name: "Lex Fridman", art: "https://picsum.photos/seed/lex/200", color: "#2d2d2d" },
+  { id: 3, name: "How I Built This", art: "https://picsum.photos/seed/built/200", color: "#c23d10" },
+  { id: 4, name: "Huberman Lab", art: "https://picsum.photos/seed/huberman/200", color: "#0d4f3c" },
+  { id: 5, name: "All-In Podcast", art: "https://picsum.photos/seed/allin/200", color: "#1e3a5f" },
+  { id: 6, name: "Hard Fork", art: "https://picsum.photos/seed/hardfork/200", color: "#6b21a8" },
+  { id: 7, name: "Acquired", art: "https://picsum.photos/seed/acquired/200", color: "#b45309" },
+  { id: 8, name: "Planet Money", art: "https://picsum.photos/seed/planet/200", color: "#065f46" },
+  { id: 9, name: "99% Invisible", art: "https://picsum.photos/seed/invisible/200", color: "#be185d" },
+  { id: 10, name: "Radiolab", art: "https://picsum.photos/seed/radiolab/200", color: "#7c3aed" },
+];
+
+const FEED_ITEMS = [
+  { podcast: "The Daily", title: "Why Boeing's Problems Keep Getting Worse", duration: "4 min", art: "https://picsum.photos/seed/daily/200", isNew: true },
+  { podcast: "Huberman Lab", title: "Science-Based Tools for Better Sleep", duration: "5 min", art: "https://picsum.photos/seed/huberman/200", isNew: true },
+  { podcast: "Hard Fork", title: "OpenAI's Latest Move and What It Means", duration: "3 min", art: "https://picsum.photos/seed/hardfork/200", isNew: true },
+  { podcast: "All-In Podcast", title: "Market Volatility & AI Regulation Debate", duration: "5 min", art: "https://picsum.photos/seed/allin/200", isNew: false },
+  { podcast: "Planet Money", title: "The Hidden Cost of Free Returns", duration: "4 min", art: "https://picsum.photos/seed/planet/200", isNew: false },
+];
+
+const TOPICS = [
+  { emoji: "💻", label: "Technology" },
+  { emoji: "📊", label: "Business" },
+  { emoji: "🔬", label: "Science" },
+  { emoji: "📰", label: "News" },
+  { emoji: "😂", label: "Comedy" },
+  { emoji: "💪", label: "Health" },
+  { emoji: "⚽", label: "Sports" },
+  { emoji: "🎨", label: "Arts" },
+  { emoji: "📚", label: "Education" },
+  { emoji: "🔍", label: "True Crime" },
+  { emoji: "🌍", label: "Culture" },
+  { emoji: "🎵", label: "Music" },
+];
+
+let state = {
+  phase: 'fresh',
+  selectedTopics: new Set(),
+  selectedPodcasts: new Set(),
+};
+
+function setPhase(phase) {
+  state.phase = phase;
+  state.selectedTopics = new Set();
+  state.selectedPodcasts = new Set();
+
+  document.querySelectorAll('.phase-btn').forEach(btn => btn.classList.remove('active'));
+  event.target.classList.add('active');
+
+  render();
+}
+
+function toggleTopic(label) {
+  if (state.selectedTopics.has(label)) {
+    state.selectedTopics.delete(label);
+  } else {
+    state.selectedTopics.add(label);
+  }
+  render();
+}
+
+function togglePodcast(id) {
+  if (state.selectedPodcasts.has(id)) {
+    state.selectedPodcasts.delete(id);
+  } else {
+    state.selectedPodcasts.add(id);
+  }
+  render();
+}
+
+function dismissCard(cardId) {
+  const card = document.getElementById(cardId);
+  if (card) {
+    card.classList.add('card-exit');
+    setTimeout(() => render(), 350);
+  }
+}
+
+function renderTopicsCard() {
+  const hasSelection = state.selectedTopics.size > 0;
+  return `
+    <div class="onboard-card topics-card" id="topics-card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">What are you into?</div>
+          <div class="card-subtitle">Tap a few — we'll find podcasts to match</div>
+        </div>
+        <button class="skip-btn" onclick="dismissCard('topics-card')">Skip</button>
+      </div>
+      <div class="topic-grid">
+        ${TOPICS.map(t => `
+          <div class="topic-chip ${state.selectedTopics.has(t.label) ? 'selected' : ''}"
+               onclick="toggleTopic('${t.label}')">
+            <span class="emoji">${t.emoji}</span>${t.label}
+          </div>
+        `).join('')}
+      </div>
+      <button class="topics-done-btn ${hasSelection ? 'visible' : ''}"
+              onclick="state.phase='topics-done'; render();">
+        Show me podcasts
+      </button>
+    </div>
+  `;
+}
+
+function renderPodcastsCard() {
+  const count = state.selectedPodcasts.size;
+  return `
+    <div class="onboard-card podcasts-card" id="podcasts-card" style="animation-delay: 0.15s">
+      <div class="card-header">
+        <div class="card-title">Pick some to try</div>
+        <button class="skip-btn" onclick="dismissCard('podcasts-card')">Later</button>
+      </div>
+      <div class="card-subtitle">We'll create your first briefings in minutes</div>
+      <div class="podcast-scroll">
+        ${PODCASTS.map(p => `
+          <div class="podcast-tile ${state.selectedPodcasts.has(p.id) ? 'selected' : ''}"
+               onclick="togglePodcast(${p.id})">
+            <div class="art">
+              <img src="${p.art}" alt="${p.name}" loading="lazy">
+              <div class="check">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              </div>
+            </div>
+            <div class="name">${p.name}</div>
+          </div>
+        `).join('')}
+      </div>
+      <div class="subscribe-action">
+        <div class="subscribe-count">${count > 0 ? `<strong>${count}</strong> selected` : '&nbsp;'}</div>
+        <button class="subscribe-btn ${count > 0 ? 'visible' : ''}"
+                onclick="state.phase='generating'; render();">
+          Subscribe${count > 1 ? ` (${count})` : count === 1 ? ' (1)' : ''}
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+function renderGeneratingCard(readyCount, totalCount) {
+  const pct = Math.round((readyCount / totalCount) * 100);
+  return `
+    <div class="generating-card">
+      <div class="gen-header">
+        <div class="gen-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        </div>
+        <div>
+          <div class="gen-title">Creating your briefings</div>
+          <div class="gen-subtitle">${readyCount} of ${totalCount} ready — usually takes a minute</div>
+        </div>
+      </div>
+      <div class="progress-track">
+        <div class="progress-fill" style="width: ${pct}%"></div>
+      </div>
+      <div class="progress-label">${pct}%</div>
+    </div>
+  `;
+}
+
+function renderFeedItem(item, index) {
+  const delay = index * 0.08;
+  return `
+    <div class="feed-item" style="animation-delay: ${delay}s">
+      <div class="feed-art">
+        <img src="${item.art}" alt="${item.podcast}">
+        <div class="play-overlay">
+          <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        </div>
+      </div>
+      <div class="feed-meta">
+        <div class="feed-podcast-name">${item.podcast}</div>
+        <div class="feed-title">${item.title}</div>
+        <div class="feed-duration">
+          ${item.duration}
+          ${item.isNew ? `<span class="dot"></span><span class="new-badge">NEW</span>` : ''}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderSkeleton(index) {
+  const delay = index * 0.1;
+  return `
+    <div class="skeleton-item" style="animation-delay: ${delay}s">
+      <div class="skeleton-art"></div>
+      <div class="skeleton-lines">
+        <div class="skeleton-line"></div>
+        <div class="skeleton-line"></div>
+        <div class="skeleton-line"></div>
+      </div>
+    </div>
+  `;
+}
+
+function renderSwipeHint() {
+  return `
+    <div class="hint hint-swipe">
+      <span class="hint-icon">👈</span>
+      <span>Swipe left to remove, right to queue</span>
+      <button class="dismiss">Got it</button>
+    </div>
+  `;
+}
+
+function render() {
+  const el = document.getElementById('content');
+  let html = '';
+
+  switch (state.phase) {
+    case 'fresh':
+      // Phase 1: User just signed up, lands directly on feed
+      // No interruption — just contextual cards where content would be
+      html += `<h1 class="page-title">Your Feed</h1>`;
+      html += `<div class="filters">
+        <button class="filter-pill active">All</button>
+        <button class="filter-pill">New</button>
+        <button class="filter-pill">Subscriptions</button>
+      </div>`;
+      html += renderTopicsCard();
+      html += renderPodcastsCard();
+      html += `
+        <div class="discover-nudge">
+          <div class="nudge-text">Or browse our full catalog with 10,000+ podcasts</div>
+          <a href="#" class="nudge-link">
+            Explore Discover
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+          </a>
+        </div>
+      `;
+      break;
+
+    case 'topics-done':
+      // Phase 2: Topics picked, now showing podcast card prominently
+      html += `<h1 class="page-title">Your Feed</h1>`;
+      html += `<div class="filters">
+        <button class="filter-pill active">All</button>
+        <button class="filter-pill">New</button>
+        <button class="filter-pill">Subscriptions</button>
+      </div>`;
+      html += renderPodcastsCard();
+      html += `
+        <div class="discover-nudge">
+          <div class="nudge-text">Can't find what you're looking for?</div>
+          <a href="#" class="nudge-link">
+            Search Podcasts
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          </a>
+        </div>
+      `;
+      break;
+
+    case 'subscribed':
+      // Phase 3: Just subscribed — transition to generating
+      html += `<h1 class="page-title">Your Feed</h1>`;
+      html += `<div class="filters">
+        <button class="filter-pill active">All</button>
+        <button class="filter-pill">New</button>
+        <button class="filter-pill">Subscriptions</button>
+        <button class="filter-pill">Creating</button>
+      </div>`;
+      html += renderGeneratingCard(0, 3);
+      html += renderSkeleton(0);
+      html += renderSkeleton(1);
+      html += renderSkeleton(2);
+      break;
+
+    case 'generating':
+      // Phase 4: Briefings being created — some ready
+      html += `<h1 class="page-title">Your Feed</h1>`;
+      html += `<div class="filters">
+        <button class="filter-pill active">All</button>
+        <button class="filter-pill">New (1)</button>
+        <button class="filter-pill">Subscriptions</button>
+        <button class="filter-pill">Creating</button>
+      </div>`;
+      html += renderGeneratingCard(1, 3);
+      html += `<div class="date-header">Today</div>`;
+      html += renderFeedItem(FEED_ITEMS[0], 0);
+      html += renderSkeleton(1);
+      html += renderSkeleton(2);
+      break;
+
+    case 'first-briefing':
+      // Phase 5: First briefings ready — celebration moment + swipe hint
+      html += `<h1 class="page-title">Your Feed</h1>`;
+      html += `<div class="filters">
+        <button class="filter-pill active">All (3)</button>
+        <button class="filter-pill">New (3)</button>
+        <button class="filter-pill">Subscriptions</button>
+      </div>`;
+      html += `
+        <div class="celebration">
+          <div class="emoji-burst">🎧</div>
+          <div class="cel-text">Your first briefings are <strong>ready to play</strong></div>
+        </div>
+      `;
+      html += renderSwipeHint();
+      html += `<div class="date-header">Today</div>`;
+      html += renderFeedItem(FEED_ITEMS[0], 0);
+      html += renderFeedItem(FEED_ITEMS[1], 1);
+      html += renderFeedItem(FEED_ITEMS[2], 2);
+      html += `
+        <div class="discover-nudge" style="margin-top: 20px;">
+          <div class="nudge-text">Want more? Add podcasts any time</div>
+          <a href="#" class="nudge-link">
+            Browse Catalog
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+          </a>
+        </div>
+      `;
+      break;
+
+    case 'settled':
+      // Phase 6: Normal settled user — no onboarding artifacts
+      html += `<h1 class="page-title">Your Feed</h1>`;
+      html += `<div class="filters">
+        <button class="filter-pill active">All (5)</button>
+        <button class="filter-pill">New (3)</button>
+        <button class="filter-pill">Subscriptions</button>
+        <button class="filter-pill">On Demand</button>
+      </div>`;
+      html += `<div class="date-header">Today</div>`;
+      FEED_ITEMS.slice(0, 3).forEach((item, i) => {
+        html += renderFeedItem(item, i);
+      });
+      html += `<div class="date-header">Yesterday</div>`;
+      FEED_ITEMS.slice(3).forEach((item, i) => {
+        html += renderFeedItem(item, i + 3);
+      });
+      break;
+  }
+
+  el.innerHTML = html;
+}
+
+// Initial render
+render();
+</script>
+</body>
+</html>

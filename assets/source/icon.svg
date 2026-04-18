@@ -8,7 +8,7 @@
    version="1.1"
    id="svg1"
    inkscape:version="1.4.3 (0d15f75, 2025-12-25)"
-   sodipodi:docname="blipp-icon-transparent.svg"
+   sodipodi:docname="icon.svg"
    inkscape:export-filename="blipp-icon-transparent-512.png"
    inkscape:export-xdpi="48"
    inkscape:export-ydpi="48"
@@ -29,7 +29,7 @@
      inkscape:document-units="px"
      showgrid="true"
      inkscape:zoom="0.70710678"
-     inkscape:cx="979.34289"
+     inkscape:cx="980.05"
      inkscape:cy="631.44636"
      inkscape:window-width="2560"
      inkscape:window-height="1369"
@@ -273,7 +273,8 @@
      id="layer1"
      style="display:inline">
     <g
-       id="g5">
+       id="g5"
+       transform="matrix(0.87922534,0,0,0.87642474,16.360942,16.740327)">
       <g
          id="g1"
          style="fill:none;fill-opacity:1">

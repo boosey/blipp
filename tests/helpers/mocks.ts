@@ -115,7 +115,7 @@ export function createMockEnv(): Env {
     ALLOWED_ORIGINS: "http://localhost:8787,http://localhost:5173",
     APP_ORIGIN: "http://localhost:8787",
     CLERK_FAPI_URL: "https://clerk.test.example.com",
-    SERVICE_KEY_ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    SERVICE_KEY_ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", // tests use their own key; staging/prod use separate keys
     WORKER_SCRIPT_NAME: "blipp-staging",
   };
 }
