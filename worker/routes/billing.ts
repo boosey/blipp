@@ -29,6 +29,19 @@ const checkoutSchema = z.object({
 });
 
 billing.post("/checkout", async (c) => {
+  // App Store Review Guideline 3.1.1: native iOS clients cannot use a non-IAP payment flow.
+  // The web client sends X-Client-Platform: web; the iOS Capacitor build sends "ios".
+  const clientPlatform = c.req.header("x-client-platform")?.toLowerCase();
+  if (clientPlatform === "ios") {
+    return c.json(
+      {
+        error:
+          "iOS purchases must use In-App Purchase. Use the StoreKit purchase flow from the app instead.",
+      },
+      403
+    );
+  }
+
   const { planId, interval } = await validateBody(c, checkoutSchema);
 
   const prisma = c.get("prisma") as any;

@@ -293,6 +293,26 @@ export function PlanFormDialog({
                   />
                 </div>
               </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-sm text-[#F9FAFB]">Apple Monthly Product ID</Label>
+                  <Input
+                    value={form.appleProductIdMonthly}
+                    onChange={(e) => update({ appleProductIdMonthly: e.target.value })}
+                    placeholder="com.blipp.app.pro.monthly"
+                    className="h-9 text-sm bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-sm text-[#F9FAFB]">Apple Annual Product ID</Label>
+                  <Input
+                    value={form.appleProductIdAnnual}
+                    onChange={(e) => update({ appleProductIdAnnual: e.target.value })}
+                    placeholder="com.blipp.app.pro.annual"
+                    className="h-9 text-sm bg-[#0A1628] border-white/5 text-[#F9FAFB] font-mono"
+                  />
+                </div>
+              </div>
             </div>
 
             <Separator className="bg-white/5" />

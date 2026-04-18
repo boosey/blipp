@@ -23,6 +23,8 @@ export interface AdminPlan {
   stripePriceIdMonthly: string | null;
   stripePriceIdAnnual: string | null;
   stripeProductId: string | null;
+  appleProductIdMonthly: string | null;
+  appleProductIdAnnual: string | null;
   trialDays: number;
   allowedVoicePresetIds: string[];
   features: string[];

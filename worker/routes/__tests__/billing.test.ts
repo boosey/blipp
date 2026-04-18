@@ -95,6 +95,26 @@ describe("Billing Routes", () => {
       expect(res.status).toBe(401);
     });
 
+    it("should return 403 when X-Client-Platform is ios (App Store 3.1.1)", async () => {
+      const res = await app.request(
+        "/billing/checkout",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Client-Platform": "ios",
+          },
+          body: JSON.stringify({ planId: "plan_pro", interval: "monthly" }),
+        },
+        env,
+        mockExCtx
+      );
+      expect(res.status).toBe(403);
+      const body: any = await res.json();
+      expect(body.error).toMatch(/In-App Purchase/i);
+      expect(mockCheckoutCreate).not.toHaveBeenCalled();
+    });
+
     it("should return 400 for missing planId", async () => {
       const res = await app.request(
         "/billing/checkout",

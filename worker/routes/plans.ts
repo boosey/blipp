@@ -20,6 +20,8 @@ plans.get("/", async (c) => {
       priceCentsAnnual: true,
       features: true,
       highlighted: true,
+      appleProductIdMonthly: true,
+      appleProductIdAnnual: true,
     },
   });
   return c.json(allPlans);

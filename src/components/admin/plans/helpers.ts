@@ -39,6 +39,8 @@ export interface PlanFormData {
   priceCentsAnnual: string;
   stripePriceIdMonthly: string;
   stripePriceIdAnnual: string;
+  appleProductIdMonthly: string;
+  appleProductIdAnnual: string;
   trialDays: string;
   allowedVoicePresetIds: string[];
   // Display
@@ -70,6 +72,8 @@ export function emptyForm(): PlanFormData {
     priceCentsAnnual: "",
     stripePriceIdMonthly: "",
     stripePriceIdAnnual: "",
+    appleProductIdMonthly: "",
+    appleProductIdAnnual: "",
     trialDays: "0",
     allowedVoicePresetIds: [],
     features: "",
@@ -101,6 +105,8 @@ export function planToForm(plan: AdminPlan): PlanFormData {
     priceCentsAnnual: plan.priceCentsAnnual != null ? String(plan.priceCentsAnnual) : "",
     stripePriceIdMonthly: plan.stripePriceIdMonthly ?? "",
     stripePriceIdAnnual: plan.stripePriceIdAnnual ?? "",
+    appleProductIdMonthly: plan.appleProductIdMonthly ?? "",
+    appleProductIdAnnual: plan.appleProductIdAnnual ?? "",
     trialDays: String(plan.trialDays),
     allowedVoicePresetIds: plan.allowedVoicePresetIds ?? [],
     features: plan.features.join("\n"),
@@ -132,6 +138,8 @@ export function formToPayload(form: PlanFormData) {
     priceCentsAnnual: form.priceCentsAnnual ? Number(form.priceCentsAnnual) : null,
     stripePriceIdMonthly: form.stripePriceIdMonthly || null,
     stripePriceIdAnnual: form.stripePriceIdAnnual || null,
+    appleProductIdMonthly: form.appleProductIdMonthly || null,
+    appleProductIdAnnual: form.appleProductIdAnnual || null,
     trialDays: Number(form.trialDays),
     allowedVoicePresetIds: form.allowedVoicePresetIds,
     features: form.features

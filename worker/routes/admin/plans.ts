@@ -38,6 +38,8 @@ const PLAN_WRITABLE_FIELDS = [
   "priceCentsAnnual",
   "stripePriceIdMonthly",
   "stripePriceIdAnnual",
+  "appleProductIdMonthly",
+  "appleProductIdAnnual",
   "trialDays",
   "allowedVoicePresetIds",
   // Display

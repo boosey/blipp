@@ -2,7 +2,9 @@ import { useState, useEffect } from "react";
 import { SignedIn, SignedOut, SignInButton } from "@clerk/clerk-react";
 import { toast } from "sonner";
 import { Sparkles, Check, Star } from "lucide-react";
+import { Capacitor } from "@capacitor/core";
 import { apiFetch } from "../lib/api";
+import { useIAP } from "../hooks/use-iap";
 
 export interface Plan {
   id: string;
@@ -13,6 +15,8 @@ export interface Plan {
   priceCentsAnnual?: number | null;
   features: string[];
   highlighted: boolean;
+  appleProductIdMonthly?: string | null;
+  appleProductIdAnnual?: string | null;
 }
 
 interface PlanCardsProps {
@@ -30,6 +34,8 @@ export function PlanCards({ currentPlanSlug, onCheckout, compact }: PlanCardsPro
   const [loading, setLoading] = useState(true);
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
   const [interval, setInterval] = useState<"monthly" | "annual">("monthly");
+  const isNative = Capacitor.isNativePlatform();
+  const { purchase, restore, billingStatus } = useIAP();
 
   useEffect(() => {
     apiFetch<Plan[]>("/plans")
@@ -39,12 +45,39 @@ export function PlanCards({ currentPlanSlug, onCheckout, compact }: PlanCardsPro
   }, []);
 
   const hasAnnual = plans.some((p) => p.priceCentsAnnual != null && p.priceCentsAnnual > 0);
+  // If user already subscribes via the other channel, block checkout to avoid double-billing.
+  const hasActiveAppleSub = billingStatus?.activeSources.includes("APPLE") ?? false;
+  const hasActiveStripeSub = billingStatus?.activeSources.includes("STRIPE") ?? false;
+  const blockedCrossChannel =
+    (isNative && hasActiveStripeSub) || (!isNative && hasActiveAppleSub);
 
   async function handleCheckout(plan: Plan) {
     if (onCheckout) {
       onCheckout(plan);
       return;
     }
+
+    if (isNative) {
+      const productId =
+        interval === "annual" ? plan.appleProductIdAnnual : plan.appleProductIdMonthly;
+      if (!productId) {
+        toast.error(`No App Store product configured for ${interval} billing`);
+        return;
+      }
+      setCheckoutLoading(plan.id);
+      try {
+        await purchase(productId);
+        toast.success("Subscription activated");
+      } catch (e) {
+        // Apple cancellation surfaces as an error — swallow it silently.
+        const msg = e instanceof Error ? e.message : String(e);
+        if (!/cancel/i.test(msg)) toast.error(msg || "Purchase failed");
+      } finally {
+        setCheckoutLoading(null);
+      }
+      return;
+    }
+
     setCheckoutLoading(plan.id);
     try {
       const { url } = await apiFetch<{ url: string }>("/billing/checkout", {
@@ -55,6 +88,15 @@ export function PlanCards({ currentPlanSlug, onCheckout, compact }: PlanCardsPro
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to start checkout");
       setCheckoutLoading(null);
+    }
+  }
+
+  async function handleRestore() {
+    try {
+      await restore();
+      toast.success("Purchases restored");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Restore failed");
     }
   }
 
@@ -225,6 +267,12 @@ export function PlanCards({ currentPlanSlug, onCheckout, compact }: PlanCardsPro
                   <span className="block text-center py-2 text-sm text-primary/70 font-medium">
                     Current plan
                   </span>
+                ) : isUpgrade && blockedCrossChannel ? (
+                  <span className="block text-center py-2 text-xs text-muted-foreground">
+                    {isNative
+                      ? "Manage your existing web subscription to switch plans"
+                      : "Manage your existing App Store subscription to switch plans"}
+                  </span>
                 ) : isUpgrade ? (
                   <>
                     <SignedIn>
@@ -266,6 +314,17 @@ export function PlanCards({ currentPlanSlug, onCheckout, compact }: PlanCardsPro
           );
         })}
       </div>
+
+      {isNative && (
+        <div className="text-center mt-6">
+          <button
+            onClick={handleRestore}
+            className="text-xs text-muted-foreground hover:text-foreground underline-offset-4 hover:underline"
+          >
+            Restore purchases
+          </button>
+        </div>
+      )}
     </div>
   );
 }

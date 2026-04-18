@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { useAuth } from "@clerk/clerk-react";
+import { Capacitor } from "@capacitor/core";
 import { getApiBase } from "./api-base";
 
 /** Fetches from the Blipp API with JSON content type and Clerk auth. Throws on non-OK responses. */
@@ -9,6 +10,7 @@ export async function apiFetch<T>(
 ): Promise<T> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
+    "X-Client-Platform": Capacitor.getPlatform(),
     ...(options?.headers as Record<string, string>),
   };
   if (options?.token) {

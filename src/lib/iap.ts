@@ -94,9 +94,10 @@ export async function purchaseProduct(productId: string): Promise<PurchaseResult
   const { current } = await Purchases.getOfferings();
   if (!current) throw new Error("No current RevenueCat offering available");
 
-  let pkg =
+  let pkg: any =
     (current.monthly?.product?.identifier === productId && current.monthly) ||
-    (current.annual?.product?.identifier === productId && current.annual);
+    (current.annual?.product?.identifier === productId && current.annual) ||
+    null;
   if (!pkg) {
     const all = [current.monthly, current.annual, ...current.availablePackages].filter(Boolean);
     pkg = all.find((p: any) => p?.product?.identifier === productId) ?? null;
