@@ -54,6 +54,10 @@ model Plan {
   stripeProductId         String?  @unique
   trialDays               Int      @default(0)
 
+  // Apple IAP (App Store Connect product IDs, e.g. com.blipp.app.pro.monthly)
+  appleProductIdMonthly   String?  @unique
+  appleProductIdAnnual    String?  @unique
+
   // Voice Presets
   allowedVoicePresetIds   String[]                      // IDs of voice presets this plan grants access to (system default always available)
 
@@ -68,6 +72,7 @@ model Plan {
   updatedAt               DateTime @updatedAt
 
   users                   User[]
+  billingSubscriptions    BillingSubscription[]
 }
 
 // ── Auth & Billing ──
@@ -108,6 +113,7 @@ model User {
   plan                 Plan             @relation(fields: [planId], references: [id])
   defaultVoicePreset   VoicePreset?     @relation("defaultVoicePreset", fields: [defaultVoicePresetId], references: [id])
   subscriptions        Subscription[]
+  billingSubscriptions BillingSubscription[]
   briefings            Briefing[]
   feedItems            FeedItem[]
   briefingRequests     BriefingRequest[]
@@ -1357,6 +1363,43 @@ model DigestDeliveryEpisode {
   @@unique([deliveryId, episodeId])
   @@index([deliveryId])
   @@index([episodeId, status])
+}
+
+// ── Billing Subscriptions (unified entitlement across Stripe + Apple IAP) ──
+
+model BillingSubscription {
+  id                String          @id @default(cuid())
+  userId            String
+  source            BillingSource                    // STRIPE | APPLE
+  externalId        String                           // Stripe subscription id OR Apple original_transaction_id
+  productExternalId String                           // Stripe price id OR Apple product id
+  planId            String
+  status            BillingStatus                    // ACTIVE | CANCELLED_PENDING_EXPIRY | GRACE_PERIOD | EXPIRED | REFUNDED | PAUSED
+  currentPeriodEnd  DateTime?
+  willRenew         Boolean         @default(true)
+  rawPayload        Json?                            // last event body, for debugging
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan Plan @relation(fields: [planId], references: [id])
+
+  @@unique([source, externalId])
+  @@index([userId, status])
+}
+
+enum BillingSource {
+  STRIPE
+  APPLE
+}
+
+enum BillingStatus {
+  ACTIVE
+  CANCELLED_PENDING_EXPIRY
+  GRACE_PERIOD
+  EXPIRED
+  REFUNDED
+  PAUSED
 }
 
 // ── Service Keys ──

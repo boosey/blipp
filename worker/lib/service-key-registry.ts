@@ -185,6 +185,26 @@ export const SERVICE_KEY_CONTEXTS: ServiceKeyContext[] = [
     healthCheckable: false,
     usageTrackable: false,
   },
+  {
+    context: "billing.revenuecat-webhook",
+    label: "RevenueCat Webhook Secret",
+    provider: "revenuecat",
+    envKey: "REVENUECAT_WEBHOOK_SECRET",
+    group: "Billing",
+    description: "Shared secret sent by RevenueCat as the Authorization header on iOS IAP webhook deliveries",
+    healthCheckable: false,
+    usageTrackable: false,
+  },
+  {
+    context: "billing.revenuecat-rest",
+    label: "RevenueCat REST API",
+    provider: "revenuecat",
+    envKey: "REVENUECAT_REST_API_KEY",
+    group: "Billing",
+    description: "RevenueCat REST API v1 key for server-side subscriber verification after client IAP purchases",
+    healthCheckable: true,
+    usageTrackable: false,
+  },
 
   // ── Infrastructure ──
   {

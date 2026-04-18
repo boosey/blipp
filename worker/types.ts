@@ -37,6 +37,10 @@ export type Env = {
   STRIPE_SECRET_KEY: string;
   /** Stripe webhook signing secret */
   STRIPE_WEBHOOK_SECRET: string;
+  /** RevenueCat webhook Authorization header secret (shared secret configured in RC dashboard) */
+  REVENUECAT_WEBHOOK_SECRET?: string;
+  /** RevenueCat REST API key (v1), used to verify purchases server-side via /subscribers endpoint */
+  REVENUECAT_REST_API_KEY?: string;
   /** Anthropic API key for Claude distillation */
   ANTHROPIC_API_KEY: string;
   /** OpenAI API key for TTS generation */
