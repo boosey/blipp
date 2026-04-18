@@ -139,13 +139,14 @@ After each poll, print the **full updated checklist** of the CI steps that matte
 3. npm ci
 4. Prisma generate
 5. Create Prisma barrel export
-6. Apply migrations to staging database
-7. Bump patch version
-8. Typecheck
-9. Tests
-10. Build for Staging
-11. Deploy to Staging
-12. Commit version bump
+6. Check for schema drift (migrations vs schema.prisma)
+7. Apply migrations to staging database
+8. Bump patch version
+9. Typecheck
+10. Tests
+11. Build for Staging
+12. Deploy to Staging
+13. Commit version bump
 
 For each step, show:
 - `✅` if completed successfully (`conclusion` is `success`)
@@ -161,6 +162,7 @@ Example output during a run:
 ✅ npm ci
 ✅ Prisma generate
 ✅ Create Prisma barrel export
+✅ Check for schema drift (migrations vs schema.prisma)
 ✅ Apply migrations to staging database
 ✅ Bump patch version
 ✅ Typecheck
@@ -181,6 +183,7 @@ When the run finishes:
   ✅ CI passed — staging deploy complete.
   ```
 - **Failure**: Print the final checklist (showing which step(s) got ❌), then report which step failed and offer to investigate. Common failures:
+  - **Check for schema drift**: schema.prisma was edited without generating a migration. Run `npm run db:migrate:new <name>` locally, review the generated SQL, commit + push.
   - **Apply migrations to staging database**: Drift, broken migration SQL, or "relation already exists" if schema was previously force-pushed. Run `npm run db:migrate:status:staging` to investigate. If a migration is broken, fix the SQL and re-push. If staging DB is out of sync with migration history, `prisma migrate resolve --applied <name>` can re-sync.
   - **typecheck/test/build**: Code issue — investigate.
 

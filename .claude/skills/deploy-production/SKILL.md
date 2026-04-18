@@ -116,12 +116,13 @@ After each poll, print the **full updated checklist** across both jobs. The depl
 4. npm ci
 5. Prisma generate
 6. Create Prisma barrel export
-7. Apply migrations to production database
-8. Typecheck
-9. Tests
-10. Build for Production
-11. Patch wrangler config for production
-12. Deploy to Production
+7. Check for schema drift (migrations vs schema.prisma)
+8. Apply migrations to production database
+9. Typecheck
+10. Tests
+11. Build for Production
+12. Patch wrangler config for production
+13. Deploy to Production
 
 For each step, show:
 - `✅` if completed successfully (`conclusion` is `success`)
@@ -139,6 +140,7 @@ Example output during a run:
 ✅ npm ci
 ✅ Prisma generate
 ✅ Create Prisma barrel export
+✅ Check for schema drift (migrations vs schema.prisma)
 ✅ Apply migrations to production database
 ✅ Typecheck
 ⏳ Tests

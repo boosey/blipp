@@ -59,6 +59,30 @@ jobs:
           echo 'export { PrismaClient } from "./client";' > src/generated/prisma/index.ts
           echo 'export * from "./enums";' >> src/generated/prisma/index.ts
 
+      - name: Check for schema drift (migrations vs schema.prisma)
+        run: |
+          node scripts/reset-shadow-db.mjs
+          set +e
+          npx prisma migrate diff \
+            --from-migrations prisma/migrations \
+            --to-schema prisma/schema.prisma \
+            --exit-code
+          EC=$?
+          set -e
+          if [ "$EC" = "0" ]; then
+            echo "schema.prisma matches migrations on disk."
+          elif [ "$EC" = "2" ]; then
+            echo "::error::schema.prisma is ahead of prisma/migrations/."
+            echo "::error::Someone edited the schema without generating a migration."
+            echo "::error::Locally: run 'npm run db:migrate:new <snake_case_name>' then commit + push the new migration."
+            exit 1
+          else
+            echo "::error::Schema drift check failed unexpectedly (exit code $EC)"
+            exit $EC
+          fi
+        env:
+          SHADOW_DATABASE_URL: ${{ secrets.SHADOW_DATABASE_URL }}
+
       - name: Apply migrations to production database
         run: |
           npx prisma migrate deploy 2>&1 || {
