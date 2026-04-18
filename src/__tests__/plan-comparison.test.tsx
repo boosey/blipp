@@ -152,7 +152,8 @@ describe("PlanComparison", () => {
     await user.click(screen.getByText("Upgrade to Pro"));
 
     expect(onUpgrade).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "plan-pro", slug: "pro", name: "Pro" })
+      expect.objectContaining({ id: "plan-pro", slug: "pro", name: "Pro" }),
+      "monthly"
     );
   });
 
