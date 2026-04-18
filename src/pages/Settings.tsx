@@ -135,12 +135,12 @@ export function Settings() {
     }
   }, []);
 
-  async function handleUpgrade(p: PlanDetail) {
+  async function handleUpgrade(p: PlanDetail, interval: "monthly" | "annual") {
     setActionLoading(p.id);
     try {
       const { url } = await apiFetch<{ url: string }>("/billing/checkout", {
         method: "POST",
-        body: JSON.stringify({ planId: p.id, interval: "monthly" }),
+        body: JSON.stringify({ planId: p.id, interval }),
       });
       window.location.href = url;
     } catch (e) {
@@ -371,7 +371,7 @@ function ProfileTab({
   usage: UsageData | null;
   usageLoading: boolean;
   actionLoading: string | null;
-  onUpgrade: (p: PlanDetail) => void;
+  onUpgrade: (p: PlanDetail, interval: "monthly" | "annual") => void;
   onManage: () => void;
 }) {
   return (

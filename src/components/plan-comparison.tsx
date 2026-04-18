@@ -23,13 +23,14 @@ export function PlanComparison({
 }: {
   currentPlanSlug: string | null;
   subscriptionEndsAt?: string | null;
-  onUpgrade: (plan: PlanDetail) => void;
+  onUpgrade: (plan: PlanDetail, interval: "monthly" | "annual") => void;
   onManage: () => void;
   actionLoading: string | null;
 }) {
   const apiFetch = useApiFetch();
   const [plans, setPlans] = useState<PlanDetail[]>([]);
   const [loading, setLoading] = useState(true);
+  const [interval, setBillingInterval] = useState<"monthly" | "annual">("monthly");
 
   useEffect(() => {
     apiFetch<PlanDetail[]>("/plans")
@@ -37,6 +38,24 @@ export function PlanComparison({
       .catch(() => toast.error("Failed to load plans"))
       .finally(() => setLoading(false));
   }, [apiFetch]);
+
+  const hasAnnual = plans.some((p) => p.priceCentsAnnual != null && p.priceCentsAnnual > 0);
+
+  function displayPrice(p: PlanDetail): string {
+    if (p.priceCentsMonthly === 0) return "Free";
+    const cents =
+      interval === "annual" && p.priceCentsAnnual
+        ? Math.round(p.priceCentsAnnual / 12)
+        : p.priceCentsMonthly;
+    return `$${(cents / 100).toFixed(2)}`;
+  }
+
+  function annualSavingsPercent(p: PlanDetail): number | null {
+    if (!p.priceCentsAnnual || p.priceCentsMonthly === 0) return null;
+    const monthlyTotal = p.priceCentsMonthly * 12;
+    const savings = Math.round(((monthlyTotal - p.priceCentsAnnual) / monthlyTotal) * 100);
+    return savings > 0 ? savings : null;
+  }
 
   if (loading) {
     return (
@@ -50,6 +69,37 @@ export function PlanComparison({
 
   return (
     <div className="space-y-3">
+      {hasAnnual && (
+        <div className="flex justify-center">
+          <div className="relative inline-flex items-center bg-card rounded-full p-1 border border-border">
+            <span
+              aria-hidden
+              className="absolute top-1 bottom-1 left-1 w-[calc(50%-0.25rem)] rounded-full bg-primary shadow-sm transition-transform duration-300 ease-out"
+              style={{
+                transform: interval === "annual" ? "translateX(100%)" : "translateX(0)",
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => setBillingInterval("monthly")}
+              className={`relative z-10 px-5 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+                interval === "monthly" ? "text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Monthly
+            </button>
+            <button
+              type="button"
+              onClick={() => setBillingInterval("annual")}
+              className={`relative z-10 px-5 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+                interval === "annual" ? "text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Annual
+            </button>
+          </div>
+        </div>
+      )}
       {plans.map((p, idx) => {
         const isCurrent = currentPlanSlug === p.slug;
         const currentIdx = plans.findIndex((pl) => pl.slug === currentPlanSlug);
@@ -88,9 +138,14 @@ export function PlanComparison({
                 {p.priceCentsMonthly === 0 ? (
                   <span className="text-sm font-medium">Free</span>
                 ) : (
-                  <span className="text-sm font-medium">
-                    ${(p.priceCentsMonthly / 100).toFixed(2)}/mo
-                  </span>
+                  <>
+                    <span className="text-sm font-medium">{displayPrice(p)}/mo</span>
+                    {interval === "annual" && annualSavingsPercent(p) && (
+                      <p className="text-[10px] font-semibold text-emerald-400 mt-0.5">
+                        Save {annualSavingsPercent(p)}% annually
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
             </div>
@@ -128,7 +183,7 @@ export function PlanComparison({
               </div>
             ) : isUpgrade ? (
               <button
-                onClick={() => onUpgrade(p)}
+                onClick={() => onUpgrade(p, interval)}
                 disabled={actionLoading === p.id}
                 className={`w-full py-2.5 rounded-lg font-semibold text-xs transition-all disabled:opacity-50 ${
                   isTopTier
