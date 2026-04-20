@@ -1385,14 +1385,14 @@ model DigestDeliveryEpisode {
 model BillingSubscription {
   id                String          @id @default(cuid())
   userId            String
-  source            BillingSource                    // STRIPE | APPLE
-  externalId        String                           // Stripe subscription id OR Apple original_transaction_id
-  productExternalId String                           // Stripe price id OR Apple product id
+  source            BillingSource                    // STRIPE | APPLE | MANUAL
+  externalId        String                           // Stripe subscription id / Apple original_transaction_id / userId for MANUAL
+  productExternalId String                           // Stripe price id / Apple product id / "admin-grant" for MANUAL
   planId            String
   status            BillingStatus                    // ACTIVE | CANCELLED_PENDING_EXPIRY | GRACE_PERIOD | EXPIRED | REFUNDED | PAUSED
   currentPeriodEnd  DateTime?
   willRenew         Boolean         @default(true)
-  rawPayload        Json?                            // last event body, for debugging
+  rawPayload        Json?                            // last event body / grant metadata for MANUAL
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
 
@@ -1406,6 +1406,7 @@ model BillingSubscription {
 enum BillingSource {
   STRIPE
   APPLE
+  MANUAL
 }
 
 enum BillingStatus {

@@ -101,11 +101,20 @@ export interface AdminFeedItem {
   createdAt: string;
 }
 
+export interface AdminUserGrant {
+  id: string;
+  plan: { id: string; name: string; slug: string };
+  endsAt: string | null;
+  reason: string | null;
+  grantedAt: string;
+}
+
 export interface AdminUserDetail extends AdminUser {
   stripeCustomerId?: string;
   feedItemCount: number;
   subscriptions: { podcastId: string; podcastTitle: string; durationTier: number; createdAt: string }[];
   recentFeedItems: AdminFeedItem[];
+  activeGrant: AdminUserGrant | null;
 }
 
 export interface UserSegmentCounts {

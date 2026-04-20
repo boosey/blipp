@@ -142,6 +142,7 @@ describe("Users Routes", () => {
           },
         ],
         podcastFavorites: [],
+        billingSubscriptions: [],
       });
 
       const res = await app.request("/users/u1", {}, env, mockExCtx);
@@ -151,6 +152,7 @@ describe("Users Routes", () => {
       expect(body.data.subscriptions).toHaveLength(1);
       expect(body.data.recentFeedItems).toHaveLength(1);
       expect(body.data).toHaveProperty("badges");
+      expect(body.data.activeGrant).toBeNull();
     });
 
     it("returns 404 when not found", async () => {
@@ -172,39 +174,6 @@ describe("Users Routes", () => {
       expect(body.error).toBe("Cannot modify admin privileges via this endpoint");
     });
 
-    it("should allow planId changes", async () => {
-      mockPrisma.plan.findUnique.mockResolvedValueOnce({
-        id: "plan_proplus", name: "Pro Plus", slug: "pro-plus",
-      });
-      mockPrisma.user.update.mockResolvedValueOnce({
-        id: "u1",
-        plan: { id: "plan_proplus", name: "Pro Plus", slug: "pro-plus" },
-        isAdmin: false,
-      });
-
-      const res = await app.request("/users/u1", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ planId: "plan_proplus" }),
-      }, env, mockExCtx);
-      expect(res.status).toBe(200);
-      const body: any = await res.json();
-      expect(body.data.plan.name).toBe("Pro Plus");
-    });
-
-    it("should return 404 for invalid planId", async () => {
-      mockPrisma.plan.findUnique.mockResolvedValueOnce(null);
-
-      const res = await app.request("/users/u1", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ planId: "nonexistent" }),
-      }, env, mockExCtx);
-      expect(res.status).toBe(404);
-      const body: any = await res.json();
-      expect(body.error).toBe("Plan not found");
-    });
-
     it("should return 400 for empty body", async () => {
       const res = await app.request("/users/u1", {
         method: "PATCH",
@@ -214,6 +183,101 @@ describe("Users Routes", () => {
       expect(res.status).toBe(400);
       const body: any = await res.json();
       expect(body.error).toBe("No valid fields to update");
+    });
+  });
+
+  describe("POST /users/:id/grants", () => {
+    it("creates a manual grant and recomputes entitlement", async () => {
+      const future = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      mockPrisma.user.findUnique.mockResolvedValueOnce({ id: "u1" });
+      mockPrisma.plan.findUnique.mockResolvedValueOnce({ id: "plan_pro" });
+      mockPrisma.billingSubscription.upsert.mockResolvedValueOnce({
+        id: "grant_1",
+        plan: { id: "plan_pro", name: "Pro", slug: "pro" },
+        currentPeriodEnd: future,
+        createdAt: new Date(),
+      });
+      // recomputeEntitlement queries
+      mockPrisma.billingSubscription.findMany.mockResolvedValueOnce([
+        { planId: "plan_pro", status: "ACTIVE", currentPeriodEnd: future, plan: { sortOrder: 10 } },
+      ]);
+      mockPrisma.user.update.mockResolvedValueOnce({});
+
+      const res = await app.request("/users/u1/grants", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ planId: "plan_pro", endsAt: future.toISOString(), reason: "beta" }),
+      }, env, mockExCtx);
+
+      expect(res.status).toBe(200);
+      const body: any = await res.json();
+      expect(body.data.plan.name).toBe("Pro");
+      expect(body.data.reason).toBe("beta");
+      expect(mockPrisma.billingSubscription.upsert).toHaveBeenCalledTimes(1);
+    });
+
+    it("returns 400 when planId is missing", async () => {
+      const future = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      const res = await app.request("/users/u1/grants", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ endsAt: future.toISOString() }),
+      }, env, mockExCtx);
+      expect(res.status).toBe(400);
+    });
+
+    it("returns 400 when endsAt is in the past", async () => {
+      const past = new Date(Date.now() - 1000);
+      const res = await app.request("/users/u1/grants", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ planId: "plan_pro", endsAt: past.toISOString() }),
+      }, env, mockExCtx);
+      expect(res.status).toBe(400);
+    });
+
+    it("returns 404 when plan does not exist", async () => {
+      const future = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      mockPrisma.user.findUnique.mockResolvedValueOnce({ id: "u1" });
+      mockPrisma.plan.findUnique.mockResolvedValueOnce(null);
+
+      const res = await app.request("/users/u1/grants", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ planId: "nope", endsAt: future.toISOString() }),
+      }, env, mockExCtx);
+      expect(res.status).toBe(404);
+    });
+  });
+
+  describe("DELETE /users/:id/grants", () => {
+    it("revokes the active grant and recomputes entitlement", async () => {
+      mockPrisma.billingSubscription.findUnique.mockResolvedValueOnce({
+        id: "grant_1",
+        planId: "plan_pro",
+        status: "ACTIVE",
+        currentPeriodEnd: new Date(),
+      });
+      mockPrisma.billingSubscription.update.mockResolvedValueOnce({});
+      mockPrisma.billingSubscription.findMany.mockResolvedValueOnce([]);
+      mockPrisma.plan.findFirst.mockResolvedValueOnce({ id: "plan_free" });
+      mockPrisma.user.update.mockResolvedValueOnce({});
+
+      const res = await app.request("/users/u1/grants", {
+        method: "DELETE",
+      }, env, mockExCtx);
+      expect(res.status).toBe(200);
+      const body: any = await res.json();
+      expect(body.data.revoked).toBe(true);
+    });
+
+    it("returns 404 when no active grant exists", async () => {
+      mockPrisma.billingSubscription.findUnique.mockResolvedValueOnce(null);
+
+      const res = await app.request("/users/u1/grants", {
+        method: "DELETE",
+      }, env, mockExCtx);
+      expect(res.status).toBe(404);
     });
   });
 });

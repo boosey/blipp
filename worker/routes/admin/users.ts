@@ -3,6 +3,7 @@ import type { Env } from "../../types";
 import { parsePagination, parseSort, paginatedResponse } from "../../lib/admin-helpers";
 import { writeAuditLog } from "../../lib/audit-log";
 import { getAuth } from "../../middleware/auth";
+import { recomputeEntitlement } from "../../lib/entitlement";
 
 const usersRoutes = new Hono<{ Bindings: Env }>();
 
@@ -312,6 +313,12 @@ usersRoutes.get("/:id", async (c) => {
         include: { podcast: { select: { id: true, title: true, imageUrl: true } } },
         orderBy: { createdAt: "desc" },
       },
+      billingSubscriptions: {
+        where: { source: "MANUAL", status: "ACTIVE" },
+        include: { plan: { select: { id: true, name: true, slug: true } } },
+        orderBy: { createdAt: "desc" },
+        take: 1,
+      },
     },
   });
 
@@ -375,14 +382,27 @@ usersRoutes.get("/:id", async (c) => {
         favoritedAt: f.createdAt.toISOString(),
       })),
       onboardingComplete: user.onboardingComplete,
+      activeGrant: user.billingSubscriptions?.[0]
+        ? {
+            id: user.billingSubscriptions[0].id,
+            plan: {
+              id: user.billingSubscriptions[0].plan.id,
+              name: user.billingSubscriptions[0].plan.name,
+              slug: user.billingSubscriptions[0].plan.slug,
+            },
+            endsAt: user.billingSubscriptions[0].currentPeriodEnd?.toISOString() ?? null,
+            reason: (user.billingSubscriptions[0].rawPayload as any)?.reason ?? null,
+            grantedAt: user.billingSubscriptions[0].createdAt.toISOString(),
+          }
+        : null,
     },
   });
 });
 
-// PATCH /:id - Update user
+// PATCH /:id - Update user (status / onboarding only; plan changes go through grants)
 usersRoutes.patch("/:id", async (c) => {
   const prisma = c.get("prisma") as any;
-  const body = await c.req.json<{ planId?: string; isAdmin?: boolean; status?: string; onboardingComplete?: boolean }>();
+  const body = await c.req.json<{ isAdmin?: boolean; status?: string; onboardingComplete?: boolean }>();
 
   // Block isAdmin changes via this endpoint — requires dedicated super-admin flow
   if (body.isAdmin !== undefined) {
@@ -397,14 +417,6 @@ usersRoutes.patch("/:id", async (c) => {
   }
 
   const data: Record<string, unknown> = {};
-  if (body.planId !== undefined) {
-    // Validate that the plan exists
-    const plan = await prisma.plan.findUnique({ where: { id: body.planId } });
-    if (!plan) {
-      return c.json({ error: "Plan not found" }, 404);
-    }
-    data.planId = body.planId;
-  }
 
   if (body.status !== undefined) {
     if (!["active", "suspended", "banned"].includes(body.status)) {
@@ -421,10 +433,9 @@ usersRoutes.patch("/:id", async (c) => {
     return c.json({ error: "No valid fields to update" }, 400);
   }
 
-  // Capture old values before update for audit log
   const existingUser = await prisma.user.findUnique({
     where: { id: c.req.param("id") },
-    select: { planId: true, status: true, onboardingComplete: true },
+    select: { status: true, onboardingComplete: true },
   });
 
   const updated = await prisma.user.update({
@@ -434,15 +445,14 @@ usersRoutes.patch("/:id", async (c) => {
   });
 
   const auth = getAuth(c);
-  const auditAction = body.onboardingComplete !== undefined ? "user.onboarding.reset"
-    : body.status !== undefined ? "user.status.change" : "user.plan.change";
+  const auditAction = body.onboardingComplete !== undefined ? "user.onboarding.reset" : "user.status.change";
   writeAuditLog(prisma, {
     actorId: auth!.userId!,
     action: auditAction,
     entityType: "User",
     entityId: c.req.param("id"),
-    before: { planId: existingUser?.planId, status: existingUser?.status },
-    after: { planId: body.planId, status: body.status },
+    before: { status: existingUser?.status, onboardingComplete: existingUser?.onboardingComplete },
+    after: { status: body.status, onboardingComplete: body.onboardingComplete },
   }).catch(() => {});
 
   return c.json({
@@ -453,6 +463,116 @@ usersRoutes.patch("/:id", async (c) => {
       status: updated.status,
     },
   });
+});
+
+// POST /:id/grants - Create or replace a manual plan grant
+usersRoutes.post("/:id/grants", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const userId = c.req.param("id");
+  const body = await c.req.json<{ planId?: string; endsAt?: string; reason?: string }>();
+
+  if (!body.planId || !body.endsAt) {
+    return c.json({ error: "planId and endsAt are required" }, 400);
+  }
+
+  const endsAt = new Date(body.endsAt);
+  if (Number.isNaN(endsAt.getTime())) {
+    return c.json({ error: "endsAt must be a valid ISO date" }, 400);
+  }
+  if (endsAt <= new Date()) {
+    return c.json({ error: "endsAt must be in the future" }, 400);
+  }
+
+  const [user, plan] = await Promise.all([
+    prisma.user.findUnique({ where: { id: userId }, select: { id: true } }),
+    prisma.plan.findUnique({ where: { id: body.planId }, select: { id: true } }),
+  ]);
+  if (!user) return c.json({ error: "User not found" }, 404);
+  if (!plan) return c.json({ error: "Plan not found" }, 404);
+
+  const auth = getAuth(c);
+  const grantPayload = {
+    grantedBy: auth!.userId!,
+    grantedAt: new Date().toISOString(),
+    reason: body.reason ?? null,
+  };
+
+  // Upsert on (MANUAL, userId) — one active grant per user; replaces any prior MANUAL row.
+  const grant = await prisma.billingSubscription.upsert({
+    where: { source_externalId: { source: "MANUAL", externalId: userId } },
+    create: {
+      userId,
+      source: "MANUAL",
+      externalId: userId,
+      productExternalId: "admin-grant",
+      planId: body.planId,
+      status: "ACTIVE",
+      currentPeriodEnd: endsAt,
+      willRenew: false,
+      rawPayload: grantPayload as any,
+    },
+    update: {
+      planId: body.planId,
+      status: "ACTIVE",
+      currentPeriodEnd: endsAt,
+      willRenew: false,
+      rawPayload: grantPayload as any,
+    },
+    include: { plan: { select: { id: true, name: true, slug: true } } },
+  });
+
+  await recomputeEntitlement(prisma, userId);
+
+  writeAuditLog(prisma, {
+    actorId: auth!.userId!,
+    action: "user.grant.create",
+    entityType: "User",
+    entityId: userId,
+    before: null,
+    after: { planId: body.planId, endsAt: endsAt.toISOString(), reason: body.reason ?? null },
+  }).catch(() => {});
+
+  return c.json({
+    data: {
+      id: grant.id,
+      plan: { id: grant.plan.id, name: grant.plan.name, slug: grant.plan.slug },
+      endsAt: grant.currentPeriodEnd?.toISOString() ?? null,
+      reason: body.reason ?? null,
+      grantedAt: grant.createdAt.toISOString(),
+    },
+  });
+});
+
+// DELETE /:id/grants - Revoke the user's active manual grant
+usersRoutes.delete("/:id/grants", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const userId = c.req.param("id");
+
+  const existing = await prisma.billingSubscription.findUnique({
+    where: { source_externalId: { source: "MANUAL", externalId: userId } },
+  });
+  if (!existing || existing.status !== "ACTIVE") {
+    return c.json({ error: "No active manual grant for this user" }, 404);
+  }
+
+  await prisma.billingSubscription.update({
+    where: { source_externalId: { source: "MANUAL", externalId: userId } },
+    data: { status: "EXPIRED" },
+  });
+
+  await recomputeEntitlement(prisma, userId);
+
+  const auth = getAuth(c);
+  writeAuditLog(prisma, {
+    actorId: auth!.userId!,
+    action: "user.grant.revoke",
+    entityType: "User",
+    entityId: userId,
+    before: { planId: existing.planId, endsAt: existing.currentPeriodEnd?.toISOString() ?? null },
+    after: null,
+  }).catch(() => {});
+
+  return c.json({ data: { revoked: true } });
 });
 
 export { usersRoutes };

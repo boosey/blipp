@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback } from "react";
-import { CreditCard, Shield, Crown } from "lucide-react";
+import { CreditCard, Shield, Crown, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -29,35 +31,57 @@ export interface BillingTabProps {
   onUpdate: () => void;
 }
 
+function defaultEndsAt(): string {
+  const d = new Date();
+  d.setMonth(d.getMonth() + 3);
+  return d.toISOString().slice(0, 10);
+}
+
 export function BillingTab({ user, onUpdate }: BillingTabProps) {
   const apiFetch = useAdminFetch();
-  const [planModalOpen, setPlanModalOpen] = useState(false);
+  const [grantModalOpen, setGrantModalOpen] = useState(false);
   const [selectedPlanId, setSelectedPlanId] = useState(user.plan.id);
+  const [endsAt, setEndsAt] = useState(defaultEndsAt());
+  const [reason, setReason] = useState("");
   const [availablePlans, setAvailablePlans] = useState<AdminPlan[]>([]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (planModalOpen && availablePlans.length === 0) {
+    if (grantModalOpen && availablePlans.length === 0) {
       apiFetch<{ data: AdminPlan[] }>("/plans")
         .then((r) => setAvailablePlans(r.data))
         .catch(console.error);
     }
-  }, [planModalOpen, availablePlans.length, apiFetch]);
+  }, [grantModalOpen, availablePlans.length, apiFetch]);
 
-  const handlePlanSave = useCallback(() => {
-    if (selectedPlanId === user.plan.id) return;
+  const handleGrantSave = useCallback(() => {
+    if (!selectedPlanId || !endsAt) return;
     setSaving(true);
-    apiFetch(`/users/${user.id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ planId: selectedPlanId }),
+    apiFetch(`/users/${user.id}/grants`, {
+      method: "POST",
+      body: JSON.stringify({
+        planId: selectedPlanId,
+        endsAt: new Date(endsAt).toISOString(),
+        reason: reason.trim() || undefined,
+      }),
     })
       .then(() => {
-        setPlanModalOpen(false);
+        setGrantModalOpen(false);
+        setReason("");
         onUpdate();
       })
       .catch(console.error)
       .finally(() => setSaving(false));
-  }, [apiFetch, user.id, user.plan.id, selectedPlanId, onUpdate]);
+  }, [apiFetch, user.id, selectedPlanId, endsAt, reason, onUpdate]);
+
+  const handleGrantRevoke = useCallback(() => {
+    if (!confirm("Revoke this user's manual grant? They will drop back to their billing-based plan.")) return;
+    setSaving(true);
+    apiFetch(`/users/${user.id}/grants`, { method: "DELETE" })
+      .then(() => onUpdate())
+      .catch(console.error)
+      .finally(() => setSaving(false));
+  }, [apiFetch, user.id, onUpdate]);
 
   const handleAdminToggle = useCallback(
     (isAdmin: boolean) => {
@@ -72,6 +96,8 @@ export function BillingTab({ user, onUpdate }: BillingTabProps) {
     },
     [apiFetch, user.id, onUpdate]
   );
+
+  const activeGrant = user.activeGrant;
 
   return (
     <div className="space-y-4">
@@ -103,6 +129,51 @@ export function BillingTab({ user, onUpdate }: BillingTabProps) {
         </div>
       </div>
 
+      {/* Active Manual Grant */}
+      {activeGrant && (
+        <div className="rounded-lg bg-[#1A2942] border border-[#F59E0B]/30 p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Crown className="h-4 w-4 text-[#F59E0B]" />
+              <span className="text-sm font-semibold text-[#F9FAFB]">Active Manual Grant</span>
+            </div>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={saving}
+              onClick={handleGrantRevoke}
+              className="h-7 text-[#EF4444] hover:bg-[#EF4444]/10 border border-[#EF4444]/20"
+            >
+              <X className="h-3 w-3" /> Revoke
+            </Button>
+          </div>
+          <div className="space-y-2 text-xs">
+            <div className="flex justify-between">
+              <span className="text-[#9CA3AF]">Granted Plan</span>
+              <Badge className={cn("text-[9px] uppercase", planBadgeClass(activeGrant.plan.slug))}>
+                {activeGrant.plan.name}
+              </Badge>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-[#9CA3AF]">Ends</span>
+              <span className="text-[#F9FAFB]">
+                {activeGrant.endsAt ? formatDate(activeGrant.endsAt) : "—"}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-[#9CA3AF]">Granted</span>
+              <span className="text-[#F9FAFB]">{formatDate(activeGrant.grantedAt)}</span>
+            </div>
+            {activeGrant.reason && (
+              <div className="flex justify-between">
+                <span className="text-[#9CA3AF]">Reason</span>
+                <span className="text-[#F9FAFB] truncate ml-4">{activeGrant.reason}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Admin Actions */}
       <div className="rounded-lg bg-[#1A2942] border border-white/5 p-4 space-y-3">
         <div className="flex items-center gap-2">
@@ -114,11 +185,13 @@ export function BillingTab({ user, onUpdate }: BillingTabProps) {
           size="sm"
           className="w-full bg-[#3B82F6]/15 text-[#3B82F6] hover:bg-[#3B82F6]/25 border border-[#3B82F6]/20"
           onClick={() => {
-            setSelectedPlanId(user.plan.id);
-            setPlanModalOpen(true);
+            setSelectedPlanId(activeGrant?.plan.id ?? user.plan.id);
+            setEndsAt(activeGrant?.endsAt ? activeGrant.endsAt.slice(0, 10) : defaultEndsAt());
+            setReason(activeGrant?.reason ?? "");
+            setGrantModalOpen(true);
           }}
         >
-          <CreditCard className="h-3.5 w-3.5" /> Change Plan
+          <CreditCard className="h-3.5 w-3.5" /> {activeGrant ? "Edit Grant" : "Grant Plan"}
         </Button>
 
         <Separator className="bg-white/5" />
@@ -159,38 +232,65 @@ export function BillingTab({ user, onUpdate }: BillingTabProps) {
         </Button>
       </div>
 
-      {/* Change Plan Modal */}
-      <Dialog open={planModalOpen} onOpenChange={setPlanModalOpen}>
+      {/* Grant Plan Modal */}
+      <Dialog open={grantModalOpen} onOpenChange={setGrantModalOpen}>
         <DialogContent className="bg-[#1A2942] border-white/10 text-[#F9FAFB]">
           <DialogHeader>
-            <DialogTitle className="text-sm">Change Plan for {user.email}</DialogTitle>
+            <DialogTitle className="text-sm">
+              {activeGrant ? "Edit Grant" : "Grant Plan"} — {user.email}
+            </DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 py-4">
-            <Select value={selectedPlanId} onValueChange={setSelectedPlanId}>
-              <SelectTrigger className="bg-[#0A1628] border-white/5 text-[#F9FAFB]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="bg-[#1A2942] border-white/10">
-                {availablePlans.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="space-y-4 py-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs text-[#9CA3AF]">Plan</Label>
+              <Select value={selectedPlanId} onValueChange={setSelectedPlanId}>
+                <SelectTrigger className="bg-[#0A1628] border-white/5 text-[#F9FAFB]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-[#1A2942] border-white/10">
+                  {availablePlans.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-[#9CA3AF]">Ends on (UTC)</Label>
+              <Input
+                type="date"
+                value={endsAt}
+                onChange={(e) => setEndsAt(e.target.value)}
+                className="bg-[#0A1628] border-white/5 text-[#F9FAFB]"
+              />
+              <div className="text-[10px] text-[#9CA3AF]">
+                User drops back to their billing-based plan after this date.
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-[#9CA3AF]">Reason (optional)</Label>
+              <Textarea
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder="Comp, beta tester, support issue…"
+                className="bg-[#0A1628] border-white/5 text-[#F9FAFB] text-xs"
+                rows={2}
+              />
+            </div>
           </div>
           <DialogFooter>
             <Button
               variant="ghost"
-              onClick={() => setPlanModalOpen(false)}
+              onClick={() => setGrantModalOpen(false)}
               className="text-[#9CA3AF]"
             >
               Cancel
             </Button>
             <Button
               className="bg-[#3B82F6] hover:bg-[#3B82F6]/80 text-white"
-              disabled={saving || selectedPlanId === user.plan.id}
-              onClick={handlePlanSave}
+              disabled={saving || !selectedPlanId || !endsAt}
+              onClick={handleGrantSave}
             >
-              {saving ? "Saving..." : "Save"}
+              {saving ? "Saving..." : activeGrant ? "Update Grant" : "Grant Plan"}
             </Button>
           </DialogFooter>
         </DialogContent>
