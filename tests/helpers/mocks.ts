@@ -94,6 +94,7 @@ export function createMockEnv(): Env {
     STRIPE_WEBHOOK_SECRET: "whsec_mock",
     REVENUECAT_WEBHOOK_SECRET: "rcwh_mock",
     REVENUECAT_REST_API_KEY: "rc_rest_mock",
+    REVENUECAT_PROJECT_ID: "proj_mock",
     ANTHROPIC_API_KEY: "sk-ant-mock",
     OPENAI_API_KEY: "sk-mock",
     PODCAST_INDEX_KEY: "mock-key",

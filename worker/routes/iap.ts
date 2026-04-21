@@ -87,12 +87,18 @@ iap.post("/link", async (c) => {
     "REVENUECAT_REST_API_KEY",
     "billing.revenuecat-rest"
   );
-  if (!apiKey) {
+  const projectId = await resolveApiKey(
+    prisma,
+    c.env,
+    "REVENUECAT_PROJECT_ID",
+    "billing.revenuecat-project"
+  );
+  if (!apiKey || !projectId) {
     return c.json({ error: "IAP backend not configured" }, 500);
   }
 
   const rcResp = await fetch(
-    `https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(user.clerkId)}`,
+    `https://api.revenuecat.com/v2/projects/${encodeURIComponent(projectId)}/customers/${encodeURIComponent(user.clerkId)}/subscriptions`,
     {
       method: "GET",
       headers: {
@@ -116,14 +122,29 @@ iap.post("/link", async (c) => {
     return c.json({ error: "Failed to verify purchase with RevenueCat" }, 502);
   }
 
-  const rcData = (await rcResp.json()) as any;
-  const subscriptions = rcData?.subscriber?.subscriptions ?? {};
-  const entry = subscriptions[productId];
-  if (!entry) {
-    return c.json({ error: "Purchase not found on RevenueCat subscriber" }, 404);
-  }
-  if (entry.original_transaction_id && entry.original_transaction_id !== originalTransactionId) {
-    return c.json({ error: "Purchase token mismatch" }, 400);
+  const rcData = (await rcResp.json()) as {
+    items?: Array<{
+      status?: string;
+      auto_renewal_status?: string;
+      current_period_ends_at?: string | null;
+      store?: string;
+      store_subscription_identifier?: string | null;
+      product_id?: string;
+    }>;
+  };
+  // v2 doesn't expose Apple original_transaction_id — match on an active App Store
+  // subscription for this customer. The webhook will reconcile exact state shortly after.
+  const items = rcData?.items ?? [];
+  const candidate = items.find(
+    (s) =>
+      s.store === "app_store" &&
+      (s.status === "active" ||
+        s.status === "in_grace_period" ||
+        s.status === "in_billing_retry" ||
+        s.status === "trialing")
+  );
+  if (!candidate) {
+    return c.json({ error: "No active App Store subscription on RevenueCat yet" }, 404);
   }
 
   const plan = await prisma.plan.findFirst({
@@ -138,23 +159,19 @@ iap.post("/link", async (c) => {
     return c.json({ error: "Unknown product id" }, 400);
   }
 
-  const expiresMs = entry.expires_date ? new Date(entry.expires_date).getTime() : null;
-  const unsubscribeDetectedAt = entry.unsubscribe_detected_at
-    ? new Date(entry.unsubscribe_detected_at)
-    : null;
-  const billingIssueAt = entry.billing_issues_detected_at
-    ? new Date(entry.billing_issues_detected_at)
+  const expiresMs = candidate.current_period_ends_at
+    ? new Date(candidate.current_period_ends_at).getTime()
     : null;
 
   let status: "ACTIVE" | "CANCELLED_PENDING_EXPIRY" | "GRACE_PERIOD" | "EXPIRED" = "ACTIVE";
   let willRenew = true;
-  if (expiresMs !== null && expiresMs < Date.now()) {
-    status = "EXPIRED";
-    willRenew = false;
-  } else if (billingIssueAt) {
+  if (candidate.status === "in_grace_period" || candidate.status === "in_billing_retry") {
     status = "GRACE_PERIOD";
-  } else if (unsubscribeDetectedAt) {
+  } else if (candidate.auto_renewal_status === "will_not_renew") {
     status = "CANCELLED_PENDING_EXPIRY";
+    willRenew = false;
+  } else if (expiresMs !== null && expiresMs < Date.now()) {
+    status = "EXPIRED";
     willRenew = false;
   }
 
@@ -167,7 +184,7 @@ iap.post("/link", async (c) => {
     status,
     currentPeriodEnd: expiresMs ? new Date(expiresMs) : null,
     willRenew,
-    rawPayload: entry,
+    rawPayload: candidate as any,
   });
   await recomputeEntitlement(prisma, user.id);
 

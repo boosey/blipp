@@ -7,10 +7,24 @@ import { StorageProvider } from "./contexts/storage-context";
 import App from "./App";
 import { Toaster } from "./components/toaster";
 import { registerSW } from "virtual:pwa-register";
+import { Capacitor } from "@capacitor/core";
 import "./index.css";
 
-// Register service worker (runtime caching only, no precache)
-registerSW();
+if (Capacitor.isNativePlatform()) {
+  // Service workers interfere with Capacitor's scheme handler in WKWebView —
+  // stale-while-revalidate caches can hang dynamic /assets/* imports. Unregister
+  // any SW that was installed by a previous web build of this origin.
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.getRegistrations().then((regs) => {
+      regs.forEach((r) => r.unregister().catch(() => undefined));
+    }).catch(() => undefined);
+    caches?.keys?.().then((keys) => {
+      keys.forEach((k) => caches.delete(k).catch(() => undefined));
+    }).catch(() => undefined);
+  }
+} else {
+  registerSW();
+}
 
 class DebugErrorBoundary extends Component<
   { children: ReactNode },

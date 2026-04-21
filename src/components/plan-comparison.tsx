@@ -12,6 +12,8 @@ export interface PlanDetail {
   priceCentsAnnual: number | null;
   features: string[];
   highlighted: boolean;
+  appleProductIdMonthly?: string | null;
+  appleProductIdAnnual?: string | null;
 }
 
 export function PlanComparison({

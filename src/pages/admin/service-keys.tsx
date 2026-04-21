@@ -73,6 +73,7 @@ const PROVIDERS = [
   { value: "deepgram", label: "Deepgram", envKeys: ["DEEPGRAM_API_KEY"] },
   { value: "clerk", label: "Clerk", envKeys: ["CLERK_SECRET_KEY", "CLERK_PUBLISHABLE_KEY", "CLERK_WEBHOOK_SECRET"] },
   { value: "stripe", label: "Stripe", envKeys: ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET"] },
+  { value: "revenuecat", label: "RevenueCat", envKeys: ["REVENUECAT_WEBHOOK_SECRET", "REVENUECAT_REST_API_KEY", "REVENUECAT_PROJECT_ID"] },
   { value: "podcast-index", label: "Podcast Index", envKeys: ["PODCAST_INDEX_KEY", "PODCAST_INDEX_SECRET"] },
   { value: "cloudflare", label: "Cloudflare", envKeys: ["CF_API_TOKEN"] },
   { value: "github", label: "GitHub", envKeys: ["GITHUB_TOKEN"] },

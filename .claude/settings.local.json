@@ -18,7 +18,24 @@
       "Bash(xcrun simctl *)",
       "Bash(xcode-select -p)",
       "Bash(xcodebuild -version)",
-      "Bash(mdfind -name \"Xcode.app\")"
+      "Bash(mdfind -name \"Xcode.app\")",
+      "Bash(npx tsx *)",
+      "Bash(grep -v \":0$\")",
+      "Bash(grep -o \"loadRC[^}]\\\\{0,150\\\\}\" /Users/boosey/Documents/blipp/ios/App/App/public/assets/index-DyPD7F1_.js)",
+      "Bash(grep -o \"async function Ai[^}]\\\\{0,200\\\\}\" /Users/boosey/Documents/blipp/ios/App/App/public/assets/index-DyPD7F1_.js)",
+      "Bash(grep -o \"const De=[^;]\\\\{0,200\\\\}\" /Users/boosey/Documents/blipp/ios/App/App/public/assets/index-DyPD7F1_.js)",
+      "Bash(grep -oE \"\\(function |const \\)De[^=]?=[^;]{0,400}\" /Users/boosey/Documents/blipp/ios/App/App/public/assets/index-DyPD7F1_.js)",
+      "Bash(grep -oE \"function De\\\\\\([^\\)]*\\\\\\)[^}]{0,300}\" /Users/boosey/Documents/blipp/ios/App/App/public/assets/index-DyPD7F1_.js)",
+      "Bash(grep -oE \"De=function\\\\\\([^{]*\\\\{[^}]{0,2000}\" /Users/boosey/Documents/blipp/ios/App/App/public/assets/index-DyPD7F1_.js)",
+      "Bash(awk 'match\\($0, /De=function\\\\\\(a,s,i\\\\\\)/\\) { start=RSTART; print substr\\($0, start, 3000\\); exit }' /Users/boosey/Documents/blipp/ios/App/App/public/assets/index-DyPD7F1_.js)",
+      "Bash(grep -o \"^[^;]\\\\{0,200\\\\}await\" /Users/boosey/Documents/blipp/ios/App/App/public/assets/index-Bv0xsVBW.js)",
+      "Bash(grep -oE \"loadRC[^}]{0,300}\" /Users/boosey/Documents/blipp/ios/App/App/public/assets/index-E0ESYlN8.js)",
+      "Bash(grep -oE \"initIAP starting[^,]{0,500}\" /Users/boosey/Documents/blipp/ios/App/App/public/assets/index-E0ESYlN8.js)",
+      "Bash(awk *)",
+      "WebSearch",
+      "WebFetch(domain:www.revenuecat.com)",
+      "Bash(NODE_OPTIONS=\"--max-old-space-size=4096\" npx vitest run worker/routes/__tests__/iap-link.test.ts)",
+      "Bash(NODE_OPTIONS=\"--max-old-space-size=4096\" npx vitest run worker/routes/__tests__/billing.test.ts worker/routes/__tests__/revenuecat-webhook.test.ts)"
     ]
   },
   "prefersReducedMotion": true

@@ -18,6 +18,7 @@ import { useTheme, type Theme } from "../contexts/theme-context";
 import { usePlan } from "../contexts/plan-context";
 import { useAppConfig } from "../lib/app-config";
 import { StorageSettings } from "../components/storage-settings";
+import { useIAP } from "../hooks/use-iap";
 import { InterestPicker } from "../components/interest-picker";
 import { SportsTeamPicker } from "../components/sports-team-picker";
 import { ScrollableRow } from "../components/scrollable-row";
@@ -81,6 +82,7 @@ type TabId = (typeof TABS)[number]["id"];
 export function Settings() {
   const apiFetch = useApiFetch();
   const { signOut } = useClerk();
+  const { purchase, ready: iapReady, error: iapError, loading: iapLoading } = useIAP();
   const [activeTab, setActiveTab] = useState<TabId>("profile");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [pushEnabled, setPushEnabled] = useState(false);
@@ -137,6 +139,51 @@ export function Settings() {
 
   async function handleUpgrade(p: PlanDetail, interval: "monthly" | "annual") {
     setActionLoading(p.id);
+
+    if (Capacitor.isNativePlatform()) {
+      console.log("[upgrade] click", {
+        planId: p.id,
+        slug: p.slug,
+        interval,
+        iapReady,
+        iapLoading,
+        iapError,
+        appleProductIdMonthly: p.appleProductIdMonthly,
+        appleProductIdAnnual: p.appleProductIdAnnual,
+      });
+      if (!iapReady) {
+        toast.error(
+          iapError
+            ? `In-App Purchase unavailable: ${iapError}`
+            : "In-App Purchase is still initializing — try again in a moment"
+        );
+        setActionLoading(null);
+        return;
+      }
+      const productId =
+        interval === "annual" ? p.appleProductIdAnnual : p.appleProductIdMonthly;
+      if (!productId) {
+        toast.error(`No App Store product configured for ${interval} billing`);
+        setActionLoading(null);
+        return;
+      }
+      try {
+        console.log("[upgrade] calling purchase", productId);
+        const result = await purchase(productId);
+        console.log("[upgrade] purchase returned", result);
+        toast.success("Subscription activated");
+        refetchUser();
+        refetchUsage();
+      } catch (e) {
+        console.error("[upgrade] purchase failed", e);
+        const msg = e instanceof Error ? e.message : String(e);
+        if (!/cancel/i.test(msg)) toast.error(msg || "Purchase failed");
+      } finally {
+        setActionLoading(null);
+      }
+      return;
+    }
+
     try {
       const { url } = await apiFetch<{ url: string }>("/billing/checkout", {
         method: "POST",

@@ -1,12 +1,8 @@
 import { Capacitor } from "@capacitor/core";
+import { Purchases } from "@revenuecat/purchases-capacitor";
 
 let initialized = false;
 let initializing: Promise<void> | null = null;
-
-async function loadRC() {
-  const mod = await import("@revenuecat/purchases-capacitor");
-  return mod.Purchases;
-}
 
 /**
  * Configure RevenueCat with the Apple API key and link the current Clerk user.
@@ -15,23 +11,26 @@ async function loadRC() {
  */
 export async function initIAP(clerkUserId: string): Promise<void> {
   if (!Capacitor.isNativePlatform()) return;
-  const apiKey = import.meta.env.VITE_REVENUECAT_APPLE_API_KEY as string | undefined;
+  const rawKey = import.meta.env.VITE_REVENUECAT_APPLE_API_KEY as string | undefined;
+  const apiKey = rawKey?.trim();
   if (!apiKey) {
     console.warn("[iap] VITE_REVENUECAT_APPLE_API_KEY not set; IAP disabled on native");
     return;
   }
+  console.log("[iap] initIAP starting for user", clerkUserId, "keyPrefix", apiKey.slice(0, 6));
 
   if (initialized) {
-    const Purchases = await loadRC();
     await Purchases.logIn({ appUserID: clerkUserId });
     return;
   }
 
   if (initializing) return initializing;
   initializing = (async () => {
-    const Purchases = await loadRC();
+    console.log("[iap] calling configure()");
     await Purchases.configure({ apiKey, appUserID: clerkUserId });
+    console.log("[iap] configure() resolved");
     initialized = true;
+    console.log("[iap] initIAP configured");
   })();
   return initializing;
 }
@@ -54,7 +53,6 @@ export interface IAPOffering {
 
 export async function getCurrentOffering(): Promise<IAPOffering | null> {
   if (!Capacitor.isNativePlatform()) return null;
-  const Purchases = await loadRC();
   const { current } = await Purchases.getOfferings();
   if (!current) return null;
   const toProduct = (pkg: any): IAPProduct | null => {
@@ -90,21 +88,27 @@ export async function purchaseProduct(productId: string): Promise<PurchaseResult
   if (!Capacitor.isNativePlatform()) {
     throw new Error("IAP is only available on native iOS/Android");
   }
-  const Purchases = await loadRC();
-  const { current } = await Purchases.getOfferings();
-  if (!current) throw new Error("No current RevenueCat offering available");
+  console.log("[iap] purchaseProduct start", productId);
+  console.log("[iap] getting offerings");
+  const offerings: any = await Purchases.getOfferings();
+  const offeringIds = Object.keys(offerings?.all ?? {});
+  console.log("[iap] offerings received", {
+    currentId: offerings?.current?.identifier,
+    offeringIds,
+  });
 
-  let pkg: any =
-    (current.monthly?.product?.identifier === productId && current.monthly) ||
-    (current.annual?.product?.identifier === productId && current.annual) ||
-    null;
-  if (!pkg) {
-    const all = [current.monthly, current.annual, ...current.availablePackages].filter(Boolean);
-    pkg = all.find((p: any) => p?.product?.identifier === productId) ?? null;
+  let pkg: any = null;
+  for (const key of offeringIds) {
+    const o = offerings.all[key];
+    const candidates = [o.monthly, o.annual, ...(o.availablePackages ?? [])].filter(Boolean);
+    pkg = candidates.find((p: any) => p?.product?.identifier === productId) ?? null;
+    if (pkg) break;
   }
-  if (!pkg) throw new Error(`Product ${productId} not found in current offering`);
+  if (!pkg) throw new Error(`Product ${productId} not found in any offering`);
 
+  console.log("[iap] calling purchasePackage", pkg?.identifier);
   const result: any = await Purchases.purchasePackage({ aPackage: pkg as any });
+  console.log("[iap] purchasePackage resolved");
   const subs = result?.customerInfo?.allPurchasedProductIdentifiers ?? [];
   const entry = result?.customerInfo?.activeSubscriptions?.[0] ?? subs[0] ?? productId;
   const originalTransactionId =
@@ -120,13 +124,11 @@ export async function purchaseProduct(productId: string): Promise<PurchaseResult
 
 export async function restorePurchases(): Promise<void> {
   if (!Capacitor.isNativePlatform()) return;
-  const Purchases = await loadRC();
   await Purchases.restorePurchases();
 }
 
 export async function logoutIAP(): Promise<void> {
   if (!Capacitor.isNativePlatform() || !initialized) return;
-  const Purchases = await loadRC();
   await Purchases.logOut();
   initialized = false;
 }
