@@ -523,9 +523,9 @@ export default function ServiceKeys() {
             <div className="border-t border-white/5 divide-y divide-white/5">
               {providerKeys.map((k) => (
                 <div key={k.id} className="p-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="text-sm font-medium text-[#F9FAFB]">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <span className="text-sm font-medium text-[#F9FAFB] truncate">
                         {k.name}
                       </span>
                       {k.isPrimary && (
@@ -544,7 +544,7 @@ export default function ServiceKeys() {
                         </Badge>
                       )}
                     </div>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
                       <Button
                         variant="ghost"
                         size="icon"

@@ -109,16 +109,16 @@ export async function purchaseProduct(productId: string): Promise<PurchaseResult
   console.log("[iap] calling purchasePackage", pkg?.identifier);
   const result: any = await Purchases.purchasePackage({ aPackage: pkg as any });
   console.log("[iap] purchasePackage resolved");
-  const subs = result?.customerInfo?.allPurchasedProductIdentifiers ?? [];
-  const entry = result?.customerInfo?.activeSubscriptions?.[0] ?? subs[0] ?? productId;
-  const originalTransactionId =
-    result?.customerInfo?.subscriptions?.[entry]?.originalPurchaseDate ??
-    result?.customerInfo?.latestExpirationDate ??
-    null;
+  // result.transaction.transactionIdentifier is the current store transaction id.
+  // RC v2 REST doesn't expose Apple's original_transaction_id, so we pass this
+  // through; the server-side /iap/link no longer requires it to match anything.
+  const transactionIdentifier: string | null =
+    typeof result?.transaction?.transactionIdentifier === "string"
+      ? result.transaction.transactionIdentifier
+      : null;
   return {
     productIdentifier: productId,
-    originalTransactionId:
-      typeof originalTransactionId === "string" ? originalTransactionId : null,
+    originalTransactionId: transactionIdentifier,
   };
 }
 

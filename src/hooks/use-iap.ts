@@ -95,7 +95,8 @@ export function useIAP() {
           }),
         });
       } catch (err) {
-        console.warn("[iap] /iap/link failed (webhook will reconcile)", err);
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn("[iap] /iap/link failed (webhook will reconcile):", msg);
       }
       await loadBillingStatus();
       return result;

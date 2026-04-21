@@ -94,7 +94,19 @@ iap.post("/link", async (c) => {
     "billing.revenuecat-project"
   );
   if (!apiKey || !projectId) {
-    return c.json({ error: "IAP backend not configured" }, 500);
+    const missing = [
+      !apiKey && "REVENUECAT_REST_API_KEY",
+      !projectId && "REVENUECAT_PROJECT_ID",
+    ].filter(Boolean);
+    console.error(
+      JSON.stringify({
+        level: "error",
+        action: "iap_link_missing_config",
+        missing,
+        ts: new Date().toISOString(),
+      })
+    );
+    return c.json({ error: `IAP backend not configured: missing ${missing.join(", ")}` }, 500);
   }
 
   const rcResp = await fetch(
