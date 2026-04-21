@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { CreditCard, Shield, Crown, X } from "lucide-react";
+import { CreditCard, Shield, Crown, X, ChevronDown, ChevronRight, Receipt } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,27 @@ import { useAdminFetch } from "@/lib/admin-api";
 import type { AdminUserDetail, AdminPlan } from "@/types/admin";
 import { formatDate, planBadgeClass } from "./helpers";
 
+interface BillingEvent {
+  id: string;
+  source: "STRIPE" | "APPLE" | "MANUAL";
+  eventType: string;
+  environment: string | null;
+  externalId: string | null;
+  productExternalId: string | null;
+  status: "APPLIED" | "SKIPPED" | "FAILED";
+  skipReason: string | null;
+  rawPayload: unknown;
+  createdAt: string;
+}
+
+interface BillingEventsResponse {
+  data: BillingEvent[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
 export interface BillingTabProps {
   user: AdminUserDetail;
   onUpdate: () => void;
@@ -45,6 +66,32 @@ export function BillingTab({ user, onUpdate }: BillingTabProps) {
   const [reason, setReason] = useState("");
   const [availablePlans, setAvailablePlans] = useState<AdminPlan[]>([]);
   const [saving, setSaving] = useState(false);
+  const [events, setEvents] = useState<BillingEvent[]>([]);
+  const [eventsLoading, setEventsLoading] = useState(false);
+  const [eventsPage, setEventsPage] = useState(1);
+  const [eventsTotalPages, setEventsTotalPages] = useState(1);
+  const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
+
+  const loadEvents = useCallback(
+    (page: number) => {
+      setEventsLoading(true);
+      apiFetch<BillingEventsResponse>(
+        `/users/${user.id}/billing-events?page=${page}&pageSize=20`
+      )
+        .then((r) => {
+          setEvents(r.data);
+          setEventsPage(r.page);
+          setEventsTotalPages(r.totalPages);
+        })
+        .catch(console.error)
+        .finally(() => setEventsLoading(false));
+    },
+    [apiFetch, user.id]
+  );
+
+  useEffect(() => {
+    loadEvents(1);
+  }, [loadEvents]);
 
   useEffect(() => {
     if (grantModalOpen && availablePlans.length === 0) {
@@ -69,19 +116,20 @@ export function BillingTab({ user, onUpdate }: BillingTabProps) {
         setGrantModalOpen(false);
         setReason("");
         onUpdate();
+        loadEvents(1);
       })
       .catch(console.error)
       .finally(() => setSaving(false));
-  }, [apiFetch, user.id, selectedPlanId, endsAt, reason, onUpdate]);
+  }, [apiFetch, user.id, selectedPlanId, endsAt, reason, onUpdate, loadEvents]);
 
   const handleGrantRevoke = useCallback(() => {
     if (!confirm("Revoke this user's manual grant? They will drop back to their billing-based plan.")) return;
     setSaving(true);
     apiFetch(`/users/${user.id}/grants`, { method: "DELETE" })
-      .then(() => onUpdate())
+      .then(() => { onUpdate(); loadEvents(1); })
       .catch(console.error)
       .finally(() => setSaving(false));
-  }, [apiFetch, user.id, onUpdate]);
+  }, [apiFetch, user.id, onUpdate, loadEvents]);
 
   const handleAdminToggle = useCallback(
     (isAdmin: boolean) => {
@@ -230,6 +278,143 @@ export function BillingTab({ user, onUpdate }: BillingTabProps) {
         >
           Reset Onboarding
         </Button>
+      </div>
+
+      {/* Event Log */}
+      <div className="rounded-lg bg-[#1A2942] border border-white/5 p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Receipt className="h-4 w-4 text-[#3B82F6]" />
+            <span className="text-sm font-semibold text-[#F9FAFB]">Event Log</span>
+            <Badge className="bg-white/5 text-[#9CA3AF] text-[10px]">{events.length}</Badge>
+          </div>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => loadEvents(eventsPage)}
+            disabled={eventsLoading}
+            className="h-6 text-[10px] text-[#9CA3AF] hover:text-[#F9FAFB]"
+          >
+            Refresh
+          </Button>
+        </div>
+        {eventsLoading && events.length === 0 ? (
+          <p className="text-xs text-[#9CA3AF]">Loading…</p>
+        ) : events.length === 0 ? (
+          <p className="text-xs text-[#9CA3AF]">No billing events recorded for this user yet.</p>
+        ) : (
+          <div className="divide-y divide-white/5">
+            {events.map((ev) => {
+              const isOpen = expandedEventId === ev.id;
+              return (
+                <div key={ev.id} className="py-2">
+                  <button
+                    onClick={() => setExpandedEventId(isOpen ? null : ev.id)}
+                    className="w-full flex items-center gap-2 text-left hover:bg-white/5 rounded p-1 -m-1"
+                  >
+                    {isOpen ? (
+                      <ChevronDown className="h-3 w-3 text-[#9CA3AF] flex-shrink-0" />
+                    ) : (
+                      <ChevronRight className="h-3 w-3 text-[#9CA3AF] flex-shrink-0" />
+                    )}
+                    <span className="text-[10px] text-[#9CA3AF] font-mono flex-shrink-0 w-28">
+                      {new Date(ev.createdAt).toLocaleString(undefined, {
+                        month: "short",
+                        day: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                    <Badge
+                      className={cn(
+                        "text-[9px] uppercase flex-shrink-0",
+                        ev.source === "APPLE" && "bg-[#9CA3AF]/10 text-[#F9FAFB]",
+                        ev.source === "STRIPE" && "bg-[#635BFF]/10 text-[#A5A1FF]",
+                        ev.source === "MANUAL" && "bg-[#F59E0B]/10 text-[#F59E0B]",
+                      )}
+                    >
+                      {ev.source}
+                    </Badge>
+                    <span className="text-xs text-[#F9FAFB] truncate flex-1 font-mono">
+                      {ev.eventType}
+                    </span>
+                    <Badge
+                      className={cn(
+                        "text-[9px] uppercase flex-shrink-0",
+                        ev.status === "APPLIED" && "bg-[#10B981]/10 text-[#10B981]",
+                        ev.status === "SKIPPED" && "bg-[#F59E0B]/10 text-[#F59E0B]",
+                        ev.status === "FAILED" && "bg-[#EF4444]/10 text-[#EF4444]",
+                      )}
+                    >
+                      {ev.status}
+                    </Badge>
+                  </button>
+                  {isOpen && (
+                    <div className="mt-2 ml-5 space-y-1 text-[10px]">
+                      {ev.skipReason && (
+                        <div className="flex gap-2">
+                          <span className="text-[#9CA3AF] w-20 flex-shrink-0">Reason</span>
+                          <span className="text-[#F59E0B]">{ev.skipReason}</span>
+                        </div>
+                      )}
+                      {ev.environment && (
+                        <div className="flex gap-2">
+                          <span className="text-[#9CA3AF] w-20 flex-shrink-0">Environment</span>
+                          <span className="text-[#F9FAFB]">{ev.environment}</span>
+                        </div>
+                      )}
+                      {ev.externalId && (
+                        <div className="flex gap-2">
+                          <span className="text-[#9CA3AF] w-20 flex-shrink-0">External ID</span>
+                          <span className="text-[#F9FAFB] font-mono truncate">{ev.externalId}</span>
+                        </div>
+                      )}
+                      {ev.productExternalId && (
+                        <div className="flex gap-2">
+                          <span className="text-[#9CA3AF] w-20 flex-shrink-0">Product</span>
+                          <span className="text-[#F9FAFB] font-mono truncate">{ev.productExternalId}</span>
+                        </div>
+                      )}
+                      <details className="mt-2">
+                        <summary className="text-[#9CA3AF] cursor-pointer hover:text-[#F9FAFB]">
+                          Raw payload
+                        </summary>
+                        <pre className="mt-1 bg-[#0F1D32] border border-white/5 rounded p-2 text-[9px] font-mono text-[#F9FAFB] overflow-auto max-h-60">
+                          {JSON.stringify(ev.rawPayload, null, 2)}
+                        </pre>
+                      </details>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {eventsTotalPages > 1 && (
+          <div className="flex items-center justify-between pt-2 border-t border-white/5">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => loadEvents(eventsPage - 1)}
+              disabled={eventsLoading || eventsPage <= 1}
+              className="h-6 text-[10px] text-[#9CA3AF] hover:text-[#F9FAFB]"
+            >
+              Prev
+            </Button>
+            <span className="text-[10px] text-[#9CA3AF]">
+              Page {eventsPage} of {eventsTotalPages}
+            </span>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => loadEvents(eventsPage + 1)}
+              disabled={eventsLoading || eventsPage >= eventsTotalPages}
+              className="h-6 text-[10px] text-[#9CA3AF] hover:text-[#F9FAFB]"
+            >
+              Next
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Grant Plan Modal */}

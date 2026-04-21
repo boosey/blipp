@@ -6,6 +6,7 @@ import {
   recomputeEntitlement,
   upsertBillingSubscription,
   markBillingSubscriptionStatus,
+  recordBillingEvent,
 } from "../../lib/entitlement";
 
 export const stripeWebhooks = new Hono<{ Bindings: Env }>();
@@ -74,6 +75,15 @@ stripeWebhooks.post("/", async (c) => {
     })
   );
 
+  // Tracked across the switch and written to BillingEvent at the end.
+  let outcome: {
+    status: "APPLIED" | "SKIPPED";
+    skipReason?: string;
+    userId?: string;
+    externalId?: string;
+    productExternalId?: string;
+  } = { status: "SKIPPED", skipReason: "unhandled_event_type" };
+
   switch (event.type) {
     case "checkout.session.completed": {
       const session = event.data.object;
@@ -82,7 +92,10 @@ stripeWebhooks.post("/", async (c) => {
 
       const subscription = await stripe.subscriptions.retrieve(subscriptionId);
       const priceId = subscription.items.data[0]?.price.id;
-      if (!priceId) break;
+      if (!priceId) {
+        outcome = { status: "SKIPPED", skipReason: "missing_price_id", externalId: subscriptionId };
+        break;
+      }
 
       let plan = await planFromPriceId(priceId, prisma);
       if (!plan && session.metadata?.planId) {
@@ -91,7 +104,10 @@ stripeWebhooks.post("/", async (c) => {
       if (!plan) {
         plan = await prisma.plan.findFirst({ where: { isDefault: true } });
       }
-      if (!plan) break;
+      if (!plan) {
+        outcome = { status: "SKIPPED", skipReason: "unknown_plan", externalId: subscriptionId, productExternalId: priceId };
+        break;
+      }
 
       const user = await prisma.user.findFirst({
         where: {
@@ -112,6 +128,7 @@ stripeWebhooks.post("/", async (c) => {
             ts: new Date().toISOString(),
           })
         );
+        outcome = { status: "SKIPPED", skipReason: "user_not_found", externalId: subscriptionId, productExternalId: priceId };
         break;
       }
 
@@ -134,6 +151,7 @@ stripeWebhooks.post("/", async (c) => {
         rawPayload: subscription,
       });
       await recomputeEntitlement(prisma, user.id);
+      outcome = { status: "APPLIED", userId: user.id, externalId: subscription.id, productExternalId: priceId };
       break;
     }
 
@@ -141,13 +159,22 @@ stripeWebhooks.post("/", async (c) => {
       const subscription = event.data.object;
       const stripeCustomerId = subscription.customer as string;
       const priceId = subscription.items.data[0]?.price.id;
-      if (!priceId) break;
+      if (!priceId) {
+        outcome = { status: "SKIPPED", skipReason: "missing_price_id", externalId: subscription.id };
+        break;
+      }
 
       const user = await userFromStripeCustomer(stripeCustomerId, prisma);
-      if (!user) break;
+      if (!user) {
+        outcome = { status: "SKIPPED", skipReason: "user_not_found", externalId: subscription.id, productExternalId: priceId };
+        break;
+      }
 
       const plan = await planFromPriceId(priceId, prisma);
-      if (!plan) break;
+      if (!plan) {
+        outcome = { status: "SKIPPED", skipReason: "unknown_plan", userId: user.id, externalId: subscription.id, productExternalId: priceId };
+        break;
+      }
 
       const isCancelling = Boolean(
         subscription.cancel_at_period_end || subscription.cancel_at
@@ -180,6 +207,7 @@ stripeWebhooks.post("/", async (c) => {
           ts: new Date().toISOString(),
         })
       );
+      outcome = { status: "APPLIED", userId: user.id, externalId: subscription.id, productExternalId: priceId };
       break;
     }
 
@@ -225,7 +253,12 @@ stripeWebhooks.post("/", async (c) => {
               ts: new Date().toISOString(),
             })
           );
+          outcome = { status: "APPLIED", userId: existing.userId, externalId: subscriptionId };
+        } else {
+          outcome = { status: "SKIPPED", skipReason: "no_matching_subscription", externalId: subscriptionId };
         }
+      } else {
+        outcome = { status: "SKIPPED", skipReason: "awaiting_retry", externalId: subscriptionId ?? undefined };
       }
       break;
     }
@@ -247,11 +280,17 @@ stripeWebhooks.post("/", async (c) => {
           { willRenew: false, rawPayload: subscription }
         );
         await recomputeEntitlement(prisma, existing.userId);
+        outcome = { status: "APPLIED", userId: existing.userId, externalId: subscription.id };
       } else {
         // Fallback: no BillingSubscription row yet — resolve by customer and downgrade directly.
         const stripeCustomerId = subscription.customer as string;
         const user = await userFromStripeCustomer(stripeCustomerId, prisma);
-        if (user) await recomputeEntitlement(prisma, user.id);
+        if (user) {
+          await recomputeEntitlement(prisma, user.id);
+          outcome = { status: "APPLIED", userId: user.id, externalId: subscription.id };
+        } else {
+          outcome = { status: "SKIPPED", skipReason: "user_not_found", externalId: subscription.id };
+        }
       }
       break;
     }
@@ -259,6 +298,18 @@ stripeWebhooks.post("/", async (c) => {
     default:
       break;
   }
+
+  await recordBillingEvent(prisma, {
+    userId: outcome.userId ?? null,
+    source: "STRIPE",
+    eventType: event.type,
+    environment: null,
+    externalId: outcome.externalId ?? null,
+    productExternalId: outcome.productExternalId ?? null,
+    status: outcome.status,
+    skipReason: outcome.skipReason ?? null,
+    rawPayload: event as any,
+  });
 
   return c.json({ received: true });
 });

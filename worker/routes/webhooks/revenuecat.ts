@@ -5,6 +5,7 @@ import {
   recomputeEntitlement,
   upsertBillingSubscription,
   markBillingSubscriptionStatus,
+  recordBillingEvent,
   type BillingStatusLiteral,
 } from "../../lib/entitlement";
 
@@ -61,7 +62,7 @@ function isProdEnvironment(env: Env): boolean {
   return env.WORKER_SCRIPT_NAME === "blipp" || env.ENVIRONMENT === "production";
 }
 
-type Handled = { ok: true } | { ok: false; reason: string };
+type Handled = { ok: true; userId: string } | { ok: false; reason: string; userId?: string };
 
 /**
  * POST / — RevenueCat Server Webhook.
@@ -128,9 +129,36 @@ revenuecatWebhooks.post("/", async (c) => {
     })
   );
 
-  if (skipSandbox) return c.json({ received: true, skipped: "sandbox_in_production" });
+  if (skipSandbox) {
+    await recordBillingEvent(prisma, {
+      userId: null,
+      source: "APPLE",
+      eventType: event.type,
+      environment,
+      externalId: event.original_transaction_id ?? null,
+      productExternalId: event.product_id ?? null,
+      status: "SKIPPED",
+      skipReason: "sandbox_in_production",
+      rawPayload: event as any,
+    });
+    return c.json({ received: true, skipped: "sandbox_in_production" });
+  }
 
   const result = await handleEvent(prisma, event);
+  await recordBillingEvent(prisma, {
+    userId: result.userId ?? null,
+    source: "APPLE",
+    eventType: event.type,
+    environment,
+    externalId: event.original_transaction_id ?? null,
+    productExternalId:
+      event.type === "PRODUCT_CHANGE"
+        ? event.new_product_id ?? event.product_id ?? null
+        : event.product_id ?? null,
+    status: result.ok ? "APPLIED" : "SKIPPED",
+    skipReason: result.ok ? null : result.reason,
+    rawPayload: event as any,
+  });
   if (!result.ok) {
     // Non-retryable failures return 200 with a reason so RC stops retrying.
     console.warn(
@@ -174,7 +202,7 @@ async function handleEvent(prisma: any, event: RCEventPayload): Promise<Handled>
       { willRenew: false, rawPayload: event as any }
     );
     await recomputeEntitlement(prisma, existing.userId);
-    return { ok: true };
+    return { ok: true, userId: existing.userId };
   }
 
   // Events that require user + plan resolution (full upsert).
@@ -236,5 +264,5 @@ async function handleEvent(prisma: any, event: RCEventPayload): Promise<Handled>
     rawPayload: event as any,
   });
   await recomputeEntitlement(prisma, user.id);
-  return { ok: true };
+  return { ok: true, userId: user.id };
 }

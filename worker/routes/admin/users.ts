@@ -3,7 +3,7 @@ import type { Env } from "../../types";
 import { parsePagination, parseSort, paginatedResponse } from "../../lib/admin-helpers";
 import { writeAuditLog } from "../../lib/audit-log";
 import { getAuth } from "../../middleware/auth";
-import { recomputeEntitlement } from "../../lib/entitlement";
+import { recomputeEntitlement, recordBillingEvent } from "../../lib/entitlement";
 
 const usersRoutes = new Hono<{ Bindings: Env }>();
 
@@ -532,6 +532,16 @@ usersRoutes.post("/:id/grants", async (c) => {
     after: { planId: body.planId, endsAt: endsAt.toISOString(), reason: body.reason ?? null },
   }).catch(() => {});
 
+  await recordBillingEvent(prisma, {
+    userId,
+    source: "MANUAL",
+    eventType: "manual_grant_created",
+    externalId: grant.id,
+    productExternalId: "admin-grant",
+    status: "APPLIED",
+    rawPayload: { planId: body.planId, endsAt: endsAt.toISOString(), ...grantPayload },
+  });
+
   return c.json({
     data: {
       id: grant.id,
@@ -572,7 +582,41 @@ usersRoutes.delete("/:id/grants", async (c) => {
     after: null,
   }).catch(() => {});
 
+  await recordBillingEvent(prisma, {
+    userId,
+    source: "MANUAL",
+    eventType: "manual_grant_revoked",
+    externalId: existing.id,
+    productExternalId: "admin-grant",
+    status: "APPLIED",
+    rawPayload: {
+      revokedBy: auth!.userId!,
+      revokedAt: new Date().toISOString(),
+      priorPlanId: existing.planId,
+      priorEndsAt: existing.currentPeriodEnd?.toISOString() ?? null,
+    },
+  });
+
   return c.json({ data: { revoked: true } });
+});
+
+// GET /:id/billing-events - Paginated audit log of billing events for this user
+usersRoutes.get("/:id/billing-events", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const userId = c.req.param("id");
+  const { page, pageSize, skip } = parsePagination(c);
+
+  const [events, total] = await Promise.all([
+    prisma.billingEvent.findMany({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      skip,
+      take: pageSize,
+    }),
+    prisma.billingEvent.count({ where: { userId } }),
+  ]);
+
+  return c.json(paginatedResponse(events, total, page, pageSize));
 });
 
 export { usersRoutes };

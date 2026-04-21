@@ -270,4 +270,62 @@ describe("RevenueCat Webhook", () => {
     expect(res.status).toBe(200);
     expect(mockPrisma.billingSubscription.upsert).toHaveBeenCalled();
   });
+
+  it("writes a BillingEvent row with status APPLIED on a successful event", async () => {
+    mockPrisma.user.findFirst.mockResolvedValueOnce({ id: "usr_1", clerkId: "clerk_123" });
+    mockPrisma.plan.findFirst.mockResolvedValueOnce({ id: "plan_pro", sortOrder: 10 });
+    mockPrisma.billingSubscription.upsert.mockResolvedValueOnce({});
+    mockPrisma.billingSubscription.findMany.mockResolvedValueOnce([
+      { userId: "usr_1", planId: "plan_pro", status: "ACTIVE", currentPeriodEnd: new Date(1800000000000), plan: { sortOrder: 10 } },
+    ]);
+    mockPrisma.user.update.mockResolvedValue({ id: "usr_1" });
+
+    await send(app, env, buildEvent());
+
+    expect(mockPrisma.billingEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        userId: "usr_1",
+        source: "APPLE",
+        eventType: "INITIAL_PURCHASE",
+        environment: "PRODUCTION",
+        externalId: "2000000000000001",
+        productExternalId: "com.blipp.app.pro.monthly",
+        status: "APPLIED",
+        skipReason: null,
+      }),
+    });
+  });
+
+  it("writes a BillingEvent row with status SKIPPED when user can't be resolved", async () => {
+    mockPrisma.user.findFirst.mockResolvedValueOnce(null);
+
+    await send(app, env, buildEvent());
+
+    expect(mockPrisma.billingEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        userId: null,
+        source: "APPLE",
+        eventType: "INITIAL_PURCHASE",
+        status: "SKIPPED",
+        skipReason: "user_not_found",
+      }),
+    });
+  });
+
+  it("writes a BillingEvent row with status SKIPPED when sandbox event hits production", async () => {
+    env.WORKER_SCRIPT_NAME = "blipp";
+    env.ENVIRONMENT = "production";
+
+    await send(app, env, buildEvent({ environment: "SANDBOX" }));
+
+    expect(mockPrisma.billingEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        source: "APPLE",
+        environment: "SANDBOX",
+        status: "SKIPPED",
+        skipReason: "sandbox_in_production",
+      }),
+    });
+    expect(mockPrisma.billingSubscription.upsert).not.toHaveBeenCalled();
+  });
 });

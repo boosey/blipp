@@ -114,6 +114,7 @@ model User {
   defaultVoicePreset   VoicePreset?     @relation("defaultVoicePreset", fields: [defaultVoicePresetId], references: [id])
   subscriptions        Subscription[]
   billingSubscriptions BillingSubscription[]
+  billingEvents        BillingEvent[]
   briefings            Briefing[]
   feedItems            FeedItem[]
   briefingRequests     BriefingRequest[]
@@ -1401,6 +1402,28 @@ model BillingSubscription {
 
   @@unique([source, externalId])
   @@index([userId, status])
+}
+
+// Audit log of every billing-related event processed by the system.
+// Appended from: RC webhook, Stripe webhook, admin manual grant actions.
+// Admin UI surfaces this per-user on the Billing tab to answer "what happened and when?".
+model BillingEvent {
+  id                String        @id @default(cuid())
+  userId            String?                           // null when event can't be resolved to a user
+  source            BillingSource                      // STRIPE | APPLE | MANUAL
+  eventType         String                             // RC: INITIAL_PURCHASE/RENEWAL/...; Stripe: customer.subscription.updated/...; MANUAL: manual_grant_created/revoked
+  environment       String?                            // "PRODUCTION" | "SANDBOX" (RC only; null for others)
+  externalId        String?                            // original_transaction_id / stripe event id / grant id
+  productExternalId String?                            // Apple product id / Stripe price id / null
+  status            String                             // "APPLIED" | "SKIPPED" | "FAILED"
+  skipReason        String?                            // populated when status is SKIPPED or FAILED
+  rawPayload        Json                               // full event body for debugging
+  createdAt         DateTime      @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([source, createdAt])
 }
 
 enum BillingSource {

@@ -1,4 +1,4 @@
-export type BillingSourceLiteral = "STRIPE" | "APPLE";
+export type BillingSourceLiteral = "STRIPE" | "APPLE" | "MANUAL";
 export type BillingStatusLiteral =
   | "ACTIVE"
   | "CANCELLED_PENDING_EXPIRY"
@@ -25,6 +25,54 @@ const ENTITLING_STATUSES: BillingStatusLiteral[] = [
   "CANCELLED_PENDING_EXPIRY",
   "GRACE_PERIOD",
 ];
+
+export interface RecordBillingEventInput {
+  userId: string | null;
+  source: BillingSourceLiteral;
+  eventType: string;
+  environment?: string | null;
+  externalId?: string | null;
+  productExternalId?: string | null;
+  status: "APPLIED" | "SKIPPED" | "FAILED";
+  skipReason?: string | null;
+  rawPayload: unknown;
+}
+
+/**
+ * Append a row to the BillingEvent audit log. Never throws — logging must not
+ * break the primary webhook flow, so failures here are swallowed and logged.
+ */
+export async function recordBillingEvent(
+  prisma: any,
+  input: RecordBillingEventInput
+): Promise<void> {
+  try {
+    await prisma.billingEvent.create({
+      data: {
+        userId: input.userId,
+        source: input.source,
+        eventType: input.eventType,
+        environment: input.environment ?? null,
+        externalId: input.externalId ?? null,
+        productExternalId: input.productExternalId ?? null,
+        status: input.status,
+        skipReason: input.skipReason ?? null,
+        rawPayload: (input.rawPayload ?? null) as any,
+      },
+    });
+  } catch (err) {
+    console.error(
+      JSON.stringify({
+        level: "error",
+        action: "billing_event_persist_failed",
+        source: input.source,
+        eventType: input.eventType,
+        error: err instanceof Error ? err.message : String(err),
+        ts: new Date().toISOString(),
+      })
+    );
+  }
+}
 
 export async function upsertBillingSubscription(
   prisma: any,
