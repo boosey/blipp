@@ -1,5 +1,10 @@
 import type { CapacitorConfig } from "@capacitor/cli";
 
+// BLIPP_TARGET_ENV=staging routes the iOS build at staging.podblipp.com; anything
+// else (including unset) defaults to production (podblipp.com).
+const hostname =
+  process.env.BLIPP_TARGET_ENV === "staging" ? "staging.podblipp.com" : "podblipp.com";
+
 const config: CapacitorConfig = {
   appId: "com.blipp.app",
   appName: "Blipp",
@@ -23,7 +28,7 @@ const config: CapacitorConfig = {
     scheme: "https",
   },
   server: {
-    hostname: "podblipp.com",
+    hostname,
     // Allow mixed content (capacitor:// loading from https API)
     allowNavigation: [
       "podblipp.com",
