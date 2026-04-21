@@ -8,7 +8,21 @@ const mockSignOut = vi.fn();
 vi.mock("@clerk/clerk-react", () => ({
   useClerk: () => ({ signOut: mockSignOut }),
   useAuth: () => ({ getToken: vi.fn().mockResolvedValue("test-token") }),
+  useUser: () => ({ user: { id: "u1" }, isLoaded: true }),
   ClerkProvider: ({ children }: any) => children,
+}));
+
+vi.mock("../hooks/use-iap", () => ({
+  useIAP: () => ({
+    ready: false,
+    offering: null,
+    billingStatus: null,
+    loading: false,
+    error: null,
+    purchase: vi.fn(),
+    restore: vi.fn(),
+    refreshBillingStatus: vi.fn(),
+  }),
 }));
 
 const mockApiFetch = vi.fn();
