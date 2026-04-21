@@ -101,6 +101,26 @@ export function BillingTab({ user, onUpdate }: BillingTabProps) {
     }
   }, [grantModalOpen, availablePlans.length, apiFetch]);
 
+  const handleResetBilling = useCallback(() => {
+    if (
+      !confirm(
+        `Reset billing for ${user.email}?\n\nThis expires every active billing source ` +
+          `(Apple, Stripe, manual grant) and drops the user back to the default plan. ` +
+          `Used for testing — the user keeps their data.`
+      )
+    ) {
+      return;
+    }
+    setSaving(true);
+    apiFetch(`/users/${user.id}/reset-billing`, { method: "POST" })
+      .then(() => {
+        onUpdate();
+        loadEvents(1);
+      })
+      .catch(console.error)
+      .finally(() => setSaving(false));
+  }, [apiFetch, user.id, user.email, onUpdate, loadEvents]);
+
   const handleGrantSave = useCallback(() => {
     if (!selectedPlanId || !endsAt) return;
     setSaving(true);
@@ -277,6 +297,18 @@ export function BillingTab({ user, onUpdate }: BillingTabProps) {
           }}
         >
           Reset Onboarding
+        </Button>
+
+        <Separator className="bg-white/5" />
+
+        <Button
+          size="sm"
+          variant="ghost"
+          className="w-full text-[#EF4444] hover:bg-[#EF4444]/10 border border-[#EF4444]/20"
+          disabled={saving}
+          onClick={handleResetBilling}
+        >
+          <X className="h-3.5 w-3.5" /> Reset Billing (Drop to Free)
         </Button>
       </div>
 

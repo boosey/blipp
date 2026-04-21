@@ -600,6 +600,60 @@ usersRoutes.delete("/:id/grants", async (c) => {
   return c.json({ data: { revoked: true } });
 });
 
+// POST /:id/reset-billing - Admin override: expire all of the user's billing
+// subscriptions (Apple, Stripe, Manual grant) and recompute their plan back to
+// the default. Used during testing to drop a user back to Free.
+usersRoutes.post("/:id/reset-billing", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const userId = c.req.param("id");
+
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
+  if (!user) return c.json({ error: "User not found" }, 404);
+
+  // Snapshot active rows for the audit payload before we mutate them.
+  const activeBefore = await prisma.billingSubscription.findMany({
+    where: {
+      userId,
+      status: { in: ["ACTIVE", "CANCELLED_PENDING_EXPIRY", "GRACE_PERIOD"] },
+    },
+    select: { id: true, source: true, externalId: true, productExternalId: true, planId: true, status: true },
+  });
+
+  const updated = await prisma.billingSubscription.updateMany({
+    where: {
+      userId,
+      status: { in: ["ACTIVE", "CANCELLED_PENDING_EXPIRY", "GRACE_PERIOD"] },
+    },
+    data: { status: "EXPIRED", willRenew: false },
+  });
+
+  await recomputeEntitlement(prisma, userId);
+
+  const auth = getAuth(c);
+  writeAuditLog(prisma, {
+    actorId: auth!.userId!,
+    action: "user.billing.reset",
+    entityType: "User",
+    entityId: userId,
+    before: { activeRows: activeBefore },
+    after: { activeRows: [] },
+  }).catch(() => {});
+
+  await recordBillingEvent(prisma, {
+    userId,
+    source: "MANUAL",
+    eventType: "admin_billing_reset",
+    status: "APPLIED",
+    rawPayload: {
+      resetBy: auth!.userId!,
+      resetAt: new Date().toISOString(),
+      expiredRows: activeBefore,
+    },
+  });
+
+  return c.json({ data: { reset: true, expiredCount: updated.count } });
+});
+
 // GET /:id/billing-events - Paginated audit log of billing events for this user
 usersRoutes.get("/:id/billing-events", async (c) => {
   const prisma = c.get("prisma") as any;

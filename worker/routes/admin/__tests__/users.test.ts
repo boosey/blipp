@@ -280,4 +280,52 @@ describe("Users Routes", () => {
       expect(res.status).toBe(404);
     });
   });
+
+  describe("POST /users/:id/reset-billing", () => {
+    it("expires every active billing row and recomputes", async () => {
+      mockPrisma.user.findUnique.mockResolvedValueOnce({ id: "u1" });
+      mockPrisma.billingSubscription.findMany.mockResolvedValueOnce([
+        { id: "bs1", source: "APPLE", externalId: "tx1", productExternalId: "com.x.pro", planId: "plan_pro", status: "ACTIVE" },
+        { id: "bs2", source: "MANUAL", externalId: "u1", productExternalId: "admin-grant", planId: "plan_proplus", status: "ACTIVE" },
+      ]);
+      mockPrisma.billingSubscription.updateMany.mockResolvedValueOnce({ count: 2 });
+      mockPrisma.billingSubscription.findMany.mockResolvedValueOnce([]); // for recompute
+      mockPrisma.plan.findFirst.mockResolvedValueOnce({ id: "plan_free" });
+      mockPrisma.user.update.mockResolvedValueOnce({});
+
+      const res = await app.request("/users/u1/reset-billing", {
+        method: "POST",
+      }, env, mockExCtx);
+
+      expect(res.status).toBe(200);
+      const body: any = await res.json();
+      expect(body.data).toMatchObject({ reset: true, expiredCount: 2 });
+
+      expect(mockPrisma.billingSubscription.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ userId: "u1" }),
+          data: { status: "EXPIRED", willRenew: false },
+        })
+      );
+      expect(mockPrisma.billingEvent.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          userId: "u1",
+          source: "MANUAL",
+          eventType: "admin_billing_reset",
+          status: "APPLIED",
+        }),
+      });
+    });
+
+    it("returns 404 when user does not exist", async () => {
+      mockPrisma.user.findUnique.mockResolvedValueOnce(null);
+
+      const res = await app.request("/users/missing/reset-billing", {
+        method: "POST",
+      }, env, mockExCtx);
+
+      expect(res.status).toBe(404);
+      expect(mockPrisma.billingSubscription.updateMany).not.toHaveBeenCalled();
+    });
+  });
 });
