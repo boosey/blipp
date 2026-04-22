@@ -82,7 +82,7 @@ type TabId = (typeof TABS)[number]["id"];
 export function Settings() {
   const apiFetch = useApiFetch();
   const { signOut } = useClerk();
-  const { purchase, ready: iapReady, error: iapError, loading: iapLoading } = useIAP();
+  const { purchase, ready: iapReady, error: iapError, loading: iapLoading, billingStatus } = useIAP();
   const [activeTab, setActiveTab] = useState<TabId>("profile");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [pushEnabled, setPushEnabled] = useState(false);
@@ -198,6 +198,26 @@ export function Settings() {
 
   async function handleManage() {
     setActionLoading("manage");
+
+    // Apple subscribers need to manage their subscription via the App Store —
+    // Stripe portal won't work for them and the server returns a 5xx if we try.
+    if (billingStatus?.subscriptionSource === "APPLE") {
+      const url = billingStatus.manageUrl ?? "https://apps.apple.com/account/subscriptions";
+      try {
+        if (Capacitor.isNativePlatform()) {
+          const { Browser } = await import("@capacitor/browser");
+          await Browser.open({ url });
+        } else {
+          window.location.href = url;
+        }
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Failed to open App Store");
+      } finally {
+        setActionLoading(null);
+      }
+      return;
+    }
+
     try {
       const { url } = await apiFetch<{ url: string }>("/billing/portal", {
         method: "POST",

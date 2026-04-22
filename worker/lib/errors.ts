@@ -60,9 +60,15 @@ export function classifyHttpError(err: unknown): { status: number; message: stri
       return { status: 400, message: "Invalid reference", code: "INVALID_REFERENCE" };
     }
 
-    // Stripe errors
-    if (name === "StripeError" || msg.includes("Stripe")) {
-      return { status: 502, message: "Payment service error", code: "PAYMENT_ERROR" };
+    // Stripe errors — Stripe SDK throws Error subclasses whose names start with "Stripe"
+    // (StripeError, StripeInvalidRequestError, StripeAPIError, etc.) and whose messages
+    // sometimes don't contain the word "Stripe". Match by name prefix to catch them all.
+    if (name.startsWith("Stripe") || msg.includes("Stripe")) {
+      return {
+        status: 502,
+        message: `Payment service error: ${msg}`,
+        code: "PAYMENT_ERROR",
+      };
     }
 
     // Auth errors
