@@ -15,6 +15,7 @@ import { Pricing } from "./pages/pricing";
 import { About } from "./pages/about";
 import { HowItWorks } from "./pages/how-it-works";
 import { Contact } from "./pages/contact";
+import { Support } from "./pages/support";
 import { BlogWhyYouDontNeedToListen } from "./pages/blog/why-you-dont-need-to-listen";
 import { BlogBestWayToKeepUp } from "./pages/blog/best-way-to-keep-up";
 import { CookieConsent } from "./components/cookie-consent";
@@ -58,6 +59,7 @@ const VoicePresets = lazy(() => import("./pages/admin/voice-presets"));
 const EpisodeRefresh = lazy(() => import("./pages/admin/episode-refresh"));
 const AdminFeedback = lazy(() => import("./pages/admin/feedback"));
 const AdminBlippFeedback = lazy(() => import("./pages/admin/blipp-feedback"));
+const AdminSupport = lazy(() => import("./pages/admin/support"));
 const TermsOfService = lazy(() => import("./pages/tos"));
 const PrivacyPolicy = lazy(() => import("./pages/privacy"));
 const Onboarding = lazy(() => import("./pages/onboarding"));
@@ -87,6 +89,7 @@ export default function App() {
       <Route path="/pricing" element={<Pricing />} />
       <Route path="/about" element={<About />} />
       <Route path="/contact" element={<Contact />} />
+      <Route path="/support" element={<Support />} />
       <Route path="/how-it-works" element={<HowItWorks />} />
       <Route path="/blog/why-you-dont-need-to-listen-to-every-podcast" element={<BlogWhyYouDontNeedToListen />} />
       <Route path="/blog/best-way-to-keep-up-with-podcasts" element={<BlogBestWayToKeepUp />} />
@@ -166,6 +169,7 @@ export default function App() {
         <Route path="ads" element={<Suspense fallback={<AdminLoading />}><AdminAds /></Suspense>} />
         <Route path="feedback" element={<Suspense fallback={<AdminLoading />}><AdminFeedback /></Suspense>} />
         <Route path="blipp-feedback" element={<Suspense fallback={<AdminLoading />}><AdminBlippFeedback /></Suspense>} />
+        <Route path="support" element={<Suspense fallback={<AdminLoading />}><AdminSupport /></Suspense>} />
         <Route path="recommendations" element={<Suspense fallback={<AdminLoading />}><AdminRecommendations /></Suspense>} />
         <Route path="scheduled-jobs" element={<Suspense fallback={<AdminLoading />}><ScheduledJobs /></Suspense>} />
         <Route path="service-keys" element={<Suspense fallback={<AdminLoading />}><ServiceKeys /></Suspense>} />

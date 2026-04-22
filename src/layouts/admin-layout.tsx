@@ -32,6 +32,7 @@ import {
   RefreshCw,
   Mic,
   ThumbsDown,
+  LifeBuoy,
   ExternalLink,
   Settings2,
   Shield,
@@ -123,6 +124,7 @@ const sidebarEntries: SidebarEntry[] = [
       { path: "ads", label: "Advertisements", icon: Megaphone },
       { path: "feedback", label: "Feedback", icon: MessageSquare },
       { path: "blipp-feedback", label: "Blipp Feedback", icon: ThumbsDown },
+      { path: "support", label: "Support", icon: LifeBuoy },
     ],
   },
 

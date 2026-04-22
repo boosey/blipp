@@ -1152,6 +1152,22 @@ model Feedback {
   @@index([createdAt])
 }
 
+// ── Support Messages (public contact form) ──
+
+model SupportMessage {
+  id        String   @id @default(cuid())
+  name      String?
+  email     String
+  subject   String
+  message   String
+  userAgent String?
+  status    String   @default("open")
+  createdAt DateTime @default(now())
+
+  @@index([status])
+  @@index([createdAt])
+}
+
 // ── Blipp Feedback (contextual per-episode feedback) ──
 
 model BlippFeedback {

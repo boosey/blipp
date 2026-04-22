@@ -812,6 +812,12 @@ function AccountTab({
           </div>
           <div className="border-t border-border" />
           <Link
+            to="/support"
+            className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Contact Support
+          </Link>
+          <Link
             to="/tos"
             className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
           >

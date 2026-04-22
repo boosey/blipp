@@ -228,6 +228,7 @@ app.get("/sitemap.xml", prismaMiddleware, async (c) => {
     { loc: "/about", priority: "0.7", changefreq: "monthly" },
     { loc: "/pricing", priority: "0.8", changefreq: "monthly" },
     { loc: "/contact", priority: "0.5", changefreq: "monthly" },
+    { loc: "/support", priority: "0.5", changefreq: "monthly" },
     { loc: "/how-it-works", priority: "0.8", changefreq: "monthly" },
     { loc: "/blog/why-you-dont-need-to-listen-to-every-podcast", priority: "0.7", changefreq: "monthly" },
     { loc: "/blog/best-way-to-keep-up-with-podcasts", priority: "0.7", changefreq: "monthly" },
