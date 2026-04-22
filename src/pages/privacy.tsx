@@ -27,8 +27,8 @@ export default function PrivacyPolicy() {
                 third-party web analytics.
               </li>
               <li>
-                <strong>Device information:</strong> Browser type, operating system, and device
-                identifiers used for push notifications and platform-specific features
+                <strong>Device information:</strong> Browser type, operating system, and
+                platform-specific details used to deliver the Service
               </li>
               <li>
                 <strong>Payment information:</strong> Billing details processed securely through
@@ -45,7 +45,6 @@ export default function PrivacyPolicy() {
               <li>Provide and personalize the Blipp service</li>
               <li>Generate tailored podcast briefings based on your subscriptions</li>
               <li>Process payments and manage your subscription</li>
-              <li>Send push notifications about new briefings (with your consent)</li>
               <li>Improve the Service using aggregated, anonymized usage data from our own systems</li>
               <li>Provide customer support</li>
             </ul>
