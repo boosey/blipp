@@ -10,7 +10,7 @@
 import { useSignIn, useSignUp, useClerk } from "@clerk/clerk-react";
 import { registerPlugin } from "@capacitor/core";
 import { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 // Register the native plugin directly — avoids importing @capgo/capacitor-social-login
 // which Vite can't bundle (it's a native-only module)
@@ -39,7 +39,7 @@ export function NativeSignIn() {
         iOSServerClientId: "774074678441-msdfel83984fpirbqg73nm2fv440a26t.apps.googleusercontent.com",
       },
       apple: {
-        clientId: "com.blipp.app",
+        clientId: "com.podblipp.app",
       },
     })
       .then(() => {
@@ -63,6 +63,8 @@ export function NativeSignIn() {
       }
 
       let idToken: string;
+      let givenName: string | undefined;
+      let familyName: string | undefined;
 
       if (provider === "google") {
         const result = await SocialLogin.login({
@@ -83,6 +85,10 @@ export function NativeSignIn() {
         });
         console.log("NATIVE_AUTH: Apple sign-in result:", JSON.stringify(result).substring(0, 200));
         idToken = result.result?.idToken || "";
+        // Apple only returns the user's name on the first sign-in; pass it
+        // through so the server can populate Clerk on user creation.
+        givenName = result.result?.givenName || undefined;
+        familyName = result.result?.familyName || undefined;
       } else {
         throw new Error(`Unsupported provider: ${provider}`);
       }
@@ -96,7 +102,7 @@ export function NativeSignIn() {
       const resp = await fetch(`${API_BASE}/api/auth/native`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider, idToken }),
+        body: JSON.stringify({ provider, idToken, givenName, familyName }),
       });
 
       if (!resp.ok) {
@@ -276,6 +282,18 @@ export function NativeSignIn() {
           </button>
         </>
       )}
+
+      <p className="text-xs text-gray-500 text-center max-w-sm mt-6 px-2">
+        By continuing, you agree to our{" "}
+        <Link to="/tos" className="underline hover:text-gray-300">
+          Terms of Service
+        </Link>{" "}
+        and{" "}
+        <Link to="/privacy" className="underline hover:text-gray-300">
+          Privacy Policy
+        </Link>
+        .
+      </p>
     </div>
   );
 }

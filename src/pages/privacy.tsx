@@ -5,7 +5,7 @@ export default function PrivacyPolicy() {
     <div className="min-h-screen bg-zinc-950 text-zinc-50 py-20 px-6">
       <div className="max-w-3xl mx-auto">
         <h1 className="text-4xl font-bold mb-2">Privacy Policy</h1>
-        <p className="text-zinc-400 mb-10">Last updated: March 19, 2026</p>
+        <p className="text-zinc-400 mb-10">Last updated: April 21, 2026</p>
 
         <div className="space-y-8 text-zinc-300 leading-relaxed">
           <section>
@@ -14,19 +14,26 @@ export default function PrivacyPolicy() {
             <ul className="list-disc list-inside mt-2 space-y-1">
               <li>
                 <strong>Account information:</strong> Name, email address, and profile image
-                provided through your authentication provider (Clerk)
+                provided through your authentication provider (Clerk). If you sign in with Apple
+                or Google, we receive basic profile information from those providers.
               </li>
               <li>
-                <strong>Usage data:</strong> Podcast subscriptions, briefing history, playback
-                activity, and feature interactions
+                <strong>Preferences:</strong> Podcast subscriptions, topic interests, voice and
+                duration preferences, and other settings you choose
+              </li>
+              <li>
+                <strong>Usage data:</strong> Briefing history, playback activity, and feature
+                interactions, stored in our database to deliver the service. We do not use
+                third-party web analytics.
               </li>
               <li>
                 <strong>Device information:</strong> Browser type, operating system, and device
-                identifiers for push notifications
+                identifiers used for push notifications and platform-specific features
               </li>
               <li>
                 <strong>Payment information:</strong> Billing details processed securely through
-                Stripe (we do not store card numbers)
+                Stripe (web) or Apple's App Store via RevenueCat (iOS in-app purchases). We do
+                not store card numbers.
               </li>
             </ul>
           </section>
@@ -39,7 +46,7 @@ export default function PrivacyPolicy() {
               <li>Generate tailored podcast briefings based on your subscriptions</li>
               <li>Process payments and manage your subscription</li>
               <li>Send push notifications about new briefings (with your consent)</li>
-              <li>Improve the Service through aggregated, anonymized analytics</li>
+              <li>Improve the Service using aggregated, anonymized usage data from our own systems</li>
               <li>Provide customer support</li>
             </ul>
           </section>
@@ -47,27 +54,70 @@ export default function PrivacyPolicy() {
           <section>
             <h2 className="text-xl font-semibold text-zinc-50 mb-3">3. Data Sharing</h2>
             <p>
-              We do not sell your personal data. We share data only with the following third-party
-              services necessary to operate Blipp:
+              We do not sell your personal data, and we do not share your data with advertising
+              networks or data brokers. We share data only with the following third-party services
+              needed to operate Blipp:
             </p>
-            <ul className="list-disc list-inside mt-2 space-y-1">
+            <p className="mt-3 font-semibold text-zinc-50">Infrastructure</p>
+            <ul className="list-disc list-inside mt-1 space-y-1">
+              <li>
+                <strong>Cloudflare:</strong> Application hosting, content delivery, file storage,
+                and request logs
+              </li>
+              <li>
+                <strong>Neon:</strong> PostgreSQL database hosting for your account and briefing
+                data
+              </li>
               <li>
                 <strong>Clerk:</strong> Authentication and user management
               </li>
+            </ul>
+            <p className="mt-3 font-semibold text-zinc-50">Payments and subscriptions</p>
+            <ul className="list-disc list-inside mt-1 space-y-1">
               <li>
-                <strong>Stripe:</strong> Payment processing
+                <strong>Stripe:</strong> Payment processing for web subscriptions
               </li>
               <li>
-                <strong>Neon:</strong> Database hosting
+                <strong>Apple:</strong> In-App Purchase processing and receipt verification for
+                iOS subscriptions
               </li>
               <li>
-                <strong>Cloudflare:</strong> Application hosting, content delivery, and storage
-              </li>
-              <li>
-                <strong>Sentry:</strong> Error monitoring and performance tracking
+                <strong>RevenueCat:</strong> Subscription management for iOS in-app purchases
               </li>
             </ul>
-            <p className="mt-2">
+            <p className="mt-3 font-semibold text-zinc-50">Sign-in providers (only if you choose them)</p>
+            <ul className="list-disc list-inside mt-1 space-y-1">
+              <li>
+                <strong>Apple</strong> (Sign in with Apple)
+              </li>
+              <li>
+                <strong>Google</strong> (Sign in with Google)
+              </li>
+            </ul>
+            <p className="mt-3 font-semibold text-zinc-50">Content processing</p>
+            <p className="text-sm text-zinc-400 mt-1">
+              We use the following AI providers to transcribe podcast audio, summarize episodes,
+              and generate briefing narration. We send them podcast content (audio, transcripts,
+              and episode metadata) — we do not send your name, email, account identifiers, or
+              other personal data.
+            </p>
+            <ul className="list-disc list-inside mt-1 space-y-1">
+              <li>
+                <strong>Anthropic:</strong> Claude language models for summarization and
+                briefing generation
+              </li>
+              <li>
+                <strong>OpenAI:</strong> Speech-to-text transcription and language models
+              </li>
+              <li>
+                <strong>Groq:</strong> Speech-to-text, text-to-speech, and language model
+                inference
+              </li>
+              <li>
+                <strong>Cloudflare Workers AI:</strong> On-platform AI inference
+              </li>
+            </ul>
+            <p className="mt-4">
               We may also disclose data when required by law or to protect our rights.
             </p>
           </section>
@@ -77,7 +127,9 @@ export default function PrivacyPolicy() {
             <p>
               Blipp uses cookies and browser local storage for authentication sessions, user
               preferences (such as theme and consent choices), and essential service functionality.
-              We do not use third-party advertising cookies. You can manage cookie preferences
+              We do not use third-party advertising cookies or web analytics trackers, and Blipp
+              does not include any advertising SDKs. If we add an audio ad provider in the future,
+              we will update this policy before serving any ads. You can manage cookie preferences
               through the consent banner shown on your first visit.
             </p>
           </section>

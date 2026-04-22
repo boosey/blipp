@@ -655,16 +655,6 @@ All analytics endpoints accept `from` and `to` query params (ISO date strings).
 
 ---
 
-### Ads (`/api/admin/ads`)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/` | List all `ads.*` PlatformConfig entries |
-| PUT | `/` | Upsert an ad config entry (body: `{ key: "ads.preroll.vastUrl", value, description? }`) |
-| POST | `/test-vast` | Validate a VAST tag URL (fetches URL, checks for valid VAST XML; body: `{ url }`) |
-
----
-
 ### Recommendations (`/api/admin/recommendations`)
 
 | Method | Path | Description |

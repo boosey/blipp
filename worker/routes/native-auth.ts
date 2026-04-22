@@ -12,11 +12,19 @@ import { resolveApiKey } from "../lib/service-key-resolver";
 
 const CLERK_API = "https://api.clerk.com/v1";
 
+// Apple Sign in with Apple token validation constants.
+// aud must match the iOS bundle identifier that requested the token.
+const APPLE_ISSUER = "https://appleid.apple.com";
+const APPLE_JWKS_URL = "https://appleid.apple.com/auth/keys";
+const APPLE_AUDIENCE = "com.podblipp.app";
+
 const routes = new Hono<{ Bindings: Env }>();
 
 interface NativeAuthRequest {
   provider: "google" | "apple";
   idToken: string;
+  givenName?: string;
+  familyName?: string;
 }
 
 interface GoogleTokenInfo {
@@ -26,7 +34,18 @@ interface GoogleTokenInfo {
   given_name?: string;
   family_name?: string;
   picture?: string;
-  sub: string; // Google user ID
+  sub: string;
+}
+
+interface AppleIdTokenPayload {
+  iss: string;
+  aud: string;
+  exp: number;
+  iat: number;
+  sub: string;
+  email?: string;
+  email_verified?: boolean | string;
+  is_private_email?: boolean | string;
 }
 
 /**
@@ -43,6 +62,74 @@ async function verifyGoogleToken(idToken: string): Promise<GoogleTokenInfo> {
   }
 
   return resp.json() as Promise<GoogleTokenInfo>;
+}
+
+function base64UrlToBytes(str: string): Uint8Array {
+  const pad = (4 - (str.length % 4)) % 4;
+  const base64 = str.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat(pad);
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+function base64UrlToString(str: string): string {
+  return new TextDecoder().decode(base64UrlToBytes(str));
+}
+
+/**
+ * Verify an Apple ID token. Fetches Apple's JWKS, validates the RS256
+ * signature against the key whose `kid` matches the token header, and
+ * checks iss/aud/exp before returning the payload.
+ */
+async function verifyAppleToken(idToken: string): Promise<AppleIdTokenPayload> {
+  const parts = idToken.split(".");
+  if (parts.length !== 3) {
+    throw new Error("Invalid Apple ID token format");
+  }
+  const [headerB64, payloadB64, signatureB64] = parts;
+
+  const header = JSON.parse(base64UrlToString(headerB64)) as { kid: string; alg: string };
+  const payload = JSON.parse(base64UrlToString(payloadB64)) as AppleIdTokenPayload;
+
+  const jwksResp = await fetch(APPLE_JWKS_URL);
+  if (!jwksResp.ok) {
+    throw new Error(`Failed to fetch Apple JWKS: ${jwksResp.status}`);
+  }
+  const jwks = (await jwksResp.json()) as {
+    keys: Array<{ kty: string; kid: string; use: string; alg: string; n: string; e: string }>;
+  };
+  const key = jwks.keys.find((k) => k.kid === header.kid);
+  if (!key) {
+    throw new Error(`Apple public key not found for kid: ${header.kid}`);
+  }
+
+  const cryptoKey = await crypto.subtle.importKey(
+    "jwk",
+    { kty: key.kty, n: key.n, e: key.e, alg: key.alg, use: key.use, ext: true },
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    false,
+    ["verify"]
+  );
+
+  const signedData = new TextEncoder().encode(`${headerB64}.${payloadB64}`);
+  const signature = base64UrlToBytes(signatureB64);
+  const valid = await crypto.subtle.verify(
+    "RSASSA-PKCS1-v1_5",
+    cryptoKey,
+    signature as BufferSource,
+    signedData as BufferSource
+  );
+
+  if (!valid) throw new Error("Apple ID token signature verification failed");
+  if (payload.iss !== APPLE_ISSUER) throw new Error(`Invalid issuer: ${payload.iss}`);
+  if (payload.aud !== APPLE_AUDIENCE) {
+    throw new Error(`Invalid audience: ${payload.aud} (expected ${APPLE_AUDIENCE})`);
+  }
+  if (payload.exp * 1000 < Date.now()) throw new Error("Apple ID token expired");
+  if (!payload.email) throw new Error("Apple ID token missing email claim");
+
+  return payload;
 }
 
 /**
@@ -90,7 +177,6 @@ async function createClerkUser(
       email_address: [profile.email],
       first_name: profile.firstName || undefined,
       last_name: profile.lastName || undefined,
-      // Skip password requirement — user signs in via social
       skip_password_requirement: true,
     }),
   });
@@ -120,7 +206,7 @@ async function createSignInTicket(
     },
     body: JSON.stringify({
       user_id: userId,
-      expires_in_seconds: 300, // 5 minutes
+      expires_in_seconds: 300,
     }),
   });
 
@@ -140,19 +226,18 @@ async function createSignInTicket(
     keys: Object.keys(data),
   }));
 
-  // The Clerk API returns { token, url, ... }
-  // The `token` is what the frontend needs for signIn.create({ strategy: "ticket", ticket })
   return data.token;
 }
 
 /**
  * POST /api/auth/native
  *
- * Body: { provider: "google" | "apple", idToken: "..." }
+ * Body: { provider: "google" | "apple", idToken: "...", givenName?: string, familyName?: string }
  * Returns: { ticket: "...", userId: "..." }
  */
 routes.post("/native", async (c) => {
-  const { provider, idToken } = (await c.req.json()) as NativeAuthRequest;
+  const body = (await c.req.json()) as NativeAuthRequest;
+  const { provider, idToken, givenName, familyName } = body;
 
   if (!provider || !idToken) {
     return c.json({ error: "Missing provider or idToken" }, 400);
@@ -171,7 +256,6 @@ routes.post("/native", async (c) => {
     let lastName: string | undefined;
     let imageUrl: string | undefined;
 
-    // Step 1: Verify the provider token
     if (provider === "google") {
       const googleUser = await verifyGoogleToken(idToken);
 
@@ -184,9 +268,13 @@ routes.post("/native", async (c) => {
       lastName = googleUser.family_name;
       imageUrl = googleUser.picture;
     } else if (provider === "apple") {
-      // TODO: Implement Apple token verification
-      // Apple sends a JWT that needs to be verified with Apple's public keys
-      return c.json({ error: "Apple sign-in not yet implemented" }, 501);
+      const applePayload = await verifyAppleToken(idToken);
+      email = applePayload.email!;
+      // Apple only returns the user's name on the first sign-in, and it
+      // comes from the authorization response (not the JWT) — the client
+      // passes it through as givenName/familyName.
+      firstName = givenName;
+      lastName = familyName;
     } else {
       return c.json({ error: `Unsupported provider: ${provider}` }, 400);
     }
@@ -200,7 +288,6 @@ routes.post("/native", async (c) => {
       })
     );
 
-    // Step 2: Find or create the Clerk user
     let user = await findClerkUser(email, secretKey);
 
     if (!user) {
@@ -228,7 +315,6 @@ routes.post("/native", async (c) => {
       })
     );
 
-    // Step 3: Create a sign-in ticket
     const ticket = await createSignInTicket(user.id, secretKey);
 
     console.log(

@@ -41,10 +41,6 @@ export function PlayerSheet({
     resume,
     seek,
     setRate,
-    adState,
-    adProgress,
-    adDuration,
-    adCurrentTime,
     queue,
   } = useAudio();
   const apiFetch = useApiFetch();
@@ -150,8 +146,6 @@ export function PlayerSheet({
 
   if (!currentItem) return null;
 
-  const inAd = adState === "preroll" || adState === "postroll";
-
   return (
     <Sheet open={open} onOpenChange={onOpenChange} modal={false}>
       <SheetContent
@@ -178,19 +172,17 @@ export function PlayerSheet({
 
         {/* Accessibility — visually hidden */}
         <SheetTitle className="sr-only">
-          {inAd ? "Advertisement" : currentItem.episode.title}
+          {currentItem.episode.title}
         </SheetTitle>
         <SheetDescription className="sr-only">
-          {inAd
-            ? `${adState === "preroll" ? "Pre-roll" : "Post-roll"} advertisement`
-            : `Audio player for ${currentItem.podcast.title}`}
+          Audio player for {currentItem.podcast.title}
         </SheetDescription>
 
         {/* Artwork + Actions row */}
         <div className="flex items-center w-full max-w-sm mt-1 gap-3">
           {/* Left action — listen to original */}
           <div className="w-10 flex justify-center">
-            {!inAd && currentItem?.podcast.podcastIndexId ? (
+            {currentItem?.podcast.podcastIndexId ? (
               <a
                 href={`https://podcastindex.org/podcast/${currentItem.podcast.podcastIndexId}`}
                 target="_blank"
@@ -204,169 +196,119 @@ export function PlayerSheet({
           </div>
           {/* Artwork */}
           <div className="flex-1 flex justify-center">
-            {inAd ? (
-              <div className="w-full max-w-[120px] aspect-square rounded-2xl bg-card flex flex-col items-center justify-center gap-1 border border-[#F97316]/20">
-                <span className="text-lg font-bold text-[#F97316]">Ad</span>
-                <span className="text-xs text-muted-foreground">
-                  {adState === "preroll" ? "Pre-roll" : "Post-roll"}
-                </span>
-              </div>
-            ) : (
+            <button
+              onClick={() => { onOpenChange(false); openPodcast(currentItem.podcast.id); }}
+              aria-label="View podcast"
+            >
+              {currentItem.podcast.imageUrl ? (
+                <img
+                  src={currentItem.podcast.imageUrl}
+                  alt=""
+                  className="w-full max-w-[120px] aspect-square rounded-2xl object-contain shadow-lg"
+                />
+              ) : (
+                <div className="w-full max-w-[120px] aspect-square rounded-2xl bg-muted" />
+              )}
+            </button>
+          </div>
+          {/* Right actions — thumbs + share */}
+          <div className="flex items-center gap-1">
+            <ThumbButtons vote={episodeVote} onVote={handleEpisodeVote} onThumbsDown={() => setFeedbackOpen(true)} size="md" />
+            {publicSharing && (
               <button
-                onClick={() => { onOpenChange(false); openPodcast(currentItem.podcast.id); }}
-                aria-label="View podcast"
+                onClick={handleShare}
+                className="p-2 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                aria-label="Share briefing"
               >
-                {currentItem.podcast.imageUrl ? (
-                  <img
-                    src={currentItem.podcast.imageUrl}
-                    alt=""
-                    className="w-full max-w-[120px] aspect-square rounded-2xl object-contain shadow-lg"
-                  />
-                ) : (
-                  <div className="w-full max-w-[120px] aspect-square rounded-2xl bg-muted" />
-                )}
+                <Share className="w-4 h-4" />
               </button>
             )}
           </div>
-          {/* Right actions — thumbs + share */}
-          {!inAd && (
-            <div className="flex items-center gap-1">
-              <ThumbButtons vote={episodeVote} onVote={handleEpisodeVote} onThumbsDown={() => setFeedbackOpen(true)} size="md" />
-              {publicSharing && (
-                <button
-                  onClick={handleShare}
-                  className="p-2 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                  aria-label="Share briefing"
-                >
-                  <Share className="w-4 h-4" />
-                </button>
-              )}
-            </div>
-          )}
         </div>
 
         {/* Info */}
         <div className="w-full max-w-sm mt-2 text-center">
-          {inAd ? (
-            <>
-              <h2 className="text-lg font-bold text-[#F97316]">Advertisement</h2>
-              <p className="text-sm text-muted-foreground mt-0.5">
-                {adState === "preroll" ? "Pre-roll" : "Post-roll"} — {formatTime(adCurrentTime)} / {formatTime(adDuration)}
-              </p>
-            </>
-          ) : (
-            <>
-              <h2 className="text-base font-bold truncate">
-                {currentItem.episode.title}
-              </h2>
-              <p className="text-sm text-muted-foreground mt-0.5 truncate">
-                {currentItem.podcast.title}
-              </p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {formatDuration(currentItem.briefing?.clip?.actualSeconds ?? null, currentItem.durationTier)} briefing
-              </p>
-              {currentItem.briefing?.clip?.previewText && (
-                <p className="text-xs text-muted-foreground/70 mt-1 line-clamp-2 text-left">
-                  {currentItem.briefing.clip.previewText}
-                </p>
-              )}
-            </>
+          <h2 className="text-base font-bold truncate">
+            {currentItem.episode.title}
+          </h2>
+          <p className="text-sm text-muted-foreground mt-0.5 truncate">
+            {currentItem.podcast.title}
+          </p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {formatDuration(currentItem.briefing?.clip?.actualSeconds ?? null, currentItem.durationTier)} briefing
+          </p>
+          {currentItem.briefing?.clip?.previewText && (
+            <p className="text-xs text-muted-foreground/70 mt-1 line-clamp-2 text-left">
+              {currentItem.briefing.clip.previewText}
+            </p>
           )}
         </div>
 
-        {/* Seek bar or ad progress */}
-        {inAd ? (
-          <AdProgressBar progress={adProgress} />
-        ) : (
-          <SeekBar
-            currentTime={currentTime}
-            duration={duration}
-            onSeek={seek}
-          />
-        )}
+        {/* Seek bar */}
+        <SeekBar
+          currentTime={currentTime}
+          duration={duration}
+          onSeek={seek}
+        />
 
         {/* Controls */}
         <div className="flex items-center justify-center gap-6 mt-3 w-full max-w-sm">
-          {inAd ? (
-            /* Ad controls: only play/pause, no skip, no rate */
-            <>
-              <div className="min-w-[3rem]" />
-              <div className="w-6 h-6" />
-              <button
-                onClick={isPlaying ? pause : resume}
-                className="w-14 h-14 flex items-center justify-center bg-[#F97316] text-white rounded-full"
-                aria-label={isPlaying ? "Pause" : "Play"}
-              >
-                {isPlaying ? (
-                  <Pause className="w-6 h-6" />
-                ) : (
-                  <Play className="w-6 h-6 ml-0.5" />
-                )}
-              </button>
-              <div className="w-6 h-6" />
-              <div className="min-w-[3rem]" />
-            </>
-          ) : (
-            /* Content controls: full set */
-            <>
-              {/* Playback rate */}
-              <button
-                onClick={cycleRate}
-                className="text-xs font-medium text-muted-foreground bg-muted px-2.5 py-1 rounded-full min-w-[3rem] active:scale-[0.95] transition-transform duration-75"
-              >
-                {playbackRate}x
-              </button>
+          {/* Playback rate */}
+          <button
+            onClick={cycleRate}
+            className="text-xs font-medium text-muted-foreground bg-muted px-2.5 py-1 rounded-full min-w-[3rem] active:scale-[0.95] transition-transform duration-75"
+          >
+            {playbackRate}x
+          </button>
 
-              {/* Skip back 15s */}
-              <button
-                onClick={() => seek(Math.max(0, currentTime - 15))}
-                className="relative p-2 text-foreground/80 active:scale-[0.90] transition-transform duration-75"
-                aria-label="Skip back 15 seconds"
-              >
-                <RotateCcw className="w-6 h-6" />
-                <span className="absolute text-[9px] font-bold top-1/2 left-1/2 -translate-x-1/2 -translate-y-[40%]">
-                  15
-                </span>
-              </button>
+          {/* Skip back 15s */}
+          <button
+            onClick={() => seek(Math.max(0, currentTime - 15))}
+            className="relative p-2 text-foreground/80 active:scale-[0.90] transition-transform duration-75"
+            aria-label="Skip back 15 seconds"
+          >
+            <RotateCcw className="w-6 h-6" />
+            <span className="absolute text-[9px] font-bold top-1/2 left-1/2 -translate-x-1/2 -translate-y-[40%]">
+              15
+            </span>
+          </button>
 
-              {/* Play/Pause */}
-              <button
-                onClick={isPlaying ? pause : resume}
-                className="w-14 h-14 flex items-center justify-center bg-primary text-primary-foreground rounded-full active:scale-[0.95] transition-transform duration-75"
-                aria-label={isPlaying ? "Pause" : "Play"}
-              >
-                {isPlaying ? (
-                  <Pause className="w-6 h-6" />
-                ) : (
-                  <Play className="w-6 h-6 ml-0.5" />
-                )}
-              </button>
+          {/* Play/Pause */}
+          <button
+            onClick={isPlaying ? pause : resume}
+            className="w-14 h-14 flex items-center justify-center bg-primary text-primary-foreground rounded-full active:scale-[0.95] transition-transform duration-75"
+            aria-label={isPlaying ? "Pause" : "Play"}
+          >
+            {isPlaying ? (
+              <Pause className="w-6 h-6" />
+            ) : (
+              <Play className="w-6 h-6 ml-0.5" />
+            )}
+          </button>
 
-              {/* Skip forward 15s */}
-              <button
-                onClick={() => seek(Math.min(duration, currentTime + 15))}
-                className="relative p-2 text-foreground/80 active:scale-[0.90] transition-transform duration-75"
-                aria-label="Skip forward 15 seconds"
-              >
-                <RotateCw className="w-6 h-6" />
-                <span className="absolute text-[9px] font-bold top-1/2 left-1/2 -translate-x-1/2 -translate-y-[40%]">
-                  15
-                </span>
-              </button>
+          {/* Skip forward 15s */}
+          <button
+            onClick={() => seek(Math.min(duration, currentTime + 15))}
+            className="relative p-2 text-foreground/80 active:scale-[0.90] transition-transform duration-75"
+            aria-label="Skip forward 15 seconds"
+          >
+            <RotateCw className="w-6 h-6" />
+            <span className="absolute text-[9px] font-bold top-1/2 left-1/2 -translate-x-1/2 -translate-y-[40%]">
+              15
+            </span>
+          </button>
 
-              {/* Queue button */}
-              <button
-                onClick={() => setQueueOpen(true)}
-                className="relative text-xs font-medium text-muted-foreground bg-muted px-2.5 py-1 rounded-full min-w-[3rem] flex items-center justify-center gap-1 active:scale-[0.95] transition-transform duration-75"
-                aria-label="Open queue"
-              >
-                <ListMusic className="w-3.5 h-3.5" />
-                {queue.length > 0 && (
-                  <span className="text-primary font-bold">{queue.length}</span>
-                )}
-              </button>
-            </>
-          )}
+          {/* Queue button */}
+          <button
+            onClick={() => setQueueOpen(true)}
+            className="relative text-xs font-medium text-muted-foreground bg-muted px-2.5 py-1 rounded-full min-w-[3rem] flex items-center justify-center gap-1 active:scale-[0.95] transition-transform duration-75"
+            aria-label="Open queue"
+          >
+            <ListMusic className="w-3.5 h-3.5" />
+            {queue.length > 0 && (
+              <span className="text-primary font-bold">{queue.length}</span>
+            )}
+          </button>
         </div>
       </SheetContent>
       {currentItem && (
@@ -379,26 +321,6 @@ export function PlayerSheet({
       )}
       <QueueSheet open={queueOpen} onOpenChange={setQueueOpen} />
     </Sheet>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  AdProgressBar — non-interactive progress indicator for ads         */
-/* ------------------------------------------------------------------ */
-
-function AdProgressBar({ progress }: { progress: number }) {
-  return (
-    <div className="w-full max-w-sm mt-3">
-      <div className="relative w-full h-6 flex items-center">
-        {/* Track background */}
-        <div className="absolute w-full h-0.5 bg-muted rounded-full" />
-        {/* Progress */}
-        <div
-          className="absolute h-0.5 bg-[#F97316] rounded-full transition-all duration-200"
-          style={{ width: `${progress * 100}%` }}
-        />
-      </div>
-    </div>
   );
 }
 

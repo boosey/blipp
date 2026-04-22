@@ -21,13 +21,6 @@ interface ConfigEntry {
 
 /** All known static PlatformConfig keys. */
 export const CONFIG_REGISTRY: Record<string, ConfigEntry> = {
-  // ── Ads ── (owned by Ads page)
-  "ads.enabled":            { type: "boolean", defaultValue: false, description: "Master toggle for all ad placements. When off, no VAST tags are requested regardless of preroll/postroll settings.", ownedBy: "ads" },
-  "ads.preroll.enabled":    { type: "boolean", defaultValue: false, description: "Show a preroll ad before briefing playback. Requires ads.enabled and a valid VAST URL.", ownedBy: "ads" },
-  "ads.preroll.vastUrl":    { type: "string",  defaultValue: "",    description: "VAST tag URL for preroll ads. Must return valid VAST XML or the ad slot is skipped silently.", ownedBy: "ads" },
-  "ads.postroll.enabled":   { type: "boolean", defaultValue: false, description: "Show a postroll ad after briefing playback. Requires ads.enabled and a valid VAST URL.", ownedBy: "ads" },
-  "ads.postroll.vastUrl":   { type: "string",  defaultValue: "",    description: "VAST tag URL for postroll ads. Must return valid VAST XML or the ad slot is skipped silently.", ownedBy: "ads" },
-
   // ── Catalog ── (owned by Podcast Settings page)
   "catalog.source":               { type: "string",  defaultValue: "podcast-index", description: "Default catalog source for discovery. 'podcast-index' is free/open; 'apple' has richer metadata but stricter rate limits.", ownedBy: "podcast-settings" },
   "catalog.seedSize":             { type: "number",  defaultValue: 20,   description: "Podcasts to fetch per catalog discovery run. Higher values grow the catalog faster but increase API usage and processing time.", ownedBy: "podcast-settings" },

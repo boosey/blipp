@@ -35,8 +35,6 @@ export const MiniPlayer = forwardRef<MiniPlayerHandle>(function MiniPlayer(_prop
     pause,
     resume,
     seek,
-    adProgress,
-    adState,
     queue,
   } = useAudio();
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -49,16 +47,11 @@ export const MiniPlayer = forwardRef<MiniPlayerHandle>(function MiniPlayer(_prop
 
   if (!currentItem) return null;
 
-  const inAd = adState === "preroll" || adState === "postroll";
-  const progress = inAd
-    ? adProgress * 100
-    : duration > 0
-      ? (currentTime / duration) * 100
-      : 0;
+  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   function handleSkip15(e: React.MouseEvent) {
     e.stopPropagation();
-    if (!inAd && duration > 0) {
+    if (duration > 0) {
       seek(Math.min(currentTime + 15, duration));
     }
   }
@@ -96,13 +89,7 @@ export const MiniPlayer = forwardRef<MiniPlayerHandle>(function MiniPlayer(_prop
               className="flex-shrink-0"
               aria-label="View podcast"
             >
-              {inAd ? (
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-                  style={{ background: "oklch(0.55 0.18 45 / 0.2)", border: "1px solid oklch(0.65 0.18 45 / 0.4)" }}
-                >
-                  <span className="text-[9px] font-black uppercase tracking-wider" style={{ color: "oklch(0.72 0.18 45)" }}>Ad</span>
-                </div>
-              ) : currentItem.podcast.imageUrl ? (
+              {currentItem.podcast.imageUrl ? (
                 <img
                   src={currentItem.podcast.imageUrl}
                   alt=""
@@ -117,26 +104,24 @@ export const MiniPlayer = forwardRef<MiniPlayerHandle>(function MiniPlayer(_prop
             {/* Text */}
             <div className="flex-1 min-w-0 pointer-events-none">
               <div className="flex items-center gap-1.5 mb-[3px]">
-                {isPlaying && !inAd && <WaveformBars />}
+                {isPlaying && <WaveformBars />}
                 <p
                   className="text-[13px] font-semibold truncate leading-tight"
                   style={{ color: "oklch(0.95 0 0)" }}
                 >
-                  {inAd ? "Advertisement" : currentItem.episode.title}
+                  {currentItem.episode.title}
                 </p>
               </div>
               <p
                 className="text-[11px] truncate leading-tight"
                 style={{ color: "oklch(0.55 0 0)" }}
               >
-                {inAd
-                  ? adState === "preroll" ? "Pre-roll · Playing now" : "Post-roll · Playing now"
-                  : currentItem.podcast.title}
+                {currentItem.podcast.title}
               </p>
             </div>
 
             {/* Queue button — only show when items are queued */}
-            {!inAd && queue.length > 0 && (
+            {queue.length > 0 && (
               <button
                 onClick={handleQueueClick}
                 className="flex-shrink-0 relative flex items-center justify-center w-8 h-8 rounded-lg transition-opacity active:opacity-60"
@@ -156,31 +141,27 @@ export const MiniPlayer = forwardRef<MiniPlayerHandle>(function MiniPlayer(_prop
             )}
 
             {/* Skip +15 */}
-            {!inAd && (
-              <button
-                onClick={handleSkip15}
-                className="flex-shrink-0 flex flex-col items-center justify-center gap-[2px] py-2 px-1.5 rounded-lg transition-opacity active:opacity-60"
-                aria-label="Skip 15 seconds forward"
-                style={{ color: "oklch(0.5 0 0)" }}
+            <button
+              onClick={handleSkip15}
+              className="flex-shrink-0 flex flex-col items-center justify-center gap-[2px] py-2 px-1.5 rounded-lg transition-opacity active:opacity-60"
+              aria-label="Skip 15 seconds forward"
+              style={{ color: "oklch(0.5 0 0)" }}
+            >
+              <SkipForward className="w-4 h-4" style={{ color: "oklch(0.52 0 0)" }} />
+              <span
+                className="text-[9px] font-bold leading-none tabular-nums"
+                style={{ color: "oklch(0.45 0 0)" }}
               >
-                <SkipForward className="w-4 h-4" style={{ color: "oklch(0.52 0 0)" }} />
-                <span
-                  className="text-[9px] font-bold leading-none tabular-nums"
-                  style={{ color: "oklch(0.45 0 0)" }}
-                >
-                  +15
-                </span>
-              </button>
-            )}
+                +15
+              </span>
+            </button>
 
             {/* Play / Pause — prominent circle */}
             <button
               onClick={(e) => { e.stopPropagation(); isPlaying ? pause() : resume(); }}
               className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition-all active:scale-90"
               style={{
-                background: inAd
-                  ? "oklch(0.65 0.18 45)"
-                  : "oklch(0.55 0.16 250)",
+                background: "oklch(0.55 0.16 250)",
                 boxShadow: "0 2px 8px -1px oklch(0 0 0 / 0.5)",
               }}
               aria-label={isPlaying ? "Pause" : "Play"}
@@ -205,9 +186,7 @@ export const MiniPlayer = forwardRef<MiniPlayerHandle>(function MiniPlayer(_prop
               className="h-full transition-all duration-300"
               style={{
                 width: `${progress}%`,
-                background: inAd
-                  ? "oklch(0.65 0.18 45)"
-                  : "oklch(0.55 0.16 250)",
+                background: "oklch(0.55 0.16 250)",
               }}
             />
           </div>

@@ -5,34 +5,37 @@ export default function TermsOfService() {
     <div className="min-h-screen bg-zinc-950 text-zinc-50 py-20 px-6">
       <div className="max-w-3xl mx-auto">
         <h1 className="text-4xl font-bold mb-2">Terms of Service</h1>
-        <p className="text-zinc-400 mb-10">Last updated: March 19, 2026</p>
+        <p className="text-zinc-400 mb-10">Last updated: April 21, 2026</p>
 
         <div className="space-y-8 text-zinc-300 leading-relaxed">
           <section>
             <h2 className="text-xl font-semibold text-zinc-50 mb-3">1. Acceptance of Terms</h2>
             <p>
-              By accessing or using Blipp ("the Service"), operated at podblipp.com, you agree to
-              be bound by these Terms of Service. If you do not agree to these terms, do not use
-              the Service.
+              By accessing or using Blipp ("the Service"), operated at podblipp.com and through
+              the Blipp iOS application, you agree to be bound by these Terms of Service. If you
+              do not agree to these terms, do not use the Service.
             </p>
           </section>
 
           <section>
             <h2 className="text-xl font-semibold text-zinc-50 mb-3">2. Description of Service</h2>
             <p>
-              Blipp is a podcast briefing platform that distills podcast episodes into short audio
-              briefings. The Service includes content discovery, personalized briefing generation,
-              audio playback, and related features available through the web application.
+              Blipp is a podcast briefing platform that distills podcast episodes into short,
+              AI-generated audio briefings. The Service is available through our web application
+              at podblipp.com and the Blipp iOS application distributed through Apple's App Store,
+              and includes content discovery, personalized briefing generation, audio playback,
+              and related features.
             </p>
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold text-zinc-50 mb-3">3. User Accounts</h2>
+            <h2 className="text-xl font-semibold text-zinc-50 mb-3">3. Eligibility and Accounts</h2>
             <p>
-              To use certain features, you must create an account. You are responsible for
-              maintaining the confidentiality of your account credentials and for all activities
-              that occur under your account. You agree to provide accurate and complete information
-              when creating your account and to update it as necessary.
+              You must be at least 13 years old to use the Service. To use certain features you
+              must create an account. You are responsible for maintaining the confidentiality of
+              your account credentials and for all activities that occur under your account. You
+              agree to provide accurate and complete information when creating your account and
+              to update it as necessary.
             </p>
           </section>
 
@@ -40,9 +43,26 @@ export default function TermsOfService() {
             <h2 className="text-xl font-semibold text-zinc-50 mb-3">4. Subscriptions and Payments</h2>
             <p>
               Blipp offers free and paid subscription plans. Paid plans are billed on a recurring
-              basis. You may cancel your subscription at any time through your account settings or
-              the billing portal. Refunds are handled in accordance with our refund policy.
-              Pricing is subject to change with reasonable notice.
+              basis and renew automatically until cancelled.
+            </p>
+            <p className="mt-3">
+              <strong>Web subscriptions.</strong> If you subscribe through the Blipp website,
+              payment is processed by Stripe. You may cancel at any time through your account
+              settings or the Stripe-hosted billing portal. Cancellation takes effect at the end
+              of the current billing period; no prorated refunds are provided for partial periods
+              except where required by law.
+            </p>
+            <p className="mt-3">
+              <strong>iOS in-app subscriptions.</strong> If you subscribe through the Blipp iOS
+              app, payment, renewal, and cancellation are managed by Apple through your Apple ID.
+              You can view, change, or cancel your subscription at any time in your device's
+              Settings under Apple ID &rarr; Subscriptions. Refunds for iOS subscriptions are
+              handled solely by Apple in accordance with Apple's policies; Blipp does not process
+              refunds for Apple in-app purchases.
+            </p>
+            <p className="mt-3">
+              Pricing is subject to change with reasonable notice. Changes will not affect
+              billing periods already paid for.
             </p>
           </section>
 
@@ -55,60 +75,113 @@ export default function TermsOfService() {
               <li>Interfere with or disrupt the Service or its infrastructure</li>
               <li>Share your account credentials with third parties</li>
               <li>Use automated tools to scrape or access the Service without permission</li>
+              <li>Resell, redistribute, or commercially exploit briefings generated by the Service</li>
             </ul>
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold text-zinc-50 mb-3">6. Intellectual Property</h2>
+            <h2 className="text-xl font-semibold text-zinc-50 mb-3">6. AI-Generated Content</h2>
             <p>
-              The Service, including its design, code, and branding, is the property of Blipp and
-              is protected by intellectual property laws. Podcast content processed through the
-              Service remains the property of its respective owners. AI-generated briefings are
-              derivative works created for personal, non-commercial use.
+              Briefings delivered through Blipp are generated using artificial intelligence
+              models applied to third-party podcast content. AI output can contain inaccuracies,
+              omissions, or misinterpretations, and may not reflect the full context of the
+              original episode. Briefings are provided for informational and personal use only
+              and should not be relied on as a substitute for the original episodes or for
+              professional advice of any kind (medical, legal, financial, or otherwise). Always
+              verify important information against the original source.
             </p>
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold text-zinc-50 mb-3">7. Limitation of Liability</h2>
+            <h2 className="text-xl font-semibold text-zinc-50 mb-3">7. Intellectual Property and Feedback</h2>
             <p>
-              The Service is provided "as is" without warranties of any kind. To the maximum
-              extent permitted by law, Blipp shall not be liable for any indirect, incidental,
-              special, consequential, or punitive damages, including loss of data or profits,
-              arising from your use of the Service. Our total liability shall not exceed the
-              amount you paid for the Service in the twelve months preceding the claim.
+              The Service, including its design, code, and branding, is the property of Blipp
+              and is protected by intellectual property laws. Podcast content processed through
+              the Service remains the property of its respective owners. AI-generated briefings
+              are provided for your personal, non-commercial use.
+            </p>
+            <p className="mt-3">
+              If you submit feedback, suggestions, or bug reports to Blipp, you grant us a
+              non-exclusive, worldwide, royalty-free, perpetual license to use that feedback to
+              operate and improve the Service, without obligation to compensate you.
             </p>
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold text-zinc-50 mb-3">8. Termination</h2>
+            <h2 className="text-xl font-semibold text-zinc-50 mb-3">8. Apple App Store Terms</h2>
             <p>
-              We reserve the right to suspend or terminate your account at any time for violation
-              of these terms or for any other reason at our sole discretion. You may delete your
-              account at any time through your account settings. Upon termination, your right to
-              use the Service ceases immediately.
+              If you accessed Blipp through Apple's App Store, you acknowledge that these Terms
+              are between you and Blipp only, not Apple, and that Apple is not responsible for
+              Blipp or its content. Your use of Blipp on an iOS device is also subject to
+              Apple's Licensed Application End User License Agreement (the "Apple EULA"),
+              available at{" "}
+              <a
+                href="https://www.apple.com/legal/internet-services/itunes/dev/stdeula/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-400 hover:text-blue-300"
+              >
+                apple.com/legal/internet-services/itunes/dev/stdeula
+              </a>
+              . To the extent these Terms conflict with the Apple EULA, the Apple EULA will
+              govern with respect to your use on iOS. Apple has no obligation to provide
+              support or maintenance for Blipp. In the event of any failure of Blipp to conform
+              to any applicable warranty, you may notify Apple, and Apple will refund the
+              purchase price (if any) for the app; to the maximum extent permitted by law,
+              Apple has no other warranty obligation with respect to Blipp. Apple and its
+              subsidiaries are third-party beneficiaries of these Terms and may enforce them
+              against you.
             </p>
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold text-zinc-50 mb-3">9. Changes to Terms</h2>
+            <h2 className="text-xl font-semibold text-zinc-50 mb-3">9. Limitation of Liability</h2>
             <p>
-              We may update these terms from time to time. We will notify you of material changes
-              by posting the updated terms on this page with a revised "Last updated" date.
-              Continued use of the Service after changes constitutes acceptance of the new terms.
+              The Service is provided "as is" and "as available" without warranties of any
+              kind, whether express or implied. To the maximum extent permitted by law, Blipp
+              shall not be liable for any indirect, incidental, special, consequential, or
+              punitive damages, including loss of data or profits, arising from your use of the
+              Service. Our total liability arising out of or relating to these Terms or the
+              Service shall not exceed the amount you paid to Blipp for the Service in the
+              twelve months preceding the claim, or USD $100, whichever is greater.
             </p>
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold text-zinc-50 mb-3">10. Governing Law</h2>
+            <h2 className="text-xl font-semibold text-zinc-50 mb-3">10. Termination</h2>
             <p>
-              These terms are governed by and construed in accordance with the laws of the United
-              States. Any disputes arising from these terms or the Service shall be resolved in
-              the courts of competent jurisdiction.
+              We reserve the right to suspend or terminate your account at any time for
+              violation of these terms or for any other reason at our sole discretion. You may
+              delete your account at any time through your account settings. Upon termination,
+              your right to use the Service ceases immediately. Provisions of these Terms that
+              by their nature should survive termination (including intellectual property,
+              limitation of liability, and governing law) will survive.
             </p>
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold text-zinc-50 mb-3">11. Contact</h2>
+            <h2 className="text-xl font-semibold text-zinc-50 mb-3">11. Changes to Terms</h2>
+            <p>
+              We may update these terms from time to time. We will notify you of material
+              changes by posting the updated terms on this page with a revised "Last updated"
+              date. Continued use of the Service after changes constitutes acceptance of the
+              new terms.
+            </p>
+          </section>
+
+          <section>
+            <h2 className="text-xl font-semibold text-zinc-50 mb-3">12. Governing Law and Disputes</h2>
+            <p>
+              These Terms are governed by and construed in accordance with the laws of the
+              State of Louisiana, without regard to its conflict-of-laws principles. Any
+              disputes arising from these Terms or the Service shall be brought exclusively in
+              the state or federal courts located in Louisiana, and you consent to the personal
+              jurisdiction of those courts.
+            </p>
+          </section>
+
+          <section>
+            <h2 className="text-xl font-semibold text-zinc-50 mb-3">13. Contact</h2>
             <p>
               If you have questions about these terms, please contact us at{" "}
               <a href="mailto:support@podblipp.com" className="text-blue-400 hover:text-blue-300">

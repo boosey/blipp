@@ -8,18 +8,18 @@ import {
 } from "react";
 import { useAuth } from "@clerk/clerk-react";
 import type { FeedItem } from "../types/feed";
-import type { AdConfig, AdState } from "../types/ads";
 import { useApiFetch } from "../lib/api";
-import { useImaAds } from "../hooks/use-ima-ads";
 import { getJingleUrl } from "../lib/jingle-cache";
 import { getApiBase } from "../lib/api-base";
 
 // Minimal silent WAV (22050Hz, 16-bit mono, 2 samples) used to "unlock"
 // the HTMLAudioElement on mobile within the user-gesture context.  Mobile
 // browsers block audio.play() after any `await`, so we play this silence
-// synchronously before fetching ad config.
+// synchronously before fetching the intro jingle.
 const UNLOCK_AUDIO =
   "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YQQAAAAAAAAA";
+
+type PlaybackPhase = "none" | "content" | "intro-jingle" | "outro-jingle";
 
 interface AudioState {
   currentItem: FeedItem | null;
@@ -29,12 +29,7 @@ interface AudioState {
   playbackRate: number;
   isLoading: boolean;
   error: string | null;
-  // Ad state
-  adState: AdState;
-  isAdPlaying: boolean;
-  adProgress: number;
-  adDuration: number;
-  adCurrentTime: number;
+  playbackPhase: PlaybackPhase;
 }
 
 interface AudioActions {
@@ -81,10 +76,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Ad state
-  const [adState, setAdState] = useState<AdState>("none");
-  const adConfigRef = useRef<AdConfig | null>(null);
-  const pendingItemRef = useRef<FeedItem | null>(null);
+  const [playbackPhase, setPlaybackPhase] = useState<PlaybackPhase>("none");
   // Guards against audio element events fired by the silent unlock WAV
   const unlockingRef = useRef(false);
 
@@ -115,7 +107,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     async (item: FeedItem) => {
       if (!item.briefing) return;
 
-      setAdState("content");
+      setPlaybackPhase("content");
       setCurrentItem(item);
       setError(null);
       setIsLoading(true);
@@ -170,7 +162,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
         });
       }
     },
-    [apiFetch, getToken, playbackRate]
+    [getToken, playbackRate]
   );
 
   // Start content playback — plays intro jingle first if available
@@ -183,8 +175,12 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       setError(null);
 
       const introUrl = await getJingleUrl("intro");
+      // After the first await, the silent unlock WAV has had a chance to fire
+      // its events — safe to let real audio events through now.
+      unlockingRef.current = false;
+
       if (introUrl) {
-        setAdState("intro-jingle");
+        setPlaybackPhase("intro-jingle");
         setIsPlaying(true);
         setIsLoading(false);
         setCurrentTime(0);
@@ -207,112 +203,46 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   // Ref to hold `play` for use in onPlaybackFinished (avoids circular dep)
   const playRef = useRef<(item: FeedItem) => void>(() => {});
 
-  // Called when an item fully finishes (content + postroll). Advances queue.
+  // Called when an item fully finishes. Advances queue.
   const onPlaybackFinished = useCallback(() => {
     const next = queueRef.current.shift();
     syncQueue();
     if (next) {
       playRef.current(next);
     } else {
-      setAdState("none");
+      setPlaybackPhase("none");
       setIsPlaying(false);
     }
   }, [syncQueue]);
 
-  // IMA ads hook callbacks
-  const onPrerollComplete = useCallback(() => {
-    const item = pendingItemRef.current;
-    if (item) {
-      startContentPlayback(item);
-    }
-  }, [startContentPlayback]);
-
-  const onPostrollComplete = useCallback(() => {
-    onPlaybackFinished();
-  }, [onPlaybackFinished]);
-
-  // Track which ad flow we're in
-  const adFlowRef = useRef<"preroll" | "postroll" | null>(null);
-
-  const handleAdStart = useCallback(() => {
-    // Ad has started playing
-  }, []);
-
-  const handleAdComplete = useCallback(() => {
-    if (adFlowRef.current === "preroll") {
-      adFlowRef.current = null;
-      onPrerollComplete();
-    } else if (adFlowRef.current === "postroll") {
-      adFlowRef.current = null;
-      onPostrollComplete();
-    }
-  }, [onPrerollComplete, onPostrollComplete]);
-
-  const handleAdError = useCallback(() => {
-    // Errors are handled in useImaAds — it calls onAdComplete after error
-  }, []);
-
-  const ima = useImaAds({
-    onAdStart: handleAdStart,
-    onAdComplete: handleAdComplete,
-    onAdError: handleAdError,
-  });
-
-  // Check for postroll ad or end playback
-  const handlePostrollOrEnd = useCallback(() => {
-    const config = adConfigRef.current;
-    if (
-      config?.adsEnabled &&
-      config.postroll.enabled &&
-      config.postroll.vastTagUrl
-    ) {
-      setAdState("postroll");
-      setIsPlaying(true);
-      adFlowRef.current = "postroll";
-      ima.requestAds(config.postroll.vastTagUrl);
-      return;
-    }
-    onPlaybackFinished();
-  }, [ima, onPlaybackFinished]);
-
   const pause = useCallback(() => {
-    if (ima.isAdPlaying) {
-      ima.pauseAd();
-      setIsPlaying(false);
-      return;
-    }
     const audio = audioRef.current;
-    if (audio && currentItem && adState === "content") {
+    if (audio && currentItem && playbackPhase === "content") {
       savePlaybackPosition(currentItem.id, audio.currentTime);
     }
     audio?.pause();
     setIsPlaying(false);
-  }, [ima, currentItem, adState, savePlaybackPosition]);
+  }, [currentItem, playbackPhase, savePlaybackPosition]);
 
   const resume = useCallback(() => {
-    if (ima.isAdPlaying) {
-      ima.resumeAd();
-      setIsPlaying(true);
-      return;
-    }
     audioRef.current?.play();
     setIsPlaying(true);
-  }, [ima]);
+  }, []);
 
   const seek = useCallback((time: number) => {
-    if (adState !== "content" && adState !== "none") return;
+    if (playbackPhase !== "content" && playbackPhase !== "none") return;
     const audio = audioRef.current;
     if (!audio) return;
     audio.currentTime = time;
     setCurrentTime(time);
-  }, [adState]);
+  }, [playbackPhase]);
 
   const setRate = useCallback((rate: number) => {
     setPlaybackRate(rate);
-    if (audioRef.current && adState !== "intro-jingle" && adState !== "outro-jingle") {
+    if (audioRef.current && playbackPhase !== "intro-jingle" && playbackPhase !== "outro-jingle") {
       audioRef.current.playbackRate = rate;
     }
-  }, [adState]);
+  }, [playbackPhase]);
 
   const stop = useCallback(() => {
     const audio = audioRef.current;
@@ -320,16 +250,12 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       audio.pause();
       audio.src = "";
     }
-    ima.destroy();
     setCurrentItem(null);
     setIsPlaying(false);
     setCurrentTime(0);
     setDuration(0);
     setError(null);
-    setAdState("none");
-    adConfigRef.current = null;
-    pendingItemRef.current = null;
-    adFlowRef.current = null;
+    setPlaybackPhase("none");
     queueRef.current = [];
     syncQueue();
     if (listenedTimerRef.current) {
@@ -337,72 +263,34 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       listenedTimerRef.current = null;
     }
     listenedFiredRef.current = null;
-  }, [ima, syncQueue]);
+  }, [syncQueue]);
 
   const play = useCallback(
-    async (item: FeedItem) => {
+    (item: FeedItem) => {
       if (!item.briefing) return;
       if (!audioRef.current) return;
 
       // Save position of currently playing item before switching
-      if (currentItem && adState === "content" && audioRef.current) {
+      if (currentItem && playbackPhase === "content" && audioRef.current) {
         savePlaybackPosition(currentItem.id, audioRef.current.currentTime);
       }
 
-      // Store the item for after preroll
-      pendingItemRef.current = item;
       setCurrentItem(item);
       setError(null);
       setIsLoading(true);
-      setAdState("loading-ad-config");
 
       // Mobile browsers require audio.play() within the synchronous
-      // user-gesture context.  The ad-config fetch below is async and
-      // breaks that context, so we play a tiny silent WAV first to
-      // "unlock" the audio element for all subsequent plays.
+      // user-gesture context. The jingle lookup below is async and breaks
+      // that context, so we play a tiny silent WAV first to "unlock" the
+      // audio element for all subsequent plays.
       const audio = audioRef.current;
       unlockingRef.current = true;
       audio.src = UNLOCK_AUDIO;
       audio.play().catch(() => {});
 
-      // Fetch ad config
-      try {
-        const params = new URLSearchParams({
-          briefingId: item.briefing.id,
-          durationTier: String(item.durationTier),
-        });
-        const config = await apiFetch<AdConfig>(
-          `/ads/config?${params.toString()}`
-        );
-        adConfigRef.current = config;
-      } catch {
-        // Ad config fetch failed — play content without ads
-        adConfigRef.current = null;
-      }
-
-      const config = adConfigRef.current;
-
-      // Unlock phase complete — real playback starts now
-      unlockingRef.current = false;
-
-      // Check if preroll should play
-      if (
-        config?.adsEnabled &&
-        config.preroll.enabled &&
-        config.preroll.vastTagUrl
-      ) {
-        setAdState("preroll");
-        setIsLoading(false);
-        setIsPlaying(true);
-        adFlowRef.current = "preroll";
-        ima.requestAds(config.preroll.vastTagUrl);
-        return;
-      }
-
-      // No preroll — start content directly
       startContentPlayback(item);
     },
-    [apiFetch, ima, startContentPlayback, currentItem, adState, savePlaybackPosition]
+    [currentItem, playbackPhase, savePlaybackPosition, startContentPlayback]
   );
 
   // Keep playRef in sync so onPlaybackFinished can call play without circular deps
@@ -461,56 +349,55 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     play(target);
   }, [play, syncQueue]);
 
-  // Handle audio ended — sequence: intro-jingle -> content -> outro-jingle -> postroll
+  // Handle audio ended — sequence: intro-jingle -> content -> outro-jingle -> next
   const handleEnded = useCallback(async () => {
     if (unlockingRef.current) return; // Ignore ended event from silent unlock WAV
     const audio = audioRef.current;
 
-    if (adState === "intro-jingle") {
-      const item = pendingItemRef.current ?? currentItem;
-      if (item) {
-        beginContent(item);
+    if (playbackPhase === "intro-jingle") {
+      if (currentItem) {
+        beginContent(currentItem);
       }
       return;
     }
 
-    if (adState === "content") {
+    if (playbackPhase === "content") {
       // Clear saved position — playback completed
       if (currentItem) {
         savePlaybackPosition(currentItem.id, null);
       }
       const outroUrl = await getJingleUrl("outro");
       if (outroUrl && audio) {
-        setAdState("outro-jingle");
+        setPlaybackPhase("outro-jingle");
         audio.playbackRate = 1;
         audio.src = outroUrl;
         audio.play().catch(() => {
-          handlePostrollOrEnd();
+          onPlaybackFinished();
         });
         return;
       }
 
-      handlePostrollOrEnd();
+      onPlaybackFinished();
       return;
     }
 
-    if (adState === "outro-jingle") {
-      handlePostrollOrEnd();
+    if (playbackPhase === "outro-jingle") {
+      onPlaybackFinished();
       return;
     }
-  }, [adState, beginContent, currentItem, handlePostrollOrEnd, savePlaybackPosition]);
+  }, [playbackPhase, beginContent, currentItem, onPlaybackFinished, savePlaybackPosition]);
 
   // Audio element event handlers
   const handleTimeUpdate = useCallback(() => {
-    if (adState === "intro-jingle" || adState === "outro-jingle") return;
+    if (playbackPhase === "intro-jingle" || playbackPhase === "outro-jingle") return;
     if (audioRef.current) {
       setCurrentTime(audioRef.current.currentTime);
     }
-  }, [adState]);
+  }, [playbackPhase]);
 
   const handleLoadedMetadata = useCallback(() => {
     if (unlockingRef.current) return;
-    if (adState === "intro-jingle" || adState === "outro-jingle") return;
+    if (playbackPhase === "intro-jingle" || playbackPhase === "outro-jingle") return;
     const audio = audioRef.current;
     if (audio) {
       setDuration(audio.duration);
@@ -527,7 +414,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
         setCurrentTime(resumeAt);
       }
     }
-  }, [adState, currentItem]);
+  }, [playbackPhase, currentItem]);
 
   const handlePlay = useCallback(() => {
     if (unlockingRef.current) return;
@@ -537,22 +424,21 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
 
   const handleError = useCallback(() => {
     if (unlockingRef.current) return;
-    if (adState === "intro-jingle") {
-      const item = pendingItemRef.current ?? currentItem;
-      if (item) {
-        beginContent(item);
+    if (playbackPhase === "intro-jingle") {
+      if (currentItem) {
+        beginContent(currentItem);
       }
       return;
     }
-    if (adState === "outro-jingle") {
-      handlePostrollOrEnd();
+    if (playbackPhase === "outro-jingle") {
+      onPlaybackFinished();
       return;
     }
 
     setIsPlaying(false);
     setIsLoading(false);
     setError("Failed to load audio");
-  }, [adState, beginContent, currentItem, handlePostrollOrEnd]);
+  }, [playbackPhase, beginContent, currentItem, onPlaybackFinished]);
 
   const handleWaiting = useCallback(() => {
     setIsLoading(true);
@@ -562,17 +448,16 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     setIsLoading(false);
   }, []);
 
-  // Media Session handlers — disable seek during ads
+  // Media Session handlers — disable seek during jingles
   useEffect(() => {
     if (!("mediaSession" in navigator)) return;
 
-    const isInAd = adState === "preroll" || adState === "postroll"
-      || adState === "intro-jingle" || adState === "outro-jingle";
+    const isInJingle = playbackPhase === "intro-jingle" || playbackPhase === "outro-jingle";
 
     navigator.mediaSession.setActionHandler("play", () => resume());
     navigator.mediaSession.setActionHandler("pause", () => pause());
 
-    if (isInAd) {
+    if (isInJingle) {
       navigator.mediaSession.setActionHandler("seekbackward", null);
       navigator.mediaSession.setActionHandler("seekforward", null);
     } else {
@@ -585,11 +470,11 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
         if (audio) seek(Math.min(audio.duration || 0, audio.currentTime + 30));
       });
     }
-  }, [adState, pause, resume, seek]);
+  }, [playbackPhase, pause, resume, seek]);
 
   // Periodic playback position save (every 10s while content is playing)
   useEffect(() => {
-    if (isPlaying && adState === "content" && currentItem) {
+    if (isPlaying && playbackPhase === "content" && currentItem) {
       const itemId = currentItem.id;
       saveTimerRef.current = setInterval(() => {
         const audio = audioRef.current;
@@ -608,14 +493,14 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       clearInterval(saveTimerRef.current);
       saveTimerRef.current = null;
     }
-  }, [isPlaying, adState, currentItem, savePlaybackPosition]);
+  }, [isPlaying, playbackPhase, currentItem, savePlaybackPosition]);
 
   // Mark as listened after 30s of content playback.
   // Timer starts when content plays, pauses when paused, resets on track change.
   useEffect(() => {
     if (
       isPlaying &&
-      adState === "content" &&
+      playbackPhase === "content" &&
       currentItem &&
       !currentItem.listened &&
       listenedFiredRef.current !== currentItem.id
@@ -637,7 +522,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
         }
       };
     }
-  }, [isPlaying, adState, currentItem, apiFetch]);
+  }, [isPlaying, playbackPhase, currentItem, apiFetch]);
 
   // Sync mediaSession position state
   useEffect(() => {
@@ -658,12 +543,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     playbackRate,
     isLoading,
     error,
-    // Ad state
-    adState,
-    isAdPlaying: ima.isAdPlaying,
-    adProgress: ima.adProgress,
-    adDuration: ima.adDuration,
-    adCurrentTime: ima.adCurrentTime,
+    playbackPhase,
     // Queue
     queue,
     // Actions

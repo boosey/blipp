@@ -1,7 +1,6 @@
 import { createContext, useContext, useState, useEffect, useRef, useCallback } from "react";
 import type { ReactNode } from "react";
 import { useApiFetch } from "../lib/api";
-import { trackSignUpConversion } from "../lib/gtag";
 
 interface OnboardingContextValue {
   needsOnboarding: boolean;
@@ -44,7 +43,6 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
         }
 
         setNeedsOnboarding(true);
-        trackSignUpConversion();
       } catch {
         // API error — don't block, skip onboarding
       }

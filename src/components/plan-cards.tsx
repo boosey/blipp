@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { SignedIn, SignedOut, SignInButton } from "@clerk/clerk-react";
 import { toast } from "sonner";
 import { Sparkles, Check, Star } from "lucide-react";
@@ -316,14 +317,37 @@ export function PlanCards({ currentPlanSlug, onCheckout, compact }: PlanCardsPro
       </div>
 
       {isNative && (
-        <div className="text-center mt-6">
-          <button
-            onClick={handleRestore}
-            className="text-xs text-muted-foreground hover:text-foreground underline-offset-4 hover:underline"
-          >
-            Restore purchases
-          </button>
-        </div>
+        <>
+          <div className="text-center mt-6">
+            <button
+              onClick={handleRestore}
+              className="text-xs text-muted-foreground hover:text-foreground underline-offset-4 hover:underline"
+            >
+              Restore purchases
+            </button>
+          </div>
+          <div className="mt-6 px-4 text-[11px] text-muted-foreground leading-relaxed max-w-md mx-auto text-center space-y-2">
+            <p>
+              Subscriptions automatically renew at the end of each {interval === "annual" ? "annual" : "monthly"} billing period
+              unless cancelled at least 24 hours before renewal. Payment is charged to your
+              Apple ID at confirmation of purchase.
+            </p>
+            <p>
+              Manage or cancel your subscription in your device's Settings under Apple ID
+              &rarr; Subscriptions. Unused portions of a free trial, if offered, are forfeited
+              when purchasing a subscription.
+            </p>
+            <p>
+              <Link to="/tos" className="underline hover:text-foreground">
+                Terms of Service
+              </Link>
+              {" · "}
+              <Link to="/privacy" className="underline hover:text-foreground">
+                Privacy Policy
+              </Link>
+            </p>
+          </div>
+        </>
       )}
     </div>
   );

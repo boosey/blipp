@@ -18,8 +18,7 @@ This guide covers both **staging** and **production** environments. Staging depl
 8. [Phase 8: GitHub CI/CD](#phase-8-github-cicd)
 9. [Phase 9: Set Cloudflare Secrets](#phase-9-set-cloudflare-secrets)
 10. [Phase 10: Deploy, Stripe & Webhooks](#phase-10-deploy-stripe--webhooks)
-11. [Phase 11: Google AdSense (Optional)](#phase-11-google-adsense-optional)
-12. [Phase 12: Post-Deploy Verification](#phase-12-post-deploy-verification)
+11. [Phase 11: Post-Deploy Verification](#phase-11-post-deploy-verification)
 13. [Operational Runbook](#operational-runbook)
 14. [Automation Scripts](#automation-scripts)
 
@@ -606,55 +605,7 @@ Set staging to use cheapest AI models (via admin UI at `workers.dev` URL → `/a
 
 ---
 
-## Phase 11: Google AdSense (Optional)
-
-Ads are disabled by default (`ads.enabled` = false in PlatformConfig). The IMA SDK is already loaded in `index.html`. You don't need AdSense to use VAST tags from other ad servers — only if you want Google's ad network.
-
-### If you want Google ads:
-
-#### 11.1 Sign Up & Verify
-
-- [ ] Sign up at https://www.google.com/adsense/
-- [ ] Google gives you a publisher ID (`ca-pub-XXXXXXXXXXXXXXXX`)
-- [ ] Choose a verification method:
-
-**Option A — AdSense code snippet** (add to `index.html` `<head>`):
-```html
-<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-XXXXXXXXXXXXXXXX" crossorigin="anonymous"></script>
-```
-
-**Option B — Meta tag** (add to `index.html` `<head>`, lighter — no ads load):
-```html
-<meta name="google-adsense-account" content="ca-pub-XXXXXXXXXXXXXXXX" />
-```
-
-**Option C — ads.txt file** (add to `public/ads.txt`):
-```
-google.com, pub-XXXXXXXXXXXXXXXX, DIRECT, f08c47fec0942fa0
-```
-
-- [ ] Redeploy with your chosen verification method
-- [ ] In AdSense dashboard, click **Request review**
-- [ ] Wait for approval (days to weeks)
-
-#### 11.2 Set Up Ad Manager (After Approval)
-
-Once approved:
-- [ ] Go to https://admanager.google.com/
-- [ ] Create audio ad units (Preroll + Postroll, master size: **Audio**)
-- [ ] Create line items with **Video and audio** ad type, **Audio** expected creative size
-- [ ] Generate VAST tag URLs: **Inventory > Ad units > [your unit] > Tags**
-  - VAST tags must include: `ad_type=audio`, `env=instream`, `vpmute=0`
-- [ ] Configure in admin UI: set `ads.preroll.vastTagUrl` and `ads.postroll.vastTagUrl` in PlatformConfig
-- [ ] Enable ads: set `ads.enabled` to `true` in PlatformConfig
-
-### If you want to skip ads:
-
-- [ ] No action needed — ads are disabled by default
-
----
-
-## Phase 12: Post-Deploy Verification
+## Phase 11: Post-Deploy Verification
 
 ### Staging Smoke Tests
 

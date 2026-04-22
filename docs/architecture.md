@@ -421,7 +421,7 @@ Plan limits are enforced in route handlers using helpers from `worker/lib/plan-l
 
 ### Admin Routes (`/api/admin`)
 
-18 route modules: dashboard, podcasts, episodes, pipeline, config, users, analytics, briefings, requests, plans, stt-benchmark, ai-models, ai-errors, audit-log, api-keys, ads, recommendations, cron-jobs.
+17 route modules: dashboard, podcasts, episodes, pipeline, config, users, analytics, briefings, requests, plans, stt-benchmark, ai-models, ai-errors, audit-log, api-keys, recommendations, cron-jobs.
 
 Notable admin endpoints:
 - `POST /api/admin/requests/test-briefing` -- Trigger a test briefing with specific podcast/episode selection
@@ -433,7 +433,6 @@ Notable admin endpoints:
 - `GET /api/admin/ai-errors` -- AI service error log with filtering
 - `GET /api/admin/audit-log` -- Admin action audit trail
 - `GET/POST/DELETE /api/admin/api-keys` -- API key management
-- `GET/PATCH /api/admin/ads` -- Ad slot management
 - `GET /api/admin/recommendations` -- Recommendation profiles and cache
 - `GET /api/admin/cron-jobs` -- Scheduled job runs and logs
 
@@ -451,7 +450,7 @@ The frontend is built with Vite 7 using `@cloudflare/vite-plugin` in SPA mode. T
 |---------|-------|--------|
 | Public | Landing (`/`), Pricing (`/pricing`) | Minimal |
 | User | Home (`/home`), Discover (`/discover`), Podcast Detail (`/discover/:podcastId`), Library (`/library`), Player (`/play/:feedItemId`), Settings (`/settings`) | `MobileLayout` |
-| Admin | 20 pages (Command Center, Pipeline, Pipeline Controls, Catalog, Briefings, Users, Plans, Analytics, Requests, STT Benchmark, Model Registry, Stage Models, AI Errors, Recommendations, Scheduled Jobs, Feature Flags, Podcast Settings, Ads, API Keys, Audit Log) | `AdminLayout` (dark sidebar) |
+| Admin | 19 pages (Command Center, Pipeline, Pipeline Controls, Catalog, Briefings, Users, Plans, Analytics, Requests, STT Benchmark, Model Registry, Stage Models, AI Errors, Recommendations, Scheduled Jobs, Feature Flags, Podcast Settings, API Keys, Audit Log) | `AdminLayout` (dark sidebar) |
 
 Redirects: `/dashboard` redirects to `/home`, `/billing` redirects to `/settings`, `/briefing/*` redirects to `/home`.
 
@@ -536,7 +535,6 @@ blipp/
         ai-errors.ts      # AI service error log
         audit-log.ts      # Admin action audit trail
         api-keys.ts       # API key management
-        ads.ts            # Ad slot management
         recommendations.ts # Recommendation profiles + cache
         cron-jobs.ts      # Scheduled job runs + logs
         clean-r2.ts       # R2 cleanup (mounted at /internal/clean)
@@ -643,7 +641,6 @@ blipp/
         scheduled-jobs.tsx
         feature-flags.tsx
         podcast-settings.tsx
-        ads.tsx
         api-keys.tsx
         audit-log.tsx
     layouts/

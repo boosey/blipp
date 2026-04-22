@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, Link } from "react-router-dom";
 import { SignedIn, SignedOut, SignIn, AuthenticateWithRedirectCallback } from "@clerk/clerk-react";
 import { Capacitor } from "@capacitor/core";
 
@@ -46,7 +46,6 @@ const AdminApiKeys = lazy(() => import("./pages/admin/api-keys"));
 const AdminAuditLog = lazy(() => import("./pages/admin/audit-log"));
 const AdminAiErrors = lazy(() => import("./pages/admin/ai-errors"));
 const AdminWorkerLogs = lazy(() => import("./pages/admin/worker-logs"));
-const AdminAds = lazy(() => import("./pages/admin/ads"));
 const GeoTagging = lazy(() => import("./pages/admin/geo-tagging"));
 const AdminRecommendations = lazy(() => import("./pages/admin/recommendations"));
 const CatalogDiscovery = lazy(() => import("./pages/admin/catalog-discovery"));
@@ -111,8 +110,19 @@ export default function App() {
               {Capacitor.isNativePlatform() ? (
                 <NativeSignIn />
               ) : (
-                <div className="flex justify-center items-center min-h-screen">
+                <div className="flex flex-col justify-center items-center min-h-screen gap-4 px-6">
                   <SignIn fallbackRedirectUrl="/home" />
+                  <p className="text-xs text-muted-foreground text-center max-w-sm">
+                    By continuing, you agree to our{" "}
+                    <Link to="/tos" className="underline hover:text-foreground">
+                      Terms of Service
+                    </Link>{" "}
+                    and{" "}
+                    <Link to="/privacy" className="underline hover:text-foreground">
+                      Privacy Policy
+                    </Link>
+                    .
+                  </p>
                 </div>
               )}
             </SignedOut>
@@ -166,7 +176,6 @@ export default function App() {
         <Route path="audit-log" element={<Suspense fallback={<AdminLoading />}><AdminAuditLog /></Suspense>} />
         <Route path="ai-errors" element={<Suspense fallback={<AdminLoading />}><AdminAiErrors /></Suspense>} />
         <Route path="worker-logs" element={<Suspense fallback={<AdminLoading />}><AdminWorkerLogs /></Suspense>} />
-        <Route path="ads" element={<Suspense fallback={<AdminLoading />}><AdminAds /></Suspense>} />
         <Route path="feedback" element={<Suspense fallback={<AdminLoading />}><AdminFeedback /></Suspense>} />
         <Route path="blipp-feedback" element={<Suspense fallback={<AdminLoading />}><AdminBlippFeedback /></Suspense>} />
         <Route path="support" element={<Suspense fallback={<AdminLoading />}><AdminSupport /></Suspense>} />
