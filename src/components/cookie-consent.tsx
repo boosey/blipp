@@ -1,10 +1,12 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
+import { Capacitor } from "@capacitor/core";
 
 export function CookieConsent() {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
+    if (Capacitor.isNativePlatform()) return;
     const consent = localStorage.getItem("cookie-consent");
     if (!consent) {
       setVisible(true);

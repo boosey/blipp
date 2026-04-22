@@ -318,12 +318,12 @@ export function PlanCards({ currentPlanSlug, onCheckout, compact }: PlanCardsPro
 
       {isNative && (
         <>
-          <div className="text-center mt-6">
+          <div className="flex justify-center mt-6">
             <button
               onClick={handleRestore}
-              className="text-xs text-muted-foreground hover:text-foreground underline-offset-4 hover:underline"
+              className="px-5 py-2.5 rounded-lg border border-border bg-card text-sm font-semibold hover:bg-muted transition-colors"
             >
-              Restore purchases
+              Restore Purchases
             </button>
           </div>
           <div className="mt-6 px-4 text-[11px] text-muted-foreground leading-relaxed max-w-md mx-auto text-center space-y-2">
