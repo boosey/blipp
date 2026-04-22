@@ -351,6 +351,8 @@ export function Settings() {
             actionLoading={actionLoading}
             onUpgrade={handleUpgrade}
             onManage={handleManage}
+            onRestore={handleRestore}
+            restoreLoading={restoreLoading}
           />
         )}
         {activeTab === "content" && (
@@ -449,6 +451,8 @@ function ProfileTab({
   actionLoading,
   onUpgrade,
   onManage,
+  onRestore,
+  restoreLoading,
 }: {
   user: UserInfo | null;
   userLoading: boolean;
@@ -457,6 +461,8 @@ function ProfileTab({
   actionLoading: string | null;
   onUpgrade: (p: PlanDetail, interval: "monthly" | "annual") => void;
   onManage: () => void;
+  onRestore: () => void;
+  restoreLoading: boolean;
 }) {
   return (
     <>
@@ -523,6 +529,8 @@ function ProfileTab({
             subscriptionEndsAt={user.subscriptionEndsAt}
             onUpgrade={onUpgrade}
             onManage={onManage}
+            onRestore={onRestore}
+            restoreLoading={restoreLoading}
             actionLoading={actionLoading}
           />
         )}
