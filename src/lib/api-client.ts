@@ -38,7 +38,7 @@ async function internalFetch<T>(
     throw new Error(err.error || res.statusText);
   }
 
-  if (res.status === 204 || res.headers.get("content-length") === "0") {
+  if (res.status === 204 || res.headers?.get?.("content-length") === "0") {
     return undefined as T;
   }
 
