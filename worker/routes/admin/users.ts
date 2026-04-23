@@ -216,6 +216,8 @@ usersRoutes.get("/", async (c) => {
   const planId = c.req.query("planId");
   const search = c.req.query("search");
   const segment = c.req.query("segment");
+  const createdFrom = c.req.query("createdFrom");
+  const createdTo = c.req.query("createdTo");
   const orderBy = parseSort(c, "createdAt", ["createdAt", "email", "name", "isAdmin"]);
 
   const where: Record<string, unknown> = {};
@@ -225,6 +227,26 @@ usersRoutes.get("/", async (c) => {
       { email: { contains: search, mode: "insensitive" } },
       { name: { contains: search, mode: "insensitive" } },
     ];
+  }
+
+  // Date-range filter on createdAt (accepts ISO 8601 date or datetime)
+  if (createdFrom || createdTo) {
+    const range: { gte?: Date; lt?: Date } = {};
+    if (createdFrom) {
+      const from = new Date(createdFrom);
+      if (Number.isNaN(from.getTime())) {
+        return c.json({ error: "createdFrom must be a valid ISO date" }, 400);
+      }
+      range.gte = from;
+    }
+    if (createdTo) {
+      const to = new Date(createdTo);
+      if (Number.isNaN(to.getTime())) {
+        return c.json({ error: "createdTo must be a valid ISO date" }, 400);
+      }
+      range.lt = to;
+    }
+    where.createdAt = range;
   }
 
   // Segment filters

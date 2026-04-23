@@ -116,6 +116,30 @@ describe("Users Routes", () => {
       expect(body.data[0].status).toBe("active");
       expect(body.total).toBe(1);
     });
+
+    it("applies createdFrom/createdTo range to the where clause", async () => {
+      mockPrisma.user.findMany.mockResolvedValueOnce([]);
+      mockPrisma.user.count.mockResolvedValueOnce(0);
+
+      const res = await app.request(
+        "/users?createdFrom=2026-04-20T00:00:00Z&createdTo=2026-04-21T00:00:00Z",
+        {},
+        env,
+        mockExCtx
+      );
+      expect(res.status).toBe(200);
+
+      const findCall = mockPrisma.user.findMany.mock.calls[0][0];
+      expect(findCall.where.createdAt).toEqual({
+        gte: new Date("2026-04-20T00:00:00Z"),
+        lt: new Date("2026-04-21T00:00:00Z"),
+      });
+    });
+
+    it("rejects invalid createdFrom dates with 400", async () => {
+      const res = await app.request("/users?createdFrom=not-a-date", {}, env, mockExCtx);
+      expect(res.status).toBe(400);
+    });
   });
 
   describe("GET /users/:id", () => {
