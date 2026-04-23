@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { Capacitor } from "@capacitor/core";
 import { useApiFetch } from "../lib/api-client";
 import { Skeleton } from "./ui/skeleton";
 
@@ -21,14 +22,19 @@ export function PlanComparison({
   subscriptionEndsAt,
   onUpgrade,
   onManage,
+  onRestore,
+  restoreLoading,
   actionLoading,
 }: {
   currentPlanSlug: string | null;
   subscriptionEndsAt?: string | null;
   onUpgrade: (plan: PlanDetail, interval: "monthly" | "annual") => void;
   onManage: () => void;
+  onRestore?: () => void;
+  restoreLoading?: boolean;
   actionLoading: string | null;
 }) {
+  const isNative = Capacitor.isNativePlatform();
   const apiFetch = useApiFetch();
   const [plans, setPlans] = useState<PlanDetail[]>([]);
   const [loading, setLoading] = useState(true);
@@ -213,6 +219,17 @@ export function PlanComparison({
           </div>
         );
       })}
+      {isNative && onRestore && (
+        <div className="flex justify-center pt-2">
+          <button
+            onClick={onRestore}
+            disabled={restoreLoading}
+            className="px-5 py-2.5 rounded-lg border border-border bg-card text-sm font-semibold hover:bg-muted transition-colors disabled:opacity-50"
+          >
+            {restoreLoading ? "Restoring..." : "Restore Purchases"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

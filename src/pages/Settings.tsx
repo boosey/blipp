@@ -82,7 +82,8 @@ type TabId = (typeof TABS)[number]["id"];
 export function Settings() {
   const apiFetch = useApiFetch();
   const { signOut } = useClerk();
-  const { purchase, ready: iapReady, error: iapError, loading: iapLoading, billingStatus } = useIAP();
+  const { purchase, restore, ready: iapReady, error: iapError, loading: iapLoading, billingStatus } = useIAP();
+  const [restoreLoading, setRestoreLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<TabId>("profile");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [pushEnabled, setPushEnabled] = useState(false);
@@ -229,6 +230,20 @@ export function Settings() {
     }
   }
 
+  async function handleRestore() {
+    setRestoreLoading(true);
+    try {
+      await restore();
+      toast.success("Purchases restored");
+      refetchUser();
+      refetchUsage();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Restore failed");
+    } finally {
+      setRestoreLoading(false);
+    }
+  }
+
   async function togglePush() {
     if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
       toast.error("Push notifications not supported in this browser");
@@ -336,6 +351,8 @@ export function Settings() {
             actionLoading={actionLoading}
             onUpgrade={handleUpgrade}
             onManage={handleManage}
+            onRestore={handleRestore}
+            restoreLoading={restoreLoading}
           />
         )}
         {activeTab === "content" && (
@@ -357,6 +374,8 @@ export function Settings() {
             pushEnabled={pushEnabled}
             pushLoading={pushLoading}
             onTogglePush={togglePush}
+            onRestore={handleRestore}
+            restoreLoading={restoreLoading}
           />
         )}
         {activeTab === "account" && (
@@ -432,6 +451,8 @@ function ProfileTab({
   actionLoading,
   onUpgrade,
   onManage,
+  onRestore,
+  restoreLoading,
 }: {
   user: UserInfo | null;
   userLoading: boolean;
@@ -440,6 +461,8 @@ function ProfileTab({
   actionLoading: string | null;
   onUpgrade: (p: PlanDetail, interval: "monthly" | "annual") => void;
   onManage: () => void;
+  onRestore: () => void;
+  restoreLoading: boolean;
 }) {
   return (
     <>
@@ -506,6 +529,8 @@ function ProfileTab({
             subscriptionEndsAt={user.subscriptionEndsAt}
             onUpgrade={onUpgrade}
             onManage={onManage}
+            onRestore={onRestore}
+            restoreLoading={restoreLoading}
             actionLoading={actionLoading}
           />
         )}
@@ -734,11 +759,16 @@ function AppTab({
   pushEnabled,
   pushLoading,
   onTogglePush,
+  onRestore,
+  restoreLoading,
 }: {
   pushEnabled: boolean;
   pushLoading: boolean;
   onTogglePush: () => void;
+  onRestore: () => void;
+  restoreLoading: boolean;
 }) {
+  const isNative = Capacitor.isNativePlatform();
   return (
     <>
       {/* Appearance */}
@@ -759,6 +789,27 @@ function AppTab({
           onToggle={onTogglePush}
         />
       </SettingsGroup>
+
+      {/* Subscription */}
+      {isNative && (
+        <SettingsGroup title="Subscription">
+          <button
+            onClick={onRestore}
+            disabled={restoreLoading}
+            className="w-full flex items-center justify-between text-left disabled:opacity-50"
+          >
+            <div>
+              <p className="text-sm font-medium">Restore Purchases</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Re-link App Store purchases made with your Apple ID
+              </p>
+            </div>
+            <span className="text-sm text-primary font-semibold shrink-0 ml-3">
+              {restoreLoading ? "Restoring..." : "Restore"}
+            </span>
+          </button>
+        </SettingsGroup>
+      )}
 
       {/* Storage */}
       <StorageSettings />
