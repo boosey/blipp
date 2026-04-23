@@ -1,4 +1,6 @@
-const JINGLE_URLS = {
+import { getApiBase } from "./api-base";
+
+const JINGLE_PATHS = {
   intro: "/api/assets/jingles/intro.mp3",
   outro: "/api/assets/jingles/outro.mp3",
 } as const;
@@ -42,36 +44,45 @@ export async function getJingleUrl(
 }
 
 async function loadJingle(type: "intro" | "outro"): Promise<string | null> {
+  // Native apps (Capacitor) need the absolute API origin; web same-origin returns "".
+  const url = `${getApiBase()}${JINGLE_PATHS[type]}`;
+
   try {
-    const url = JINGLE_URLS[type];
+    if (typeof caches === "undefined") {
+      console.warn(`[jingle-cache] Cache API unavailable for ${type}`);
+      return null;
+    }
 
-    // Try Cache API first
-    if (typeof caches !== "undefined") {
-      const cache = await caches.open(CACHE_NAME);
-      const cachedResponse = await cache.match(url);
+    const cache = await caches.open(CACHE_NAME);
+    const cachedResponse = await cache.match(url);
 
-      if (cachedResponse) {
-        const blob = await cachedResponse.blob();
-        const blobUrl = URL.createObjectURL(blob);
-        blobUrls.set(type, blobUrl);
-        return blobUrl;
-      }
-
-      // Cache miss — fetch from network
-      const response = await fetch(url);
-      if (!response.ok) return null;
-
-      // Clone before consuming — one for cache, one for blob URL
-      await cache.put(url, response.clone());
-      const blob = await response.blob();
+    if (cachedResponse) {
+      const blob = await cachedResponse.blob();
       const blobUrl = URL.createObjectURL(blob);
       blobUrls.set(type, blobUrl);
       return blobUrl;
     }
 
-    // No Cache API — unavailable
-    return null;
-  } catch {
+    const response = await fetch(url);
+    if (!response.ok) {
+      console.warn(`[jingle-cache] fetch ${type} failed: ${response.status} ${url}`);
+      return null;
+    }
+
+    // cache.put can throw on iOS Safari (private browsing, quota). Don't let
+    // that block playback — store the blob URL even if caching fails.
+    try {
+      await cache.put(url, response.clone());
+    } catch (err) {
+      console.warn(`[jingle-cache] cache.put ${type} failed`, err);
+    }
+
+    const blob = await response.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    blobUrls.set(type, blobUrl);
+    return blobUrl;
+  } catch (err) {
+    console.warn(`[jingle-cache] loadJingle ${type} threw`, err);
     return null;
   }
 }

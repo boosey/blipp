@@ -189,7 +189,8 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
         const audio = audioRef.current;
         audio.playbackRate = 1;
         audio.src = introUrl;
-        audio.play().catch(() => {
+        audio.play().catch((err) => {
+          console.warn("[audio] intro jingle play() rejected", err);
           beginContent(item);
         });
         return;
@@ -371,7 +372,8 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
         setPlaybackPhase("outro-jingle");
         audio.playbackRate = 1;
         audio.src = outroUrl;
-        audio.play().catch(() => {
+        audio.play().catch((err) => {
+          console.warn("[audio] outro jingle play() rejected", err);
           onPlaybackFinished();
         });
         return;
@@ -424,13 +426,16 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
 
   const handleError = useCallback(() => {
     if (unlockingRef.current) return;
+    const audioErr = audioRef.current?.error;
     if (playbackPhase === "intro-jingle") {
+      console.warn("[audio] intro jingle element error", audioErr?.code, audioErr?.message);
       if (currentItem) {
         beginContent(currentItem);
       }
       return;
     }
     if (playbackPhase === "outro-jingle") {
+      console.warn("[audio] outro jingle element error", audioErr?.code, audioErr?.message);
       onPlaybackFinished();
       return;
     }
