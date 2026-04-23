@@ -4,6 +4,7 @@ import type { Env } from "../types";
 import { requireAuth } from "../middleware/auth";
 import { getCurrentUser } from "../lib/admin-helpers";
 import { buildUserExport, deleteUserAccount } from "../lib/user-data";
+import { writeAuditLog } from "../lib/audit-log";
 import { getActiveFlags } from "../lib/feature-flags";
 import { getUserUsage } from "../lib/plan-limits";
 import { validateBody } from "../lib/validation";
@@ -342,12 +343,33 @@ me.delete("/", async (c) => {
 
   await validateBody(c, DeleteAccountSchema);
 
+  const snapshot = {
+    id: user.id,
+    clerkId: user.clerkId,
+    email: user.email,
+    name: user.name,
+    createdAt: user.createdAt instanceof Date ? user.createdAt.toISOString() : user.createdAt,
+    planId: user.planId,
+    stripeCustomerId: user.stripeCustomerId,
+  };
+
   const { r2Deleted } = await deleteUserAccount(
     prisma,
     c.env,
     user.id,
     user.clerkId
   );
+
+  writeAuditLog(prisma, {
+    actorId: user.clerkId,
+    actorEmail: user.email,
+    action: "user.delete",
+    entityType: "User",
+    entityId: user.id,
+    before: snapshot,
+    after: null,
+    metadata: { initiatedBy: "self", r2Deleted },
+  }).catch(() => {});
 
   console.log(
     JSON.stringify({

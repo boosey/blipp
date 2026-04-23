@@ -1,9 +1,17 @@
 import { Hono } from "hono";
+import { z } from "zod/v4";
 import type { Env } from "../../types";
 import { parsePagination, parseSort, paginatedResponse } from "../../lib/admin-helpers";
 import { writeAuditLog } from "../../lib/audit-log";
 import { getAuth } from "../../middleware/auth";
 import { recomputeEntitlement, recordBillingEvent } from "../../lib/entitlement";
+import { validateBody } from "../../lib/validation";
+import { deleteUserAccount } from "../../lib/user-data";
+
+const AdminDeleteUserSchema = z.object({
+  confirm: z.literal("DELETE"),
+  reason: z.string().min(5, "reason must be at least 5 characters").max(500),
+});
 
 const usersRoutes = new Hono<{ Bindings: Env }>();
 
@@ -671,6 +679,80 @@ usersRoutes.get("/:id/billing-events", async (c) => {
   ]);
 
   return c.json(paginatedResponse(events, total, page, pageSize));
+});
+
+// DELETE /:id - Delete a user account on their behalf (GDPR Art. 17 / CCPA right to erasure)
+// Requires { confirm: "DELETE", reason: string } in body.
+// Refuses admin targets and self-deletion; use manual removal for those.
+usersRoutes.delete("/:id", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const userId = c.req.param("id");
+  const body = await validateBody(c, AdminDeleteUserSchema);
+
+  const target = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      clerkId: true,
+      email: true,
+      name: true,
+      createdAt: true,
+      planId: true,
+      stripeCustomerId: true,
+      isAdmin: true,
+    },
+  });
+  if (!target) return c.json({ error: "User not found" }, 404);
+
+  const auth = getAuth(c);
+  const actorClerkId = auth!.userId!;
+
+  if (target.isAdmin) {
+    return c.json(
+      { error: "Cannot delete admin accounts through this endpoint. Revoke admin status first, or remove manually." },
+      400
+    );
+  }
+  if (target.clerkId === actorClerkId) {
+    return c.json({ error: "Use the self-serve delete flow in Settings to delete your own account." }, 400);
+  }
+
+  const snapshot = {
+    id: target.id,
+    clerkId: target.clerkId,
+    email: target.email,
+    name: target.name,
+    createdAt: target.createdAt instanceof Date ? target.createdAt.toISOString() : target.createdAt,
+    planId: target.planId,
+    stripeCustomerId: target.stripeCustomerId,
+  };
+
+  const { r2Deleted } = await deleteUserAccount(prisma, c.env, target.id, target.clerkId);
+
+  writeAuditLog(prisma, {
+    actorId: actorClerkId,
+    action: "user.delete",
+    entityType: "User",
+    entityId: target.id,
+    before: snapshot,
+    after: null,
+    metadata: { initiatedBy: "admin", reason: body.reason, r2Deleted },
+  }).catch(() => {});
+
+  console.log(
+    JSON.stringify({
+      level: "info",
+      action: "admin_user_account_deleted",
+      actorClerkId,
+      targetUserId: target.id,
+      targetEmail: target.email,
+      reason: body.reason,
+      r2Deleted,
+      ts: new Date().toISOString(),
+    })
+  );
+
+  return new Response(null, { status: 204 });
 });
 
 export { usersRoutes };

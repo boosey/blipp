@@ -142,7 +142,13 @@ export default function UsersPage() {
       detail={
         selectedUser && (
           <div className="flex flex-col gap-4 h-full min-h-0">
-            <UserDetailHeader user={selectedUser} />
+            <UserDetailHeader
+              user={selectedUser}
+              onDeleted={() => {
+                setSelectedDetail(null);
+                handleUserUpdate();
+              }}
+            />
 
             {/* Tabs */}
             <Tabs defaultValue="overview" className="flex-1 flex flex-col min-h-0">
