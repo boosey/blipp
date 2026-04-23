@@ -11,12 +11,11 @@ import { useSignIn, useSignUp, useClerk } from "@clerk/clerk-react";
 import { registerPlugin } from "@capacitor/core";
 import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { getApiBase } from "../lib/api-base";
 
 // Register the native plugin directly — avoids importing @capgo/capacitor-social-login
 // which Vite can't bundle (it's a native-only module)
 const SocialLoginPlugin: any = registerPlugin("SocialLogin");
-
-const API_BASE = "https://staging.podblipp.com";
 
 export function NativeSignIn() {
   const { signIn, isLoaded: signInLoaded } = useSignIn();
@@ -99,7 +98,7 @@ export function NativeSignIn() {
 
       console.log("NATIVE_AUTH: got ID token, sending to server");
 
-      const resp = await fetch(`${API_BASE}/api/auth/native`, {
+      const resp = await fetch(`${getApiBase()}/api/auth/native`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ provider, idToken, givenName, familyName }),

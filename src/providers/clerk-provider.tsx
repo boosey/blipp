@@ -2,6 +2,7 @@
 import { Capacitor } from "@capacitor/core";
 import { ClerkProvider } from "@clerk/clerk-react";
 import { useNavigate } from "react-router-dom";
+import { getApiBase } from "../lib/api-base";
 
 /** Strips capacitor:// URLs down to just the pathname for Clerk navigation. */
 function sanitizeUrl(url: string): string {
@@ -27,7 +28,7 @@ export function AppClerkProvider({ children }: { children: React.ReactNode }) {
       routerPush={(to) => navigate(sanitizeUrl(to))}
       routerReplace={(to) => navigate(sanitizeUrl(to), { replace: true })}
       {...(isNative && {
-        proxyUrl: "https://staging.podblipp.com/api/__clerk",
+        proxyUrl: `${getApiBase()}/api/__clerk`,
         clerkJSUrl: "https://clerk.podblipp.com/npm/@clerk/clerk-js@5/dist/clerk.browser.js",
         allowedRedirectOrigins: ["capacitor://podblipp.com", "capacitor://localhost"],
         signInUrl: "/sign-in",
