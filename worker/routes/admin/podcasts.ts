@@ -3,6 +3,7 @@ import type { Env } from "../../types";
 import { PIPELINE_STAGE_NAMES } from "../../lib/constants";
 import { parsePagination, parseSort, paginatedResponse } from "../../lib/admin-helpers";
 import { getAuth } from "../../middleware/auth";
+import { invalidatePodcastAsMusic, type InvalidationReason } from "../../lib/podcast-invalidation";
 
 const podcastsRoutes = new Hono<{ Bindings: Env }>();
 
@@ -544,6 +545,23 @@ podcastsRoutes.delete("/:id", async (c) => {
   });
 
   return c.json({ data: { id: podcast.id, status: podcast.status } });
+});
+
+// POST /:id/invalidate - Mark a podcast as music / not-a-podcast. Deletes
+// subscriptions, favorites, votes; cancels in-flight briefings; hides from UI.
+podcastsRoutes.post("/:id/invalidate", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const podcastId = c.req.param("id");
+  const body = await c.req.json<{ reason?: InvalidationReason }>().catch(() => ({ reason: undefined }));
+  const reason = body.reason ?? "admin";
+
+  try {
+    const result = await invalidatePodcastAsMusic(prisma, podcastId, reason);
+    return c.json({ data: { podcastId, ...result } });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return c.json({ error: msg }, 404);
+  }
 });
 
 // POST /:id/refresh - Enqueue feed refresh

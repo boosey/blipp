@@ -208,8 +208,10 @@ export async function assembleBriefings(
   if (successCount === 0) {
     // Only update FeedItems for USER mode (CATALOG/SEO_BACKFILL have none)
     if (request?.mode !== "CATALOG" && request?.mode !== "SEO_BACKFILL") {
+      // Don't overwrite CANCELLED items — e.g. a podcast invalidated mid-run
+      // already carries a sentinel errorMessage that the UI needs preserved.
       await prisma.feedItem.updateMany({
-        where: { requestId },
+        where: { requestId, status: { notIn: ["CANCELLED", "READY"] } },
         data: { status: "FAILED", errorMessage: "No completed clips available" },
       });
     }

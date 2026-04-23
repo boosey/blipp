@@ -9,6 +9,7 @@ import { writeEvent } from "../lib/pipeline-events";
 import { writeAiError, classifyAiError, AiProviderError, isRateLimitError, parseRetryAfterMs } from "../lib/ai-errors";
 import { recordSuccess, recordFailure, initCircuitBreakerConfig } from "../lib/circuit-breaker";
 import { getConfig } from "../lib/config";
+import { NotAPodcastError, invalidatePodcastAsMusic, MUSIC_FEED_ITEM_ERROR } from "../lib/podcast-invalidation";
 import type { DistillationMessage } from "../lib/queue-messages";
 import { resolveEnvForPipeline } from "../lib/service-key-resolver";
 import type { Env } from "../types";
@@ -336,6 +337,29 @@ export async function handleDistillation(
         const errorMessage =
           err instanceof Error ? err.message : String(err);
 
+        // Special path: LLM told us this isn't a podcast (song lyrics / music).
+        // Invalidate the whole podcast so subscriptions/favorites are wiped and
+        // future briefings for it are blocked. Still falls through to mark the
+        // job FAILED below so the request can assemble whatever else succeeded.
+        if (err instanceof NotAPodcastError) {
+          try {
+            const ep = await prisma.episode.findUnique({
+              where: { id: episodeId },
+              select: { podcastId: true },
+            });
+            if (ep?.podcastId) {
+              await invalidatePodcastAsMusic(prisma, ep.podcastId, "song_lyrics_detected");
+              if (step) {
+                await writeEvent(prisma, step.id, "WARN",
+                  `Podcast invalidated as music (song lyrics detected)`, { podcastId: ep.podcastId }
+                ).catch(() => {});
+              }
+            }
+          } catch (invalidateErr) {
+            log.error("podcast_invalidate_failed", { episodeId, jobId }, invalidateErr);
+          }
+        }
+
         // Mark step as FAILED if it was created
         if (step) {
           await prisma.pipelineStep
@@ -396,13 +420,16 @@ export async function handleDistillation(
           }).catch(() => {}); // Fire-and-forget
         }
 
-        // Notify orchestrator so job is marked FAILED and assembly can proceed
+        // Notify orchestrator so job is marked FAILED and assembly can proceed.
+        // For NotAPodcast we replace the verbose raw error with the UI sentinel
+        // so the FeedItem surfaces the proper "this is music, not a podcast" message.
+        const reportedError = err instanceof NotAPodcastError ? MUSIC_FEED_ITEM_ERROR : errorMessage;
         if (requestId) {
           await env.ORCHESTRATOR_QUEUE.send({
             requestId,
             action: "job-failed",
             jobId,
-            errorMessage,
+            errorMessage: reportedError,
             correlationId,
           }).catch((sendErr: unknown) => {
             console.error(JSON.stringify({

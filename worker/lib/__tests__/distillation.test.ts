@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   extractClaims,
   generateNarrative,
@@ -7,6 +7,7 @@ import {
   type Claim,
   type EpisodeMetadata,
 } from "../distillation";
+import { NotAPodcastError } from "../podcast-invalidation";
 import type { LlmProvider, LlmResult } from "../llm-providers";
 import { clearConfigCache } from "../config";
 import { PROMPT_CONFIG_KEYS } from "../prompt-defaults";
@@ -133,6 +134,22 @@ describe("extractClaims", () => {
   it("should throw on empty array", async () => {
     const llm = createMockLlmProvider("[]");
     await expect(extractClaims(mockPrisma, llm, "transcript", "mock-model-1", 8192, mockEnv)).rejects.toThrow("LLM output failed schema validation");
+  });
+
+  it("should throw NotAPodcastError when LLM reports song lyrics", async () => {
+    const raw = "[]\n```\n\nThe provided transcript appears to be song lyrics rather than a podcast episode.";
+    const llm = createMockLlmProvider(raw);
+    await expect(
+      extractClaims(mockPrisma, llm, "transcript", "mock-model-1", 8192, mockEnv)
+    ).rejects.toBeInstanceOf(NotAPodcastError);
+  });
+
+  it("should throw NotAPodcastError when LLM says 'not a podcast'", async () => {
+    const raw = "[]\nThis content is not a podcast episode — it looks like a song recording.";
+    const llm = createMockLlmProvider(raw);
+    await expect(
+      extractClaims(mockPrisma, llm, "transcript", "mock-model-1", 8192, mockEnv)
+    ).rejects.toBeInstanceOf(NotAPodcastError);
   });
 
   it("should pass claims system prompt from DB to LLM", async () => {

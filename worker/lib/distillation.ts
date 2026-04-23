@@ -3,6 +3,7 @@ import type { LlmProvider, LlmCompletionOptions } from "./llm-providers";
 import { calculateTokenCost, type AiUsage, type ModelPricing } from "./ai-usage";
 import { getConfig, getRequiredConfig } from "./config";
 import { PROMPT_CONFIG_KEYS } from "./prompt-defaults";
+import { NotAPodcastError, looksLikeSongLyricsOutput } from "./podcast-invalidation";
 
 /** Default speaking rate — overridable via PlatformConfig audio.wordsPerMinute. */
 export const WORDS_PER_MINUTE = 150;
@@ -73,16 +74,36 @@ export async function extractClaims(
     apiKeyOverride
   );
 
-  const text = result.text
+  const rawText = result.text;
+  const stripped = rawText
     .replace(/^```(?:json)?\s*\n?/i, "")
-    .replace(/\n?```\s*$/i, "")
+    .replace(/\n?```[\s\S]*$/i, "")
     .trim();
+
+  // Early "not a podcast" signal: LLM wrote prose saying the transcript is song lyrics
+  // (often paired with an empty [] array before the prose). Route to a dedicated
+  // error so the queue can invalidate the podcast.
+  if (looksLikeSongLyricsOutput(rawText)) {
+    throw new NotAPodcastError(rawText.slice(0, 500));
+  }
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(text);
+    parsed = JSON.parse(stripped);
   } catch {
-    throw new Error(`LLM returned invalid JSON: ${text.slice(0, 200)}`);
+    // Couldn't parse — try to extract the first balanced JSON array or object
+    const firstArray = stripped.match(/\[[\s\S]*?\]/);
+    const firstObject = stripped.match(/\{[\s\S]*?\}/);
+    const candidate = firstArray?.[0] ?? firstObject?.[0];
+    if (candidate) {
+      try {
+        parsed = JSON.parse(candidate);
+      } catch {
+        throw new Error(`LLM returned invalid JSON: ${stripped.slice(0, 200)}`);
+      }
+    } else {
+      throw new Error(`LLM returned invalid JSON: ${stripped.slice(0, 200)}`);
+    }
   }
 
   // Handle common LLM wrapping patterns: { "claims": [...] } or { "results": [...] }
@@ -91,6 +112,15 @@ export async function extractClaims(
     const arrayValue = obj.claims ?? obj.results ?? obj.data;
     if (Array.isArray(arrayValue)) {
       parsed = arrayValue;
+    }
+  }
+
+  // Explicit empty array = LLM found no claims. If the raw output hinted at
+  // song lyrics / music, treat as NotAPodcast; otherwise fall through to the
+  // schema validator (which requires min(1)) and surface a generic failure.
+  if (Array.isArray(parsed) && parsed.length === 0) {
+    if (looksLikeSongLyricsOutput(rawText)) {
+      throw new NotAPodcastError(rawText.slice(0, 500));
     }
   }
 

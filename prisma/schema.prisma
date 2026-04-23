@@ -214,8 +214,10 @@ model Podcast {
   feedHealth     String?   // "excellent" | "good" | "fair" | "poor" | "broken"
   feedError      String?
   episodeCount   Int       @default(0)
-  status         String    @default("active") // "active" | "paused" | "archived" | "pending_deletion" | "evicted"
+  status         String    @default("active") // "active" | "paused" | "archived" | "pending_deletion" | "evicted" | "music"
   deliverable    Boolean   @default(true)     // false when no deliverable episodes exist
+  invalidationReason String?                   // when status=music: "music_host" | "music_category" | "song_lyrics_detected" | "admin"
+  invalidatedAt      DateTime?                 // when the podcast was invalidated (e.g. marked as music)
   geoProcessedAt DateTime?                     // null = not geo-processed yet
   appleRank          Int?      // Position in Apple Top 200 chart (1-200, null if unranked)
   piRank             Int?      // Best position across PI trending categories (1 = most trending). Updated each discovery run.

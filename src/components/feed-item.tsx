@@ -11,6 +11,9 @@ import { BlippFeedbackSheet } from "./blipp-feedback-sheet";
 /** Map raw pipeline error to a short user-facing message. */
 function friendlyError(raw: string | null): string {
   if (!raw) return "Something went wrong";
+  // Sentinel written by podcast-invalidation when a feed turns out to be music.
+  if (raw.startsWith("NOT_A_PODCAST:music"))
+    return "This feed is music, not a podcast — removed from your feed";
   const l = raw.toLowerCase();
   if (l.includes("audio fetch failed") || l.includes("audio url") || l.includes("non-audio content") || l.includes("too small"))
     return "Episode audio unavailable";

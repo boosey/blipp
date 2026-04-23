@@ -40,6 +40,15 @@ briefings.post("/generate", async (c) => {
   const prisma = c.get("prisma") as any;
   const user = await getUserWithPlan(c, prisma);
 
+  // Reject briefings for podcasts we've invalidated as music.
+  const podcastRow = await prisma.podcast.findUnique({
+    where: { id: body.podcastId },
+    select: { status: true },
+  });
+  if (podcastRow?.status === "music") {
+    return c.json({ error: "This feed is music, not a podcast — we can't brief music content" }, 422);
+  }
+
   // Enforce plan limits
   const durationError = checkDurationLimit(body.durationTier, user.plan.maxDurationMinutes);
   if (durationError) return c.json({ error: durationError }, 403);

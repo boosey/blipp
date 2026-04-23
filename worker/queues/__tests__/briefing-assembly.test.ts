@@ -301,9 +301,10 @@ describe("handleBriefingAssembly", () => {
       const msg = createMsg({ requestId: "req-1" });
       await handleBriefingAssembly(createBatch([msg]), env, ctx);
 
-      // FeedItems marked FAILED
+      // FeedItems marked FAILED — but not pre-existing CANCELLED/READY items
+      // (e.g. CANCELLED by podcast invalidation mid-run).
       expect(mockPrisma.feedItem.updateMany).toHaveBeenCalledWith({
-        where: { requestId: "req-1" },
+        where: { requestId: "req-1", status: { notIn: ["CANCELLED", "READY"] } },
         data: {
           status: "FAILED",
           errorMessage: "No completed clips available",

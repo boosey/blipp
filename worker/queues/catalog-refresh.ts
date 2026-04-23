@@ -5,6 +5,7 @@ import { getConfig } from "../lib/config";
 import { getCatalogSource } from "../lib/catalog-sources";
 import type { DiscoveredPodcast } from "../lib/catalog-sources";
 import { evictToFit } from "../lib/catalog-eviction";
+import { isMusicOnlyFeed } from "../lib/podcast-invalidation";
 
 const DEFAULT_DISCOVER_COUNT = 20;
 
@@ -225,7 +226,22 @@ async function filterNewPodcasts(prisma: PrismaClient, discovered: DiscoveredPod
     for (const p of existing) existingUrls.add(p.feedUrl);
   }
 
-  return discovered.filter((p) => p.feedUrl && !existingUrls.has(p.feedUrl));
+  return discovered.filter((p) => {
+    if (!p.feedUrl) return false;
+    if (existingUrls.has(p.feedUrl)) return false;
+    // Never import feeds from music-only hosts (SoundCloud user feeds, etc.)
+    if (isMusicOnlyFeed(p.feedUrl)) {
+      console.log(JSON.stringify({
+        level: "info",
+        action: "catalog_refresh_skip_music_feed",
+        feedUrl: p.feedUrl,
+        title: p.title,
+        ts: new Date().toISOString(),
+      }));
+      return false;
+    }
+    return true;
+  });
 }
 
 /**

@@ -10,6 +10,7 @@ import { getCatalogSource } from "../lib/catalog-sources";
 import { recomputeUserProfile } from "../lib/recommendations";
 import { checkVoicePresetAccess } from "../lib/voice-presets";
 import { validateBody } from "../lib/validation";
+import { isMusicOnlyFeed } from "../lib/podcast-invalidation";
 
 /* ── Zod schemas ─────────────────────────────────────────── */
 
@@ -72,7 +73,11 @@ podcasts.get("/catalog", async (c) => {
   // Skip exclusions when user explicitly selected this category
   const excludedCategories: string[] = explicit ? [] : (user.excludedCategories ?? []);
 
-  const where: any = { deliverable: true };
+  // Exclude invalidated podcasts (music, archived, pending_deletion, evicted) from browsing.
+  const where: any = {
+    deliverable: true,
+    status: { notIn: ["music", "archived", "pending_deletion", "evicted"] },
+  };
   if (category) {
     where.categories = { has: category };
   }
@@ -170,6 +175,21 @@ podcasts.post("/subscribe", async (c) => {
 
   const prisma = c.get("prisma") as any;
   const user = await getUserWithPlan(c, prisma);
+
+  // Reject feeds from music-only hosts (SoundCloud user RSS, etc.) — they are
+  // DJ mixes / songs, not podcasts, and won't distill.
+  if (isMusicOnlyFeed(body.feedUrl)) {
+    return c.json({ error: "This feed is music, not a podcast — we can't brief music content" }, 422);
+  }
+
+  // Reject feeds we've already invalidated as music.
+  const existingPodcast = await prisma.podcast.findUnique({
+    where: { feedUrl: body.feedUrl },
+    select: { status: true },
+  });
+  if (existingPodcast?.status === "music") {
+    return c.json({ error: "This feed is music, not a podcast — we can't brief music content" }, 422);
+  }
 
   // Enforce plan limits
   const durationError = checkDurationLimit(body.durationTier, user.plan.maxDurationMinutes);
@@ -455,8 +475,10 @@ podcasts.get("/subscriptions", async (c) => {
   const prisma = c.get("prisma") as any;
   const user = await getCurrentUser(c, prisma);
 
+  // Exclude invalidated podcasts — in practice these Subscription rows were
+  // deleted when the podcast was invalidated, but we filter defensively.
   const subscriptions = await prisma.subscription.findMany({
-    where: { userId: user.id },
+    where: { userId: user.id, podcast: { status: { notIn: ["music", "archived"] } } },
     include: { podcast: true },
   });
 
@@ -471,7 +493,7 @@ podcasts.get("/favorites", async (c) => {
   const user = await getCurrentUser(c, prisma);
 
   const favorites = await prisma.podcastFavorite.findMany({
-    where: { userId: user.id },
+    where: { userId: user.id, podcast: { status: { notIn: ["music", "archived"] } } },
     include: { podcast: { select: { id: true, title: true, imageUrl: true, author: true } } },
     orderBy: { createdAt: "desc" },
   });
@@ -783,6 +805,11 @@ podcasts.get("/:id", async (c) => {
     prisma.podcastVote.findUnique({ where: { userId_podcastId: { userId: user.id, podcastId } } }),
     prisma.episode.count({ where: { podcastId } }),
   ]);
+
+  // Invalidated podcasts (e.g. detected as music) should not be user-accessible.
+  if (podcast.status === "music") {
+    return c.json({ error: "This feed was removed — it turned out to be music, not a podcast." }, 410);
+  }
 
   // Track detail-view timestamp for catalog eviction decisions (non-blocking)
   c.executionCtx.waitUntil(
