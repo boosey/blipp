@@ -84,13 +84,15 @@ GitHub Actions takes 30-60 seconds to create a new run after a push. If you chec
 
 **The harness blocks standalone `sleep` ≥ 2s. You MUST run the wait via Bash with `run_in_background: true` so the harness notifies you on completion. Do NOT poll, do NOT reason your way out of waiting.**
 
-Run this as a backgrounded Bash call (`run_in_background: true`) and wait for the completion notification before moving to Step 4:
+Run this as a backgrounded Bash call (`run_in_background: true`) and **wait for the completion notification** before doing anything else:
 
 ```bash
 sleep 30 && gh run list --limit 5 --json databaseId,startedAt,status,event,headBranch --jq '.[] | select(.headBranch=="main" and .event=="push")'
 ```
 
 Combining the sleep with the first `gh run list` in one backgrounded call gives you both the wait and the first lookup in a single notification — no second round trip needed.
+
+**Do not** run a foreground `gh run list` while the background task is still in flight. The notification's output is the result — use it. Running a foreground duplicate wastes a tool call and the stale background notification will land later as confusing noise.
 
 ### Step 4: Find the CI run
 
@@ -126,13 +128,29 @@ Monitoring CI run #<RUN_ID>...
 
 #### 5b: Poll loop
 
-Poll every 15 seconds. The harness blocks standalone foreground `sleep`, so combine the sleep and the `gh run view` into one Bash call run with `run_in_background: true`, then wait for the completion notification before reading the output:
+Use a strict 15-second cadence. **Do not expand the interval** no matter how long a CI step takes — a slow `npm test` does not mean you should sleep longer. Always 15s.
 
-```bash
-sleep 15 && gh run view <RUN_ID> --json jobs --jq '.jobs[0].steps[] | "\(.status)\t\(.conclusion)\t\(.name)"'
-```
+**Exact procedure for each cycle — follow this literally:**
 
-After each poll, print the **full updated checklist** of the CI steps that matter. The deploy-staging workflow has these meaningful steps (skip the internal GitHub "Set up job" / "Complete job" / "Post" steps — only show steps that correspond to real build work):
+1. Launch ONE Bash call with `run_in_background: true`:
+   ```bash
+   sleep 15 && gh run view <RUN_ID> --json status,conclusion,jobs --jq '{status, conclusion, steps: [.jobs[0].steps[] | "\(.status)\t\(.conclusion)\t\(.name)"]}'
+   ```
+2. **Stop. Do nothing else until the `<task-notification>` for this background task arrives.** No Read calls, no foreground duplicate, no other tool invocations. The harness will send you the notification when the sleep finishes and the command exits.
+3. When the notification arrives, Read the output file it points to. Parse the JSON.
+4. Print the updated checklist (see format below).
+5. If `status != "completed"`, go back to step 1. Otherwise move to Step 5c.
+
+**Anti-patterns — do not do these (they cause phantom processes and double work):**
+
+- ❌ Reading the output file immediately after launching the background task. It will be empty because the sleep hasn't finished. Reading it does not advance time.
+- ❌ Running a foreground `gh run view ...` "just to check" while a background poll is pending. That creates a duplicate and leaves the background orphaned — its late-arriving notification will land in the conversation minutes after the deploy completes as confusing noise.
+- ❌ Increasing the sleep duration because CI feels slow. Stay at 15s.
+- ❌ Launching a second background poll before the first one's notification arrives.
+
+**One poll in flight at a time.** If the previous background task hasn't completed yet, wait — don't launch another.
+
+After each successful read, print the **full updated checklist** of the CI steps that matter. The deploy-staging workflow has these meaningful steps (skip the internal GitHub "Set up job" / "Complete job" / "Post" steps — only show steps that correspond to real build work):
 
 1. Checkout
 2. Setup Node
@@ -172,7 +190,7 @@ Example output during a run:
 ⬜ Commit version bump
 ```
 
-Keep polling and reprinting until the overall run status is `completed`. Each poll must be a single backgrounded Bash call (`sleep 15 && gh run view ...` with `run_in_background: true`); wait for the completion notification before reading output and starting the next poll. Never call `sleep` standalone in the foreground.
+If the same step stays `⏳` across several polls (e.g. a long test run), that is normal — keep polling at 15s. Do not switch strategies.
 
 #### 5c: Final result
 
