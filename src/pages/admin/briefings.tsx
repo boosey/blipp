@@ -32,7 +32,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useAdminFetch } from "@/lib/admin-api";
+import { useAdminFetch } from "@/lib/api-client";
 import { relativeTime } from "@/lib/admin-formatters";
 import type {
   AdminBriefing,

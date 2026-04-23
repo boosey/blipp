@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useApiFetch } from "./api";
+import { useApiFetch } from "./api-client";
 
 interface UseFetchResult<T> {
   data: T | null;

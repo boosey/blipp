@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Plus, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useAdminFetch } from "@/lib/admin-api";
+import { useAdminFetch } from "@/lib/api-client";
 import { STAGE_LABELS } from "@/lib/ai-models";
 import type { AIStage } from "@/lib/ai-models";
 import type { AiModelEntry } from "@/types/admin";

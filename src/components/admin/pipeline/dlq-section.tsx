@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { AlertTriangle, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { useAdminFetch } from "@/lib/admin-api";
+import { useAdminFetch } from "@/lib/api-client";
 
 interface DlqData {
   stuckJobs: { id: string; currentStage: string; stuckMinutes: number }[];

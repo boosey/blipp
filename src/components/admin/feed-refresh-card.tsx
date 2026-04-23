@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Rss, AlertTriangle, Clock, Podcast, FileText, Volume2, Database } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useAdminFetch } from "@/lib/admin-api";
+import { useAdminFetch } from "@/lib/api-client";
 import { relativeTime } from "@/lib/admin-formatters";
 import type { FeedRefreshSummary } from "@/types/admin";
 

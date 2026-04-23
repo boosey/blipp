@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useAdminFetch } from "@/lib/admin-api";
+import { useAdminFetch } from "@/lib/api-client";
 import type { RecommendationConfigItem } from "./types";
 
 export interface SettingsTabProps {

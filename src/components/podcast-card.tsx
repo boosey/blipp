@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ChevronRight, Heart } from "lucide-react";
-import { useApiFetch } from "../lib/api";
+import { useApiFetch } from "../lib/api-client";
 import { usePodcastSheet } from "../contexts/podcast-sheet-context";
 import { ThumbButtons } from "./thumb-buttons";
 

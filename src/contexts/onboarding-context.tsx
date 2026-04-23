@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, useRef, useCallback } from "react";
 import type { ReactNode } from "react";
-import { useApiFetch } from "../lib/api";
+import { useApiFetch } from "../lib/api-client";
 
 interface OnboardingContextValue {
   needsOnboarding: boolean;

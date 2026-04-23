@@ -9,7 +9,7 @@ import {
   type IAPOffering,
   type PurchaseResult,
 } from "@/lib/iap";
-import { useApiFetch } from "@/lib/api";
+import { useApiFetch } from "@/lib/api-client";
 
 export type BillingSource = "STRIPE" | "APPLE";
 

@@ -13,7 +13,7 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { useAdminFetch } from "@/lib/admin-api";
+import { useAdminFetch } from "@/lib/api-client";
 import { relativeTime } from "@/lib/admin-formatters";
 import type { DeletePreview, BriefingRequestStatus } from "@/types/admin";
 

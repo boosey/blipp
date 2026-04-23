@@ -10,7 +10,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { useAdminFetch } from "@/lib/admin-api";
+import { useAdminFetch } from "@/lib/api-client";
 import type { VoicePresetEntry } from "@/types/admin";
 import { PresetTable } from "@/components/admin/voice-presets/preset-table";
 import { PresetDialog, type TtsChainEntry } from "@/components/admin/voice-presets/preset-dialog";

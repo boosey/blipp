@@ -8,7 +8,7 @@ import {
 } from "react";
 import { useAuth } from "@clerk/clerk-react";
 import type { FeedItem } from "../types/feed";
-import { useApiFetch } from "../lib/api";
+import { useApiFetch } from "../lib/api-client";
 import { getJingleUrl } from "../lib/jingle-cache";
 import { getApiBase } from "../lib/api-base";
 

@@ -32,7 +32,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Card } from "@/components/ui/card";
-import { useAdminFetch } from "@/lib/admin-api";
+import { useAdminFetch } from "@/lib/api-client";
 import { formatCost, formatDurationSec, formatBytes } from "@/lib/admin-formatters";
 import type {
   ClaimsExperiment,

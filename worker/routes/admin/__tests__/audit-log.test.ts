@@ -27,7 +27,7 @@ describe("Admin Audit Log", () => {
     vi.clearAllMocks();
     env = createMockEnv();
     app = new Hono<{ Bindings: Env }>();
-    app.use("/*", async (c, next) => { c.set("prisma", mockPrisma); await next(); });
+    app.use("/*", async (c, next) => { c.set("prisma", mockPrisma as any); await next(); });
     app.route("/audit-log", auditLogRoutes);
 
     Object.values(mockPrisma).forEach((model) => {

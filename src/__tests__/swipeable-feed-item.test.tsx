@@ -4,7 +4,7 @@ import type { FeedItem } from "../types/feed";
 
 const mockAddToQueue = vi.fn();
 
-vi.mock("../lib/api", () => ({
+vi.mock("../lib/api-client", () => ({
   useApiFetch: () => vi.fn().mockResolvedValue({}),
 }));
 

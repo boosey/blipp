@@ -8,7 +8,7 @@ import { RefreshCw, Lock, Unlock, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useAdminFetch } from "@/lib/admin-api";
+import { useAdminFetch } from "@/lib/api-client";
 import { usePipelineConfig } from "@/hooks/use-pipeline-config";
 import { PipelineControls } from "@/components/admin/pipeline-controls";
 import { FeedRefreshCard } from "@/components/admin/feed-refresh-card";

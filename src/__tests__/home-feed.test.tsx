@@ -26,7 +26,7 @@ vi.mock("../contexts/audio-context", () => ({
 
 // Mock useApiFetch
 const mockApiFetch = vi.fn();
-vi.mock("../lib/api", () => ({
+vi.mock("../lib/api-client", () => ({
   useApiFetch: () => mockApiFetch,
 }));
 

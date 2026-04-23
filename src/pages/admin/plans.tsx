@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { CreditCard, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useAdminFetch } from "@/lib/admin-api";
+import { useAdminFetch } from "@/lib/api-client";
 import type { AdminPlan, DurationTier, PaginatedResponse, VoicePresetEntry } from "@/types/admin";
 import {
   PlanFormDialog,

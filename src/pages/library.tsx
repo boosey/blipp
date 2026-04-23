@@ -2,7 +2,7 @@ import { useState, lazy, Suspense, useRef, useEffect } from "react";
 import { Library, Heart, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useFetch } from "../lib/use-fetch";
-import { useApiFetch } from "../lib/api";
+import { useApiFetch } from "../lib/api-client";
 import { LibrarySkeleton } from "../components/skeletons/library-skeleton";
 import { EmptyState } from "../components/empty-state";
 import { usePullToRefresh } from "../hooks/use-pull-to-refresh";

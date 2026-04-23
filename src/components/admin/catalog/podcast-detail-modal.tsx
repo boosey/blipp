@@ -19,7 +19,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { useAdminFetch } from "@/lib/admin-api";
+import { useAdminFetch } from "@/lib/api-client";
 import type { AdminPodcastDetail } from "@/types/admin";
 import { HealthBadge, StatusBadge } from "./catalog-badges";
 import { ClipRow } from "./clip-row";

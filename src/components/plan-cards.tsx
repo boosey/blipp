@@ -4,7 +4,7 @@ import { SignedIn, SignedOut, SignInButton } from "@clerk/clerk-react";
 import { toast } from "sonner";
 import { Sparkles, Check, Star } from "lucide-react";
 import { Capacitor } from "@capacitor/core";
-import { apiFetch } from "../lib/api";
+import { apiFetch } from "../lib/api-client";
 import { useIAP } from "../hooks/use-iap";
 
 export interface Plan {

@@ -67,7 +67,7 @@ describe("GET /me", () => {
     env = createMockEnv();
 
     app = new Hono<{ Bindings: Env }>();
-    app.use("/*", async (c, next) => { c.set("prisma", mockPrisma); await next(); });
+    app.use("/*", async (c, next) => { c.set("prisma", mockPrisma as any); await next(); });
     app.route("/me", me);
 
     resetMockPrisma();
@@ -135,7 +135,7 @@ describe("GET /me/export", () => {
     env = createMockEnv();
 
     app = new Hono<{ Bindings: Env }>();
-    app.use("/*", async (c, next) => { c.set("prisma", mockPrisma); await next(); });
+    app.use("/*", async (c, next) => { c.set("prisma", mockPrisma as any); await next(); });
     app.route("/me", me);
 
     resetMockPrisma();
@@ -184,7 +184,7 @@ describe("DELETE /me", () => {
       const { status, message, code, details } = classifyHttpError(err);
       return c.json({ error: message, code, details }, status as any);
     });
-    app.use("/*", async (c, next) => { c.set("prisma", mockPrisma); await next(); });
+    app.use("/*", async (c, next) => { c.set("prisma", mockPrisma as any); await next(); });
     app.route("/me", me);
 
     resetMockPrisma();
@@ -255,7 +255,7 @@ describe("Validation", () => {
       const { status, message, code, details } = classifyHttpError(err);
       return c.json({ error: message, code, details }, status as any);
     });
-    app.use("/*", async (c, next) => { c.set("prisma", mockPrisma); await next(); });
+    app.use("/*", async (c, next) => { c.set("prisma", mockPrisma as any); await next(); });
     app.route("/me", me);
 
     resetMockPrisma();

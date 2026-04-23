@@ -29,7 +29,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Card } from "@/components/ui/card";
-import { useAdminFetch } from "@/lib/admin-api";
+import { useAdminFetch } from "@/lib/api-client";
 import { StatusBadge } from "@/components/admin/status-badge";
 import { ProgressBar } from "@/components/admin/progress-bar";
 import { relativeTime } from "@/lib/admin-formatters";

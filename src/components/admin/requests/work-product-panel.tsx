@@ -7,7 +7,7 @@ import {
   ChevronDown,
   ChevronRight,
 } from "lucide-react";
-import { useAdminFetch } from "@/lib/admin-api";
+import { useAdminFetch } from "@/lib/api-client";
 import { formatBytes } from "@/lib/admin-formatters";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { WorkProductSummary, WorkProductType } from "@/types/admin";

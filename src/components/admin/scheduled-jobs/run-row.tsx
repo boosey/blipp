@@ -2,7 +2,7 @@ import { useState, useCallback } from "react";
 import { ChevronDown, ChevronUp, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { useAdminFetch } from "@/lib/admin-api";
+import { useAdminFetch } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { relativeTime } from "@/lib/admin-formatters";
 import {

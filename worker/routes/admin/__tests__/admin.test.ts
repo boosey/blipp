@@ -42,7 +42,7 @@ describe("requireAdmin middleware", () => {
     env = createMockEnv();
 
     app = new Hono<{ Bindings: Env }>();
-    app.use("/*", async (c, next) => { c.set("prisma", mockPrisma); await next(); });
+    app.use("/*", async (c, next) => { c.set("prisma", mockPrisma as any); await next(); });
     app.use("/admin/*", requireAdmin);
     app.get("/admin/test", (c) => c.json({ ok: true }));
 

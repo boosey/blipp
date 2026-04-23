@@ -25,6 +25,8 @@ import { securityHeaders } from "./middleware/security-headers";
 import { cacheResponse } from "./middleware/cache";
 import { deepHealthCheck } from "./lib/health";
 import { publicPages } from "./routes/public-pages";
+import sitemap from "./routes/sitemap";
+import clerkAuthProxy from "./routes/clerk-auth-proxy";
 import type { Env } from "./types";
 
 const app = new Hono<{ Bindings: Env }>();
@@ -86,47 +88,7 @@ app.use("/api/*", cors({
 // Clerk Frontend API proxy — routes Clerk SDK requests through our domain
 // so native apps (capacitor://localhost) don't hit CORS issues on clerk.podblipp.com.
 // Must be before Clerk auth middleware since these are Clerk's own API calls.
-app.all("/__clerk/*", async (c) => {
-  const origin = c.req.header("origin") ?? "";
-  if (!c.env.ALLOWED_ORIGINS) {
-    throw new Error("ALLOWED_ORIGINS env var is required");
-  }
-  const allowedOrigins = c.env.ALLOWED_ORIGINS.split(",").map((o: string) => o.trim());
-  const corsOrigin = allowedOrigins.includes(origin) ? origin : "";
-
-  // Handle CORS preflight
-  if (c.req.method === "OPTIONS") {
-    return new Response(null, {
-      status: 204,
-      headers: {
-        "Access-Control-Allow-Origin": corsOrigin,
-        "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-        "Access-Control-Allow-Headers": c.req.header("access-control-request-headers") ?? "*",
-        "Access-Control-Allow-Credentials": "true",
-        "Access-Control-Max-Age": "86400",
-      },
-    });
-  }
-
-  // Proxy to Clerk's Frontend API
-  const url = new URL(c.req.url);
-  const clerkPath = url.pathname.replace("/__clerk", "");
-  const targetUrl = `${c.env.CLERK_FAPI_URL}${clerkPath}${url.search}`;
-
-  const headers = new Headers(c.req.raw.headers);
-  headers.delete("host");
-
-  const resp = await fetch(targetUrl, {
-    method: c.req.method,
-    headers,
-    body: c.req.method !== "GET" && c.req.method !== "HEAD" ? c.req.raw.body : undefined,
-  });
-
-  const proxyResp = new Response(resp.body, resp);
-  proxyResp.headers.set("Access-Control-Allow-Origin", corsOrigin);
-  proxyResp.headers.set("Access-Control-Allow-Credentials", "true");
-  return proxyResp;
-});
+app.route("/__clerk", clerkAuthProxy);
 
 // Clerk auth middleware — populates auth context for all API routes.
 // Skips Clerk entirely for server-to-server requests that authenticate via
@@ -218,59 +180,7 @@ app.use("/*", securityHeaders);
 app.route("/p", publicPages);
 
 // Dynamic sitemap — includes all public Blipp pages
-app.get("/sitemap.xml", prismaMiddleware, async (c) => {
-  const prisma = c.get("prisma") as any;
-  const SITE = "https://podblipp.com";
-
-  // Static pages
-  const staticUrls = [
-    { loc: "/", priority: "1.0", changefreq: "weekly" },
-    { loc: "/about", priority: "0.7", changefreq: "monthly" },
-    { loc: "/pricing", priority: "0.8", changefreq: "monthly" },
-    { loc: "/contact", priority: "0.5", changefreq: "monthly" },
-    { loc: "/support", priority: "0.5", changefreq: "monthly" },
-    { loc: "/how-it-works", priority: "0.8", changefreq: "monthly" },
-    { loc: "/blog/why-you-dont-need-to-listen-to-every-podcast", priority: "0.7", changefreq: "monthly" },
-    { loc: "/blog/best-way-to-keep-up-with-podcasts", priority: "0.7", changefreq: "monthly" },
-  ];
-
-  // Public episode pages
-  const episodes = await prisma.episode.findMany({
-    where: { publicPage: true, slug: { not: null } },
-    select: { slug: true, updatedAt: true, podcast: { select: { slug: true } } },
-  });
-
-  // Show pages (podcasts with at least one public episode)
-  const podcastSlugs = [...new Set(episodes.map((e: any) => e.podcast.slug).filter(Boolean))];
-
-  // Category pages
-  const categories = await prisma.category.findMany({
-    where: { slug: { not: null } },
-    select: { slug: true },
-  });
-
-  let xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`;
-  for (const s of staticUrls) {
-    xml += `<url><loc>${SITE}${s.loc}</loc><changefreq>${s.changefreq}</changefreq><priority>${s.priority}</priority></url>\n`;
-  }
-  for (const slug of podcastSlugs) {
-    xml += `<url><loc>${SITE}/p/${slug}</loc><changefreq>daily</changefreq><priority>0.8</priority></url>\n`;
-  }
-  for (const ep of episodes) {
-    if (!ep.podcast.slug) continue;
-    const lastmod = ep.updatedAt ? new Date(ep.updatedAt).toISOString().split("T")[0] : "";
-    xml += `<url><loc>${SITE}/p/${ep.podcast.slug}/${ep.slug}</loc>${lastmod ? `<lastmod>${lastmod}</lastmod>` : ""}<priority>0.6</priority></url>\n`;
-  }
-  for (const cat of categories) {
-    xml += `<url><loc>${SITE}/p/category/${cat.slug}</loc><changefreq>weekly</changefreq><priority>0.5</priority></url>\n`;
-  }
-  xml += `</urlset>`;
-
-  return c.text(xml, 200, {
-    "Content-Type": "application/xml",
-    "Cache-Control": "public, max-age=3600, s-maxage=3600",
-  });
-});
+app.route("/", sitemap);
 
 // Dynamic robots.txt
 app.get("/robots.txt", (c) => {

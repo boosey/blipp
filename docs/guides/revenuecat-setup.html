@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <title>RevenueCat Setup Guide</title>
+            <style>
+/* From extension vscode.github */
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+.vscode-dark img[src$=\#gh-light-mode-only],
+.vscode-light img[src$=\#gh-dark-mode-only],
+.vscode-high-contrast:not(.vscode-high-contrast-light) img[src$=\#gh-light-mode-only],
+.vscode-high-contrast-light img[src$=\#gh-dark-mode-only] {
+	display: none;
+}
+
+</style>
+            <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex/dist/katex.min.css">
+<link href="https://cdn.jsdelivr.net/npm/katex-copytex@latest/dist/katex-copytex.min.css" rel="stylesheet" type="text/css">
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Microsoft/vscode/extensions/markdown-language-features/media/markdown.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Microsoft/vscode/extensions/markdown-language-features/media/highlight.css">
+<style>
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe WPC', 'Segoe UI', system-ui, 'Ubuntu', 'Droid Sans', sans-serif;
+                font-size: 14px;
+                line-height: 1.6;
+            }
+        </style>
+        <style>
+.task-list-item {
+    list-style-type: none;
+}
+
+.task-list-item-checkbox {
+    margin-left: -20px;
+    vertical-align: middle;
+    pointer-events: none;
+}
+</style>
+<style>
+:root {
+  --color-note: #0969da;
+  --color-tip: #1a7f37;
+  --color-warning: #9a6700;
+  --color-severe: #bc4c00;
+  --color-caution: #d1242f;
+  --color-important: #8250df;
+}
+
+</style>
+<style>
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-note: #2f81f7;
+    --color-tip: #3fb950;
+    --color-warning: #d29922;
+    --color-severe: #db6d28;
+    --color-caution: #f85149;
+    --color-important: #a371f7;
+  }
+}
+
+</style>
+<style>
+.markdown-alert {
+  padding: 0.5rem 1rem;
+  margin-bottom: 16px;
+  color: inherit;
+  border-left: .25em solid #888;
+}
+
+.markdown-alert>:first-child {
+  margin-top: 0
+}
+
+.markdown-alert>:last-child {
+  margin-bottom: 0
+}
+
+.markdown-alert .markdown-alert-title {
+  display: flex;
+  font-weight: 500;
+  align-items: center;
+  line-height: 1
+}
+
+.markdown-alert .markdown-alert-title .octicon {
+  margin-right: 0.5rem;
+  display: inline-block;
+  overflow: visible !important;
+  vertical-align: text-bottom;
+  fill: currentColor;
+}
+
+.markdown-alert.markdown-alert-note {
+  border-left-color: var(--color-note);
+}
+
+.markdown-alert.markdown-alert-note .markdown-alert-title {
+  color: var(--color-note);
+}
+
+.markdown-alert.markdown-alert-important {
+  border-left-color: var(--color-important);
+}
+
+.markdown-alert.markdown-alert-important .markdown-alert-title {
+  color: var(--color-important);
+}
+
+.markdown-alert.markdown-alert-warning {
+  border-left-color: var(--color-warning);
+}
+
+.markdown-alert.markdown-alert-warning .markdown-alert-title {
+  color: var(--color-warning);
+}
+
+.markdown-alert.markdown-alert-tip {
+  border-left-color: var(--color-tip);
+}
+
+.markdown-alert.markdown-alert-tip .markdown-alert-title {
+  color: var(--color-tip);
+}
+
+.markdown-alert.markdown-alert-caution {
+  border-left-color: var(--color-caution);
+}
+
+.markdown-alert.markdown-alert-caution .markdown-alert-title {
+  color: var(--color-caution);
+}
+
+</style>
+        
+        </head>
+        <body class="vscode-body vscode-light">
+            <h1 id="revenuecat-setup-guide">RevenueCat Setup Guide</h1>
+<p>Setup runbook for the iOS In-App Purchase side of Blipp's hybrid billing system. The web app uses Stripe; the iOS app uses Apple IAP brokered through RevenueCat. Both feed the same <code>BillingSubscription</code> table and entitlement is recomputed from the union.</p>
+<blockquote>
+<p><strong>Architecture:</strong> see <code>docs/architecture.md</code> for the full hybrid billing flow. This guide is the ops-side checklist.</p>
+</blockquote>
+<hr>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>Apple Developer Program account (paid, $99/year)</li>
+<li>App Store Connect access for the Blipp app record</li>
+<li>RevenueCat account (free tier is fine)</li>
+<li>Admin access to the Blipp app at <code>/admin/service-keys</code> and <code>/admin/plans</code></li>
+</ul>
+<hr>
+<h2 id="1-app-store-connect--subscription-products">1. App Store Connect — Subscription Products</h2>
+<p>For each Blipp plan that should be purchasable on iOS, create one subscription product per billing interval.</p>
+<ol>
+<li>
+<p>Sign in to <a href="https://appstoreconnect.apple.com/">App Store Connect</a></p>
+</li>
+<li>
+<p><strong>My Apps → Blipp → Subscriptions</strong></p>
+</li>
+<li>
+<p>Create a <strong>Subscription Group</strong> (e.g. &quot;Blipp Pro&quot;) — Apple groups subscriptions so users can move between tiers within a group</p>
+</li>
+<li>
+<p>Add a <strong>Subscription</strong> for each (plan, interval) pair you want to sell:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Reference Name</td>
+<td><code>Pro Monthly</code></td>
+</tr>
+<tr>
+<td>Product ID</td>
+<td><code>com.blipp.app.pro.monthly</code></td>
+</tr>
+<tr>
+<td>Subscription Duration</td>
+<td><code>1 month</code></td>
+</tr>
+<tr>
+<td>Price</td>
+<td>match the web price (Apple takes 30% — price accordingly)</td>
+</tr>
+</tbody>
+</table>
+</li>
+<li>
+<p>Repeat for annual: <code>com.blipp.app.pro.annual</code>, <code>1 year</code></p>
+</li>
+<li>
+<p>Fill in localizations and review screenshots (Apple requires these before the products go live). Sandbox testing works without review.</p>
+</li>
+<li>
+<p>Note the <strong>App-Specific Shared Secret</strong> (App Information → App-Specific Shared Secret) — RevenueCat needs this to validate receipts.</p>
+</li>
+</ol>
+<hr>
+<h2 id="2-revenuecat--project-setup">2. RevenueCat — Project Setup</h2>
+<ol>
+<li>Sign in to <a href="https://app.revenuecat.com/">RevenueCat</a></li>
+<li>Create a project named <strong>Blipp</strong> (or per-environment: <code>Blipp Staging</code>, <code>Blipp Production</code>)</li>
+<li><strong>Project settings → Apps → + New App → App Store</strong>
+<ul>
+<li>Bundle ID: <code>com.blipp.app</code></li>
+<li>In-App Purchase Key: upload the <code>.p8</code> from App Store Connect → Users and Access → Keys → In-App Purchase</li>
+<li>App-Specific Shared Secret: paste from step 1.7</li>
+</ul>
+</li>
+<li><strong>Products</strong> → import the products you created in App Store Connect (RevenueCat auto-discovers them once the IAP key is uploaded)</li>
+<li><strong>Entitlements → + New</strong> → name it <code>pro</code> (one entitlement per access tier — most setups need just one)</li>
+<li><strong>Offerings → Default</strong> → attach the products as packages:
+<ul>
+<li><code>$rc_monthly</code> → <code>com.blipp.app.pro.monthly</code></li>
+<li><code>$rc_annual</code> → <code>com.blipp.app.pro.annual</code></li>
+</ul>
+</li>
+<li><strong>API keys</strong> → copy the <strong>Apple SDK key</strong> (<code>appl_...</code>) — this is the <em>public</em> key the mobile app uses</li>
+</ol>
+<hr>
+<h2 id="3-revenuecat--server-webhook">3. RevenueCat — Server Webhook</h2>
+<p>RevenueCat is the source of truth for subscription state. Configure it to fire on every event so the Blipp worker can update <code>BillingSubscription</code> rows.</p>
+<ol>
+<li><strong>Project settings → Integrations → + New → Webhooks</strong></li>
+<li>Configure:
+<ul>
+<li><strong>URL (staging):</strong> <code>https://api-staging.podblipp.com/api/webhooks/revenuecat</code></li>
+<li><strong>URL (production):</strong> <code>https://api.podblipp.com/api/webhooks/revenuecat</code></li>
+<li><strong>Authorization header:</strong> generate a random 32-byte secret (e.g. <code>openssl rand -hex 32</code>). Store it — you'll paste it into Blipp admin in step 5</li>
+<li><strong>Environment:</strong> set staging RC project to send sandbox events, production to send production</li>
+</ul>
+</li>
+<li>Save</li>
+<li><strong>API → REST API v2</strong> → copy the REST API key (<code>sk_...</code>) — this is the <em>secret</em> key the worker uses to verify purchases server-side</li>
+</ol>
+<hr>
+<h2 id="4-blipp-admin--wire-the-plan-product-ids">4. Blipp Admin — Wire the Plan Product IDs</h2>
+<p>For each Blipp plan that maps to iOS products:</p>
+<ol>
+<li>In Blipp admin, go to <strong>Plans → Edit</strong> the plan</li>
+<li>Fill in:
+<ul>
+<li><strong>Apple Monthly Product ID:</strong> <code>com.blipp.app.pro.monthly</code></li>
+<li><strong>Apple Annual Product ID:</strong> <code>com.blipp.app.pro.annual</code></li>
+</ul>
+</li>
+<li>Save</li>
+</ol>
+<p>The <code>/api/plans</code> endpoint will now return these IDs alongside the Stripe price IDs, and the iOS client will use them to call StoreKit.</p>
+<hr>
+<h2 id="5-blipp-admin--service-keys">5. Blipp Admin — Service Keys</h2>
+<p>Paste both RevenueCat secrets into Blipp's service key registry:</p>
+<ol>
+<li>Go to <strong>Admin → Service Keys</strong></li>
+<li><strong>Billing group → RevenueCat Webhook Secret</strong> (<code>billing.revenuecat-webhook</code>)
+→ paste the random secret from step 3.2</li>
+<li><strong>Billing group → RevenueCat REST API</strong> (<code>billing.revenuecat-rest</code>)
+→ paste the REST API key (<code>sk_...</code>) from step 3.4</li>
+<li>Repeat for both staging and production environments</li>
+</ol>
+<hr>
+<h2 id="6-mobile-client--build-time-config">6. Mobile Client — Build-Time Config</h2>
+<p>The iOS app needs the <strong>Apple SDK key</strong> at build time (it's public, but tied to the RC project).</p>
+<ol>
+<li>Add to your <code>.env</code> (and the production env in CI):<pre><code>VITE_REVENUECAT_APPLE_API_KEY=appl_xxxxxxxxxxxxxxxxx
+</code></pre>
+</li>
+<li>Rebuild the iOS bundle: <code>npm run build &amp;&amp; npx cap sync ios</code></li>
+</ol>
+<hr>
+<h2 id="7-sandbox-testing">7. Sandbox Testing</h2>
+<ol>
+<li><strong>App Store Connect → Users and Access → Sandbox Testers</strong> → create a test account (use an email that is NOT linked to a real Apple ID)</li>
+<li>On the test device: <strong>Settings → App Store → Sandbox Account</strong> → sign in with the test user</li>
+<li>Launch Blipp from Xcode (sideloaded, not TestFlight)</li>
+<li>Tap an upgrade button on the pricing page → StoreKit sheet appears with sandbox pricing</li>
+<li>Confirm purchase → toast says &quot;Subscription activated&quot;</li>
+<li>Verify in Blipp admin:
+<ul>
+<li>Database has a <code>BillingSubscription</code> row with <code>source=APPLE</code>, <code>status=ACTIVE</code></li>
+<li>The user's <code>planId</code> was recomputed</li>
+</ul>
+</li>
+<li>Check the worker logs for <code>revenuecat_webhook_received</code> entries — RC fires both <code>INITIAL_PURCHASE</code> (immediate) and a <code>RENEWAL</code> once the sandbox subscription auto-renews (sandbox renews every few minutes)</li>
+</ol>
+<h3 id="test-the-restore-flow">Test the Restore flow</h3>
+<ol>
+<li>Delete the app, reinstall, sign in as the same Clerk user</li>
+<li>Pricing page → tap <strong>Restore purchases</strong></li>
+<li>Confirm the entitlement comes back without re-charging</li>
+</ol>
+<hr>
+<h2 id="8-production-cutover-checklist">8. Production Cutover Checklist</h2>
+<ul class="contains-task-list">
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Production RC project created and pointing to App Store Connect production</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Production webhook configured with a <em>different</em> secret than staging</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Production service keys pasted into production admin</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Plans on production DB have <code>appleProductId*</code> values matching the live App Store Connect product IDs</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> App Store Connect subscription products are <strong>Approved</strong> (not just &quot;Ready to Submit&quot;) — Apple reviews them separately from the app binary</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> iOS build has the production <code>VITE_REVENUECAT_APPLE_API_KEY</code> baked in</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> App binary submitted to App Store Review with a sandbox tester credentials in the review notes (Apple reviewers must be able to test the IAP flow)</li>
+</ul>
+<hr>
+<h2 id="common-issues">Common Issues</h2>
+<p><strong>&quot;Purchase not found on RevenueCat subscriber&quot;</strong> (from <code>POST /api/iap/link</code>)
+The client's StoreKit purchase succeeded but RC hasn't synced yet. The webhook is authoritative — recomputeEntitlement will catch up on the next event. Safe to ignore unless reproducible.</p>
+<p><strong>Webhook returns 401</strong>
+Authorization header mismatch. Confirm the secret in Blipp admin (<code>billing.revenuecat-webhook</code>) exactly matches the one in the RC dashboard webhook config. RC sends it raw OR as <code>Bearer &lt;secret&gt;</code> — both are accepted.</p>
+<p><strong>Sandbox events ignored in production</strong>
+Intentional. The webhook handler skips <code>environment=SANDBOX</code> events when the worker is the production deployment, to keep test purchases out of the production billing table. Use the staging RC project + staging worker for sandbox testing.</p>
+<p><strong>No products show in the StoreKit sheet</strong>
+Three usual causes, in order of likelihood:</p>
+<ol>
+<li>The product is not yet in &quot;Ready to Submit&quot; or &quot;Approved&quot; state in App Store Connect</li>
+<li>The bundle ID in Xcode doesn't match the App Store Connect record</li>
+<li>The sandbox tester is signed into a different App Store country than the products are configured for</li>
+</ol>
+
+            <script async src="https://cdn.jsdelivr.net/npm/katex-copytex@latest/dist/katex-copytex.min.js"></script>
+            
+        </body>
+        </html>

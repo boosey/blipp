@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useAdminFetch } from "@/lib/admin-api";
+import { useAdminFetch } from "@/lib/api-client";
 import { usePolling } from "@/hooks/use-polling";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";

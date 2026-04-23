@@ -21,7 +21,7 @@ vi.mock("../contexts/audio-context", () => ({
   }),
 }));
 
-vi.mock("../lib/api", () => ({
+vi.mock("../lib/api-client", () => ({
   useApiFetch: () => vi.fn().mockResolvedValue({ id: "bf1" }),
 }));
 

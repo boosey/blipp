@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { ThumbsDown, Trash2, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useAdminFetch } from "@/lib/admin-api";
+import { useAdminFetch } from "@/lib/api-client";
 
 interface BlippFeedbackEntry {
   id: string;

@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useAdminFetch } from "@/lib/admin-api";
+import { useAdminFetch } from "@/lib/api-client";
 import { usePipelineConfig } from "@/hooks/use-pipeline-config";
 import { PipelineControls } from "@/components/admin/pipeline-controls";
 import { STAGE_META, STATUS_PRIORITY } from "@/components/admin/pipeline/pipeline-constants";

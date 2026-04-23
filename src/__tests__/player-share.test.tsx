@@ -5,7 +5,7 @@ vi.mock("sonner", () => ({
   toast: vi.fn(),
 }));
 
-vi.mock("../lib/api", () => ({
+vi.mock("../lib/api-client", () => ({
   useApiFetch: () => vi.fn().mockResolvedValue({ vote: 0 }),
 }));
 

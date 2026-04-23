@@ -5,7 +5,7 @@ import { OnboardingProvider, useOnboarding } from "../contexts/onboarding-contex
 
 // Mock API
 const mockApiFetch = vi.fn();
-vi.mock("../lib/api", () => ({
+vi.mock("../lib/api-client", () => ({
   useApiFetch: () => mockApiFetch,
 }));
 

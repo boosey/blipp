@@ -5,7 +5,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { Search, MapPin, Trophy, X, Loader2 } from "lucide-react";
 import { useFetch } from "../lib/use-fetch";
-import { useApiFetch } from "../lib/api";
+import { useApiFetch } from "../lib/api-client";
 import { toast } from "sonner";
 import {
   Accordion,

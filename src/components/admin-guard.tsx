@@ -1,6 +1,6 @@
 import { useUser, SignedIn, SignedOut, SignIn } from "@clerk/clerk-react";
 import { useEffect, useState } from "react";
-import { useApiFetch } from "@/lib/api";
+import { useApiFetch } from "@/lib/api-client";
 
 /**
  * Route guard that ensures the current user is an authenticated admin.

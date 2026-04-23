@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { useAdminFetch } from "@/lib/admin-api";
+import { useAdminFetch } from "@/lib/api-client";
 import { VerdictBadge } from "@/components/admin/claims-benchmark/experiments-list";
 import type {
   ClaimsBenchmarkResult,

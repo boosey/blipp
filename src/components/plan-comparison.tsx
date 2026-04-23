@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { useApiFetch } from "../lib/api";
+import { useApiFetch } from "../lib/api-client";
 import { Skeleton } from "./ui/skeleton";
 
 export interface PlanDetail {

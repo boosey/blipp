@@ -51,7 +51,7 @@ describe("POST /iap/link (v2)", () => {
     env = createMockEnv();
 
     app = new Hono<{ Bindings: Env }>();
-    app.use("/*", async (c, next) => { c.set("prisma", mockPrisma); await next(); });
+    app.use("/*", async (c, next) => { c.set("prisma", mockPrisma as any); await next(); });
     app.route("/iap", iap);
     app.onError((err, c) => {
       const { status, message, code, details } = classifyHttpError(err);

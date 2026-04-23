@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
-import { useApiFetch } from "../lib/api";
+import { useApiFetch } from "../lib/api-client";
 
 interface PlanUsage {
   plan: { name: string; slug: string };

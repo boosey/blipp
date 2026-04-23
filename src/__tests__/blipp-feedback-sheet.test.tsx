@@ -3,7 +3,7 @@ import { BlippFeedbackSheet } from "../components/blipp-feedback-sheet";
 
 const mockApiFetch = vi.fn().mockResolvedValue({ id: "bf1" });
 
-vi.mock("../lib/api", () => ({
+vi.mock("../lib/api-client", () => ({
   useApiFetch: () => mockApiFetch,
 }));
 

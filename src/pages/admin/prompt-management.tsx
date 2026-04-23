@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { RotateCcw, Save, ChevronDown, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
-import { useAdminFetch } from "../../lib/admin-api";
+import { useAdminFetch } from "../../lib/api-client";
 
 interface PromptEntry {
   key: string;

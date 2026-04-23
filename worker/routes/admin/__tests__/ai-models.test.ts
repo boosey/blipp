@@ -5,7 +5,7 @@ import { createMockPrisma } from "../../../../tests/helpers/mocks";
 
 function buildApp(mockPrisma: ReturnType<typeof createMockPrisma>) {
   const app = new Hono();
-  app.use("/*", async (c, next) => { c.set("prisma", mockPrisma); await next(); });
+  app.use("/*", async (c, next) => { c.set("prisma", mockPrisma as any); await next(); });
   app.route("/", aiModelsRoutes);
   return app;
 }

@@ -3,7 +3,7 @@ import { Brain, Mic, Sparkles, Volume2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useAdminFetch } from "@/lib/admin-api";
+import { useAdminFetch } from "@/lib/api-client";
 import { STAGE_LABELS } from "@/lib/ai-models";
 import type { AIStage } from "@/lib/ai-models";
 import type { AiModelEntry, PlatformConfigEntry, PromptVersionEntry } from "@/types/admin";

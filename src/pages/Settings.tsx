@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { useClerk } from "@clerk/clerk-react";
 import { Capacitor } from "@capacitor/core";
 import { registerPlugin } from "@capacitor/core";
-import { useApiFetch } from "../lib/api";
+import { useApiFetch } from "../lib/api-client";
 import { useFetch } from "../lib/use-fetch";
 import { Skeleton } from "../components/ui/skeleton";
 import { PlanComparison, type PlanDetail } from "../components/plan-comparison";

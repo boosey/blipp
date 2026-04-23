@@ -31,7 +31,7 @@ import {
 } from "@/components/ui/accordion";
 import { Card } from "@/components/ui/card";
 import { useAuth } from "@clerk/clerk-react";
-import { useAdminFetch } from "@/lib/admin-api";
+import { useAdminFetch } from "@/lib/api-client";
 import { getApiBase } from "@/lib/api-base";
 import { relativeTime, formatCost, formatLatency } from "@/lib/admin-formatters";
 import { ProgressBar } from "@/components/admin/progress-bar";

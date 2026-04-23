@@ -42,7 +42,7 @@ describe("Config Routes", () => {
     env = createMockEnv();
 
     app = new Hono<{ Bindings: Env }>();
-    app.use("/*", async (c, next) => { c.set("prisma", mockPrisma); await next(); });
+    app.use("/*", async (c, next) => { c.set("prisma", mockPrisma as any); await next(); });
     app.route("/config", configRoutes);
 
     Object.values(mockPrisma).forEach((model) => {

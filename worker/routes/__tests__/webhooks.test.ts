@@ -45,7 +45,7 @@ describe("Clerk Webhooks", () => {
     env = createMockEnv();
 
     app = new Hono<{ Bindings: Env }>();
-    app.use("/*", async (c, next) => { c.set("prisma", mockPrisma); await next(); });
+    app.use("/*", async (c, next) => { c.set("prisma", mockPrisma as any); await next(); });
     app.route("/webhooks/clerk", clerkWebhooks);
 
     Object.values(mockPrisma).forEach((model) => {
@@ -232,7 +232,7 @@ describe("Stripe Webhooks", () => {
     env = createMockEnv();
 
     app = new Hono<{ Bindings: Env }>();
-    app.use("/*", async (c, next) => { c.set("prisma", mockPrisma); await next(); });
+    app.use("/*", async (c, next) => { c.set("prisma", mockPrisma as any); await next(); });
     app.route("/webhooks/stripe", stripeWebhooks);
 
     Object.values(mockPrisma).forEach((model) => {

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Loader2 } from "lucide-react";
 import { useFetch } from "@/lib/use-fetch";
-import { useAdminFetch } from "@/lib/admin-api";
+import { useAdminFetch } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { relativeTime } from "@/lib/admin-formatters";
 import {

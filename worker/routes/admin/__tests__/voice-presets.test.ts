@@ -27,7 +27,7 @@ function buildApp() {
   const app = new Hono();
   // Inject prisma + error handler for validation errors
   app.use("/*", async (c, next) => {
-    c.set("prisma", mockPrisma);
+    c.set("prisma", mockPrisma as any);
     await next();
   });
   app.route("/", voicePresetsRoutes);

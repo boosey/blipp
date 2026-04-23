@@ -10,7 +10,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { useAdminFetch } from "@/lib/admin-api";
+import { useAdminFetch } from "@/lib/api-client";
 
 export function AddPodcastDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const apiFetch = useAdminFetch();

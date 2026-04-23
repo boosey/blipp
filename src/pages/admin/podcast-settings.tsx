@@ -11,7 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Check, MapPin } from "lucide-react";
-import { useAdminFetch } from "@/lib/admin-api";
+import { useAdminFetch } from "@/lib/api-client";
 import type { PlatformConfigEntry } from "@/types/admin";
 
 interface AiProvider {

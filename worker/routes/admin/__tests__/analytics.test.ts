@@ -42,7 +42,7 @@ describe("Analytics Routes", () => {
     env = createMockEnv();
 
     app = new Hono<{ Bindings: Env }>();
-    app.use("/*", async (c, next) => { c.set("prisma", mockPrisma); await next(); });
+    app.use("/*", async (c, next) => { c.set("prisma", mockPrisma as any); await next(); });
     app.route("/analytics", analyticsRoutes);
 
     // Reset all mock methods

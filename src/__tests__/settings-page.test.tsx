@@ -26,7 +26,7 @@ vi.mock("../hooks/use-iap", () => ({
 }));
 
 const mockApiFetch = vi.fn();
-vi.mock("../lib/api", () => ({
+vi.mock("../lib/api-client", () => ({
   useApiFetch: () => mockApiFetch,
 }));
 

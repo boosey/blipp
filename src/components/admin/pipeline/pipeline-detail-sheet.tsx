@@ -19,7 +19,7 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
-import { useAdminFetch } from "@/lib/admin-api";
+import { useAdminFetch } from "@/lib/api-client";
 import { STAGE_META, STAGE_ORDER, STATUS_CONFIG, formatDuration, formatCost } from "./pipeline-constants";
 import { StatusBadge, DurationTierBadge, StageBadge, Field } from "./pipeline-badges";
 import { relativeTime } from "@/lib/admin-formatters";

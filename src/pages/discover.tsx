@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { Search, X, Plus, Loader2, ArrowUpDown, MapPin } from "lucide-react";
 import { toast } from "sonner";
-import { useApiFetch } from "../lib/api";
+import { useApiFetch } from "../lib/api-client";
 import { useFetch } from "../lib/use-fetch";
 import { PodcastCard } from "../components/podcast-card";
 import { ScrollableRow } from "../components/scrollable-row";

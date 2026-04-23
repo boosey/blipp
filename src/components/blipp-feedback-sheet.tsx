@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { useApiFetch } from "@/lib/api";
+import { useApiFetch } from "@/lib/api-client";
 
 const REASONS = [
   { value: "blipp_failed", label: "Blipp failed" },

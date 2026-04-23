@@ -60,7 +60,7 @@ describe("Billing Routes", () => {
     env = createMockEnv();
 
     app = new Hono<{ Bindings: Env }>();
-    app.use("/*", async (c, next) => { c.set("prisma", mockPrisma); await next(); });
+    app.use("/*", async (c, next) => { c.set("prisma", mockPrisma as any); await next(); });
     app.route("/billing", billing);
     app.onError((err, c) => {
       const { status, message, code, details } = classifyHttpError(err);

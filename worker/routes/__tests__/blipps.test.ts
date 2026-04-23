@@ -74,7 +74,7 @@ describe("GET /blipps/availability", () => {
 
     app = new Hono<{ Bindings: Env }>();
     app.use("/*", async (c, next) => {
-      c.set("prisma", mockPrisma);
+      c.set("prisma", mockPrisma as any);
       await next();
     });
     app.route("/blipps", blipps);

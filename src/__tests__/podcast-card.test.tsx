@@ -6,7 +6,7 @@ vi.mock("../contexts/podcast-sheet-context", () => ({
   usePodcastSheet: () => ({ podcastId: null, open: mockOpen, close: vi.fn() }),
 }));
 
-vi.mock("../lib/api", () => ({
+vi.mock("../lib/api-client", () => ({
   useApiFetch: () => vi.fn().mockResolvedValue({ podcast: { userVote: 0 }, data: [] }),
 }));
 

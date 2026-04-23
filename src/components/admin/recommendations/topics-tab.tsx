@@ -3,7 +3,7 @@ import { Search, ChevronRight, ChevronDown, Hash, Podcast } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useAdminFetch } from "@/lib/admin-api";
+import { useAdminFetch } from "@/lib/api-client";
 import type { PaginatedResponse } from "@/types/admin";
 import { relativeTime, categoryColor } from "./helpers";
 import type { TopicRow, EpisodeTopic } from "./types";

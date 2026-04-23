@@ -181,13 +181,20 @@ async function handleEvaluate(
     if (episodeSecs && episodeSecs < item.durationTier * 60) {
       const adjusted = [...DURATION_TIERS].reverse().find(t => t * 60 < episodeSecs);
       if (adjusted) {
+        const originalTier = item.durationTier;
         log.info("duration_capped", {
           episodeId: item.episodeId,
-          originalTier: item.durationTier,
+          originalTier,
           adjustedTier: adjusted,
           episodeDurationSeconds: episodeSecs,
         });
         item.durationTier = adjusted;
+
+        // Keep FeedItem.durationTier in sync so briefing-assembly can find it.
+        // The FeedItem was created at the user-requested tier in routes/briefings.ts
+        // or feed-refresh before this downgrade runs; without this update it
+        // would be orphaned in PROCESSING and later reaped as stalled.
+        await syncFeedItemTierForCap(prisma, log, request.id, item.episodeId, originalTier, adjusted);
       } else {
         // Episode is shorter than the smallest tier — skip it
         log.info("episode_too_short", {
@@ -538,4 +545,60 @@ async function handleJobFailed(
   }
 
   msg.ack();
+}
+
+/**
+ * Keep FeedItem.durationTier in sync when the orchestrator caps a request's tier.
+ *
+ * FeedItems are created at the user-requested tier *before* this downgrade runs,
+ * so briefing-assembly's (requestId, episodeId, durationTier) lookup would miss.
+ *
+ * Unique constraint [userId, episodeId, durationTier] means the user may already
+ * have a FeedItem at the downgraded tier for this episode — in that case we
+ * re-point the request to the existing one and drop the orphan.
+ *
+ * No-op for CATALOG / SEO_BACKFILL modes since they have no FeedItems linked.
+ */
+async function syncFeedItemTierForCap(
+  prisma: PrismaClient,
+  log: PipelineLogger,
+  requestId: string,
+  episodeId: string,
+  originalTier: number,
+  adjustedTier: number
+): Promise<void> {
+  const feedItems = await prisma.feedItem.findMany({
+    where: { requestId, episodeId, durationTier: originalTier },
+    select: { id: true, userId: true },
+  });
+
+  for (const fi of feedItems) {
+    const conflicting = await prisma.feedItem.findUnique({
+      where: {
+        userId_episodeId_durationTier: {
+          userId: fi.userId,
+          episodeId,
+          durationTier: adjustedTier,
+        },
+      },
+      select: { id: true },
+    });
+
+    if (conflicting && conflicting.id !== fi.id) {
+      await prisma.feedItem.update({
+        where: { id: conflicting.id },
+        data: { requestId, status: "PROCESSING", briefingId: null, errorMessage: null },
+      });
+      await prisma.feedItem.delete({ where: { id: fi.id } });
+      log.info("feed_item_tier_merged", {
+        episodeId, originalTier, adjustedTier, absorbedFeedItemId: fi.id, keptFeedItemId: conflicting.id,
+      });
+    } else {
+      await prisma.feedItem.update({
+        where: { id: fi.id },
+        data: { durationTier: adjustedTier },
+      });
+      log.info("feed_item_tier_synced", { feedItemId: fi.id, episodeId, originalTier, adjustedTier });
+    }
+  }
 }

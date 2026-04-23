@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Mail } from "lucide-react";
 import { useUser } from "@clerk/clerk-react";
-import { apiFetch } from "@/lib/api";
+import { apiFetch } from "@/lib/api-client";
 
 export function Support() {
   const { user } = useUser();

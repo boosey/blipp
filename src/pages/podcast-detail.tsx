@@ -12,7 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "../components/ui/dropdown-menu";
 import { CancelBlippDialog } from "../components/cancel-blipp-dialog";
-import { useApiFetch } from "../lib/api";
+import { useApiFetch } from "../lib/api-client";
 import { useFetch } from "../lib/use-fetch";
 import { Skeleton } from "../components/ui/skeleton";
 import { usePlan } from "../contexts/plan-context";

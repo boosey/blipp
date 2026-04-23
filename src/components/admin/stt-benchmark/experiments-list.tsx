@@ -16,7 +16,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Card } from "@/components/ui/card";
-import { useAdminFetch } from "@/lib/admin-api";
+import { useAdminFetch } from "@/lib/api-client";
 import { relativeTime } from "@/lib/admin-formatters";
 import { ProgressBar } from "@/components/admin/progress-bar";
 import { StatusBadge } from "@/components/admin/status-badge";

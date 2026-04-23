@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { useApiFetch } from "../lib/api";
+import { useApiFetch } from "../lib/api-client";
 import { useAudio } from "../contexts/audio-context";
 import { PlayerSkeleton } from "../components/skeletons/player-skeleton";
 import type { FeedItem } from "../types/feed";

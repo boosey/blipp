@@ -113,7 +113,27 @@ export async function assembleBriefings(
           select: { id: true, userId: true },
         });
 
-        await writeEvent(prisma, step.id, "INFO", `Assembling ${feedItems.length} feed item(s)`);
+        if (feedItems.length === 0) {
+          // Completed job with no matching FeedItem means the FeedItem is orphaned
+          // — it will sit in PROCESSING until the stale-job-reaper marks it FAILED.
+          // Historically caused by a tier-downgrade/FeedItem desync (fixed in
+          // orchestrator syncFeedItemTierForCap); keep this as a tripwire.
+          const orphans = await prisma.feedItem.findMany({
+            where: { requestId, episodeId: job.episodeId },
+            select: { id: true, durationTier: true, status: true },
+          });
+          await writeEvent(prisma, step.id, "ERROR", "No FeedItems matched completed job — possible tier desync", {
+            jobId: job.id,
+            episodeId: job.episodeId,
+            jobDurationTier: job.durationTier,
+            orphanFeedItems: orphans,
+          });
+          log.error("feed_item_lookup_empty", {
+            requestId, jobId: job.id, episodeId: job.episodeId, jobDurationTier: job.durationTier, orphans,
+          });
+        } else {
+          await writeEvent(prisma, step.id, "INFO", `Assembling ${feedItems.length} feed item(s)`);
+        }
 
         for (const fi of feedItems) {
           const briefing = await prisma.briefing.upsert({

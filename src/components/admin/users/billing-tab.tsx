@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useAdminFetch } from "@/lib/admin-api";
+import { useAdminFetch } from "@/lib/api-client";
 import type { AdminUserDetail, AdminPlan } from "@/types/admin";
 import { formatDate, planBadgeClass } from "./helpers";
 

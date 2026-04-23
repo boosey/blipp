@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { LifeBuoy, Trash2, Check, RotateCcw, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useAdminFetch } from "@/lib/admin-api";
+import { useAdminFetch } from "@/lib/api-client";
 
 interface SupportEntry {
   id: string;

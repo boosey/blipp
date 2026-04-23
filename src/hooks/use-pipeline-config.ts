@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
-import { useAdminFetch } from "@/lib/admin-api";
+import { useAdminFetch } from "@/lib/api-client";
 import type { PlatformConfigEntry, PipelineConfig } from "@/types/admin";
 
 export const STAGE_NAMES: Record<string, string> = {

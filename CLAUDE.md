@@ -35,7 +35,7 @@ NODE_OPTIONS="--max-old-space-size=4096" npx vitest run worker/  # Worker tests 
 ## Architecture
 - **Runtime**: Cloudflare Workers — single worker with fetch/queue/scheduled handlers
 - **API**: Hono v4 framework, routes at `/api/*`
-- **DB**: PostgreSQL (Neon) via Prisma 7 + `@prisma/adapter-pg` + Hyperdrive
+- **DB**: PostgreSQL (Neon) via Prisma 7 + Hyperdrive
 - **Auth**: Clerk (`clerkMiddleware()` applied globally to `/api/*`)
 - **Frontend**: React 19 + Vite 7 + Tailwind v4 + shadcn/ui
 - **Queues**: 7 Cloudflare Queues for pipeline processing

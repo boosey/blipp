@@ -51,7 +51,7 @@ describe("GET /podcasts/:id", () => {
     currentAuth = mockUserId;
     env = createMockEnv();
     app = new Hono<{ Bindings: Env }>();
-    app.use("/*", async (c, next) => { c.set("prisma", mockPrisma); await next(); });
+    app.use("/*", async (c, next) => { c.set("prisma", mockPrisma as any); await next(); });
     app.route("/podcasts", podcasts);
 
     mockPrisma.user.findUniqueOrThrow.mockResolvedValue({ id: "user_1" });
@@ -112,7 +112,7 @@ describe("GET /podcasts/:id/episodes", () => {
     currentAuth = mockUserId;
     env = createMockEnv();
     app = new Hono<{ Bindings: Env }>();
-    app.use("/*", async (c, next) => { c.set("prisma", mockPrisma); await next(); });
+    app.use("/*", async (c, next) => { c.set("prisma", mockPrisma as any); await next(); });
     app.route("/podcasts", podcasts);
 
     mockPrisma.user.findUniqueOrThrow.mockResolvedValue({ id: "user_1" });

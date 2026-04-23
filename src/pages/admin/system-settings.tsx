@@ -4,7 +4,7 @@ import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Check } from "lucide-react";
-import { useAdminFetch } from "@/lib/admin-api";
+import { useAdminFetch } from "@/lib/api-client";
 import type { PlatformConfigEntry } from "@/types/admin";
 
 /** Number input that holds local state and saves on blur to avoid focus loss. */

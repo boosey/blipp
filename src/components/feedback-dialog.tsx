@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { useApiFetch } from "@/lib/api";
+import { useApiFetch } from "@/lib/api-client";
 
 interface FeedbackDialogProps {
   open: boolean;

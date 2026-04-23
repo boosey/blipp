@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { MessageSquare, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useAdminFetch } from "@/lib/admin-api";
+import { useAdminFetch } from "@/lib/api-client";
 
 interface FeedbackEntry {
   id: string;

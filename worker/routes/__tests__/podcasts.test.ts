@@ -72,7 +72,7 @@ describe("Podcast Routes", () => {
       const { status, message, code, details } = classifyHttpError(err);
       return c.json({ error: message, code, details }, status as any);
     });
-    app.use("/*", async (c, next) => { c.set("prisma", mockPrisma); await next(); });
+    app.use("/*", async (c, next) => { c.set("prisma", mockPrisma as any); await next(); });
     app.route("/podcasts", podcasts);
 
     // Reset mock prisma methods

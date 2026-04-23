@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useUser } from "@clerk/clerk-react";
-import { apiFetch } from "../lib/api";
+import { apiFetch } from "../lib/api-client";
 import { PlanCards } from "../components/plan-cards";
 
 export function Pricing() {

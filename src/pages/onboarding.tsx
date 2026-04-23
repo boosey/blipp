@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { useApiFetch } from "../lib/api";
+import { useApiFetch } from "../lib/api-client";
 import { useFetch } from "../lib/use-fetch";
 import { useOnboarding } from "../contexts/onboarding-context";
 import { usePlan } from "../contexts/plan-context";

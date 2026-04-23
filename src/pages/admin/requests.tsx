@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useAdminFetch } from "@/lib/admin-api";
+import { useAdminFetch } from "@/lib/api-client";
 import { DeleteRequestDialog } from "@/components/admin/delete-request-dialog";
 import { RequestRow } from "@/components/admin/requests/request-row";
 import { TestBriefingDialog } from "@/components/admin/requests/test-briefing-dialog";

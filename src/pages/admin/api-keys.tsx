@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useAdminFetch } from "@/lib/admin-api";
+import { useAdminFetch } from "@/lib/api-client";
 import { toast } from "sonner";
 import { Key, Copy, Trash2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";

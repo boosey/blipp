@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useAdminFetch } from "@/lib/admin-api";
+import { useAdminFetch } from "@/lib/api-client";
 import { STAGE_LABELS } from "@/lib/ai-models";
 import type { AIStage } from "@/lib/ai-models";
 import { STAGES } from "./helpers";

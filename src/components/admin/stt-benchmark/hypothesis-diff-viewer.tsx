@@ -6,7 +6,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { useAdminFetch } from "@/lib/admin-api";
+import { useAdminFetch } from "@/lib/api-client";
 import type { SttBenchmarkResult, SttResultsGrid } from "@/types/admin";
 import { computeWordDiff, WordDiffView } from "./transcript-diff";
 import type { DiffOp } from "./transcript-diff";

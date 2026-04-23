@@ -3,7 +3,7 @@ import AdminBlippFeedback from "../../pages/admin/blipp-feedback";
 
 const mockAdminFetch = vi.fn();
 
-vi.mock("../../lib/admin-api", () => ({
+vi.mock("../../lib/api-client", () => ({
   useAdminFetch: () => mockAdminFetch,
 }));
 

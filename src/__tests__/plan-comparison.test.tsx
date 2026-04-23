@@ -13,7 +13,7 @@ vi.mock("@clerk/clerk-react", () => ({
   ClerkProvider: ({ children }: any) => children,
 }));
 
-vi.mock("../lib/api", () => ({
+vi.mock("../lib/api-client", () => ({
   useApiFetch: () => mockApiFetch,
 }));
 
