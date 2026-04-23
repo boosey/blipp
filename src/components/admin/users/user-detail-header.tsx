@@ -4,7 +4,6 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import { Input } from "@/components/ui/input";
 import { useAdminFetch } from "@/lib/api-client";
 import {
   AlertDialog,
@@ -35,13 +34,11 @@ export interface UserDetailHeaderProps {
 export function UserDetailHeader({ user, onDeleted }: UserDetailHeaderProps) {
   const apiFetch = useAdminFetch();
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [emailConfirm, setEmailConfirm] = useState("");
   const [reason, setReason] = useState("");
   const [deleting, setDeleting] = useState(false);
 
-  const emailMatches = emailConfirm.trim().toLowerCase() === user.email.toLowerCase();
   const reasonValid = reason.trim().length >= 5;
-  const canDelete = emailMatches && reasonValid && !deleting && !user.isAdmin;
+  const canDelete = reasonValid && !deleting && !user.isAdmin;
 
   async function handleDelete() {
     if (!canDelete) return;
@@ -53,7 +50,6 @@ export function UserDetailHeader({ user, onDeleted }: UserDetailHeaderProps) {
       });
       toast.success(`Deleted ${user.email}`);
       setDialogOpen(false);
-      setEmailConfirm("");
       setReason("");
       onDeleted?.();
     } catch (e) {
@@ -133,10 +129,7 @@ export function UserDetailHeader({ user, onDeleted }: UserDetailHeaderProps) {
         open={dialogOpen}
         onOpenChange={(open) => {
           setDialogOpen(open);
-          if (!open) {
-            setEmailConfirm("");
-            setReason("");
-          }
+          if (!open) setReason("");
         }}
       >
         <AlertDialogContent>
@@ -151,37 +144,23 @@ export function UserDetailHeader({ user, onDeleted }: UserDetailHeaderProps) {
             </AlertDialogDescription>
           </AlertDialogHeader>
 
-          <div className="space-y-3">
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[#F9FAFB]">
-                Type the user's email to confirm
-              </label>
-              <Input
-                value={emailConfirm}
-                onChange={(e) => setEmailConfirm(e.target.value)}
-                placeholder={user.email}
-                autoComplete="off"
-                spellCheck={false}
-                className="text-xs font-mono"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[#F9FAFB]">
-                Reason (for audit log)
-              </label>
-              <textarea
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                placeholder="e.g. User requested deletion via support email on 2026-04-23"
-                rows={3}
-                className="w-full rounded-md border border-white/10 bg-[#0F1729] px-2.5 py-2 text-xs text-[#F9FAFB] placeholder:text-[#9CA3AF]/50 outline-none focus:border-[#3B82F6]/40"
-              />
-              {!reasonValid && reason.length > 0 && (
-                <p className="text-[10px] text-red-400">
-                  Reason must be at least 5 characters.
-                </p>
-              )}
-            </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-[#F9FAFB]">
+              Reason (for audit log, min 5 chars)
+            </label>
+            <textarea
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="e.g. User requested deletion via support email on 2026-04-23"
+              rows={3}
+              autoFocus
+              className="w-full rounded-md border border-white/10 bg-[#0F1729] px-2.5 py-2 text-xs text-[#F9FAFB] placeholder:text-[#9CA3AF]/50 outline-none focus:border-[#3B82F6]/40"
+            />
+            {!reasonValid && reason.length > 0 && (
+              <p className="text-[10px] text-red-400">
+                Reason must be at least 5 characters.
+              </p>
+            )}
           </div>
 
           <AlertDialogFooter>
