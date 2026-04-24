@@ -1,0 +1,111 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 620" font-family="Inter, system-ui, sans-serif" font-size="13">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#64748b"/>
+    </marker>
+    <marker id="arrGreen" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#22c55e"/>
+    </marker>
+    <style>
+      .bg { fill:#020617; }
+      .stage { stroke:#3b82f6; stroke-width:1.5; rx:10; ry:10; fill:#0b1e3d; }
+      .stage-term { stroke:#22c55e; fill:#14532d; }
+      .stage-orch { stroke:#f59e0b; fill:#422006; }
+      .stage-cron { stroke:#a855f7; fill:#3b0764; }
+      .lbl   { fill:#f8fafc; font-size:13px; font-weight:600; }
+      .sub   { fill:#cbd5e1; font-size:11px; }
+      .edge  { stroke:#64748b; stroke-width:1.5; fill:none; }
+      .edge-done { stroke:#22c55e; stroke-width:1.5; fill:none; stroke-dasharray:5,3; }
+      .hdr   { fill:#e2e8f0; font-size:13px; font-weight:600; }
+      .pill  { fill:#1e293b; stroke:#475569; rx:10; ry:10; }
+      .pillTxt { fill:#cbd5e1; font-size:11px; }
+    </style>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="980" height="620"/>
+
+  <!-- Entry triggers -->
+  <text x="40" y="36" class="hdr">Pipeline Triggers</text>
+
+  <rect class="stage stage-cron" x="40" y="55" width="200" height="60"/>
+  <text x="140" y="80" text-anchor="middle" class="lbl">episode-refresh cron</text>
+  <text x="140" y="98" text-anchor="middle" class="sub">feed-refresh · catalog-pregen</text>
+
+  <rect class="stage" x="40" y="140" width="200" height="60"/>
+  <text x="140" y="165" text-anchor="middle" class="lbl">User request</text>
+  <text x="140" y="183" text-anchor="middle" class="sub">POST /api/briefings/generate</text>
+
+  <rect class="stage" x="40" y="225" width="200" height="60"/>
+  <text x="140" y="250" text-anchor="middle" class="lbl">Feed-refresh auto-request</text>
+  <text x="140" y="268" text-anchor="middle" class="sub">new episode → SUBSCRIPTION</text>
+
+  <!-- Orchestrator -->
+  <rect class="stage stage-orch" x="300" y="140" width="240" height="145"/>
+  <text x="420" y="168" text-anchor="middle" class="lbl">Orchestrator (CAS)</text>
+  <text x="420" y="188" text-anchor="middle" class="sub">evaluate · job-stage-complete · job-failed</text>
+  <text x="420" y="210" text-anchor="middle" class="sub">resolves cache entry stage</text>
+  <text x="420" y="230" text-anchor="middle" class="sub">enforces concurrent-job limit</text>
+  <text x="420" y="250" text-anchor="middle" class="sub">caps durationTier to episode</text>
+  <text x="420" y="270" text-anchor="middle" class="sub">idempotent stage advance</text>
+
+  <!-- Stages 1-4 -->
+  <g>
+    <rect class="stage" x="600" y="55" width="170" height="60"/>
+    <text x="685" y="80" text-anchor="middle" class="lbl">1 · Transcription</text>
+    <text x="685" y="98" text-anchor="middle" class="sub">RSS → PI → STT waterfall</text>
+
+    <rect class="stage" x="600" y="140" width="170" height="60"/>
+    <text x="685" y="165" text-anchor="middle" class="lbl">2 · Distillation</text>
+    <text x="685" y="183" text-anchor="middle" class="sub">LLM claim extraction</text>
+
+    <rect class="stage" x="600" y="225" width="170" height="60"/>
+    <text x="685" y="250" text-anchor="middle" class="lbl">3 · Narrative Gen</text>
+    <text x="685" y="268" text-anchor="middle" class="sub">LLM script for duration tier</text>
+
+    <rect class="stage" x="600" y="310" width="170" height="60"/>
+    <text x="685" y="335" text-anchor="middle" class="lbl">4 · Audio Gen (TTS)</text>
+    <text x="685" y="353" text-anchor="middle" class="sub">multi-provider · voice preset</text>
+  </g>
+
+  <!-- Briefing assembly -->
+  <rect class="stage stage-term" x="600" y="410" width="170" height="60"/>
+  <text x="685" y="435" text-anchor="middle" class="lbl">5 · Briefing Assembly</text>
+  <text x="685" y="453" text-anchor="middle" class="sub">terminal · fan-in</text>
+
+  <!-- Outputs -->
+  <rect class="stage stage-term" x="820" y="410" width="130" height="60"/>
+  <text x="885" y="435" text-anchor="middle" class="lbl">Briefing + FeedItem</text>
+  <text x="885" y="453" text-anchor="middle" class="sub">status: READY</text>
+
+  <!-- Edges: triggers → orchestrator -->
+  <line class="edge" x1="240" y1="85" x2="300" y2="180" marker-end="url(#arr)"/>
+  <line class="edge" x1="240" y1="170" x2="300" y2="200" marker-end="url(#arr)"/>
+  <line class="edge" x1="240" y1="255" x2="300" y2="220" marker-end="url(#arr)"/>
+
+  <!-- orchestrator → each stage (entry) -->
+  <line class="edge" x1="540" y1="180" x2="600" y2="85" marker-end="url(#arr)"/>
+  <line class="edge" x1="540" y1="200" x2="600" y2="170" marker-end="url(#arr)"/>
+  <line class="edge" x1="540" y1="220" x2="600" y2="255" marker-end="url(#arr)"/>
+  <line class="edge" x1="540" y1="245" x2="600" y2="340" marker-end="url(#arr)"/>
+
+  <!-- stage → orchestrator (completion reports) -->
+  <path class="edge-done" d="M 600 100 Q 570 120 570 160 Q 570 200 600 160" marker-end="url(#arrGreen)"/>
+  <path class="edge-done" d="M 600 185 Q 555 215 555 245 Q 555 275 600 255" marker-end="url(#arrGreen)"/>
+  <path class="edge-done" d="M 600 270 Q 560 295 560 320 Q 560 345 600 345" marker-end="url(#arrGreen)"/>
+
+  <!-- stage 4 → orchestrator → assembly dispatch -->
+  <path class="edge-done" d="M 600 355 Q 545 375 540 285" marker-end="url(#arrGreen)"/>
+
+  <!-- orchestrator → assembly -->
+  <path class="edge" d="M 420 285 Q 420 430 600 440" marker-end="url(#arr)"/>
+
+  <!-- assembly → output -->
+  <line class="edge" x1="770" y1="440" x2="820" y2="440" marker-end="url(#arr)"/>
+
+  <!-- Legend -->
+  <rect class="pill" x="40" y="520" width="880" height="80"/>
+  <text x="60" y="545" class="hdr">Key characteristics</text>
+  <text x="60" y="565" class="pillTxt">• Demand-driven — stages 1–5 run only when a BriefingRequest exists. Feed-refresh is a separate cron job (not a stage).</text>
+  <text x="60" y="582" class="pillTxt">• Cache-aware entry — orchestrator checks WorkProduct table and jumps to the earliest uncached stage (or straight to assembly).</text>
+  <text x="60" y="599" class="pillTxt">• CAS advance — each stage reports completedStage to the orchestrator, which only advances if currentStage == completedStage.</text>
+</svg>

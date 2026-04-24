@@ -1,0 +1,120 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 820" font-family="Inter, system-ui, sans-serif" font-size="12">
+  <defs>
+    <marker id="earr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#64748b"/>
+    </marker>
+    <style>
+      .bg { fill:#020617; }
+      .env { fill:#0b1e3d; stroke:#3b82f6; stroke-width:1.5; rx:10; ry:10; }
+      .env-dev { stroke:#22c55e; fill:#14532d; }
+      .env-staging { stroke:#a855f7; fill:#3b0764; }
+      .env-prod { stroke:#f59e0b; fill:#422006; }
+      .t { fill:#f8fafc; font-weight:700; font-size:13px; }
+      .sub { fill:#cbd5e1; font-size:11px; }
+      .cap { fill:#94a3b8; font-size:11px; font-weight:600; }
+      .edge { stroke:#64748b; stroke-width:1.3; fill:none; }
+      .hdr { fill:#e2e8f0; font-size:14px; font-weight:700; }
+    </style>
+  </defs>
+  <rect class="bg" x="0" y="0" width="1040" height="820"/>
+
+  <text x="520" y="30" text-anchor="middle" class="hdr">Blipp environments — development · staging · production</text>
+
+  <!-- Development -->
+  <rect class="env env-dev" x="40" y="60" width="440" height="330"/>
+  <text x="260" y="85" text-anchor="middle" class="t">Development (local)</text>
+  <text x="260" y="100" text-anchor="middle" class="sub">wrangler dev · vite dev · localhost:8787</text>
+
+  <text x="60" y="135" class="cap">.env (Vite + Prisma CLI)</text>
+  <text x="60" y="152" class="sub">DATABASE_URL (Neon pooler)</text>
+  <text x="60" y="168" class="sub">VITE_CLERK_PUBLISHABLE_KEY (pk_test_)</text>
+  <text x="60" y="184" class="sub">VITE_APP_URL=http://localhost:5173</text>
+
+  <text x="60" y="215" class="cap">.dev.vars (Worker secrets)</text>
+  <text x="60" y="232" class="sub">CLERK_SECRET_KEY / CLERK_WEBHOOK_SECRET</text>
+  <text x="60" y="248" class="sub">STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET</text>
+  <text x="60" y="264" class="sub">ANTHROPIC_API_KEY · OPENAI_API_KEY</text>
+  <text x="60" y="280" class="sub">DEEPGRAM_API_KEY · GROQ_API_KEY</text>
+  <text x="60" y="296" class="sub">PODCAST_INDEX_KEY / SECRET</text>
+  <text x="60" y="312" class="sub">ZEPTOMAIL_* (optional)</text>
+  <text x="60" y="328" class="sub">REVENUECAT_* (optional)</text>
+  <text x="60" y="344" class="sub">SERVICE_KEY_ENCRYPTION_KEY (optional)</text>
+  <text x="60" y="360" class="sub">CF_API_TOKEN / CF_ACCOUNT_ID (optional)</text>
+
+  <text x="260" y="135" class="cap">Infra</text>
+  <text x="260" y="152" class="sub">Shim: in-process queue runner</text>
+  <text x="260" y="168" class="sub">Hyperdrive: localConnectionString</text>
+  <text x="260" y="184" class="sub">R2 binding proxied to bucket</text>
+  <text x="260" y="200" class="sub">KV in-memory per process</text>
+  <text x="260" y="216" class="sub">Scheduled handler: manual curl</text>
+
+  <!-- Staging -->
+  <rect class="env env-staging" x="40" y="410" width="440" height="370"/>
+  <text x="260" y="435" text-anchor="middle" class="t">Staging</text>
+  <text x="260" y="450" text-anchor="middle" class="sub">staging.podblipp.com · worker "blipp-staging"</text>
+
+  <text x="60" y="485" class="cap">wrangler.jsonc (top-level env)</text>
+  <text x="60" y="502" class="sub">ENVIRONMENT=staging · APP_ORIGIN=staging.podblipp.com</text>
+  <text x="60" y="518" class="sub">ALLOWED_ORIGINS=(staging + capacitor://)</text>
+  <text x="60" y="534" class="sub">CLERK_FAPI_URL=https://clerk.podblipp.com</text>
+  <text x="60" y="550" class="sub">CLERK_PUBLISHABLE_KEY=pk_live_…</text>
+
+  <text x="60" y="580" class="cap">Bindings</text>
+  <text x="60" y="597" class="sub">Hyperdrive: a9159ac5… → Neon (shared w/ dev)</text>
+  <text x="60" y="613" class="sub">R2: blipp-audio-staging</text>
+  <text x="60" y="629" class="sub">KV RATE_LIMIT_KV: 3d3b2f61…</text>
+  <text x="60" y="645" class="sub">10 queues (-staging suffix) + dead-letter-staging</text>
+  <text x="60" y="661" class="sub">Cron: */5 * * * *</text>
+
+  <text x="60" y="692" class="cap">Deploy path</text>
+  <text x="60" y="709" class="sub">GitHub Actions on push to main:</text>
+  <text x="60" y="725" class="sub">npx prisma migrate deploy (staging DB)</text>
+  <text x="60" y="741" class="sub">wrangler deploy (no --env flag)</text>
+  <text x="60" y="757" class="sub">VITE_* injected from GH secrets at build</text>
+
+  <!-- Production -->
+  <rect class="env env-prod" x="520" y="60" width="480" height="720"/>
+  <text x="760" y="85" text-anchor="middle" class="t">Production</text>
+  <text x="760" y="100" text-anchor="middle" class="sub">podblipp.com + www.podblipp.com · worker "blipp"</text>
+
+  <text x="540" y="135" class="cap">wrangler.jsonc env.production vars</text>
+  <text x="540" y="152" class="sub">ENVIRONMENT=production · APP_ORIGIN=https://podblipp.com</text>
+  <text x="540" y="168" class="sub">ALLOWED_ORIGINS=(podblipp.com + capacitor://)</text>
+  <text x="540" y="184" class="sub">CLERK_FAPI_URL · CLERK_PUBLISHABLE_KEY=pk_live_…</text>
+
+  <text x="540" y="215" class="cap">Secrets (wrangler secret put --env production)</text>
+  <text x="540" y="232" class="sub">CLERK_SECRET_KEY · CLERK_WEBHOOK_SECRET</text>
+  <text x="540" y="248" class="sub">STRIPE_SECRET_KEY · STRIPE_WEBHOOK_SECRET</text>
+  <text x="540" y="264" class="sub">REVENUECAT_WEBHOOK_SECRET / REST_API_KEY / PROJECT_ID</text>
+  <text x="540" y="280" class="sub">ANTHROPIC_API_KEY · OPENAI_API_KEY</text>
+  <text x="540" y="296" class="sub">GROQ_API_KEY · DEEPGRAM_API_KEY</text>
+  <text x="540" y="312" class="sub">PODCAST_INDEX_KEY / SECRET</text>
+  <text x="540" y="328" class="sub">ZEPTOMAIL_TOKEN · ZEPTOMAIL_FROM_* · ZEPTOMAIL_WELCOME_TEMPLATE_KEY</text>
+  <text x="540" y="344" class="sub">CF_API_TOKEN · CF_ACCOUNT_ID</text>
+  <text x="540" y="360" class="sub">SERVICE_KEY_ENCRYPTION_KEY</text>
+  <text x="540" y="376" class="sub">VAPID_PUBLIC_KEY / PRIVATE_KEY / SUBJECT (optional)</text>
+  <text x="540" y="392" class="sub">NEON_API_KEY / NEON_PROJECT_ID (optional)</text>
+  <text x="540" y="408" class="sub">GITHUB_TOKEN (optional; Apple refresh workflow)</text>
+
+  <text x="540" y="440" class="cap">Bindings (env.production)</text>
+  <text x="540" y="457" class="sub">Hyperdrive: 54bb39c4… → Neon production</text>
+  <text x="540" y="473" class="sub">R2: blipp-audio</text>
+  <text x="540" y="489" class="sub">KV RATE_LIMIT_KV: 172275d8…</text>
+  <text x="540" y="505" class="sub">10 queues (no suffix) + dead-letter</text>
+  <text x="540" y="521" class="sub">Cron: */5 * * * *</text>
+
+  <text x="540" y="552" class="cap">Native app</text>
+  <text x="540" y="569" class="sub">Capacitor → capacitor://podblipp.com</text>
+  <text x="540" y="585" class="sub">Clerk FAPI proxy: /api/__clerk/*</text>
+  <text x="540" y="601" class="sub">IAP via RevenueCat → Apple StoreKit</text>
+
+  <text x="540" y="632" class="cap">Deploy path</text>
+  <text x="540" y="649" class="sub">GitHub Actions /deploy-production workflow:</text>
+  <text x="540" y="665" class="sub">npx prisma migrate deploy (production DB)</text>
+  <text x="540" y="681" class="sub">wrangler deploy --env production</text>
+  <text x="540" y="697" class="sub">Monitored via push-and-watch skill</text>
+  <text x="540" y="713" class="sub">Rollback: redeploy previous commit</text>
+
+  <text x="540" y="744" class="cap">Observability</text>
+  <text x="540" y="761" class="sub">Cloudflare Logs (persisted) · /api/admin/worker-logs · CronRun + PipelineStep tables</text>
+</svg>

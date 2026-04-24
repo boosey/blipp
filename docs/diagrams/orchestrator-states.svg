@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 500" font-family="Inter, system-ui, sans-serif" font-size="12">
+  <defs>
+    <marker id="arr3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#64748b"/>
+    </marker>
+    <marker id="arrR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#ef4444"/>
+    </marker>
+    <style>
+      .bg { fill:#020617; }
+      .state { fill:#0b1e3d; stroke:#3b82f6; stroke-width:1.3; rx:10; ry:10; }
+      .state-fin  { fill:#14532d; stroke:#22c55e; }
+      .state-fail { fill:#3b0712; stroke:#ef4444; }
+      .lbl { fill:#f8fafc; font-weight:700; font-size:13px; }
+      .sub { fill:#cbd5e1; font-size:11px; }
+      .arrow { stroke:#64748b; stroke-width:1.5; fill:none; }
+      .arrowFail { stroke:#ef4444; stroke-width:1.3; fill:none; stroke-dasharray:4,3; }
+      .hdr { fill:#e2e8f0; font-size:14px; font-weight:700; }
+      .eLbl { fill:#94a3b8; font-size:11px; }
+    </style>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="880" height="500"/>
+
+  <text x="440" y="30" text-anchor="middle" class="hdr">BriefingRequest &amp; PipelineJob state machine</text>
+
+  <!-- Request states -->
+  <rect class="state" x="40" y="70" width="160" height="50"/>
+  <text x="120" y="95" text-anchor="middle" class="lbl">BriefingRequest</text>
+  <text x="120" y="112" text-anchor="middle" class="sub">PENDING</text>
+
+  <rect class="state" x="240" y="70" width="160" height="50"/>
+  <text x="320" y="95" text-anchor="middle" class="lbl">PROCESSING</text>
+  <text x="320" y="112" text-anchor="middle" class="sub">jobs created</text>
+
+  <rect class="state state-fin" x="440" y="70" width="160" height="50"/>
+  <text x="520" y="95" text-anchor="middle" class="lbl">COMPLETED</text>
+  <text x="520" y="112" text-anchor="middle" class="sub">all jobs done</text>
+
+  <rect class="state state-fin" x="440" y="140" width="160" height="50"/>
+  <text x="520" y="165" text-anchor="middle" class="lbl">COMPLETED_DEGRADED</text>
+  <text x="520" y="182" text-anchor="middle" class="sub">some jobs failed</text>
+
+  <rect class="state state-fail" x="640" y="70" width="160" height="50"/>
+  <text x="720" y="95" text-anchor="middle" class="lbl">FAILED / CANCELLED</text>
+  <text x="720" y="112" text-anchor="middle" class="sub">no successful jobs</text>
+
+  <line class="arrow" x1="200" y1="95" x2="240" y2="95" marker-end="url(#arr3)"/>
+  <line class="arrow" x1="400" y1="95" x2="440" y2="95" marker-end="url(#arr3)"/>
+  <line class="arrow" x1="400" y1="100" x2="440" y2="165" marker-end="url(#arr3)"/>
+  <line class="arrowFail" x1="400" y1="110" x2="640" y2="100" marker-end="url(#arrR)"/>
+
+  <!-- Job states -->
+  <text x="440" y="240" text-anchor="middle" class="hdr">PipelineJob lifecycle</text>
+
+  <rect class="state" x="40" y="270" width="140" height="50"/>
+  <text x="110" y="295" text-anchor="middle" class="lbl">PENDING</text>
+  <text x="110" y="312" text-anchor="middle" class="sub">currentStage set</text>
+
+  <rect class="state" x="220" y="270" width="140" height="50"/>
+  <text x="290" y="295" text-anchor="middle" class="lbl">IN_PROGRESS</text>
+  <text x="290" y="312" text-anchor="middle" class="sub">stage executing</text>
+
+  <rect class="state" x="400" y="270" width="140" height="50"/>
+  <text x="470" y="295" text-anchor="middle" class="lbl">IN_PROGRESS</text>
+  <text x="470" y="312" text-anchor="middle" class="sub">advanced next stage</text>
+
+  <rect class="state state-fin" x="580" y="270" width="140" height="50"/>
+  <text x="650" y="295" text-anchor="middle" class="lbl">PENDING (assembly)</text>
+  <text x="650" y="312" text-anchor="middle" class="sub">awaiting fan-in</text>
+
+  <rect class="state state-fin" x="760" y="270" width="100" height="50"/>
+  <text x="810" y="295" text-anchor="middle" class="lbl">COMPLETED</text>
+  <text x="810" y="312" text-anchor="middle" class="sub">briefing linked</text>
+
+  <rect class="state state-fail" x="580" y="350" width="140" height="50"/>
+  <text x="650" y="375" text-anchor="middle" class="lbl">FAILED</text>
+  <text x="650" y="392" text-anchor="middle" class="sub">any stage error</text>
+
+  <line class="arrow" x1="180" y1="295" x2="220" y2="295" marker-end="url(#arr3)"/>
+  <line class="arrow" x1="360" y1="295" x2="400" y2="295" marker-end="url(#arr3)"/>
+  <text x="380" y="288" text-anchor="middle" class="eLbl">job-stage-complete (CAS)</text>
+  <line class="arrow" x1="540" y1="295" x2="580" y2="295" marker-end="url(#arr3)"/>
+  <line class="arrow" x1="720" y1="295" x2="760" y2="295" marker-end="url(#arr3)"/>
+  <line class="arrowFail" x1="290" y1="320" x2="580" y2="365" marker-end="url(#arrR)"/>
+  <text x="390" y="350" class="eLbl">job-failed</text>
+
+  <!-- Key rules -->
+  <rect class="state" x="40" y="430" width="800" height="55"/>
+  <text x="60" y="452" class="lbl">Invariants</text>
+  <text x="60" y="470" class="sub">• stage order: TRANSCRIPTION → DISTILLATION → NARRATIVE_GENERATION → AUDIO_GENERATION → BRIEFING_ASSEMBLY</text>
+  <text x="60" y="484" class="sub">• CAS on updateMany({id, currentStage: completedStage}) prevents double-advance from duplicate messages</text>
+</svg>

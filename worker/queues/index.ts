@@ -11,7 +11,7 @@ import type { ContentPrefetchMessage } from "./content-prefetch";
 import { handleWelcomeEmail } from "./welcome-email";
 import { createPrismaClient } from "../lib/db";
 import { runJob } from "../lib/cron/runner";
-import { runPipelineTriggerJob } from "../lib/cron/pipeline-trigger";
+import { runEpisodeRefreshJob } from "../lib/cron/episode-refresh";
 import { runMonitoringJob } from "../lib/cron/monitoring";
 import { runUserLifecycleJob } from "../lib/cron/user-lifecycle";
 import { runDataRetentionJob } from "../lib/cron/data-retention";
@@ -161,7 +161,7 @@ export async function handleQueue(
  * Cron heartbeat handler — fires every 5 minutes and dispatches all named jobs.
  * Each job manages its own enable toggle and run interval via PlatformConfig.
  *
- * Jobs: apple-discovery, podcast-index-discovery, pipeline-trigger, monitoring, user-lifecycle, data-retention, recommendations, listen-original-aggregation, stale-job-reaper
+ * Jobs: apple-discovery, podcast-index-discovery, episode-refresh, monitoring, user-lifecycle, data-retention, recommendations, listen-original-aggregation, stale-job-reaper, geo-tagging, catalog-pregen, manual-grant-expiry
  *
  * @param event - Cloudflare scheduled event
  * @param env - Worker environment bindings
@@ -179,7 +179,7 @@ export async function scheduled(
     const jobExecutors: Record<string, (logger: any) => Promise<Record<string, unknown>>> = {
       "apple-discovery": (logger) => runAppleDiscoveryJob(prisma as any, logger, env),
       "podcast-index-discovery": (logger) => runPodcastIndexDiscoveryJob(prisma as any, logger, env),
-      "pipeline-trigger": (logger) => runPipelineTriggerJob(prisma as any, env, logger),
+      "episode-refresh": (logger) => runEpisodeRefreshJob(prisma as any, env, logger),
       "monitoring": (logger) => runMonitoringJob(prisma as any, logger),
       "user-lifecycle": (logger) => runUserLifecycleJob(prisma as any, logger),
       "data-retention": (logger) => runDataRetentionJob(prisma as any, logger),

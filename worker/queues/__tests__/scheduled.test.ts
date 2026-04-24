@@ -10,8 +10,8 @@ vi.mock("../../lib/cron/runner", () => ({
   runJob: mockRunJob,
 }));
 
-vi.mock("../../lib/cron/pipeline-trigger", () => ({
-  runPipelineTriggerJob: vi.fn(),
+vi.mock("../../lib/cron/episode-refresh", () => ({
+  runEpisodeRefreshJob: vi.fn(),
 }));
 vi.mock("../../lib/cron/monitoring", () => ({
   runMonitoringJob: vi.fn(),
@@ -59,7 +59,7 @@ describe("scheduled", () => {
     const jobKeys = mockRunJob.mock.calls.map((c: any) => c[0].jobKey);
     expect(jobKeys).toContain("apple-discovery");
     expect(jobKeys).toContain("podcast-index-discovery");
-    expect(jobKeys).toContain("pipeline-trigger");
+    expect(jobKeys).toContain("episode-refresh");
     expect(jobKeys).toContain("monitoring");
     expect(jobKeys).toContain("user-lifecycle");
     expect(jobKeys).toContain("data-retention");

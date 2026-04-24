@@ -10,11 +10,11 @@ type PrismaLike = {
 };
 
 /**
- * Fetch New Episodes job: checks all podcast feeds for new episodes.
+ * Episode refresh job: checks all podcast feeds for new episodes.
  * Refreshes all non-archived podcasts regardless of subscription status.
  * Creates an EpisodeRefreshJob to track progress.
  */
-export async function runPipelineTriggerJob(
+export async function runEpisodeRefreshJob(
   prisma: PrismaLike,
   env: Env,
   logger: CronLogger
@@ -29,7 +29,6 @@ export async function runPipelineTriggerJob(
 
   await logger.info(`Found ${podcastIds.length} active podcasts`);
 
-  // Create tracking job
   const job = await prisma.episodeRefreshJob.create({
     data: {
       trigger: "cron",
@@ -41,7 +40,6 @@ export async function runPipelineTriggerJob(
 
   await logger.info("Created EpisodeRefreshJob", { refreshJobId: job.id });
 
-  // Queue feed refresh in batched chunks
   const batchConcurrency = (await getConfig(prisma, "pipeline.feedRefresh.batchConcurrency", 10)) as number;
   await sendBatchedFeedRefresh(env.FEED_REFRESH_QUEUE, podcastIds, batchConcurrency, { type: "cron", refreshJobId: job.id });
 

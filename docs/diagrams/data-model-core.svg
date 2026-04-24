@@ -1,0 +1,209 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 780" font-family="Inter, system-ui, sans-serif" font-size="11">
+  <defs>
+    <marker id="e1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#64748b"/>
+    </marker>
+    <style>
+      .bg { fill:#020617; }
+      .ent { fill:#0b1e3d; stroke:#3b82f6; stroke-width:1.2; rx:6; ry:6; }
+      .ent-user { fill:#14532d; stroke:#22c55e; }
+      .ent-content { fill:#422006; stroke:#f59e0b; }
+      .ent-pipe { fill:#3b0764; stroke:#a855f7; }
+      .ent-ops { fill:#3b0712; stroke:#ef4444; }
+      .t   { fill:#f8fafc; font-weight:700; font-size:12px; }
+      .f   { fill:#cbd5e1; font-size:10px; }
+      .edge { stroke:#475569; stroke-width:1.2; fill:none; }
+      .mult { fill:#94a3b8; font-size:10px; }
+      .hdr { fill:#e2e8f0; font-size:14px; font-weight:700; }
+      .sec { fill:#64748b; font-size:11px; font-weight:600; }
+    </style>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1100" height="780"/>
+
+  <text x="550" y="28" text-anchor="middle" class="hdr">Core entity-relationship diagram — Blipp (abbreviated; see data-model.md for full field list)</text>
+
+  <!-- Identity / billing cluster -->
+  <text x="50" y="58" class="sec">Identity &amp; Billing</text>
+
+  <rect class="ent ent-user" x="50" y="70" width="150" height="80"/>
+  <text x="125" y="90" text-anchor="middle" class="t">Plan</text>
+  <text x="60" y="110" class="f">slug • limits • features</text>
+  <text x="60" y="125" class="f">stripe/apple product IDs</text>
+  <text x="60" y="140" class="f">allowedVoicePresetIds[]</text>
+
+  <rect class="ent ent-user" x="240" y="70" width="170" height="120"/>
+  <text x="325" y="90" text-anchor="middle" class="t">User</text>
+  <text x="250" y="110" class="f">clerkId · stripeCustomerId</text>
+  <text x="250" y="125" class="f">planId · isAdmin</text>
+  <text x="250" y="140" class="f">defaultVoicePresetId</text>
+  <text x="250" y="155" class="f">categories/topics preferences</text>
+  <text x="250" y="170" class="f">timezone · zipCode · city</text>
+  <text x="250" y="185" class="f">welcomeEmailSentAt</text>
+
+  <rect class="ent" x="450" y="70" width="180" height="80"/>
+  <text x="540" y="90" text-anchor="middle" class="t">BillingSubscription</text>
+  <text x="460" y="110" class="f">source (STRIPE/APPLE/MANUAL)</text>
+  <text x="460" y="125" class="f">status · currentPeriodEnd</text>
+  <text x="460" y="140" class="f">external/productExternalId</text>
+
+  <rect class="ent" x="670" y="70" width="140" height="80"/>
+  <text x="740" y="90" text-anchor="middle" class="t">BillingEvent</text>
+  <text x="680" y="110" class="f">eventType · status</text>
+  <text x="680" y="125" class="f">rawPayload (audit)</text>
+
+  <rect class="ent" x="850" y="70" width="140" height="80"/>
+  <text x="920" y="90" text-anchor="middle" class="t">ServiceKey</text>
+  <text x="860" y="110" class="f">provider · envKey</text>
+  <text x="860" y="125" class="f">encryptedValue · iv</text>
+  <text x="860" y="140" class="f">lastValidated</text>
+
+  <line class="edge" x1="200" y1="110" x2="240" y2="110" marker-end="url(#e1)"/>
+  <line class="edge" x1="410" y1="110" x2="450" y2="110" marker-end="url(#e1)"/>
+  <line class="edge" x1="410" y1="130" x2="670" y2="110" marker-end="url(#e1)"/>
+
+  <!-- Podcast/episode cluster -->
+  <text x="50" y="225" class="sec">Catalog</text>
+
+  <rect class="ent ent-content" x="50" y="240" width="170" height="95"/>
+  <text x="135" y="260" text-anchor="middle" class="t">Podcast</text>
+  <text x="60" y="280" class="f">feedUrl · podcastIndexId</text>
+  <text x="60" y="294" class="f">appleId · slug</text>
+  <text x="60" y="308" class="f">feedHealth · status · deliverable</text>
+  <text x="60" y="322" class="f">invalidationReason · appleRank</text>
+
+  <rect class="ent ent-content" x="260" y="240" width="170" height="95"/>
+  <text x="345" y="260" text-anchor="middle" class="t">Episode</text>
+  <text x="270" y="280" class="f">podcastId · guid · slug</text>
+  <text x="270" y="294" class="f">audioUrl · durationSeconds</text>
+  <text x="270" y="308" class="f">contentStatus · publicPage</text>
+  <text x="270" y="322" class="f">topicTags · transcriptR2Key</text>
+
+  <rect class="ent" x="470" y="240" width="150" height="60"/>
+  <text x="545" y="260" text-anchor="middle" class="t">Category</text>
+  <text x="480" y="280" class="f">appleGenreId · name · slug</text>
+
+  <rect class="ent" x="470" y="310" width="150" height="60"/>
+  <text x="545" y="330" text-anchor="middle" class="t">PodcastCategory</text>
+  <text x="480" y="350" class="f">composite PK (podcast,cat)</text>
+
+  <rect class="ent" x="650" y="240" width="150" height="60"/>
+  <text x="725" y="260" text-anchor="middle" class="t">PodcastProfile</text>
+  <text x="660" y="280" class="f">categoryWeights · embedding</text>
+
+  <rect class="ent" x="820" y="240" width="150" height="60"/>
+  <text x="895" y="260" text-anchor="middle" class="t">PodcastGeoProfile</text>
+  <text x="830" y="280" class="f">city · state · teamId</text>
+
+  <rect class="ent" x="650" y="315" width="150" height="55"/>
+  <text x="725" y="335" text-anchor="middle" class="t">PodcastRequest</text>
+  <text x="660" y="355" class="f">status · reviewedBy</text>
+
+  <line class="edge" x1="220" y1="285" x2="260" y2="285" marker-end="url(#e1)"/>
+  <line class="edge" x1="430" y1="285" x2="470" y2="285" marker-end="url(#e1)"/>
+  <line class="edge" x1="430" y1="310" x2="470" y2="330" marker-end="url(#e1)"/>
+  <line class="edge" x1="220" y1="310" x2="650" y2="270" marker-end="url(#e1)"/>
+
+  <!-- Subscription / delivery cluster -->
+  <text x="50" y="395" class="sec">Subscriptions &amp; delivery</text>
+
+  <rect class="ent" x="50" y="410" width="170" height="70"/>
+  <text x="135" y="430" text-anchor="middle" class="t">Subscription</text>
+  <text x="60" y="450" class="f">userId · podcastId</text>
+  <text x="60" y="465" class="f">durationTier · voicePresetId</text>
+
+  <rect class="ent ent-pipe" x="260" y="410" width="170" height="80"/>
+  <text x="345" y="430" text-anchor="middle" class="t">BriefingRequest</text>
+  <text x="270" y="450" class="f">status · targetMinutes · items</text>
+  <text x="270" y="465" class="f">mode (USER/SEO_BACKFILL/CATALOG)</text>
+  <text x="270" y="480" class="f">source (ON_DEMAND/SUBSCRIPTION/…)</text>
+
+  <rect class="ent ent-pipe" x="470" y="410" width="170" height="85"/>
+  <text x="555" y="430" text-anchor="middle" class="t">PipelineJob</text>
+  <text x="480" y="450" class="f">requestId · episodeId</text>
+  <text x="480" y="465" class="f">durationTier · voicePresetId</text>
+  <text x="480" y="480" class="f">currentStage · status</text>
+
+  <rect class="ent ent-content" x="680" y="410" width="150" height="70"/>
+  <text x="755" y="430" text-anchor="middle" class="t">Clip</text>
+  <text x="690" y="450" class="f">audioKey · durationTier</text>
+  <text x="690" y="465" class="f">wordCount · actualSeconds</text>
+
+  <rect class="ent" x="860" y="410" width="140" height="70"/>
+  <text x="930" y="430" text-anchor="middle" class="t">Briefing</text>
+  <text x="870" y="450" class="f">userId · clipId</text>
+  <text x="870" y="465" class="f">adAudioKey (reserved)</text>
+
+  <rect class="ent" x="680" y="495" width="320" height="55"/>
+  <text x="840" y="515" text-anchor="middle" class="t">FeedItem</text>
+  <text x="690" y="535" class="f">source (SUBSCRIPTION/ON_DEMAND/CATALOG) · status · listened · briefingId</text>
+
+  <rect class="ent ent-content" x="470" y="510" width="170" height="55"/>
+  <text x="555" y="530" text-anchor="middle" class="t">Distillation</text>
+  <text x="480" y="550" class="f">episodeId (unique) · claimsJson</text>
+
+  <rect class="ent" x="260" y="510" width="170" height="55"/>
+  <text x="345" y="530" text-anchor="middle" class="t">CatalogBriefing</text>
+  <text x="270" y="550" class="f">podcastId · stale</text>
+
+  <line class="edge" x1="220" y1="440" x2="260" y2="440" marker-end="url(#e1)"/>
+  <line class="edge" x1="430" y1="440" x2="470" y2="440" marker-end="url(#e1)"/>
+  <line class="edge" x1="640" y1="440" x2="680" y2="440" marker-end="url(#e1)"/>
+  <line class="edge" x1="830" y1="440" x2="860" y2="440" marker-end="url(#e1)"/>
+  <line class="edge" x1="930" y1="480" x2="840" y2="495" marker-end="url(#e1)"/>
+  <line class="edge" x1="345" y1="490" x2="345" y2="510" marker-end="url(#e1)"/>
+  <line class="edge" x1="430" y1="530" x2="470" y2="530" marker-end="url(#e1)"/>
+
+  <!-- Operations cluster -->
+  <text x="50" y="590" class="sec">Pipeline audit &amp; ops</text>
+
+  <rect class="ent ent-pipe" x="50" y="605" width="170" height="70"/>
+  <text x="135" y="625" text-anchor="middle" class="t">PipelineStep</text>
+  <text x="60" y="645" class="f">stage · status · cached</text>
+  <text x="60" y="660" class="f">tokens · cost · durationMs</text>
+
+  <rect class="ent ent-pipe" x="260" y="605" width="170" height="70"/>
+  <text x="345" y="625" text-anchor="middle" class="t">PipelineEvent</text>
+  <text x="270" y="645" class="f">stepId · level · message</text>
+
+  <rect class="ent ent-pipe" x="470" y="605" width="170" height="70"/>
+  <text x="555" y="625" text-anchor="middle" class="t">WorkProduct</text>
+  <text x="480" y="645" class="f">type · r2Key · voice</text>
+  <text x="480" y="660" class="f">episodeId · durationTier</text>
+
+  <rect class="ent ent-ops" x="680" y="605" width="170" height="70"/>
+  <text x="765" y="625" text-anchor="middle" class="t">AiServiceError</text>
+  <text x="690" y="645" class="f">service · provider · category</text>
+  <text x="690" y="660" class="f">correlationId · retryCount</text>
+
+  <rect class="ent ent-ops" x="870" y="605" width="180" height="70"/>
+  <text x="960" y="625" text-anchor="middle" class="t">AuditLog</text>
+  <text x="880" y="645" class="f">actorId · action · entity</text>
+  <text x="880" y="660" class="f">before/after (JSON)</text>
+
+  <text x="50" y="705" class="sec">Cron · background jobs</text>
+
+  <rect class="ent" x="50" y="720" width="150" height="45"/>
+  <text x="125" y="738" text-anchor="middle" class="t">CronJob</text>
+  <text x="60" y="755" class="f">jobKey · enabled · interval</text>
+
+  <rect class="ent" x="220" y="720" width="150" height="45"/>
+  <text x="295" y="738" text-anchor="middle" class="t">CronRun + CronRunLog</text>
+  <text x="230" y="755" class="f">status · durationMs · logs</text>
+
+  <rect class="ent" x="390" y="720" width="160" height="45"/>
+  <text x="470" y="738" text-anchor="middle" class="t">EpisodeRefreshJob</text>
+  <text x="400" y="755" class="f">scope · trigger · phase</text>
+
+  <rect class="ent" x="570" y="720" width="160" height="45"/>
+  <text x="650" y="738" text-anchor="middle" class="t">CatalogSeedJob</text>
+  <text x="580" y="755" class="f">source · status · errors</text>
+
+  <rect class="ent" x="750" y="720" width="160" height="45"/>
+  <text x="830" y="738" text-anchor="middle" class="t">DigestDelivery</text>
+  <text x="760" y="755" class="f">(+ DigestDeliveryEpisode)</text>
+
+  <rect class="ent" x="930" y="720" width="150" height="45"/>
+  <text x="1005" y="738" text-anchor="middle" class="t">ListenOriginalEvent</text>
+  <text x="940" y="755" class="f">+ PublisherReportBatch</text>
+</svg>

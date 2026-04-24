@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" font-family="Inter, system-ui, sans-serif" font-size="12">
+  <defs>
+    <marker id="arr4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#64748b"/>
+    </marker>
+    <style>
+      .bg { fill:#020617; }
+      .beat { fill:#422006; stroke:#f59e0b; stroke-width:1.5; rx:10; ry:10; }
+      .runner { fill:#0b1e3d; stroke:#3b82f6; stroke-width:1.3; rx:8; ry:8; }
+      .job { fill:#14532d; stroke:#22c55e; stroke-width:1.2; rx:6; ry:6; }
+      .t { fill:#f8fafc; font-weight:700; font-size:13px; }
+      .sub { fill:#cbd5e1; font-size:11px; }
+      .edge { stroke:#64748b; stroke-width:1.3; fill:none; }
+      .hdr { fill:#e2e8f0; font-size:14px; font-weight:700; }
+    </style>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="960" height="560"/>
+
+  <text x="480" y="30" text-anchor="middle" class="hdr">Scheduled handler — single cron heartbeat dispatches 12 registered jobs</text>
+
+  <rect class="beat" x="60" y="55" width="220" height="70"/>
+  <text x="170" y="80" text-anchor="middle" class="t">Cloudflare cron</text>
+  <text x="170" y="98" text-anchor="middle" class="sub">trigger: */5 * * * *</text>
+  <text x="170" y="115" text-anchor="middle" class="sub">invokes worker.scheduled()</text>
+
+  <rect class="runner" x="340" y="55" width="260" height="70"/>
+  <text x="470" y="80" text-anchor="middle" class="t">runJob() · worker/lib/cron/runner.ts</text>
+  <text x="470" y="98" text-anchor="middle" class="sub">reads CronJob (enabled + interval)</text>
+  <text x="470" y="115" text-anchor="middle" class="sub">records CronRun + CronRunLog</text>
+
+  <rect class="runner" x="660" y="55" width="240" height="70"/>
+  <text x="780" y="80" text-anchor="middle" class="t">Promise.allSettled</text>
+  <text x="780" y="98" text-anchor="middle" class="sub">parallel dispatch</text>
+  <text x="780" y="115" text-anchor="middle" class="sub">per-job logger</text>
+
+  <line class="edge" x1="280" y1="90" x2="340" y2="90" marker-end="url(#arr4)"/>
+  <line class="edge" x1="600" y1="90" x2="660" y2="90" marker-end="url(#arr4)"/>
+
+  <g>
+    <rect class="job" x="40" y="160" width="220" height="50"/>
+    <text x="150" y="180" text-anchor="middle" class="t">episode-refresh</text>
+    <text x="150" y="197" text-anchor="middle" class="sub">feed-refresh for all active podcasts</text>
+
+    <rect class="job" x="280" y="160" width="220" height="50"/>
+    <text x="390" y="180" text-anchor="middle" class="t">apple-discovery</text>
+    <text x="390" y="197" text-anchor="middle" class="sub">Apple Top 200 → Podcast.appleRank</text>
+
+    <rect class="job" x="520" y="160" width="220" height="50"/>
+    <text x="630" y="180" text-anchor="middle" class="t">podcast-index-discovery</text>
+    <text x="630" y="197" text-anchor="middle" class="sub">Podcast Index trending → piRank</text>
+
+    <rect class="job" x="760" y="160" width="170" height="50"/>
+    <text x="845" y="180" text-anchor="middle" class="t">catalog-pregen</text>
+    <text x="845" y="197" text-anchor="middle" class="sub">pre-gen popular clips</text>
+
+    <rect class="job" x="40" y="230" width="220" height="50"/>
+    <text x="150" y="250" text-anchor="middle" class="t">recommendations</text>
+    <text x="150" y="267" text-anchor="middle" class="sub">recompute profiles + cache</text>
+
+    <rect class="job" x="280" y="230" width="220" height="50"/>
+    <text x="390" y="250" text-anchor="middle" class="t">geo-tagging</text>
+    <text x="390" y="267" text-anchor="middle" class="sub">keyword + LLM geo classification</text>
+
+    <rect class="job" x="520" y="230" width="220" height="50"/>
+    <text x="630" y="250" text-anchor="middle" class="t">monitoring</text>
+    <text x="630" y="267" text-anchor="middle" class="sub">cost alerts · pricing refresh</text>
+
+    <rect class="job" x="760" y="230" width="170" height="50"/>
+    <text x="845" y="250" text-anchor="middle" class="t">stale-job-reaper</text>
+    <text x="845" y="267" text-anchor="middle" class="sub">fail stuck jobs</text>
+
+    <rect class="job" x="40" y="300" width="220" height="50"/>
+    <text x="150" y="320" text-anchor="middle" class="t">user-lifecycle</text>
+    <text x="150" y="337" text-anchor="middle" class="sub">trial expiry · inactive cleanup</text>
+
+    <rect class="job" x="280" y="300" width="220" height="50"/>
+    <text x="390" y="320" text-anchor="middle" class="t">data-retention</text>
+    <text x="390" y="337" text-anchor="middle" class="sub">archive old jobs + work products</text>
+
+    <rect class="job" x="520" y="300" width="220" height="50"/>
+    <text x="630" y="320" text-anchor="middle" class="t">listen-original-aggregation</text>
+    <text x="630" y="337" text-anchor="middle" class="sub">nightly PublisherReportBatch</text>
+
+    <rect class="job" x="760" y="300" width="170" height="50"/>
+    <text x="845" y="320" text-anchor="middle" class="t">manual-grant-expiry</text>
+    <text x="845" y="337" text-anchor="middle" class="sub">expire MANUAL billing grants</text>
+  </g>
+
+  <text x="480" y="400" text-anchor="middle" class="hdr">Each job: enabled toggle + interval check + per-run audit log</text>
+  <rect class="runner" x="100" y="420" width="760" height="100"/>
+  <text x="120" y="445" class="t">Gating rules (worker/lib/cron/runner.ts)</text>
+  <text x="120" y="465" class="sub">1. Lookup CronJob row by jobKey → if enabled=false, skip (no CronRun recorded).</text>
+  <text x="120" y="480" class="sub">2. If now - lastRunAt &lt; intervalMinutes, skip.</text>
+  <text x="120" y="495" class="sub">3. Insert CronRun(IN_PROGRESS) · stamp lastRunAt · execute → update status to SUCCESS/FAILED · flush CronRunLog.</text>
+  <text x="120" y="510" class="sub">Admin can trigger manually from /admin/scheduled-jobs bypassing interval.</text>
+</svg>

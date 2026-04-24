@@ -720,7 +720,7 @@ Then proceed directly into the content.`;
   const cronJobs = [
     { jobKey: "apple-discovery",             label: "Apple Discovery",                 description: "Discovers new podcasts from Apple Podcasts and adds them to the library",                        defaultIntervalMinutes: 10080 },
     { jobKey: "podcast-index-discovery",     label: "Podcast Index Discovery",         description: "Discovers new podcasts from Podcast Index and adds them to the library",                        defaultIntervalMinutes: 10080 },
-    { jobKey: "pipeline-trigger",            label: "Fetch New Episodes",              description: "Checks all podcast feeds for new episodes and enqueues them for processing",                    defaultIntervalMinutes: 15 },
+    { jobKey: "episode-refresh",             label: "Fetch New Episodes",              description: "Checks all podcast feeds for new episodes and enqueues them for processing",                    defaultIntervalMinutes: 15 },
     { jobKey: "monitoring",                  label: "Update AI Models",                description: "Refreshes AI model pricing and checks cost threshold alerts",                                   defaultIntervalMinutes: 60 },
     { jobKey: "user-lifecycle",              label: "Promotion Aging",                 description: "Checks for users whose free trial has expired",                                                 defaultIntervalMinutes: 360 },
     { jobKey: "data-retention",              label: "Data Pruning",                    description: "Counts/deletes aged episodes, stale podcasts, and old requests",                                 defaultIntervalMinutes: 1440 },
