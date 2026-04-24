@@ -25,9 +25,11 @@ interface AiProvider {
 interface ConfigDef {
   key: string;
   label: string;
-  type: "number" | "boolean" | "readonly";
+  type: "number" | "boolean" | "readonly" | "select";
   description: string;
-  default: number | boolean;
+  default: number | boolean | string;
+  options?: { value: string; label: string }[];
+  warning?: string;
 }
 
 interface ConfigGroup {
@@ -44,6 +46,17 @@ const CONFIG_GROUPS: ConfigGroup[] = [
     title: "Catalog Discovery",
     description: "How new podcasts are discovered and added to the library",
     items: [
+      {
+        key: "catalog.source",
+        label: "Default Discovery Source",
+        type: "select",
+        description: "Which external source the discovery cron uses. Podcast Index is free and open; Apple has richer metadata but stricter rate limits.",
+        default: "podcast-index",
+        options: [
+          { value: "podcast-index", label: "Podcast Index" },
+          { value: "apple", label: "Apple Podcasts" },
+        ],
+      },
       { key: "catalog.seedSize", label: "Discovery Batch Size", type: "number", description: "Podcasts to fetch during catalog refresh", default: 20 },
       { key: "catalog.maxSize", label: "Catalog Size Limit", type: "number", description: "Max podcasts in catalog. Least-ranked PI podcasts are evicted when full.", default: 10000 },
       { key: "catalog.refreshAllPodcasts", label: "Refresh All Podcasts", type: "boolean", description: "Refresh all catalog podcasts (not just subscribed)", default: false },
@@ -81,6 +94,14 @@ const CONFIG_GROUPS: ConfigGroup[] = [
     title: "Data Lifecycle",
     description: "Cleanup and aging rules for podcasts and episodes",
     items: [
+      {
+        key: "catalog.cleanup.enabled",
+        label: "Catalog Cleanup Reporting",
+        type: "boolean",
+        description: "When enabled, the data-retention cron counts stale podcasts (no subscribers) and reports the count for monitoring. No podcasts are deleted today — this is a reporting-only flag. Does NOT affect automatic eviction triggered by the Catalog Size Limit.",
+        default: false,
+        warning: "If disabled, the admin dashboard will not show a cleanup-candidate count during data retention runs. The Catalog Size Limit eviction process (triggered during catalog refresh) runs independently and is unaffected.",
+      },
       { key: "catalog.cleanup.inactivityThresholdDays", label: "Inactivity Threshold (days)", type: "number", description: "Days inactive before suggesting podcast removal", default: 90 },
       { key: "episodes.aging.enabled", label: "Episode Aging Enabled", type: "boolean", description: "Enable automatic episode deletion by age", default: false },
       { key: "episodes.aging.maxAgeDays", label: "Episode Max Age (days)", type: "number", description: "Days before episodes are deletion candidates", default: 180 },
@@ -227,6 +248,49 @@ export default function PodcastSettings() {
     return Number(entry.value);
   }
 
+  function renderControl(cfg: ConfigDef) {
+    if (cfg.type === "boolean") {
+      return (
+        <Switch
+          checked={getConfigValue(cfg.key, cfg.default as boolean) as boolean}
+          onCheckedChange={(v) => updateConfig(cfg.key, v)}
+          disabled={saving === cfg.key}
+          className="data-[state=checked]:bg-[#14B8A6]"
+        />
+      );
+    }
+    if (cfg.type === "readonly") {
+      return <span className="text-xs font-mono text-[#9CA3AF] tabular-nums">{String(cfg.default)}</span>;
+    }
+    if (cfg.type === "select") {
+      return (
+        <Select
+          value={getStringConfig(cfg.key, cfg.default as string)}
+          onValueChange={(v) => updateConfig(cfg.key, v)}
+          disabled={saving === cfg.key}
+        >
+          <SelectTrigger className="w-48 h-8 text-[11px] bg-[#1A2942] border-white/10 text-[#F9FAFB]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent className="bg-[#1A2942] border-white/10 text-[#F9FAFB]">
+            {(cfg.options ?? []).map((opt) => (
+              <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                {opt.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      );
+    }
+    return (
+      <NumberConfigInput
+        value={getConfigValue(cfg.key, cfg.default as number) as number}
+        onSave={(val) => updateConfig(cfg.key, val)}
+        saving={saving === cfg.key}
+      />
+    );
+  }
+
   if (loading && configs.length === 0) return <PodcastSettingsSkeleton />;
 
   return (
@@ -245,36 +309,22 @@ export default function PodcastSettings() {
           </div>
 
           <div className="divide-y divide-white/5">
-            {group.items.map((cfg) => {
-              const currentValue = getConfigValue(cfg.key, cfg.default);
-              return (
-                <div key={cfg.key} className="px-4 py-3 hover:bg-white/[0.02] transition-colors">
-                  <div className="flex items-center justify-between">
-                    <div className="min-w-0 flex-1 mr-4">
-                      <Label className="text-xs text-[#F9FAFB]">{cfg.label}</Label>
-                      <p className="text-[10px] text-[#9CA3AF] mt-0.5">{cfg.description}</p>
-                    </div>
-
-                    {cfg.type === "boolean" ? (
-                      <Switch
-                        checked={currentValue as boolean}
-                        onCheckedChange={(v) => updateConfig(cfg.key, v)}
-                        disabled={saving === cfg.key}
-                        className="data-[state=checked]:bg-[#14B8A6]"
-                      />
-                    ) : cfg.type === "readonly" ? (
-                      <span className="text-xs font-mono text-[#9CA3AF] tabular-nums">{cfg.default}</span>
-                    ) : (
-                      <NumberConfigInput
-                        value={currentValue as number}
-                        onSave={(val) => updateConfig(cfg.key, val)}
-                        saving={saving === cfg.key}
-                      />
+            {group.items.map((cfg) => (
+              <div key={cfg.key} className="px-4 py-3 hover:bg-white/[0.02] transition-colors">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0 flex-1">
+                    <Label className="text-xs text-[#F9FAFB]">{cfg.label}</Label>
+                    <p className="text-[10px] text-[#9CA3AF] mt-0.5">{cfg.description}</p>
+                    {cfg.warning && (
+                      <p className="text-[10px] text-[#F59E0B] mt-1 border-l-2 border-[#F59E0B]/40 pl-2">
+                        {cfg.warning}
+                      </p>
                     )}
                   </div>
+                  <div className="shrink-0 pt-0.5">{renderControl(cfg)}</div>
                 </div>
-              );
-            })}
+              </div>
+            ))}
           </div>
         </div>
       ))}
