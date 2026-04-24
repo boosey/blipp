@@ -80,3 +80,8 @@ export interface CatalogRefreshMessage {
   source?: "apple" | "podcast-index";
   seedJobId?: string;
 }
+
+/** Welcome email queue — enqueued from the Clerk user.created webhook. */
+export interface WelcomeEmailMessage {
+  userId: string;
+}

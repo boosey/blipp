@@ -82,6 +82,10 @@
 			{
 				"binding": "CONTENT_PREFETCH_QUEUE",
 				"queue": "content-prefetch-staging"
+			},
+			{
+				"binding": "WELCOME_EMAIL_QUEUE",
+				"queue": "welcome-email-staging"
 			}
 		],
 		"consumers": [
@@ -146,6 +150,12 @@
 				"max_batch_size": 10,
 				"max_retries": 2,
 				"max_concurrency": 20,
+				"dead_letter_queue": "dead-letter-staging"
+			},
+			{
+				"queue": "welcome-email-staging",
+				"max_batch_size": 5,
+				"max_retries": 3,
 				"dead_letter_queue": "dead-letter-staging"
 			},
 			{
@@ -265,6 +275,10 @@
 					{
 						"binding": "CONTENT_PREFETCH_QUEUE",
 						"queue": "content-prefetch"
+					},
+					{
+						"binding": "WELCOME_EMAIL_QUEUE",
+						"queue": "welcome-email"
 					}
 				],
 				"consumers": [
@@ -329,6 +343,12 @@
 						"max_batch_size": 10,
 						"max_retries": 2,
 						"max_concurrency": 20,
+						"dead_letter_queue": "dead-letter"
+					},
+					{
+						"queue": "welcome-email",
+						"max_batch_size": 5,
+						"max_retries": 3,
 						"dead_letter_queue": "dead-letter"
 					},
 					{

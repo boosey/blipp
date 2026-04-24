@@ -75,6 +75,9 @@ export const CONFIG_REGISTRY: Record<string, ConfigEntry> = {
   // ── User Lifecycle ──
   "user.trialDays": { type: "number", defaultValue: 14, description: "Free trial duration in days from account creation. After expiry, users on the default (free) plan are flagged for lifecycle processing. Currently logged only; future: restrict premium features and trigger reminder emails." },
 
+  // ── Welcome Email ──
+  "welcomeEmail.enabled": { type: "boolean", defaultValue: true, description: "Send the one-time welcome email via ZeptoMail when a new user signs up (Clerk user.created). When false, the queue consumer acks messages without sending — users can still be welcomed manually via Admin > Users > Mark welcomed." },
+
   // ── Audio ──
   "audio.wordsPerMinute":  { type: "number", defaultValue: 150,     description: "Assumed speaking rate (words per minute) for estimating briefing audio duration from narrative word count. Used in distillation word-budget allocation and TTS time fitting. Standard podcast pace is 130-170 WPM. Changing this affects how many claims fit into a given duration tier." },
   "audio.defaultVoice":    { type: "string", defaultValue: "coral",  description: "Default TTS voice ID when a user has no voice preference set. Must be a valid voice identifier supported by the active TTS provider (e.g. OpenAI voices: alloy, echo, fable, onyx, nova, shimmer, coral)." },

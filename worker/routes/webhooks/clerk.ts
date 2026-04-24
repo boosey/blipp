@@ -38,7 +38,7 @@ clerkWebhooks.post("/", async (c) => {
         console.error("No default plan configured — cannot create user");
         return c.json({ error: "No default plan" }, 500);
       }
-      await prisma.user.create({
+      const created = await prisma.user.create({
         data: {
           clerkId: d.id,
           email,
@@ -49,6 +49,21 @@ clerkWebhooks.post("/", async (c) => {
           planId: defaultPlan.id,
         },
       });
+
+      // Fire-and-forget: enqueue the welcome email. If the queue send fails
+      // we'd rather log and return 2xx than have Clerk retry the whole webhook,
+      // which would 409 on the duplicate user row.
+      try {
+        await c.env.WELCOME_EMAIL_QUEUE.send({ userId: created.id });
+      } catch (sendErr) {
+        console.error(JSON.stringify({
+          level: "error",
+          action: "welcome_email_enqueue_failed",
+          userId: created.id,
+          error: sendErr instanceof Error ? sendErr.message : String(sendErr),
+          ts: new Date().toISOString(),
+        }));
+      }
       break;
     }
 

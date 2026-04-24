@@ -8,6 +8,7 @@ import { handleOrchestrator } from "./orchestrator";
 import { handleCatalogRefresh } from "./catalog-refresh";
 import { handleContentPrefetch } from "./content-prefetch";
 import type { ContentPrefetchMessage } from "./content-prefetch";
+import { handleWelcomeEmail } from "./welcome-email";
 import { createPrismaClient } from "../lib/db";
 import { runJob } from "../lib/cron/runner";
 import { runPipelineTriggerJob } from "../lib/cron/pipeline-trigger";
@@ -30,6 +31,7 @@ import type {
   OrchestratorMessage,
   FeedRefreshMessage,
   CatalogRefreshMessage,
+  WelcomeEmailMessage,
 } from "../lib/queue-messages";
 import type { Env } from "../types";
 
@@ -107,6 +109,12 @@ export async function handleQueue(
     case "content-prefetch":
       return handleContentPrefetch(
         batch as MessageBatch<ContentPrefetchMessage>,
+        env,
+        ctx
+      );
+    case "welcome-email":
+      return handleWelcomeEmail(
+        batch as MessageBatch<WelcomeEmailMessage>,
         env,
         ctx
       );

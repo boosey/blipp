@@ -10,7 +10,7 @@ declare module "hono" {
   }
 }
 
-import type { FeedRefreshMessage, CatalogRefreshMessage } from "./lib/queue-messages";
+import type { FeedRefreshMessage, CatalogRefreshMessage, WelcomeEmailMessage } from "./lib/queue-messages";
 
 /**
  * Cloudflare Worker environment bindings for the Blipp API.
@@ -71,6 +71,16 @@ export type Env = {
   ORCHESTRATOR_QUEUE: Queue;
   /** Queue: slow content prefetch (transcript/audio validation) for episodes */
   CONTENT_PREFETCH_QUEUE: Queue;
+  /** Queue: sends the one-time welcome email on user.created */
+  WELCOME_EMAIL_QUEUE: Queue<WelcomeEmailMessage>;
+  /** ZeptoMail Send Mail API token (the "Zoho-enczapikey" value, without the prefix) */
+  ZEPTOMAIL_TOKEN?: string;
+  /** Verified sender email address for welcome emails (e.g. welcome@podblipp.com) */
+  ZEPTOMAIL_FROM_ADDRESS?: string;
+  /** Display name on welcome emails (e.g. "Blipp") */
+  ZEPTOMAIL_FROM_NAME?: string;
+  /** ZeptoMail template key for the welcome email template */
+  ZEPTOMAIL_WELCOME_TEMPLATE_KEY?: string;
   /** Deepgram API key for STT benchmark */
   DEEPGRAM_API_KEY: string;
   /** Groq API key for fast STT inference */
