@@ -554,3 +554,22 @@ Key behaviors:
 | `worker/lib/cron/data-retention.ts` | Episode/podcast/request cleanup |
 | `worker/lib/cron/recommendations.ts` | Podcast profile recomputation |
 | `worker/index.ts` | Worker entry point (queue routing) |
+
+## Upstream Stage Coalescing
+
+When a popular episode is delivered to subscribers across multiple voice presets or duration tiers, the orchestrator dispatches one queue message per `(episode, durationTier, voicePresetId)` group. All such messages traverse the same upstream stages — transcription and distillation — which are keyed only on `episodeId`. Without coordination, every message would pay for its own Whisper transcription and distillation LLM call.
+
+To prevent this, the transcription and distillation handlers each acquire a CAS-based lock on the `Distillation` row before doing paid work.
+
+**Lock fields:** `Distillation.transcriptionStartedAt`, `Distillation.distillationStartedAt`.
+
+**Acquisition:** `claimEpisodeStage` in `worker/lib/queue-helpers.ts` runs an atomic `updateMany` filtered on the row's `status` and an `OR(field IS NULL, field < staleThreshold)` clause. Exactly one concurrent worker observes `count: 1`; the others observe `count: 0`.
+
+**Collision behavior:** Workers that lose the race call `msg.retry({ delaySeconds: 30 })`. By the time the message is redelivered, the winning worker has typically finished and written R2; the retried worker hits the cache check at the top of the handler and skips paid work.
+
+**Stale recovery:** If the winning worker crashes mid-stage, its lock becomes eligible for takeover after `STALE_LOCK_MS` (10 minutes), generously past worst-case healthy completion.
+
+**Crash window:** A post-claim R2 re-check covers the case where a prior worker wrote R2 but died before updating `status`.
+
+**Downstream stages** (narrative, audio) are already deduped by the `Clip` table's `@@unique([episodeId, durationTier, voicePresetId])` constraint, which matches the orchestrator's dispatch key — no concurrent producers are possible for the same clip.
+
