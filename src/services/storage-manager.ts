@@ -250,6 +250,52 @@ export class StorageManager {
     await idbPut(this.ensureDb(), this.storeName, entry);
   }
 
+  /**
+   * Resolve a playable URL for the audio element.
+   *
+   * Cache hit → returns a local blob:// (web) or file:// (native) URL.
+   * Cache miss → fetches /api/briefings/:id/audio-url and returns the signed URL.
+   * Stale manifest (readBlob returns null) → removes entry, treats as miss.
+   *
+   * Note: this method does NOT trigger the background download-to-store on miss.
+   * That side-effect is the prefetcher's job — call it explicitly after a miss
+   * if you want the next play of this item to be instant.
+   */
+  async getPlayableUrl(briefingId: string): Promise<string> {
+    const entry = await this.getEntry(briefingId);
+    if (entry) {
+      const blob = await readBlob(briefingId);
+      if (blob) {
+        return URL.createObjectURL(blob);
+      }
+      // Manifest is stale — clean up and fall through to network.
+      await this.remove(briefingId);
+    }
+
+    const res = await fetch(`/api/briefings/${briefingId}/audio-url`, {
+      credentials: "include",
+    });
+    if (!res.ok) {
+      throw new Error(`audio-url fetch failed: ${res.status}`);
+    }
+    const body = (await res.json()) as { url: string; expiresAt: number };
+    return body.url;
+  }
+
+  /**
+   * Reap cached entries whose briefingId is no longer in the active feed.
+   * Never removes the currently-playing entry.
+   */
+  async pruneNotInFeed(activeBriefingIds: string[]): Promise<void> {
+    const active = new Set(activeBriefingIds);
+    const entries = await this.getAllEntries();
+    for (const entry of entries) {
+      if (active.has(entry.briefingId)) continue;
+      if (entry.briefingId === this.currentlyPlayingId) continue;
+      await this.remove(entry.briefingId);
+    }
+  }
+
   async remove(briefingId: string): Promise<void> {
     await deleteBlob(briefingId);
     await idbDelete(this.ensureDb(), this.storeName, briefingId);
