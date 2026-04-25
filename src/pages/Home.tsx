@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Play } from "lucide-react";
 import { useApiFetch } from "../lib/api-client";
 import { useFetch } from "../lib/use-fetch";
@@ -62,6 +62,18 @@ export function Home() {
       )
       .catch(() => {});
   }, [items, prefetcher, manager]);
+
+  // Register the feed snapshot with audio-context so the canplay top-up
+  // can advance the cache window past WIFI_TAKE as the user listens
+  // (issue #7). Use a ref so the getter always returns the latest items
+  // without re-registering on every change.
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
+  const setFeedSnapshotProvider = audio.setFeedSnapshotProvider;
+  useEffect(() => {
+    setFeedSnapshotProvider(() => itemsRef.current);
+    return () => setFeedSnapshotProvider(null);
+  }, [setFeedSnapshotProvider]);
 
   const { indicator: pullIndicator, bind: pullBind } = usePullToRefresh({
     onRefresh: fetchFeed,

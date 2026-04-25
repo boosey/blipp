@@ -21,6 +21,7 @@ vi.mock("../contexts/audio-context", () => ({
     seek: vi.fn(),
     setRate: vi.fn(),
     stop: vi.fn(),
+    setFeedSnapshotProvider: vi.fn(),
   }),
 }));
 

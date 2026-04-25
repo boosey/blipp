@@ -54,16 +54,23 @@ export class Prefetcher {
     this.kickTick();
   }
 
+  // Walks the input list past already-cached / already-queued items and
+  // enqueues up to N uncached briefingIds. Used by the canplay top-up to
+  // advance the cache window as the user listens — passing the full feed
+  // is safe because cached items are skipped in feed order.
   async scheduleNextInQueue(queue: FeedItemLike[], n: number): Promise<void> {
     if (this.disposed) return;
     if (n <= 0) return;
-    const candidates: string[] = [];
+    let added = 0;
     for (const item of queue) {
-      if (!item.briefing?.id) continue;
-      candidates.push(item.briefing.id);
-      if (candidates.length >= n) break;
+      if (added >= n) break;
+      const id = item.briefing?.id;
+      if (!id) continue;
+      if (this.queue.includes(id)) continue;
+      if (await this.manager.has(id)) continue;
+      this.queue.push(id);
+      added++;
     }
-    await this.enqueueFiltered(candidates);
     this.kickTick();
   }
 

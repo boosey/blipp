@@ -255,6 +255,28 @@ describe("Prefetcher.scheduleNextInQueue", () => {
     expect(await manager.has("br_1")).toBe(true);
     expect(await manager.has("br_2")).toBe(false);
   });
+
+  // Issue #7 regression: canplay top-up was passing the feed list into
+  // scheduleNextInQueue, but the first N feed items are typically already
+  // cached by the initial scheduleFromFeed call, so no new work was
+  // enqueued. The fix is to walk past cached/duplicate items.
+  it("walks past already-cached items and enqueues the next N uncached", async () => {
+    // Pre-cache the first 3 feed items, mimicking the WIFI_TAKE=10 prefetch
+    // window already filled by the initial scheduleFromFeed call.
+    for (let i = 0; i < 3; i++) {
+      await manager.store(`br_${i}`, new Blob([new Uint8Array(8)]));
+    }
+    const feed = Array.from(
+      { length: 8 },
+      (_, i) => ({ id: `fi_${i}`, briefing: { id: `br_${i}` } }) as any,
+    );
+    await prefetcher.scheduleNextInQueue(feed, 2);
+    await prefetcher.drainForTesting();
+    // The first 3 were already cached; top-up should have advanced past them.
+    expect(await manager.has("br_3")).toBe(true);
+    expect(await manager.has("br_4")).toBe(true);
+    expect(await manager.has("br_5")).toBe(false);
+  });
 });
 
 describe("Prefetcher pause/resume", () => {

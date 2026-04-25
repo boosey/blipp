@@ -44,6 +44,10 @@ interface AudioActions {
   clearQueue: () => void;
   reorderQueue: (fromIndex: number, toIndex: number) => void;
   skipToQueueItem: (itemId: string) => void;
+  // Lets the feed owner (Home) hand the current feed snapshot to the
+  // canplay top-up. Without this, top-up only fires when an explicit play
+  // queue is active and items past WIFI_TAKE never enter the cache.
+  setFeedSnapshotProvider: (getter: (() => FeedItem[]) | null) => void;
 }
 
 interface AudioQueueState {
@@ -83,6 +87,16 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   const queueRef = useRef<FeedItem[]>([]);
   const [queue, setQueue] = useState<FeedItem[]>([]);
   const syncQueue = useCallback(() => setQueue([...queueRef.current]), []);
+
+  // Holds the latest feed-snapshot getter registered by the feed owner.
+  // Used by the canplay top-up when no explicit play queue is active.
+  const feedSnapshotRef = useRef<(() => FeedItem[]) | null>(null);
+  const setFeedSnapshotProvider = useCallback(
+    (getter: (() => FeedItem[]) | null) => {
+      feedSnapshotRef.current = getter;
+    },
+    []
+  );
 
   // Playback position saving
   const saveTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -443,8 +457,14 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
 
   const handleCanPlay = useCallback(() => {
     setIsLoading(false);
-    if (queueRef.current && queueRef.current.length > 0) {
-      void prefetcher.scheduleNextInQueue(queueRef.current, 2);
+    // Prefer the explicit play queue (from playAll / addToQueue); fall
+    // back to the feed snapshot so a single tap from the feed still
+    // tops up the cache as the user listens.
+    const playQueue = queueRef.current;
+    const source =
+      playQueue.length > 0 ? playQueue : feedSnapshotRef.current?.() ?? [];
+    if (source.length > 0) {
+      void prefetcher.scheduleNextInQueue(source, 2);
     }
   }, [prefetcher]);
 
@@ -563,6 +583,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     clearQueue,
     reorderQueue,
     skipToQueueItem,
+    setFeedSnapshotProvider,
   };
 
   return (
