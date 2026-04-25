@@ -1,156 +1,49 @@
-# Blipp Environment & Config Diagram
+# Blipp Environments & Configuration
 
-```
-┌─────────────────────────────────────────────────────────────────────────────────────┐
-│                                    DEVELOPMENT (local)                              │
-│                                                                                     │
-│  ┌──────────────────────┐          ┌──────────────────────┐                         │
-│  │  Frontend (Vite dev) │          │  Worker (wrangler dev)│                         │
-│  │  localhost:5173       │────API──▶│  localhost:8787       │                         │
-│  └──────────┬───────────┘          └──────────┬───────────┘                         │
-│             │                                 │                                     │
-│  ┌──────────┴───────────┐          ┌──────────┴───────────┐                         │
-│  │  .env                │          │  .dev.vars            │                         │
-│  │  ├ DATABASE_URL      │          │  ├ ENVIRONMENT        │                         │
-│  │  ├ VITE_CLERK_PUB_KEY│          │  ├ CLERK_SECRET_KEY   │                         │
-│  │  ├ PODCAST_INDEX_KEY │          │  ├ CLERK_PUB_KEY      │                         │
-│  │  └ PODCAST_INDEX_SEC │          │  ├ CLERK_WEBHOOK_SEC  │                         │
-│  └──────────────────────┘          │  ├ STRIPE_SECRET_KEY  │                         │
-│                                    │  ├ STRIPE_WEBHOOK_SEC │                         │
-│  ┌──────────────────────┐          │  ├ DATABASE_URL       │                         │
-│  │  .env.local (override)│         │  ├ CF_HYPERDRIVE_*    │                         │
-│  │  └ VITE_CLERK_PUB_KEY│          │  ├ ANTHROPIC_API_KEY  │                         │
-│  │    (pk_test_... here) │         │  ├ OPENAI_API_KEY     │                         │
-│  └──────────────────────┘          │  ├ PODCAST_INDEX_KEY  │                         │
-│                                    │  ├ PODCAST_INDEX_SEC  │                         │
-│  ┌──────────────────────┐          │  ├ DEEPGRAM_API_KEY   │                         │
-│  │  .env.production     │          │  └ GROQ_API_KEY       │                         │
-│  │  └ VITE_CLERK_PUB_KEY│          └──────────────────────┘                         │
-│  │    (pk_live_...)      │         └──────────────────────┘                         │
-│  └──────────────────────┘                                                           │
-└───────────────┬───────────────────────────────┬─────────────────────────────────────┘
-                │                               │
-                │                               │
-     ┌──────────┴──────────┐        ┌───────────┴───────────┐
-     │   Clerk (Dev)       │        │   Neon (Staging DB)   │
-     │   pk_test_ / sk_test│        │   ep-summer-breeze-*  │
-     │                     │        │   (shared w/ staging)  │
-     └─────────────────────┘        └───────────────────────┘
+![Environments](./diagrams/environments.svg)
 
+Three environments share one codebase:
 
-┌─────────────────────────────────────────────────────────────────────────────────────┐
-│                                    STAGING                                          │
-│                              staging.podblipp.com                                   │
-│                                                                                     │
-│  ┌──────────────────────┐          ┌──────────────────────┐                         │
-│  │  Frontend (built)    │          │  CF Worker            │                         │
-│  │  static assets on CF │────API──▶│  "blipp-staging"      │                         │
-│  └──────────┬───────────┘          └──────────┬───────────┘                         │
-│             │                                 │                                     │
-│  ┌──────────┴───────────┐          ┌──────────┴───────────┐                         │
-│  │ GitHub Actions (build)│         │  wrangler.jsonc vars  │                         │
-│  │ (injected at build)  │          │  ├ ENVIRONMENT=staging│                         │
-│  │                      │          │  ├ APP_ORIGIN         │                         │
-│  │  VITE_CLERK_PUB_KEY  │          │  └ ALLOWED_ORIGINS    │                         │
-│  │   ← GH secret:       │         └──────────────────────┘                         │
-│  │   VITE_CLERK_PUB_KEY │                                                           │
-│  │   _STAGING           │          ┌──────────────────────┐                         │
-│  │                      │          │  CF Worker Secrets    │                         │
-│  │  VITE_APP_URL        │          │  (wrangler secret put)│                         │
-│  │   ← GH var:          │         │  ├ CLERK_SECRET_KEY   │                         │
-│  │   STAGING_URL        │          │  ├ CLERK_PUB_KEY      │                         │
-│  └──────────────────────┘          │  ├ CLERK_WEBHOOK_SEC  │                         │
-│                                    │  ├ STRIPE_SECRET_KEY  │                         │
-│  ┌──────────────────────┐          │  ├ STRIPE_WEBHOOK_SEC │                         │
-│  │ GH Actions also needs│          │  ├ ANTHROPIC_API_KEY  │                         │
-│  │  CLOUDFLARE_API_TOKEN│          │  ├ OPENAI_API_KEY     │                         │
-│  └──────────────────────┘          │  ├ PODCAST_INDEX_*    │                         │
-│                                    │  ├ DEEPGRAM_API_KEY   │                         │
-│                                    │  └ GROQ_API_KEY       │                         │
-│                                    └──────────────────────┘                         │
-│                                                                                     │
-│  CF Bindings: Hyperdrive (a915...) → Neon staging                                   │
-│               R2: blipp-audio-staging                                                │
-│               KV: RATE_LIMIT_KV (3d3b...)                                            │
-│               9 Queues (*-staging)                                                   │
-└───────────────┬───────────────────────────────┬─────────────────────────────────────┘
-                │                               │
-     ┌──────────┴──────────┐        ┌───────────┴───────────┐
-     │  Clerk (Production) │        │   Neon (Staging DB)   │
-     │  pk_live_ / sk_live │        │   ep-summer-breeze-*  │
-     │                     │        │                       │
-     │  * staging uses live│        └───────────────────────┘
-     │    keys (Capacitor  │
-     │    redirect issue)  │
-     └─────────────────────┘
+- **Development** — `wrangler dev` + `vite dev` on `localhost:8787`, using `.dev.vars` (Worker secrets) and `.env` (Vite + Prisma CLI).
+- **Staging** — `staging.podblipp.com`, Worker `blipp-staging`. Deployed automatically on push to `main`.
+- **Production** — `podblipp.com` + `www.podblipp.com` (native shell uses `capacitor://podblipp.com`). Worker `blipp`. Deployed via the `/deploy-production` GitHub Actions workflow.
 
+## Key binding differences
 
-┌─────────────────────────────────────────────────────────────────────────────────────┐
-│                                   PRODUCTION                                        │
-│                                podblipp.com                                          │
-│                                                                                     │
-│  ┌──────────────────────┐          ┌──────────────────────┐                         │
-│  │  Frontend (built)    │          │  CF Worker            │                         │
-│  │  static assets on CF │────API──▶│  "blipp"              │                         │
-│  └──────────┬───────────┘          └──────────┬───────────┘                         │
-│             │                                 │                                     │
-│  ┌──────────┴───────────┐          ┌──────────┴───────────┐                         │
-│  │ GitHub Actions (build)│         │  wrangler.jsonc       │                         │
-│  │ (injected at build)  │          │  env.production vars  │                         │
-│  │                      │          │  ├ ENVIRONMENT=prod   │                         │
-│  │  VITE_CLERK_PUB_KEY  │          │  ├ APP_ORIGIN         │                         │
-│  │   ← GH secret:       │         │  └ ALLOWED_ORIGINS    │                         │
-│  │   VITE_CLERK_PUB_KEY │         └──────────────────────┘                         │
-│  │   _PRODUCTION        │                                                           │
-│  │                      │          ┌──────────────────────┐                         │
-│  │  VITE_APP_URL        │          │  CF Worker Secrets    │                         │
-│  │   = https://podblipp │          │  (--env production)   │                         │
-│  │     .com             │          │  ├ CLERK_SECRET_KEY   │                         │
-│  └──────────────────────┘          │  ├ CLERK_PUB_KEY      │                         │
-│                                    │  ├ CLERK_WEBHOOK_SEC  │                         │
-│  ┌──────────────────────┐          │  ├ STRIPE_SECRET_KEY  │                         │
-│  │ GH Actions also needs│          │  ├ STRIPE_WEBHOOK_SEC │                         │
-│  │  CLOUDFLARE_API_TOKEN│          │  ├ ANTHROPIC_API_KEY  │                         │
-│  │  PRODUCTION_DB_URL   │          │  ├ OPENAI_API_KEY     │                         │
-│  │  (for prisma db push)│          │  ├ PODCAST_INDEX_*    │                         │
-│  └──────────────────────┘          │  ├ DEEPGRAM_API_KEY   │                         │
-│                                    │  └ GROQ_API_KEY       │                         │
-│                                    └──────────────────────┘                         │
-│                                                                                     │
-│  CF Bindings: Hyperdrive (54bb...) → Neon production                                │
-│               R2: blipp-audio                                                        │
-│               KV: RATE_LIMIT_KV (1722...)                                            │
-│               9 Queues (no suffix)                                                   │
-│               Cron: */5 * * * *                                                      │
-└───────────────┬───────────────────────────────┬─────────────────────────────────────┘
-                │                               │
-     ┌──────────┴──────────┐        ┌───────────┴───────────┐
-     │  Clerk (Production) │        │  Neon (Production DB) │
-     │  pk_live_ / sk_live │        │  (separate instance)  │
-     └─────────────────────┘        └───────────────────────┘
+| Binding | Development | Staging | Production |
+|---------|-------------|---------|-----------|
+| `ENVIRONMENT` | `"development"` | `"staging"` | `"production"` |
+| `APP_ORIGIN` | `http://localhost:5173` | `https://staging.podblipp.com` | `https://podblipp.com` |
+| `ALLOWED_ORIGINS` | `localhost:*` + `capacitor://*` | staging + `capacitor://*` | prod + `capacitor://*` |
+| `CLERK_FAPI_URL` | `https://clerk.podblipp.com` | `https://clerk.podblipp.com` | `https://clerk.podblipp.com` |
+| Hyperdrive | n/a (uses `localConnectionString`) | `a9159ac5…` → Neon staging | `54bb39c4…` → Neon production |
+| R2 bucket | Cloudflare proxied for local | `blipp-audio-staging` | `blipp-audio` |
+| KV `RATE_LIMIT_KV` | in-memory fallback | `3d3b2f61…` | `172275d8…` |
+| Queues | in-process shim (`shimQueuesForLocalDev`) | 10 queues + `dead-letter-staging` + `feed-refresh-retry-staging` | 10 queues + `dead-letter` + `feed-refresh-retry` |
+| Cron trigger | manual invocation only | `*/5 * * * *` | `*/5 * * * *` |
 
+## Queues (10 consumer pairs + DLQ variants)
 
-═══════════════════════════════════════════════════════════════════════════════════════
-                              EXTERNAL SERVICES SUMMARY
-═══════════════════════════════════════════════════════════════════════════════════════
+Queues follow the naming `<role>[-staging|-production]` with the worker dispatcher stripping the suffix before routing:
 
-  ┌───────────────┐    ┌───────────────┐    ┌───────────────┐    ┌───────────────┐
-  │    Clerk      │    │    Stripe     │    │  Neon (DB)    │    │  Cloudflare   │
-  │               │    │               │    │               │    │               │
-  │  Dev instance │    │  Test/Sandbox │    │  Staging DB   │    │  Workers      │
-  │  ├ pk_test_   │    │  ├ sk_test_   │    │  (shared w/   │    │  R2 Buckets   │
-  │  └ sk_test_   │    │  └ whsec_     │    │   local dev)  │    │  Queues       │
-  │               │    │               │    │               │    │  Hyperdrive   │
-  │  Prod instance│    │  Live         │    │  Production DB│    │  KV           │
-  │  ├ pk_live_   │    │  ├ sk_live_   │    │  (separate)   │    │  AI           │
-  │  └ sk_live_   │    │  └ whsec_     │    │               │    │               │
-  │               │    │               │    │               │    │               │
-  │  Used by:     │    │  Used by:     │    │  Used by:     │    │               │
-  │  Dev → Dev    │    │  Dev → Test   │    │  Dev → Stg DB │    │               │
-  │  Stg → Prod*  │    │  Stg → ?      │    │  Stg → Stg DB │    │               │
-  │  Prod → Prod  │    │  Prod → Live  │    │  Prod → Prd DB│    │               │
-  └───────────────┘    └───────────────┘    └───────────────┘    └───────────────┘
+- `orchestrator` · `transcription` · `distillation` · `narrative-generation` · `clip-generation` (maps from `AUDIO_GENERATION_QUEUE`) · `briefing-assembly`
+- `feed-refresh` (+ `feed-refresh-retry`) · `catalog-refresh` · `content-prefetch`
+- `welcome-email`
+- `dead-letter` (terminal sink for all the above)
 
-  * Staging switched to Clerk Production keys (pk_live/sk_live) for Capacitor
-    redirect origin compatibility.
-```
+## Secrets & keys per environment
+
+See [guides/development.md](./guides/development.md) for the full list and the `.dev.vars` template. Highlights added since the previous revision:
+
+- **Mobile IAP** — `REVENUECAT_WEBHOOK_SECRET`, `REVENUECAT_REST_API_KEY`, `REVENUECAT_PROJECT_ID`.
+- **Welcome email** — `ZEPTOMAIL_TOKEN`, `ZEPTOMAIL_FROM_ADDRESS`, `ZEPTOMAIL_FROM_NAME`, `ZEPTOMAIL_WELCOME_TEMPLATE_KEY`.
+- **Worker observability** — `CF_API_TOKEN`, `CF_ACCOUNT_ID`, `WORKER_SCRIPT_NAME`.
+- **Encrypted service keys** — `SERVICE_KEY_ENCRYPTION_KEY` (AES-256 master key, 64-hex).
+- **Web Push** — `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` (optional).
+- **Backup verification** — `NEON_API_KEY`, `NEON_PROJECT_ID` (optional).
+
+## Deployment
+
+- **Staging**: `git push origin main` → GitHub Actions runs `prisma migrate deploy` against the staging DB, then `wrangler deploy` without `--env`. `push-and-watch` skill streams progress.
+- **Production**: invoke the `/deploy-production` workflow (CLI skill `deploy-production`) → runs `prisma migrate deploy` against the production DB, then `wrangler deploy --env production`.
+- **Migrations**: only forward-rolling. Destructive renames/drops must be expressed as explicit SQL in the generated `migration.sql`. Break-glass escape: `npm run db:force-sync:staging` / `db:force-sync:production` (calls `prisma db push --accept-data-loss`) — desyncs the migration history and requires `prisma migrate resolve` follow-up. See [guides/prisma-migrations.md](./guides/prisma-migrations.md).

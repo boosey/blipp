@@ -1,8 +1,117 @@
 # Admin Platform
 
-The admin platform is a full internal dashboard for managing the Blipp podcast briefing system. It uses the "Moonchild" design system — a dark navy theme with modern UI components built on shadcn/ui and Tailwind CSS v4.
+The admin platform is the internal control panel for Blipp. It's a lazy-loaded React section of the same SPA, guarded by Clerk auth + `User.isAdmin`, and styled with the Moonchild dark-navy theme (shadcn/ui + Tailwind v4). All admin pages sit under `/admin/*` and map 1:1 to API modules under `/api/admin/*` (see [api-reference.md](./api-reference.md)).
 
-## Design System (Moonchild)
+## Access Control
+
+- **Backend gate** — `worker/middleware/admin.ts` exposes `requireAdmin`, applied globally via `adminRoutes.use("*", requireAdmin)` in `worker/routes/admin/index.ts`. 401 if no Clerk session, 403 if `!User.isAdmin`.
+- **Audit trail** — every successful (2xx) non-GET admin response writes an `AuditLog` row (actor Clerk ID + email, action derived from method + path, entity, before/after, request metadata).
+- **Frontend gate** — `src/components/admin-guard.tsx` calls `/api/admin/dashboard/health` and renders only if the user is admin. Admin pages are lazy-loaded via `React.lazy()` in `src/App.tsx`.
+- **Layout** — `src/layouts/admin-layout.tsx` provides the dark sidebar (desktop) / drawer (mobile), collapsible groups, top-bar with search + notifications + user menu. A "User App" link returns to `/home`.
+
+## Page Inventory
+
+32 admin pages, grouped by domain. Each entry lists the route, source file, and the backend module(s) it calls.
+
+### Overview
+
+| Page | Route | Source | Backs onto |
+|------|-------|--------|-----------|
+| Command Center | `/admin/command-center` | `src/pages/admin/command-center.tsx` | `/api/admin/dashboard` |
+
+System health snapshot. Stat cards for podcasts / users / episodes / briefings with 7-day trends; recent pipeline activity; active issues; cost summary; feed-refresh status.
+
+### Podcasts
+
+| Page | Route | Source | Backs onto |
+|------|-------|--------|-----------|
+| Catalog | `/admin/catalog` | `catalog.tsx` | `/api/admin/podcasts`, `/api/admin/episodes` |
+| Catalog Discovery | `/admin/catalog-discovery` | `catalog-discovery.tsx` | `/api/admin/catalog-seed` |
+| Podcast Sources | `/admin/podcast-sources` | `podcast-sources.tsx` | `/api/admin/podcasts`, `/api/admin/requests` |
+| Episode Refresh | `/admin/episode-refresh` | `episode-refresh.tsx` | `/api/admin/episode-refresh` |
+| Geo Tagging | `/admin/geo-tagging` | `geo-tagging.tsx` | `/api/admin/geo-tagging` |
+| Podcast Settings | `/admin/podcast-settings` | `podcast-settings.tsx` | `/api/admin/config` (`catalog.*`, `episodes.aging.*`, `recommendations.profile*`) |
+
+- **Catalog** — master list (search / filter / sort / paginate) with feed-health badges. Detail modal shows podcast info + stats + episodes accordion (each episode expands into Overview tab — metadata, cost, transcript/audio links — and Clips tab — each clip shows duration tier, status, inline audio, and expandable feed items with request traceability). Actions: add, edit, archive, refresh.
+- **Catalog Discovery** — triggers Apple top-200 or Podcast Index trending discovery. Job list tracks discovery/upsert progress with a single Discovery accordion showing newly inserted podcasts. On completion, an `EpisodeRefreshJob` is auto-created and linked. Controls: cancel, archive, delete. Bulk archive. Catalog delete with type-to-confirm.
+- **Podcast Sources** — moderate user-submitted `PodcastRequest` rows, approve → upsert podcast, reject / mark duplicate.
+- **Episode Refresh** — formalized episode-refresh job tracking. Trigger manual refreshes ("Refresh Subscribed" / "Refresh All"), monitor cron runs. Job cards show scope/trigger badges, progress bars, stats (podcasts checked, podcasts with updates, new episodes, prefetch progress). Detail expands into Podcasts / Episodes / Content Prefetch accordions + errors tab. Controls: pause / resume / cancel / archive / delete.
+- **Geo Tagging** — kick off keyword + LLM geo classification; view status of last run.
+- **Podcast Settings** — edit catalog-wide config (source selection, request limits, episode aging, recommendation profile batch size, etc.).
+
+### Pipeline
+
+| Page | Route | Source | Backs onto |
+|------|-------|--------|-----------|
+| Pipeline | `/admin/pipeline` | `pipeline.tsx` | `/api/admin/pipeline` |
+| Requests | `/admin/requests` | `requests.tsx` | `/api/admin/requests` |
+| Briefings | `/admin/briefings` | `briefings.tsx` | `/api/admin/briefings` |
+| DLQ Monitor | `/admin/dlq` | `dlq.tsx` | `/api/admin/pipeline` (DLQ view) |
+
+- **Pipeline** — job browser with filters (stage, status, requestId, search). Job detail shows the step timeline with per-step inputs/outputs/events. Stage aggregate stats, manual triggers (feed refresh, per stage, per episode), bulk retry for failed jobs.
+- **Requests** — `BriefingRequest` browser with status filter. Request detail has a per-job, per-step progress tree with `WorkProduct` links. Work-product preview (text/JSON/audio metadata). Test briefing creation dialog with episode picker.
+- **Briefings** — briefing list with filters (user, status, sort). Each briefing card shows user info, clip status, duration tier, actual seconds, podcast/episode info, and feed-item count. Detail shows clip metadata (podcast image, titles, duration), audio link, ad audio section (placeholder until ads ship), and linked feed items table.
+- **DLQ Monitor** — read-only view of the shared `dead-letter` queue. Surfaces dropped messages for manual triage.
+
+### AI
+
+| Page | Route | Source | Backs onto |
+|------|-------|--------|-----------|
+| Model Registry | `/admin/model-registry` | `model-registry.tsx` | `/api/admin/ai-models` |
+| Stage Configuration | `/admin/stage-configuration` | `stage-configuration.tsx` | `/api/admin/config` (`ai.*.model`, `pipeline.stage.*.enabled`, `prompt.*`) |
+| STT Benchmark | `/admin/stt-benchmark` | `stt-benchmark.tsx` | `/api/admin/stt-benchmark` |
+| Claims Benchmark | `/admin/claims-benchmark` | `claims-benchmark.tsx` | `/api/admin/claims-benchmark` |
+| AI Errors | `/admin/ai-errors` | `ai-errors.tsx` | `/api/admin/ai-errors` |
+| Voice Presets | `/admin/voice-presets` | `voice-presets.tsx` | `/api/admin/voice-presets` |
+
+- **Model Registry** — browse all `AiModel` rows by stage. Add new models with developer and notes. Add/edit/remove providers per model with pricing metadata (per-minute, per-token, per-character). Toggle availability, set defaults, view pricing update timestamps.
+- **Stage Configuration** — single page that combines the legacy "Stage Models" + "Prompt Management" panels. Sets `ai.{stage}.model` (+ `.secondary`, `.tertiary`) and edits the prompt templates for `distillation` and `narrative` stages (backed by `PlatformConfig.prompt.*` with hardcoded defaults as fallback). Per-stage enable toggles and rollback to defaults. Changes take effect within 60 s (config cache TTL); all changes are audit-logged. Legacy URLs `/admin/stage-models` and `/admin/prompt-management` redirect here.
+- **STT Benchmark** — create experiments comparing multiple STT models/providers across episodes at various playback speeds. Episode picker filters to episodes with official transcripts (WER ground truth). Frontend-driven runner polls tasks one at a time. Results grid (WER / cost / latency per model × provider × speed). Winner detection for best WER / cost / latency. Transcript diff viewer. Audio proxy for CORS-free playback. R2 storage for speed-adjusted audio + transcripts.
+- **Claims Benchmark** — analogous experiment flow for claim-extraction quality. Baseline + judge model configuration, coverage + hallucination scoring, per-episode verdict view.
+- **AI Errors** — searchable `AiServiceError` log with filters (service, provider, category, severity, correlationId, episodeId, resolved).
+- **Voice Presets** — CRUD for TTS voice presets. Plan gating via `Plan.allowedVoicePresetIds`. Admin preview endpoint for auditioning.
+
+### Users & Growth
+
+| Page | Route | Source | Backs onto |
+|------|-------|--------|-----------|
+| Users | `/admin/users` | `users.tsx` | `/api/admin/users` |
+| Plans | `/admin/plans` | `plans.tsx` | `/api/admin/plans` |
+| Analytics | `/admin/analytics` | `analytics.tsx` | `/api/admin/analytics` |
+| Recommendations | `/admin/recommendations` | `recommendations.tsx` | `/api/admin/recommendations` |
+| Feedback | `/admin/feedback` | `feedback.tsx` | `/api/admin/feedback` |
+| Blipp Feedback | `/admin/blipp-feedback` | `blipp-feedback.tsx` | `/api/admin/blipp-feedback` |
+| Support | `/admin/support` | `support.tsx` | `/api/admin/support` |
+
+- **Users** — segmented filters (all / power users / at risk / trial ending / never active). User list with badges; detail page showing subscriptions and recent feed items. Admin toggle, plan management, manual welcome-email resend, GDPR export/delete.
+- **Plans** — CRUD for `Plan` rows with slug, limits (`briefingsPerWeek`, `maxDurationMinutes`, `maxPodcastSubscriptions`, `pastEpisodesLimit`, `concurrentPipelineJobs`), feature flags (`adFree`, `priorityProcessing`, `earlyAccess`, `transcriptAccess`, `dailyDigest`, `offlineAccess`, `publicSharing`), monthly/annual pricing (Stripe + Apple product IDs), allowed voice presets, marketing display (features list, `highlighted`, `sortOrder`, `isDefault`). Soft delete when no users reference the plan.
+- **Analytics** — Costs (daily cost chart by stage, period comparison, per-model breakdown), Usage (feed-item / episode / user trends, tier distribution, peak times), Quality (time-fitting accuracy, claim coverage, transcription coverage), Pipeline (throughput, success rates, bottlenecks).
+- **Recommendations** — inspect/recompute `UserRecommendationProfile` and `RecommendationCache` for a given user. Trending explanations and diagnostic scoring.
+- **Feedback** — general user feedback browser.
+- **Blipp Feedback** — per-blipp feedback with technical-failure filter and reason filters.
+- **Support** — public contact-form inbox; resolve or delete entries.
+
+### System
+
+| Page | Route | Source | Backs onto |
+|------|-------|--------|-----------|
+| System Settings | `/admin/system-settings` | `system-settings.tsx` | `/api/admin/config` |
+| Feature Flags | `/admin/feature-flags` | `feature-flags.tsx` | `/api/admin/config` (`feature.*`) |
+| API Keys | `/admin/api-keys` | `api-keys.tsx` | `/api/admin/api-keys` |
+| Service Keys | `/admin/service-keys` | `service-keys.tsx` | `/api/admin/service-keys` |
+| Scheduled Jobs | `/admin/scheduled-jobs` | `scheduled-jobs.tsx` | `/api/admin/cron-jobs` |
+| Worker Logs | `/admin/worker-logs` | `worker-logs.tsx` | `/api/admin/worker-logs` |
+| Audit Log | `/admin/audit-log` | `audit-log.tsx` | `/api/admin/audit-log` |
+
+- **System Settings** — runtime config editor grouped by prefix (rate limits, circuit breaker, cost alerts, recommendation weights, digest defaults, trial days, …). Each group owns a subset of `CONFIG_REGISTRY` entries. Changes take effect within 60 s.
+- **Feature Flags** — list / create / edit `feature.*` flags: rollout percentage, plan availability, allowlist/denylist, startDate/endDate. Helper widgets compute the deterministic SHA-256-based bucket for a given userId preview.
+- **API Keys** — create scoped Bearer API keys (`blp_live_*`). UI shows `keyPrefix`, scopes, `expiresAt`, `lastUsedAt`. Keys are shown once at creation. Revoke via soft `revokedAt`.
+- **Service Keys** — manage encrypted `ServiceKey` rows. Provider + envKey slot, primary-key toggles, per-context assignments (e.g. `serviceKey.assignment.pipeline.distillation.anthropic → ServiceKey.id`), last-validated timestamp, rotation alert after `rotateAfterDays`. Includes one-shot health probes per provider (Anthropic / OpenAI / Groq / Deepgram / Stripe / Clerk / Podcast Index / Cloudflare / Neon).
+- **Scheduled Jobs** — toggle enabled, adjust `intervalMinutes`, manually trigger (bypasses interval), browse recent `CronRun` + `CronRunLog` entries. 12 registered jobs (see [architecture.md](./architecture.md#scheduled-jobs)).
+- **Worker Logs** — queries Cloudflare Workers Observability via `CF_API_TOKEN`. Filter by level, path, request ID, message.
+- **Audit Log** — browse every admin mutation with actor, action, entity, before/after snapshots, metadata (IP, user agent).
+
+## Design System ("Moonchild")
 
 | Token | Value |
 |-------|-------|
@@ -11,106 +120,26 @@ The admin platform is a full internal dashboard for managing the Blipp podcast b
 | Accents | `#3B82F6` (blue) |
 | Font | Inter |
 
-22+ shadcn/ui components installed. All pages lazy-loaded via `React.lazy()` in `App.tsx`.
+Built on shadcn/ui primitives (22+ components) + Tailwind v4 utilities + `tw-animate-css`. Reusable admin panels live under `src/components/admin/{catalog,pipeline,catalog-discovery,claims-benchmark,command-center,model-registry,episode-refresh,analytics,...}`.
 
-## Auth
+## Legacy Redirects
 
-- **Database**: `User.isAdmin` boolean field
-- **Middleware**: `worker/middleware/admin.ts` — `requireAdmin` checks Clerk auth (401) then `isAdmin` (403)
-- **Route guard**: Applied globally to all `/api/admin/*` routes via `adminRoutes.use("*", requireAdmin)`
-- **Frontend guard**: `src/components/admin-guard.tsx` checks admin status before rendering
-- **API client**: `src/lib/admin-api.ts` — `useAdminFetch()` hook attaches Clerk Bearer token automatically
+Route-level redirects (in `src/App.tsx`) keep old bookmarks working:
 
-## Pages
+- `/admin/catalog-seed` → `/admin/catalog-discovery`
+- `/admin/stage-models` → `/admin/stage-configuration`
+- `/admin/prompt-management` → `/admin/stage-configuration`
+- `/dashboard` → `/home` · `/billing` → `/settings` · `/briefing/*` → `/home`
 
-### 1. Command Center (`/admin/command-center`)
+## Source Map
 
-System health overview. Stat cards for podcasts, users, episodes, and briefings with 7-day trends. Recent pipeline activity feed, active issues list, cost summary, and feed refresh status.
-
-### 2. Pipeline (`/admin/pipeline`)
-
-Pipeline job browser with filters (stage, status, requestId, search). Job detail view with step timeline. Stage aggregate stats. Manual triggers: feed refresh, per-stage, per-episode. Bulk retry for failed jobs.
-
-### 3. Catalog (`/admin/catalog`)
-
-Podcast management: searchable/filterable/sortable list with feed health monitoring. Add, edit, and archive podcasts. Clicking a podcast opens a wide detail modal with podcast info, stats, and action buttons. Episodes are shown in an accordion list; expanding an episode reveals Overview (metadata, cost, transcript/audio links) and Clips tabs. The Clips tab shows each clip with duration tier, status, inline audio player, and expandable feed items with request traceability.
-
-### Catalog Discovery (`/admin/catalog-discovery`)
-
-Catalog discovery for finding new podcasts to add. Triggers Apple top 100 or Podcast Index trending discovery. Job list tracks discovery/upsert progress with a single Discovery accordion showing newly inserted podcasts with images, titles, categories. When discovery completes, an EpisodeRefreshJob is auto-created for the new podcasts — a link navigates to the Episode Refresh page. Controls: cancel, archive, delete. Bulk archive. Delete Catalog with type-to-confirm.
-
-### Episode Refresh (`/admin/episode-refresh`)
-
-Formalized episode refresh job tracking. Trigger manual refreshes ("Refresh Subscribed" or "Refresh All") and monitor cron-triggered refreshes. Each job tracks progress through feed scanning and content prefetch phases. Job cards show scope/trigger badges, progress bars, and stats (podcasts checked, podcasts with updates, new episodes, prefetch progress). Job detail expands into 3 accordion sections: Podcasts (with new episode counts), Episodes (newly discovered), and Content Prefetch (status breakdown). Errors accordion with phase-based tabs. Controls: pause, resume, cancel, archive, delete. Bulk archive. FeedRefreshCard reused for summary stats.
-
-### 4. Briefings (`/admin/briefings`)
-
-Briefing list with filters (user, status, sort). Each briefing card shows user info, clip status, duration tier, actual seconds, podcast/episode info, and feed item count. Briefing detail shows clip metadata (podcast image, episode/podcast title, duration stats), audio link, ad audio section (if present), and linked feed items table.
-
-### 5. Users (`/admin/users`)
-
-User management with segments: all, power users, at risk, trial ending, never active. User list with badges. User detail showing subscriptions and recent feed items (activity tab). Admin toggle and plan management.
-
-### 6. Plans (`/admin/plans`)
-
-Plan CRUD management. List all plans with user counts (paginated/sortable). Create new plans with slug, limits (briefingsPerWeek, maxDurationMinutes, maxPodcastSubscriptions), feature flags (adFree, priorityProcessing, earlyAccess, researchMode, crossPodcastSynthesis), billing (monthly/annual pricing, Stripe price IDs, trial days), and display settings (features list, highlighted, sortOrder, isDefault). Soft delete (deactivate) plans that have no active users.
-
-### 7. Analytics (`/admin/analytics`)
-
-Four analytics views:
-
-- **Costs** — Daily cost chart by stage, period comparison, per-model cost breakdown
-- **Usage** — Feed item/episode/user trends, tier distribution, peak times
-- **Quality** — Time-fitting accuracy, claim coverage, transcription coverage, daily trend
-- **Pipeline** — Throughput, success rates, processing speed, bottlenecks
-
-### 8. Configuration (`/admin/configuration`)
-
-Runtime config editor grouped by prefix. Pipeline controls panel. Duration tier config. Subscription tier management. Feature flags with rollout percentage and tier-based controls.
-
-### 9. Requests (`/admin/requests`)
-
-BriefingRequest browser with status filter. Request detail with per-job, per-step progress tree including WorkProduct links. Work product preview (text/JSON content, audio metadata). Test briefing creation dialog with episode picker.
-
-### 10. STT Benchmark (`/admin/stt-benchmark`)
-
-STT model benchmarking system. Create experiments comparing multiple STT models/providers across episodes at different playback speeds. Episode picker filters to episodes with official transcripts (for WER comparison ground truth). Experiment runner executes tasks one at a time (frontend-driven polling). Results grid showing WER, cost, and latency per model/provider/speed combination. Winner detection for best WER, cost, and latency. Transcript diff viewer for comparing hypothesis vs reference text. Audio proxy for CORS-free playback. R2 storage for speed-adjusted audio and transcripts.
-### 11. Model Registry (`/admin/model-registry`)
-
-AI model management. Browse all models by stage (stt, distillation, narrative, tts). Add new models with developer and notes. Add/edit/remove providers per model with pricing metadata (per-minute, per-token, per-character). Toggle model active state and provider availability. Set default providers. View pricing update timestamps.
-
-### 12. Prompt Management (`/admin/prompt-management`)
-
-View and edit all LLM prompts used in the pipeline. Prompts are stored as PlatformConfig entries with hardcoded defaults as fallback. Each prompt has an expandable textarea editor, "customized" badge if overridden, "unsaved" indicator for pending changes, Save button, and Reset to Default. Grouped by pipeline stage (Distillation, Narrative Generation). Changes take effect within 60 seconds (config cache TTL). The narrative user prompt template supports `{{variable}}` syntax for runtime substitution. All changes are audit-logged.
-
-## API Routes
-
-All routes are mounted at `/api/admin/`. Backend route files live in `worker/routes/admin/`.
-
-| Module | Mount | Key Endpoints |
-|--------|-------|---------------|
-| dashboard | `/dashboard` | `GET /` (health overview), `GET /stats`, `GET /activity`, `GET /costs`, `GET /issues`, `GET /feed-refresh-summary` |
-| pipeline | `/pipeline` | `GET /jobs` (paginated), `GET /jobs/:id`, `POST /jobs/:id/retry`, `POST /jobs/bulk/retry`, `POST /trigger/feed-refresh`, `POST /trigger/stage/:stage`, `POST /trigger/episode/:id`, `GET /stages` |
-| podcasts | `/podcasts` | `GET /stats`, `GET /` (paginated), `GET /:id`, `POST /` (create), `PATCH /:id`, `DELETE /:id` (archive), `POST /:id/refresh` |
-| episodes | `/episodes` | `GET /` (paginated), `GET /:id`, `POST /:id/reprocess` |
-| briefings | `/briefings` | `GET /` (paginated), `GET /:id` |
-| users | `/users` | `GET /segments`, `GET /` (paginated), `GET /:id`, `PATCH /:id` |
-| analytics | `/analytics` | `GET /costs`, `GET /costs/by-model`, `GET /usage`, `GET /quality`, `GET /pipeline` |
-| config | `/config` | `GET /` (all configs), `PATCH /:key`, `GET /tiers/duration`, `PUT /tiers/duration`, `GET /tiers/subscription`, `PUT /tiers/subscription`, `GET /features`, `PUT /features/:id` |
-| requests | `/requests` | `GET /` (paginated), `GET /:id`, `GET /work-product/:id/preview`, `GET /work-product/:id/audio`, `POST /test-briefing` |
-| plans | `/plans` | `GET /` (paginated), `GET /:id`, `POST /` (create), `PATCH /:id` (update), `DELETE /:id` (soft delete) |
-| stt-benchmark | `/stt-benchmark` | `GET /eligible-episodes`, `GET /episode-audio/:id`, `POST /experiments`, `GET /experiments`, `GET /experiments/:id`, `POST /experiments/:id/run`, `POST /experiments/:id/cancel`, `GET /experiments/:id/results`, `DELETE /experiments/:id`, `POST /upload-audio`, `GET /results/:id/transcript`, `GET /results/:id/reference-transcript`, `GET /episodes/:episodeId/reference-transcript` |
-| ai-models | `/ai-models` | `GET /` (list), `POST /` (create), `PATCH /:id`, `POST /:id/providers`, `PATCH /:id/providers/:providerId`, `DELETE /:id/providers/:providerId` |
-| episode-refresh | `/episode-refresh` | `GET /` (list), `GET /:id` (detail), `GET /:id/errors`, `POST /` (create), `POST /:id/pause`, `POST /:id/resume`, `POST /:id/cancel`, `POST /:id/archive`, `POST /archive-bulk`, `DELETE /:id` |
-
-## File Map
-
-| Category | Path |
-|----------|------|
-| Pages | `src/pages/admin/*.tsx` (11 files) |
-| Layout | `src/layouts/admin-layout.tsx` |
-| Guard | `src/components/admin-guard.tsx` |
-| API hook | `src/lib/admin-api.ts` |
-| Types | `src/types/admin.ts` |
-| Backend routes | `worker/routes/admin/*.ts` (12 files) |
+| Layer | Path |
+|-------|------|
+| Admin pages | `src/pages/admin/*.tsx` (32 files) |
+| Admin panels | `src/components/admin/**/*.tsx` |
+| Admin layout | `src/layouts/admin-layout.tsx` |
+| Admin guard | `src/components/admin-guard.tsx` |
+| Admin API hook | `src/lib/api-client.ts` (`useAdminFetch()`) |
+| Admin backend routes | `worker/routes/admin/*.ts` (31 modules) |
 | Admin middleware | `worker/middleware/admin.ts` |
+| Audit logger | `worker/lib/audit-log.ts` + auto-audit middleware in `worker/routes/admin/index.ts` |

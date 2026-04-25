@@ -9,6 +9,8 @@ Comprehensive guide for setting up, running, and developing the Blipp project lo
 - **Git**
 - Accounts and API keys for: Clerk, Stripe, Neon, Anthropic, OpenAI, Podcast Index
 - Optional for STT benchmarking: OpenAI (Whisper), Deepgram, Groq, Cloudflare Workers AI
+- Optional for the native app + mobile IAP: RevenueCat, Apple Developer Program
+- Optional for welcome emails: ZeptoMail
 
 ## Initial Setup
 
@@ -51,6 +53,24 @@ PODCAST_INDEX_SECRET=...
 # Optional — STT benchmark providers
 DEEPGRAM_API_KEY=...
 GROQ_API_KEY=...
+
+# Optional — transactional email (welcome emails)
+ZEPTOMAIL_TOKEN=
+ZEPTOMAIL_FROM_ADDRESS=welcome@podblipp.com
+ZEPTOMAIL_FROM_NAME=Blipp
+ZEPTOMAIL_WELCOME_TEMPLATE_KEY=
+
+# Optional — mobile IAP (RevenueCat server-side)
+REVENUECAT_WEBHOOK_SECRET=
+REVENUECAT_REST_API_KEY=
+REVENUECAT_PROJECT_ID=
+
+# Optional — Worker observability + admin worker-logs page
+CF_API_TOKEN=
+CF_ACCOUNT_ID=
+
+# Optional — AES-256 master key (64-char hex) for encrypting service keys at rest
+SERVICE_KEY_ENCRYPTION_KEY=
 ```
 
 #### `.env` (Vite client vars + Prisma CLI)
@@ -309,6 +329,7 @@ For polling or user-triggered fetches (search, form submissions), use `useApiFet
 - Do **not** duplicate `clerkMiddleware()` in admin route files -- it is applied globally in `worker/index.ts`
 - Admin routes use the `requireAdmin` middleware from `worker/middleware/admin.ts`
 - Admin auth checks the `isAdmin` boolean on the User model
+- Every non-GET admin mutation is auto-audited (`AuditLog`) by middleware in `worker/routes/admin/index.ts` — do not write a duplicate audit call from handlers unless you need `before`/`after` snapshots
 - Import `PIPELINE_STAGE_NAMES` from `worker/lib/constants.ts` — do not define stage name mappings locally
 
 ### Frontend Structure
@@ -358,9 +379,11 @@ The `PlatformConfig` table stores runtime config as key-value pairs. Access via 
 AI models are managed via the admin Model Registry (`/admin/model-registry`). The model registry lives in the `AiModel` + `AiModelProvider` database tables. Each pipeline stage reads its model+provider config from `PlatformConfig` via `getModelConfig(prisma, stage)`.
 
 Multi-provider implementations:
-- **STT**: `worker/lib/stt-providers.ts` (OpenAI, Deepgram, Groq, Cloudflare)
-- **LLM**: `worker/lib/llm-providers.ts` (Anthropic, Groq, Cloudflare)
-- **TTS**: `worker/lib/tts-providers.ts` (OpenAI, Groq, Cloudflare)
+- **STT**: `worker/lib/stt/providers.ts` (OpenAI, Deepgram, Groq, Cloudflare)
+- **LLM**: `worker/lib/llm-providers.ts` (Anthropic with prompt caching, Groq, Cloudflare)
+- **TTS**: `worker/lib/tts/providers.ts` (OpenAI, Groq, Cloudflare)
+
+Use `resolveStageModel(prisma, stage)` or `resolveModelChain(prisma, stage)` from `worker/lib/model-resolution.ts` in pipeline handlers — these respect the per-stage primary/secondary/tertiary config and per-provider circuit breaker. Model config lives in `ai.{stage}.model[.secondary|.tertiary]` (`PlatformConfig`) and is joined against `AiModelProvider` for pricing/limits.
 
 ### Cloudflare Runtime
 
@@ -425,12 +448,24 @@ All previously known test failures have been resolved. If you encounter test fai
 
 ### Clerk compatibility shim
 
-`src/shims/clerk-load-script.ts` handles a version mismatch between `@clerk/clerk-react` and `@hono/clerk-auth`. See `docs/plans/phase0-decisions.md` for details.
+`src/shims/clerk-load-script.ts` handles a version mismatch between `@clerk/clerk-react` and `@hono/clerk-auth`. The shim is safe to leave in place; see the diff log if it ever needs revisiting.
 
-### wrangler.jsonc Hyperdrive placeholder
+### wrangler.jsonc Hyperdrive
 
-The config contains `<hyperdrive-config-id>` as a placeholder. Replace with a real Hyperdrive config ID for remote deployment. Local dev works without it (uses `localConnectionString` instead).
+Staging and production each have their own committed Hyperdrive config IDs in `wrangler.jsonc`. Local dev uses the `localConnectionString` (empty string in committed config — `scripts/dev.mjs` exports `DATABASE_URL` into `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE` at runtime).
 
 ### Queue naming legacy
 
-The `AUDIO_GENERATION_QUEUE` binding maps to the `clip-generation` queue name in `wrangler.jsonc`. The queue dispatcher routes `clip-generation` messages to the audio generation handler. This is a legacy naming artifact.
+The `AUDIO_GENERATION_QUEUE` binding maps to the queue name `clip-generation` in `wrangler.jsonc`. The dispatcher in `worker/queues/index.ts` normalises `clip-generation` → `handleAudioGeneration`. This legacy name is preserved so historical telemetry and DLQs don't churn.
+
+### Native app / Capacitor
+
+When running inside Capacitor, the app unregisters the service worker and switches to `NativeSignIn` (Google/Apple via `@capgo/capacitor-social-login`, email/password fallback via Clerk JS SDK). Native builds set `VITE_API_BASE_URL` to the Worker origin and rely on the `/api/__clerk/*` proxy so Clerk cookies survive the `capacitor://` origin. See `docs/guides/ios-testflight.md` and `docs/guides/mobile-app-deployment.md`.
+
+### Welcome email
+
+User signup enqueues `WELCOME_EMAIL_QUEUE` from the Clerk `user.created` webhook. Delivery is idempotent (via `User.welcomeEmailSentAt`) and gated by `welcomeEmail.enabled` in `PlatformConfig`. Without ZeptoMail credentials the job no-ops and acknowledges.
+
+### Service Keys (encrypted in DB)
+
+For production, sensitive third-party keys can be stored as encrypted `ServiceKey` rows (AES-256-GCM, master key in `SERVICE_KEY_ENCRYPTION_KEY`). `resolveApiKey(prisma, env, envKey, context?, provider?)` consults (1) context-specific assignments, (2) primary DB keys, and (3) env-var fallback. The admin Service Keys page (`/admin/service-keys`) manages entries + runs per-provider health probes.

@@ -1,1295 +1,223 @@
 # Blipp Data Model Reference
 
-Generated from `prisma/schema.prisma`. Current as of 2026-03-18.
+Generated from `prisma/schema.prisma` — **60 models · 20 enums** as of this revision. The canonical source of truth is `prisma/schema.prisma`; this page is a navigable summary grouped by domain.
 
-## Entity Relationship Diagram
+## Entity Overview
 
-```
-                         +----------------+
-                         | PlatformConfig |
-                         +----------------+
+![Core entity relationships](./diagrams/data-model-core.svg)
 
-  +------+    +----------+    +----------+    +-------+
-  | Plan |--->|   User   |--->| FeedItem |    |Podcast|
-  +------+    +----------+    +----------+    +-------+
-                 |   |             |               |
-                 |   |        (briefingId)          |
-                 |   |             |               |
-                 |   |      +----------+           |
-                 |   +----->| Briefing |           |
-                 |   |      | (user+   |           |
-                 |   |      |  clip)   |           |
-                 |   |      +----------+           |
-                 |   |             |               |
-                 |   |      +----------+           |
-                 |   |      | Briefing |           |
-                 |   |      | Request  |           |
-                 |   |      +----------+           |
-                 |   |           |                 |
-                 |   |      +----------+    +-----------+
-                 |   |      | Pipeline |--->| Pipeline  |---> PipelineEvent
-                 |   |      |   Job    |    |   Step    |
-                 |   |      +----------+    +-----------+
-                 |   |           |               |
-                 |   |           v               v
-                 |   |      +---------+    +------------+
-                 |   +----->| Episode |<---| WorkProduct|
-                 |   |      +---------+    +------------+
-                 |   |           |
-                 |   |      +----+----+
-                 |   |      |         |
-                 |   |      v         v
-                 |   | +---------+  +------+
-                 |   | |Distilla-|  | Clip |
-                 |   | |  tion   |->|      |
-                 |   | +---------+  +------+
-                 |   |
-                 |   +---------> Subscription <--------+
-                 |   |
-                 |   +---------> PodcastRequest -------> Podcast
-                 |   +---------> PodcastFavorite ------> Podcast
-                 |   +---------> PushSubscription
-                 |   +---------> ApiKey
-                 |   +---------> UserRecommendationProfile
-                 |   +---------> RecommendationCache
-                 |
-                 |   Podcast ---> PodcastCategory <--- Category
-                 |   Podcast ---> PodcastProfile
+The diagram above shows the most load-bearing relationships. Complete domain inventories follow.
 
-  +----------+     +------------------+     +-----------+
-  | AiModel  |---->| AiModelProvider  |     | SttExper- |
-  +----------+     +------------------+     |   iment   |
-                                            +-----------+
-                                                 |
-                                            +----v-------+
-                                            | SttBench-  |
-                                            | markResult |
-                                            +----+-------+
-                                                 |
-                                            Episode (FK)
-
-  +-----------+     +------------------+
-  |  CronRun  |---->|   CronRunLog    |
-  +-----------+     +------------------+
-
-  +----------------+     +------------+     +------------+
-  | AiServiceError |     |  AuditLog  |     |  ApiKey    |
-  | (standalone)   |     | (standalone)|     +------------+
-  +----------------+     +------------+
-
-  +---------------+
-  | VoicePreset   |----> Clip, Subscription, User (default), PipelineJob
-  +---------------+
-```
-
-### Key Relationships
-
-```
-Plan 1---* User
-User 1---* Subscription *---1 Podcast
-User 1---* Briefing *---1 Clip
-User 1---* FeedItem *---1 Episode
-User 1---* BriefingRequest
-User 1---* PodcastRequest *--? Podcast
-User 1---* PodcastFavorite *---1 Podcast
-User 1---* PushSubscription
-User 1---* ApiKey
-User 1--? UserRecommendationProfile
-User 1--? RecommendationCache
-BriefingRequest 1---* PipelineJob *---1 Episode
-PipelineJob 1---* PipelineStep *--? WorkProduct
-PipelineStep 1---* PipelineEvent
-Podcast 1---* Episode
-Podcast 1---* FeedItem
-Podcast 1---* PodcastCategory *---1 Category
-Podcast 1--? PodcastProfile
-VoicePreset 1---* Clip
-VoicePreset 1---* Subscription
-VoicePreset 1---* User (defaultVoicePreset)
-VoicePreset 1---* PipelineJob
-Episode 1--? Distillation 1---* Clip
-Episode 1---* Clip
-Episode 1---* WorkProduct
-Episode 1---* SttBenchmarkResult
-FeedItem *--? Briefing (via briefingId)
-Briefing *---1 Clip (shared content)
-AiModel 1---* AiModelProvider
-SttExperiment 1---* SttBenchmarkResult
-CronRun 1---* CronRunLog
-```
-
-Legend: `1---*` = one-to-many, `1--?` = one-to-zero-or-one, `*---1` = many-to-one
-
----
-
-## Models
-
-### Plan
-
-Defines subscription plans with limits, feature flags, and Stripe billing integration. Plans are slug-based and support monthly + annual pricing.
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| id | String | `cuid()` | Primary key |
-| name | String | -- | Display name (e.g. "Free", "Pro Monthly") |
-| slug | String | -- | URL-safe identifier (unique, e.g. "free", "pro-monthly") |
-| description | String? | -- | Marketing copy |
-| briefingsPerWeek | Int? | -- | Weekly briefing limit (null = unlimited) |
-| maxDurationMinutes | Int | `5` | Maximum allowed duration tier in minutes |
-| maxPodcastSubscriptions | Int? | -- | Podcast subscription limit (null = unlimited) |
-| adFree | Boolean | `false` | Whether plan is ad-free |
-| priorityProcessing | Boolean | `false` | Priority pipeline processing |
-| earlyAccess | Boolean | `false` | Early access to new features |
-| researchMode | Boolean | `false` | Research mode access |
-| crossPodcastSynthesis | Boolean | `false` | Cross-podcast synthesis feature |
-| priceCentsMonthly | Int | `0` | Monthly price in cents (0 = free) |
-| stripePriceIdMonthly | String? | -- | Stripe Price ID for monthly billing (unique) |
-| priceCentsAnnual | Int? | -- | Annual price in cents (null = no annual option) |
-| stripePriceIdAnnual | String? | -- | Stripe Price ID for annual billing (unique) |
-| stripeProductId | String? | -- | Stripe Product ID (unique) |
-| trialDays | Int | `0` | Trial period in days |
-| features | String[] | -- | Marketing bullet points for display |
-| highlighted | Boolean | `false` | Whether to highlight in UI |
-| active | Boolean | `true` | Whether plan is available |
-| sortOrder | Int | `0` | Display ordering |
-| isDefault | Boolean | `false` | Assigned to new users on creation |
-| createdAt | DateTime | `now()` | Record creation timestamp |
-| updatedAt | DateTime | `@updatedAt` | Last update timestamp |
-
-**Relations:**
-- `users` -> User[] (one-to-many)
-
-**Constraints:**
-- `slug` is unique
-- `stripePriceIdMonthly` is unique
-- `stripePriceIdAnnual` is unique
-- `stripeProductId` is unique
-
----
-
-### User
-
-Authenticated user from Clerk with plan and billing info.
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| id | String | `cuid()` | Primary key |
-| clerkId | String | -- | Clerk user ID (unique) |
-| email | String | -- | Email address (unique) |
-| name | String? | -- | Display name |
-| imageUrl | String? | -- | Profile image URL |
-| stripeCustomerId | String? | -- | Stripe Customer ID (unique) |
-| planId | String | -- | FK to Plan |
-| isAdmin | Boolean | `false` | Admin access flag |
-| status | String | `"active"` | Account status ("active"/"suspended"/"banned") |
-| onboardingComplete | Boolean | `false` | Whether user has completed onboarding |
-| defaultDurationTier | Int | `5` | Default briefing duration tier |
-| defaultVoicePresetId | String? | -- | FK to VoicePreset (user's default voice) |
-| createdAt | DateTime | `now()` | Record creation timestamp |
-| updatedAt | DateTime | `@updatedAt` | Last update timestamp |
-
-**Relations:**
-- `plan` -> Plan (many-to-one)
-- `defaultVoicePreset` -> VoicePreset? (many-to-one, named "defaultVoicePreset")
-- `subscriptions` -> Subscription[] (one-to-many)
-- `briefings` -> Briefing[] (one-to-many)
-- `feedItems` -> FeedItem[] (one-to-many)
-- `briefingRequests` -> BriefingRequest[] (one-to-many)
-- `apiKeys` -> ApiKey[] (one-to-many)
-- `podcastRequests` -> PodcastRequest[] (one-to-many)
-- `pushSubscriptions` -> PushSubscription[] (one-to-many)
-- `podcastFavorites` -> PodcastFavorite[] (one-to-many)
-- `recommendationProfile` -> UserRecommendationProfile? (one-to-zero-or-one)
-- `recommendationCache` -> RecommendationCache? (one-to-zero-or-one)
-
-**Constraints:**
-- `clerkId` is unique
-- `email` is unique
-- `stripeCustomerId` is unique
-
----
-
-### Podcast
-
-A podcast feed tracked by the platform.
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| id | String | `cuid()` | Primary key |
-| title | String | -- | Podcast title |
-| description | String? | -- | Podcast description |
-| feedUrl | String | -- | RSS feed URL (unique) |
-| imageUrl | String? | -- | Cover art URL |
-| podcastIndexId | String? | -- | PodcastIndex.org ID (unique) |
-| appleId | String? | -- | Apple Podcasts ID (unique) |
-| author | String? | -- | Podcast author |
-| language | String? | -- | Podcast language |
-| categories | String[] | -- | Category tags (PostgreSQL array) |
-| appleMetadata | Json? | -- | Apple Podcasts metadata |
-| lastFetchedAt | DateTime? | -- | Last successful feed fetch |
-| feedHealth | String? | -- | Feed health status ("excellent"/"good"/"fair"/"poor"/"broken") |
-| feedError | String? | -- | Last feed fetch error |
-| episodeCount | Int | `0` | Cached episode count |
-| status | String | `"active"` | Podcast status ("active"/"paused"/"archived") |
-| deliverable | Boolean | `true` | False when no deliverable episodes exist; hidden from users |
-| source | String? | -- | How podcast was added ("trending"/"user_request"/"manual") |
-| createdAt | DateTime | `now()` | Record creation timestamp |
-| updatedAt | DateTime | `@updatedAt` | Last update timestamp |
-
-**Relations:**
-- `episodes` -> Episode[] (one-to-many)
-- `subscriptions` -> Subscription[] (one-to-many)
-- `feedItems` -> FeedItem[] (one-to-many)
-- `requests` -> PodcastRequest[] (one-to-many)
-- `favorites` -> PodcastFavorite[] (one-to-many)
-- `podcastCategories` -> PodcastCategory[] (one-to-many)
-- `profile` -> PodcastProfile? (one-to-zero-or-one)
-
-**Constraints:**
-- `feedUrl` is unique
-- `podcastIndexId` is unique
-- `appleId` is unique
-
----
-
-### Episode
-
-A single episode from a podcast feed.
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| id | String | `cuid()` | Primary key |
-| podcastId | String | -- | FK to Podcast |
-| title | String | -- | Episode title |
-| description | String? | -- | Episode description/show notes |
-| audioUrl | String | -- | Audio file URL |
-| publishedAt | DateTime | -- | Publication date |
-| durationSeconds | Int? | -- | Episode duration in seconds |
-| guid | String | -- | RSS GUID for deduplication |
-| transcriptUrl | String? | -- | Transcript URL from feed |
-| contentStatus | ContentStatus | `PENDING` | Content readiness tracking |
-| transcriptR2Key | String? | -- | R2 key for cached transcript |
-| audioR2Key | String? | -- | R2 key for cached audio |
-| createdAt | DateTime | `now()` | Record creation timestamp |
-| updatedAt | DateTime | `@updatedAt` | Last update timestamp |
-
-**Relations:**
-- `podcast` -> Podcast (many-to-one, cascade delete)
-- `distillation` -> Distillation? (one-to-zero-or-one)
-- `clips` -> Clip[] (one-to-many)
-- `feedItems` -> FeedItem[] (one-to-many)
-- `pipelineJobs` -> PipelineJob[] (one-to-many)
-- `workProducts` -> WorkProduct[] (one-to-many)
-- `benchmarkResults` -> SttBenchmarkResult[] (one-to-many)
-
-**Constraints:**
-- `@@unique([podcastId, guid])` -- compound unique on podcast + GUID
-- `@@index([podcastId, publishedAt])` -- composite index for efficient episode queries
-
----
-
-### Distillation
-
-Processed transcript and extracted claims for an episode. Acts as a cache -- once completed, subsequent pipeline runs reuse the result.
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| id | String | `cuid()` | Primary key |
-| episodeId | String | -- | FK to Episode (unique, 1:1) |
-| status | DistillationStatus | `PENDING` | Processing status |
-| transcript | String? | -- | Full transcript text |
-| claimsJson | Json? | -- | Extracted claims as JSON |
-| errorMessage | String? | -- | Error details on failure |
-| createdAt | DateTime | `now()` | Record creation timestamp |
-| updatedAt | DateTime | `@updatedAt` | Last update timestamp |
-
-**Relations:**
-- `episode` -> Episode (one-to-one, cascade delete)
-- `clips` -> Clip[] (one-to-many)
-
-**Constraints:**
-- `episodeId` is unique (enforces 1:1 with Episode)
-
----
-
-### Clip
-
-A generated audio clip for a specific episode at a specific duration tier.
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| id | String | `cuid()` | Primary key |
-| episodeId | String | -- | FK to Episode |
-| distillationId | String | -- | FK to Distillation |
-| durationTier | Int | -- | Target duration in minutes (1, 2, 3, 5, 7, 10, or 15) |
-| voicePresetId | String? | -- | FK to VoicePreset (null = default voice) |
-| status | ClipStatus | `PENDING` | Processing status |
-| narrativeText | String? | -- | Generated narrative script |
-| wordCount | Int? | -- | Word count of narrative |
-| audioKey | String? | -- | R2 object key for audio |
-| audioUrl | String? | -- | Public audio URL |
-| actualSeconds | Int? | -- | Actual clip duration |
-| errorMessage | String? | -- | Error details on failure |
-| createdAt | DateTime | `now()` | Record creation timestamp |
-| updatedAt | DateTime | `@updatedAt` | Last update timestamp |
-
-**Relations:**
-- `episode` -> Episode (many-to-one, cascade delete)
-- `distillation` -> Distillation (many-to-one, cascade delete)
-- `voicePreset` -> VoicePreset? (many-to-one)
-- `briefings` -> Briefing[] (one-to-many)
-
-**Constraints:**
-- `@@unique([episodeId, durationTier, voicePresetId])` -- one clip per episode per duration tier per voice preset
-
----
-
-### Subscription
-
-Join table linking users to their subscribed podcasts, with a per-subscription duration tier.
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| id | String | `cuid()` | Primary key |
-| userId | String | -- | FK to User |
-| podcastId | String | -- | FK to Podcast |
-| durationTier | Int | -- | Briefing duration in minutes (1, 2, 3, 5, 7, 10, 15, or 30) |
-| voicePresetId | String? | -- | FK to VoicePreset (per-subscription voice override) |
-| createdAt | DateTime | `now()` | Record creation timestamp |
-| updatedAt | DateTime | `@updatedAt` | Last update timestamp |
-
-**Relations:**
-- `user` -> User (many-to-one, cascade delete)
-- `podcast` -> Podcast (many-to-one, cascade delete)
-- `voicePreset` -> VoicePreset? (many-to-one)
-
-**Constraints:**
-- `@@unique([userId, podcastId])` -- one subscription per user per podcast
-
----
-
-### Briefing
-
-Per-user wrapper around a shared Clip. Links a user to a specific content clip and will carry personalized ad audio in the future.
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| id | String | `cuid()` | Primary key |
-| userId | String | -- | FK to User |
-| clipId | String | -- | FK to Clip (shared content) |
-| adAudioUrl | String? | -- | Personalized ad audio URL (null until ads ship) |
-| adAudioKey | String? | -- | R2 key for ad audio |
-| createdAt | DateTime | `now()` | Record creation timestamp |
-| updatedAt | DateTime | `@updatedAt` | Last update timestamp |
-
-**Relations:**
-- `user` -> User (many-to-one, cascade delete)
-- `clip` -> Clip (many-to-one, cascade delete)
-- `feedItems` -> FeedItem[] (one-to-many)
-
-**Constraints:**
-- `@@unique([userId, clipId])` -- one briefing per user per clip
-
----
-
-### FeedItem
-
-Per-user delivery record. One entry in the user's feed, pointing to a Briefing (single episode) or Digest (future). Created by subscriptions (auto) or on-demand requests.
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| id | String | `cuid()` | Primary key |
-| userId | String | -- | FK to User |
-| episodeId | String | -- | FK to Episode |
-| podcastId | String | -- | FK to Podcast |
-| briefingId | String? | -- | FK to Briefing (set when READY) |
-| durationTier | Int | -- | Briefing duration in minutes |
-| source | FeedItemSource | -- | SUBSCRIPTION or ON_DEMAND |
-| status | FeedItemStatus | `PENDING` | Processing status |
-| listened | Boolean | `false` | Whether user has listened |
-| listenedAt | DateTime? | -- | When user listened |
-| requestId | String? | -- | FK to BriefingRequest that triggered pipeline |
-| errorMessage | String? | -- | Error details on failure |
-| createdAt | DateTime | `now()` | Record creation timestamp |
-| updatedAt | DateTime | `@updatedAt` | Last update timestamp |
-
-**Relations:**
-- `user` -> User (many-to-one, cascade delete)
-- `episode` -> Episode (many-to-one, cascade delete)
-- `podcast` -> Podcast (many-to-one, cascade delete)
-- `briefing` -> Briefing? (many-to-one)
-
-**Constraints:**
-- `@@unique([userId, episodeId, durationTier])` -- one feed item per user per episode per tier
-
----
-
-### BriefingRequest
-
-A request that drives the pipeline. Created by subscriptions (auto), on-demand requests, or admin tests.
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| id | String | `cuid()` | Primary key |
-| userId | String | -- | FK to User |
-| status | BriefingRequestStatus | `PENDING` | Request lifecycle status |
-| targetMinutes | Int | -- | Desired briefing length |
-| items | Json | -- | Requested content (podcast/episode IDs) |
-| isTest | Boolean | `false` | Whether this is an admin test request |
-| errorMessage | String? | -- | Error details on failure |
-| createdAt | DateTime | `now()` | Record creation timestamp |
-| updatedAt | DateTime | `@updatedAt` | Last update timestamp |
-
-**Relations:**
-- `user` -> User (many-to-one, cascade delete)
-- `jobs` -> PipelineJob[] (one-to-many)
-
----
-
-### PipelineJob
-
-Tracks one episode + duration tier through the pipeline for a given request.
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| id | String | `cuid()` | Primary key |
-| requestId | String | -- | FK to BriefingRequest |
-| episodeId | String | -- | FK to Episode |
-| durationTier | Int | -- | Target clip duration in minutes |
-| voicePresetId | String? | -- | FK to VoicePreset (voice to use for TTS) |
-| status | PipelineJobStatus | `PENDING` | Job lifecycle status |
-| currentStage | PipelineStage | `TRANSCRIPTION` | Current processing stage |
-| distillationId | String? | -- | Resolved Distillation ID |
-| clipId | String? | -- | Resolved Clip ID |
-| errorMessage | String? | -- | Error details on failure |
-| createdAt | DateTime | `now()` | Record creation timestamp |
-| updatedAt | DateTime | `@updatedAt` | Last update timestamp |
-| completedAt | DateTime? | -- | Completion timestamp |
-| dismissedAt | DateTime? | -- | When admin dismissed a failed job |
-
-**Relations:**
-- `request` -> BriefingRequest (many-to-one, cascade delete)
-- `episode` -> Episode (many-to-one, cascade delete)
-- `voicePreset` -> VoicePreset? (many-to-one)
-- `steps` -> PipelineStep[] (one-to-many)
-
-**Constraints:**
-- `@@index([requestId, status])` -- composite index for request job lookups
-
----
-
-### PipelineStep
-
-Audit trail for each stage a PipelineJob passes through.
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| id | String | `cuid()` | Primary key |
-| jobId | String | -- | FK to PipelineJob |
-| stage | PipelineStage | -- | Which pipeline stage |
-| status | PipelineStepStatus | `PENDING` | Step outcome |
-| cached | Boolean | `false` | Whether result was from cache |
-| input | Json? | -- | Stage input payload |
-| output | Json? | -- | Stage output payload |
-| errorMessage | String? | -- | Error details on failure |
-| startedAt | DateTime? | -- | When processing began |
-| completedAt | DateTime? | -- | When processing finished |
-| durationMs | Int? | -- | Processing duration in ms |
-| model | String? | -- | AI model used (e.g. "claude-sonnet-4-20250514") |
-| inputTokens | Int? | -- | Input tokens consumed by AI call |
-| outputTokens | Int? | -- | Output tokens produced by AI call |
-| cost | Float? | -- | Estimated cost (API calls, etc.) |
-| retryCount | Int | `0` | Number of retries |
-| workProductId | String? | -- | FK to WorkProduct |
-| createdAt | DateTime | `now()` | Record creation timestamp |
-
-**Relations:**
-- `job` -> PipelineJob (many-to-one, cascade delete)
-- `workProduct` -> WorkProduct? (many-to-one)
-- `events` -> PipelineEvent[] (one-to-many)
-
----
-
-### PipelineEvent
-
-Structured event log for pipeline step execution. Provides fine-grained observability into individual step behavior.
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| id | String | `cuid()` | Primary key |
-| stepId | String | -- | FK to PipelineStep |
-| level | PipelineEventLevel | -- | Event severity (DEBUG/INFO/WARN/ERROR) |
-| message | String | -- | Human-readable event message |
-| data | Json? | -- | Structured event data |
-| createdAt | DateTime | `now()` | Event timestamp |
-
-**Relations:**
-- `step` -> PipelineStep (many-to-one, cascade delete)
-
-**Constraints:**
-- `@@index([stepId, createdAt])` -- composite index for efficient step event queries
-
----
-
-### WorkProduct
-
-Tracks artifacts stored in R2 (transcripts, audio clips, etc.).
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| id | String | `cuid()` | Primary key |
-| type | WorkProductType | -- | Artifact type |
-| episodeId | String? | -- | FK to Episode (optional) |
-| userId | String? | -- | Owning user ID (optional) |
-| durationTier | Int? | -- | Duration tier if applicable |
-| voice | String? | -- | TTS voice used |
-| r2Key | String | -- | R2 object key (unique) |
-| sizeBytes | Int? | -- | File size in bytes |
-| metadata | Json? | -- | Additional metadata |
-| createdAt | DateTime | `now()` | Record creation timestamp |
-
-**Relations:**
-- `episode` -> Episode? (many-to-one, cascade delete)
-- `steps` -> PipelineStep[] (one-to-many, via PipelineStep.workProductId)
-
-**Constraints:**
-- `r2Key` is unique
-
----
-
-### VoicePreset
-
-Configurable TTS voice preset. Stores per-provider voice settings (voice ID, instructions, speed) as a JSON config object. System presets cannot be deleted.
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| id | String | `cuid()` | Primary key |
-| name | String | -- | Display name (unique, e.g. "Warm Coral", "News Anchor") |
-| description | String? | -- | Human-readable description |
-| isSystem | Boolean | `false` | System presets cannot be deleted |
-| isActive | Boolean | `true` | Whether preset is available for selection |
-| config | Json | -- | Per-provider voice config (see below) |
-| createdAt | DateTime | `now()` | Record creation timestamp |
-| updatedAt | DateTime | `@updatedAt` | Last update timestamp |
-
-**Config JSON shape:**
-```json
-{
-  "openai": { "voice": "coral", "instructions": "Speak warmly...", "speed": 1.0 },
-  "groq": { "voice": "aura-orpheus-en" },
-  "cloudflare": { "voice": "en-US-Neural2-F" }
-}
-```
-
-**Relations:**
-- `clips` -> Clip[] (one-to-many)
-- `subscriptions` -> Subscription[] (one-to-many)
-- `users` -> User[] (one-to-many, named "defaultVoicePreset")
-- `pipelineJobs` -> PipelineJob[] (one-to-many)
-
-**Constraints:**
-- `name` is unique
-
----
-
-### AiModel
-
-Registry of AI models available for pipeline stages.
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| id | String | `cuid()` | Primary key |
-| stage | AiStage | -- | Pipeline stage (stt/distillation/narrative/tts) |
-| modelId | String | -- | Model identifier (e.g. "whisper-1", "claude-sonnet-4-20250514") |
-| label | String | -- | Display name (e.g. "Whisper v1") |
-| developer | String | -- | Model developer (e.g. "openai", "anthropic") |
-| notes | String? | -- | Capabilities, value notes, limitations |
-| isActive | Boolean | `true` | Whether model is available for selection |
-| createdAt | DateTime | `now()` | Record creation timestamp |
-
-**Relations:**
-- `providers` -> AiModelProvider[] (one-to-many)
-
-**Constraints:**
-- `@@unique([stage, modelId])` -- one entry per stage + model combination
-
----
-
-### AiModelProvider
-
-Provider-specific configuration for an AI model, including pricing and availability.
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| id | String | `cuid()` | Primary key |
-| aiModelId | String | -- | FK to AiModel |
-| provider | String | -- | Inference provider (e.g. "openai", "cloudflare", "groq", "deepgram") |
-| providerModelId | String? | -- | Provider-specific model ID (e.g. "@cf/openai/whisper") |
-| providerLabel | String | -- | Display name (e.g. "Cloudflare Workers AI") |
-| pricePerMinute | Float? | -- | STT/TTS per audio minute |
-| priceInputPerMToken | Float? | -- | LLM per 1M input tokens |
-| priceOutputPerMToken | Float? | -- | LLM per 1M output tokens |
-| pricePerKChars | Float? | -- | TTS alt: per 1K characters |
-| isDefault | Boolean | `false` | Whether this is the default provider for the model |
-| isAvailable | Boolean | `true` | Whether provider is currently available |
-| limits | Json? | -- | Provider/model limits, e.g. `{ "maxFileSizeBytes": 26214400 }` |
-| priceUpdatedAt | DateTime? | -- | Last pricing refresh timestamp |
-| createdAt | DateTime | `now()` | Record creation timestamp |
-| updatedAt | DateTime | `@updatedAt` | Last update timestamp |
-
-**Relations:**
-- `model` -> AiModel (many-to-one, cascade delete)
-
-**Constraints:**
-- `@@unique([aiModelId, provider])` -- one provider entry per model
-- `@@index([aiModelId])` -- index for provider lookups
-
----
-
-### SttExperiment
-
-An STT benchmark experiment comparing models/providers/speeds.
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| id | String | `cuid()` | Primary key |
-| name | String | -- | Experiment name |
-| status | SttExperimentStatus | `PENDING` | Experiment lifecycle |
-| config | Json | -- | Configuration: `{ models, speeds, episodeIds }` |
-| totalTasks | Int | `0` | Total benchmark tasks |
-| doneTasks | Int | `0` | Completed tasks count |
-| errorMessage | String? | -- | Error details on failure |
-| createdAt | DateTime | `now()` | Record creation timestamp |
-| updatedAt | DateTime | `@updatedAt` | Last update timestamp |
-| completedAt | DateTime? | -- | Completion timestamp |
-
-**Relations:**
-- `results` -> SttBenchmarkResult[] (one-to-many)
-
----
-
-### SttBenchmarkResult
-
-Individual benchmark result for a model+provider+speed+episode combination.
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| id | String | `cuid()` | Primary key |
-| experimentId | String | -- | FK to SttExperiment |
-| episodeId | String | -- | FK to Episode |
-| model | String | -- | Model ID (e.g. "whisper-1", "nova-3") |
-| provider | String? | -- | Inference provider |
-| speed | Float | -- | Playback speed (1.0, 1.5, 2.0) |
-| status | String | `"PENDING"` | Task status |
-| costDollars | Float? | -- | Transcription cost |
-| latencyMs | Int? | -- | Processing latency |
-| wer | Float? | -- | Word Error Rate |
-| wordCount | Int? | -- | Hypothesis word count |
-| refWordCount | Int? | -- | Reference word count |
-| r2AudioKey | String? | -- | R2 key for speed-adjusted audio |
-| r2TranscriptKey | String? | -- | R2 key for hypothesis transcript |
-| r2RefTranscriptKey | String? | -- | R2 key for reference transcript |
-| pollingId | String? | -- | External async job ID |
-| errorMessage | String? | -- | Error details on failure |
-| createdAt | DateTime | `now()` | Record creation timestamp |
-| completedAt | DateTime? | -- | Completion timestamp |
-
-**Relations:**
-- `experiment` -> SttExperiment (many-to-one, cascade delete)
-- `episode` -> Episode (many-to-one, cascade delete)
-
-**Constraints:**
-- `@@unique([experimentId, episodeId, model, provider, speed])` -- one result per combination
-- `@@index([experimentId])` -- index for experiment result lookups
-
----
-
-### PodcastRequest
-
-User-submitted podcast request with admin review workflow.
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| id | String | `cuid()` | Primary key |
-| userId | String | -- | FK to User |
-| feedUrl | String | -- | RSS feed URL of the requested podcast |
-| title | String? | -- | Podcast title (user-provided) |
-| imageUrl | String? | -- | Podcast cover art URL |
-| status | String | `"PENDING"` | Review status ("PENDING"/"APPROVED"/"REJECTED"/"DUPLICATE") |
-| podcastId | String? | -- | FK to Podcast (set when approved) |
-| adminNote | String? | -- | Admin review note |
-| reviewedBy | String? | -- | Admin who reviewed the request |
-| reviewedAt | DateTime? | -- | When the request was reviewed |
-| createdAt | DateTime | `now()` | Record creation timestamp |
-| updatedAt | DateTime | `@updatedAt` | Last update timestamp |
-
-**Relations:**
-- `user` -> User (many-to-one, cascade delete)
-- `podcast` -> Podcast? (many-to-one)
-
-**Constraints:**
-- `@@unique([userId, feedUrl])` -- one request per user per feed URL
-- `@@index([status])` -- index for admin review filtering
-
----
-
-### PodcastFavorite
-
-User favorite marking (interest signal for recommendations).
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| id | String | `cuid()` | Primary key |
-| userId | String | -- | FK to User |
-| podcastId | String | -- | FK to Podcast |
-| createdAt | DateTime | `now()` | Record creation timestamp |
-
-**Relations:**
-- `user` -> User (many-to-one, cascade delete)
-- `podcast` -> Podcast (many-to-one, cascade delete)
-
-**Constraints:**
-- `@@unique([userId, podcastId])` -- one favorite per user per podcast
-- `@@index([userId])` -- index for user favorite lookups
-
----
-
-### PushSubscription
-
-Web push notification subscription for a user.
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| id | String | `cuid()` | Primary key |
-| userId | String | -- | FK to User |
-| endpoint | String | -- | Push service endpoint URL (unique) |
-| p256dh | String | -- | Public key for push encryption |
-| auth | String | -- | Auth secret for push encryption |
-| createdAt | DateTime | `now()` | Record creation timestamp |
-
-**Relations:**
-- `user` -> User (many-to-one, cascade delete)
-
-**Constraints:**
-- `endpoint` is unique
-- `@@index([userId])` -- index for user subscription lookups
-
----
-
-### AiServiceError
-
-Structured AI provider error tracking for observability and debugging.
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| id | String | `cuid()` | Primary key |
-| service | String | -- | Service name ("stt"/"distillation"/"narrative"/"tts") |
-| provider | String | -- | Provider name ("anthropic"/"openai"/"groq"/"deepgram"/etc.) |
-| model | String | -- | Model ID that was called |
-| operation | String | -- | Operation type ("transcribe"/"complete"/"synthesize") |
-| correlationId | String | -- | Correlation ID tracing through the pipeline |
-| jobId | String? | -- | PipelineJob reference |
-| stepId | String? | -- | PipelineStep reference |
-| episodeId | String? | -- | Episode reference |
-| category | String | -- | Error category (rate_limit/timeout/auth/model_not_found/etc.) |
-| severity | String | -- | Error severity ("transient"/"permanent") |
-| httpStatus | Int? | -- | HTTP status code |
-| errorMessage | String | -- | Human-readable error message |
-| rawResponse | String? | -- | First 2KB of error body (sanitized) |
-| requestDurationMs | Int | -- | Request duration in milliseconds |
-| timestamp | DateTime | `now()` | When the error occurred |
-| retryCount | Int | `0` | Current retry count |
-| maxRetries | Int | `0` | Maximum retry attempts configured |
-| willRetry | Boolean | `false` | Whether a retry will be attempted |
-| resolved | Boolean | `false` | True if a subsequent retry succeeded |
-| rateLimitRemaining | Int? | -- | Remaining rate limit (from response headers) |
-| rateLimitResetAt | DateTime? | -- | When rate limit resets (from response headers) |
-| createdAt | DateTime | `now()` | Record creation timestamp |
-
-**Relations:** None (standalone)
-
-**Constraints:**
-- `@@index([service, provider, createdAt])` -- provider error timeline
-- `@@index([correlationId])` -- trace lookup
-- `@@index([category, createdAt])` -- error category analysis
-- `@@index([episodeId])` -- episode error lookup
-- `@@index([resolved, createdAt])` -- unresolved error queries
-
----
-
-### AuditLog
-
-Admin action audit trail for compliance and debugging.
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| id | String | `cuid()` | Primary key |
-| actorId | String | -- | Clerk userId of the admin |
-| actorEmail | String? | -- | Denormalized admin email for readability |
-| action | String | -- | Action performed (e.g. "config.update", "user.plan.change") |
-| entityType | String | -- | Type of affected entity ("PlatformConfig"/"User"/"Plan"/"PipelineJob") |
-| entityId | String | -- | ID of the affected record |
-| before | Json? | -- | Snapshot of entity before change |
-| after | Json? | -- | Snapshot of entity after change |
-| metadata | Json? | -- | Extra context (e.g. `{ ip, userAgent }`) |
-| createdAt | DateTime | `now()` | Record creation timestamp |
-
-**Relations:** None (standalone)
-
-**Constraints:**
-- `@@index([actorId])` -- actor lookup
-- `@@index([entityType, entityId])` -- entity history lookup
-- `@@index([createdAt])` -- chronological queries
-
----
-
-### ApiKey
-
-API key management for programmatic access.
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| id | String | `cuid()` | Primary key |
-| name | String | -- | Key name (e.g. "Monitoring", "Partner Feed") |
-| keyHash | String | -- | SHA-256 hash of the key (unique) |
-| keyPrefix | String | -- | First 8 chars for display (e.g. "blp_live...") |
-| scopes | String[] | -- | Permission scopes (e.g. `["health:read", "feed:read"]`) |
-| userId | String | -- | FK to User (admin who created it) |
-| expiresAt | DateTime? | -- | Expiration time (null = no expiry) |
-| lastUsedAt | DateTime? | -- | Last usage timestamp |
-| revokedAt | DateTime? | -- | Soft revocation timestamp |
-| createdAt | DateTime | `now()` | Record creation timestamp |
-
-**Relations:**
-- `user` -> User (many-to-one, cascade delete)
-
-**Constraints:**
-- `keyHash` is unique
-
----
-
-### Category
-
-Apple genre taxonomy for podcast categorization.
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| id | String | `cuid()` | Primary key |
-| appleGenreId | String | -- | Apple Podcasts genre ID (unique) |
-| name | String | -- | Category display name |
-| createdAt | DateTime | `now()` | Record creation timestamp |
-| updatedAt | DateTime | `@updatedAt` | Last update timestamp |
-
-**Relations:**
-- `podcasts` -> PodcastCategory[] (one-to-many)
-
-**Constraints:**
-- `appleGenreId` is unique
-
----
-
-### PodcastCategory
-
-Join table linking podcasts to Apple genre categories.
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| podcastId | String | -- | FK to Podcast (composite PK) |
-| categoryId | String | -- | FK to Category (composite PK) |
-
-**Relations:**
-- `podcast` -> Podcast (many-to-one, cascade delete)
-- `category` -> Category (many-to-one, cascade delete)
-
-**Constraints:**
-- `@@id([podcastId, categoryId])` -- composite primary key
-
----
-
-### PodcastProfile
-
-Per-podcast recommendation profile with computed signals.
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| id | String | `cuid()` | Primary key |
-| podcastId | String | -- | FK to Podcast (unique, 1:1) |
-| categoryWeights | Json | -- | Category relevance weights (e.g. `{ "Technology": 0.8 }`) |
-| topicTags | String[] | -- | Topic fingerprint tags (Phase 2) |
-| popularity | Float | `0` | Normalized popularity score (0-1) |
-| freshness | Float | `0` | Normalized freshness score (0-1) |
-| subscriberCount | Int | `0` | Number of subscribers on the platform |
-| computedAt | DateTime | `now()` | When the profile was last computed |
-
-**Relations:**
-- `podcast` -> Podcast (one-to-one, cascade delete)
-
-**Constraints:**
-- `podcastId` is unique (enforces 1:1 with Podcast)
-- `@@index([computedAt])` -- index for recomputation queries
-
----
-
-### UserRecommendationProfile
-
-Per-user recommendation profile with computed preference signals.
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| id | String | `cuid()` | Primary key |
-| userId | String | -- | FK to User (unique, 1:1) |
-| categoryWeights | Json | -- | Category preference weights (e.g. `{ "Technology": 0.9 }`) |
-| topicTags | String[] | -- | Topic preference tags (Phase 2) |
-| listenCount | Int | `0` | Total listen count |
-| computedAt | DateTime | `now()` | When the profile was last computed |
-
-**Relations:**
-- `user` -> User (one-to-one, cascade delete)
-
-**Constraints:**
-- `userId` is unique (enforces 1:1 with User)
-
----
-
-### RecommendationCache
-
-Precomputed podcast recommendations per user.
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| id | String | `cuid()` | Primary key |
-| userId | String | -- | FK to User (unique, 1:1) |
-| podcasts | Json | -- | Recommended podcasts: `[{ podcastId, score, reasons: string[] }]` |
-| computedAt | DateTime | `now()` | When recommendations were last computed |
-
-**Relations:**
-- `user` -> User (one-to-one, cascade delete)
-
-**Constraints:**
-- `userId` is unique (enforces 1:1 with User)
-
----
-
-### CronRun
-
-Scheduled job execution record for tracking cron job runs.
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| id | String | `cuid()` | Primary key |
-| jobKey | String | -- | Cron job identifier |
-| startedAt | DateTime | `now()` | When the job started |
-| completedAt | DateTime? | -- | When the job finished |
-| durationMs | Int? | -- | Execution duration in milliseconds |
-| status | CronRunStatus | `IN_PROGRESS` | Job execution status |
-| result | Json? | -- | Structured output (counts, summaries) |
-| errorMessage | String? | -- | Error details on failure |
-
-**Relations:**
-- `logs` -> CronRunLog[] (one-to-many)
-
-**Constraints:**
-- `@@index([jobKey, startedAt DESC])` -- index for recent run lookups
-
----
-
-### CronRunLog
-
-Structured log entry for a cron run execution.
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| id | String | `cuid()` | Primary key |
-| runId | String | -- | FK to CronRun |
-| level | CronRunLogLevel | -- | Log severity (DEBUG/INFO/WARN/ERROR) |
-| message | String | -- | Log message |
-| data | Json? | -- | Structured log data |
-| timestamp | DateTime | `now()` | Log entry timestamp |
-
-**Relations:**
-- `run` -> CronRun (many-to-one, cascade delete)
-
-**Constraints:**
-- `@@index([runId, timestamp])` -- composite index for efficient log queries
-
----
-
-### EpisodeRefreshJob
-
-Tracks episode refresh operations (checking RSS feeds for new episodes). Created by admin triggers, cron jobs, or auto-spawned after catalog discovery.
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| id | String | `cuid()` | Primary key |
-| scope | String | `"subscribed"` | Target scope: "subscribed", "all", or "seed" |
-| trigger | String | `"admin"` | Trigger source: "admin", "cron", or "seed" |
-| catalogSeedJobId | String? | -- | Links to originating CatalogSeedJob (if spawned by discovery) |
-| status | String | `"pending"` | pending / refreshing / paused / cancelled / complete / failed |
-| podcastsTotal | Int | `0` | Total podcasts to check |
-| podcastsCompleted | Int | `0` | Podcasts checked so far |
-| podcastsWithNewEpisodes | Int | `0` | Podcasts that had new episodes |
-| episodesDiscovered | Int | `0` | Total new episodes found |
-| prefetchTotal | Int | `0` | Episodes to prefetch |
-| prefetchCompleted | Int | `0` | Episodes prefetched |
-| error | String? | -- | Error message if failed |
-| archivedAt | DateTime? | -- | When archived |
-| startedAt | DateTime | `now()` | Job start time |
-| completedAt | DateTime? | -- | Job completion time |
-
-**Relations:**
-- `errors` -> EpisodeRefreshError[] (one-to-many, cascade delete)
-
-**Constraints:**
-- `@@index([status])`, `@@index([archivedAt])`
-
-### EpisodeRefreshError
-
-Per-error records for episode refresh jobs, separated by phase.
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| id | String | `cuid()` | Primary key |
-| jobId | String | -- | FK to EpisodeRefreshJob |
-| phase | String | -- | "feed_scan" or "prefetch" |
-| message | String | -- | Error message |
-| podcastId | String? | -- | Related podcast (if applicable) |
-| episodeId | String? | -- | Related episode (if applicable) |
-| createdAt | DateTime | `now()` | Error timestamp |
-
-**Relations:**
-- `job` -> EpisodeRefreshJob (many-to-one, cascade delete)
-
-**Constraints:**
-- `@@index([jobId])`, `@@index([jobId, phase])`
-
----
-
-### PlatformConfig
-
-Key-value runtime configuration for the platform (pipeline toggles, intervals, etc.).
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| id | String | `cuid()` | Primary key |
-| key | String | -- | Config key (unique), e.g. `pipeline.enabled` |
-| value | Json | -- | Config value |
-| description | String? | -- | Human-readable description |
-| updatedAt | DateTime | `@updatedAt` | Last update timestamp |
-| updatedBy | String? | -- | Admin clerkId of last editor |
-
-**Relations:** None
-
-**Constraints:**
-- `key` is unique
-
----
-
-## Enums
-
-### AiStage
-
-Pipeline stages for AI model configuration.
-
-| Value | Description |
-|-------|-------------|
-| `stt` | Speech-to-text (transcription) |
-| `distillation` | Claim extraction |
-| `narrative` | Narrative generation |
-| `tts` | Text-to-speech |
-
-### ContentStatus
-
-Content readiness tracking for episodes.
-
-| Value | Description |
-|-------|-------------|
-| `PENDING` | Content not yet processed |
-| `TRANSCRIPT_READY` | Transcript has been obtained |
-| `AUDIO_READY` | Audio processing complete |
-| `NOT_DELIVERABLE` | Content cannot be delivered |
-
-### DistillationStatus
-
-Processing stages for transcript extraction and claim analysis.
-
-| Value | Description |
-|-------|-------------|
-| `PENDING` | Not yet started |
-| `FETCHING_TRANSCRIPT` | Retrieving transcript from feed URL or STT |
-| `TRANSCRIPT_READY` | Transcript obtained, awaiting claim extraction |
-| `EXTRACTING_CLAIMS` | LLM is extracting claims from transcript |
-| `COMPLETED` | Transcript and claims ready |
-| `FAILED` | Processing failed |
-
-### ClipStatus
-
-Processing stages for audio clip generation.
-
-| Value | Description |
-|-------|-------------|
-| `PENDING` | Not yet started |
-| `GENERATING_NARRATIVE` | LLM is writing the narrative script |
-| `GENERATING_AUDIO` | TTS is generating audio |
-| `COMPLETED` | Audio clip ready |
-| `FAILED` | Processing failed |
-
-### FeedItemSource
-
-How a feed item was created.
-
-| Value | Description |
-|-------|-------------|
-| `SUBSCRIPTION` | Auto-generated when a new episode is detected for a subscribed podcast |
-| `ON_DEMAND` | Created by a user's explicit on-demand briefing request |
-
-### FeedItemStatus
-
-Lifecycle of a feed item.
-
-| Value | Description |
-|-------|-------------|
-| `PENDING` | Pipeline not yet started |
-| `PROCESSING` | Pipeline is generating the clip |
-| `READY` | Clip is available for playback |
-| `FAILED` | Pipeline failed |
-
-### BriefingRequestStatus
-
-Lifecycle of a user's briefing request.
-
-| Value | Description |
-|-------|-------------|
-| `PENDING` | Request received, not yet dispatched |
-| `PROCESSING` | Pipeline jobs are in progress |
-| `COMPLETED` | All jobs done, briefing assembled |
-| `FAILED` | Request failed |
-
-### PipelineStage
-
-The stages of the demand-driven pipeline.
-
-| Value | Description |
-|-------|-------------|
-| `TRANSCRIPTION` | Fetch or generate transcript |
-| `DISTILLATION` | Extract claims from transcript |
-| `NARRATIVE_GENERATION` | Generate narrative text from claims |
-| `AUDIO_GENERATION` | Convert narrative to audio via TTS |
-| `CLIP_GENERATION` | Legacy value (kept for backward compatibility with existing data) |
-| `BRIEFING_ASSEMBLY` | Assemble clips into final briefing |
-
-Note: Feed Refresh runs on a cron schedule and is not tracked as a PipelineStage.
-
-### PipelineJobStatus
-
-Lifecycle of a single pipeline job.
-
-| Value | Description |
-|-------|-------------|
-| `PENDING` | Job created, not yet started |
-| `IN_PROGRESS` | Job is being processed |
-| `COMPLETED` | Job finished successfully |
-| `FAILED` | Job failed |
-
-### PipelineStepStatus
-
-Outcome of a single pipeline step within a job.
-
-| Value | Description |
-|-------|-------------|
-| `PENDING` | Step not yet started |
-| `IN_PROGRESS` | Step is executing |
-| `COMPLETED` | Step finished successfully |
-| `SKIPPED` | Step was skipped (e.g., cached result used) |
-| `FAILED` | Step failed |
-
-### PipelineEventLevel
-
-Severity levels for pipeline events.
-
-| Value | Description |
-|-------|-------------|
-| `DEBUG` | Detailed debugging information |
-| `INFO` | Normal operational events |
-| `WARN` | Warning conditions |
-| `ERROR` | Error conditions |
-
-### WorkProductType
-
-Types of artifacts stored in R2.
-
-| Value | Description |
-|-------|-------------|
-| `TRANSCRIPT` | Full episode transcript |
-| `CLAIMS` | Extracted claims JSON |
-| `NARRATIVE` | Generated narrative script |
-| `AUDIO_CLIP` | Generated audio clip for an episode |
-| `BRIEFING_AUDIO` | Assembled briefing audio (jingles + clip) |
-| `SOURCE_AUDIO` | Downloaded source audio for transcription debugging |
-
-### SttExperimentStatus
-
-Lifecycle of an STT benchmark experiment.
-
-| Value | Description |
-|-------|-------------|
-| `PENDING` | Experiment created, not yet started |
-| `RUNNING` | Benchmark tasks are executing |
-| `COMPLETED` | All tasks finished |
-| `FAILED` | Experiment failed |
-| `CANCELLED` | Experiment was cancelled |
-
-### CronRunStatus
-
-Lifecycle of a scheduled job execution.
-
-| Value | Description |
-|-------|-------------|
-| `IN_PROGRESS` | Job is currently executing |
-| `SUCCESS` | Job completed successfully |
-| `FAILED` | Job failed |
-
-### CronRunLogLevel
-
-Severity levels for cron run log entries.
-
-| Value | Description |
-|-------|-------------|
-| `DEBUG` | Detailed debugging information |
-| `INFO` | Normal operational events |
-| `WARN` | Warning conditions |
-| `ERROR` | Error conditions |
-
----
-
-## Prisma Generators
-
-The schema defines two generators:
+## Generators
 
 | Generator | Output | Runtime | Purpose |
 |-----------|--------|---------|---------|
-| `client` | `src/generated/prisma` | `cloudflare` | Worker runtime (CF Workers) |
-| `scripts` | `src/generated/prisma-node` | `nodejs` | CLI scripts (seed, clean, db:check) |
+| `client` | `src/generated/prisma` | `cloudflare` | Worker runtime |
+| `scripts` | `src/generated/prisma-node` | `nodejs` | CLI scripts (seed, `db:check`, clean, migrate) |
 
----
+After running `npx prisma generate`, a barrel export is committed at `src/generated/prisma/index.ts` (gitignored). Datasource is PostgreSQL (Neon) via the Cloudflare runtime adapter over Hyperdrive.
 
-## Cascade Delete Behavior
+## Models by Domain
 
-All foreign key relations use `onDelete: Cascade`. Deleting a parent record removes all children:
+### Identity, Plans, Billing
 
-| Deleted Parent | Cascaded Deletions |
-|----------------|-------------------|
-| Plan | (none -- Users reference Plan but no cascade) |
-| User | Subscriptions, Briefings, FeedItems, BriefingRequests, PodcastFavorites, PushSubscriptions, ApiKeys, UserRecommendationProfile, RecommendationCache |
-| Podcast | Episodes, Subscriptions, FeedItems, PodcastCategories, PodcastProfile, PodcastFavorites |
-| Episode | Distillation, Clips, FeedItems, PipelineJobs, WorkProducts, SttBenchmarkResults |
-| Distillation | Clips |
-| BriefingRequest | PipelineJobs |
-| PipelineJob | PipelineSteps |
-| PipelineStep | PipelineEvents |
-| AiModel | AiModelProviders |
-| SttExperiment | SttBenchmarkResults |
-| Category | PodcastCategories |
-| CronRun | CronRunLogs |
-| EpisodeRefreshJob | EpisodeRefreshErrors |
+| Model | Purpose | Notable fields |
+|-------|---------|----------------|
+| **Plan** | Subscription tier with limits, feature flags, billing product IDs (Stripe + Apple), and allowed voice presets. | `slug` (unique), `briefingsPerWeek`, `maxDurationMinutes`, `maxPodcastSubscriptions`, `pastEpisodesLimit`, `concurrentPipelineJobs`, `transcriptAccess`, `dailyDigest`, `adFree`, `priorityProcessing`, `earlyAccess`, `offlineAccess`, `publicSharing`, `priceCentsMonthly`, `stripePriceId{Monthly,Annual}`, `appleProductId{Monthly,Annual}`, `allowedVoicePresetIds[]`, `highlighted`, `isDefault`. |
+| **User** | Clerk-authenticated user profile. | `clerkId` (unique), `email` (unique), `stripeCustomerId` (unique), `planId` (FK), `isAdmin`, `status` (`active/suspended/banned`), `onboardingComplete`, `defaultDurationTier`, `defaultVoicePresetId`, `acceptAnyVoice`, `preferredCategories[]`, `excludedCategories[]`, `preferredTopics[]`, `excludedTopics[]`, `zipCode/city/state/country/timezone`, `welcomeEmailSentAt`, `subscriptionEndsAt`, `digestEnabled`, `digestInclude{Subscriptions,Favorites,Recommended}`. |
+| **BillingSubscription** | Unified entitlement row per external subscription (Stripe, Apple, or manual admin grant). | `source` (enum `BillingSource`), `externalId`, `productExternalId`, `planId`, `status` (enum `BillingStatus`), `currentPeriodEnd`, `willRenew`, `rawPayload` JSON. Unique: `(source, externalId)`. |
+| **BillingEvent** | Append-only audit trail of billing events (webhooks + admin + REST). | `userId?`, `source`, `eventType`, `environment`, `externalId?`, `productExternalId?`, `status` (`APPLIED/SKIPPED/FAILED`), `skipReason?`, `rawPayload`. Indexes: `(userId, createdAt)`, `(source, createdAt)`. |
+| **ServiceKey** | Encrypted third-party API key (AES-256-GCM at rest). | `provider`, `envKey`, `encryptedValue`, `iv`, `maskedPreview`, `isPrimary`, `lastValidated`, `lastValidatedOk`, `lastRotated`, `rotateAfterDays`. Indexed on `(envKey, isPrimary)`. |
+| **ApiKey** | Programmatic-access Bearer tokens (hashed, scoped). | `keyHash` (SHA-256, unique), `keyPrefix`, `scopes[]`, `expiresAt?`, `revokedAt?`, `lastUsedAt?`, owner `userId`. |
+| **AuditLog** | Admin action audit trail. | `actorId`, `actorEmail?`, `action`, `entityType`, `entityId`, `before?`/`after?` JSON snapshots, `metadata?` (ip, userAgent). Indexes by actor, entity, and createdAt. |
 
-Note: WorkProduct deletion does NOT cascade to PipelineSteps (the FK is nullable).
+### Catalog (Podcasts, Episodes, Categories)
+
+| Model | Purpose | Notable fields |
+|-------|---------|----------------|
+| **Podcast** | Ingested podcast feed. | `feedUrl` (unique), `podcastIndexId?` (unique), `appleId?` (unique), `slug` (unique), `feedHealth`, `feedError`, `episodeCount`, `status` (`active/paused/archived/pending_deletion/evicted/music`), `deliverable`, `invalidationReason?`, `invalidatedAt?`, `appleRank?` (Top 200), `piRank?`, `source` (`trending/user_request/manual`), `appleMetadata` JSON, `lastDetailViewedAt?`, `geoProcessedAt?`. |
+| **Episode** | RSS episode. | `podcastId`, `guid`, `slug` (per-podcast unique), `audioUrl`, `publishedAt`, `durationSeconds?`, `transcriptUrl?`, `contentStatus` (enum `ContentStatus`), `transcriptR2Key?`, `audioR2Key?`, `topicTags[]`, `publicPage`. Unique: `(podcastId, guid)` and `(podcastId, slug)`. Index: `(podcastId, publishedAt)`. |
+| **PodcastRequest** | User submission for adding a podcast to the catalog. | `userId`, `feedUrl`, `status` (`PENDING/APPROVED/REJECTED/DUPLICATE`), `podcastId?`, admin fields (`adminNote`, `reviewedBy`, `reviewedAt`). Unique: `(userId, feedUrl)`. |
+| **Category** | Apple genre taxonomy. | `appleGenreId` (unique), `name`, `slug` (unique). |
+| **PodcastCategory** | Many-to-many join between `Podcast` and `Category`. | Composite PK `(podcastId, categoryId)`. Cascade both sides. |
+
+### Recommendations & Engagement
+
+| Model | Purpose | Notable fields |
+|-------|---------|----------------|
+| **PodcastProfile** | Per-podcast signals for recommendation scoring. | `podcastId` (unique), `categoryWeights` JSON, `topicTags[]`, `popularity`, `freshness`, `subscriberCount`, `embedding` JSON (768-dim). |
+| **UserRecommendationProfile** | Per-user aggregated preferences. | `userId` (unique), `categoryWeights` JSON, `topicTags[]`, `listenCount`, `embedding` JSON. |
+| **RecommendationCache** | Top-20 precomputed recommendations. | `userId` (unique), `podcasts` JSON `[{ podcastId, score, reasons[] }]`. |
+| **RecommendationDismissal** | Dismissed-from-recommendations entries. | `(userId, podcastId)` unique. |
+| **PodcastFavorite** | Bookmark / interest signal. | `(userId, podcastId)` unique. |
+| **PodcastVote** | Thumbs up / down on a podcast. | `vote` (`1 / -1`); `(userId, podcastId)` unique. |
+| **EpisodeVote** | Thumbs up / down on an episode. | `vote` (`1 / -1`); `(userId, episodeId)` unique. |
+| **PushSubscription** | Web Push subscription (VAPID). | `endpoint` (unique), `p256dh`, `auth`, `userId`. |
+
+### Content Pipeline (Distillation, Clips, Briefings, Feed)
+
+| Model | Purpose | Notable fields |
+|-------|---------|----------------|
+| **Distillation** | Transcript + extracted claims for an episode (cache). | `episodeId` (unique — 1:1), `status` (enum `DistillationStatus`), `transcript?`, `claimsJson?`. |
+| **Clip** | Rendered audio clip for a given `(episode, durationTier, voicePreset)`. | `status` (enum `ClipStatus`), `narrativeText?`, `wordCount?`, `audioKey?`, `audioContentType?`, `audioUrl?`, `actualSeconds?`, `voiceDegraded?`. Unique: `(episodeId, durationTier, voicePresetId)`. |
+| **CatalogBriefing** | Pre-generated catalog briefing for instant signup delivery (no user). | `episodeId`, `podcastId`, `durationTier`, `clipId`, `requestId` (FK), `stale`. Unique: `(episodeId, durationTier)`. Index: `(podcastId, stale, createdAt)`. |
+| **Subscription** | User ↔ Podcast subscription with per-sub tier + voice. | `userId`, `podcastId`, `durationTier`, `voicePresetId?`. Unique: `(userId, podcastId)`. |
+| **Briefing** | Per-user wrapper over a shared `Clip`. Carries personalized ad audio. | `userId`, `clipId`, `adAudioUrl?`, `adAudioKey?`. Unique: `(userId, clipId)`. |
+| **FeedItem** | Per-user feed entry. | `userId`, `episodeId`, `podcastId`, `briefingId?`, `durationTier`, `source` (enum `FeedItemSource`: `SUBSCRIPTION/ON_DEMAND/SHARED/CATALOG`), `status` (enum `FeedItemStatus`: `PENDING/PROCESSING/READY/FAILED/CANCELLED`), `listened`, `listenedAt?`, `playbackPositionSeconds?`, `requestId?`. Unique: `(userId, episodeId, durationTier)`. Indexes: `(userId, status, createdAt)`, `(userId, listened, createdAt)`. |
+
+### Pipeline Orchestration & Audit
+
+| Model | Purpose | Notable fields |
+|-------|---------|----------------|
+| **BriefingRequest** | Pipeline entry point. | `userId`, `status` (`PENDING/PROCESSING/CANCELLED/COMPLETED/COMPLETED_DEGRADED/FAILED`), `targetMinutes`, `items` JSON (`BriefingRequestItem[]`), `mode` (`USER/SEO_BACKFILL/CATALOG`), `source` (`ON_DEMAND/SUBSCRIPTION/SHARE/STARTER_PACK/CATALOG_PREGEN_*/SEO_BACKFILL/ADMIN_TEST`), `isTest`, `cancelledAt?`. Index: `source`. |
+| **PipelineJob** | One episode+tier processed for a request. | `requestId`, `episodeId`, `durationTier`, `voicePresetId?`, `status` (enum `PipelineJobStatus`), `currentStage` (enum `PipelineStage`), `distillationId?`, `clipId?`, `completedAt?`, `dismissedAt?`. Index: `(requestId, status)`. |
+| **PipelineStep** | Audit trail for a stage attempt on a job. | `jobId`, `stage`, `status` (enum `PipelineStepStatus`), `cached`, `input?`, `output?`, `errorMessage?`, `startedAt?`, `completedAt?`, `durationMs?`, `cost?`, `model?`, `inputTokens?`, `outputTokens?`, `cacheCreationTokens?`, `cacheReadTokens?`, `audioSeconds?`, `charCount?`, `retryCount`, `workProductId?`. |
+| **PipelineEvent** | Structured log entry for a step. | `stepId`, `level` (`DEBUG/INFO/WARN/ERROR`), `message`, `data?`. Index: `(stepId, createdAt)`. |
+| **WorkProduct** | R2 artifact index — every pipeline output. | `type` (enum `WorkProductType`: `TRANSCRIPT/CLAIMS/NARRATIVE/AUDIO_CLIP/BRIEFING_AUDIO/SOURCE_AUDIO/DIGEST_NARRATIVE/DIGEST_CLIP/DIGEST_AUDIO`), `episodeId?`, `userId?`, `durationTier?`, `voice?`, `r2Key` (unique), `sizeBytes?`, `metadata?`. |
+
+### AI Service & Experimentation
+
+| Model | Purpose | Notable fields |
+|-------|---------|----------------|
+| **AiModel** | Model catalog (Whisper, Claude Sonnet, Deepgram Nova, …). | `modelId` (unique), `label`, `developer`, `stages[]` (enum `AiStage`: `stt/distillation/narrative/tts/geoClassification`), `notes?`, `isActive`. |
+| **AiModelProvider** | Provider-specific config + pricing for a model. | `aiModelId`, `provider`, `providerModelId?`, `providerLabel`, `pricePerMinute?`, `priceInputPerMToken?`, `priceOutputPerMToken?`, `pricePerKChars?`, `isDefault`, `isAvailable`, `limits?` JSON, `priceUpdatedAt?`. Unique: `(aiModelId, provider)`. |
+| **AiServiceError** | Classified provider error record. | `service`, `provider`, `model`, `operation`, `correlationId`, `jobId?`, `stepId?`, `episodeId?`, `category`, `severity`, `httpStatus?`, `errorMessage`, `rawResponse?`, `requestDurationMs`, `retryCount`, `maxRetries`, `willRetry`, `resolved`, `rateLimitRemaining?`, `rateLimitResetAt?`. |
+| **SttExperiment** | STT benchmark run. | `name`, `status` (enum `SttExperimentStatus`), `config` JSON (`{models, speeds, episodeIds}`), `totalTasks`, `doneTasks`, `completedAt?`. |
+| **SttBenchmarkResult** | Individual STT result. | `experimentId`, `episodeId`, `model`, `provider?`, `speed`, `status`, `costDollars?`, `latencyMs?`, `wer?`, `wordCount?`, `refWordCount?`, `r2AudioKey?`, `r2TranscriptKey?`, `r2RefTranscriptKey?`, `pollingId?`. Unique: `(experimentId, episodeId, model, provider, speed)`. |
+| **ClaimsExperiment** | Claims-extraction benchmark run. | `name`, `status` (enum `ClaimsExperimentStatus`), `baselineModelId?`, `baselineProvider?`, `judgeModelId?`, `judgeProvider?`, `config`, `totalTasks`, `doneTasks`, `totalJudgeTasks`, `doneJudgeTasks`. |
+| **ClaimsBenchmarkResult** | Individual claims-extraction result + judge score. | `experimentId`, `episodeId`, `model`, `provider`, `isBaseline`, `status`, `claimCount?`, `inputTokens?`, `outputTokens?`, `costDollars?`, `latencyMs?`, `coverageScore?`, `weightedCoverageScore?`, `hallucinations?`, `judgeStatus?`, `r2ClaimsKey?`, `r2JudgeKey?`. Unique: `(experimentId, episodeId, model, provider)`. |
+
+### Configuration & Content Authoring
+
+| Model | Purpose | Notable fields |
+|-------|---------|----------------|
+| **PlatformConfig** | Runtime key/value store (60-second TTL cache). | `key` (unique), `value` JSON, `description?`, `updatedBy?`. |
+| **PromptVersion** | Versioned LLM prompt templates. | `stage`, `version`, `label`, `values` JSON `Record<promptKey,value>`, `notes?`, `createdBy?`. Unique: `(stage, version)`. |
+| **VoicePreset** | TTS voice configuration across providers. | `name` (unique), `description?`, `isSystem`, `isActive`, `config` JSON (`{openai:{voice,instructions,speed}, groq:{voice}, cloudflare:{}}`), `voiceCharacteristics?`. |
+
+### Scheduled Jobs & Admin Operations
+
+| Model | Purpose | Notable fields |
+|-------|---------|----------------|
+| **CronJob** | Declarative job registry with toggle + schedule. | `jobKey` (unique), `label`, `description?`, `enabled`, `intervalMinutes`, `defaultIntervalMinutes`, `runAtHour?` (0–23 UTC), `lastRunAt?`. |
+| **CronRun** | Execution record. | `jobKey`, `startedAt`, `completedAt?`, `durationMs?`, `status` (enum `CronRunStatus`), `result?`, `errorMessage?`. Index: `(jobKey, startedAt desc)`. |
+| **CronRunLog** | Per-run log entries. | `runId`, `level` (enum `CronRunLogLevel`), `message`, `data?`, `timestamp`. |
+| **CatalogSeedJob** | Catalog discovery run (Apple top-200 / Podcast Index). | `source`, `trigger`, `status`, `podcastsDiscovered`, `error?`, `archivedAt?`. |
+| **CatalogJobError** | Error entry for catalog seed phases. | `jobId`, `phase`, `message`, `podcastId?`, `episodeId?`. |
+| **EpisodeRefreshJob** | Episode refresh run (feed-scan + content prefetch). | `scope` (`subscribed/all/seed`), `trigger`, `catalogSeedJobId?`, `status` (`pending/refreshing/paused/cancelled/complete/failed`), `podcastsTotal/Completed/WithNewEpisodes`, `episodesDiscovered`, `prefetchTotal/Completed`, `archivedAt?`. |
+| **EpisodeRefreshError** | Error entry for episode refresh phases. | `jobId`, `phase` (`feed_scan/prefetch`), `message`, `podcastId?`, `episodeId?`. |
+
+### Feedback, Support, Analytics
+
+| Model | Purpose | Notable fields |
+|-------|---------|----------------|
+| **Feedback** | Generic user feedback. | `userId`, `message`. |
+| **BlippFeedback** | Per-blipp feedback with structured reasons. | `userId`, `episodeId`, `briefingId?`, `reasons[]` (`blipp_failed/missed_key_points/inaccurate/too_short/too_long/poor_audio/not_interesting`), `message?`, `isTechnicalFailure`. Indexes: `(userId)`, `(episodeId)`, `(createdAt)`, `(isTechnicalFailure, createdAt)`. |
+| **SupportMessage** | Public contact-form submission (no auth required). | `name`, `email`, `subject`, `message`, `userAgent?`, `status` (default `open`). |
+| **ListenOriginalEvent** | Conversion tracking for "listen to original" clicks → starts → completes. | `eventType` (enum), `userId?`, `sessionId`, `deviceType?` (enum), `platform?` (enum), `blippId?`, `blippDurationMs?`, `episodeId?`, `podcastId?`, `publisherId?`, `referralSource?` (enum), `timeToClickSec?`, `blippCompletionPct?`, `didReturnToBlipp?`, `utm{Source,Medium,Campaign}?`, `reportBatchId?`. Indexes by publisher, user, blipp funnel, episode. |
+| **PublisherReportBatch** | Aggregated publisher report (nightly). | `publisherId`, `periodStart`, `periodEnd`, `totalClicks`, `totalStarts`, `totalCompletes`, `uniqueUsers`. |
+
+### Sports + Geo
+
+| Model | Purpose | Notable fields |
+|-------|---------|----------------|
+| **SportsLeague** | Sports league (NFL, NBA, Premier League). | `name` (unique), `sport`, `country?`. |
+| **SportsDivision** | Division/conference with self-referential parent (e.g. AFC → AFC East). | `leagueId`, `parentId?`, `(leagueId, name)` unique. |
+| **SportsTeam** | Team. | `leagueId`, `divisionId?`, `name`, `city?`, `nickname?`, `abbreviation`, `keywords[]`. Unique: `(leagueId, abbreviation)`. |
+| **SportsTeamMarket** | Geographic markets for a team. | `teamId`, `city`, `state`. Unique: `(teamId, city, state)`. Index: `(city, state)`. |
+| **UserSportsTeam** | User's selected teams. | `(userId, teamId)` unique. |
+| **PodcastGeoProfile** | Podcast's geographic relevance + sports tag. | `podcastId`, `city`, `state`, `country`, `scope` (`city/regional/state`), `teamId?`, `confidence` (0–1), `source` (`keyword/llm`). Unique: `(podcastId, city, state)`. |
+
+### Daily Digest
+
+| Model | Purpose | Notable fields |
+|-------|---------|----------------|
+| **DigestDelivery** | A day's digest for a user. | `userId`, `date` (YYYY-MM-DD), `status` (`PENDING/PROCESSING/READY/FAILED`), `totalEpisodes`, `completedEpisodes`, `audioKey?`, `actualSeconds?`, `episodeCount`, `sources` JSON (`DigestSource[]`), `listened`, `errorMessage?`. Unique: `(userId, date)`. |
+| **DigestDeliveryEpisode** | Episode entry within a digest. | `deliveryId`, `episodeId`, `sourceType` (`subscribed/favorited/recommended`), `status`, `entryStage?`, `actualSeconds?`. Unique: `(deliveryId, episodeId)`. |
+
+## Enums
+
+| Enum | Values |
+|------|--------|
+| `ContentStatus` | `PENDING`, `TRANSCRIPT_READY`, `AUDIO_READY`, `NOT_DELIVERABLE` |
+| `DistillationStatus` | `PENDING`, `FETCHING_TRANSCRIPT`, `TRANSCRIPT_READY`, `EXTRACTING_CLAIMS`, `COMPLETED`, `FAILED` |
+| `ClipStatus` | `PENDING`, `GENERATING_NARRATIVE`, `GENERATING_AUDIO`, `COMPLETED`, `FAILED` |
+| `FeedItemSource` | `SUBSCRIPTION`, `ON_DEMAND`, `SHARED`, `CATALOG` |
+| `FeedItemStatus` | `PENDING`, `PROCESSING`, `READY`, `FAILED`, `CANCELLED` |
+| `PipelineStage` | `TRANSCRIPTION`, `DISTILLATION`, `CLIP_GENERATION` (legacy, kept for existing data), `NARRATIVE_GENERATION`, `AUDIO_GENERATION`, `BRIEFING_ASSEMBLY` |
+| `PipelineJobStatus` | `PENDING`, `IN_PROGRESS`, `COMPLETED`, `COMPLETED_DEGRADED`, `FAILED`, `CANCELLED` |
+| `PipelineStepStatus` | `PENDING`, `IN_PROGRESS`, `COMPLETED`, `SKIPPED`, `FAILED` |
+| `PipelineEventLevel` | `DEBUG`, `INFO`, `WARN`, `ERROR` |
+| `BriefingRequestMode` | `USER`, `SEO_BACKFILL`, `CATALOG` |
+| `BriefingRequestSource` | `ON_DEMAND`, `SUBSCRIPTION`, `SHARE`, `STARTER_PACK`, `CATALOG_PREGEN_FEED_REFRESH`, `CATALOG_PREGEN_CRON`, `CATALOG_PREGEN_ADMIN`, `SEO_BACKFILL`, `ADMIN_TEST` |
+| `BriefingRequestStatus` | `PENDING`, `PROCESSING`, `CANCELLED`, `COMPLETED`, `COMPLETED_DEGRADED`, `FAILED` |
+| `WorkProductType` | `TRANSCRIPT`, `CLAIMS`, `NARRATIVE`, `AUDIO_CLIP`, `BRIEFING_AUDIO`, `SOURCE_AUDIO`, `DIGEST_NARRATIVE`, `DIGEST_CLIP`, `DIGEST_AUDIO` |
+| `SttExperimentStatus` | `PENDING`, `RUNNING`, `COMPLETED`, `FAILED`, `CANCELLED` |
+| `ClaimsExperimentStatus` | `PENDING`, `RUNNING`, `JUDGING`, `COMPLETED`, `FAILED`, `CANCELLED` |
+| `AiStage` | `stt`, `distillation`, `narrative`, `tts`, `geoClassification` |
+| `CronRunStatus` | `IN_PROGRESS`, `SUCCESS`, `FAILED` |
+| `CronRunLogLevel` | `DEBUG`, `INFO`, `WARN`, `ERROR` |
+| `ListenOriginalEventType` | `listen_original_click`, `listen_original_start`, `listen_original_complete` |
+| `DeviceType` | `mobile`, `desktop`, `tablet` |
+| `AppPlatform` | `ios`, `android`, `web` |
+| `ReferralSource` | `feed`, `search`, `share`, `notification` |
+| `BillingSource` | `STRIPE`, `APPLE`, `MANUAL` |
+| `BillingStatus` | `ACTIVE`, `CANCELLED_PENDING_EXPIRY`, `GRACE_PERIOD`, `EXPIRED`, `REFUNDED`, `PAUSED` |
+
+## Cascade Behaviour
+
+Foreign keys use `onDelete: Cascade` except where noted. Deleting a parent removes its descendants:
+
+| Parent | Cascaded children |
+|--------|-------------------|
+| `User` | `Subscription`, `Briefing`, `FeedItem`, `BriefingRequest`, `BillingSubscription`, `BillingEvent` (`onDelete: SetNull`, preserves event history), `ApiKey`, `PodcastFavorite`, `PodcastVote`, `EpisodeVote`, `PushSubscription`, `PodcastRequest`, `UserRecommendationProfile`, `RecommendationCache`, `RecommendationDismissal`, `Feedback`, `BlippFeedback`, `ListenOriginalEvent`, `UserSportsTeam`, `DigestDelivery`. |
+| `Plan` | *(no cascade — `User.planId` references `Plan` without cascade; deletion is prevented by FK.)* |
+| `Podcast` | `Episode`, `Subscription`, `FeedItem`, `PodcastCategory`, `PodcastProfile`, `PodcastFavorite`, `PodcastVote`, `PodcastRequest`, `PodcastGeoProfile`, `RecommendationDismissal`, `CatalogBriefing`. |
+| `Episode` | `Distillation`, `Clip`, `FeedItem`, `PipelineJob`, `WorkProduct`, `EpisodeVote`, `SttBenchmarkResult`, `ClaimsBenchmarkResult`, `BlippFeedback`, `ListenOriginalEvent`, `DigestDeliveryEpisode`, `CatalogBriefing`. |
+| `Distillation` | `Clip`. |
+| `Clip` | `Briefing`, `CatalogBriefing`. |
+| `BriefingRequest` | `PipelineJob`, `FeedItem`, `CatalogBriefing`. |
+| `PipelineJob` | `PipelineStep`. |
+| `PipelineStep` | `PipelineEvent`. |
+| `AiModel` | `AiModelProvider`. |
+| `SttExperiment` / `ClaimsExperiment` | respective benchmark results. |
+| `CronRun` | `CronRunLog`. |
+| `CatalogSeedJob` | `CatalogJobError`. |
+| `EpisodeRefreshJob` | `EpisodeRefreshError`. |
+| `DigestDelivery` | `DigestDeliveryEpisode`. |
+| `SportsLeague` | `SportsDivision`, `SportsTeam`. |
+| `SportsTeam` | `SportsTeamMarket`, `UserSportsTeam`, `PodcastGeoProfile`. |
+| `Category` | `PodcastCategory`. |
+
+## Indexing Highlights
+
+Representative indexes for query hot-paths (full list in `prisma/schema.prisma`):
+
+- `FeedItem(userId, status, createdAt)` — primary feed list.
+- `FeedItem(userId, listened, createdAt)` — listened/unlistened filters.
+- `Episode(podcastId, publishedAt)` — "latest episode" lookups in the orchestrator.
+- `PipelineJob(requestId, status)` — request detail pages.
+- `PipelineEvent(stepId, createdAt)` — step event timeline.
+- `AiServiceError(service, provider, createdAt)`, `(correlationId)`, `(category, createdAt)`, `(episodeId)`, `(resolved, createdAt)` — admin AI error explorer.
+- `ListenOriginalEvent(publisherId, timestamp)`, `(blippId, eventType)`, `(episodeId, timestamp)`, `(reportBatchId)` — publisher reporting.
+- `BillingSubscription(userId, status)`, `BillingEvent(userId, source, createdAt)` — entitlement recompute.
+- `CronRun(jobKey, startedAt DESC)` — recent job runs.
+
+## Migrations
+
+Schema changes flow through Prisma migrations:
+
+```bash
+# Generate a new migration from schema.prisma changes (after editing)
+npm run db:migrate:new <snake_case_name>
+
+# Apply pending migrations
+npm run db:migrate:deploy:staging
+npm run db:migrate:deploy:production
+
+# Status
+npm run db:migrate:status:staging
+npm run db:migrate:status:production
+```
+
+CI applies `prisma migrate deploy` automatically before `wrangler deploy` (staging on push to `main`, production via the `/deploy-production` workflow). `prisma migrate deploy` only rolls forward — destructive renames/drops must be expressed as explicit SQL in the migration file. See [guides/prisma-migrations.md](./guides/prisma-migrations.md) for the full workflow and break-glass `npm run db:force-sync:*` escape hatches.

@@ -1,725 +1,266 @@
 # Blipp API Reference
 
-All routes are served by a Hono app on Cloudflare Workers. The API is mounted at `/api`.
+All routes are served by the Blipp Hono v4 app running on Cloudflare Workers. The API is mounted at `/api` by `worker/index.ts`; admin routes are mounted at `/api/admin`; public pages live at `/p/*` (server-rendered for SEO). This page lists every route exposed by the worker and summarises auth, plan gating, and notable behaviour. Refer to the TypeScript handlers in `worker/routes/` for exact request/response shapes.
 
-## Authentication
+## Conventions
 
-- **Clerk auth**: Most routes require a valid Clerk session (Bearer token). The `requireAuth` middleware (`worker/middleware/auth.ts`) returns 401 if no authenticated user.
-- **Admin auth**: Admin routes use `requireAdmin` middleware (`worker/middleware/admin.ts`) which checks Clerk auth (401) then `User.isAdmin` (403).
-- **Webhooks**: Clerk and Stripe webhook endpoints verify signatures instead of using session auth.
-- **Plan limits**: Subscribe and briefing routes enforce plan-based limits (duration, subscriptions, weekly briefings) via helpers in `worker/lib/plan-limits.ts`.
+- All routes return JSON unless noted.
+- Errors follow `{ error: string; code?: string; requestId?: string; details?: unknown }`. `requestId` is always echoed from the `x-request-id` header.
+- Paginated endpoints accept `?page=`, `?pageSize=` (+ `?sort=`, `?search=`, `?status=` where applicable) and return `{ data: [...], total, page, pageSize }`.
+- Webhook endpoints (`/api/webhooks/*`) bypass Clerk + API-key auth and verify provider signatures instead.
+- `Bearer ${CLERK_SECRET_KEY}` and `Bearer blp_live_*` (API key) both bypass Clerk session auth. API keys are resolved to a user + scope list in `worker/middleware/api-key.ts`.
 
-| Route Pattern | Auth Level |
-|---------------|------------|
-| `GET /api/plans` | None |
-| `GET /api/health` | None |
-| `GET /api/health/deep` | None (cached 30s) |
-| `POST /api/webhooks/*` | Webhook signature verification |
-| `/api/me` | Clerk auth (Bearer token) |
-| `/api/plans/current` | Clerk auth (Bearer token) |
-| `/api/podcasts/*` | Clerk auth + plan limits |
-| `/api/briefings/*` | Clerk auth + plan limits |
-| `/api/feed/*` | Clerk auth (Bearer token) |
-| `/api/clips/*` | Clerk auth (Bearer token) |
-| `/api/billing/*` | Clerk auth (Bearer token) |
-| `/api/admin/*` | Clerk auth + `isAdmin` flag |
+## Authentication Matrix
 
-## Common Patterns
+| Pattern | Auth |
+|---------|------|
+| `GET /api/health`, `GET /api/health/deep`, `GET /api/assets/*` | None |
+| `POST /api/support` | None (public contact form) |
+| `POST /api/webhooks/clerk` · `/stripe` · `/revenuecat` | Webhook signature |
+| `POST /api/auth/native` | None — verifies ID tokens server-side |
+| `GET /__clerk/*`, `GET /api/__clerk/*` | Clerk FAPI proxy (no app auth) |
+| `GET /p/*`, `GET /sitemap.xml`, `GET /robots.txt` | None (public SEO) |
+| `/api/me/*`, `/api/podcasts/*`, `/api/briefings/*`, `/api/feed/*`, `/api/clips/*`, `/api/blipps/*`, `/api/billing/*`, `/api/iap/*`, `/api/plans/*`, `/api/recommendations/*`, `/api/voice-presets/*`, `/api/feedback/*`, `/api/events/*` | Clerk session **or** `Bearer CLERK_SECRET_KEY` **or** `Bearer blp_live_*` API key |
+| `/api/admin/*` | Clerk session + `User.isAdmin` |
+| `/api/internal/clean/*` | Admin-guarded internal cleanup |
 
-- All routes return JSON
-- Errors follow `{ error: "message" }` format
-- Paginated endpoints accept `page` and `pageSize` query params
-- List endpoints support `search`, `status`, and `sort` query params where applicable
-- Prisma client is created per-request and disconnected via `waitUntil`
+Plan limits are enforced inside handlers via `worker/lib/plan-limits.ts`:
 
----
+- `checkDurationLimit` · `checkSubscriptionLimit` · `checkWeeklyBriefingLimit` · `checkPastEpisodesLimit` · `checkConcurrentJobLimit`.
+
+## Proxy / Auth Bootstrap
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| ALL | `/__clerk/*` (`worker/routes/clerk-auth-proxy.ts`) | Web FAPI proxy. Clerk SDK in the browser talks to same-origin `/__clerk/*` so native-platform cookies work without third-party domain issues. |
+| ALL | `/api/__clerk/*` (`worker/routes/clerk-proxy.ts`) | Capacitor FAPI proxy. Accepts `capacitor://` origins; rewrites `Set-Cookie` to survive WKWebView. Runs *before* `/api` middleware. |
+| POST | `/api/auth/native` (`worker/routes/native-auth.ts`) | Verifies Google/Apple ID tokens server-side and returns a Clerk sign-in ticket. Used by the native app's custom sign-in screen. |
 
 ## Public Routes
 
-### Health
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/health` | Returns `{ status: "ok", timestamp }` without touching the DB. |
+| GET | `/api/health/deep` | Probes DB, R2, and queue bindings. Returns 200 if healthy, 503 if degraded. Cached 30 s. |
+| GET | `/api/plans` | Active plans sorted by `sortOrder`. |
+| GET | `/api/assets/jingles/intro.mp3` · `/outro.mp3` | Whitelist-only static audio for client-side jingle playback (long-lived cache). |
+| POST | `/api/support` | Submit a public support message (`SupportMessage`). No auth. |
+| GET | `/p/:showSlug` · `/p/:showSlug/:episodeSlug` · `/p/category/:categorySlug` | Server-rendered HTML for the SEO Blipp pages. |
+| GET | `/sitemap.xml`, `/robots.txt` | Dynamic, regenerated on each request. |
 
-**`GET /api/health`**
+### Webhooks
 
-Returns service health status.
+| Method | Path | Provider | Verification |
+|--------|------|----------|--------------|
+| POST | `/api/webhooks/clerk` | Clerk | `@clerk/backend` + `CLERK_WEBHOOK_SECRET`. Handles `user.created/updated/deleted`, enqueues `WELCOME_EMAIL_QUEUE` on create. |
+| POST | `/api/webhooks/stripe` | Stripe | `stripe.webhooks.constructEventAsync` + `STRIPE_WEBHOOK_SECRET`. Handles `checkout.session.completed`, `customer.subscription.{created,updated,deleted}`, `invoice.payment_failed`. Writes `BillingEvent`, upserts `BillingSubscription`, triggers `recomputeEntitlement`. |
+| POST | `/api/webhooks/revenuecat` | RevenueCat (Apple IAP) | Authorization Bearer (`REVENUECAT_WEBHOOK_SECRET`). Handles `INITIAL_PURCHASE`, `RENEWAL`, `CANCELLATION`, `REFUND`, `BILLING_ISSUE`, `PRODUCT_CHANGE`, `EXPIRATION`, `TRANSFER` + status-only events. Sandbox events are filtered in production. |
 
-```json
-{ "status": "ok", "timestamp": "2026-03-06T12:00:00.000Z" }
-```
+## User (`/api/me`)
 
-**`GET /api/health/deep`**
+All `/me` routes require authentication.
 
-Deep health check that probes DB, R2, and queues. No auth required. Cached for 30 seconds. Returns 200 if healthy, 503 if degraded.
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/me` | Current user with plan, Stripe subscription status, feature-flag snapshot. Creates the DB user on first call if the Clerk ID is new. |
+| PATCH | `/me/onboarding-complete` | Marks onboarding complete; triggers `deliverStarterPack` on the first completion. Accepts `{ reset?: true }`. |
+| GET | `/me/usage` | Usage metering: briefings this week, active subscriptions, past-episode limit consumption, sharing + transcript access flags. |
+| PATCH | `/me/preferences` | Update `defaultDurationTier`, `defaultVoicePresetId`, `acceptAnyVoice`, `preferred/excludedCategories`, `preferred/excludedTopics`, `zipCode`. Recomputes `UserRecommendationProfile` + `RecommendationCache`. Validates voice preset against `Plan.allowedVoicePresetIds`. |
+| GET | `/me/export` | GDPR Article 20 export — streams a JSON dump of the user's records. |
+| DELETE | `/me` | GDPR Article 17 account deletion. Body: `{ confirm: "DELETE" }`. |
+| POST | `/me/push/subscribe` | Register a Web Push subscription (`endpoint`, `keys.p256dh`, `keys.auth`). |
+| DELETE | `/me/push/subscribe` | Unregister a Web Push subscription by endpoint. |
+| GET | `/me/push/vapid-key` | Return the VAPID public key for subscription setup. |
+| GET | `/me/sports-teams` | Browse `SportsTeam` with user's `UserSportsTeam` selections. Accepts `?q=`. |
+| PUT | `/me/sports-teams` | Replace selections (max 50). Recomputes recommendations. |
 
-```json
-{ "status": "healthy", "checks": { "db": "ok", "r2": "ok" }, "timestamp": "..." }
-```
+## Plans & Billing
 
-### Plans
+| Method | Path | Purpose | Rate limit |
+|--------|------|---------|------------|
+| GET | `/api/plans` | Public plan listing. | — |
+| GET | `/api/plans/current` | The authenticated user's current plan (via `User.planId`). | — |
+| POST | `/api/plans/:planId/checkout` | Create Stripe Checkout session. Body includes `interval` (`monthly/annual`). Returns `{ url }`. | — |
+| GET | `/api/billing/subscription` | User's active `BillingSubscription` (Stripe + Apple). | — |
+| GET | `/api/billing/portal-session` | Stripe Customer Portal redirect. | — |
+| GET | `/api/iap/billing-status` | Summary of active billing sources for the IAP UX decision. Returns `{ activeSources, canPurchaseIAP, subscriptionSource, manageUrl, rows }`. | — |
+| POST | `/api/iap/link` | After a StoreKit purchase lands, upsert `BillingSubscription(source: APPLE)` via RevenueCat REST v2 confirmation, then `recomputeEntitlement`. Body: `{ productId, originalTransactionId }`. | — |
+| POST | `/api/iap/restore` | Recompute entitlement after `Purchases.restorePurchases()`. | — |
 
-**`GET /api/plans`**
+## Podcasts (`/api/podcasts`)
 
-List active subscription plans. No auth required. Returns active plans sorted by `sortOrder`.
+| Method | Path | Purpose | Plan gate |
+|--------|------|---------|-----------|
+| GET | `/podcasts/catalog` | Browse/search local catalog. Query: `?q=`, `?category=`, `?page=`, `?pageSize=`, `?sort=rank/popularity/subscriptions/favorites`, `?explicit=`. Cached response (5 min + 1 min SWR). | — |
+| GET | `/podcasts/detail/:podcastId` (alias `/podcasts/:podcastId`) | Podcast detail + subscription status. | — |
+| GET | `/podcasts/:podcastId/episodes` | Paginated episode list. | — |
+| POST | `/podcasts/subscribe` | Subscribe. Body: `{ feedUrl, title, durationTier, voicePresetId?, description?, imageUrl?, podcastIndexId?, author? }`. Rate-limit 5/min. | `checkSubscriptionLimit`, `checkDurationLimit`, voice preset gate |
+| PATCH | `/podcasts/:podcastId` | Update subscription (`durationTier`, `voicePresetId`). | `checkDurationLimit`, voice preset gate |
+| DELETE | `/podcasts/:podcastId` | Unsubscribe. | — |
+| POST | `/podcasts/request` | Submit a `PodcastRequest`. Body: `{ feedUrl, title? }`. Enforces `catalog.requests.maxPerUser`. | — |
+| POST | `/podcasts/:podcastId/vote` | Upsert `PodcastVote`. Body: `{ vote: 1 | -1 | 0 }` (0 = remove). | — |
+| GET | `/podcasts/favorites` | List user favorites. | — |
+| PUT | `/podcasts/favorites` | Replace favorites. Body: `{ podcastIds: string[] }`. | — |
 
-```json
-[
-  {
-    "id": "string",
-    "slug": "free",
-    "name": "Free",
-    "description": "string",
-    "priceCentsMonthly": 0,
-    "priceCentsAnnual": null,
-    "features": ["string"],
-    "highlighted": false,
-    "briefingsPerWeek": 5,
-    "maxDurationMinutes": 5,
-    "maxPodcastSubscriptions": 3,
-    "adFree": false,
-    "priorityProcessing": false,
-    "earlyAccess": false
-  }
-]
-```
+## Briefings (`/api/briefings`)
 
-**`GET /api/plans/current`** (requires auth)
+| Method | Path | Purpose | Plan gate | Rate limit |
+|--------|------|---------|-----------|------------|
+| POST | `/briefings/generate` | Create on-demand briefing. Body: `{ podcastId, episodeId?, durationTier, voicePresetId? }`. Creates a `BriefingRequest(source: ON_DEMAND)`. Rejects when the podcast is flagged music. | `checkWeeklyBriefingLimit`, `checkDurationLimit`, `checkPastEpisodesLimit`, `checkConcurrentJobLimit`, voice preset gate | 10/hr |
 
-Returns the authenticated user's current plan.
+## Feed (`/api/feed`)
 
-```json
-{
-  "plan": {
-    "id": "string",
-    "name": "Free",
-    "slug": "free",
-    "priceCentsMonthly": 0
-  }
-}
-```
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/feed` | Paginated feed. Query: `?status=`, `?source=`, `?listened=`, `?page=`, `?pageSize=`. |
+| GET | `/feed/counts` | Counts by status for badges. |
+| GET | `/feed/:id` | Feed item detail (includes the linked `Briefing` + `Clip`). |
+| PATCH | `/feed/:id/listened` | Mark listened. Body: `{ listened: boolean, positionSeconds? }`. |
+| DELETE | `/feed/:feedItemId` | Soft-delete a feed item. |
 
----
+## Clips (`/api/clips`)
 
-## Authenticated Routes
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/clips/:episodeId/:durationTier` | Stream the clip audio from R2 (Range-aware). |
+| GET | `/clips/:id` | Clip record (narrative + audio URL + metadata). |
 
-All routes below require a valid Clerk session (Bearer token). Returns 401 if unauthenticated.
+## Blipps Availability (`/api/blipps`)
 
-### Me (`/api/me`)
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/blipps/availability` | Given `?episodeId=&durationTier=`, returns `{ matchType: "exact" | "any_voice" | "unavailable", estimatedWaitSeconds }`. |
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/me` | Get/create current user with plan info |
-| PATCH | `/api/me/preferences` | Update user preferences (defaultDurationTier, defaultVoicePresetId) |
+## Voice Presets (`/api/voice-presets`)
 
-**`GET /api/me`**
+| Method | Path | Purpose | Rate limit |
+|--------|------|---------|------------|
+| GET | `/voice-presets` | List voice presets available to the user's plan (system presets always included). | — |
+| POST | `/voice-presets/:id/preview` | Generate a short TTS preview; cached in R2 by hash of voice settings + text. | 20/min |
 
-Returns the authenticated user's DB record, creating it from Clerk if missing. Auto-assigns the default plan.
+## Recommendations (`/api/recommendations`)
 
-Response:
-```json
-{
-  "user": {
-    "id": "string",
-    "email": "string",
-    "name": "string",
-    "imageUrl": "string",
-    "plan": { "id": "string", "name": "string", "slug": "string" },
-    "isAdmin": false,
-    "defaultDurationTier": 5,
-    "defaultVoicePresetId": "string | null"
-  }
-}
-```
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/recommendations` | Personalised recommendations based on `UserRecommendationProfile` + geo + sports. |
+| GET | `/recommendations/curated` | Editor's picks / trending. |
+| GET | `/recommendations/local` | Local (city/state) recommendations — honours `User.zipCode` / Cloudflare `cf.region`. |
 
-**`PATCH /api/me/preferences`**
+## Feedback & Support (`/api/feedback`, `/api/support`)
 
-Body:
-```json
-{
-  "defaultDurationTier": "number (optional, one of 1/2/3/5/7/10/15/30)",
-  "defaultVoicePresetId": "string | null (optional)"
-}
-```
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/feedback` | General feedback (`Feedback` record). |
+| POST | `/feedback/blipp` | Per-blipp feedback with structured reasons (`blipp_failed`, `missed_key_points`, `inaccurate`, `too_short`, `too_long`, `poor_audio`, `not_interesting`) and optional message. Sets `isTechnicalFailure` when reason is `blipp_failed`. |
+| POST | `/support` | Public contact form — no auth. |
 
-Response: `{ "user": {...} }`
+## Events (`/api/events`)
 
-Updates user preferences. Setting `defaultVoicePresetId` to `null` clears the default voice.
-
----
-
-### Voice Presets (`/api/voice-presets`)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/voice-presets` | List all active voice presets |
-
-**`GET /api/voice-presets`**
-
-Returns all active voice presets for selection in the UI.
-
-Response:
-```json
-{
-  "data": [
-    {
-      "id": "string",
-      "name": "string",
-      "description": "string | null",
-      "isSystem": true,
-      "config": { "openai": { "voice": "coral" }, "groq": { "voice": "..." } }
-    }
-  ]
-}
-```
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/events/listen-original` | Log a `ListenOriginalEvent` (click / start / complete). Body includes `sessionId`, `deviceType`, `platform`, `blippId`, `episodeId`, `podcastId`, `publisherId`, `referralSource`, `blippDurationMs`, `timeToClickSec`, `blippCompletionPct`, `utm{Source,Medium,Campaign}`. |
+| PATCH | `/events/listen-original/:eventId/return` | Mark that the user returned to Blipp after the original — closes the attribution loop. |
 
 ---
 
-### Podcasts (`/api/podcasts`)
+## Admin API (`/api/admin`)
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/podcasts/catalog` | Browse/search local podcast catalog |
-| POST | `/api/podcasts/subscribe` | Subscribe to a podcast (requires durationTier) |
-| PATCH | `/api/podcasts/subscribe/:podcastId` | Update subscription durationTier |
-| DELETE | `/api/podcasts/subscribe/:podcastId` | Unsubscribe from a podcast |
-| POST | `/api/podcasts/refresh` | Queue feed refresh |
-| GET | `/api/podcasts/subscriptions` | List user's subscriptions |
-| GET | `/api/podcasts/:id` | Podcast detail with subscription status + tier |
-| GET | `/api/podcasts/:id/episodes` | Episode list (up to 50, newest first) |
+All admin routes require Clerk auth + `User.isAdmin`. Every non-GET response with a 2xx status writes an `AuditLog` entry (see middleware in `worker/routes/admin/index.ts`). Page counterparts live under `src/pages/admin/*` (see [admin-platform.md](./admin-platform.md)).
 
-**`GET /api/podcasts/catalog?q=...&page=1&pageSize=50`**
+### Dashboard (`/admin/dashboard`)
 
-Browse/search the local podcast catalog (populated by admin catalog refresh). Searches title and author.
+Used by `/admin/command-center`.
 
-Response:
-```json
-{
-  "podcasts": [
-    {
-      "id": "string",
-      "title": "string",
-      "author": "string",
-      "description": "string",
-      "imageUrl": "string",
-      "feedUrl": "string",
-      "episodeCount": 0
-    }
-  ],
-  "total": 0,
-  "page": 1,
-  "pageSize": 50
-}
-```
+- `GET /` · `/health` · `/stats` · `/activity` · `/costs` · `/issues` · `/feed-refresh-summary`.
 
-**`POST /api/podcasts/subscribe`**
+### Pipeline (`/admin/pipeline`)
 
-Body:
-```json
-{
-  "feedUrl": "string (required)",
-  "title": "string (required)",
-  "durationTier": "number (required, one of 1/2/3/5/7/10/15/30)",
-  "voicePresetId": "string (optional, FK to VoicePreset)",
-  "description": "string",
-  "imageUrl": "string",
-  "podcastIndexId": "string",
-  "author": "string"
-}
-```
+- `GET /jobs` — paginated jobs (filters: stage, status, requestId, search).
+- `GET /jobs/:id` — job + steps + events + work products.
+- `POST /jobs/:id/retry` / `POST /jobs/:id/dismiss` · `POST /jobs/bulk/retry` · `POST /jobs/bulk/dismiss`.
+- `POST /trigger/feed-refresh` · `POST /trigger/stage/:stage` · `POST /trigger/episode/:id` · `GET /stages` · `GET /triggers`.
 
-Response (201): `{ "subscription": { "...subscription", "podcast": {...} }, "feedItem": {...} }`
+### Requests (`/admin/requests`)
 
-Upserts podcast and subscription. Enforces plan limits (duration, subscription count). Creates a FeedItem (SUBSCRIPTION source) for the latest episode and dispatches the pipeline.
+- `GET /` · `GET /:id` — `BriefingRequest` browser with job → step → event tree.
+- `GET /work-product/:id/preview` / `/audio` — inline viewers for text/JSON/audio work products.
+- `POST /test-briefing` — admin test request (creates `BriefingRequest(mode: USER, isTest: true)` with supplied episode).
 
-**`PATCH /api/podcasts/subscribe/:podcastId`**
+### Catalog
 
-Body:
-```json
-{
-  "durationTier": "number (optional, one of 1/2/3/5/7/10/15/30)",
-  "voicePresetId": "string | null (optional)"
-}
-```
+- **`/admin/podcasts`** — `GET /stats`, `GET /` (paginated), `GET /:id`, `POST /` (create), `PATCH /:id`, `DELETE /:id` (archive), `POST /:id/refresh`, `POST /:id/evict`.
+- **`/admin/episodes`** — `GET /` (paginated), `GET /:id`, `PATCH /:id`, `POST /:id/reprocess`, `POST /:id/enqueue`.
+- **`/admin/catalog-seed`** — catalog discovery jobs (Apple top-200 / Podcast Index trending): `POST /`, `GET /`, `GET /:id`, `POST /:id/cancel`, `POST /:id/archive`, `POST /archive-bulk`, `DELETE /:id`.
+- **`/admin/catalog-pregen`** — `POST /`, `GET /status`.
+- **`/admin/episode-refresh`** — `GET /`, `GET /:id`, `GET /:id/errors`, `POST /`, `POST /:id/pause|resume|cancel|archive`, `POST /archive-bulk`, `DELETE /:id`.
+- **`/admin/geo-tagging`** — `POST /`, `GET /status`.
+- **`/admin/publisher-reports`** — `GET /`, `POST /generate`.
 
-Response: `{ "subscription": {...} }`
+### Briefings (`/admin/briefings`)
 
-Enforces plan duration limit. Setting `voicePresetId` to `null` clears the per-subscription voice override.
+- `GET /` — paginated briefing listing with filters.
+- `GET /:id` — briefing detail + linked feed items.
 
-**`DELETE /api/podcasts/subscribe/:podcastId`**
+### Users & Plans
 
-Response: `{ "success": true }`
+- **`/admin/users`** — `GET /`, `GET /segments`, `GET /:id`, `PATCH /:id`, `POST /:id/mark-welcomed`, `DELETE /:id`, `GET /:id/export`.
+- **`/admin/plans`** — `GET /`, `GET /:id`, `POST /`, `PATCH /:id`, `DELETE /:id` (soft delete; prevents deletion when users still reference the plan).
+- **`/admin/recommendations`** — `GET /`, `GET /:userId`, `POST /recompute/:userId`.
 
-**`POST /api/podcasts/refresh`**
+### AI / Models
 
-Enqueues a manual feed refresh.
+- **`/admin/config`** — `GET /`, `PATCH /:key`, `GET /tiers/duration`, `PUT /tiers/duration`, `GET /tiers/subscription`, `PUT /tiers/subscription`, `GET /features`, `PUT /features/:id`.
+- **`/admin/ai-models`** — `GET /`, `POST /`, `PATCH /:id`, `POST /:id/providers`, `PATCH /:id/providers/:providerId`, `DELETE /:id/providers/:providerId`.
+- **`/admin/ai-errors`** — `GET /` with filters (`?service=`, `?provider=`, `?category=`, `?correlationId=`, `?episodeId=`, `?resolved=`).
+- **`/admin/prompts`** — `GET /`, `PATCH /:id` (versioned `PromptVersion`).
+- **`/admin/stt-benchmark`** — experiment lifecycle: `POST /experiments`, `GET /experiments`, `GET /experiments/:id`, `POST /experiments/:id/run`, `POST /experiments/:id/cancel`, `GET /experiments/:id/results`, `DELETE /experiments/:id`, `GET /eligible-episodes`, `GET /episode-audio/:id`, `POST /upload-audio`, `GET /results/:id/transcript`, `GET /results/:id/reference-transcript`, `GET /episodes/:episodeId/reference-transcript`.
+- **`/admin/claims-benchmark`** — analogous lifecycle for claims extraction benchmarks.
+- **`/admin/voice-presets`** — CRUD over `VoicePreset`, including `POST /:id/preview` for admin auditioning.
 
-Response: `{ "success": true, "message": "string" }`
+### Analytics (`/admin/analytics`)
 
-**`GET /api/podcasts/subscriptions`**
+- `GET /costs` · `GET /costs/by-model` · `GET /usage` · `GET /quality` · `GET /pipeline` · `GET /retention` · `GET /events` · `GET /revenue`.
 
-Response: `{ "subscriptions": [{ "...subscription", "podcast": {...} }] }`
+### Ops / Infra
 
-**`GET /api/podcasts/:id`**
+- **`/admin/audit-log`** — `GET /` (paginated audit trail).
+- **`/admin/api-keys`** — `GET /`, `POST /`, `PATCH /:id`, `DELETE /:id`. Scopes configured per key.
+- **`/admin/cron-jobs`** — `GET /`, `GET /:jobKey`, `PATCH /:jobKey`, `POST /trigger/:jobId`, `GET /:jobKey/runs`, `GET /runs/:runId/logs`.
+- **`/admin/worker-logs`** — `GET /`, `GET /stream` (proxies Cloudflare Observability using `CF_API_TOKEN` + `CF_ACCOUNT_ID`).
+- **`/admin/storage`** — `GET /usage`, `DELETE /cleanup` (orphan scan).
+- **`/admin/service-keys`** — `GET /`, `POST /`, `PATCH /:id`, `DELETE /:id`, `POST /:id/rotate`, `POST /:id/test`, `GET /contexts`.
+- **`/admin/feedback`** — `GET /`, `GET /:id`, `DELETE /:id`.
+- **`/admin/blipp-feedback`** — `GET /`, `DELETE /:id`.
+- **`/admin/support`** — `GET /`, `GET /:id`, `PATCH /:id` (resolve), `DELETE /:id`.
 
-Returns podcast detail with subscription status for the authenticated user.
+### Internal Cleanup
 
-Response:
-```json
-{
-  "podcast": {
-    "id": "string",
-    "title": "string",
-    "description": "string",
-    "feedUrl": "string",
-    "imageUrl": "string",
-    "author": "string",
-    "podcastIndexId": "string",
-    "episodeCount": 0,
-    "isSubscribed": true,
-    "subscriptionDurationTier": 5
-  }
-}
-```
+- **`POST /api/internal/clean/r2`** — orphan sweep (admin-guarded; mounted at `/api/internal/clean`, not under `/admin`).
 
-**`GET /api/podcasts/:id/episodes`**
+## Pagination, Sorting, and Search
 
-Returns up to 50 episodes for a podcast, ordered by `publishedAt` descending.
+Admin list endpoints accept:
 
-Response:
-```json
-{
-  "episodes": [
-    {
-      "id": "string",
-      "title": "string",
-      "description": "string",
-      "publishedAt": "string",
-      "durationSeconds": 0
-    }
-  ]
-}
-```
+- `?page=`, `?pageSize=` (defaulted in `parsePagination`).
+- `?sort=` as a comma-separated field list with optional `-` prefix for descending (e.g. `-createdAt,name`). Parsed by `parseSort`.
+- `?search=` for server-side substring search where supported.
+- Standard response: `{ data: [...], total, page, pageSize }` via `paginatedResponse`.
 
----
+## Error Codes
 
-### Briefings (`/api/briefings`) — On-Demand
+Errors surface a `code` when classification is available:
 
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/briefings/generate` | Create an on-demand briefing |
+| Code | HTTP | Meaning |
+|------|------|---------|
+| `ROUTE_NOT_FOUND` | 404 | Unmatched route. |
+| `UNAUTHENTICATED` | 401 | Clerk session / API key missing or invalid. |
+| `FORBIDDEN` | 403 | Admin gate or plan feature denied. |
+| `VALIDATION_ERROR` | 400 | Body failed schema validation (Zod). |
+| `PLAN_LIMIT_EXCEEDED` | 403 | One of the `plan-limits.ts` checks tripped. |
+| `CONFLICT` | 409 | Unique constraint (e.g. duplicate subscription). |
+| `RATE_LIMITED` | 429 | Rate-limit window exhausted. |
+| `NOT_FOUND` | 404 | Entity missing. |
+| `MUSIC_FEED_ITEM_ERROR` | 409 | Podcast invalidated as music. |
+| `INTERNAL` | 500 | Unhandled error (also logged with stack). |
 
-**`POST /api/briefings/generate`**
-
-Creates an on-demand FeedItem and dispatches the pipeline. Enforces plan limits (duration, weekly briefing cap).
-
-Body:
-```json
-{
-  "podcastId": "string (required)",
-  "episodeId": "string (optional — defaults to latest episode)",
-  "durationTier": "number (required, one of 1/2/3/5/7/10/15/30)"
-}
-```
-
-Response (201):
-```json
-{ "feedItem": { "id": "string", "status": "PENDING", "durationTier": 5 } }
-```
-
-Response (400): Missing required fields, invalid durationTier, or no episodes found.
-Response (403): Plan limit exceeded (duration or weekly briefing cap).
-
----
-
-### Feed (`/api/feed`)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/feed` | Paginated list of user's feed items |
-| GET | `/api/feed/counts` | Feed item counts (total, unlistened, pending) |
-| GET | `/api/feed/:id` | Feed item detail with briefing + clip |
-| PATCH | `/api/feed/:id/listened` | Mark a feed item as listened |
-
-**`GET /api/feed`**
-
-Query params: `status` (filter), `listened` (true/false filter), `limit` (default 30, max 100), `offset` (default 0)
-
-Response:
-```json
-{
-  "items": [
-    {
-      "id": "string",
-      "source": "SUBSCRIPTION | ON_DEMAND",
-      "status": "PENDING | PROCESSING | READY | FAILED",
-      "durationTier": 5,
-      "listened": false,
-      "listenedAt": null,
-      "createdAt": "string",
-      "podcast": { "id": "string", "title": "string", "imageUrl": "string" },
-      "episode": { "id": "string", "title": "string", "publishedAt": "string", "durationSeconds": 0 },
-      "briefing": {
-        "id": "string",
-        "clip": { "audioUrl": "/api/clips/episodeId/durationTier", "actualSeconds": 300 },
-        "adAudioUrl": null
-      }
-    }
-  ],
-  "total": 10
-}
-```
-
-**`GET /api/feed/counts`**
-
-Response:
-```json
-{ "total": 10, "unlistened": 3, "pending": 1 }
-```
-
-**`GET /api/feed/:id`**
-
-Returns a single feed item with full clip detail.
-
-Response: `{ "item": { ... } }` (same shape as feed list items)
-
-**`PATCH /api/feed/:id/listened`**
-
-Marks the feed item as listened. Returns 404 if not found or not owned by user.
-
-Response: `{ "success": true }`
-
----
-
-### Clips (`/api/clips`)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/clips/:episodeId/:durationTier` | Stream clip audio from R2 |
-
-**`GET /api/clips/:episodeId/:durationTier`**
-
-Streams MP3 audio from R2 for the given episode and duration tier. Returns `audio/mpeg` with `Cache-Control: public, max-age=86400`.
-
-Response: Binary audio stream
-Response (404): Clip not found in R2
-
----
-
-### Billing (`/api/billing`)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/billing/checkout` | Create Stripe Checkout session |
-| POST | `/api/billing/portal` | Create Stripe Customer Portal session |
-
-**`POST /api/billing/checkout`**
-
-Body: `{ "planId": "string", "interval": "monthly" | "annual" }`
-
-Response: `{ "url": "https://checkout.stripe.com/..." }`
-
-Returns 400 if plan is invalid, unavailable, or has no Stripe price for the chosen interval.
-
-**`POST /api/billing/portal`**
-
-No body required.
-
-Response: `{ "url": "https://billing.stripe.com/..." }`
-
-Returns 400 if user has never subscribed (no `stripeCustomerId`).
-
----
-
-## Webhooks
-
-### Clerk (`POST /api/webhooks/clerk`)
-
-Verifies Svix signature. Handles:
-- `user.created` -- Creates User record
-- `user.updated` -- Updates email, name, imageUrl
-- `user.deleted` -- Deletes User record
-
-Response: `{ "received": true }`
-
-### Stripe (`POST /api/webhooks/stripe`)
-
-Requires `stripe-signature` header (400 if missing/invalid). Handles:
-- `checkout.session.completed` -- Upgrades user plan based on Stripe price
-- `customer.subscription.deleted` -- Reverts user to default (free) plan
-
-Response: `{ "received": true }`
-
----
-
-## Admin Routes (`/api/admin`)
-
-All admin routes require Clerk auth + `User.isAdmin = true`. Returns 401 if unauthenticated, 403 if not admin.
-
----
-
-### Dashboard (`/api/admin/dashboard`)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/` | System health overview |
-| GET | `/stats` | Aggregate stat cards with 7-day trends |
-| GET | `/activity` | Recent pipeline activity (20 most recent jobs) |
-| GET | `/costs` | Today's cost summary by stage |
-| GET | `/issues` | Active issues (failed jobs + broken feeds, last 48h) |
-| GET | `/feed-refresh-summary` | Feed refresh status |
-
----
-
-### Pipeline (`/api/admin/pipeline`)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/health` | Pipeline health ping |
-| GET | `/jobs` | Paginated job list with filters (excludes dismissed by default) |
-| GET | `/jobs/:id` | Job detail with steps, request context, and queue position |
-| POST | `/jobs/:id/retry` | Retry a single failed job (dispatches to correct queue) |
-| PATCH | `/jobs/:id/dismiss` | Dismiss a failed job (sets `dismissedAt`) |
-| POST | `/jobs/bulk/retry` | Bulk retry failed jobs |
-| PATCH | `/jobs/bulk-dismiss` | Bulk dismiss failed jobs (optional `?stage=` filter) |
-| POST | `/trigger/feed-refresh` | Trigger manual feed refresh (one or all podcasts) |
-| POST | `/trigger/stage/:stage` | Trigger a specific stage for eligible episodes |
-| POST | `/trigger/episode/:id` | Trigger pipeline for a specific episode (auto-detects or explicit stage) |
-| GET | `/stages` | Per-stage aggregate stats (counts, success rate, avg time, cost) |
-| GET | `/dlq` | Dead letter queue monitoring (stuck jobs + exhausted retries) |
-
----
-
-### Podcasts (`/api/admin/podcasts`)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/stats` | Catalog statistics |
-| GET | `/` | Paginated podcast list |
-| GET | `/:id` | Podcast detail with episodes, clips, and pipeline activity |
-| POST | `/` | Create podcast |
-| PATCH | `/:id` | Update podcast |
-| DELETE | `/:id` | Archive podcast (soft delete) |
-| POST | `/:id/refresh` | Trigger feed refresh for podcast |
-
----
-
-### Episodes (`/api/admin/episodes`)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/` | Paginated episode list |
-| GET | `/:id` | Episode detail with pipeline trace |
-| POST | `/:id/reprocess` | Trigger reprocessing |
-
----
-
-### Briefings (`/api/admin/briefings`)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/` | Paginated briefing list (per-user Clip wrappers) |
-| GET | `/:id` | Briefing detail with clip, episode, and feed items |
-
----
-
-### Users (`/api/admin/users`)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/segments` | User segment counts |
-| GET | `/` | Paginated user list |
-| GET | `/:id` | User detail with subscriptions |
-| PATCH | `/:id` | Update user (plan, admin toggle) |
-
----
-
-### Plans (`/api/admin/plans`)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/` | Paginated plan list with user counts |
-| GET | `/:id` | Plan detail with user count |
-| POST | `/` | Create plan |
-| PATCH | `/:id` | Update plan fields |
-| DELETE | `/:id` | Soft delete (deactivate) plan |
-
----
-
-### Analytics (`/api/admin/analytics`)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/costs` | Cost analytics by stage and period |
-| GET | `/costs/by-model` | Cost breakdown by AI model and stage |
-| GET | `/usage` | Usage trends and distribution |
-| GET | `/quality` | Quality metrics and trends |
-| GET | `/pipeline` | Pipeline throughput and bottlenecks |
-
-All analytics endpoints accept `from` and `to` query params (ISO date strings).
-
----
-
-### Configuration (`/api/admin/config`)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/` | All runtime config values grouped by prefix |
-| PATCH | `/:key` | Update a config value |
-| GET | `/tiers/duration` | Duration tier config |
-| PUT | `/tiers/duration` | Update duration tiers |
-| GET | `/tiers/subscription` | Subscription plans with user counts |
-| PUT | `/tiers/subscription` | Update a subscription plan |
-| GET | `/features` | Feature flags |
-| PUT | `/features/:id` | Update a feature flag |
-
----
-
-### Prompts (`/api/admin/prompts`)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/` | List all prompts with current values (from config or defaults) |
-| PATCH | `/:key` | Update a prompt value |
-| DELETE | `/:key` | Reset prompt to default (deletes config override) |
-
----
-
-### Requests (`/api/admin/requests`)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/` | Paginated request list with status filter |
-| GET | `/:id` | Request detail with job/step progress tree |
-| GET | `/work-product/:id/preview` | Preview work product content |
-| GET | `/work-product/:id/audio` | Stream work product audio |
-| POST | `/test-briefing` | Create admin test briefing request |
-
----
-
-### AI Models (`/api/admin/ai-models`)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/` | List models with providers (optional `?stage=` and `?includeInactive=true`) |
-| POST | `/` | Create a new model (stage, modelId, label, developer, notes) |
-| PATCH | `/:id` | Update model (isActive, notes) |
-| POST | `/:id/providers` | Add a provider to a model |
-| PATCH | `/:id/providers/:providerId` | Update provider pricing or availability |
-| DELETE | `/:id/providers/:providerId` | Remove a provider |
-
----
-
-### STT Benchmark (`/api/admin/stt-benchmark`)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/eligible-episodes` | Episodes with official transcripts (for WER ground truth) |
-| GET | `/episode-audio/:id` | Proxy episode audio (CORS-free, limited to ~15 min) |
-| GET | `/episodes/:episodeId/reference-transcript` | Fetch and parse official transcript (VTT/SRT stripped) |
-| POST | `/experiments` | Create benchmark experiment |
-| GET | `/experiments` | List experiments (paginated) |
-| GET | `/experiments/:id` | Experiment detail with status counts |
-| POST | `/experiments/:id/run` | Execute next pending task |
-| POST | `/experiments/:id/cancel` | Cancel experiment |
-| GET | `/experiments/:id/results` | Results with summary grid and winners |
-| DELETE | `/experiments/:id` | Delete experiment + R2 cleanup |
-| POST | `/upload-audio` | Upload speed-adjusted audio to R2 |
-| GET | `/results/:resultId/transcript` | Fetch STT output transcript from R2 |
-| GET | `/results/:resultId/reference-transcript` | Fetch cleaned reference transcript from R2 |
-
----
-
-### AI Errors (`/api/admin/ai-errors`)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/` | Paginated list of AI service errors with filters (`service`, `provider`, `category`, `severity`, `resolved`, `since`, `search`) |
-| GET | `/summary` | Aggregate error statistics (by service, provider, category, severity; error rates for 1h/24h/7d; top 10 error messages). Optional `?since=` ISO date. |
-| GET | `/:id` | Single AI error detail with full context (correlation ID, job/step/episode links, retry info, rate-limit data) |
-
----
-
-### Audit Log (`/api/admin/audit-log`)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/` | Paginated audit log entries with filters (`actorId`, `entityType`, `entityId`, `action`, `from`, `to` date range) |
-
----
-
-### API Keys (`/api/admin/api-keys`)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/` | Paginated list of API keys (shows prefix, scopes, user — never plaintext hash) |
-| POST | `/` | Create a new API key (returns plaintext key once; body: `{ name, scopes, expiresAt? }`) |
-| DELETE | `/:id` | Revoke an API key (sets `revokedAt`) |
-
----
-
-### Recommendations (`/api/admin/recommendations`)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/stats` | Recommendation system statistics (user/podcast profile counts, cache hit rate, last compute time) |
-| POST | `/recompute` | Recompute all podcast recommendation profiles |
-| GET | `/users` | Paginated user list with recommendation profile summaries |
-| GET | `/users/:userId` | User recommendation detail (profile weights, cached recommendations with podcast data) |
-| POST | `/users/:userId/recompute` | Recompute recommendation profile for a single user |
-| GET | `/podcast-profiles` | Paginated podcast profiles sorted by popularity (category weights, freshness, subscriber count) |
-
----
-
-### Cron Jobs (`/api/admin/cron-jobs`)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/` | List all cron jobs with config (enabled, interval) and latest run status |
-| PATCH | `/:jobKey` | Update cron job config (`enabled`, `intervalMinutes`; valid intervals: 15/30/60/120/360/720/1440/10080) |
-| GET | `/:jobKey/runs` | Paginated run history for a job (status, duration, result, error) |
-| GET | `/:jobKey/runs/:runId/logs` | Logs for a specific cron run (level, message, structured data, timestamp) |
-
-Valid job keys: `pipeline-trigger`, `monitoring`, `user-lifecycle`, `data-retention`, `recommendations`.
-
----
-
-### Voice Presets (`/api/admin/voice-presets`)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/` | List all voice presets (active and inactive) |
-| POST | `/` | Create a new voice preset |
-| PATCH | `/:id` | Update a voice preset |
-| DELETE | `/:id` | Delete a non-system voice preset (403 for system presets) |
-
-**`POST /`**
-
-Body:
-```json
-{
-  "name": "string (required, unique)",
-  "description": "string (optional)",
-  "config": { "openai": { "voice": "coral" }, "groq": { "voice": "..." } },
-  "isSystem": false
-}
-```
-
-Response (201): `{ "data": { ...preset } }`
-
-**`PATCH /:id`**
-
-Body (all optional):
-```json
-{
-  "name": "string",
-  "description": "string",
-  "config": { ... },
-  "isActive": true
-}
-```
-
-Response: `{ "data": { ...preset } }`
-
-**`DELETE /:id`**
-
-Returns 403 if the preset has `isSystem: true`. Returns 404 if not found.
-
-Response: `{ "success": true }`
+Errors unify through `classifyHttpError()` in `worker/lib/errors.ts`.

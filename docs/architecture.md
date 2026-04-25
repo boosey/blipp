@@ -1,689 +1,460 @@
 # Blipp Architecture
 
-Blipp is a podcast briefing app that distills podcast episodes into short audio briefings. Users subscribe to podcasts, and the system generates personalized audio briefings by transcribing episodes, extracting key claims, generating narratives, and assembling them with TTS.
+Blipp turns podcasts into short, personalized audio briefings ("blipps"). Users subscribe to shows, an orchestrated pipeline pulls transcripts, distills them into claims, writes narrative scripts, and renders them as multi-provider TTS audio. The entire product runs as a single Cloudflare Worker at `podblipp.com` (production) and `staging.podblipp.com` (staging).
+
+> Companion docs: [pipeline.md](./pipeline.md) · [data-model.md](./data-model.md) · [api-reference.md](./api-reference.md) · [admin-platform.md](./admin-platform.md) · [guides/development.md](./guides/development.md) · [guides/production-deployment.md](./guides/production-deployment.md).
+
+## System Overview
+
+![System overview](./diagrams/system-overview.svg)
+
+A single Cloudflare Worker (`blipp` / `blipp-staging`) serves three Cloudflare handlers from one codebase:
+
+| Handler | Source | Purpose |
+|---------|--------|---------|
+| `fetch` | `worker/index.ts` | Hono v4 HTTP server — `/api/*`, `/p/*` SEO pages, static SPA via `ASSETS` |
+| `queue` | `worker/queues/index.ts` (`handleQueue`) | Dispatcher for 10 Cloudflare Queues (pipeline + system) |
+| `scheduled` | `worker/queues/index.ts` (`scheduled`) | Cron heartbeat every 5 minutes; dispatches 12 cron jobs |
+
+`shimQueuesForLocalDev()` overlays an in-process queue shim when `ENVIRONMENT=development` so pipeline stages work under `wrangler dev` without Cloudflare Queues provisioning.
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
 | Runtime | Cloudflare Workers (fetch + queue + scheduled) |
-| HTTP Framework | Hono v4 |
+| HTTP framework | Hono v4 |
 | Database | PostgreSQL on Neon |
-| ORM | Prisma 7 with `@prisma/adapter-pg` + Cloudflare Hyperdrive |
-| Auth | Clerk (`@hono/clerk-auth` middleware) |
-| Payments | Stripe (checkout, portal, webhooks) |
-| Object Storage | Cloudflare R2 |
-| Task Queues | 9 Cloudflare Queues |
-| AI (LLM) | Anthropic Claude, Groq, Cloudflare Workers AI (multi-provider) |
-| AI (STT) | OpenAI Whisper, Deepgram Nova, Groq, Cloudflare Workers AI (multi-provider) |
-| AI (TTS) | OpenAI TTS, Groq Orpheus, Cloudflare Workers AI (multi-provider) |
-| Podcast Discovery | Local catalog (populated via admin catalog refresh from Podcast Index) |
+| ORM | Prisma 7 with `prisma-client` output + Cloudflare Hyperdrive |
+| Auth | Clerk (`@hono/clerk-auth` middleware, FAPI proxy for native apps) |
+| Web payments | Stripe (Checkout + Customer Portal + webhooks) |
+| Mobile IAP | Apple StoreKit via RevenueCat (webhook + REST v2 API) |
+| Transactional email | ZeptoMail (template API, welcome emails) |
+| Object storage | Cloudflare R2 (work products, audio clips, benchmark artifacts) |
+| Rate-limit storage | Cloudflare KV (`RATE_LIMIT_KV`) |
+| Task queues | 10 Cloudflare Queues + a dead-letter queue |
+| AI — LLM | Anthropic Claude, Groq, Cloudflare Workers AI |
+| AI — STT | OpenAI Whisper, Deepgram Nova, Groq, Cloudflare Workers AI |
+| AI — TTS | OpenAI, Groq (Orpheus), Cloudflare Workers AI |
+| Podcast discovery | Podcast Index (trending, transcript lookup) + Apple Podcasts (top-200 charts) |
+| Frontend | React 19 + Vite 7 + Tailwind v4 + shadcn/ui + vite-plugin-pwa |
+| Native shell | Capacitor (iOS + Android), `@capgo/capacitor-social-login`, RevenueCat SDK |
 
-## System Diagram
+## Middleware Stack
 
-```
-                          +------------------+
-                          |   Clerk (Auth)   |
-                          +--------+---------+
-                                   |
-  +----------+            +--------v---------+            +------------------+
-  |  React   | --HTTP-->  | Cloudflare Worker| --SQL----> | Neon PostgreSQL  |
-  |  SPA     |            |  (Hono v4)       |            | via Hyperdrive   |
-  +----------+            +--+----+----+-----+            +------------------+
-                             |    |    |
-              +--------------+    |    +---------------+
-              |                   |                    |
-     +--------v-------+  +-------v--------+   +-------v-------+
-     | Cloudflare R2  |  | Stripe         |   | AI Providers  |
-     | (audio/clips)  |  | (billing)      |   | (multi-vendor)|
-     +----------------+  +----------------+   +---------------+
+Global middleware is wired in `worker/index.ts`. Order matters.
 
-  Worker Handlers:
-  ================
-  fetch     -->  Hono HTTP server (API + SPA asset serving)
-  queue     -->  9 queue consumers (pipeline stages + catalog + prefetch)
-  scheduled -->  Cron heartbeat (*/5) dispatching named jobs (pipeline-trigger, monitoring, etc.)
+![Middleware stack](./diagrams/middleware-stack.svg)
 
-  Pipeline Flow (demand-driven):
-  ==============================
+| # | Middleware | File | Scope | Notes |
+|---|-----------|------|-------|-------|
+| pre | Clerk FAPI proxy | `worker/routes/clerk-proxy.ts` | `/api/__clerk/*` | Capacitor-safe proxy for Clerk's FAPI; must run before any `/api` middleware. |
+| pre | Native auth | `worker/routes/native-auth.ts` | `/api/auth/*` | Exchanges Google/Apple ID tokens for Clerk sign-in tickets; handles its own verification. |
+| 1 | Request ID | `middleware/request-id.ts` | `/api/*` | Generates or reuses `x-request-id`; echoed on every response. |
+| 2 | CORS | `hono/cors` | `/api/*` | Origins from `ALLOWED_ORIGINS` env — hard rejects unlisted origins. |
+| 3 | Clerk bypass + auth | inline + `middleware/auth.ts` | `/api/*` | Short-circuits Clerk when the `Authorization` Bearer token matches `CLERK_SECRET_KEY` or a `blp_live_*` API key; otherwise applies `clerkMiddleware()`. |
+| 4 | Request logger | `middleware/request-logger.ts` | `/api/*` | Structured JSON (userId, status, duration). Skips `/api/health`. |
+| 5 | Prisma | `middleware/prisma.ts` | `/api/*` | Creates a per-request `PrismaClient`; `c.get("prisma")`; auto-`$disconnect` via `ctx.waitUntil`. |
+| 6 | API key auth | `middleware/api-key.ts` | `/api/*` | SHA-256 lookup on `ApiKey`; sets `apiKeyUserId`/`apiKeyScopes`. Falls through to Clerk if absent. |
+| 7 | Rate limits | `middleware/rate-limit.ts` | `/api/*` (+ tighter on specific routes) | KV sliding window. Defaults: 120/min general, 10/hour `/briefings/generate`, 5/min `/podcasts/subscribe`, 20/min `/voice-presets/:id/preview`. Config-overridable (`rateLimit.*`). Webhooks + health are exempt. |
+| 8 | Response cache | `middleware/cache.ts` | `/api/podcasts/catalog`, `/api/health/deep` | `max-age` + `stale-while-revalidate`. |
+| 9 | Security headers | `middleware/security-headers.ts` | `/*` | CSP, HSTS, X-Frame-Options — applied to SPA too. |
 
-  User requests briefing
-       |
-       v
-  +-------------+     +--------------+     +--------------+
-  | Orchestrator | --> | 1. Feed      | --> | 2. Transcript|
-  | Queue        |     |    Refresh   |     |    ion       |
-  +-+-----+------+     +--------------+     +--------------+
-    ^     |                                        |
-    |     |             +--------------+     +-----v--------+
-    |     +-----------> | 3. Distill-  | --> | 4. Narrative |
-    |                   |    ation     |     |    Gen       |
-    |                   +--------------+     +-----+--------+
-    |                                              |
-    |                   +--------------+     +-----v--------+
-    |                   | 6. Briefing  | <-- | 5. Audio     |
-    +-------------------+    Assembly  |     |    Gen       |
-      (stage reports)   +--------------+     +--------------+
-```
-
-## Worker Entry Point
-
-The worker (`worker/index.ts`) exports three handlers:
-
-- **`fetch`** -- Hono HTTP server handling all API requests and serving the SPA via Cloudflare Assets.
-- **`queue`** -- Dispatches incoming queue messages to the appropriate stage consumer based on queue name.
-- **`scheduled`** -- Cron heartbeat (every 5 minutes) that dispatches named jobs via the `runJob()` framework. Each job manages its own enable toggle and run interval via PlatformConfig. Jobs: `pipeline-trigger` (feed refresh + pipeline gating), `monitoring` (pricing refresh, cost alerts), `user-lifecycle` (inactive user handling), `data-retention` (archiving old data), `recommendations` (profile recomputation). Execution is tracked via `CronRun` / `CronRunLog` records.
-
-All three handlers pass the environment through `shimQueuesForLocalDev()` which provides a local queue shim during development.
+Route handlers always read the DB through `c.get("prisma") as PrismaClient`.
 
 ## Environment Bindings
 
+Declared in `wrangler.jsonc` (staging) and `env.production` (production). Staging and production use identical binding *names* mapped to different resource IDs.
+
+### Secrets & variables
+
 | Binding | Type | Purpose |
 |---------|------|---------|
-| `ASSETS` | Fetcher | SPA static assets |
-| `AI` | Ai | Cloudflare Workers AI binding for CF-hosted models |
-| `HYPERDRIVE` | Hyperdrive | PostgreSQL connection pooling |
-| `R2` | R2Bucket | Audio clips, work products, benchmark artifacts |
-| `FEED_REFRESH_QUEUE` | Queue | Periodic RSS feed polling (not a pipeline stage) |
-| `TRANSCRIPTION_QUEUE` | Queue | Pipeline: Transcript fetching |
-| `DISTILLATION_QUEUE` | Queue | Pipeline: Claim extraction via LLM |
-| `NARRATIVE_GENERATION_QUEUE` | Queue | Pipeline: Narrative writing via LLM |
-| `AUDIO_GENERATION_QUEUE` | Queue | Pipeline: TTS audio via multi-provider TTS |
-| `BRIEFING_ASSEMBLY_QUEUE` | Queue | Pipeline: Briefing creation + FeedItem linking |
+| `CLERK_SECRET_KEY` / `CLERK_PUBLISHABLE_KEY` / `CLERK_WEBHOOK_SECRET` / `CLERK_FAPI_URL` | string | Clerk auth and webhook verification; FAPI proxy origin |
+| `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` | string | Stripe billing + webhook verification |
+| `REVENUECAT_WEBHOOK_SECRET` / `REVENUECAT_REST_API_KEY` / `REVENUECAT_PROJECT_ID` | string? | Apple IAP entitlement sync |
+| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GROQ_API_KEY` / `DEEPGRAM_API_KEY` | string | AI providers (distillation, narrative, TTS, STT) |
+| `PODCAST_INDEX_KEY` / `PODCAST_INDEX_SECRET` | string | Podcast Index API (HMAC-SHA1 auth) |
+| `ZEPTOMAIL_TOKEN` / `ZEPTOMAIL_FROM_*` / `ZEPTOMAIL_WELCOME_TEMPLATE_KEY` | string? | Transactional email |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | string? | Web Push (optional) |
+| `NEON_API_KEY` / `NEON_PROJECT_ID` | string? | Backup verification (optional) |
+| `CF_API_TOKEN` / `CF_ACCOUNT_ID` / `WORKER_SCRIPT_NAME` | string? | Observability queries + admin worker-logs page |
+| `GITHUB_TOKEN` | string? | Trigger GitHub Actions (e.g. Apple catalog refresh) |
+| `SERVICE_KEY_ENCRYPTION_KEY` | string? | 64-hex AES-256 master key for encrypted `ServiceKey` rows |
+| `ALLOWED_ORIGINS` / `APP_ORIGIN` / `ENVIRONMENT` | string | CORS allowlist, absolute base URL (Stripe redirects), dev/staging/prod flag |
+
+### Bindings (resources)
+
+| Binding | Resource | Notes |
+|---------|----------|-------|
+| `ASSETS` | Vite-built SPA | `not_found_handling: single-page-application`; `run_worker_first` for `/api/*`, `/p/*`, `/sitemap.xml`, `/robots.txt` |
+| `HYPERDRIVE` | Cloudflare Hyperdrive → Neon pooled | Single shared binding; production and staging target separate Hyperdrive configs |
+| `R2` | Cloudflare R2 | `blipp-audio` (prod) / `blipp-audio-staging` (staging) |
+| `RATE_LIMIT_KV` | Cloudflare KV | Sliding-window buckets |
+| `AI` | Workers AI | Fallback STT/LLM/TTS provider |
+| `FEED_REFRESH_QUEUE` | Queue | RSS polling (producer + consumer) |
+| `TRANSCRIPTION_QUEUE` | Queue | Stage 1 |
+| `DISTILLATION_QUEUE` | Queue | Stage 2 |
+| `NARRATIVE_GENERATION_QUEUE` | Queue | Stage 3 |
+| `AUDIO_GENERATION_QUEUE` | Queue | Stage 4 (consumer queue named `clip-generation` — legacy) |
+| `BRIEFING_ASSEMBLY_QUEUE` | Queue | Stage 5 |
 | `ORCHESTRATOR_QUEUE` | Queue | Pipeline coordination |
-| `CATALOG_REFRESH_QUEUE` | Queue | Podcast catalog seeding/refresh |
-| `CONTENT_PREFETCH_QUEUE` | Queue | Slow transcript/audio validation |
-| `CLERK_SECRET_KEY` | string | Clerk authentication |
-| `CLERK_PUBLISHABLE_KEY` | string | Clerk frontend auth |
-| `CLERK_WEBHOOK_SECRET` | string | Clerk webhook verification |
-| `STRIPE_SECRET_KEY` | string | Stripe billing |
-| `STRIPE_WEBHOOK_SECRET` | string | Stripe webhook verification |
-| `ANTHROPIC_API_KEY` | string | Claude API for distillation/narrative |
-| `OPENAI_API_KEY` | string | OpenAI TTS + Whisper STT |
-| `PODCAST_INDEX_KEY` | string | Podcast Index API |
-| `PODCAST_INDEX_SECRET` | string | Podcast Index API |
-| `DEEPGRAM_API_KEY` | string | Deepgram STT (Nova models) |
-| `GROQ_API_KEY` | string | Groq STT/LLM/TTS |
-| `ALLOWED_ORIGINS` | string? | Comma-separated CORS origin allowlist (optional) |
-| `APP_ORIGIN` | string? | Base URL for this environment (Stripe redirects) |
-| `NEON_API_KEY` | string? | Neon API key for backup verification (optional) |
-| `NEON_PROJECT_ID` | string? | Neon project ID for backup verification (optional) |
-| `VAPID_PUBLIC_KEY` | string? | Web Push VAPID public key (optional) |
-| `VAPID_PRIVATE_KEY` | string? | Web Push VAPID private key (optional) |
-| `VAPID_SUBJECT` | string? | Web Push VAPID subject / mailto URL (optional) |
+| `CATALOG_REFRESH_QUEUE` | Queue | Apple / Podcast Index discovery |
+| `CONTENT_PREFETCH_QUEUE` | Queue | Audio + transcript availability probe |
+| `WELCOME_EMAIL_QUEUE` | Queue | One-shot welcome email on `user.created` |
+
+Cron trigger: `*/5 * * * *` (identical in staging and production). All scheduled jobs run inside `scheduled()` and are gated individually by `CronJob.enabled` + `intervalMinutes`.
 
 ## Queue System
 
-| Queue Name | Binding | Batch Size | Retries | Purpose |
-|------------|---------|-----------|---------|---------|
-| `feed-refresh` | `FEED_REFRESH_QUEUE` | 10 | 3 | RSS polling |
-| `transcription` | `TRANSCRIPTION_QUEUE` | 5 | 3 | Transcript fetch |
-| `distillation` | `DISTILLATION_QUEUE` | 5 | 3 | Claim extraction |
-| `narrative-generation` | `NARRATIVE_GENERATION_QUEUE` | 5 | 3 | Narrative writing |
-| `clip-generation` | `AUDIO_GENERATION_QUEUE` | 3 | 3 | TTS generation (legacy queue name) |
-| `briefing-assembly` | `BRIEFING_ASSEMBLY_QUEUE` | 5 | 3 | Briefing creation |
-| `orchestrator` | `ORCHESTRATOR_QUEUE` | 10 | 3 | Coordination |
-| `catalog-refresh` | `CATALOG_REFRESH_QUEUE` | 5 | 3 | Podcast catalog seeding/refresh |
-| `content-prefetch` | `CONTENT_PREFETCH_QUEUE` | 5 | 3 | Slow transcript/audio validation |
+| Binding | Queue name (prod / staging) | Batch | Concurrency | Retries | DLQ |
+|---------|-----------------------------|------:|-----------:|--------:|-----|
+| `FEED_REFRESH_QUEUE` | `feed-refresh` | 1 | 10 | 3 | `feed-refresh-retry` |
+| `feed-refresh-retry` | `feed-refresh-retry` | 1 | 1 | 2 | — |
+| `TRANSCRIPTION_QUEUE` | `transcription` | 1 | 5 | 3 | `dead-letter` |
+| `DISTILLATION_QUEUE` | `distillation` | 5 | auto | 3 | `dead-letter` |
+| `NARRATIVE_GENERATION_QUEUE` | `narrative-generation` | 5 | auto | 3 | `dead-letter` |
+| `AUDIO_GENERATION_QUEUE` | `clip-generation` | 3 | auto | 3 | `dead-letter` |
+| `BRIEFING_ASSEMBLY_QUEUE` | `briefing-assembly` | 5 | auto | 3 | `dead-letter` |
+| `ORCHESTRATOR_QUEUE` | `orchestrator` | 10 | auto | 3 | `dead-letter` |
+| `CATALOG_REFRESH_QUEUE` | `catalog-refresh` | 1 | auto | 3 | `dead-letter` |
+| `CONTENT_PREFETCH_QUEUE` | `content-prefetch` | 10 | 20 | 2 | `dead-letter` |
+| `WELCOME_EMAIL_QUEUE` | `welcome-email` | 5 | auto | 3 | `dead-letter` |
+| DLQ | `dead-letter` | 25 | auto | 0 | — (logs + drops) |
 
-**Note:** The `AUDIO_GENERATION_QUEUE` binding maps to the `clip-generation` queue name in `wrangler.jsonc` (legacy naming). The queue dispatcher in `worker/queues/index.ts` routes `clip-generation` messages to `handleAudioGeneration`.
+*"auto" = `max_concurrency` is omitted from the consumer config in `wrangler.jsonc` and Cloudflare auto-scales concurrency up to platform limits. Explicit numbers are caps.*
 
-### Pipeline Architecture
+`handleQueue()` in `worker/queues/index.ts` strips the environment suffix (`-staging`/`-production`) before routing by normalized queue name. The `AUDIO_GENERATION_QUEUE` binding deliberately maps to the `clip-generation` queue name for historical reasons — the dispatcher routes `clip-generation` → `handleAudioGeneration`.
 
-The pipeline is **demand-driven**: only feed refresh runs on a cron schedule. All other stages are triggered by a user requesting a briefing.
+## Pipeline Architecture
 
-**Feed Refresh** (standalone cron job, not a pipeline stage) -- Polls RSS feeds, upserts new episodes into the database. Runs on cron (`*/30 * * * *`), gated by runtime config.
+The pipeline is **demand-driven**. Only `episode-refresh` (feed refresh) runs on cron; the other stages execute only when a `BriefingRequest` exists.
 
-The 5 pipeline stages (triggered by user briefing requests):
+![Pipeline flow](./diagrams/pipeline-flow.svg)
 
-1. **Transcription** -- Three-tier transcript waterfall: (1) RSS feed transcript URL, (2) Podcast Index API lookup by episode GUID, (3) Whisper STT with chunked transcription for files over 25MB.
-2. **Distillation** -- Sends transcript to LLM (Anthropic Claude or other configured provider) for claim extraction. Stores results in Distillation model.
-3. **Narrative Generation** -- Generates narrative text from distillation claims using LLM. Stores narrative on Clip record and creates NARRATIVE WorkProduct.
-4. **Audio Generation** -- Converts narrative text to MP3 audio via TTS (multi-provider: OpenAI, Groq, Cloudflare). Stores MP3s in R2, updates Clip to COMPLETED, creates AUDIO_CLIP WorkProduct.
-5. **Briefing Assembly** -- Creates per-user Briefing records wrapping shared Clips, then updates FeedItems to READY with briefingId on success, FAILED on failure.
+| # | Stage | Queue | Handler | Output |
+|---|-------|-------|---------|--------|
+| 1 | Transcription | `transcription` | `worker/queues/transcription.ts` | `WorkProduct(TRANSCRIPT)`, `Distillation.transcript` |
+| 2 | Distillation | `distillation` | `worker/queues/distillation.ts` | `WorkProduct(CLAIMS)`, `Distillation.claimsJson` |
+| 3 | Narrative generation | `narrative-generation` | `worker/queues/narrative-generation.ts` | `WorkProduct(NARRATIVE)`, `Clip.narrativeText` |
+| 4 | Audio generation (TTS) | `clip-generation` | `worker/queues/audio-generation.ts` | `WorkProduct(AUDIO_CLIP)`, `Clip.audioKey`, `Clip.status=COMPLETED` |
+| 5 | Briefing assembly | `briefing-assembly` | `worker/queues/briefing-assembly.ts` | `Briefing`, `FeedItem.briefingId`, `FeedItem.status=READY` |
+
+See [pipeline.md](./pipeline.md) for the full stage-by-stage spec, including the three-tier transcript waterfall, multi-provider fallback chains, circuit breaker, and partial-completion (`COMPLETED_DEGRADED`) semantics.
 
 ### Orchestrator
 
-The orchestrator queue is the pipeline brain. It uses a **push-based** model:
+![Orchestrator state machine](./diagrams/orchestrator-states.svg)
 
-- When a user requests a briefing, a `BriefingRequest` is created and dispatched to the orchestrator.
-- The orchestrator evaluates which episodes need processing and creates `PipelineJob` records (one per episode + duration tier).
-- Each stage reports completion back to `ORCHESTRATOR_QUEUE`, which advances the job to the next stage.
-- When all jobs for a request complete, briefing assembly is triggered — this links completed Clips to Briefing records and marks FeedItems as READY.
-- Partial completion is supported: if some jobs fail, briefings are created from the successful ones.
-- Intro/outro jingles are played client-side via audio element sequencing with Cache API caching (not server-side concatenation). See `docs/decisions/2026-03-15-client-side-jingles.md`.
+`worker/queues/orchestrator.ts` receives messages on `ORCHESTRATOR_QUEUE` with three action types:
 
-### WorkProduct Registry
+- `evaluate` — new `BriefingRequest`; resolves `useLatest` items, caps `durationTier` against episode length, enforces `Plan.concurrentPipelineJobs`, creates `PipelineJob` rows, and dispatches each to the earliest *uncached* stage (or straight to `BRIEFING_ASSEMBLY` if fully cached).
+- `job-stage-complete` — a stage finished; uses `completedStage` from the message (not the potentially stale `PipelineJob.currentStage`) as the CAS condition for `updateMany`, advances the job to the next stage, and fires off the next queue message. When every job in the request is at `BRIEFING_ASSEMBLY` PENDING or terminal, it dispatches assembly.
+- `job-failed` — marks the job FAILED and still dispatches assembly when all other jobs are terminal so surviving jobs can be assembled (`COMPLETED_DEGRADED`).
 
-Pipeline stages store intermediate and final outputs in R2 via the `WorkProduct` model. Each type has a deterministic R2 key pattern:
+SEO-backfill mode (`BriefingRequestMode.SEO_BACKFILL`) stops after DISTILLATION and never emits narrative/audio/assembly messages.
 
-| Type | R2 Key Pattern | Stage |
-|------|---------------|-------|
+### WorkProduct R2 keying
+
+Pipeline outputs live in R2 under deterministic keys indexed by `WorkProduct`:
+
+| Type | R2 key | Written by |
+|------|--------|-----------|
 | `TRANSCRIPT` | `wp/transcript/{episodeId}.txt` | Transcription |
 | `CLAIMS` | `wp/claims/{episodeId}.json` | Distillation |
 | `NARRATIVE` | `wp/narrative/{episodeId}/{durationTier}.txt` | Narrative Gen |
 | `AUDIO_CLIP` | `wp/clip/{episodeId}/{durationTier}/{voice}.mp3` | Audio Gen |
-| `BRIEFING_AUDIO` | (enum only — no wpKey builder) | Reserved |
 | `SOURCE_AUDIO` | `wp/source-audio/{episodeId}.bin` | Transcription (debug) |
+| `BRIEFING_AUDIO` | reserved (no builder) | — |
+| `DIGEST_NARRATIVE`/`DIGEST_CLIP`/`DIGEST_AUDIO` | digest-specific keys | Digest pipeline |
 
-### Runtime Configuration
+`wpKey()` in `worker/lib/work-products.ts` is the canonical key builder.
 
-Pipeline behavior is controlled via the `PlatformConfig` table with a 60-second TTL in-memory cache:
+## Scheduled Jobs
 
-| Key | Purpose |
-|-----|---------|
-| `pipeline.enabled` | Master kill switch for the entire pipeline |
-| `pipeline.minIntervalMinutes` | Throttle between feed refresh runs |
-| `pipeline.stage.N.enabled` | Per-stage enable/disable |
-| `pipeline.feedRefresh.maxEpisodesPerPodcast` | Cap on episodes ingested per podcast |
-| `pipeline.feedRefresh.batchConcurrency` | Podcasts processed in parallel per queue message |
-| `pipeline.feedRefresh.fetchTimeoutMs` | RSS fetch timeout per podcast (ms) |
-| `pipeline.contentPrefetch.fetchTimeoutMs` | Transcript/audio validation timeout (ms) |
-| `pipeline.logLevel` | Structured log verbosity (error/info/debug) |
-| `ai.stt.model` | STT model + provider config (JSON: `{provider, model}`) |
-| `ai.distillation.model` | Distillation LLM model + provider config |
-| `ai.narrative.model` | Narrative LLM model + provider config |
-| `ai.tts.model` | TTS model + provider config |
-| `pricing.lastRefreshedAt` | Daily pricing refresh timestamp |
+![Cron heartbeat](./diagrams/cron-jobs.svg)
 
-Each queue handler checks its stage-enabled gate before processing. Messages with `type: "manual"` bypass the gate (for admin-triggered runs).
+The Worker cron fires every 5 minutes; `scheduled()` dispatches all registered jobs in parallel via `Promise.allSettled`. Each job checks its `CronJob` row (`enabled`, `intervalMinutes`, `runAtHour`) before running and records a `CronRun` row with `CronRunLog` entries.
 
-### Multi-Provider AI Architecture
+| Job key | Source | Purpose |
+|---------|--------|---------|
+| `episode-refresh` | `worker/lib/cron/episode-refresh.ts` | Enqueue feed-refresh for every non-archived podcast; gates via `pipeline.enabled` |
+| `apple-discovery` | `worker/lib/cron/podcast-discovery.ts` | Fetch Apple top-200 charts → update `Podcast.appleRank` |
+| `podcast-index-discovery` | `worker/lib/cron/podcast-discovery.ts` | Fetch Podcast Index trending → update `Podcast.piRank` |
+| `catalog-pregen` | `worker/lib/cron/catalog-pregen.ts` | Pre-generate popular clips (SEO backfill + warm cache) |
+| `monitoring` | `worker/lib/cron/monitoring.ts` | Cost alerts, pricing refresh, health checks |
+| `user-lifecycle` | `worker/lib/cron/user-lifecycle.ts` | Logs users whose free trial has expired (no enforcement yet — reminder emails/feature restrictions are planned) |
+| `data-retention` | `worker/lib/cron/data-retention.ts` | Archive old `BriefingRequest`/`PipelineJob`/WorkProducts |
+| `recommendations` | `worker/lib/cron/recommendations.ts` | Recompute `UserRecommendationProfile` + `RecommendationCache` |
+| `listen-original-aggregation` | `worker/lib/cron/listen-original-aggregation.ts` | Roll `ListenOriginalEvent` into `PublisherReportBatch` |
+| `stale-job-reaper` | `worker/lib/cron/stale-job-reaper.ts` | Fail jobs stuck in PENDING past timeout |
+| `geo-tagging` | `worker/lib/cron/geo-tagging.ts` | Keyword + LLM geo classification for podcasts |
+| `manual-grant-expiry` | `worker/lib/cron/manual-grant-expiry.ts` | Expire MANUAL billing grants at `currentPeriodEnd` |
 
-AI operations use a pluggable provider architecture with three provider registries:
+## Runtime Configuration
 
-| Registry | File | Providers |
-|----------|------|-----------|
-| STT | `worker/lib/stt/providers.ts` | OpenAI, Deepgram, Groq, Cloudflare Workers AI |
-| LLM | `worker/lib/llm-providers.ts` | Anthropic, Groq, Cloudflare Workers AI |
-| TTS | `worker/lib/tts/providers.ts` | OpenAI, Groq, Cloudflare Workers AI |
+Pipeline and product behaviour is driven from the `PlatformConfig` table with a 60-second TTL in-memory cache. Config keys are either **static** (validated via `CONFIG_REGISTRY` in `worker/lib/config-registry.ts`) or **dynamic pattern-based** (cron toggles, stage model overrides, feature flags, service-key assignments).
 
-Model configuration is stored in the `AiModel` and `AiModelProvider` database tables. Each model has one or more providers with pricing metadata. The active model+provider for each pipeline stage is read from `PlatformConfig` via `getModelConfig(prisma, stage)`.
+Representative static keys:
 
-The admin Model Registry page (`/admin/model-registry`) allows managing available models, providers, and pricing.
+| Key | Default | Purpose |
+|-----|---------|---------|
+| `pipeline.enabled` | `true` | Master kill switch |
+| `pipeline.logLevel` | `"info"` | Structured log verbosity |
+| `pipeline.feedRefresh.maxEpisodesPerPodcast` | `5` | Ingest cap per poll |
+| `pipeline.feedRefresh.batchConcurrency` | `10` | Podcasts processed per feed-refresh message |
+| `pipeline.distillation.rateLimitRetries` | `3` | Retries on 429s from LLM provider |
+| `pipeline.contentPrefetch.fetchTimeoutMs` | `15000` | Transcript/audio probe timeout |
+| `catalog.source` | `"podcast-index"` | Default discovery source |
+| `catalog.maxSize` | `10000` | Hard cap on active catalog |
+| `transcript.sources` | `["rss-feed", "podcast-index"]` | Transcript source priority before STT fallback |
+| `audio.defaultVoice` | `"coral"` | Default TTS voice when user has no preset |
+| `audio.wordsPerMinute` | `150` | Assumed speaking rate for duration estimation |
+| `circuitBreaker.failureThreshold` | `5` | Consecutive failures before opening |
+| `circuitBreaker.cooldownMs` | `30000` | Half-open test delay |
+| `rateLimit.*.windowMs` / `.maxRequests` | various | Per-route rate limits |
+| `welcomeEmail.enabled` | `true` | ZeptoMail welcome emails |
+| `user.trialDays` | `14` | Trial duration |
+| `recommendations.*` | various | Scoring weights, cold-start gates, diversification |
+| `cost.alert.{daily,weekly}Threshold` | `5.0` / `25.0` | Monitoring thresholds |
 
-## Database Schema
+Dynamic key patterns:
 
-### Core Models
+| Pattern | Purpose |
+|---------|---------|
+| `cron.{jobKey}.{enabled,intervalMinutes,lastRunAt}` | Per-job schedule controls |
+| `pipeline.stage.{STAGE}.enabled` | Per-stage kill switch; manual messages (`type:"manual"`) bypass. |
+| `ai.{stage}.model`, `ai.{stage}.model.secondary`, `ai.{stage}.model.tertiary` | Primary/secondary/tertiary model+provider per stage. |
+| `prompt.*` | Prompt-template overrides (distillation, narrative). |
+| `feature.*` | Feature flags (see below). |
+| `serviceKey.assignment.{context}[.provider]` | Pin a usage context to a specific `ServiceKey` row. |
 
-| Model | Purpose |
-|-------|---------|
-| `Plan` | Subscription plans with limits, feature flags, and Stripe billing (slug-based) |
-| `User` | User profile with Clerk ID, Stripe customer ID, `planId` FK, `isAdmin` flag |
-| `Podcast` | Podcast metadata (title, feed URL, image, health status) |
-| `Episode` | Individual episodes linked to podcasts |
-| `Subscription` | User-to-podcast subscriptions with per-subscription duration tier and optional voice preset |
-| `VoicePreset` | Configurable TTS voice presets with per-provider config (voice, instructions, speed) |
+## Multi-Provider AI Architecture
 
-### Pipeline Models
+Every AI call goes through a provider-scoped registry:
 
-| Model | Purpose |
-|-------|---------|
-| `BriefingRequest` | User's request for a briefing (PENDING -> PROCESSING -> COMPLETED/FAILED) |
-| `PipelineJob` | One episode + duration tier per request. Flows through stages. |
-| `PipelineStep` | Audit trail per stage execution (started, completed, failed, duration) |
-| `PipelineEvent` | Structured event log entries per step (DEBUG/INFO/WARN/ERROR) |
-| `Distillation` | Cached claim extraction results for an episode |
-| `Clip` | Cached TTS audio clip for a distillation segment |
-| `WorkProduct` | Generic keyed work product store for pipeline stage outputs in R2 |
+| Registry | Source | Providers |
+|----------|--------|-----------|
+| STT | `worker/lib/stt/providers.ts` | OpenAI (`whisper-1`), Deepgram (`nova-2`, `nova-3`), Groq (openai-compatible), Cloudflare (`@cf/openai/whisper`, `@cf/deepgram/speech-recognition`) |
+| LLM | `worker/lib/llm-providers.ts` | Anthropic (prompt caching supported), Groq, Cloudflare AI |
+| TTS | `worker/lib/tts/providers.ts` | OpenAI, Groq (Orpheus), Cloudflare AI |
 
-### Delivery Models
+`resolveStageModel()` (`worker/lib/model-resolution.ts`) looks up `ai.{stage}.model`, joins against `AiModelProvider` for pricing + limits, and consults the per-provider circuit breaker (`worker/lib/circuit-breaker.ts`). `resolveModelChain()` returns the primary/secondary/tertiary fallback list; circuit-broken providers are filtered out and logged as `provider_failover`.
 
-| Model | Purpose |
-|-------|---------|
-| `Briefing` | Per-user wrapper around a shared Clip (will carry personalized ad audio) |
-| `FeedItem` | Per-user feed entry, points to a Briefing (or Digest in future) |
+Cost accounting happens in `worker/lib/ai-usage.ts`:
 
-### AI & Experimentation Models
+- Token cost = input + output, with Anthropic cache-write pricing at 1.25× input and cache-read pricing at 0.1× input.
+- Audio cost = `durationSeconds / 60 * pricePerMinute`.
+- Char-based TTS cost = `charCount / 1000 * pricePerKChars`.
 
-| Model | Purpose |
-|-------|---------|
-| `AiModel` | AI model registry entries (stage, modelId, developer) |
-| `AiModelProvider` | Provider configurations per model (pricing, availability) |
-| `SttExperiment` | STT benchmark experiment definition |
-| `SttBenchmarkResult` | Individual benchmark result (WER, cost, latency per model/speed) |
+Errors raised by providers flow through `classifyAiError()` + `writeAiError()` → `AiServiceError` rows with category (`rate_limit`, `timeout`, `auth`, `model_not_found`, `content_filter`, `invalid_request`, `server_error`, `network`, `quota_exceeded`, `unknown`), severity, and sanitized raw response (≤2KB).
 
-### Pipeline & Operations Models
+## Service Keys
 
-| Model | Purpose |
-|-------|---------|
-| `AiServiceError` | Structured AI provider error tracking with classification |
-| `AuditLog` | Admin action audit trail |
-| `ApiKey` | API key management (hashed keys with scopes) |
-| `CronRun` | Scheduled job execution records |
-| `CronRunLog` | Per-run structured log entries |
+`worker/lib/service-key-registry.ts` defines 20 named `ServiceKeyContext`s (auth, billing, pipeline, catalog, infra, push). `ServiceKey` rows store encrypted values (AES-256-GCM, `SERVICE_KEY_ENCRYPTION_KEY` master key, per-row IV). Resolution order in `resolveApiKey()`:
 
-### Recommendation Models
+1. **Context assignment** — `serviceKey.assignment.{context}[.{provider}]` in `PlatformConfig` → decrypt the referenced `ServiceKey`.
+2. **Primary DB key** — `ServiceKey.envKey == target AND isPrimary == true` → decrypt.
+3. **Env var fallback** — `env[envKey]` (logs a warning in the DB-preferred path).
 
-| Model | Purpose |
-|-------|---------|
-| `PodcastProfile` | Per-podcast category weights, topic tags, popularity |
-| `UserRecommendationProfile` | Per-user aggregated category weights + topic tags |
-| `RecommendationCache` | Precomputed top-20 podcast recommendations per user |
-
-### Catalog Models
-
-| Model | Purpose |
-|-------|---------|
-| `PodcastRequest` | User-submitted podcast requests with admin review |
-| `Category` | Apple genre taxonomy entries |
-| `PodcastCategory` | Join table linking podcasts to categories |
-
-### User Models
-
-| Model | Purpose |
-|-------|---------|
-| `PodcastFavorite` | User favorites (interest signals for recommendations) |
-| `PushSubscription` | Web push notification subscriptions |
-
-### Configuration
-
-| Model | Purpose |
-|-------|---------|
-| `PlatformConfig` | Key-value runtime configuration store |
-
-### Key Relations
-
-```
-Plan ---< User
-User ---< Subscription >--- Podcast ---< Episode
-User ---< Briefing >--- Clip
-User ---< FeedItem >--- Episode
-FeedItem --- Briefing (via briefingId)
-User ---< BriefingRequest ---< PipelineJob ---< PipelineStep ---< PipelineEvent
-Episode ---< Distillation ---< Clip
-Episode ---< WorkProduct
-PipelineStep --- WorkProduct
-AiModel ---< AiModelProvider
-SttExperiment ---< SttBenchmarkResult >--- Episode
-User ---< PodcastFavorite >--- Podcast
-User ---< PushSubscription
-User ---< PodcastRequest >--- Podcast (optional)
-User ---< UserRecommendationProfile
-User ---< RecommendationCache
-Podcast ---< PodcastProfile
-Podcast ---< PodcastCategory >--- Category
-User ---< ApiKey
-User ---< AuditLog
-CronRun ---< CronRunLog
-```
-
-## Middleware Stack
-
-All `/api/*` routes pass through these global middleware layers in `worker/index.ts` (in order):
-
-1. **Request ID** (`worker/middleware/request-id.ts`) — Adds correlation ID to each request (must be first so all other middleware can access it)
-2. **CORS** (`hono/cors`) — Explicit origin allowlist from `ALLOWED_ORIGINS` env var (falls back to hardcoded defaults)
-3. **Clerk auth** (`worker/middleware/auth.ts`) — Populates auth context from JWT
-4. **Request Logger** (`worker/middleware/request-logger.ts`) — Structured HTTP request logging (after auth so userId is available)
-5. **Prisma** (`worker/middleware/prisma.ts`) — Creates per-request PrismaClient on `c.get("prisma")` and disconnects via `waitUntil`
-6. **API Key auth** (`worker/middleware/api-key.ts`) — Falls through to Clerk auth if no API key header present (after Prisma, needs DB lookup)
-7. **Rate Limiting** (`worker/middleware/rate-limit.ts`) — Sliding window rate limiter (in-memory); tighter limits on `/api/briefings/generate` (10/hr) and `/api/podcasts/subscribe` (5/min), general 120 req/min for all API routes (webhooks and health exempt)
-8. **Cache** (`worker/middleware/cache.ts`) — Response caching for read-heavy endpoints (`/api/podcasts/catalog`, `/api/health/deep`)
-9. **Security Headers** (`worker/middleware/security-headers.ts`) — X-Frame-Options, CSP, etc. for all responses (applied to `/*`, not just `/api/*`)
-
-Route handlers access the database with `const prisma = c.get("prisma") as any;` — no manual creation or cleanup needed.
-
-### Shared Helpers
-
-| Helper | Location | Purpose |
-|--------|----------|---------|
-| `parsePagination(c)` | `worker/lib/admin-helpers.ts` | Parse page/pageSize from query params |
-| `parseSort(c)` | `worker/lib/admin-helpers.ts` | Parse sort query into Prisma orderBy |
-| `paginatedResponse()` | `worker/lib/admin-helpers.ts` | Standard paginated response shape |
-| `getCurrentUser(c, prisma)` | `worker/lib/admin-helpers.ts` | Resolve Clerk auth to DB User (auto-creates if missing) |
-| `getUserWithPlan(c, prisma)` | `worker/lib/plan-limits.ts` | Get user with plan included for limit checks |
-| `checkDurationLimit()` | `worker/lib/plan-limits.ts` | Enforce plan max duration |
-| `checkSubscriptionLimit()` | `worker/lib/plan-limits.ts` | Enforce plan max subscriptions |
-| `checkWeeklyBriefingLimit()` | `worker/lib/plan-limits.ts` | Enforce plan weekly briefing cap |
-| `checkStageEnabled()` | `worker/lib/queue-helpers.ts` | Pipeline stage gate (config + manual bypass) |
-| `useFetch<T>(endpoint)` | `src/lib/use-fetch.ts` | Frontend data-fetching hook with loading/error state |
-| `getModelConfig(prisma, stage)` | `worker/lib/ai-models.ts` | Read AI model+provider config for a stage |
-| `getModelRegistry(prisma, stage?)` | `worker/lib/ai-models.ts` | Query active models with providers from DB |
-| `wpKey(params)` | `worker/lib/work-products.ts` | Build R2 keys for work products |
-| `writeEvent(prisma, stepId, ...)` | `worker/lib/pipeline-events.ts` | Write structured pipeline events (fire-and-forget) |
-| `createPipelineLogger(opts)` | `worker/lib/logger.ts` | Structured JSON logger with configurable level |
-| `classifyAiError()` | `worker/lib/ai-errors.ts` | Classify AI provider errors by category/severity |
-| `writeAiError()` | `worker/lib/ai-errors.ts` | Record AI service errors to database |
-| `resolveStageModel()` | `worker/lib/model-resolution.ts` | Resolve AI model+provider with fallback chain |
-| `computePodcastProfiles()` | `worker/lib/recommendations.ts` | Compute recommendation profiles |
-| `audit()` | `worker/lib/audit-log.ts` | Write admin audit log entries |
-| `classifyHttpError()` | `worker/lib/errors.ts` | Classify unhandled errors into HTTP status codes |
-| `deepHealthCheck()` | `worker/lib/health.ts` | Check DB/R2/queue health for `/api/health/deep` |
-| `getFeatureFlag()` | `worker/lib/feature-flags.ts` | Read boolean feature flags from PlatformConfig |
-| `runJob()` | `worker/lib/cron/runner.ts` | Cron job framework with CronRun/CronRunLog tracking |
+`worker/lib/service-key-health.ts` exposes per-provider health probes (Anthropic, OpenAI, Groq, Deepgram, Stripe, Clerk, Podcast Index, Cloudflare, Neon) used by `/api/admin/service-keys/*` and the admin Service Keys page.
 
 ## Authentication & Authorization
 
-### Auth Flow
+### Browser sessions
 
-1. Clerk middleware is applied globally to all `/api/*` routes in `worker/index.ts`.
-2. **`requireAuth`** middleware (`worker/middleware/auth.ts`) checks `getAuth(c)?.userId` and returns 401 if missing.
-3. **`requireAdmin`** middleware (`worker/middleware/admin.ts`) additionally looks up the User by `clerkId` and checks the `isAdmin` field, returning 403 if not an admin.
+Clerk is the identity provider. `clerkMiddleware()` populates `getAuth(c)` for all `/api/*` routes. Native apps (Capacitor) use:
 
-### Plan-Based Limits
+- `/__clerk/*` — web FAPI proxy (same-origin cookies).
+- `/api/__clerk/*` — Capacitor FAPI proxy (rewrites Set-Cookie for `capacitor://` origins).
+- `/api/auth/native` — exchanges Google/Apple ID tokens for Clerk sign-in tickets (server-side verification).
 
-Plan limits are enforced in route handlers using helpers from `worker/lib/plan-limits.ts`:
+### Server-to-server
 
-- **Duration limit**: `maxDurationMinutes` on the Plan model caps the durationTier a user can select
-- **Subscription limit**: `maxPodcastSubscriptions` (null = unlimited) caps podcast subscriptions
-- **Weekly briefing limit**: `briefingsPerWeek` (null = unlimited) caps FeedItems created per 7-day window
+Two bypass paths run *before* Clerk middleware:
 
-### Route Protection
+- `Authorization: Bearer ${CLERK_SECRET_KEY}` — treats the caller as authenticated without a session (used by trusted back-office scripts).
+- `Authorization: Bearer blp_live_*` — resolved downstream by `apiKeyAuth` (SHA-256 hash lookup on `ApiKey`). Populates `apiKeyUserId` + `apiKeyScopes`.
 
-| Route Pattern | Auth Level |
-|--------------|------------|
-| `GET /api/plans` | Public (no auth) |
-| `GET /api/health` | Public (no auth) |
-| `GET /api/health/deep` | Public (no auth, cached 30s) |
-| `POST /api/webhooks/*` | Webhook signature verification |
-| `/api/me` | `requireAuth` |
-| `/api/podcasts/*` | `requireAuth` + plan limits |
-| `/api/briefings/*` | `requireAuth` + plan limits |
-| `/api/feed/*` | `requireAuth` |
-| `/api/clips/*` | `requireAuth` |
-| `/api/billing/*` | `requireAuth` |
-| `/api/admin/*` | `requireAdmin` |
+### Admin
 
-## API Route Tree
+`requireAdmin` (`worker/middleware/admin.ts`) upgrades `requireAuth` with a `User.isAdmin` check (403 if absent). Applied globally to `/api/admin/*` via `adminRoutes.use("*", requireAdmin)`. Every non-GET admin mutation is automatically recorded to `AuditLog` by middleware in `worker/routes/admin/index.ts`.
 
-### Public Routes (`/api`)
+### Plan limits
 
-| Method | Path | Purpose |
-|--------|------|---------|
-| GET | `/plans` | List active subscription plans (with limits and pricing) |
-| GET | `/plans/current` | Get authenticated user's current plan |
-| POST | `/webhooks/clerk` | Clerk user sync webhook |
-| POST | `/webhooks/stripe` | Stripe payment webhook |
-| GET | `/health` | Health check |
+Enforced in route handlers via `worker/lib/plan-limits.ts`:
 
-### Auth-Protected Routes (`/api`)
+- `checkDurationLimit` — caps `durationTier` by `Plan.maxDurationMinutes`.
+- `checkSubscriptionLimit` — caps active `Subscription` rows by `Plan.maxPodcastSubscriptions`.
+- `checkWeeklyBriefingLimit` — caps FeedItem creation per 7-day rolling window by `Plan.briefingsPerWeek`.
+- `checkConcurrentJobLimit` — caps IN_PROGRESS `PipelineJob`s per user by `Plan.concurrentPipelineJobs`.
+- `checkPastEpisodesLimit` — caps how far back a user may request briefings (`Plan.pastEpisodesLimit`).
 
-| Method | Path | Purpose |
-|--------|------|---------|
-| GET | `/me` | Get/create current user with plan info |
-| GET | `/podcasts/catalog` | Browse/search local podcast catalog |
-| GET | `/podcasts/:id` | Podcast detail with subscription status |
-| GET | `/podcasts/:id/episodes` | Episode list for a podcast |
-| POST | `/podcasts/subscribe` | Subscribe to a podcast (requires durationTier) |
-| PATCH | `/podcasts/subscribe/:podcastId` | Update subscription durationTier |
-| DELETE | `/podcasts/subscribe/:podcastId` | Unsubscribe from a podcast |
-| POST | `/podcasts/refresh` | Queue feed refresh for user's subscriptions |
-| GET | `/podcasts/subscriptions` | List user subscriptions |
-| POST | `/briefings/generate` | Create on-demand briefing (requires podcastId + durationTier) |
-| GET | `/feed` | Paginated feed items (filterable by status, listened) |
-| GET | `/feed/counts` | Feed item counts |
-| GET | `/feed/:id` | Feed item detail with clip |
-| PATCH | `/feed/:id/listened` | Mark feed item as listened |
-| GET | `/clips/:episodeId/:durationTier` | Stream clip audio from R2 |
-| POST | `/billing/checkout` | Create Stripe checkout session (planId + interval) |
-| POST | `/billing/portal` | Create Stripe customer portal session |
+`checkConcurrentJobLimit` also runs inside the orchestrator on `evaluate` — if the limit is hit, the request is re-queued rather than failing.
 
-### Admin Routes (`/api/admin`)
+## Billing & Entitlement
 
-17 route modules: dashboard, podcasts, episodes, pipeline, config, users, analytics, briefings, requests, plans, stt-benchmark, ai-models, ai-errors, audit-log, api-keys, recommendations, cron-jobs.
+Web subscriptions originate from Stripe (Checkout → `customer.subscription.*` webhooks). Mobile subscriptions originate from Apple StoreKit via RevenueCat (webhook + `/v2` REST confirmations). Manual admin grants are a third source. All three land in the unified `BillingSubscription` table keyed by `(source, externalId)`.
 
-Notable admin endpoints:
-- `POST /api/admin/requests/test-briefing` -- Trigger a test briefing with specific podcast/episode selection
-- `GET /api/admin/pipeline` -- Pipeline status and job listing
-- `GET/PATCH /api/admin/config` -- Runtime configuration management
-- `GET/POST /api/admin/ai-models` -- AI model registry management
-- `GET/POST /api/admin/stt-benchmark/experiments` -- STT benchmark experiments
-- `GET/POST/PATCH/DELETE /api/admin/plans` -- Plan CRUD management
-- `GET /api/admin/ai-errors` -- AI service error log with filtering
-- `GET /api/admin/audit-log` -- Admin action audit trail
-- `GET/POST/DELETE /api/admin/api-keys` -- API key management
-- `GET /api/admin/recommendations` -- Recommendation profiles and cache
-- `GET /api/admin/cron-jobs` -- Scheduled job runs and logs
+`recomputeEntitlement(prisma, userId)` (`worker/lib/entitlement.ts`):
 
-**Note:** The `clean-r2` route module is mounted separately at `/api/internal/clean` (not under `/api/admin`).
+- Finds rows with status ∈ `{ACTIVE, CANCELLED_PENDING_EXPIRY, GRACE_PERIOD}`.
+- Picks the highest `Plan.sortOrder` winner and sets `User.planId`.
+- Sets `User.subscriptionEndsAt` when the winner is `CANCELLED_PENDING_EXPIRY`, otherwise clears it.
+- Falls back to the plan with `isDefault = true` if no entitling rows remain.
+
+Every webhook / REST / admin change logs a `BillingEvent` (APPLIED/SKIPPED/FAILED) with the raw payload; `BillingEvent.userId` is nullable to preserve webhook attempts that pre-date the user record.
+
+## Feature Flags
+
+Stored as `PlatformConfig.feature.*`. `worker/lib/feature-flags.ts` evaluates:
+
+1. Denylist → `false`
+2. Allowlist → `true`
+3. Date window (`startDate` / `endDate`)
+4. `planAvailability[]` containment
+5. `rolloutPercentage` via `SHA-256(userId + ":" + flag) % 100`
+
+`isFeatureEnabled(prisma, name, { userId, planSlug })` returns a deterministic boolean; `getActiveFlags(prisma, ctx)` returns a `Record<string, boolean>` snapshot for admin views.
 
 ## Frontend Architecture
 
-### Build & Serving
+### Build & serving
 
-The frontend is built with Vite 7 using `@cloudflare/vite-plugin` in SPA mode. The Cloudflare Worker serves built assets via the `ASSETS` binding, with all non-API routes falling through to `index.html` for client-side routing.
+Vite 7 + `@cloudflare/vite-plugin` in SPA mode. `vite-plugin-pwa` injects a service worker built from `src/sw.ts` for web clients; Capacitor native builds detect `Capacitor.isNativePlatform()` and unregister the SW to avoid WKWebView cache conflicts. The Worker serves built assets via the `ASSETS` binding. `wrangler.jsonc` `run_worker_first` reserves `/api/*`, `/p/*`, `/sitemap.xml`, and `/robots.txt` for the Worker, and everything else falls through to SPA `index.html`.
 
-### Page Structure
+### Public + user routes
 
-| Section | Pages | Layout |
-|---------|-------|--------|
-| Public | Landing (`/`), Pricing (`/pricing`) | Minimal |
-| User | Home (`/home`), Discover (`/discover`), Podcast Detail (`/discover/:podcastId`), Library (`/library`), Player (`/play/:feedItemId`), Settings (`/settings`) | `MobileLayout` |
-| Admin | 19 pages (Command Center, Pipeline, Pipeline Controls, Catalog, Briefings, Users, Plans, Analytics, Requests, STT Benchmark, Model Registry, Stage Models, AI Errors, Recommendations, Scheduled Jobs, Feature Flags, Podcast Settings, API Keys, Audit Log) | `AdminLayout` (dark sidebar) |
+| Section | Route | Page file | Notes |
+|---------|-------|-----------|-------|
+| Public | `/` | `pages/landing.tsx` | Signed-in users redirect to `/home` |
+| Public | `/pricing`, `/about`, `/how-it-works`, `/contact`, `/support`, `/tos`, `/privacy` | `pages/*.tsx` | Marketing + legal |
+| Public | `/blog/:slug` | `pages/blog/*.tsx` | Hand-curated SEO posts |
+| User | `/home` | `pages/Home.tsx` | Feed view |
+| User | `/discover` · `/discover/:podcastId` | `pages/discover.tsx`, `pages/podcast-detail.tsx` | Browse + detail |
+| User | `/library` | `pages/library.tsx` | Subscriptions + listening history |
+| User | `/history` | `pages/history.tsx` (lazy) | Full listening history |
+| User | `/play/:id` | `pages/briefing-player.tsx` | Full-screen audio player |
+| User | `/settings` | `pages/Settings.tsx` | Account, plan, voice, preferences |
+| User | `/onboarding` | `pages/onboarding.tsx` (lazy) | Inline onboarding flow |
+| Compat | `/dashboard` → `/home`, `/billing` → `/settings`, `/briefing/*` → `/home` | redirects | Historical URLs |
 
-Redirects: `/dashboard` redirects to `/home`, `/billing` redirects to `/settings`, `/briefing/*` redirects to `/home`.
+User routes are wrapped in `MobileLayout` (header, bottom nav, mini-player, podcast-detail sheet, feedback dialog). The four core tabs are **Home**, **Discover**, **Library**, **Settings**.
 
-Admin pages are lazy-loaded via `React.lazy()` for code splitting. An `AdminGuard` component wraps admin routes and checks the user's admin status before rendering.
+### Native app
 
-### Mobile-First User App
+- Capacitor shell (iOS + Android) with `@capgo/capacitor-social-login`.
+- Entry point detects `Capacitor.isNativePlatform()` and switches auth to `NativeSignIn` (Google/Apple + email/password fallback).
+- `src/lib/iap.ts` wraps RevenueCat (configured with the Apple API key returned from `/api/iap/config`).
+- All API calls go through `src/lib/api-client.ts`, which injects `X-Client-Platform` and resolves a native `VITE_API_BASE_URL` when running inside Capacitor.
 
-The user-facing app uses `MobileLayout`, a mobile-first layout with a bottom tab navigation bar (`BottomNav`). The four tabs are:
+### Admin pages
 
-| Tab | Route | Page |
-|-----|-------|------|
-| Home | `/home` | `home.tsx` -- Feed view with subscription and on-demand items |
-| Discover | `/discover` | `discover.tsx` -- Podcast catalog browse/search (mobile-optimized) |
-| Library | `/library` | `library.tsx` -- User's subscriptions and briefing history |
-| Settings | `/settings` | `settings.tsx` -- Account settings and billing |
+32 lazy-loaded pages under `/admin/*` render the Moonchild dark-navy theme via `AdminLayout`. See [admin-platform.md](./admin-platform.md) for the full inventory and purpose of each page. An `AdminGuard` component calls `/api/admin/dashboard/health` to confirm `User.isAdmin` before rendering. Routes redirect legacy paths: `/admin/catalog-seed` → `/admin/catalog-discovery`, `/admin/stage-models` → `/admin/stage-configuration`, `/admin/prompt-management` → `/admin/stage-configuration`.
 
-Additional user pages outside the tab bar:
-- **Podcast Detail** (`/discover/:podcastId`) -- `podcast-detail.tsx`, episode list, subscribe with tier picker, on-demand briefing
-- **Player** (`/play/:feedItemId`) -- `briefing-player.tsx`, audio playback for a completed feed item clip
-
-### Design System
-
-- **Admin theme**: Dark navy (`#0A1628` background, `#1A2942` cards, `#3B82F6` accents, Inter font)
-- **Component library**: shadcn/ui (22+ components installed)
-- **CSS**: Tailwind CSS v4 with `tw-animate-css`
-
-### Key Frontend Modules
+### Key frontend modules
 
 | File | Purpose |
 |------|---------|
-| `src/App.tsx` | Route definitions and layout assignments |
-| `src/lib/api.ts` | API client for user-facing endpoints |
-| `src/lib/admin-api.ts` | `useAdminFetch()` hook with Clerk Bearer token |
-| `src/lib/use-fetch.ts` | Generic `useFetch<T>()` hook for data fetching |
-| `src/lib/ai-models.ts` | Frontend AI model registry (stage labels, no server imports) |
-| `src/types/admin.ts` | Shared type contracts for admin API responses |
-| `src/providers/clerk-provider.tsx` | ClerkProvider wrapper |
+| `src/App.tsx` | Route tree + layouts + lazy loading |
+| `src/lib/api-client.ts` | `useApiFetch()` / `useAdminFetch()` hooks with Clerk token + platform header + retry-on-auth-expiry |
+| `src/lib/api-base.ts` | Web vs. native base URL resolution |
+| `src/lib/use-fetch.ts` | Generic `useFetch<T>()` data-fetching hook |
+| `src/lib/iap.ts` | RevenueCat init / offerings / purchase / restore |
+| `src/lib/ai-models.ts` | Frontend stage label table (no server imports) |
+| `src/contexts/audio-context.tsx` | Global audio playback + queue |
+| `src/contexts/plan-context.tsx` | Cached plan + entitlement snapshot |
+| `src/contexts/onboarding-context.tsx` | Onboarding + isAdmin flag |
+| `src/providers/clerk-provider.tsx` | ClerkProvider with native-aware config (FAPI proxy + capacitor:// normalisation) |
 
 ## File Structure
 
 ```
 blipp/
   worker/
-    index.ts              # Entry point (fetch/queue/scheduled)
-    types.ts              # Env type with all bindings
-    middleware/
-      auth.ts             # requireAuth + clerkMiddleware + getAuth
-      admin.ts            # requireAdmin (isAdmin check)
-      prisma.ts           # Per-request PrismaClient middleware
-      api-key.ts          # API key authentication (falls through to Clerk if absent)
-      cache.ts            # Response caching middleware
-      rate-limit.ts       # Sliding window rate limiter (in-memory)
-      request-id.ts       # Correlation ID middleware
-      request-logger.ts   # Structured HTTP request logging
-      security-headers.ts # CSP, X-Frame-Options, etc.
+    index.ts                     # Entry: fetch/queue/scheduled
+    types.ts                     # Env type
+    middleware/                  # Request-ID, auth, API key, admin, prisma, rate-limit, cache, security-headers, request-logger
     routes/
-      index.ts            # Route tree assembly
-      me.ts               # GET /me — current user
-      plans.ts            # Public plan listing + current plan
-      podcasts.ts         # Catalog browse, subscribe, detail, episodes
-      briefings.ts        # On-demand briefing generation
-      feed.ts             # Feed item list, detail, listened, counts
-      clips.ts            # Clip audio streaming from R2
-      billing.ts          # Stripe checkout/portal
-      webhooks/
-        clerk.ts          # User sync webhook
-        stripe.ts         # Payment webhook
-      admin/
-        index.ts          # Admin route tree (18 modules)
-        dashboard.ts      # Command center stats
-        podcasts.ts       # Podcast catalog management
-        episodes.ts       # Episode management
-        pipeline.ts       # Pipeline monitoring
-        config.ts         # Runtime configuration
-        users.ts          # User management
-        analytics.ts      # Usage analytics
-        briefings.ts      # Briefing inspection
-        requests.ts       # Briefing request management
-        plans.ts          # Plan CRUD management
-        stt-benchmark.ts  # STT benchmark experiments
-        ai-models.ts      # AI model registry CRUD
-        ai-errors.ts      # AI service error log
-        audit-log.ts      # Admin action audit trail
-        api-keys.ts       # API key management
-        recommendations.ts # Recommendation profiles + cache
-        cron-jobs.ts      # Scheduled job runs + logs
-        clean-r2.ts       # R2 cleanup (mounted at /internal/clean)
+      index.ts                   # Mounts public + auth routes under /api
+      me.ts, plans.ts, podcasts.ts, briefings.ts, feed.ts, clips.ts, blipps.ts
+      billing.ts, iap.ts, recommendations.ts, voice-presets.ts
+      events.ts, feedback.ts, blipp-feedback.ts, support.ts
+      assets.ts, public-pages.ts, sitemap.ts, clerk-proxy.ts, clerk-auth-proxy.ts, native-auth.ts
+      webhooks/                  # clerk.ts, stripe.ts, revenuecat.ts
+      admin/                     # 31 admin route modules (see admin-platform.md)
     queues/
-      index.ts            # Queue dispatcher + scheduled handler
-      feed-refresh.ts     # Periodic RSS polling (standalone cron job)
-      transcription.ts    # Pipeline stage 2: Transcript fetching
-      distillation.ts     # Pipeline stage 3: LLM claim extraction
-      narrative-generation.ts # Pipeline stage 4: LLM narrative writing
-      audio-generation.ts    # Stage 5: TTS audio rendering
-      briefing-assembly.ts   # Stage 6: Briefing creation + FeedItem linking
-      orchestrator.ts     # Pipeline coordination
-      catalog-refresh.ts  # Podcast catalog seeding/refresh
-      content-prefetch.ts # Slow transcript/audio validation
+      index.ts                   # Dispatcher + scheduled() entry
+      orchestrator.ts            # Pipeline coordinator (CAS)
+      feed-refresh.ts            # RSS polling + content-prefetch fanout
+      transcription.ts, distillation.ts, narrative-generation.ts, audio-generation.ts, briefing-assembly.ts
+      catalog-refresh.ts, content-prefetch.ts
+      welcome-email.ts           # ZeptoMail send worker
     lib/
-      db.ts               # PrismaClient factory (Hyperdrive)
-      config.ts           # Runtime config with 60s TTL cache + stage names
-      admin-helpers.ts    # Pagination, sort, response helpers, getCurrentUser
-      queue-helpers.ts    # Stage gate, ackAll helpers
-      plan-limits.ts      # Plan limit enforcement (duration, subscriptions, weekly briefings)
-      ai-models.ts        # AI model config reader (getModelConfig, getModelRegistry)
-      llm-providers.ts    # Multi-provider LLM interface (Anthropic, Groq, Cloudflare)
-      stt/                # Multi-provider STT module
-        providers.ts      # Provider interface (OpenAI, Deepgram, Groq, Cloudflare)
-        whisper-chunked.ts # Chunked Whisper for large files
-        audio-probe.ts    # Audio file probing
-        wer.ts            # Word Error Rate calculation
-        benchmark-runner.ts # STT benchmark task runner
-      tts/                # Multi-provider TTS module
-        providers.ts      # Provider interface (OpenAI, Groq, Cloudflare)
-        tts.ts            # TTS generation orchestrator
-        chunking.ts       # Text chunking for TTS
-        time-fitting.ts   # Duration tier fitting
-      ai-usage.ts         # AI usage tracking helpers
-      work-products.ts    # R2 key builders and storage helpers
-      pipeline-events.ts  # Structured pipeline event writer (fire-and-forget)
-      pricing-updater.ts  # Daily pricing refresh (stamps priceUpdatedAt)
-      logger.ts           # Structured JSON pipeline logger with configurable level
-      podcast-index.ts    # Podcast Index API client
-      rss-parser.ts       # RSS feed parser
-      transcript/         # Transcript module
-        parser.ts         # VTT/SRT parsing
-        sources.ts        # Multi-source transcript resolution
-        normalizer.ts     # Text normalization for WER comparison
-        podcast-index-source.ts # Podcast Index transcript lookup
-      distillation.ts     # LLM summarization (claim extraction)
-      clip-cache.ts       # Clip cache lookup
-      mp3-concat.ts       # Audio concatenation
-      stripe.ts           # Stripe client factory
-      local-queue.ts      # Local dev queue shim
-      ai-errors.ts        # AI error classification + recording
-      audit-log.ts        # Admin audit log writer
-      recommendations.ts  # Recommendation profile computation
-      model-resolution.ts # AI model+provider fallback resolution
-      queue-messages.ts   # Typed queue message definitions
-      voice-presets.ts    # Voice preset resolution + config extraction
-      errors.ts           # HTTP error classification
-      feature-flags.ts    # Feature flag reader (PlatformConfig booleans)
-      health.ts           # Deep health check (DB, R2, queues)
-      push.ts             # Web push notification helpers
-      user-data.ts        # User data export/deletion utilities
-      circuit-breaker.ts  # Circuit breaker for external services
-      cost-alerts.ts      # AI cost alerting
-      backup-verify.ts    # Database backup verification
-      catalog-sources.ts  # Podcast catalog source abstractions
-      content-prefetch.ts # Content prefetch logic
-      apple-podcasts.ts   # Apple Podcasts API client
-      constants.ts        # Shared constants (STAGE_NAMES, etc.)
-      cron/               # Scheduled job implementations
-        runner.ts         # Job framework with CronRun/CronRunLog tracking
-        pipeline-trigger.ts # Feed refresh + pipeline gating
-        monitoring.ts     # Pricing refresh, cost alerts
-        user-lifecycle.ts # Inactive user handling
-        data-retention.ts # Archiving old data
-        recommendations.ts # Profile recomputation
+      db.ts, config.ts, config-registry.ts
+      queue-messages.ts, queue-helpers.ts
+      admin-helpers.ts, plan-limits.ts, errors.ts, logger.ts
+      ai-models.ts, model-resolution.ts, llm-providers.ts, ai-errors.ts, ai-usage.ts
+      stt/ tts/ transcript/      # Multi-provider registries
+      work-products.ts, voice-presets.ts, distillation.ts, briefing-assembly.ts
+      circuit-breaker.ts, cost-alerts.ts, backup-verify.ts
+      service-key-registry.ts, service-key-resolver.ts, service-key-health.ts, service-key-crypto.ts
+      feature-flags.ts, health.ts, entitlement.ts, zeptomail.ts
+      podcast-index.ts, apple-podcasts.ts, catalog-sources.ts, catalog-eviction.ts
+      rss-parser.ts, content-prefetch.ts, podcast-invalidation.ts
+      recommendations/           # Profile computation + explanations
+      cron/                      # Scheduled job runners (12 jobs + runner.ts)
+      audit-log.ts, user-data.ts, push.ts, stripe.ts, local-queue.ts
+      geo-lookup.ts, prompt-defaults.ts, starter-pack.ts
+      pipeline-events.ts, html-entities.ts, html-templates.ts, slugify.ts, smoke-test.ts
   src/
-    App.tsx               # Routes + layouts
-    main.tsx              # React entry point
-    pages/
-      landing.tsx         # Public landing page
-      pricing.tsx         # Public pricing page
-      home.tsx            # Home tab — briefing feed
-      discover.tsx        # Discover tab — catalog browse/search
-      podcast-detail.tsx  # Podcast detail with episodes
-      library.tsx         # Library tab — subscriptions & history
-      briefing-player.tsx # Audio playback for briefings
-      settings.tsx        # Settings tab — account & billing
-      admin/              # 20 admin pages
-        command-center.tsx
-        pipeline.tsx
-        pipeline-controls.tsx
-        catalog.tsx
-        briefings.tsx
-        users.tsx
-        plans.tsx
-        analytics.tsx
-        requests.tsx
-        stt-benchmark.tsx
-        model-registry.tsx
-        stage-models.tsx
-        ai-errors.tsx
-        recommendations.tsx
-        voice-presets.tsx
-        scheduled-jobs.tsx
-        feature-flags.tsx
-        podcast-settings.tsx
-        api-keys.tsx
-        audit-log.tsx
-    layouts/
-      mobile-layout.tsx   # Mobile-first layout with bottom nav
-      admin-layout.tsx    # Admin dark sidebar layout
-    components/
-      bottom-nav.tsx      # Bottom tab navigation bar
-      admin-guard.tsx     # Admin route guard
-      status-badge.tsx    # Status indicator badge
-      feed-item.tsx       # Feed item card
-      podcast-card.tsx    # Podcast card
-      ...                 # Other shared UI components
-    lib/
-      api.ts              # User API client
-      admin-api.ts        # Admin API client with auth
-      use-fetch.ts        # Generic useFetch<T>() hook
-      ai-models.ts        # Frontend AI model stage labels
-    providers/
-      clerk-provider.tsx  # ClerkProvider wrapper
-    types/
-      admin.ts            # Shared admin type contracts
-      user.ts             # User-facing type contracts
-      feed.ts             # FeedItem and FeedCounts types
+    App.tsx, main.tsx, sw.ts
+    pages/                       # User app + 32 admin pages (see admin-platform.md)
+    layouts/                     # mobile-layout.tsx, admin-layout.tsx
+    components/                  # shadcn/ui primitives + app + admin panels
+    contexts/                    # audio, plan, onboarding, podcast-sheet, storage, theme
+    providers/                   # clerk-provider (web + native aware)
+    lib/                         # api-base, api-client, use-fetch, iap, duration-tiers, jingle-cache, utils
+    types/                       # feed.ts, user.ts, recommendations.ts, lamejs.d.ts
   prisma/
-    schema.prisma         # Full data model (32 models, 15 enums)
+    schema.prisma                # 60 models, 20 enums
+    migrations/                  # One-way forward migrations (prisma migrate deploy)
+    seed.ts
   docs/
-    architecture.md       # This file
-  wrangler.jsonc          # Cloudflare Workers config
-  vite.config.ts          # Vite build config
+    architecture.md              # This file
+    pipeline.md, data-model.md, api-reference.md, admin-platform.md
+    environment-diagram.md       # Dev/staging/prod layout
+    diagrams/                    # SVG sources referenced from the docs
+    decisions/                   # Architecture decision records
+    guides/                      # development.md, prisma-migrations.md, production-deployment.md, ios-testflight.md, mobile-app-deployment.md, revenuecat-setup.md
+  wrangler.jsonc, vite.config.ts, package.json
 ```
 
 ## PWA Support
 
-The app is configured as a Progressive Web App via `vite-plugin-pwa`. This provides:
+`vite-plugin-pwa` injects a custom service worker (`src/sw.ts`) for the web build, providing:
 
-- **Web App Manifest** -- Enables "Add to Home Screen" on mobile devices with app name, icons, and theme colors.
-- **Service Worker** -- Caches the app shell (HTML, JS, CSS) for fast subsequent loads.
-- **Standalone Display Mode** -- When installed, the app runs in its own window without browser chrome, providing a native app experience.
+- **Web App Manifest** — "Add to Home Screen" on mobile browsers with app name, icons, theme colors, `start_url: /home`.
+- **Offline shell** — HTML/JS/CSS cached for fast subsequent loads.
+- **Standalone display** — installed app runs without browser chrome.
+
+Native Capacitor builds detect `Capacitor.isNativePlatform()` at startup and skip service-worker registration (WKWebView caching + custom scheme handlers conflict with the PWA SW).
+
+## Observability
+
+- `console.log` / `console.error` emit structured JSON that Cloudflare Logs persists (see `wrangler.jsonc` `observability.logs`).
+- `CronRun` + `CronRunLog` track every scheduled job's start, duration, and outcome.
+- `PipelineStep` + `PipelineEvent` record per-stage cost, duration, retries, and fine-grained DEBUG/INFO/WARN/ERROR events.
+- `AiServiceError` records provider failures with correlation IDs tying a trace through the whole pipeline.
+- `AuditLog` captures every admin mutation.
+- `/api/admin/worker-logs` provides a UI over Cloudflare Workers Observability (`CF_API_TOKEN`).
+- `/api/health/deep` probes the DB, R2, and queue bindings; cached 30s.
 
 ## Development Notes
 
-- **Local dev**: `shimQueuesForLocalDev()` provides an in-process queue shim so pipeline stages can be tested locally without Cloudflare infrastructure.
-- **Database**: Prisma 7 with the Cloudflare runtime adapter. After `prisma generate`, a manual barrel export at `src/generated/prisma/index.ts` is needed (gitignored). A separate `prisma-node` output is generated for scripts that run under Node.js.
-- **npm installs**: Require `--legacy-peer-deps` due to Clerk version constraints.
-- **Neon free tier**: Expect 5-10s cold starts on first database request.
-- **Tests**: Run in batches to avoid OOM (`NODE_OPTIONS="--max-old-space-size=4096"` if running all at once).
+- **Local dev**: `npm run dev` starts Vite + `wrangler dev` together. `shimQueuesForLocalDev()` routes queue sends back through `handleQueue` in-process, so pipeline stages execute synchronously without Cloudflare Queues provisioning.
+- **Database**: Prisma 7 with the Cloudflare runtime adapter and a parallel Node.js generator (`src/generated/prisma-node`) for scripts (`db:check`, `seed`, etc.). After `prisma generate`, commit the `src/generated/prisma/index.ts` barrel export (gitignored) — regenerate with `npx prisma generate`.
+- **npm installs**: `--legacy-peer-deps` is required because of Clerk's peer-dep layout.
+- **Neon free tier**: Expect 5–10 s cold starts on the first query per idle window.
+- **Testing**: Worker tests run in batches because of Vitest memory use (`NODE_OPTIONS="--max-old-space-size=4096"` for whole suites). See [guides/development.md](./guides/development.md).
+- **Deploys**: CI runs `prisma migrate deploy` before `wrangler deploy` (staging on push to `main`, production via `/deploy-production` workflow). See [guides/production-deployment.md](./guides/production-deployment.md) and [guides/prisma-migrations.md](./guides/prisma-migrations.md).
