@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Play } from "lucide-react";
 import { useApiFetch } from "../lib/api-client";
 import { useFetch } from "../lib/use-fetch";
@@ -7,6 +7,7 @@ import { FeedSkeleton } from "../components/skeletons/feed-skeleton";
 import { CuratedRow } from "../components/curated-row";
 import { useOnboarding } from "../contexts/onboarding-context";
 import { useAudio } from "../contexts/audio-context";
+import { useStorage } from "../contexts/storage-context";
 import { InstallPrompt } from "../components/install-prompt";
 import { CancelBlippDialog } from "../components/cancel-blipp-dialog";
 import { usePullToRefresh } from "../hooks/use-pull-to-refresh";
@@ -22,6 +23,7 @@ import { EmptyStateSection } from "./Home/EmptyStateSection";
 export function Home() {
   const apiFetch = useApiFetch();
   const audio = useAudio();
+  const { prefetcher, manager } = useStorage();
   const { needsOnboarding } = useOnboarding();
   const [swipeHintDismissed, setSwipeHintDismissed] = useState(() => !!localStorage.getItem("swipe-hint-seen"));
   const [cancelTarget, setCancelTarget] = useState<string | null>(null);
@@ -50,6 +52,16 @@ export function Home() {
   } = useFeed();
 
   const { data: curatedData } = useFetch<CuratedResponse>("/recommendations/curated");
+
+  useEffect(() => {
+    if (!items || items.length === 0) return;
+    void prefetcher.scheduleFromFeed(items);
+    void manager
+      .pruneNotInFeed(
+        items.map((i) => i.briefing?.id).filter(Boolean) as string[],
+      )
+      .catch(() => {});
+  }, [items, prefetcher, manager]);
 
   const { indicator: pullIndicator, bind: pullBind } = usePullToRefresh({
     onRefresh: fetchFeed,

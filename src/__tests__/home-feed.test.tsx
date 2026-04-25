@@ -54,6 +54,31 @@ vi.mock("../contexts/podcast-sheet-context", () => ({
   usePodcastSheet: () => ({ open: vi.fn(), close: vi.fn() }),
 }));
 
+vi.mock("../contexts/storage-context", () => ({
+  useStorage: () => ({
+    manager: {
+      getPlayableUrl: vi.fn().mockResolvedValue("blob:test"),
+      markListened: vi.fn().mockResolvedValue(undefined),
+      pruneNotInFeed: vi.fn().mockResolvedValue(undefined),
+    },
+    prefetcher: {
+      scheduleFromFeed: vi.fn().mockResolvedValue(undefined),
+      scheduleNextInQueue: vi.fn().mockResolvedValue(undefined),
+      cancelInflight: vi.fn(),
+      pause: vi.fn(),
+      resume: vi.fn(),
+    },
+    usage: null,
+    isReady: true,
+    refreshUsage: vi.fn(),
+    clearCache: vi.fn(),
+    setBudget: vi.fn(),
+    cellularEnabled: false,
+    setCellularEnabled: vi.fn(),
+  }),
+  StorageProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
+
 import { Home } from "../pages/Home";
 
 const makeItem = (id: string, overrides: Partial<FeedItem> = {}): FeedItem => ({
