@@ -309,3 +309,86 @@ describe("Prefetcher pause/resume", () => {
     expect(await manager.has("br_a")).toBe(true);
   });
 });
+
+describe("Prefetcher.cancelInflight", () => {
+  let prefetcher: Prefetcher;
+  let manager: StorageManager;
+
+  beforeEach(async () => {
+    manager = await makeManager();
+    prefetcher = new Prefetcher(manager, { cellularEnabled: true });
+    const { getNetworkTier } = await import("../lib/network-tier");
+    (getNetworkTier as any).mockReturnValue("wifi");
+  });
+
+  afterEach(() => {
+    prefetcher.dispose();
+    globalThis.fetch = originalFetch;
+    vi.clearAllMocks();
+  });
+
+  it("aborts the in-flight fetch when the matching briefingId is canceled", async () => {
+    const aborts: AbortSignal[] = [];
+    globalThis.fetch = vi.fn((url: any, init: any = {}) => {
+      aborts.push(init.signal);
+      const u = String(url);
+      if (u.includes("/audio-url")) {
+        const id = u.match(/briefings\/(.+?)\/audio-url/)![1];
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            url: `/api/briefings/${id}/audio?t=t&exp=9`,
+            expiresAt: 9,
+          }),
+        } as any);
+      }
+      // Audio bytes — block until canceled.
+      return new Promise((_resolve, reject) => {
+        init.signal?.addEventListener("abort", () =>
+          reject(new DOMException("Aborted", "AbortError")),
+        );
+      });
+    });
+
+    await prefetcher.scheduleFromFeed([
+      { id: "fi_a", briefing: { id: "br_a" } } as any,
+    ]);
+    // Wait for fetch to start (audio-url + audio bytes call must both have
+    // dispatched, so the second fetch is the one we abort).
+    await new Promise((r) => setTimeout(r, 20));
+
+    prefetcher.cancelInflight("br_a");
+    await prefetcher.drainForTesting();
+
+    expect(await manager.has("br_a")).toBe(false);
+    expect(aborts.some((s) => s?.aborted)).toBe(true);
+  });
+
+  it("does nothing when canceling a different briefingId", async () => {
+    let didFinish = false;
+    globalThis.fetch = vi.fn(async (url: any) => {
+      const u = String(url);
+      if (u.includes("/audio-url")) {
+        const id = u.match(/briefings\/(.+?)\/audio-url/)![1];
+        return {
+          ok: true,
+          json: async () => ({
+            url: `/api/briefings/${id}/audio?t=t&exp=9`,
+            expiresAt: 9,
+          }),
+        } as any;
+      }
+      didFinish = true;
+      return { ok: true, blob: async () => new Blob([new Uint8Array(8)]) } as any;
+    });
+
+    await prefetcher.scheduleFromFeed([
+      { id: "fi_a", briefing: { id: "br_a" } } as any,
+    ]);
+    prefetcher.cancelInflight("br_other");
+    await prefetcher.drainForTesting();
+
+    expect(didFinish).toBe(true);
+    expect(await manager.has("br_a")).toBe(true);
+  });
+});

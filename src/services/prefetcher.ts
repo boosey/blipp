@@ -21,6 +21,7 @@ export class Prefetcher {
   private running = false;
   private disposed = false;
   private currentAbort: AbortController | null = null;
+  private currentBriefingId: string | null = null;
   private tickPending = false;
   private paused = false;
   private onlineHandler = () => this.resume();
@@ -38,6 +39,14 @@ export class Prefetcher {
   pause(): void {
     this.paused = true;
     this.currentAbort?.abort();
+  }
+
+  cancelInflight(briefingId: string): void {
+    if (this.currentBriefingId === briefingId) {
+      this.currentAbort?.abort();
+    }
+    const idx = this.queue.indexOf(briefingId);
+    if (idx >= 0) this.queue.splice(idx, 1);
   }
 
   resume(): void {
@@ -146,6 +155,7 @@ export class Prefetcher {
 
   private async fetchAndStore(briefingId: string): Promise<void> {
     this.currentAbort = new AbortController();
+    this.currentBriefingId = briefingId;
     try {
       const urlRes = await fetch(`/api/briefings/${briefingId}/audio-url`, {
         credentials: "include",
@@ -162,6 +172,7 @@ export class Prefetcher {
       // Silent. Next feed event will re-enqueue.
     } finally {
       this.currentAbort = null;
+      this.currentBriefingId = null;
     }
   }
 }
