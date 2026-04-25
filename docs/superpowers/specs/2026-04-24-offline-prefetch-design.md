@@ -19,7 +19,7 @@ The product bar for this work is **audio-only offline (v1)** with **near-instant
 |---|---|---|
 | Q1 | Throttled prefetch by network tier: next 2 on cellular, next 10 on Wi-Fi. Counts not user-tunable. | Pure Wi-Fi-only would not solve the cellular delay problem. Pure unbounded prefetch risks "this app ate my data plan" reviews. |
 | Q2 | Storage cap is byte-budget only (existing 250 MB / 500 MB / 1 GB / 2 GB). Item count shown as info, not a cap. | Blipps vary in length. A "30 items" cap could mean 30 MB or 300 MB — confusing abstraction. |
-| Q3 | Cold-start uses **R2 presigned URLs** for streaming playback (`audio.src = url` directly). | Even with prefetch, some taps land on uncached items. Streaming on first byte is required for "near instantaneous" in those cases. |
+| Q3 | Cold-start uses **short-lived signed URLs** for streaming playback (`audio.src = url` directly). Implementation chosen during planning: HMAC-signed query token on the existing `/audio` route (rather than R2 presigned URLs — see Architecture §1 for rationale). | Even with prefetch, some taps land on uncached items. Streaming on first byte is required for "near instantaneous" in those cases. |
 | Q4 | Scope: audio-only offline (v1). Full offline (feed cache, outbox, listened-state replay) tracked separately. | Most podcast apps ship audio-only as v1 offline. Outbox semantics are a separable project with their own conflict-resolution decisions. |
 | Q5 | Prefetch trigger: feed events + while-listening top-up. | Pure feed-event prefetch misses the Play-All-then-skip case. Continuous background loop is over-engineered. |
 
@@ -27,18 +27,28 @@ The product bar for this work is **audio-only offline (v1)** with **near-instant
 
 Three layers, each with one job.
 
-### 1. Server: presigned URL endpoint
+### 1. Server: signed URL endpoint
 
-New: `GET /api/briefings/:id/audio-url` → `{ url: string, expiresAt: number }`. Auth via existing global `clerkMiddleware()`. Returns a short-lived (5 minute TTL) R2 presigned GET URL for the briefing's audio object.
+New: `GET /api/briefings/:id/audio-url` → `{ url: string, expiresAt: number }`. Auth via existing global `clerkMiddleware()`. Returns a short-lived (5 minute TTL) URL of the form:
 
-The existing `/api/briefings/:id/audio` proxy endpoint stays — admin tools (`worker/routes/admin/briefings.ts:192`) depend on it. The player stops using it.
+```
+/api/briefings/:id/audio?t=<hex-hmac>&exp=<unix-seconds>
+```
+
+The token is `HMAC-SHA256(secret, "${briefingId}.${userId}.${exp}")`, hex-encoded. The signed payload is bound to the requesting user so a leaked token can't be used by other accounts.
+
+The existing `/api/briefings/:id/audio` route (`worker/routes/briefings.ts:271-325`) is modified to accept either Clerk auth (today's path, kept for admin tools) **or** a valid `t`+`exp` query token. The route already streams from R2 with full `Range`/`Accept-Ranges` support — no streaming code changes needed.
+
+**Why HMAC token over R2 presigned URLs:** considered during planning. R2 SigV4 presigning requires three new env secrets (R2 account ID + access key + secret access key) plus a SigV4 signer (~60 LOC or a dependency). HMAC tokens reuse a pattern already present in the codebase (`SUBSCRIPTION_RESUME_SECRET`) and add zero new credentials. The trade-off is that the Worker stays in the streaming path (vs. browser hitting R2 directly with a presigned URL), which costs Worker CPU but no extra secrets to manage. Acceptable at current scale; worth revisiting if egress becomes a measurable cost.
+
+**HMAC secret:** new optional env var `AUDIO_TOKEN_SECRET`. If unset, derive from `CLERK_WEBHOOK_SECRET` via `HMAC-SHA256(CLERK_WEBHOOK_SECRET, "audio-token-v1")` — same fallback pattern as `SUBSCRIPTION_RESUME_SECRET`.
 
 ### 2. Client: StorageManager as the single source of truth for cached audio
 
 The existing `StorageManager` class is wired into the audio path. Three new methods:
 
-- `getPlayableUrl(briefingId): Promise<string>` — returns a local `blob://` (web) or `file://` (native) URL if cached; otherwise fetches the presigned URL, returns it, and concurrently kicks off a background download-to-store so the next play of this item is instant.
-- `prefetch(briefingId): Promise<void>` — fetch presigned URL, download bytes, call existing `store()`.
+- `getPlayableUrl(briefingId): Promise<string>` — returns a local `blob://` (web) or `file://` (native) URL if cached; otherwise fetches a signed URL from `/api/briefings/:id/audio-url`, returns it, and concurrently kicks off a background download-to-store so the next play of this item is instant.
+- `prefetch(briefingId): Promise<void>` — fetch signed URL, download bytes, call existing `store()`.
 - `pruneNotInFeed(activeBriefingIds: string[]): Promise<void>` — eviction extension; reaps cached entries whose `briefingId` is no longer in the user's feed.
 
 Eviction policy stays as documented (listened > 24h → unlistened oldest-cached → recently listened, never the currently-playing item). Prefetched-but-unplayed items sit in the unlistened bucket and are evicted oldest-cached-first if the budget is reached. The prefetcher will refill on the next feed event.
@@ -72,7 +82,7 @@ user taps blipp
 audio-context calls storageManager.getPlayableUrl(briefingId)
   ↓
   cache HIT  → returns blob:// or file:// URL → audio.src = url → play() — INSTANT
-  cache MISS → fetch /api/briefings/:id/audio-url → audio.src = presignedUrl → play()
+  cache MISS → fetch /api/briefings/:id/audio-url → audio.src = signedUrl → play()
                                                   → fire-and-forget: download bytes,
                                                     storageManager.store() so the
                                                     second play is instant
@@ -98,7 +108,7 @@ prefetcher.scheduleFromFeed(feedItems)
 worker loop (single concurrent):
   for each pending briefingId:
     if !navigator.onLine break
-    get presigned URL → fetch bytes → storageManager.store(briefingId, blob)
+    get signed URL → fetch bytes → storageManager.store(briefingId, blob)
     if user starts playing something → pause until audio.canplay, then resume
 
 audio.canplay (currently-playing track has buffered enough):
@@ -121,8 +131,7 @@ audio.canplay (currently-playing track has buffered enough):
 
 ### New files
 
-- `worker/routes/briefings-audio-url.ts` — single GET handler that resolves the briefing → R2 key → presigned URL. Mounted under existing briefings route group. ~40 LOC.
-- `worker/lib/r2-presign.ts` — thin wrapper around AWS SigV4 presign for R2 (R2 supports S3-compatible presigning). ~60 LOC.
+- `worker/lib/audio-token.ts` — HMAC sign/verify for audio URL tokens. Exports `signAudioToken({ briefingId, userId, ttlSeconds })` and `verifyAudioToken({ briefingId, userId, token, exp })`. Uses Web Crypto subtle API (already in the Worker runtime). ~50 LOC.
 - `src/services/prefetcher.ts` — the coordinator. Singleton with `scheduleFromFeed`, `scheduleNextInQueue`, `pause`, `resume`. Internally manages queue + single-concurrent worker loop + `online`/`offline` listeners + Network Information API classification. ~200 LOC.
 - `src/lib/network-tier.ts` — small utility returning `"wifi" | "cellular" | "offline"`. Wraps `navigator.onLine` + `navigator.connection`, with iOS Safari fallback. ~30 LOC.
 - Tests: `src/__tests__/prefetcher.test.ts`, extensions to `src/__tests__/storage-manager.test.ts` (or equivalent path), `worker/routes/__tests__/briefings-audio-url.test.ts`.
@@ -134,7 +143,9 @@ audio.canplay (currently-playing track has buffered enough):
 - `src/contexts/storage-context.tsx` — initialize the prefetcher singleton with the manager.
 - Feed-load call sites (likely `src/pages/Home.tsx` and the feed hook): call `prefetcher.scheduleFromFeed(items)` after a successful feed fetch. One or two call sites.
 - `src/components/storage-settings.tsx` — add a single "Prefetch on cellular: off / on" toggle (default off). No "next N" knobs. Wired to a `localStorage`-backed setting the prefetcher reads.
-- `worker/routes/briefings.ts` (or wherever the audio routes mount) — register the new `audio-url` route.
+- `worker/routes/briefings.ts` — register the new `GET /:id/audio-url` route. Modify the existing `GET /:id/audio` handler to accept either today's auth path or a valid query-token path.
+- `worker/types.ts` — add optional `AUDIO_TOKEN_SECRET?: string` env var.
+- `tests/helpers/mocks.ts` — extend `createMockEnv()` with `AUDIO_TOKEN_SECRET: "audio_secret_mock"`.
 
 ### Explicitly NOT doing
 
@@ -146,21 +157,24 @@ audio.canplay (currently-playing track has buffered enough):
 
 ## Error handling
 
-### Server: presigned URL endpoint
+### Server: signed URL endpoint
 
 | Case | Behavior |
 |---|---|
 | Briefing not found / wrong user | 404 (existing auth pattern) |
-| R2 object missing (audio not yet generated) | 409 with `{ error: "audio_not_ready" }`. Client treats as "skip; let pipeline finish." |
-| Presign failure (bad credentials, R2 transient) | 500. Client logs and skips (prefetch) or surfaces "couldn't load" (tap-to-play). |
-| Repeated presign for same briefing | Acceptable. Presign is cheap (no R2 call, just SigV4). No rate limit. |
+| R2 object missing on `audio-url` request (`audioKey` null) | 409 with `{ error: "audio_not_ready" }`. Client treats as "skip; let pipeline finish." |
+| Sign failure (missing secret) | 500. Client logs and skips (prefetch) or surfaces "couldn't load" (tap-to-play). |
+| Repeated calls for same briefing | Acceptable. Sign is cheap (HMAC, no R2 call). No rate limit. |
+| `/audio` request with expired token | 401 with `{ error: "token_expired" }`. Client falls through to fetch a fresh URL. |
+| `/audio` request with invalid token (wrong signature, wrong user) | 401. Logged. |
+| `/audio` request with valid token AND existing Clerk auth | Token wins (skip Clerk verify). No conflict. |
 
 ### Client: `getPlayableUrl` (tap-to-play)
 
 | Case | Behavior |
 |---|---|
-| Manifest says cached but `readBlob` returns null (corrupted / partial / OS-deleted) | Treat as miss. Best-effort `manager.remove()`, fall through to presigned URL fetch. |
-| Presigned URL fetch fails (offline, 5xx) | Throw to audio-context, which surfaces existing "Failed to load audio" error state. No regression vs. today. |
+| Manifest says cached but `readBlob` returns null (corrupted / partial / OS-deleted) | Treat as miss. Best-effort `manager.remove()`, fall through to signed URL fetch. |
+| Signed URL fetch fails (offline, 5xx) | Throw to audio-context, which surfaces existing "Failed to load audio" error state. No regression vs. today. |
 | `audio.src = url` fails to play | Existing audio-context error path. No new code. |
 | Background download-to-store fails after instant play succeeded | Silent. User got their playback; we'll re-prefetch on next feed event. |
 
@@ -172,7 +186,7 @@ audio.canplay (currently-playing track has buffered enough):
 | `storageManager.store()` throws because `evictUntilFits` couldn't free space | Log + drop. Means budget is full of protected items; user should clear or raise budget. |
 | Network flips Wi-Fi → cellular mid-prefetch | Current download finishes (already in flight). Subsequent items get re-classified at dequeue time. |
 | User goes offline mid-prefetch | `fetch` rejects → drop the item. `online` event resumes the loop on reconnect from current feed state. |
-| User taps a blipp currently being prefetched | Tap path wins: cancel background fetch via `AbortController`, fetch presigned URL fresh for `audio.src`, restart prefetch as the background-store side of the tap path. |
+| User taps a blipp currently being prefetched | Tap path wins: cancel background fetch via `AbortController`, fetch signed URL fresh for `audio.src`, restart prefetch as the background-store side of the tap path. |
 | Storage budget too small to hold the current prefetch target | `evictUntilFits` runs. If still no room, store fails → drop, log. |
 
 ### Cross-cutting
@@ -197,7 +211,7 @@ audio.canplay (currently-playing track has buffered enough):
 
 - `src/services/storage-manager.ts` extensions:
   - `getPlayableUrl` cache hit returns existing blob URL without network
-  - `getPlayableUrl` cache miss fetches presigned URL, sets up background store
+  - `getPlayableUrl` cache miss fetches signed URL, sets up background store
   - Corrupted-blob recovery (manifest yes, blob null → falls through cleanly)
   - `pruneNotInFeed` reaps absent entries, preserves currently-playing
   - Eviction with prefetched-but-unplayed items is oldest-cached-first within unlistened bucket
@@ -214,11 +228,24 @@ audio.canplay (currently-playing track has buffered enough):
 - `src/lib/network-tier.ts`: mock `navigator` shapes.
 
 - `worker/routes/__tests__/briefings-audio-url.test.ts`:
-  - 200 with `{ url, expiresAt }` for owner
+  - 200 with `{ url, expiresAt }` for owner; URL contains valid `t` and `exp` query params
   - 404 for cross-user briefing
   - 409 when audio R2 key is missing
-  - URL TTL ≤ 5 minutes
-  - URL is signed (basic shape check, not byte-for-byte SigV4)
+  - `expiresAt` is ≤ 5 minutes in the future
+  - Returned token verifies via `verifyAudioToken` for the owner; fails for a different userId
+
+- `worker/lib/__tests__/audio-token.test.ts`:
+  - Round-trip sign → verify succeeds
+  - Verify fails on tampered token
+  - Verify fails on expired exp
+  - Verify fails on different briefingId / userId
+  - Falls back to derived secret when `AUDIO_TOKEN_SECRET` unset
+
+- `worker/routes/__tests__/briefings-audio.test.ts` (extends existing if present, else new):
+  - Existing Clerk-auth path still returns audio (regression)
+  - Valid query token returns audio without Clerk auth header
+  - Expired token returns 401 `token_expired`
+  - Invalid signature returns 401
 
 ### Integration-testable (vitest with mocked Capacitor + IndexedDB)
 
@@ -228,7 +255,7 @@ audio.canplay (currently-playing track has buffered enough):
 
 1. Fresh install on staging, log in, feed loads. DevTools → Application → IndexedDB / Cache: prefetched items appear.
 2. Tap a prefetched item: playback starts in <200 ms. No `/api/briefings/:id/audio-url` request, only local blob URL.
-3. Tap an item not yet prefetched (scroll bottom): one `/api/briefings/:id/audio-url` call, then presigned URL streams. Audio starts on first byte.
+3. Tap an item not yet prefetched (scroll bottom): one `/api/briefings/:id/audio-url` call, then the signed URL streams the audio bytes. Audio starts on first byte.
 4. Airplane mode: previously-prefetched items still play instantly. Uncached items show "Failed to load audio."
 5. Listen to one blipp; next 1-2 in queue prefetch (Network panel) before current finishes.
 6. Cellular simulation (Network panel → Slow 3G + cellular flag): only 2 items prefetch.
@@ -238,14 +265,13 @@ audio.canplay (currently-playing track has buffered enough):
 
 ### Explicitly NOT testing
 
-- R2 SigV4 byte-for-byte. Trust the signing library; smoke against real R2 bucket suffices.
 - iOS Safari pressure-based eviction. Cannot simulate in vitest. Behavior under eviction is "manifest yes, blob no" which IS unit-tested.
 - Intro jingle, queue, listened-timer, media-session-metadata code in audio-context. Out of scope.
 - E2E Playwright/iOS-detox. Cost-to-value isn't there for this team yet.
 
 ## Rollout
 
-1. **Server first**: ship `/api/briefings/:id/audio-url` behind env flag `ENABLE_AUDIO_PRESIGN`. Deploy, verify presigning works in staging, R2 credentials correct, no auth holes. No client behavior changes yet.
+1. **Server first**: ship `/api/briefings/:id/audio-url` and the token-auth branch on `/audio` behind env flag `ENABLE_AUDIO_TOKEN`. Deploy, verify token signing works in staging, no auth holes (cross-user access still 404s). No client behavior changes yet.
 2. **Client wiring**: ship StorageManager integration + prefetcher behind a single client flag. Default is environment-driven via a build-time constant read from `import.meta.env.MODE` (or equivalent): `true` in staging, `false` in production initially. A user can override their own default by setting `localStorage.setItem("blipp.prefetch.enabled", "true" | "false")` for QA / debugging. The flag gates the entire client-side change: when `false`, `audio-context` falls back to today's `fetch → blob → URL.createObjectURL` path and the prefetcher does not initialize.
 3. **Production enable**: flip the localStorage default to `true` in production after a few days of staging soak.
 4. **Cleanup pass**: ~2 weeks after stable, remove the feature flag and the `/api/briefings/:id/audio` blob-fetch path from the client. Server route stays for admin tools. The SW `CacheFirst` rule on `/api/briefings/:id/audio` in `src/sw.ts` becomes dead code (the player no longer hits that URL) and should be removed in this same cleanup pass.
@@ -255,7 +281,7 @@ audio.canplay (currently-playing track has buffered enough):
 | Metric | Target | Measurement |
 |---|---|---|
 | Tap-to-first-byte (cache hit) | p50 < 100 ms, p95 < 200 ms | Console-logged timing in audio-context (tap → `audio.play()` resolved) |
-| Tap-to-first-byte (cache miss, presigned) | p50 < 600 ms, p95 < 1500 ms | Same |
+| Tap-to-first-byte (cache miss, signed URL) | p50 < 600 ms, p95 < 1500 ms | Same |
 | Cache hit rate on tap | > 80% in normal usage | Prefetcher logs hit/miss to console |
 | Storage budget compliance | 0 manifest entries above budget after 24h soak | Manual via Settings → Storage |
 
@@ -265,8 +291,7 @@ These are not piped to dashboards in v1. They're the "we sat with the app for an
 
 ### Accepted (live with):
 
-- **iOS WKWebView R2 presigned URL CORS.** Bucket needs `AllowedOrigins: ["https://podblipp.com", "https://staging.podblipp.com", "capacitor://localhost"]`. Smoke test #2 catches if it's missing.
-- **Presigned URL TTL races.** 5 min TTL → "Play All" + walk away for 6 min could fail next track. Mitigation: presigned URLs fetched at play-time, not queue-time. Already in design.
+- **Token TTL races.** 5 min TTL → "Play All" + walk away for 6 min could fail next track. Mitigation: signed URLs fetched at play-time, not queue-time. Already in design.
 - **First-day-after-launch storage spike.** Up to ~50 MB per user per Wi-Fi session. R2 egress cost is real. Check the bill the week after rollout.
 - **Tap-during-prefetch race.** If AbortController/handoff has a bug, worst case is doubled fetch. Wasted bandwidth, not broken UX.
 
@@ -281,7 +306,7 @@ These are not piped to dashboards in v1. They're the "we sat with the app for an
 ## Rollback plan
 
 - Flip `blipp.prefetch.enabled` to `false`. Clients re-read on next page load. Players fall back to today's `/api/briefings/:id/audio` blob-fetch path, which is unchanged.
-- Worst-case server: disable new route via `ENABLE_AUDIO_PRESIGN=false` env var on the worker.
+- Worst-case server: disable new route via `ENABLE_AUDIO_TOKEN=false` env var on the worker.
 - Either rollback path is < 5 minutes and zero data loss.
 
 ## Open follow-ups (not in v1 scope)
