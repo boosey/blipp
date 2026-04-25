@@ -119,4 +119,8 @@ export type Env = {
   SERVICE_KEY_ENCRYPTION_KEY?: string;
   /** Worker script name for CF API secret sync ("blipp" or "blipp-staging") */
   WORKER_SCRIPT_NAME?: string;
+  /** HMAC secret for audio URL tokens (optional — falls back to derivation off CLERK_WEBHOOK_SECRET) */
+  AUDIO_TOKEN_SECRET?: string;
+  /** Server kill-switch for the audio token endpoint. If "false", `/audio-url` returns 503. */
+  ENABLE_AUDIO_TOKEN?: string;
 };

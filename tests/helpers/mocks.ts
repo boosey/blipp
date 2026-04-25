@@ -124,6 +124,8 @@ export function createMockEnv(): Env {
     CLERK_FAPI_URL: "https://clerk.test.example.com",
     SERVICE_KEY_ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", // tests use their own key; staging/prod use separate keys
     WORKER_SCRIPT_NAME: "blipp-staging",
+    AUDIO_TOKEN_SECRET: "audio_secret_mock",
+    ENABLE_AUDIO_TOKEN: "true",
   };
 }
 
