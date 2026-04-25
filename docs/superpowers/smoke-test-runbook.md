@@ -34,7 +34,7 @@ fetch('/api/briefings/__nope__/audio-url', { credentials: 'include' }).then(r =>
 **Pass:** `401`. (The 401 — not 500 — also verifies P1.)
 **Fail:** `404` → route not deployed; `500` → P1 regression.
 
-## Status snapshot (paused 2026-04-25, staging at `c78c58d`)
+## Status snapshot (resumed 2026-04-25, staging at `a614d1b`)
 
 | Check | Status | Notes |
 |---|---|---|
@@ -43,11 +43,11 @@ fetch('/api/briefings/__nope__/audio-url', { credentials: 'include' }).then(r =>
 | 2 | ✅ | `srcType: 'blob'`, no `/audio-url` request |
 | 3 | ✅ | 1 `/audio-url` call, plays via signed `audio?t=<token>` |
 | 4 | ✅ | Prefetched plays offline; unprefetched fails |
-| 5 | ❌ | `handleCanPlay` reads empty play-queue, never tops up. **GitHub issue #7** |
-| 6 | ⏭️ | Desktop can't simulate cellular tier (read-only `navigator.connection`); covered by unit tests |
+| 5 | ✅ | After issue #7 fix (`a614d1b`): N=11 → M=15 with 7 background `audio?t=` fetches |
+| 6 | ✅ | Toggle persists to `localStorage` correctly (null default = off; click flips `"true"`/`"false"`). Forced-cellular reload path skipped — `Object.defineProperty(navigator)` doesn't survive reload; cellular policy covered by `prefetcher.test.ts` |
 | 7 | ⏭️ | Real-iPhone Capacitor — only the human can run |
 | 8 | ⏭️ | Cross-user cache eviction — needs second user account |
-| 9 | ⏭️ | Storage budget eviction — not run |
+| 9 | ✅ | Manual run skipped (UI min budget 250 MB ≫ ~75 MB usage). Eviction order covered by 7 new unit tests in `src/__tests__/storage-manager.test.ts` ("StorageManager eviction policy") |
 
 ## Check 1: Prefetched items appear in IndexedDB / Cache after feed load
 
