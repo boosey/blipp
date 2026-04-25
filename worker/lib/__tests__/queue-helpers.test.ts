@@ -5,7 +5,7 @@ vi.mock("../config", () => ({
 }));
 
 import { getConfig } from "../config";
-import { checkStageEnabled, ackAll } from "../queue-helpers";
+import { checkStageEnabled, ackAll, claimEpisodeStage, releaseEpisodeStage, STALE_LOCK_MS, LOCK_RETRY_DELAY_S } from "../queue-helpers";
 
 describe("checkStageEnabled", () => {
   const mockLog = { info: vi.fn() };
@@ -109,5 +109,138 @@ describe("ackAll", () => {
 
   it("handles empty list", () => {
     expect(() => ackAll([])).not.toThrow();
+  });
+});
+
+describe("claimEpisodeStage", () => {
+  let prisma: any;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    prisma = {
+      distillation: {
+        updateMany: vi.fn(),
+        findUnique: vi.fn(),
+      },
+    };
+  });
+
+  it("returns claimed:true when the CAS update affects 1 row", async () => {
+    prisma.distillation.updateMany.mockResolvedValue({ count: 1 });
+
+    const result = await claimEpisodeStage({
+      prisma,
+      episodeId: "ep1",
+      lockField: "transcriptionStartedAt",
+      requiredStatus: "PENDING",
+    });
+
+    expect(result).toEqual({ claimed: true });
+    expect(prisma.distillation.updateMany).toHaveBeenCalledWith({
+      where: {
+        episodeId: "ep1",
+        status: "PENDING",
+        OR: [
+          { transcriptionStartedAt: null },
+          { transcriptionStartedAt: { lt: expect.any(Date) } },
+        ],
+      },
+      data: { transcriptionStartedAt: expect.any(Date) },
+    });
+  });
+
+  it("returns claimed:false reason:held when status matches but lock is fresh", async () => {
+    prisma.distillation.updateMany.mockResolvedValue({ count: 0 });
+    prisma.distillation.findUnique.mockResolvedValue({
+      status: "PENDING",
+      transcriptionStartedAt: new Date(),
+    });
+
+    const result = await claimEpisodeStage({
+      prisma,
+      episodeId: "ep1",
+      lockField: "transcriptionStartedAt",
+      requiredStatus: "PENDING",
+    });
+
+    expect(result).toEqual({ claimed: false, reason: "held" });
+  });
+
+  it("returns claimed:false reason:completed when status has advanced", async () => {
+    prisma.distillation.updateMany.mockResolvedValue({ count: 0 });
+    prisma.distillation.findUnique.mockResolvedValue({
+      status: "TRANSCRIPT_READY",
+      transcriptionStartedAt: null,
+    });
+
+    const result = await claimEpisodeStage({
+      prisma,
+      episodeId: "ep1",
+      lockField: "transcriptionStartedAt",
+      requiredStatus: "PENDING",
+    });
+
+    expect(result).toEqual({ claimed: false, reason: "completed" });
+  });
+
+  it("uses staleMs override when provided", async () => {
+    prisma.distillation.updateMany.mockResolvedValue({ count: 1 });
+    const before = Date.now();
+
+    await claimEpisodeStage({
+      prisma,
+      episodeId: "ep1",
+      lockField: "distillationStartedAt",
+      requiredStatus: "TRANSCRIPT_READY",
+      staleMs: 60_000,
+    });
+
+    const after = Date.now();
+    const call = prisma.distillation.updateMany.mock.calls[0][0];
+    const staleAt = call.where.OR[1].distillationStartedAt.lt as Date;
+    expect(staleAt.getTime()).toBeGreaterThanOrEqual(before - 60_000 - 10);
+    expect(staleAt.getTime()).toBeLessThanOrEqual(after - 60_000 + 10);
+  });
+
+  it("exports STALE_LOCK_MS = 10 minutes and LOCK_RETRY_DELAY_S = 30s", () => {
+    expect(STALE_LOCK_MS).toBe(10 * 60 * 1000);
+    expect(LOCK_RETRY_DELAY_S).toBe(30);
+  });
+});
+
+describe("releaseEpisodeStage", () => {
+  let prisma: any;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    prisma = {
+      distillation: {
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+    };
+  });
+
+  it("clears the named lock field for the episode", async () => {
+    await releaseEpisodeStage({
+      prisma,
+      episodeId: "ep1",
+      lockField: "transcriptionStartedAt",
+    });
+
+    expect(prisma.distillation.updateMany).toHaveBeenCalledWith({
+      where: { episodeId: "ep1" },
+      data: { transcriptionStartedAt: null },
+    });
+  });
+
+  it("swallows DB errors silently", async () => {
+    prisma.distillation.updateMany.mockRejectedValue(new Error("connection lost"));
+    await expect(
+      releaseEpisodeStage({
+        prisma,
+        episodeId: "ep1",
+        lockField: "distillationStartedAt",
+      })
+    ).resolves.toBeUndefined();
   });
 });

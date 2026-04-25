@@ -126,3 +126,78 @@ export async function sendBatchedFeedRefresh(
     await queue.sendBatch(messages.slice(i, i + CF_SEND_BATCH_LIMIT));
   }
 }
+
+// Stale-lock TTL: workers older than this are presumed crashed and may be displaced.
+// 10 minutes comfortably exceeds worst-case healthy completion (Whisper ~2-3 min, distillation LLM ~30s).
+export const STALE_LOCK_MS = 10 * 60 * 1000;
+
+// Re-queue delay when another worker holds the upstream lock.
+export const LOCK_RETRY_DELAY_S = 30;
+
+export type EpisodeStageLockField = "transcriptionStartedAt" | "distillationStartedAt";
+export type EpisodeStageRequiredStatus = "PENDING" | "TRANSCRIPT_READY";
+
+export type ClaimResult =
+  | { claimed: true }
+  | { claimed: false; reason: "held" | "completed" };
+
+/**
+ * Atomically claim an upstream pipeline stage for an episode using
+ * compare-and-set on the Distillation row. The claim succeeds only if the
+ * row's status matches `requiredStatus` AND the lock field is null or stale.
+ *
+ * Callers must ensure a Distillation row exists for the episode (via upsert)
+ * before calling this.
+ */
+export async function claimEpisodeStage(args: {
+  prisma: any;
+  episodeId: string;
+  lockField: EpisodeStageLockField;
+  requiredStatus: EpisodeStageRequiredStatus;
+  staleMs?: number;
+}): Promise<ClaimResult> {
+  const staleAt = new Date(Date.now() - (args.staleMs ?? STALE_LOCK_MS));
+
+  const result = await args.prisma.distillation.updateMany({
+    where: {
+      episodeId: args.episodeId,
+      status: args.requiredStatus,
+      OR: [
+        { [args.lockField]: null },
+        { [args.lockField]: { lt: staleAt } },
+      ],
+    },
+    data: { [args.lockField]: new Date() },
+  });
+
+  if (result.count === 1) return { claimed: true };
+
+  const row = await args.prisma.distillation.findUnique({
+    where: { episodeId: args.episodeId },
+    select: { status: true, [args.lockField]: true },
+  });
+
+  if (row && row.status !== args.requiredStatus) {
+    return { claimed: false, reason: "completed" };
+  }
+  return { claimed: false, reason: "held" };
+}
+
+/**
+ * Release a previously-acquired stage lock. Errors are swallowed — best-effort
+ * cleanup; stale recovery handles orphaned locks if this fails.
+ */
+export async function releaseEpisodeStage(args: {
+  prisma: any;
+  episodeId: string;
+  lockField: EpisodeStageLockField;
+}): Promise<void> {
+  try {
+    await args.prisma.distillation.updateMany({
+      where: { episodeId: args.episodeId },
+      data: { [args.lockField]: null },
+    });
+  } catch {
+    // best-effort
+  }
+}
