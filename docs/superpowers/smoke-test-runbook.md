@@ -45,7 +45,7 @@ fetch('/api/briefings/__nope__/audio-url', { credentials: 'include' }).then(r =>
 | 4 | ✅ | Prefetched plays offline; unprefetched fails |
 | 5 | ✅ | After issue #7 fix (`a614d1b`): N=11 → M=15 with 7 background `audio?t=` fetches |
 | 6 | ✅ | Toggle persists to `localStorage` correctly (null default = off; click flips `"true"`/`"false"`). Forced-cellular reload path skipped — `Object.defineProperty(navigator)` doesn't survive reload; cellular policy covered by `prefetcher.test.ts` |
-| 7 | ⏭️ | Real-iPhone Capacitor — only the human can run |
+| 7 | ⛔ | Blocked: iOS Capacitor playback itself is broken (intro jingle plays, then silence). Filed as issue #8. iOS staging-env wiring also incomplete — filed as issue #9. Will re-run after #8 is fixed |
 | 8 | ✅ | After fix `6c46764` (auth-state listener in `StorageProvider`): `<UserButton />` sign-out now triggers `clearCache`; `post_signout_count = 0`; sign-in as B shows `A_entry_present: false` |
 | 9 | ✅ | Manual run skipped (UI min budget 250 MB ≫ ~75 MB usage). Eviction order covered by 7 new unit tests in `src/__tests__/storage-manager.test.ts` ("StorageManager eviction policy") |
 
