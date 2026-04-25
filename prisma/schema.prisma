@@ -288,14 +288,16 @@ enum ContentStatus {
 // ── Distillation & Clips ──
 
 model Distillation {
-  id           String             @id @default(cuid())
-  episodeId    String             @unique
-  status       DistillationStatus @default(PENDING)
-  transcript   String?
-  claimsJson   Json? // Pass 1 output: scored claims
-  errorMessage String?
-  createdAt    DateTime           @default(now())
-  updatedAt    DateTime           @updatedAt
+  id                     String             @id @default(cuid())
+  episodeId              String             @unique
+  status                 DistillationStatus @default(PENDING)
+  transcript             String?
+  claimsJson             Json? // Pass 1 output: scored claims
+  errorMessage           String?
+  transcriptionStartedAt DateTime?
+  distillationStartedAt  DateTime?
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
 
   episode Episode @relation(fields: [episodeId], references: [id], onDelete: Cascade)
   clips   Clip[]
