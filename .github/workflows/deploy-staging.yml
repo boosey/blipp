@@ -77,6 +77,11 @@ jobs:
           VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY_STAGING }}
           VITE_APP_URL: ${{ vars.STAGING_URL }}
 
+      - name: Ensure Cloudflare queues exist
+        run: node scripts/ensure-queues.mjs staging
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
       - name: Deploy to Staging
         uses: cloudflare/wrangler-action@v3
         with:

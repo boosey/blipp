@@ -108,6 +108,11 @@ jobs:
       - name: Patch wrangler config for production
         run: node scripts/patch-wrangler-env.mjs production
 
+      - name: Ensure Cloudflare queues exist
+        run: node scripts/ensure-queues.mjs production
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
       - name: Deploy to Production
         uses: cloudflare/wrangler-action@v3
         with:
