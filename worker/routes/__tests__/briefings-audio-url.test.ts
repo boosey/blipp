@@ -5,9 +5,11 @@ import { briefings } from "../briefings";
 import { createMockEnv, createMockPrisma } from "../../../tests/helpers/mocks";
 import { verifyAudioToken } from "../../lib/audio-token";
 
+let currentAuth: { userId: string } | null = { userId: "user_1" };
+
 vi.mock("../../middleware/auth", () => ({
   requireAuth: vi.fn((_c: any, next: any) => next()),
-  getAuth: vi.fn(() => ({ userId: "user_1" })),
+  getAuth: vi.fn(() => currentAuth),
 }));
 
 vi.mock("../../lib/admin-helpers", () => ({
@@ -29,6 +31,7 @@ function buildApp(prisma: any) {
 describe("GET /:id/audio-url", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    currentAuth = { userId: "user_1" };
     (getCurrentUser as any).mockResolvedValue({ id: "user_db_1", clerkId: "user_1" });
   });
 
@@ -103,5 +106,20 @@ describe("GET /:id/audio-url", () => {
     const env = { ...createMockEnv(), ENABLE_AUDIO_TOKEN: "false" };
     const res = await app.request("/br_1/audio-url", { method: "GET" }, env);
     expect(res.status).toBe(503);
+  });
+
+  it("returns 401 unauthorized when no Clerk auth is present", async () => {
+    currentAuth = null;
+    const prisma = createMockPrisma();
+    const app = buildApp(prisma);
+    const res = await app.request(
+      "/br_1/audio-url",
+      { method: "GET" },
+      { ...createMockEnv() },
+    );
+    expect(res.status).toBe(401);
+    const body = await res.json() as { error: string };
+    expect(body.error).toBe("unauthorized");
+    expect(getCurrentUser as any).not.toHaveBeenCalled();
   });
 });

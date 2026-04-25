@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod/v4";
 import type { Env } from "../types";
-import { requireAuth } from "../middleware/auth";
+import { requireAuth, getAuth } from "../middleware/auth";
 import { getCurrentUser } from "../lib/admin-helpers";
 import { getUserWithPlan, checkDurationLimit, checkWeeklyBriefingLimit, checkPastEpisodesLimit } from "../lib/plan-limits";
 import { DURATION_TIERS } from "../lib/constants";
@@ -120,6 +120,15 @@ briefings.get("/:id/audio", async (c) => {
 briefings.get("/:id/audio-url", async (c) => {
   if (c.env.ENABLE_AUDIO_TOKEN === "false") {
     return c.json({ error: "audio_token_disabled" }, 503);
+  }
+
+  // This route is registered above `requireAuth` so the sibling /audio
+  // route's token branch can bypass Clerk. Guard explicitly here so an
+  // unauthenticated request returns 401 instead of crashing in
+  // getCurrentUser → getAuth(c)!.userId!.
+  const auth = getAuth(c);
+  if (!auth?.userId) {
+    return c.json({ error: "unauthorized" }, 401);
   }
 
   const briefingId = c.req.param("id");
