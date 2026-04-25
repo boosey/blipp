@@ -6,11 +6,10 @@ import {
   useRef,
   useState,
 } from "react";
-import { useAuth } from "@clerk/clerk-react";
 import type { FeedItem } from "../types/feed";
 import { useApiFetch } from "../lib/api-client";
 import { getJingleUrl } from "../lib/jingle-cache";
-import { getApiBase } from "../lib/api-base";
+import { useStorage } from "./storage-context";
 
 // Minimal silent WAV (22050Hz, 16-bit mono, 2 samples) used to "unlock"
 // the HTMLAudioElement on mobile within the user-gesture context.  Mobile
@@ -66,7 +65,7 @@ export function useAudio(): AudioContextValue {
 export function AudioProvider({ children }: { children: React.ReactNode }) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const apiFetch = useApiFetch();
-  const { getToken } = useAuth();
+  const { manager: storageManager } = useStorage();
 
   const [currentItem, setCurrentItem] = useState<FeedItem | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -117,16 +116,9 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       const audio = audioRef.current;
       if (!audio) return;
 
-      // Fetch audio with auth token — <audio> element can't send Authorization headers
       try {
-        const token = await getToken();
-        const res = await fetch(
-          `${getApiBase()}/api/briefings/${item.briefing.id}/audio`,
-          { headers: token ? { Authorization: `Bearer ${token}` } : {} }
-        );
-        if (!res.ok) throw new Error(`Audio fetch failed: ${res.status}`);
-        const blob = await res.blob();
-        audio.src = URL.createObjectURL(blob);
+        const url = await storageManager.getPlayableUrl(item.briefing.id);
+        audio.src = url;
       } catch {
         setIsLoading(false);
         setError("Failed to load audio");
@@ -162,7 +154,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
         });
       }
     },
-    [getToken, playbackRate]
+    [storageManager, playbackRate]
   );
 
   // Start content playback — plays intro jingle first if available
@@ -511,12 +503,16 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       listenedFiredRef.current !== currentItem.id
     ) {
       const itemId = currentItem.id;
+      const briefingId = currentItem.briefing?.id;
       const audio = audioRef.current;
       // Account for already-elapsed time (e.g. resumed playback)
       const elapsed = audio ? audio.currentTime : 0;
       const remaining = Math.max(0, 30 - elapsed) * 1000;
       listenedTimerRef.current = setTimeout(() => {
         apiFetch(`/feed/${itemId}/listened`, { method: "PATCH" }).catch(() => {});
+        if (briefingId) {
+          storageManager.markListened(briefingId).catch(() => {});
+        }
         listenedFiredRef.current = itemId;
         listenedTimerRef.current = null;
       }, remaining);
@@ -527,7 +523,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
         }
       };
     }
-  }, [isPlaying, playbackPhase, currentItem, apiFetch]);
+  }, [isPlaying, playbackPhase, currentItem, apiFetch, storageManager]);
 
   // Sync mediaSession position state
   useEffect(() => {
