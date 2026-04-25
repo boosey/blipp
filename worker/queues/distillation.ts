@@ -1,6 +1,6 @@
 import { createPrismaClient } from "../lib/db";
 import { createPipelineLogger, logDbError } from "../lib/logger";
-import { checkStageEnabled } from "../lib/queue-helpers";
+import { checkStageEnabled, claimEpisodeStage, releaseEpisodeStage, LOCK_RETRY_DELAY_S } from "../lib/queue-helpers";
 import { extractClaims } from "../lib/distillation";
 import { resolveModelChain } from "../lib/model-resolution";
 import { getLlmProviderImpl } from "../lib/llm-providers";
@@ -147,11 +147,84 @@ export async function handleDistillation(
           transcriptBytes: transcript.length,
         });
 
-        // Ensure Distillation record exists, update status
-        const existing = await prisma.distillation.upsert({
+        // Ensure Distillation row exists so we can CAS-claim it.
+        await prisma.distillation.upsert({
           where: { episodeId },
-          update: { status: "EXTRACTING_CLAIMS", errorMessage: null },
-          create: { episodeId, status: "EXTRACTING_CLAIMS" },
+          create: { episodeId, status: "TRANSCRIPT_READY" },
+          update: {},
+        });
+
+        // Atomically claim distillation work for this episode.
+        const claim = await claimEpisodeStage({
+          prisma,
+          episodeId,
+          lockField: "distillationStartedAt",
+          requiredStatus: "TRANSCRIPT_READY",
+        });
+
+        if (!claim.claimed) {
+          await writeEvent(prisma, stepId, "INFO", `Distillation deferred — ${claim.reason} by another worker`, { reason: claim.reason });
+          await prisma.pipelineStep.update({
+            where: { id: stepId },
+            data: {
+              status: "SKIPPED",
+              cached: false,
+              completedAt: new Date(),
+              durationMs: new Date().getTime() - startedAt.getTime(),
+              errorMessage: `coalesce_${claim.reason}`,
+            },
+          });
+          msg.retry({ delaySeconds: LOCK_RETRY_DELAY_S });
+          continue;
+        }
+
+        // Post-claim cache re-check: covers crash window after a prior worker
+        // wrote claims to R2 but did not update status before dying.
+        const postClaimCacheHit = await env.R2.head(claimsR2Key);
+        if (postClaimCacheHit) {
+          log.debug("post_claim_cache_hit", { episodeId });
+          await writeEvent(prisma, stepId, "INFO", "Post-claim cache hit — claims exist in R2");
+
+          await prisma.workProduct.upsert({
+            where: { r2Key: claimsR2Key },
+            update: {},
+            create: { type: "CLAIMS", episodeId, r2Key: claimsR2Key, sizeBytes: postClaimCacheHit.size },
+          });
+
+          const existingForCache = await prisma.distillation.findUnique({ where: { episodeId } });
+          if (existingForCache) {
+            await prisma.pipelineJob.update({
+              where: { id: jobId },
+              data: { distillationId: existingForCache.id },
+            });
+          }
+
+          await prisma.pipelineStep.update({
+            where: { id: stepId },
+            data: {
+              status: "SKIPPED",
+              cached: true,
+              completedAt: new Date(),
+              durationMs: new Date().getTime() - startedAt.getTime(),
+            },
+          });
+
+          await env.ORCHESTRATOR_QUEUE.send({
+            requestId: job.requestId,
+            action: "job-stage-complete",
+            jobId,
+            completedStage: "DISTILLATION",
+            correlationId,
+          });
+
+          msg.ack();
+          continue;
+        }
+
+        // Move status forward — we own the work.
+        const existing = await prisma.distillation.update({
+          where: { episodeId },
+          data: { status: "EXTRACTING_CLAIMS", errorMessage: null },
         });
 
         // Resolve model chain: primary -> secondary -> tertiary
@@ -258,10 +331,10 @@ export async function handleDistillation(
           ...(claimsUsage!.cacheReadTokens ? { cacheReadTokens: claimsUsage!.cacheReadTokens } : {}),
         });
 
-        // Mark distillation as completed (claims content lives in R2 only)
+        // Mark distillation as completed and release the lock.
         await prisma.distillation.update({
           where: { id: existing.id },
-          data: { status: "COMPLETED" },
+          data: { status: "COMPLETED", distillationStartedAt: null },
         });
 
         // Write claims to R2 + index in DB
@@ -334,6 +407,9 @@ export async function handleDistillation(
 
         msg.ack();
       } catch (err) {
+        // Release the distillation lock so a retry can immediately re-claim.
+        await releaseEpisodeStage({ prisma, episodeId, lockField: "distillationStartedAt" });
+
         const errorMessage =
           err instanceof Error ? err.message : String(err);
 

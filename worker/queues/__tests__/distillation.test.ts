@@ -143,6 +143,8 @@ beforeEach(() => {
   // Safety mocks for error handler (.catch() chains need thenables)
   mockPrisma.pipelineStep.update.mockResolvedValue({});
   mockPrisma.distillation.upsert.mockResolvedValue({ id: "dist-1", episodeId: "ep-1" });
+  mockPrisma.distillation.update.mockResolvedValue({ id: "dist-1", episodeId: "ep-1" });
+  mockPrisma.distillation.updateMany.mockResolvedValue({ count: 1 });
   mockPrisma.pipelineEvent.create.mockResolvedValue({});
   mockPrisma.workProduct.upsert.mockResolvedValue({ id: "wp-1" });
 
@@ -172,7 +174,7 @@ describe("handleDistillation", () => {
     mockPrisma.pipelineJob.update.mockResolvedValue({});
     mockPrisma.pipelineStep.create.mockResolvedValue({ id: "step-1" });
     mockPrisma.distillation.upsert.mockResolvedValue({ id: "dist-1", episodeId: "ep-1" });
-    mockPrisma.distillation.update.mockResolvedValue({});
+    mockPrisma.distillation.update.mockResolvedValue({ id: "dist-1", episodeId: "ep-1" });
 
     const batch = makeBatch([{ jobId: "job-1", episodeId: "ep-1" }]);
     await handleDistillation(batch, mockEnv, mockCtx);
@@ -326,6 +328,49 @@ describe("handleDistillation", () => {
 
     expect(resolveModelChain).toHaveBeenCalledWith(expect.anything(), "distillation");
     expect(extractClaims).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.any(String), expect.any(String), 8192, expect.anything(), expect.anything());
+  });
+
+  it("re-queues with 30s delay when distillation lock is held", async () => {
+    mockPrisma.pipelineJob.findUniqueOrThrow.mockResolvedValue({ id: "job-1", requestId: "req-1" });
+    mockPrisma.briefingRequest.findUnique.mockResolvedValue({ status: "PROCESSING" });
+    mockPrisma.pipelineJob.update.mockResolvedValue({});
+    mockPrisma.pipelineStep.create.mockResolvedValue({ id: "step-1" });
+    // R2 cache miss
+    (mockEnv.R2.head as any).mockResolvedValue(null);
+    mockPrisma.distillation.upsert.mockResolvedValue({ id: "dist-1" });
+    // CAS claim: 0 rows updated, lock held
+    mockPrisma.distillation.updateMany.mockResolvedValue({ count: 0 });
+    mockPrisma.distillation.findUnique.mockResolvedValue({
+      status: "TRANSCRIPT_READY",
+      distillationStartedAt: new Date(),
+    });
+
+    const batch = makeBatch([{ jobId: "job-1", episodeId: "ep-1" }]);
+    await handleDistillation(batch, mockEnv, mockCtx);
+
+    expect(batch.messages[0].retry).toHaveBeenCalledWith({ delaySeconds: 30 });
+    expect(batch.messages[0].ack).not.toHaveBeenCalled();
+  });
+
+  it("re-queues with delay when distillation status has already advanced past TRANSCRIPT_READY", async () => {
+    mockPrisma.pipelineJob.findUniqueOrThrow.mockResolvedValue({ id: "job-1", requestId: "req-1" });
+    mockPrisma.briefingRequest.findUnique.mockResolvedValue({ status: "PROCESSING" });
+    mockPrisma.pipelineJob.update.mockResolvedValue({});
+    mockPrisma.pipelineStep.create.mockResolvedValue({ id: "step-1" });
+    (mockEnv.R2.head as any).mockResolvedValue(null); // initial cache miss
+    mockPrisma.distillation.upsert.mockResolvedValue({ id: "dist-1" });
+    mockPrisma.distillation.updateMany.mockResolvedValue({ count: 0 });
+    mockPrisma.distillation.findUnique.mockResolvedValue({
+      status: "COMPLETED",
+      distillationStartedAt: null,
+    });
+
+    const batch = makeBatch([{ jobId: "job-1", episodeId: "ep-1" }]);
+    await handleDistillation(batch, mockEnv, mockCtx);
+
+    // Retry — on next attempt the CLAIMS R2 cache will hit at top of handler.
+    expect(batch.messages[0].retry).toHaveBeenCalledWith({ delaySeconds: 30 });
+    expect(batch.messages[0].ack).not.toHaveBeenCalled();
   });
 
   describe("stage-enabled check", () => {
