@@ -212,3 +212,100 @@ describe("Prefetcher worker loop (single concurrency)", () => {
     expect(maxInFlight).toBe(1);
   });
 });
+
+describe("Prefetcher.scheduleNextInQueue", () => {
+  let prefetcher: Prefetcher;
+  let manager: StorageManager;
+
+  beforeEach(async () => {
+    manager = await makeManager();
+    prefetcher = new Prefetcher(manager, { cellularEnabled: true });
+    const { getNetworkTier } = await import("../lib/network-tier");
+    (getNetworkTier as any).mockReturnValue("wifi");
+    globalThis.fetch = vi.fn(async (url: any) => {
+      const u = String(url);
+      if (u.includes("/audio-url")) {
+        const id = u.match(/briefings\/(.+?)\/audio-url/)![1];
+        return {
+          ok: true,
+          json: async () => ({
+            url: `/api/briefings/${id}/audio?t=tok&exp=999`,
+            expiresAt: 999,
+          }),
+        } as any;
+      }
+      return { ok: true, blob: async () => new Blob([new Uint8Array(64)]) } as any;
+    });
+  });
+
+  afterEach(() => {
+    prefetcher.dispose();
+    globalThis.fetch = originalFetch;
+    vi.clearAllMocks();
+  });
+
+  it("enqueues the next N items in a play queue", async () => {
+    const queue = Array.from(
+      { length: 5 },
+      (_, i) => ({ id: `fi_${i}`, briefing: { id: `br_${i}` } }) as any,
+    );
+    await prefetcher.scheduleNextInQueue(queue, 2);
+    await prefetcher.drainForTesting();
+    expect(await manager.has("br_0")).toBe(true);
+    expect(await manager.has("br_1")).toBe(true);
+    expect(await manager.has("br_2")).toBe(false);
+  });
+});
+
+describe("Prefetcher pause/resume", () => {
+  let prefetcher: Prefetcher;
+  let manager: StorageManager;
+
+  beforeEach(async () => {
+    manager = await makeManager();
+    prefetcher = new Prefetcher(manager, { cellularEnabled: true });
+    const { getNetworkTier } = await import("../lib/network-tier");
+    (getNetworkTier as any).mockReturnValue("wifi");
+    globalThis.fetch = vi.fn(async (url: any) => {
+      const u = String(url);
+      if (u.includes("/audio-url")) {
+        const id = u.match(/briefings\/(.+?)\/audio-url/)![1];
+        return {
+          ok: true,
+          json: async () => ({
+            url: `/api/briefings/${id}/audio?t=tok&exp=999`,
+            expiresAt: 999,
+          }),
+        } as any;
+      }
+      return { ok: true, blob: async () => new Blob([new Uint8Array(64)]) } as any;
+    });
+  });
+
+  afterEach(() => {
+    prefetcher.dispose();
+    globalThis.fetch = originalFetch;
+    vi.clearAllMocks();
+  });
+
+  it("does not run while paused", async () => {
+    prefetcher.pause();
+    await prefetcher.scheduleFromFeed([
+      { id: "fi_a", briefing: { id: "br_a" } } as any,
+    ]);
+    // Give the loop a beat to run if it were going to.
+    await new Promise((r) => setTimeout(r, 20));
+    expect(await manager.has("br_a")).toBe(false);
+    expect(prefetcher.queueSize()).toBeGreaterThanOrEqual(1);
+  });
+
+  it("resumes processing when resume() is called", async () => {
+    prefetcher.pause();
+    await prefetcher.scheduleFromFeed([
+      { id: "fi_a", briefing: { id: "br_a" } } as any,
+    ]);
+    prefetcher.resume();
+    await prefetcher.drainForTesting();
+    expect(await manager.has("br_a")).toBe(true);
+  });
+});

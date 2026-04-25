@@ -22,10 +22,40 @@ export class Prefetcher {
   private disposed = false;
   private currentAbort: AbortController | null = null;
   private tickPending = false;
+  private paused = false;
+  private onlineHandler = () => this.resume();
+  private offlineHandler = () => this.pause();
 
   constructor(manager: StorageManager, opts: PrefetcherOptions) {
     this.manager = manager;
     this.opts = opts;
+    if (typeof window !== "undefined") {
+      window.addEventListener("online", this.onlineHandler);
+      window.addEventListener("offline", this.offlineHandler);
+    }
+  }
+
+  pause(): void {
+    this.paused = true;
+    this.currentAbort?.abort();
+  }
+
+  resume(): void {
+    this.paused = false;
+    this.kickTick();
+  }
+
+  async scheduleNextInQueue(queue: FeedItemLike[], n: number): Promise<void> {
+    if (this.disposed) return;
+    if (n <= 0) return;
+    const candidates: string[] = [];
+    for (const item of queue) {
+      if (!item.briefing?.id) continue;
+      candidates.push(item.briefing.id);
+      if (candidates.length >= n) break;
+    }
+    await this.enqueueFiltered(candidates);
+    this.kickTick();
   }
 
   setCellularEnabled(enabled: boolean) {
@@ -78,6 +108,10 @@ export class Prefetcher {
     this.queue = [];
     this.currentAbort?.abort();
     this.currentAbort = null;
+    if (typeof window !== "undefined") {
+      window.removeEventListener("online", this.onlineHandler);
+      window.removeEventListener("offline", this.offlineHandler);
+    }
   }
 
   private takeForTier(tier: NetworkTier): number {
@@ -96,11 +130,11 @@ export class Prefetcher {
   }
 
   private async tick(): Promise<void> {
-    if (this.running || this.disposed) return;
+    if (this.running || this.disposed || this.paused) return;
     if (this.queue.length === 0) return;
     this.running = true;
     try {
-      while (this.queue.length > 0 && !this.disposed) {
+      while (this.queue.length > 0 && !this.disposed && !this.paused) {
         const id = this.queue.shift()!;
         if (await this.manager.has(id)) continue;
         await this.fetchAndStore(id);
