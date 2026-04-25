@@ -151,8 +151,16 @@ briefings.get("/:id/audio-url", async (c) => {
   const prisma = c.get("prisma") as any;
   const user = await getCurrentUser(c, prisma);
 
+  // Authorize via FeedItem rather than Briefing.userId. Shared-link recipients
+  // get a FeedItem pointing at the sender's briefing — they need playback,
+  // even though Briefing.userId is the sender's. The /audio route still
+  // verifies the token against Briefing.userId (the owner), so the token
+  // must be signed with the owner's id, not the caller's.
   const briefing = await prisma.briefing.findFirst({
-    where: { id: briefingId, userId: user.id },
+    where: {
+      id: briefingId,
+      feedItems: { some: { userId: user.id } },
+    },
     include: { clip: { select: { audioKey: true } } },
   });
 
@@ -165,7 +173,7 @@ briefings.get("/:id/audio-url", async (c) => {
 
   const { token, exp } = await signAudioToken(c.env, {
     briefingId,
-    userId: user.id,
+    userId: briefing.userId,
     ttlSeconds: 300,
   });
 

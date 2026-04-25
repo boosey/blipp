@@ -1,5 +1,6 @@
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Capacitor } from '@capacitor/core';
+import { getApiBase } from '../lib/api-base';
 
 // --- Types ---
 
@@ -21,6 +22,8 @@ export interface StorageManagerConfig {
   budgetBytes?: number;
   dbName?: string;
   storeName?: string;
+  /** Returns the current Clerk session JWT, or null if signed out. */
+  getToken?: () => Promise<string | null>;
 }
 
 // --- Constants ---
@@ -170,11 +173,13 @@ export class StorageManager {
   private dbName: string;
   private storeName: string;
   private currentlyPlayingId: string | null = null;
+  private getToken: (() => Promise<string | null>) | undefined;
 
   constructor(config: StorageManagerConfig = {}) {
     this.budgetBytes = config.budgetBytes ?? DEFAULT_BUDGET_BYTES;
     this.dbName = config.dbName ?? DB_NAME;
     this.storeName = config.storeName ?? MANIFEST_STORE;
+    this.getToken = config.getToken;
   }
 
   async init(): Promise<void> {
@@ -272,8 +277,10 @@ export class StorageManager {
       await this.remove(briefingId);
     }
 
-    const res = await fetch(`/api/briefings/${briefingId}/audio-url`, {
+    const token = (await this.getToken?.()) ?? null;
+    const res = await fetch(`${getApiBase()}/api/briefings/${briefingId}/audio-url`, {
       credentials: "include",
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     });
     if (!res.ok) {
       throw new Error(`audio-url fetch failed: ${res.status}`);

@@ -65,9 +65,9 @@ describe("GET /:id/audio-url", () => {
     expect(result).toBe("ok");
   });
 
-  it("returns 404 for a briefing owned by a different user", async () => {
+  it("returns 404 when caller has no feed item for the briefing", async () => {
     const prisma = createMockPrisma();
-    prisma.briefing.findFirst.mockResolvedValue(null); // not owned by caller
+    prisma.briefing.findFirst.mockResolvedValue(null); // not in caller's feed
     const app = buildApp(prisma);
     const res = await app.request(
       "/br_other/audio-url",
@@ -75,6 +75,43 @@ describe("GET /:id/audio-url", () => {
       { ...createMockEnv() },
     );
     expect(res.status).toBe(404);
+  });
+
+  it("returns a signed URL when caller has a feed item for a briefing owned by someone else", async () => {
+    const prisma = createMockPrisma();
+    // Briefing belongs to user_db_other (e.g., shared-link sender), but the
+    // caller user_db_1 has a FeedItem referencing it.
+    prisma.briefing.findFirst.mockResolvedValue({
+      id: "br_shared",
+      userId: "user_db_other",
+      clip: { audioKey: "clips/shared.mp3" },
+    });
+    const app = buildApp(prisma);
+    const res = await app.request(
+      "/br_shared/audio-url",
+      { method: "GET" },
+      { ...createMockEnv() },
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json() as { url: string; expiresAt: number };
+
+    // Token must be signed with the briefing's owner, not the caller.
+    const params = new URL(`http://x${body.url.replace("/api/briefings/br_shared/audio", "")}`).searchParams;
+    const okOwner = await verifyAudioToken(createMockEnv(), {
+      briefingId: "br_shared",
+      userId: "user_db_other",
+      token: params.get("t")!,
+      exp: Number(params.get("exp")),
+    });
+    expect(okOwner).toBe("ok");
+
+    const okCaller = await verifyAudioToken(createMockEnv(), {
+      briefingId: "br_shared",
+      userId: "user_db_1",
+      token: params.get("t")!,
+      exp: Number(params.get("exp")),
+    });
+    expect(okCaller).not.toBe("ok");
   });
 
   it("returns 409 audio_not_ready when audioKey missing", async () => {

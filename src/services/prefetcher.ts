@@ -1,9 +1,12 @@
 import type { StorageManager } from "./storage-manager";
 import { getNetworkTier, type NetworkTier } from "../lib/network-tier";
+import { getApiBase } from "../lib/api-base";
 
 export interface PrefetcherOptions {
   /** User opted into prefetching on cellular. */
   cellularEnabled: boolean;
+  /** Returns the current Clerk session JWT, or null if signed out. */
+  getToken?: () => Promise<string | null>;
 }
 
 interface FeedItemLike {
@@ -164,9 +167,11 @@ export class Prefetcher {
     this.currentAbort = new AbortController();
     this.currentBriefingId = briefingId;
     try {
-      const urlRes = await fetch(`/api/briefings/${briefingId}/audio-url`, {
+      const token = (await this.opts.getToken?.()) ?? null;
+      const urlRes = await fetch(`${getApiBase()}/api/briefings/${briefingId}/audio-url`, {
         credentials: "include",
         signal: this.currentAbort.signal,
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       });
       if (!urlRes.ok) return;
       const body = (await urlRes.json()) as { url: string };

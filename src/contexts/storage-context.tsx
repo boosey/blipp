@@ -26,6 +26,11 @@ export function StorageProvider({
   children: React.ReactNode;
   config?: StorageManagerConfig;
 }) {
+  const { getToken, isLoaded, userId } = useAuth();
+  const getTokenRef = useRef<() => Promise<string | null>>(async () => null);
+  getTokenRef.current = async () => getToken();
+  const stableGetToken = useRef(() => getTokenRef.current()).current;
+
   const managerRef = useRef<StorageManager | null>(null);
   const prefetcherRef = useRef<Prefetcher | null>(null);
   const [isReady, setIsReady] = useState(false);
@@ -36,10 +41,10 @@ export function StorageProvider({
   });
 
   if (!managerRef.current) {
-    managerRef.current = new StorageManager(config);
+    managerRef.current = new StorageManager({ ...config, getToken: stableGetToken });
   }
   if (!prefetcherRef.current) {
-    prefetcherRef.current = new Prefetcher(managerRef.current, { cellularEnabled });
+    prefetcherRef.current = new Prefetcher(managerRef.current, { cellularEnabled, getToken: stableGetToken });
   }
 
   const manager = managerRef.current;
@@ -94,7 +99,6 @@ export function StorageProvider({
   // user swaps — paths that bypass the manual clearCache call in Settings.tsx.
   // Skips the initial undefined → resolved transition so a fresh page load
   // doesn't wipe a returning user's cache.
-  const { isLoaded, userId } = useAuth();
   const prevUserIdRef = useRef<string | null | undefined>(undefined);
   useEffect(() => {
     if (!isLoaded || !isReady) return;
