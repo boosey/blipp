@@ -18,6 +18,7 @@ import { useTheme, type Theme } from "../contexts/theme-context";
 import { usePlan } from "../contexts/plan-context";
 import { useAppConfig } from "../lib/app-config";
 import { StorageSettings } from "../components/storage-settings";
+import { useStorage } from "../contexts/storage-context";
 import { useIAP } from "../hooks/use-iap";
 import { InterestPicker } from "../components/interest-picker";
 import { SportsTeamPicker } from "../components/sports-team-picker";
@@ -82,6 +83,7 @@ type TabId = (typeof TABS)[number]["id"];
 export function Settings() {
   const apiFetch = useApiFetch();
   const { signOut } = useClerk();
+  const { clearCache } = useStorage();
   const { purchase, restore, ready: iapReady, error: iapError, loading: iapLoading, billingStatus } = useIAP();
   const [restoreLoading, setRestoreLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<TabId>("profile");
@@ -326,6 +328,9 @@ export function Settings() {
         body: JSON.stringify({ confirm: "DELETE" }),
       });
       toast.success("Account deleted");
+      try {
+        await clearCache();
+      } catch {}
       signOut({ redirectUrl: "/" });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to delete account");
@@ -392,6 +397,9 @@ export function Settings() {
                   // Ignore — may not be signed in via Google
                 }
               }
+              try {
+                await clearCache();
+              } catch {}
               signOut({ redirectUrl: "/" });
             }}
           />

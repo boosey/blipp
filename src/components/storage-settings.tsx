@@ -37,7 +37,7 @@ function formatRelativeTime(epochMs: number): string {
 }
 
 export function StorageSettings() {
-  const { usage, clearCache, setBudget, isReady, manager } = useStorage();
+  const { usage, clearCache, setBudget, isReady, manager, cellularEnabled, setCellularEnabled } = useStorage();
   const [clearOpen, setClearOpen] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [entries, setEntries] = useState<{ count: number; oldestCachedAt: number | null } | null>(null);
@@ -198,6 +198,24 @@ export function StorageSettings() {
               </button>
             ))}
           </div>
+        </div>
+
+        {/* Cellular prefetch toggle */}
+        <div className="border-t border-border pt-4 space-y-2">
+          <h3 className="text-sm font-medium">Prefetch on cellular</h3>
+          <p className="text-xs text-muted-foreground">
+            Download upcoming blipps for instant playback even without Wi-Fi.
+            May use your data plan.
+          </p>
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={cellularEnabled}
+              onChange={(e) => setCellularEnabled(e.target.checked)}
+              className="h-4 w-4 rounded border-border"
+            />
+            Allow prefetch on cellular
+          </label>
         </div>
       </div>
     </section>

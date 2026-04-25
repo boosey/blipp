@@ -78,14 +78,25 @@ vi.mock("../contexts/plan-context", () => ({
 
 vi.mock("../contexts/storage-context", () => ({
   useStorage: () => ({
-    isSupported: false,
-    downloads: [],
-    downloading: new Set(),
-    downloadEpisode: vi.fn(),
-    removeDownload: vi.fn(),
-    getDownloadUrl: vi.fn(),
-    usedBytes: 0,
-    clearAll: vi.fn(),
+    manager: {
+      getPlayableUrl: vi.fn().mockResolvedValue("blob:test"),
+      markListened: vi.fn().mockResolvedValue(undefined),
+      pruneNotInFeed: vi.fn().mockResolvedValue(undefined),
+    },
+    prefetcher: {
+      scheduleFromFeed: vi.fn().mockResolvedValue(undefined),
+      scheduleNextInQueue: vi.fn().mockResolvedValue(undefined),
+      cancelInflight: vi.fn(),
+      pause: vi.fn(),
+      resume: vi.fn(),
+    },
+    usage: null,
+    isReady: true,
+    refreshUsage: vi.fn(),
+    clearCache: vi.fn().mockResolvedValue(undefined),
+    setBudget: vi.fn(),
+    cellularEnabled: false,
+    setCellularEnabled: vi.fn(),
   }),
   StorageProvider: ({ children }: any) => children,
 }));
@@ -205,13 +216,15 @@ describe("Settings Page", () => {
       expect(screen.getByText("Sign Out")).toBeInTheDocument();
     });
 
-    it("calls signOut when clicked", () => {
+    it("calls signOut when clicked", async () => {
       renderSettings();
       switchTab("Account");
 
       fireEvent.click(screen.getByText("Sign Out"));
 
-      expect(mockSignOut).toHaveBeenCalledWith({ redirectUrl: "/" });
+      await waitFor(() => {
+        expect(mockSignOut).toHaveBeenCalledWith({ redirectUrl: "/" });
+      });
     });
   });
 
