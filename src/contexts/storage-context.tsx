@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
+import { useAuth } from '@clerk/clerk-react';
 import { StorageManager, StorageUsage, StorageManagerConfig } from '../services/storage-manager';
 import { Prefetcher } from '../services/prefetcher';
 
@@ -87,6 +88,24 @@ export function StorageProvider({
     },
     [prefetcher],
   );
+
+  // Clear cache on any auth-state transition that means "different user".
+  // Catches Clerk's <UserButton /> sign-out, expired sessions, and direct
+  // user swaps — paths that bypass the manual clearCache call in Settings.tsx.
+  // Skips the initial undefined → resolved transition so a fresh page load
+  // doesn't wipe a returning user's cache.
+  const { isLoaded, userId } = useAuth();
+  const prevUserIdRef = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (!isLoaded || !isReady) return;
+    const prev = prevUserIdRef.current;
+    const isSignOut = prev && !userId;
+    const isUserSwap = prev && userId && prev !== userId;
+    if (isSignOut || isUserSwap) {
+      void clearCache();
+    }
+    prevUserIdRef.current = userId;
+  }, [isLoaded, isReady, userId, clearCache]);
 
   return (
     <StorageContext.Provider
