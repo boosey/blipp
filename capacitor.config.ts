@@ -26,11 +26,12 @@ const config: CapacitorConfig = {
   ios: {
     contentInset: "automatic",
     scheme: "https",
-    // Force-enable WKWebView inspection for non-prod builds so Safari Web
-    // Inspector can attach regardless of Xcode build configuration. The
-    // Capacitor default only enables it under #if DEBUG, which is brittle
-    // when iPhone has a stale Release build cached.
-    webContentsDebuggingEnabled: process.env.BLIPP_TARGET_ENV !== "production",
+    // TEMPORARY: unconditionally enable inspection so we can debug iOS
+    // audio playback (issue #8) on a prod-pointing build. The npm
+    // build:ios:production script sets BLIPP_TARGET_ENV=production, which
+    // would otherwise strip this flag. REVERT before merging — production
+    // builds shipped to App Store users should not be inspectable.
+    webContentsDebuggingEnabled: true,
   },
   server: {
     hostname,
