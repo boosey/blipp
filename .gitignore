@@ -25,3 +25,4 @@ bundle-stats.*
 # Transient local state
 .tmp-*.json
 .claude/scheduled_tasks.lock
+.claude/settings.local.json
