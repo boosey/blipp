@@ -1,6 +1,7 @@
 ---
 name: quick-worktree
-description: Create a lightweight git worktree for isolated changes that will be merged directly to main. Skips database isolation, dev server setup, and session restart. Uses junction-linked node_modules for instant setup. Use when the user needs branch isolation for straightforward changes across parallel sessions but doesn't need a full dev environment.
+description: Create a lightweight git worktree for isolated changes that will be
+  merged directly to main. Skips database isolation,…
 ---
 
 # Quick Worktree
