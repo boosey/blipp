@@ -186,9 +186,10 @@ describe("handleBriefingAssembly", () => {
       const msg = createMsg({ requestId: "req-1" });
       await handleBriefingAssembly(createBatch([msg]), env, ctx);
 
-      // FeedItems queried by request/episode/tier
+      // FeedItems queried by request/episode/tier (excluding CANCELLED items
+      // for paused subscriptions)
       expect(mockPrisma.feedItem.findMany).toHaveBeenCalledWith({
-        where: { requestId: "req-1", episodeId: "ep-1", durationTier: 5 },
+        where: { requestId: "req-1", episodeId: "ep-1", durationTier: 5, status: { not: "CANCELLED" } },
         select: { id: true, userId: true },
       });
 
@@ -236,11 +237,11 @@ describe("handleBriefingAssembly", () => {
       // Two findMany calls (one per completed job)
       expect(mockPrisma.feedItem.findMany).toHaveBeenCalledTimes(2);
       expect(mockPrisma.feedItem.findMany).toHaveBeenCalledWith({
-        where: { requestId: "req-1", episodeId: "ep-1", durationTier: 5 },
+        where: { requestId: "req-1", episodeId: "ep-1", durationTier: 5, status: { not: "CANCELLED" } },
         select: { id: true, userId: true },
       });
       expect(mockPrisma.feedItem.findMany).toHaveBeenCalledWith({
-        where: { requestId: "req-1", episodeId: "ep-2", durationTier: 3 },
+        where: { requestId: "req-1", episodeId: "ep-2", durationTier: 3, status: { not: "CANCELLED" } },
         select: { id: true, userId: true },
       });
 

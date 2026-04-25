@@ -72,8 +72,10 @@ export const CONFIG_REGISTRY: Record<string, ConfigEntry> = {
   "circuitBreaker.cooldownMs":       { type: "number", defaultValue: 30_000, description: "Milliseconds a tripped circuit breaker stays open before allowing a single test request (half-open state). If the test succeeds the circuit closes; if it fails the cooldown restarts. Too short = hammering a down provider; too long = slow recovery." },
   "circuitBreaker.windowMs":         { type: "number", defaultValue: 60_000, description: "Time window for counting failures. Failures older than this are forgotten. Should generally be >= cooldownMs to avoid counting stale failures after recovery." },
 
-  // ── User Lifecycle ──
-  "user.trialDays": { type: "number", defaultValue: 14, description: "Free trial duration in days from account creation. After expiry, users on the default (free) plan are flagged for lifecycle processing. Currently logged only; future: restrict premium features and trigger reminder emails." },
+  // ── User & Subscription Lifecycle ── (owned by User Settings page)
+  "user.trialDays": { type: "number", defaultValue: 14, description: "Free trial duration in days from account creation. After expiry, users on the default (free) plan are flagged for lifecycle processing. Currently logged only; future: restrict premium features and trigger reminder emails.", ownedBy: "user-settings" },
+  "subscription.autoPauseEnabled":      { type: "boolean", defaultValue: true, description: "Master toggle for the subscription-engagement cron. When false, the job runs but takes no action — useful for staging or temporary disable.", ownedBy: "user-settings" },
+  "subscription.pauseInactiveEpisodes": { type: "number",  defaultValue: 5,    description: "Pause a podcast subscription after the user has not listened to the last N delivered episodes from it. The user is emailed once and must resume explicitly via email link or the Subscriptions page. Set to 0 to disable. Skips subscriptions with fewer than N delivered episodes (avoids pausing brand-new subs).", ownedBy: "user-settings" },
 
   // ── Welcome Email ──
   "welcomeEmail.enabled": { type: "boolean", defaultValue: true, description: "Send the one-time welcome email via ZeptoMail when a new user signs up (Clerk user.created). When false, the queue consumer acks messages without sending — users can still be welcomed manually via Admin > Users > Mark welcomed." },

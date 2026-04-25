@@ -1,0 +1,205 @@
+import { useState, useEffect, useCallback, useRef } from "react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Check } from "lucide-react";
+import { useAdminFetch } from "@/lib/api-client";
+import type { PlatformConfigEntry } from "@/types/admin";
+
+interface ConfigDef {
+  key: string;
+  label: string;
+  type: "number" | "boolean";
+  description: string;
+  default: number | boolean;
+}
+
+interface ConfigGroup {
+  title: string;
+  description: string;
+  items: ConfigDef[];
+}
+
+const CONFIG_GROUPS: ConfigGroup[] = [
+  {
+    title: "Free Trial",
+    description: "Account-level lifecycle thresholds for free-plan users",
+    items: [
+      { key: "user.trialDays", label: "Free Trial Days", type: "number", description: "Days from account creation before a free-plan user is flagged for lifecycle processing.", default: 14 },
+    ],
+  },
+  {
+    title: "Subscription Auto-Pause",
+    description: "Stops pipeline cost on podcast subscriptions the user has stopped engaging with. Sends one email; resume is explicit.",
+    items: [
+      { key: "subscription.autoPauseEnabled", label: "Auto-Pause Enabled", type: "boolean", description: "Master toggle. When off, the cron runs but takes no action.", default: true },
+      { key: "subscription.pauseInactiveEpisodes", label: "Inactive Episodes Threshold", type: "number", description: "Pause after the user has not listened to the last N delivered episodes from a subscription. Set to 0 to disable.", default: 5 },
+    ],
+  },
+];
+
+function NumberConfigInput({
+  value,
+  onSave,
+  saving,
+}: {
+  value: number;
+  onSave: (val: number) => void;
+  saving: boolean;
+}) {
+  const [local, setLocal] = useState(String(value));
+  const [saved, setSaved] = useState(false);
+  const prevValue = useRef(value);
+
+  useEffect(() => {
+    if (value !== prevValue.current) {
+      setLocal(String(value));
+      prevValue.current = value;
+    }
+  }, [value]);
+
+  const commit = () => {
+    const num = Math.max(0, Number(local) || 0);
+    setLocal(String(num));
+    if (num !== value) {
+      onSave(num);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1500);
+    }
+  };
+
+  return (
+    <div className="relative">
+      <Input
+        type="number"
+        min={0}
+        value={local}
+        onChange={(e) => setLocal(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => { if (e.key === "Enter") { e.currentTarget.blur(); } }}
+        className="w-24 h-8 text-xs bg-[#1A2942] border-white/10 text-[#F9FAFB] font-mono tabular-nums text-center"
+      />
+      {saving && (
+        <span className="absolute -right-5 top-1/2 -translate-y-1/2 text-[#9CA3AF] text-[10px]">…</span>
+      )}
+      {saved && !saving && (
+        <Check className="absolute -right-5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#14B8A6]" />
+      )}
+    </div>
+  );
+}
+
+function UserSettingsSkeleton() {
+  return (
+    <div className="space-y-4 p-6">
+      <Skeleton className="h-6 w-48 bg-white/5" />
+      <Skeleton className="h-4 w-80 bg-white/5" />
+      {[1, 2, 3].map((i) => (
+        <Skeleton key={i} className="h-16 bg-white/5 rounded-lg" />
+      ))}
+    </div>
+  );
+}
+
+export default function UserSettings() {
+  const apiFetch = useAdminFetch();
+  const [configs, setConfigs] = useState<PlatformConfigEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await apiFetch<{ data: { category: string; entries: PlatformConfigEntry[] }[] }>("/config?owner=user-settings");
+      setConfigs(res.data.flatMap((g) => g.entries));
+    } catch (e) {
+      console.error("Failed to load config:", e);
+    } finally {
+      setLoading(false);
+    }
+  }, [apiFetch]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const updateConfig = useCallback(
+    async (key: string, value: unknown) => {
+      setSaving(key);
+      try {
+        await apiFetch(`/config/${key}`, {
+          method: "PATCH",
+          body: JSON.stringify({ value }),
+        });
+        await load();
+      } catch (e) {
+        console.error("Failed to update config:", e);
+      } finally {
+        setSaving(null);
+      }
+    },
+    [apiFetch, load]
+  );
+
+  function getConfigValue(key: string, defaultValue: number | boolean): number | boolean {
+    const entry = configs.find((c) => c.key === key);
+    if (entry?.value == null) return defaultValue;
+    if (typeof defaultValue === "boolean") return entry.value === true || entry.value === "true";
+    return Number(entry.value);
+  }
+
+  function renderControl(cfg: ConfigDef) {
+    if (cfg.type === "boolean") {
+      return (
+        <Switch
+          checked={getConfigValue(cfg.key, cfg.default as boolean) as boolean}
+          onCheckedChange={(v) => updateConfig(cfg.key, v)}
+          disabled={saving === cfg.key}
+          className="data-[state=checked]:bg-[#14B8A6]"
+        />
+      );
+    }
+    return (
+      <NumberConfigInput
+        value={getConfigValue(cfg.key, cfg.default as number) as number}
+        onSave={(val) => updateConfig(cfg.key, val)}
+        saving={saving === cfg.key}
+      />
+    );
+  }
+
+  if (loading && configs.length === 0) return <UserSettingsSkeleton />;
+
+  return (
+    <div className="p-6 space-y-6">
+      <div>
+        <h2 className="text-lg font-semibold text-[#F9FAFB]">User &amp; Subscription Settings</h2>
+        <p className="text-xs text-[#9CA3AF] mt-0.5">Account lifecycle and subscription engagement configuration</p>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {CONFIG_GROUPS.map((group) => (
+          <div key={group.title} className="bg-[#0F1D32] border border-white/5 rounded-lg overflow-hidden">
+            <div className="px-4 py-3 border-b border-white/10 border-l-2 border-l-[#14B8A6] bg-white/[0.03]">
+              <h3 className="text-sm font-bold text-[#F9FAFB]">{group.title}</h3>
+              <p className="text-xs text-[#6B7280] mt-0.5">{group.description}</p>
+            </div>
+
+            <div className="divide-y divide-white/5">
+              {group.items.map((cfg) => (
+                <div key={cfg.key} className="px-4 py-3 hover:bg-white/[0.02] transition-colors">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0 flex-1">
+                      <Label className="text-xs text-[#F9FAFB]">{cfg.label}</Label>
+                      <p className="text-[10px] text-[#9CA3AF] mt-0.5">{cfg.description}</p>
+                    </div>
+                    <div className="shrink-0 pt-0.5">{renderControl(cfg)}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}

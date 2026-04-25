@@ -37,6 +37,7 @@ const Analytics = lazy(() => import("./pages/admin/analytics"));
 const StageConfiguration = lazy(() => import("./pages/admin/stage-configuration"));
 const FeatureFlags = lazy(() => import("./pages/admin/feature-flags"));
 const PodcastSettings = lazy(() => import("./pages/admin/podcast-settings"));
+const UserSettings = lazy(() => import("./pages/admin/user-settings"));
 const Requests = lazy(() => import("./pages/admin/requests"));
 const Plans = lazy(() => import("./pages/admin/plans"));
 const SttBenchmark = lazy(() => import("./pages/admin/stt-benchmark"));
@@ -167,6 +168,7 @@ export default function App() {
         <Route path="stage-models" element={<Navigate to="/admin/stage-configuration" replace />} />
         <Route path="feature-flags" element={<Suspense fallback={<AdminLoading />}><FeatureFlags /></Suspense>} />
         <Route path="podcast-settings" element={<Suspense fallback={<AdminLoading />}><PodcastSettings /></Suspense>} />
+        <Route path="user-settings" element={<Suspense fallback={<AdminLoading />}><UserSettings /></Suspense>} />
         <Route path="system-settings" element={<Suspense fallback={<AdminLoading />}><SystemSettings /></Suspense>} />
         <Route path="requests" element={<Suspense fallback={<AdminLoading />}><Requests /></Suspense>} />
         <Route path="stt-benchmark" element={<Suspense fallback={<AdminLoading />}><SttBenchmark /></Suspense>} />

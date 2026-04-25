@@ -208,6 +208,24 @@ export function PodcastDetail({ podcastId: propPodcastId, scrollToEpisodeId }: {
     }
   }
 
+  async function handleTogglePause() {
+    if (!podcast) return;
+    const next = !podcast.subscriptionPaused;
+    try {
+      await apiFetch(`/podcasts/subscribe/${podcast.id}/${next ? "pause" : "resume"}`, {
+        method: "POST",
+      });
+      toast.success(next ? "Subscription paused" : "Subscription resumed");
+      setPodcast((prev) =>
+        prev
+          ? { ...prev, subscriptionPaused: next, subscriptionPauseReason: next ? "user" : null }
+          : prev
+      );
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to update");
+    }
+  }
+
   async function handleCreateBriefing(episodeId: string, tier: DurationTier, silent = false) {
     setRequestingEpisodeId(episodeId);
     setBriefTierPickerEpisodeId(null);
@@ -431,6 +449,24 @@ export function PodcastDetail({ podcastId: propPodcastId, scrollToEpisodeId }: {
         {/* Subscribe / Unsubscribe + tier */}
         {podcast.isSubscribed ? (
           <div className="space-y-2">
+            {podcast.subscriptionPaused && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs dark:border-amber-800 dark:bg-amber-950/30">
+                <p className="font-medium text-amber-900 dark:text-amber-200">
+                  Subscription paused
+                </p>
+                <p className="mt-1 text-amber-800/80 dark:text-amber-300/80">
+                  {podcast.subscriptionPauseReason?.startsWith("inactivity")
+                    ? "We paused this because you haven't been listening. Resume to start getting briefings again."
+                    : "You paused this subscription. Resume to start getting briefings again."}
+                </p>
+                <button
+                  onClick={handleTogglePause}
+                  className="mt-2 rounded-full bg-amber-900 px-3 py-1 text-xs font-medium text-amber-50 hover:bg-amber-800 dark:bg-amber-200 dark:text-amber-950 dark:hover:bg-amber-100"
+                >
+                  Resume subscription
+                </button>
+              </div>
+            )}
             <div className="flex items-center gap-2">
               <button
                 onClick={handleUnsubscribe}
@@ -439,6 +475,14 @@ export function PodcastDetail({ podcastId: propPodcastId, scrollToEpisodeId }: {
               >
                 {subscribing ? "..." : "Unsubscribe"}
               </button>
+              {!podcast.subscriptionPaused && (
+                <button
+                  onClick={handleTogglePause}
+                  className="px-4 py-1.5 rounded-full text-xs font-medium bg-muted text-muted-foreground hover:bg-accent transition-colors"
+                >
+                  Pause
+                </button>
+              )}
               {podcast.subscriptionDurationTier && (
                 <button
                   onClick={() => { setShowChangeTierPicker(!showChangeTierPicker); setShowChangeVoicePicker(false); }}

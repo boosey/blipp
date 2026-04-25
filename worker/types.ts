@@ -10,7 +10,7 @@ declare module "hono" {
   }
 }
 
-import type { FeedRefreshMessage, CatalogRefreshMessage, WelcomeEmailMessage } from "./lib/queue-messages";
+import type { FeedRefreshMessage, CatalogRefreshMessage, WelcomeEmailMessage, SubscriptionPauseEmailMessage } from "./lib/queue-messages";
 
 /**
  * Cloudflare Worker environment bindings for the Blipp API.
@@ -73,6 +73,8 @@ export type Env = {
   CONTENT_PREFETCH_QUEUE: Queue;
   /** Queue: sends the one-time welcome email on user.created */
   WELCOME_EMAIL_QUEUE: Queue<WelcomeEmailMessage>;
+  /** Queue: sends the subscription auto-paused notification email */
+  SUBSCRIPTION_PAUSE_EMAIL_QUEUE: Queue<SubscriptionPauseEmailMessage>;
   /** ZeptoMail Send Mail API token (the "Zoho-enczapikey" value, without the prefix) */
   ZEPTOMAIL_TOKEN?: string;
   /** Verified sender email address for welcome emails (e.g. welcome@podblipp.com) */
@@ -81,6 +83,10 @@ export type Env = {
   ZEPTOMAIL_FROM_NAME?: string;
   /** ZeptoMail template key for the welcome email template */
   ZEPTOMAIL_WELCOME_TEMPLATE_KEY?: string;
+  /** ZeptoMail template key for the subscription auto-paused email */
+  ZEPTOMAIL_SUBSCRIPTION_PAUSE_TEMPLATE_KEY?: string;
+  /** HMAC signing secret for subscription resume tokens (optional — falls back to derivation off CLERK_WEBHOOK_SECRET) */
+  SUBSCRIPTION_RESUME_SECRET?: string;
   /** Deepgram API key for STT benchmark */
   DEEPGRAM_API_KEY: string;
   /** Groq API key for fast STT inference */

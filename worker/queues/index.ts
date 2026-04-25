@@ -9,11 +9,13 @@ import { handleCatalogRefresh } from "./catalog-refresh";
 import { handleContentPrefetch } from "./content-prefetch";
 import type { ContentPrefetchMessage } from "./content-prefetch";
 import { handleWelcomeEmail } from "./welcome-email";
+import { handleSubscriptionPauseEmail } from "./subscription-pause-email";
 import { createPrismaClient } from "../lib/db";
 import { runJob } from "../lib/cron/runner";
 import { runEpisodeRefreshJob } from "../lib/cron/episode-refresh";
 import { runMonitoringJob } from "../lib/cron/monitoring";
 import { runUserLifecycleJob } from "../lib/cron/user-lifecycle";
+import { runSubscriptionEngagementJob } from "../lib/cron/subscription-engagement";
 import { runDataRetentionJob } from "../lib/cron/data-retention";
 import { runStaleJobReaperJob } from "../lib/cron/stale-job-reaper";
 import { runRecommendationsJob } from "../lib/cron/recommendations";
@@ -32,6 +34,7 @@ import type {
   FeedRefreshMessage,
   CatalogRefreshMessage,
   WelcomeEmailMessage,
+  SubscriptionPauseEmailMessage,
 } from "../lib/queue-messages";
 import type { Env } from "../types";
 
@@ -118,6 +121,12 @@ export async function handleQueue(
         env,
         ctx
       );
+    case "subscription-pause-email":
+      return handleSubscriptionPauseEmail(
+        batch as MessageBatch<SubscriptionPauseEmailMessage>,
+        env,
+        ctx
+      );
     case "dead-letter":
       for (const msg of batch.messages) {
         const body = msg.body as Record<string, unknown>;
@@ -182,6 +191,7 @@ export async function scheduled(
       "episode-refresh": (logger) => runEpisodeRefreshJob(prisma as any, env, logger),
       "monitoring": (logger) => runMonitoringJob(prisma as any, logger),
       "user-lifecycle": (logger) => runUserLifecycleJob(prisma as any, logger),
+      "subscription-engagement": (logger) => runSubscriptionEngagementJob(prisma as any, logger, env),
       "data-retention": (logger) => runDataRetentionJob(prisma as any, logger),
       "recommendations": (logger) => runRecommendationsJob(prisma as any, logger, env),
       "listen-original-aggregation": (logger) => runListenOriginalAggregationJob(prisma as any, logger),

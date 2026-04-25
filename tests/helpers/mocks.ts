@@ -110,6 +110,7 @@ export function createMockEnv(): Env {
     CATALOG_REFRESH_QUEUE: { send: vi.fn().mockResolvedValue(undefined), sendBatch: vi.fn().mockResolvedValue(undefined) } as unknown as Queue,
     CONTENT_PREFETCH_QUEUE: { send: vi.fn().mockResolvedValue(undefined), sendBatch: vi.fn().mockResolvedValue(undefined) } as unknown as Queue,
     WELCOME_EMAIL_QUEUE: { send: vi.fn().mockResolvedValue(undefined), sendBatch: vi.fn().mockResolvedValue(undefined) } as unknown as Queue,
+    SUBSCRIPTION_PAUSE_EMAIL_QUEUE: { send: vi.fn().mockResolvedValue(undefined), sendBatch: vi.fn().mockResolvedValue(undefined) } as unknown as Queue,
     DEEPGRAM_API_KEY: "mock-deepgram-key",
     GROQ_API_KEY: "mock-groq-key",
     AI: { run: vi.fn().mockResolvedValue({ data: [[0.1, 0.2, 0.3]] }) } as unknown as Ai,

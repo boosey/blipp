@@ -86,6 +86,10 @@
 			{
 				"binding": "WELCOME_EMAIL_QUEUE",
 				"queue": "welcome-email-staging"
+			},
+			{
+				"binding": "SUBSCRIPTION_PAUSE_EMAIL_QUEUE",
+				"queue": "subscription-pause-email-staging"
 			}
 		],
 		"consumers": [
@@ -154,6 +158,12 @@
 			},
 			{
 				"queue": "welcome-email-staging",
+				"max_batch_size": 5,
+				"max_retries": 3,
+				"dead_letter_queue": "dead-letter-staging"
+			},
+			{
+				"queue": "subscription-pause-email-staging",
 				"max_batch_size": 5,
 				"max_retries": 3,
 				"dead_letter_queue": "dead-letter-staging"
@@ -279,6 +289,10 @@
 					{
 						"binding": "WELCOME_EMAIL_QUEUE",
 						"queue": "welcome-email"
+					},
+					{
+						"binding": "SUBSCRIPTION_PAUSE_EMAIL_QUEUE",
+						"queue": "subscription-pause-email"
 					}
 				],
 				"consumers": [
@@ -347,6 +361,12 @@
 					},
 					{
 						"queue": "welcome-email",
+						"max_batch_size": 5,
+						"max_retries": 3,
+						"dead_letter_queue": "dead-letter"
+					},
+					{
+						"queue": "subscription-pause-email",
 						"max_batch_size": 5,
 						"max_retries": 3,
 						"dead_letter_queue": "dead-letter"

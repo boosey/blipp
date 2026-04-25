@@ -119,6 +119,7 @@ const sidebarEntries: SidebarEntry[] = [
     children: [
       { path: "users", label: "Management", icon: Users },
       { path: "plans", label: "Plans", icon: CreditCard },
+      { path: "user-settings", label: "Settings", icon: Settings },
       { path: "recommendations", label: "Recommendations", icon: Sparkles },
       { path: "feedback", label: "Feedback", icon: MessageSquare },
       { path: "blipp-feedback", label: "Blipp Feedback", icon: ThumbsDown },

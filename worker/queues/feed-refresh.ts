@@ -285,7 +285,7 @@ async function processPodcast(
   // Auto-create FeedItems for subscribers of new episodes
   if (newEpisodeIds.length > 0) {
     const subscriptions = await prisma.subscription.findMany({
-      where: { podcastId: podcast.id },
+      where: { podcastId: podcast.id, pausedAt: null },
       include: { user: { select: { defaultVoicePresetId: true } } },
     });
 

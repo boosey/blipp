@@ -85,3 +85,13 @@ export interface CatalogRefreshMessage {
 export interface WelcomeEmailMessage {
   userId: string;
 }
+
+/** Subscription pause email — enqueued by the subscription-engagement cron. */
+export interface SubscriptionPauseEmailMessage {
+  subscriptionId: string;
+  userId: string;
+  podcastId: string;
+  resumeToken: string;
+  episodesUnlistened: number;
+  reason: string;
+}

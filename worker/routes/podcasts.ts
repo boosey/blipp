@@ -11,6 +11,7 @@ import { recomputeUserProfile } from "../lib/recommendations";
 import { checkVoicePresetAccess } from "../lib/voice-presets";
 import { validateBody } from "../lib/validation";
 import { isMusicOnlyFeed } from "../lib/podcast-invalidation";
+import { pauseSubscription, resumeSubscription } from "../lib/subscription-pause";
 
 /* ── Zod schemas ─────────────────────────────────────────── */
 
@@ -425,6 +426,48 @@ podcasts.patch("/subscribe/:podcastId", async (c) => {
 });
 
 /**
+ * POST /subscribe/:podcastId/pause — Manually pause a subscription.
+ * Sets pauseReason="user". Idempotent on already-paused rows.
+ */
+podcasts.post("/subscribe/:podcastId/pause", async (c) => {
+  const podcastId = c.req.param("podcastId");
+  const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
+
+  const sub = await prisma.subscription.findUnique({
+    where: { userId_podcastId: { userId: user.id, podcastId } },
+    select: { id: true, pausedAt: true },
+  });
+  if (!sub) return c.json({ error: "Not subscribed" }, 404);
+  if (sub.pausedAt) return c.json({ subscription: { id: sub.id, paused: true } });
+
+  await pauseSubscription(prisma, c.env, {
+    subscriptionId: sub.id,
+    reason: "user",
+  });
+  return c.json({ subscription: { id: sub.id, paused: true } });
+});
+
+/**
+ * POST /subscribe/:podcastId/resume — Resume a paused subscription (authed).
+ * Idempotent on already-active rows.
+ */
+podcasts.post("/subscribe/:podcastId/resume", async (c) => {
+  const podcastId = c.req.param("podcastId");
+  const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
+
+  const sub = await prisma.subscription.findUnique({
+    where: { userId_podcastId: { userId: user.id, podcastId } },
+    select: { id: true },
+  });
+  if (!sub) return c.json({ error: "Not subscribed" }, 404);
+
+  await resumeSubscription(prisma, sub.id);
+  return c.json({ subscription: { id: sub.id, paused: false } });
+});
+
+/**
  * DELETE /subscribe/:podcastId — Unsubscribe from a podcast.
  *
  * @param podcastId - The podcast's database ID
@@ -829,6 +872,8 @@ podcasts.get("/:id", async (c) => {
       isSubscribed: !!subscription,
       subscriptionDurationTier: subscription?.durationTier ?? null,
       subscriptionVoicePresetId: subscription?.voicePresetId ?? null,
+      subscriptionPaused: !!subscription?.pausedAt,
+      subscriptionPauseReason: subscription?.pauseReason ?? null,
       userVote: vote?.vote ?? 0,
     },
   });

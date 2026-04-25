@@ -1,6 +1,7 @@
 import { useState, lazy, Suspense, useRef, useEffect } from "react";
-import { Library, Heart, Trash2 } from "lucide-react";
+import { Library, Heart, Trash2, Pause } from "lucide-react";
 import { toast } from "sonner";
+import { useSearchParams } from "react-router-dom";
 import { useFetch } from "../lib/use-fetch";
 import { useApiFetch } from "../lib/api-client";
 import { LibrarySkeleton } from "../components/skeletons/library-skeleton";
@@ -15,6 +16,8 @@ interface SubscribedPodcast {
   id: string;
   podcastId: string;
   durationTier: number | null;
+  pausedAt: string | null;
+  pauseReason: string | null;
   podcast: {
     id: string;
     title: string;
@@ -79,8 +82,17 @@ function SubscriptionsGrid({ onRefetchRef }: { onRefetchRef?: React.MutableRefOb
                 {sub.durationTier}m
               </span>
             )}
+            {sub.pausedAt && (
+              <span
+                className="absolute top-1 left-1 flex items-center gap-0.5 rounded bg-amber-500/90 px-1.5 py-0.5 text-[10px] font-medium text-amber-950"
+                title={sub.pauseReason?.startsWith("inactivity") ? "Auto-paused for inactivity" : "Paused"}
+              >
+                <Pause className="h-2.5 w-2.5" />
+                Paused
+              </span>
+            )}
           </div>
-          <p className="text-xs text-center font-medium truncate w-full">
+          <p className={`text-xs text-center font-medium truncate w-full ${sub.pausedAt ? "text-muted-foreground" : ""}`}>
             {sub.podcast.title}
           </p>
         </button>
@@ -161,9 +173,30 @@ function FavoritesGrid({ onRefetchRef }: { onRefetchRef?: React.MutableRefObject
 }
 
 export function LibraryPage() {
-  const [tab, setTab] = useState<"favorites" | "subscriptions" | "history">("favorites");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialTab = searchParams.get("tab") === "subscriptions" || searchParams.get("tab") === "history"
+    ? (searchParams.get("tab") as "subscriptions" | "history")
+    : "favorites";
+  const [tab, setTab] = useState<"favorites" | "subscriptions" | "history">(initialTab);
   const refetchRef = useRef<(() => void) | null>(null);
   const { subscriptions } = usePlan();
+
+  // Surface resume-link outcomes coming from the email redirect.
+  useEffect(() => {
+    const resumed = searchParams.get("resumed");
+    const resumeError = searchParams.get("resumeError");
+    if (resumed !== null) {
+      toast.success(resumed ? `Resumed: ${resumed}` : "Subscription resumed");
+      const next = new URLSearchParams(searchParams);
+      next.delete("resumed");
+      setSearchParams(next, { replace: true });
+    } else if (resumeError) {
+      toast.error("Resume link is invalid or has already been used.");
+      const next = new URLSearchParams(searchParams);
+      next.delete("resumeError");
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   const atLimit = subscriptions.limit !== null && subscriptions.remaining !== null && subscriptions.remaining <= 0;
   const subscriptionLabel = subscriptions.limit !== null

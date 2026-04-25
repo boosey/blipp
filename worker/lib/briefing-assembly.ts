@@ -108,8 +108,15 @@ export async function assembleBriefings(
         });
       } else {
         // USER mode: create per-user Briefing + mark FeedItems READY
+        // Skip CANCELLED FeedItems (e.g. subscription was paused mid-flight) so
+        // a paused user does not receive a briefing they can no longer see.
         const feedItems = await prisma.feedItem.findMany({
-          where: { requestId, episodeId: job.episodeId, durationTier: job.durationTier },
+          where: {
+            requestId,
+            episodeId: job.episodeId,
+            durationTier: job.durationTier,
+            status: { not: "CANCELLED" },
+          },
           select: { id: true, userId: true },
         });
 

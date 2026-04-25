@@ -393,6 +393,9 @@ model Subscription {
   podcastId     String
   durationTier  Int      // 1, 2, 3, 5, 7, 10, 15, or 30 (minutes)
   voicePresetId String?
+  pausedAt      DateTime?
+  pauseReason   String?  // "inactivity:N_episodes" | "user"
+  resumeToken   String?  @unique
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -402,6 +405,7 @@ model Subscription {
 
   @@unique([userId, podcastId])
   @@index([userId])
+  @@index([pausedAt])
 }
 
 // ── Feed Items ──
