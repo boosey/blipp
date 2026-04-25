@@ -6,13 +6,149 @@ import { getCurrentUser } from "../lib/admin-helpers";
 import { getUserWithPlan, checkDurationLimit, checkWeeklyBriefingLimit, checkPastEpisodesLimit } from "../lib/plan-limits";
 import { DURATION_TIERS } from "../lib/constants";
 import { validateBody } from "../lib/validation";
-import { signAudioToken } from "../lib/audio-token";
+import { signAudioToken, verifyAudioToken } from "../lib/audio-token";
 
 /**
  * Briefing routes — on-demand briefing generation only.
  * Subscription-based briefings are handled automatically via feed refresh.
  */
 export const briefings = new Hono<{ Bindings: Env }>();
+
+/**
+ * GET /:id/audio — Stream raw clip audio from R2.
+ *
+ * Auth: either a query-token (`?t=...&exp=...` produced by /:id/audio-url)
+ * for token-only authenticated playback (used by `<audio src>` and
+ * Service-Worker prefetch which can't carry a bearer header), or fall back
+ * to Clerk session via `getCurrentUser`. Registered above `requireAuth` so
+ * the token-only branch can bypass session auth.
+ */
+briefings.get("/:id/audio", async (c) => {
+  const briefingId = c.req.param("id");
+  const prisma = c.get("prisma") as any;
+  const tokenParam = c.req.query("t");
+  const expParam = c.req.query("exp");
+
+  let userId: string | null = null;
+
+  if (tokenParam && expParam) {
+    // Token path — find the briefing first to get its userId, then verify against it.
+    const owner = await prisma.briefing.findUnique({
+      where: { id: briefingId },
+      select: { userId: true },
+    });
+    if (!owner) {
+      return c.json({ error: "Briefing not found" }, 404);
+    }
+    const result = await verifyAudioToken(c.env, {
+      briefingId,
+      userId: owner.userId,
+      token: tokenParam,
+      exp: Number(expParam),
+    });
+    if (result === "expired") {
+      return c.json({ error: "token_expired" }, 401);
+    }
+    if (result !== "ok") {
+      return c.json({ error: "invalid_token" }, 401);
+    }
+    userId = owner.userId;
+  } else {
+    // Clerk path — existing behavior
+    const user = await getCurrentUser(c, prisma);
+    userId = user.id;
+  }
+
+  const briefing = await prisma.briefing.findFirst({
+    where: { id: briefingId, userId },
+    include: {
+      clip: { select: { audioKey: true, audioContentType: true } },
+    },
+  });
+
+  if (!briefing) {
+    return c.json({ error: "Briefing not found" }, 404);
+  }
+
+  if (!briefing.clip?.audioKey) {
+    return c.json({ error: "Audio not found" }, 404);
+  }
+
+  const clipObj = await c.env.R2.get(briefing.clip.audioKey);
+  if (!clipObj) {
+    return c.json({ error: "Audio not found" }, 404);
+  }
+
+  const headers: Record<string, string> = {
+    "Content-Type": briefing.clip.audioContentType || "audio/mpeg",
+    "Content-Length": String(clipObj.size),
+    "Cache-Control": "public, max-age=604800, immutable",
+    "Accept-Ranges": "bytes",
+  };
+  if (clipObj.etag) headers["ETag"] = clipObj.etag;
+
+  // Handle range requests for streaming/seeking
+  const range = c.req.header("Range");
+  if (range) {
+    const body = await clipObj.arrayBuffer();
+    const match = range.match(/bytes=(\d+)-(\d*)/);
+    if (match) {
+      const start = parseInt(match[1], 10);
+      const end = match[2] ? parseInt(match[2], 10) : body.byteLength - 1;
+      const slice = body.slice(start, end + 1);
+      return new Response(slice, {
+        status: 206,
+        headers: {
+          ...headers,
+          "Content-Length": String(slice.byteLength),
+          "Content-Range": `bytes ${start}-${end}/${body.byteLength}`,
+        },
+      });
+    }
+  }
+
+  return new Response(clipObj.body, { headers });
+});
+
+/**
+ * GET /:id/audio-url — Issue a short-lived signed URL for the briefing audio.
+ *
+ * Returns: { url, expiresAt } where url is a query-token-authenticated form
+ * of /:id/audio that the audio element can stream from directly without a
+ * bearer header.
+ */
+briefings.get("/:id/audio-url", async (c) => {
+  if (c.env.ENABLE_AUDIO_TOKEN === "false") {
+    return c.json({ error: "audio_token_disabled" }, 503);
+  }
+
+  const briefingId = c.req.param("id");
+  const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
+
+  const briefing = await prisma.briefing.findFirst({
+    where: { id: briefingId, userId: user.id },
+    include: { clip: { select: { audioKey: true } } },
+  });
+
+  if (!briefing) {
+    return c.json({ error: "Briefing not found" }, 404);
+  }
+  if (!briefing.clip?.audioKey) {
+    return c.json({ error: "audio_not_ready" }, 409);
+  }
+
+  const { token, exp } = await signAudioToken(c.env, {
+    briefingId,
+    userId: user.id,
+    ttlSeconds: 300,
+  });
+
+  return c.json({
+    url: `/api/briefings/${briefingId}/audio?t=${token}&exp=${exp}`,
+    expiresAt: exp,
+  });
+});
 
 briefings.use("*", requireAuth);
 
@@ -265,102 +401,3 @@ async function cancelRequest(c: any, prisma: any, requestId: string, userId: str
   return c.json({ request: updated });
 }
 
-/**
- * GET /:id/audio — Stream raw clip audio from R2.
- * User-scoped: only the briefing owner can access.
- */
-briefings.get("/:id/audio", async (c) => {
-  const briefingId = c.req.param("id");
-  const prisma = c.get("prisma") as any;
-  const user = await getCurrentUser(c, prisma);
-
-  const briefing = await prisma.briefing.findFirst({
-    where: { id: briefingId, userId: user.id },
-    include: {
-      clip: { select: { audioKey: true, audioContentType: true } },
-    },
-  });
-
-  if (!briefing) {
-    return c.json({ error: "Briefing not found" }, 404);
-  }
-
-  if (!briefing.clip?.audioKey) {
-    return c.json({ error: "Audio not found" }, 404);
-  }
-
-  const clipObj = await c.env.R2.get(briefing.clip.audioKey);
-  if (!clipObj) {
-    return c.json({ error: "Audio not found" }, 404);
-  }
-
-  const headers: Record<string, string> = {
-    "Content-Type": briefing.clip.audioContentType || "audio/mpeg",
-    "Content-Length": String(clipObj.size),
-    "Cache-Control": "public, max-age=604800, immutable",
-    "Accept-Ranges": "bytes",
-  };
-  if (clipObj.etag) headers["ETag"] = clipObj.etag;
-
-  // Handle range requests for streaming/seeking
-  const range = c.req.header("Range");
-  if (range) {
-    const body = await clipObj.arrayBuffer();
-    const match = range.match(/bytes=(\d+)-(\d*)/);
-    if (match) {
-      const start = parseInt(match[1], 10);
-      const end = match[2] ? parseInt(match[2], 10) : body.byteLength - 1;
-      const slice = body.slice(start, end + 1);
-      return new Response(slice, {
-        status: 206,
-        headers: {
-          ...headers,
-          "Content-Length": String(slice.byteLength),
-          "Content-Range": `bytes ${start}-${end}/${body.byteLength}`,
-        },
-      });
-    }
-  }
-
-  return new Response(clipObj.body, { headers });
-});
-
-/**
- * GET /:id/audio-url — Issue a short-lived signed URL for the briefing audio.
- *
- * Returns: { url, expiresAt } where url is a query-token-authenticated form
- * of /:id/audio that the audio element can stream from directly without a
- * bearer header.
- */
-briefings.get("/:id/audio-url", async (c) => {
-  if (c.env.ENABLE_AUDIO_TOKEN === "false") {
-    return c.json({ error: "audio_token_disabled" }, 503);
-  }
-
-  const briefingId = c.req.param("id");
-  const prisma = c.get("prisma") as any;
-  const user = await getCurrentUser(c, prisma);
-
-  const briefing = await prisma.briefing.findFirst({
-    where: { id: briefingId, userId: user.id },
-    include: { clip: { select: { audioKey: true } } },
-  });
-
-  if (!briefing) {
-    return c.json({ error: "Briefing not found" }, 404);
-  }
-  if (!briefing.clip?.audioKey) {
-    return c.json({ error: "audio_not_ready" }, 409);
-  }
-
-  const { token, exp } = await signAudioToken(c.env, {
-    briefingId,
-    userId: user.id,
-    ttlSeconds: 300,
-  });
-
-  return c.json({
-    url: `/api/briefings/${briefingId}/audio?t=${token}&exp=${exp}`,
-    expiresAt: exp,
-  });
-});
