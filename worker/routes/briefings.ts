@@ -6,6 +6,7 @@ import { getCurrentUser } from "../lib/admin-helpers";
 import { getUserWithPlan, checkDurationLimit, checkWeeklyBriefingLimit, checkPastEpisodesLimit } from "../lib/plan-limits";
 import { DURATION_TIERS } from "../lib/constants";
 import { validateBody } from "../lib/validation";
+import { signAudioToken } from "../lib/audio-token";
 
 /**
  * Briefing routes — on-demand briefing generation only.
@@ -322,4 +323,44 @@ briefings.get("/:id/audio", async (c) => {
   }
 
   return new Response(clipObj.body, { headers });
+});
+
+/**
+ * GET /:id/audio-url — Issue a short-lived signed URL for the briefing audio.
+ *
+ * Returns: { url, expiresAt } where url is a query-token-authenticated form
+ * of /:id/audio that the audio element can stream from directly without a
+ * bearer header.
+ */
+briefings.get("/:id/audio-url", async (c) => {
+  if (c.env.ENABLE_AUDIO_TOKEN === "false") {
+    return c.json({ error: "audio_token_disabled" }, 503);
+  }
+
+  const briefingId = c.req.param("id");
+  const prisma = c.get("prisma") as any;
+  const user = await getCurrentUser(c, prisma);
+
+  const briefing = await prisma.briefing.findFirst({
+    where: { id: briefingId, userId: user.id },
+    include: { clip: { select: { audioKey: true } } },
+  });
+
+  if (!briefing) {
+    return c.json({ error: "Briefing not found" }, 404);
+  }
+  if (!briefing.clip?.audioKey) {
+    return c.json({ error: "audio_not_ready" }, 409);
+  }
+
+  const { token, exp } = await signAudioToken(c.env, {
+    briefingId,
+    userId: user.id,
+    ttlSeconds: 300,
+  });
+
+  return c.json({
+    url: `/api/briefings/${briefingId}/audio?t=${token}&exp=${exp}`,
+    expiresAt: exp,
+  });
 });
