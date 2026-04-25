@@ -232,6 +232,11 @@ describe("handleTranscription", () => {
       limits: null,
     }]);
 
+    // Distillation lock helpers need sensible defaults so happy-path tests
+    // don't fail on undefined returns from upsert/updateMany.
+    mockPrisma.distillation.upsert.mockResolvedValue({ id: "dist1", episodeId: "ep1" });
+    mockPrisma.distillation.updateMany.mockResolvedValue({ count: 1 });
+
     // Default: fetch for single-download path (small files without range support)
     const audioData = new ArrayBuffer(20000);
     vi.stubGlobal("fetch", vi.fn().mockImplementation((url: string) => {
@@ -375,7 +380,7 @@ describe("handleTranscription", () => {
     // Distillation upserted with TRANSCRIPT_READY (no transcript field — content lives in R2)
     expect(mockPrisma.distillation.upsert).toHaveBeenCalledWith({
       where: { episodeId: "ep1" },
-      update: { status: "TRANSCRIPT_READY", errorMessage: null },
+      update: { status: "TRANSCRIPT_READY", errorMessage: null, transcriptionStartedAt: null },
       create: { episodeId: "ep1", status: "TRANSCRIPT_READY" },
     });
     // Transcript written to R2
@@ -417,7 +422,7 @@ describe("handleTranscription", () => {
     // Distillation upserted (no transcript field — content in R2)
     expect(mockPrisma.distillation.upsert).toHaveBeenCalledWith({
       where: { episodeId: "ep1" },
-      update: { status: "TRANSCRIPT_READY", errorMessage: null },
+      update: { status: "TRANSCRIPT_READY", errorMessage: null, transcriptionStartedAt: null },
       create: { episodeId: "ep1", status: "TRANSCRIPT_READY" },
     });
     expect(msg.ack).toHaveBeenCalled();
@@ -918,6 +923,60 @@ describe("handleTranscription", () => {
         })
       );
     });
+  });
+
+  it("re-queues with 30s delay when lock is held by another worker", async () => {
+    // Job + cancellation guard pass-through
+    mockPrisma.pipelineJob.findUnique.mockResolvedValue(JOB);
+    mockPrisma.pipelineJob.update.mockResolvedValue(JOB);
+    mockPrisma.pipelineStep.create.mockResolvedValue({ id: "step1" });
+    // R2 cache miss
+    (env.R2.head as any).mockResolvedValue(null);
+    // Distillation upsert succeeds
+    mockPrisma.distillation.upsert.mockResolvedValue({ id: "dist1", episodeId: "ep1" });
+    // CAS claim: 0 rows updated, current row shows fresh lock
+    mockPrisma.distillation.updateMany.mockResolvedValue({ count: 0 });
+    mockPrisma.distillation.findUnique.mockResolvedValue({
+      status: "PENDING",
+      transcriptionStartedAt: new Date(),
+    });
+
+    const msg = createMsg({ jobId: "job1", episodeId: "ep1" });
+    const batch = createBatch([msg]);
+
+    await handleTranscription(batch, env, ctx);
+
+    expect(msg.retry).toHaveBeenCalledWith({ delaySeconds: 30 });
+    expect(msg.ack).not.toHaveBeenCalled();
+    // Did not run STT
+    expect(mockTranscribeChunked).not.toHaveBeenCalled();
+    expect(mockTranscribe).not.toHaveBeenCalled();
+  });
+
+  it("re-queues with delay when status has already advanced past PENDING", async () => {
+    mockPrisma.pipelineJob.findUnique.mockResolvedValue(JOB);
+    mockPrisma.pipelineJob.update.mockResolvedValue(JOB);
+    mockPrisma.pipelineStep.create.mockResolvedValue({ id: "step1" });
+    (env.R2.head as any).mockResolvedValue(null); // initial cache miss
+    mockPrisma.distillation.upsert.mockResolvedValue({ id: "dist1", episodeId: "ep1" });
+    // CAS claim returns "completed" — status already TRANSCRIPT_READY
+    mockPrisma.distillation.updateMany.mockResolvedValue({ count: 0 });
+    mockPrisma.distillation.findUnique.mockResolvedValue({
+      status: "TRANSCRIPT_READY",
+      transcriptionStartedAt: null,
+    });
+
+    const msg = createMsg({ jobId: "job1", episodeId: "ep1" });
+    const batch = createBatch([msg]);
+
+    await handleTranscription(batch, env, ctx);
+
+    // Retry with delay — on next attempt the R2 cache will hit and the
+    // handler will short-circuit at the top-of-handler cache check.
+    expect(msg.retry).toHaveBeenCalledWith({ delaySeconds: 30 });
+    expect(msg.ack).not.toHaveBeenCalled();
+    expect(mockTranscribeChunked).not.toHaveBeenCalled();
+    expect(mockTranscribe).not.toHaveBeenCalled();
   });
 });
 

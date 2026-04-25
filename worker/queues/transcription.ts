@@ -1,6 +1,6 @@
 import { createPrismaClient } from "../lib/db";
 import { resolveModelChain } from "../lib/model-resolution";
-import { checkStageEnabled } from "../lib/queue-helpers";
+import { checkStageEnabled, claimEpisodeStage, releaseEpisodeStage, LOCK_RETRY_DELAY_S } from "../lib/queue-helpers";
 import { createPipelineLogger, logDbError } from "../lib/logger";
 import { wpKey, putWorkProduct } from "../lib/work-products";
 import { getTranscriptSource } from "../lib/transcript/sources";
@@ -110,6 +110,87 @@ export async function handleTranscription(
           const distillation = await prisma.distillation.upsert({
             where: { episodeId },
             update: { status: "TRANSCRIPT_READY", errorMessage: null },
+            create: { episodeId, status: "TRANSCRIPT_READY" },
+          });
+
+          await prisma.pipelineStep.update({
+            where: { id: step.id },
+            data: {
+              status: "SKIPPED",
+              cached: true,
+              completedAt: new Date(),
+              durationMs: Date.now() - startTime,
+            },
+          });
+
+          await prisma.pipelineJob.update({
+            where: { id: jobId },
+            data: { distillationId: distillation.id },
+          });
+
+          await env.ORCHESTRATOR_QUEUE.send({
+            requestId: job.requestId,
+            action: "job-stage-complete",
+            jobId,
+            completedStage: "TRANSCRIPTION",
+            correlationId,
+          });
+
+          msg.ack();
+          continue;
+        }
+
+        // Cache miss — atomically claim this episode for transcription.
+        // Multiple orchestrator messages for the same episode (different
+        // tier/voice groups) can arrive concurrently; only one worker should
+        // pay for Whisper.
+        await prisma.distillation.upsert({
+          where: { episodeId },
+          create: { episodeId, status: "PENDING" },
+          update: {},
+        });
+
+        const claim = await claimEpisodeStage({
+          prisma,
+          episodeId,
+          lockField: "transcriptionStartedAt",
+          requiredStatus: "PENDING",
+        });
+
+        if (!claim.claimed) {
+          // Another worker holds the lock or the work already completed.
+          // Re-queue with delay; on retry the R2 cache will be warm.
+          await writeEvent(prisma, step.id, "INFO", `Transcription deferred — ${claim.reason} by another worker`, { reason: claim.reason });
+          await prisma.pipelineStep.update({
+            where: { id: step.id },
+            data: {
+              status: "SKIPPED",
+              cached: false,
+              completedAt: new Date(),
+              durationMs: Date.now() - startTime,
+              errorMessage: `coalesce_${claim.reason}`,
+            },
+          });
+          msg.retry({ delaySeconds: LOCK_RETRY_DELAY_S });
+          continue;
+        }
+
+        // Post-claim cache re-check: covers the crash window where a prior
+        // worker wrote R2 but did not advance status before dying.
+        const postClaimCacheHit = await env.R2.head(transcriptR2Key);
+        if (postClaimCacheHit) {
+          log.debug("post_claim_cache_hit", { episodeId });
+          await writeEvent(prisma, step.id, "INFO", "Post-claim cache hit — transcript exists in R2");
+
+          await prisma.workProduct.upsert({
+            where: { r2Key: transcriptR2Key },
+            update: {},
+            create: { type: "TRANSCRIPT", episodeId, r2Key: transcriptR2Key, sizeBytes: postClaimCacheHit.size },
+          });
+
+          const distillation = await prisma.distillation.upsert({
+            where: { episodeId },
+            update: { status: "TRANSCRIPT_READY", errorMessage: null, transcriptionStartedAt: null },
             create: { episodeId, status: "TRANSCRIPT_READY" },
           });
 
@@ -357,10 +438,11 @@ export async function handleTranscription(
         });
         await writeEvent(prisma, step.id, "INFO", "Saved transcript to R2", { r2Key, sizeBytes });
 
-        // Upsert Distillation status (transcript content lives in R2 only)
+        // Upsert Distillation status (transcript content lives in R2 only).
+        // Clear the transcription lock — this work is done.
         const distillation = await prisma.distillation.upsert({
           where: { episodeId },
-          update: { status: "TRANSCRIPT_READY", errorMessage: null },
+          update: { status: "TRANSCRIPT_READY", errorMessage: null, transcriptionStartedAt: null },
           create: { episodeId, status: "TRANSCRIPT_READY" },
         });
 
@@ -392,6 +474,10 @@ export async function handleTranscription(
 
         msg.ack();
       } catch (err) {
+        // Release the transcription lock so a retry can immediately re-claim
+        // rather than waiting for stale-lock recovery.
+        await releaseEpisodeStage({ prisma, episodeId, lockField: "transcriptionStartedAt" });
+
         const errorMessage = err instanceof Error ? err.message : String(err);
 
         // Mark step FAILED if it was created
