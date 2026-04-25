@@ -65,7 +65,7 @@ export function useAudio(): AudioContextValue {
 export function AudioProvider({ children }: { children: React.ReactNode }) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const apiFetch = useApiFetch();
-  const { manager: storageManager } = useStorage();
+  const { manager: storageManager, prefetcher } = useStorage();
 
   const [currentItem, setCurrentItem] = useState<FeedItem | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -443,7 +443,10 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
 
   const handleCanPlay = useCallback(() => {
     setIsLoading(false);
-  }, []);
+    if (queueRef.current && queueRef.current.length > 0) {
+      void prefetcher.scheduleNextInQueue(queueRef.current, 2);
+    }
+  }, [prefetcher]);
 
   // Media Session handlers — disable seek during jingles
   useEffect(() => {
