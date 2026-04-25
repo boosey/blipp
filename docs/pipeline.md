@@ -1,559 +1,240 @@
 # Pipeline Architecture
 
-Blipp uses a **demand-driven pipeline** to transform podcast episodes into audio briefings. The scheduled handler runs 5 cron jobs (pipeline trigger, monitoring, user lifecycle, data retention, recommendations) -- all other processing is triggered by user briefing requests.
+Blipp turns a `BriefingRequest` into a personal audio briefing by passing each requested episode + duration tier through five deterministic stages. The pipeline is **demand-driven** — feed refresh is the only piece that runs on a schedule, and the rest only fires when a user (or an admin test / catalog pre-gen / SEO backfill) asks for a briefing.
 
-## 6-Stage Pipeline
+## Overview
 
-```
-  [Cron]              [User Request]
-    |                       |
-    v                       v
-+-------------+    +----------------+
-| 1. Feed     |    | Orchestrator   |
-|   Refresh   |    | (evaluate)     |
-+-------------+    +-------+--------+
-                           |
-              Creates PipelineJobs per episode
-                           |
-            +--------------+--------------+
-            |              |              |
-            v              v              v
-      +-----------+  +-----------+  +-----------+
-      | 2. Trans- |  | 2. Trans- |  | 2. Trans- |   (parallel per job)
-      |  cription |  |  cription |  |  cription |
-      +-----+-----+  +-----+-----+  +-----+-----+
-            |              |              |
-            v              v              v
-      +-----------+  +-----------+  +-----------+
-      | 3. Distil-|  | 3. Distil-|  | 3. Distil-|
-      |   lation  |  |   lation  |  |   lation  |
-      +-----+-----+  +-----+-----+  +-----+-----+
-            |              |              |
-            v              v              v
-      +-----------+  +-----------+  +-----------+
-      | 4. Narr-  |  | 4. Narr-  |  | 4. Narr-  |
-      |   ative   |  |   ative   |  |   ative   |
-      |   Gen     |  |   Gen     |  |   Gen     |
-      +-----+-----+  +-----+-----+  +-----+-----+
-            |              |              |
-            v              v              v
-      +-----------+  +-----------+  +-----------+
-      | 5. Audio  |  | 5. Audio  |  | 5. Audio  |
-      |   Gen     |  |   Gen     |  |   Gen     |
-      +-----+-----+  +-----+-----+  +-----+-----+
-            |              |              |
-            +--------------+--------------+
-                           |
-                  All jobs complete
-                           |
-                           v
-                  +----------------+
-                  | 6. Briefing    |
-                  |    Assembly    |
-                  +----------------+
-                           |
-                           v
-                  Briefings created,
-                  FeedItems READY
-```
+![Pipeline flow](./diagrams/pipeline-flow.svg)
 
-### Standalone Jobs
+- Input: `BriefingRequest` rows on `ORCHESTRATOR_QUEUE` (action `evaluate`).
+- Output: `Briefing` + `FeedItem(status: READY)` for each successfully processed `PipelineJob`; failures surface as `FeedItem(status: FAILED)` and the request as `COMPLETED_DEGRADED` or `FAILED`.
 
-| Job | Queue | Description |
-|-----|-------|-------------|
-| Feed Refresh | `feed-refresh` | Polls RSS feeds, ingests new episodes into the database. Triggered by the pipeline-trigger cron job, not directly part of the pipeline. |
+## Stages
 
-### Pipeline Stage Details
+| # | Stage | Queue binding | Cloudflare queue | Handler | Writes |
+|---|-------|----------------|-------------------|---------|--------|
+| 1 | Transcription | `TRANSCRIPTION_QUEUE` | `transcription` | `worker/queues/transcription.ts` | `WorkProduct(TRANSCRIPT)` · `Distillation.transcript` |
+| 2 | Distillation | `DISTILLATION_QUEUE` | `distillation` | `worker/queues/distillation.ts` | `WorkProduct(CLAIMS)` · `Distillation.claimsJson` |
+| 3 | Narrative Generation | `NARRATIVE_GENERATION_QUEUE` | `narrative-generation` | `worker/queues/narrative-generation.ts` | `WorkProduct(NARRATIVE)` · `Clip.narrativeText` |
+| 4 | Audio Generation (TTS) | `AUDIO_GENERATION_QUEUE` | `clip-generation` | `worker/queues/audio-generation.ts` | `WorkProduct(AUDIO_CLIP)` · `Clip.audioKey` · `Clip.status=COMPLETED` |
+| 5 | Briefing Assembly | `BRIEFING_ASSEMBLY_QUEUE` | `briefing-assembly` | `worker/queues/briefing-assembly.ts` | `Briefing` · `FeedItem.briefingId` · `FeedItem.status=READY` |
 
-| Stage | Queue | Config Key | Description |
-|-------|-------|------------|-------------|
-| 1. Transcription | `transcription` | `TRANSCRIPTION` | Three-tier waterfall: RSS feed URL -> Podcast Index API -> Whisper STT (with chunking for >25MB) |
-| 2. Distillation | `distillation` | `DISTILLATION` | Uses LLM (multi-provider) to extract scored claims from transcript. Prompt configurable via Admin > AI > Prompts. |
-| 3. Narrative Generation | `narrative-generation` | `NARRATIVE_GENERATION` | Generates narrative text from distillation claims using LLM (multi-provider). Prompt configurable via Admin > AI > Prompts. |
-| 4. Audio Generation | `clip-generation` (legacy name) | `AUDIO_GENERATION` | Converts narrative text to MP3 audio via TTS (multi-provider). Uses `voicePresetId` from PipelineJob for voice selection. |
-| 5. Briefing Assembly | `briefing-assembly` | `BRIEFING_ASSEMBLY` | Creates per-user Briefing records wrapping shared Clips, updates FeedItems to READY with briefingId |
+> The `AUDIO_GENERATION_QUEUE` binding maps to the queue name `clip-generation` in `wrangler.jsonc` — a legacy name preserved for backwards-compatible logs and telemetry. The dispatcher normalises `clip-generation` → `handleAudioGeneration`.
 
----
+Standalone jobs that are **not** pipeline stages:
 
-## Orchestrator Pattern
+| Job | Queue | Trigger | Purpose |
+|-----|-------|---------|---------|
+| Feed Refresh | `feed-refresh` | `episode-refresh` cron (every 5 min heartbeat, per-job interval gate) + admin | RSS polling → upsert `Episode` → fanout to `content-prefetch` → auto-create `BriefingRequest(source: SUBSCRIPTION)` for users subscribed to the podcast |
+| Content Prefetch | `content-prefetch` | Feed refresh | HEAD probe audio, verify/fetch transcript, stamp `Episode.contentStatus` |
+| Catalog Refresh | `catalog-refresh` | `apple-discovery` / `podcast-index-discovery` crons + admin | Pull trending/top-200 lists → upsert `Podcast` → queue feed refresh |
+| Welcome Email | `welcome-email` | Clerk `user.created` webhook | Send ZeptoMail template; gated by `welcomeEmail.enabled` |
 
-**File:** `worker/queues/orchestrator.ts`
+## Orchestrator
 
-The orchestrator is a push-based coordinator sitting on the `orchestrator` queue. It handles two message types:
+`worker/queues/orchestrator.ts` coordinates the whole pipeline. It is a push-based CAS controller — every stage completion comes back to it so it can advance the job.
 
-```
-+-----------------+          +----------------+
-| evaluate        |--------->| Resolve items  |
-| (new request)   |          | to episodes,   |
-|                 |          | create jobs,   |
-|                 |          | dispatch to    |
-|                 |          | transcription  |
-+-----------------+          +----------------+
+![Orchestrator states](./diagrams/orchestrator-states.svg)
 
-+-----------------+          +----------------+
-| job-stage-      |--------->| Advance job to |
-| complete        |          | next stage, or |
-| (stage done)    |          | trigger assem- |
-|                 |          | bly when all   |
-|                 |          | jobs complete  |
-+-----------------+          +----------------+
-```
+### Message types
 
-### Message Interface
-
-```typescript
-interface OrchestratorMessage {
+```ts
+type OrchestratorMessage = {
   requestId: string;
-  action: "evaluate" | "job-stage-complete";
+  action: "evaluate" | "job-stage-complete" | "job-failed";
   jobId?: string;
-}
+  completedStage?: "TRANSCRIPTION" | "DISTILLATION" | "NARRATIVE_GENERATION" | "AUDIO_GENERATION";
+  correlationId?: string;
+  errorMessage?: string;
+};
 ```
 
-### Stage Progression
-
-Each queue handler reports back to `ORCHESTRATOR_QUEUE` when its stage completes for a job. The orchestrator advances the job through stages:
-
-```
-TRANSCRIPTION --> DISTILLATION --> NARRATIVE_GENERATION --> AUDIO_GENERATION --> (complete)
-                                                                                    |
-                                                            When all jobs for a request complete:
-                                                                                    |
-                                                                                    v
-                                                                            BRIEFING_ASSEMBLY
-```
-
----
-
-## BriefingRequest Lifecycle
-
-```
-Subscription auto / On-demand / Admin test
-         |
-         v
-     PENDING ------> evaluate message sent to orchestrator
-         |
-         v
-    PROCESSING -----> orchestrator creates jobs, dispatches stages
-         |
-    +----+----+
-    |         |
-    v         v
-COMPLETED   FAILED
-    |
-    v
-Briefings created, FeedItems READY
-```
-
-- **Created by:** Subscription auto (feed refresh), on-demand (`POST /api/briefings/generate`), or admin test (`POST /api/admin/requests/test-briefing`)
-- **Evaluate:** Orchestrator resolves request items (`useLatest` becomes actual `episodeId`), creates PipelineJobs. Each job carries `voicePresetId` from the subscription or user default.
-- **Voice Preset Resolution:** When the orchestrator creates a PipelineJob, it resolves the voice preset: subscription `voicePresetId` takes priority, then user `defaultVoicePresetId`, then null (system default). The `voicePresetId` is stored on PipelineJob and passed through to `AudioGenerationMessage`. The audio generation queue handler loads the preset config and extracts provider-specific voice settings.
-- **Completion:** When all jobs finish (or fail), assembly is dispatched
-- **Assembly:** Creates per-user Briefing records (upsert on `userId + clipId`) wrapping shared Clips, then updates linked FeedItems to READY with `briefingId` on success, FAILED on failure
-
----
-
-## PipelineJob Model
-
-One job per **(episode, durationTier)** per request.
-
-| Field | Description |
-|-------|-------------|
-| `currentStage` | Pipeline stage the job is at (TRANSCRIPTION, DISTILLATION, NARRATIVE_GENERATION, AUDIO_GENERATION, BRIEFING_ASSEMBLY) |
-| `status` | PENDING, IN_PROGRESS, COMPLETED, FAILED |
-| `distillationId` | Link to cached distillation work product |
-| `clipId` | Link to cached clip work product |
-| `completedAt` | When job finished |
-| `dismissedAt` | DateTime? — When an admin dismissed a failed job (dismissed jobs are hidden from the default job list) |
+### `evaluate` (new request)
+
+1. Load `BriefingRequest`. Skip if terminal.
+2. If `request.mode === "USER"`, enforce `Plan.concurrentPipelineJobs` via `checkConcurrentJobLimit`. Over-limit requests are **re-queued** (`msg.retry()`) so they resume when a slot frees up.
+3. Resolve `useLatest` items to the podcast's most recent `Episode`; drop items that don't resolve.
+4. Cap `durationTier` against episode length. If the episode is shorter than the requested tier, pick the next-lower `DURATION_TIERS` entry that still fits, and update any already-created `FeedItem` rows at the original tier to the new tier (merging with any conflicting existing `FeedItem`).
+5. Mark request `PROCESSING`.
+6. **Cache-aware entry** — with two batch queries (one on `WorkProduct`, one on `Clip`) determine the earliest stage that still needs work for each item:
+   - `AUDIO_CLIP` + `Clip.status=COMPLETED` → `BRIEFING_ASSEMBLY` (pure cache hit; no pipeline message sent until all jobs are ready).
+   - `NARRATIVE` → `AUDIO_GENERATION`.
+   - `CLAIMS` → `NARRATIVE_GENERATION`.
+   - `TRANSCRIPT` → `DISTILLATION`.
+   - Otherwise → `TRANSCRIPTION`.
+7. Create a `PipelineJob` per item with the computed `currentStage` and dispatch the stage's queue message.
+8. If **every** job is fully cached, dispatch briefing assembly immediately (no stage-complete messages will otherwise arrive).
+
+### `job-stage-complete`
+
+1. Load `PipelineJob`. Skip if terminal or if the reported `completedStage` is earlier than `currentStage` (out-of-order duplicate).
+2. **CAS advance** — `updateMany({ where: { id, currentStage: completedStage }, data: { currentStage: nextStage, status: "IN_PROGRESS" } })`. Only one concurrent handler wins.
+3. Dispatch the next stage's queue message.
+4. On stage 4 (`AUDIO_GENERATION`) completion, park the job at `currentStage=BRIEFING_ASSEMBLY, status=PENDING`. When no jobs remain in stages 1–4 (all are FAILED or parked), dispatch `BRIEFING_ASSEMBLY_QUEUE`.
+5. SEO-backfill mode: mark the job `COMPLETED` after `DISTILLATION` and skip stages 3–5. When all jobs for the request are terminal, mark the request `COMPLETED` (if any succeeded) or `FAILED`.
 
-### Relationship to Request
+### `job-failed`
 
-```
-BriefingRequest 1 ----> * PipelineJob
-                           (one per episode + durationTier)
-
-PipelineJob 1 ----> * PipelineStep
-                       (one per stage execution, audit trail)
-
-PipelineStep 1 ----> * PipelineEvent
-                        (structured log entries)
-```
-
-A digest-style request produces multiple jobs (one per episode). A single-episode request produces one job.
-
----
-
-## PipelineStep Model (Audit Trail)
-
-One step per stage execution per job. Provides full observability into pipeline behavior.
-
-| Field | Description |
-|-------|-------------|
-| `stage` | Which pipeline stage |
-| `status` | PENDING, IN_PROGRESS, COMPLETED, SKIPPED, FAILED |
-| `cached` | Whether this step reused cached data |
-| `startedAt` / `completedAt` | Timing |
-| `durationMs` | Execution time |
-| `model` | AI model used (e.g. "claude-sonnet-4-20250514") |
-| `inputTokens` / `outputTokens` | Token usage |
-| `cost` | API cost for this step (for analytics) |
-| `retryCount` | Number of retries attempted |
-| `workProductId` | Link to WorkProduct if one was created |
-| `input` / `output` | JSON blobs for debugging |
-
----
+1. Mark the job `FAILED` with the error message.
+2. If no jobs are still in stages 1–4 (everything is either FAILED or parked at `BRIEFING_ASSEMBLY` PENDING), dispatch assembly so the surviving jobs can still ship as `COMPLETED_DEGRADED`.
 
-## PipelineEvent Model (Structured Logging)
-
-Fine-grained event log entries per step. Written via `writeEvent()` from `worker/lib/pipeline-events.ts` (fire-and-forget -- errors are swallowed and logged to console so event writes never break stage processing).
-
-| Field | Description |
-|-------|-------------|
-| `level` | DEBUG, INFO, WARN, ERROR |
-| `message` | Human-readable event message |
-| `data` | Structured JSON payload with rich diagnostic context |
-| `createdAt` | Event timestamp |
-
-Indexed on `[stepId, createdAt]` for efficient retrieval.
-
-### Enriched Diagnostic Context
-
-Pipeline events now carry rich structured data in the `data` field across all stages. Depending on the stage and event type, this includes:
-
-- **Provider info:** provider name, tier (primary/secondary/tertiary), provider-specific model ID
-- **Model info:** model chain composition, resolved model ID, fallback chain length
-- **Token counts / size metrics:** input/output tokens (LLM), audio size in bytes (TTS/STT), narrative length
-- **Timing data:** per-operation durations, TTS generation time, cache hit indicators
-- **Error context:** failed tier, error message excerpt, retry/circuit-breaker state
-
-This diagnostic data enables the admin AI Errors page and pipeline observability views to show detailed per-step telemetry without needing to parse unstructured log messages.
-
----
-
-## Stage Caching Strategy
-
-Each stage checks for existing work products before doing expensive processing:
-
-```
-Stage 2 (Transcription):
-  Has Distillation with transcript? --> SKIP
-  Episode has transcriptUrl?        --> Fetch from URL (Tier 1: RSS feed)
-  Podcast has podcastIndexId?       --> Lookup via Podcast Index API (Tier 2)
-    Found? --> Fetch transcript, backfill episode.transcriptUrl
-  Neither?                          --> Whisper STT (Tier 3)
-    Audio > 25MB and MP3?           --> Chunked transcription (~20MB byte-range chunks)
-    Audio > 25MB and non-MP3?       --> Fail with clear error
-    Audio ≤ 25MB?                   --> Single-file transcription
-
-Stage 3 (Distillation):
-  Completed Distillation exists for episode? --> SKIP
-  Otherwise                                  --> Run LLM extraction (multi-provider)
-
-Stage 4 (Narrative Generation):
-  NARRATIVE WorkProduct exists for (episodeId, durationTier)? --> SKIP
-  Otherwise                                                   --> Generate narrative from claims (multi-provider)
-
-Stage 5 (Audio Generation):
-  Completed Clip + AUDIO_CLIP WorkProduct exists for (episodeId, durationTier)? --> SKIP
-  Otherwise                                                                     --> Generate TTS audio (multi-provider)
-```
-
-When a stage is skipped, the handler creates a PipelineStep with `status: SKIPPED` and `cached: true`, then immediately reports completion to the orchestrator.
-
----
-
-## Stage Gating (Runtime Config)
-
-Each stage handler checks its enable flag before processing:
-
-```
-Message arrives at queue handler
-         |
-         v
-  Is pipeline.stage.N.enabled? ----NO----> Ack message (discard)
-         |
-        YES
-         |
-         v
-  Is message type "manual"? ----YES----> Bypass gate, process anyway
-         |
-         NO
-         |
-         v
-  Process normally
-```
-
-This allows admins to disable individual stages without losing queued messages. Admin-triggered reprocessing (with `type: "manual"`) always bypasses the gate.
-
----
-
-## Multi-Provider AI Architecture
-
-Pipeline stages use a pluggable provider architecture. Each stage reads its model+provider config from `PlatformConfig` via `getModelConfig(prisma, stage)`, which returns `{ provider: string, model: string }`.
-
-### Provider Registries
-
-| Stage | Registry | Providers |
-|-------|----------|-----------|
-| STT | `worker/lib/stt/providers.ts` | OpenAI (Whisper), Deepgram (nova-2, nova-3), Groq, Cloudflare Workers AI |
-| LLM (distillation, narrative) | `worker/lib/llm-providers.ts` | Anthropic (Claude), Groq (Llama, Mixtral), Cloudflare Workers AI |
-| TTS | `worker/lib/tts-providers.ts` | OpenAI (gpt-4o-mini-tts, tts-1, tts-1-hd), Groq (Orpheus), Cloudflare Workers AI |
-
-### Model Registry (Database)
-
-Models and providers are tracked in the `AiModel` and `AiModelProvider` tables:
-
-- **AiModel**: `(stage, modelId)` unique — one entry per model per stage
-- **AiModelProvider**: `(aiModelId, provider)` unique — one provider entry per model
-
-Provider pricing metadata (per-minute, per-token, per-character) is stored and refreshed daily via `worker/lib/pricing-updater.ts`.
-
-### Model Fallback Chains (3-Tier)
-
-**File:** `worker/lib/model-resolution.ts`
-
-Each pipeline stage supports a 3-tier model fallback chain configured via PlatformConfig:
-
-| Config Key | Role |
-|-----------|------|
-| `ai.{stage}.model` | Primary model+provider |
-| `ai.{stage}.model.secondary` | Secondary fallback |
-| `ai.{stage}.model.tertiary` | Tertiary fallback |
-
-The `resolveModelChain(prisma, stage)` function returns an ordered list of `ResolvedModel` entries. Each entry includes provider, model ID, provider-specific model ID, pricing metadata, and provider limits.
-
-Fallback behavior:
-- Models whose provider has an **open circuit breaker** are skipped automatically.
-- Stage handlers iterate the chain: if the primary provider fails, the secondary is attempted, then the tertiary.
-- `resolveStageModel(prisma, stage)` resolves only the primary model but will automatically failover to an alternative provider from the `AiModel`/`AiModelProvider` database if the primary's circuit breaker is open.
-- Circuit breakers are managed by `worker/lib/circuit-breaker.ts` — `recordSuccess()` and `recordFailure()` track provider health.
-
----
-
-## WorkProduct Registry
-
-Work products are stored in **R2** and tracked in the database.
-
-### Model
-
-```
-WorkProduct {
-  id           String
-  type         WorkProductType  // TRANSCRIPT, CLAIMS, NARRATIVE, AUDIO_CLIP, BRIEFING_AUDIO, SOURCE_AUDIO
-  episodeId    String?
-  userId       String?
-  durationTier Int?
-  voice        String?
-  r2Key        String (unique)
-  sizeBytes    Int?
-  metadata     Json?
-}
-```
-
-### R2 Key Scheme
-
-Work product keys are built via `wpKey()` from `worker/lib/work-products.ts`:
-
-| Type | Key Pattern |
-|------|-------------|
-| Transcript | `wp/transcript/{episodeId}.txt` |
-| Claims | `wp/claims/{episodeId}.json` |
-| Narrative | `wp/narrative/{episodeId}/{durationTier}.txt` |
-| Audio Clip | `wp/clip/{episodeId}/{durationTier}/{voice}.mp3` |
-| Source Audio | `wp/source-audio/{episodeId}.bin` |
-
-Legacy clip audio also exists at `clips/{episodeId}/{durationTier}.mp3` (served by `/api/clips/` route).
-
----
-
-## Runtime Config Keys
-
-Stored in the `PlatformConfig` table, accessed via `getConfig(prisma, key, fallback)` with a 60-second TTL cache.
-
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `pipeline.enabled` | boolean | `true` | Master pipeline kill switch |
-| `pipeline.minIntervalMinutes` | number | `60` | Minimum interval between auto feed refreshes |
-| `pipeline.lastAutoRunAt` | string | `null` | Timestamp of last auto run |
-| `pipeline.logLevel` | string | `"info"` | Structured log verbosity (error/info/debug) |
-| `pipeline.stage.TRANSCRIPTION.enabled` | boolean | `true` | Transcription stage enable |
-| `pipeline.stage.DISTILLATION.enabled` | boolean | `true` | Distillation stage enable |
-| `pipeline.stage.NARRATIVE_GENERATION.enabled` | boolean | `true` | Narrative Generation stage enable |
-| `pipeline.stage.AUDIO_GENERATION.enabled` | boolean | `true` | Audio Generation stage enable |
-| `pipeline.stage.BRIEFING_ASSEMBLY.enabled` | boolean | `true` | Briefing Assembly stage enable |
-| `pipeline.feedRefresh.maxEpisodesPerPodcast` | number | `10` | Episode cap per podcast per refresh |
-| `pipeline.feedRefresh.batchConcurrency` | number | `10` | Podcasts processed in parallel per queue message |
-| `pipeline.feedRefresh.fetchTimeoutMs` | number | `10000` | RSS fetch timeout per podcast (ms) |
-| `pipeline.contentPrefetch.fetchTimeoutMs` | number | `15000` | Transcript/audio validation timeout (ms) |
-| `ai.stt.model` | JSON | `null` | STT model+provider config: `{provider, model}` |
-| `ai.stt.model.secondary` | JSON | `null` | STT secondary fallback |
-| `ai.stt.model.tertiary` | JSON | `null` | STT tertiary fallback |
-| `ai.distillation.model` | JSON | `null` | Distillation LLM model+provider config |
-| `ai.distillation.model.secondary` | JSON | `null` | Distillation secondary fallback |
-| `ai.distillation.model.tertiary` | JSON | `null` | Distillation tertiary fallback |
-| `ai.narrative.model` | JSON | `null` | Narrative LLM model+provider config |
-| `ai.narrative.model.secondary` | JSON | `null` | Narrative secondary fallback |
-| `ai.narrative.model.tertiary` | JSON | `null` | Narrative tertiary fallback |
-| `ai.tts.model` | JSON | `null` | TTS model+provider config |
-| `ai.tts.model.secondary` | JSON | `null` | TTS secondary fallback |
-| `ai.tts.model.tertiary` | JSON | `null` | TTS tertiary fallback |
-| `pricing.lastRefreshedAt` | string | `null` | Daily pricing refresh timestamp |
-| `cron.{jobKey}.enabled` | boolean | `true` | Enable/disable a cron job |
-| `cron.{jobKey}.intervalMinutes` | number | varies | Run interval for a cron job |
-| `cron.{jobKey}.lastRunAt` | string | `null` | Timestamp of last cron job execution |
-
----
-
-## Queue Configuration
-
-Defined in `wrangler.jsonc`.
-
-| Queue | Batch Size | Max Retries | Purpose |
-|-------|-----------|-------------|---------|
-| `feed-refresh` | 10 | 3 | RSS polling |
-| `transcription` | 5 | 3 | Transcript fetching/generation |
-| `distillation` | 5 | 3 | LLM claim extraction |
-| `narrative-generation` | 5 | 3 | LLM narrative writing |
-| `clip-generation` | 3 | 3 | TTS audio rendering (legacy queue name for audio generation) |
-| `briefing-assembly` | 5 | 3 | Final audio assembly |
-| `orchestrator` | 10 | 3 | Pipeline coordination |
-
----
-
-## Scheduled Jobs (Cron System)
-
-The Cloudflare Workers `scheduled` handler invokes the cron runner (`worker/lib/cron/runner.ts`) which manages 5 jobs. Each job has an enable flag, configurable interval, and interval-gated execution tracked via `CronRun` and `CronRunLog` models.
-
-### Cron Runner
-
-`runJob({ jobKey, prisma, execute })` handles the lifecycle:
-
-1. Checks `cron.{jobKey}.enabled` config (skips if disabled)
-2. Reads `cron.{jobKey}.intervalMinutes` and `cron.{jobKey}.lastRunAt` to enforce interval gating
-3. Creates a `CronRun` record with `status: IN_PROGRESS`
-4. Executes the job function with a `CronLogger` that writes `CronRunLog` entries
-5. Marks the run as `SUCCESS` or `FAILED` with duration and result/error
-6. Updates `cron.{jobKey}.lastRunAt`
-
-### Job Definitions
-
-| Job Key | Default Interval | Description | Source |
-|---------|-----------------|-------------|--------|
-| `pipeline-trigger` | 15 min | Enqueues a feed refresh cycle (respects `pipeline.enabled` master switch) | `worker/lib/cron/pipeline-trigger.ts` |
-| `monitoring` | 60 min | Refreshes AI model pricing and checks cost threshold alerts | `worker/lib/cron/monitoring.ts` |
-| `user-lifecycle` | 6 hours | Checks for users whose free trial has expired | `worker/lib/cron/user-lifecycle.ts` |
-| `data-retention` | 24 hours | Counts/deletes aged episodes, stale podcasts, and old briefing requests | `worker/lib/cron/data-retention.ts` |
-| `recommendations` | 7 days | Rebuilds podcast recommendation profiles for all users | `worker/lib/cron/recommendations.ts` |
-
-### CronRun Model
-
-| Field | Description |
-|-------|-------------|
-| `jobKey` | Which cron job ran |
-| `status` | IN_PROGRESS, SUCCESS, FAILED |
-| `startedAt` / `completedAt` | Timing |
-| `durationMs` | Execution time |
-| `result` | JSON result payload from the job |
-| `errorMessage` | Error message if failed |
-
-Each run has associated `CronRunLog` entries (level, message, structured data) for fine-grained observability, viewable via the admin Cron Jobs page.
-
----
-
-## Cost Tracking
-
-Each `PipelineStep` records AI usage metadata on completion:
-
-- **model** (String?) — The AI model used (e.g. `whisper-1`, `claude-sonnet-4-20250514`, or `model1+model2` for multi-model stages)
-- **inputTokens** (Int?) — Input tokens consumed (for Whisper, estimated from audio bytes / 16000; for TTS, text character count)
-- **outputTokens** (Int?) — Output tokens produced (0 for STT and TTS)
-- **cost** (Float?) — Estimated dollar cost (null when not yet calculable)
-
-Per-stage behavior:
-- **Transcription:** Captured only for Whisper STT (Tier 3). Tiers 1/2 (RSS/Podcast Index) leave usage fields null since no AI call is made.
-- **Distillation:** Captures LLM API usage from claim extraction. Model, input/output tokens come directly from the API response.
-- **Narrative Generation:** Captures LLM API usage from narrative writing. Model and token counts from the API response.
-- **Audio Generation:** Captures TTS API usage. Model and token counts from the API response.
-
-The admin Analytics page includes a per-model cost breakdown widget (`GET /api/admin/analytics/costs/by-model`) for monitoring spend across models and stages.
-
----
-
-## Pipeline Logging
-
-### Structured JSON Logger
-
-The pipeline uses a structured JSON logger (`worker/lib/logger.ts`) with configurable verbosity via `pipeline.logLevel` PlatformConfig key.
-
-Log levels: `error` (0) < `info` (1) < `debug` (2)
-
-Each log line is JSON with: `{ level, stage, requestId?, jobId?, action, ...data, ts }`
-
-### Pipeline Events (Database)
-
-Fine-grained events within pipeline steps are written to the `PipelineEvent` table via `writeEvent()` from `worker/lib/pipeline-events.ts`. These provide step-level observability beyond what structured logs capture, including enriched diagnostic data such as provider/model info, token counts, timing metrics, and fallback chain details (see PipelineEvent Model section above).
-
----
+### Invariants
+
+- Strict stage order: `TRANSCRIPTION → DISTILLATION → NARRATIVE_GENERATION → AUDIO_GENERATION → BRIEFING_ASSEMBLY`.
+- CAS on `currentStage=completedStage` means duplicate queue deliveries cannot double-advance a job.
+- `BriefingRequest.mode` is enforced at `evaluate` time (`USER` vs `SEO_BACKFILL` vs `CATALOG`).
+- Terminal request statuses: `COMPLETED`, `COMPLETED_DEGRADED`, `FAILED`, `CANCELLED`.
+
+## Stage Details
+
+### Stage 1 — Transcription (`worker/queues/transcription.ts`)
+
+Three-tier waterfall, walked top-to-bottom. The order is configurable via `transcript.sources` (`PlatformConfig`, default `["rss-feed", "podcast-index"]`); STT is always the final fallback.
+
+1. **RSS feed transcript URL** (`transcript/sources.ts`) — fetch + normalise VTT/SRT; caches to R2 on success.
+2. **Podcast Index lookup** (`transcript/podcast-index-source.ts`) — HMAC-SHA1 query against `/episodes/byguid`; falls through when the response has no transcript.
+3. **STT fallback** (`worker/lib/stt/*`) — model chain from `resolveModelChain(prisma, "stt")`. Each provider is tried in primary/secondary/tertiary order with per-provider circuit breaker skip:
+   - Audio probed via HEAD + first 12 bytes to detect format, size, duration.
+   - Files are chunked when they exceed the provider's `maxFileSizeBytes` limit (OpenAI ≈15 MB, Groq ≤25 MB, Cloudflare Whisper 5 MB with Base64 encoding; Deepgram accepts URL references directly).
+   - Transient failures (HTTP 504, 1031, network errors) increment the circuit-breaker failure counter and fall through to the next provider.
+   - On success, `recordSuccess(provider)` closes the circuit; on failure, `writeAiError()` logs an `AiServiceError` row with classification (`rate_limit`, `timeout`, `auth`, `content_filter`, …).
+
+Outputs: `WorkProduct(TRANSCRIPT)` at `wp/transcript/{episodeId}.txt`; `Distillation` row upserted to `TRANSCRIPT_READY` status. Sends `OrchestratorMessage(action: "job-stage-complete", completedStage: "TRANSCRIPTION")`.
+
+### Stage 2 — Distillation (`worker/queues/distillation.ts`)
+
+1. Cache hit on `WorkProduct(CLAIMS)` → short-circuit and report complete.
+2. Load transcript from R2.
+3. `resolveModelChain(prisma, "distillation")` → Anthropic Claude by default. Prompt caching via `cacheSystemPrompt` option; cache tokens reported separately in `PipelineStep`.
+4. On a `NotAPodcastError` (detected song-lyrics claims), invalidate the podcast (`Podcast.invalidationReason = "song_lyrics_detected"`) and surface `MUSIC_FEED_ITEM_ERROR` back through the orchestrator.
+5. On 429, back off with `pipeline.distillation.rateLimitRetries`.
+6. **Auto-publish**: if the podcast is `deliverable=true`, set `Episode.publicPage=true` so the SEO page (`/p/...`) can render immediately.
+
+Outputs: `WorkProduct(CLAIMS)` at `wp/claims/{episodeId}.json`; `Distillation.status=COMPLETED` with `claimsJson`.
+
+### Stage 3 — Narrative Generation (`worker/queues/narrative-generation.ts`)
+
+1. Cache hit on `WorkProduct(NARRATIVE, episodeId, durationTier)` → short-circuit.
+2. Load claims from R2.
+3. Clamp `durationTier` against episode length; select a claims subset for the effective duration.
+4. `resolveModelChain(prisma, "narrative")` → LLM produces a narrative script with template variables substituted (`{{variable}}` syntax; see `worker/lib/prompt-defaults.ts`).
+5. Upsert `Clip` record at `(episodeId, durationTier, voicePresetId)` with `wordCount` + `narrativeText` so the public page can render text even if audio generation fails.
+
+Outputs: `WorkProduct(NARRATIVE)` at `wp/narrative/{episodeId}/{durationTier}.txt`.
+
+### Stage 4 — Audio Generation / TTS (`worker/queues/audio-generation.ts`)
+
+1. Cache hit on `WorkProduct(AUDIO_CLIP, episodeId, durationTier, voice)` + `Clip.status=COMPLETED` → short-circuit.
+2. Resolve the voice preset (`VoicePreset.config.{openai|groq|cloudflare}`) or fall back to `audio.defaultVoice` (`coral`).
+3. `resolveModelChain(prisma, "tts")` → for each candidate model/provider:
+   - Chunk the narrative text to stay under the provider's character budget.
+   - Call `generateSpeech(chunk)` with provider-specific options (voice, instructions, speed — OpenAI only).
+   - Concatenate chunks with a silent MP3 frame to avoid splice artifacts.
+   - If a provider rejects the input size, defensively re-chunk smaller and retry.
+   - Voice degradation: if the primary model+voice fails but a secondary provider has a suitable fallback voice, mark `Clip.voiceDegraded=true` and record it in the step's output metadata.
+4. Write MP3 to R2 and update `Clip` (`audioKey`, `audioContentType`, `actualSeconds`, `status=COMPLETED`).
+5. Auto-publish mirrors stage 2.
+
+Outputs: `WorkProduct(AUDIO_CLIP)` at `wp/clip/{episodeId}/{durationTier}/{voice}.mp3`.
+
+### Stage 5 — Briefing Assembly (`worker/queues/briefing-assembly.ts`)
+
+`handleBriefingAssembly` delegates to the shared `assembleBriefings(prisma, requestId, log)` in `worker/lib/briefing-assembly.ts`:
+
+1. Load every `FeedItem` for the request, grouped by `(episodeId, durationTier, voicePresetId)`.
+2. For each group, find the matching `Clip` row (already `COMPLETED`).
+3. Upsert a `Briefing(userId, clipId)` — unique constraint guarantees one briefing per user per clip.
+4. Set `FeedItem.briefingId` + `FeedItem.status=READY`.
+5. On jobs that failed earlier: set their `FeedItem.status=FAILED` with `errorMessage`.
+6. Roll up the `BriefingRequest.status`:
+   - All jobs succeeded → `COMPLETED`.
+   - Any succeeded, some failed → `COMPLETED_DEGRADED`.
+   - None succeeded → `FAILED`.
+
+Intro/outro jingles are **not** concatenated server-side. The web and native players stitch the intro + clip + outro client-side using the jingle audio assets at `/api/assets/jingles/*` (cached with Cache API). See [docs/decisions/2026-03-15-client-side-jingles.md](./decisions/2026-03-15-client-side-jingles.md).
+
+## WorkProduct R2 Keys
+
+Deterministic keys let cache hits be detected without reading the object:
+
+| Type | Key | Stage |
+|------|-----|-------|
+| `TRANSCRIPT` | `wp/transcript/{episodeId}.txt` | Transcription |
+| `CLAIMS` | `wp/claims/{episodeId}.json` | Distillation |
+| `NARRATIVE` | `wp/narrative/{episodeId}/{durationTier}.txt` | Narrative Gen |
+| `AUDIO_CLIP` | `wp/clip/{episodeId}/{durationTier}/{voice}.mp3` | Audio Gen |
+| `SOURCE_AUDIO` | `wp/source-audio/{episodeId}.bin` | Transcription (debug; gated) |
+| `BRIEFING_AUDIO` | reserved enum (no key builder today) | — |
+| `DIGEST_NARRATIVE` · `DIGEST_CLIP` · `DIGEST_AUDIO` | digest-specific keys | Daily digest delivery |
+
+Key builder: `wpKey(params)` in `worker/lib/work-products.ts`.
+
+## Runtime Configuration
+
+Pipeline-relevant `PlatformConfig` keys (60-second TTL cache):
+
+| Key | Default | Effect |
+|-----|---------|--------|
+| `pipeline.enabled` | `true` | Global kill switch. Queue handlers ACK without processing when false. |
+| `pipeline.logLevel` | `"info"` | `error` / `info` / `debug` applied by `createPipelineLogger`. |
+| `pipeline.stage.{STAGE}.enabled` | `true` | Per-stage kill switch. Skipped by `checkStageEnabled`. Manual messages (`type: "manual"`) bypass this gate. |
+| `pipeline.feedRefresh.maxEpisodesPerPodcast` | `5` | Cap on episodes ingested per poll. |
+| `pipeline.feedRefresh.batchConcurrency` | `10` | Podcasts processed in parallel per feed-refresh message. |
+| `pipeline.feedRefresh.fetchTimeoutMs` | `10000` | RSS fetch timeout. |
+| `pipeline.feedRefresh.maxRetries` | `3` | Per-podcast retry budget (exponential backoff inside the queue). |
+| `pipeline.contentPrefetch.fetchTimeoutMs` | `15000` | Audio / transcript probe timeout. |
+| `pipeline.distillation.rateLimitRetries` | `3` | Retries on LLM 429s. |
+| `transcript.sources` | `["rss-feed", "podcast-index"]` | Ordered non-STT transcript sources. |
+| `ai.{stage}.model` · `ai.{stage}.model.secondary` · `ai.{stage}.model.tertiary` | — | Primary/secondary/tertiary `{provider, model}` per stage. |
+| `prompt.*` | — | Prompt-template overrides (distillation, narrative). |
+| `circuitBreaker.{failureThreshold,cooldownMs,windowMs}` | `5 / 30_000 / 60_000` | Per-provider circuit breaker parameters. |
+| `audio.defaultVoice` | `"coral"` | Default TTS voice. |
+| `audio.wordsPerMinute` | `150` | Speaking-rate assumption for duration estimation. |
+
+## Multi-Provider Failover
+
+Every AI call follows the same pattern (`worker/lib/model-resolution.ts`):
+
+1. `resolveStageModel()` → read `ai.{stage}.model` from config, join against `AiModelProvider` for pricing/limits.
+2. Check the per-provider circuit breaker — if open, `resolveStageModel` transparently fails over to an alternative provider serving the same model, logs `provider_failover`.
+3. `resolveModelChain()` returns primary/secondary/tertiary as a list; queue handlers walk the list, recording `recordSuccess(provider)` / `recordFailure(provider)` after each attempt.
+
+Circuit-breaker state is in-memory per Worker isolate and forgets failures outside `circuitBreaker.windowMs`.
+
+Costs are aggregated from `PipelineStep` rows using pricing pulled from `AiModelProvider`:
+
+- Tokens: `pricing.priceInputPerMToken * inputTokens / 1e6 + pricing.priceOutputPerMToken * outputTokens / 1e6`, with Anthropic cache adjustments (writes 1.25× input, reads 0.1× input).
+- Audio (STT): `pricing.pricePerMinute * audioSeconds / 60`.
+- Characters (TTS): `pricing.pricePerKChars * charCount / 1000`.
 
 ## Error Handling
 
-```
-Queue handler receives message
-         |
-         v
-  try { process stage }
-         |
-    +----+----+
-    |         |
- Success    Error
-    |         |
-    v         v
- Update    Update job
- job to    status to
- complete  FAILED
-    |         |
-    v         v
- Report    Retry message
- to orch.  (up to max_retries)
-```
+- **Transient errors** (`rate_limit`, `timeout`, `server_error`, `network`) → `msg.retry()`, relying on Cloudflare Queues' exponential backoff up to the queue's `max_retries`. After the final retry, messages land on the queue's dead-letter (`dead-letter` or `feed-refresh-retry` for feed-refresh).
+- **Permanent errors** (`auth`, `model_not_found`, `content_filter`, `invalid_request`, `quota_exceeded`) → `msg.ack()` + orchestrator `job-failed` notification. The job is marked FAILED and surrounding jobs continue.
+- **NotAPodcastError** (detected by distillation from song-lyric claims) → podcast-wide invalidation via `podcast-invalidation.ts`; surfaces as `MUSIC_FEED_ITEM_ERROR` so the client can render the correct empty state.
+- **Assembly errors** are retried (`msg.retry()`). If retries exhaust, the shared dead-letter queue logs it and `FeedItem.status=FAILED` is already recorded.
 
-Key behaviors:
+## Observability
 
-- **Request-existence guards:** Orchestrator checks if the BriefingRequest still exists before processing. Stale messages for deleted requests are acked and discarded.
-- **Partial assembly:** If some jobs fail, assembly proceeds with the successful ones rather than failing the entire request.
-- **Retry budget:** Each queue has `max_retries: 3`. After exhausting retries, the message is dead-lettered.
+Every stage writes a `PipelineStep` row with:
 
----
+- `stage`, `status`, `cached`, `startedAt`, `completedAt`, `durationMs`
+- AI usage: `model`, `inputTokens`, `outputTokens`, `cacheCreationTokens`, `cacheReadTokens`, `audioSeconds`, `charCount`, `cost`
+- `retryCount`, `workProductId`
+- `input` / `output` JSON for debugging
 
-## Key Source Files
+`writeEvent(prisma, stepId, level, message, data)` in `worker/lib/pipeline-events.ts` emits fine-grained `PipelineEvent` entries (DEBUG/INFO/WARN/ERROR) without blocking the handler.
 
-| File | Purpose |
-|------|---------|
-| `worker/queues/orchestrator.ts` | Push-based pipeline coordinator |
-| `worker/queues/transcription.ts` | Stage 2: three-tier transcript waterfall |
-| `worker/queues/distillation.ts` | Stage 3: LLM claim extraction |
-| `worker/queues/narrative-generation.ts` | Stage 4: LLM narrative writing |
-| `worker/queues/audio-generation.ts` | Stage 5: TTS audio rendering |
-| `worker/queues/briefing-assembly.ts` | Stage 6: Briefing creation + FeedItem linking |
-| `worker/queues/feed-refresh.ts` | Stage 1: RSS polling |
-| `worker/lib/stt/providers.ts` | Multi-provider STT interface |
-| `worker/lib/llm-providers.ts` | Multi-provider LLM interface |
-| `worker/lib/tts-providers.ts` | Multi-provider TTS interface |
-| `worker/lib/ai-models.ts` | AI model config reader |
-| `worker/lib/model-resolution.ts` | 3-tier model fallback chain resolver with circuit breaker integration |
-| `worker/lib/circuit-breaker.ts` | Provider circuit breaker (tracks success/failure) |
-| `worker/lib/pipeline-events.ts` | Pipeline event writer |
-| `worker/lib/work-products.ts` | R2 key builders |
-| `worker/lib/transcript/sources.ts` | Transcript source resolution (RSS, Podcast Index) |
-| `worker/lib/stt/whisper-chunked.ts` | Chunked Whisper for oversized audio files |
-| `worker/lib/config.ts` | Runtime config helper with TTL cache |
-| `worker/lib/logger.ts` | Structured JSON pipeline logger |
-| `worker/lib/cron/runner.ts` | Cron job runner with interval gating and CronRun lifecycle |
-| `worker/lib/cron/pipeline-trigger.ts` | Feed refresh cron trigger |
-| `worker/lib/cron/monitoring.ts` | Pricing refresh + cost alert cron |
-| `worker/lib/cron/user-lifecycle.ts` | Trial expiration checks |
-| `worker/lib/cron/data-retention.ts` | Episode/podcast/request cleanup |
-| `worker/lib/cron/recommendations.ts` | Podcast profile recomputation |
-| `worker/index.ts` | Worker entry point (queue routing) |
+`AiServiceError` captures every provider failure with correlationId = `requestId`, enabling end-to-end trace lookup in `/admin/ai-errors`.
+
+## Admin Controls
+
+- **Pipeline page** (`/admin/pipeline`) — live job browser with stage/status filters; retry + dismiss actions; manual per-stage triggers.
+- **Requests page** (`/admin/requests`) — per-request tree of jobs → steps → events, with work-product previews.
+- **DLQ monitor** (`/admin/dlq`) — read-only view of `dead-letter` queue drops.
+- **Stage configuration** (`/admin/stage-configuration`) — edit stage model assignments, prompts, and per-stage enable flags.
+- **Scheduled jobs** (`/admin/scheduled-jobs`) — enable/disable or manually trigger cron jobs (`episode-refresh`, `catalog-pregen`, etc.).
+- **AI errors** (`/admin/ai-errors`) — searchable `AiServiceError` log with category/severity filters.
 
 ## Upstream Stage Coalescing
 
@@ -572,4 +253,3 @@ To prevent this, the transcription and distillation handlers each acquire a CAS-
 **Crash window:** A post-claim R2 re-check covers the case where a prior worker wrote R2 but died before updating `status`.
 
 **Downstream stages** (narrative, audio) are already deduped by the `Clip` table's `@@unique([episodeId, durationTier, voicePresetId])` constraint, which matches the orchestrator's dispatch key — no concurrent producers are possible for the same clip.
-
