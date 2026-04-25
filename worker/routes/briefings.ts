@@ -47,9 +47,25 @@ briefings.get("/:id/audio", async (c) => {
       exp: Number(expParam),
     });
     if (result === "expired") {
+      console.log(JSON.stringify({
+        level: "warn",
+        action: "audio_token_rejected",
+        reason: "expired",
+        briefingId,
+        requestId: c.get("requestId"),
+        ts: new Date().toISOString(),
+      }));
       return c.json({ error: "token_expired" }, 401);
     }
     if (result !== "ok") {
+      console.log(JSON.stringify({
+        level: "warn",
+        action: "audio_token_rejected",
+        reason: "invalid",
+        briefingId,
+        requestId: c.get("requestId"),
+        ts: new Date().toISOString(),
+      }));
       return c.json({ error: "invalid_token" }, 401);
     }
     userId = owner.userId;
