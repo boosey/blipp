@@ -8,7 +8,7 @@ vi.mock("@capacitor/core", () => ({
 }));
 
 vi.mock("../lib/network-tier", () => ({
-  getNetworkTier: vi.fn(() => "wifi"),
+  getNetworkTier: vi.fn(async () => "wifi"),
 }));
 
 // In-memory Cache API polyfill for jsdom
@@ -76,7 +76,7 @@ describe("Prefetcher.scheduleFromFeed", () => {
     manager = await makeManager();
     prefetcher = new Prefetcher(manager, { cellularEnabled: false });
     const { getNetworkTier } = await import("../lib/network-tier");
-    (getNetworkTier as any).mockReturnValue("wifi");
+    (getNetworkTier as any).mockResolvedValue("wifi");
     globalThis.fetch = vi.fn();
   });
 
@@ -105,7 +105,7 @@ describe("Prefetcher.scheduleFromFeed", () => {
 
   it("takes only first 2 on cellular when cellular not enabled in settings", async () => {
     const { getNetworkTier } = await import("../lib/network-tier");
-    (getNetworkTier as any).mockReturnValue("cellular");
+    (getNetworkTier as any).mockResolvedValue("cellular");
     const items = Array.from({ length: 15 }, (_, i) => makeFeedItem(`br_${i}`));
     await prefetcher.scheduleFromFeed(items);
     expect(prefetcher.queueSize()).toBe(0); // cellular off → no prefetch
@@ -115,7 +115,7 @@ describe("Prefetcher.scheduleFromFeed", () => {
     prefetcher.dispose();
     prefetcher = new Prefetcher(manager, { cellularEnabled: true });
     const { getNetworkTier } = await import("../lib/network-tier");
-    (getNetworkTier as any).mockReturnValue("cellular");
+    (getNetworkTier as any).mockResolvedValue("cellular");
     const items = Array.from({ length: 15 }, (_, i) => makeFeedItem(`br_${i}`));
     await prefetcher.scheduleFromFeed(items);
     expect(prefetcher.queueSize()).toBe(2);
@@ -123,7 +123,7 @@ describe("Prefetcher.scheduleFromFeed", () => {
 
   it("takes nothing when offline", async () => {
     const { getNetworkTier } = await import("../lib/network-tier");
-    (getNetworkTier as any).mockReturnValue("offline");
+    (getNetworkTier as any).mockResolvedValue("offline");
     await prefetcher.scheduleFromFeed([makeFeedItem("br_a")]);
     expect(prefetcher.queueSize()).toBe(0);
   });
@@ -137,7 +137,7 @@ describe("Prefetcher worker loop (single concurrency)", () => {
     manager = await makeManager();
     prefetcher = new Prefetcher(manager, { cellularEnabled: false });
     const { getNetworkTier } = await import("../lib/network-tier");
-    (getNetworkTier as any).mockReturnValue("wifi");
+    (getNetworkTier as any).mockResolvedValue("wifi");
     globalThis.fetch = vi.fn(async (url: any) => {
       const u = String(url);
       if (u.includes("/audio-url")) {
@@ -221,7 +221,7 @@ describe("Prefetcher.scheduleNextInQueue", () => {
     manager = await makeManager();
     prefetcher = new Prefetcher(manager, { cellularEnabled: true });
     const { getNetworkTier } = await import("../lib/network-tier");
-    (getNetworkTier as any).mockReturnValue("wifi");
+    (getNetworkTier as any).mockResolvedValue("wifi");
     globalThis.fetch = vi.fn(async (url: any) => {
       const u = String(url);
       if (u.includes("/audio-url")) {
@@ -287,7 +287,7 @@ describe("Prefetcher pause/resume", () => {
     manager = await makeManager();
     prefetcher = new Prefetcher(manager, { cellularEnabled: true });
     const { getNetworkTier } = await import("../lib/network-tier");
-    (getNetworkTier as any).mockReturnValue("wifi");
+    (getNetworkTier as any).mockResolvedValue("wifi");
     globalThis.fetch = vi.fn(async (url: any) => {
       const u = String(url);
       if (u.includes("/audio-url")) {
@@ -340,7 +340,7 @@ describe("Prefetcher.cancelInflight", () => {
     manager = await makeManager();
     prefetcher = new Prefetcher(manager, { cellularEnabled: true });
     const { getNetworkTier } = await import("../lib/network-tier");
-    (getNetworkTier as any).mockReturnValue("wifi");
+    (getNetworkTier as any).mockResolvedValue("wifi");
   });
 
   afterEach(() => {

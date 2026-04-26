@@ -107,16 +107,30 @@ function idbClear(db: IDBDatabase, store: string): Promise<void> {
 
 const isNative = Capacitor.isNativePlatform();
 
+// Convert a Blob to base64 without spreading every byte through the call
+// stack. String.fromCharCode(...arr) blows up RangeError on multi-MB audio
+// blobs in iOS WKWebView; FileReader handles any size.
+async function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      const idx = dataUrl.indexOf(",");
+      resolve(idx >= 0 ? dataUrl.slice(idx + 1) : dataUrl);
+    };
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
 async function writeBlob(briefingId: string, blob: Blob): Promise<void> {
   if (isNative) {
-    const buffer = await blob.arrayBuffer();
-    const base64 = btoa(
-      String.fromCharCode(...new Uint8Array(buffer)),
-    );
+    const base64 = await blobToBase64(blob);
     await Filesystem.writeFile({
       path: `${CACHE_DIR}/${briefingId}.audio`,
       data: base64,
       directory: Directory.Data,
+      recursive: true,
     });
   } else {
     const cache = await caches.open(DB_NAME);
@@ -286,7 +300,10 @@ export class StorageManager {
       throw new Error(`audio-url fetch failed: ${res.status}`);
     }
     const body = (await res.json()) as { url: string; expiresAt: number };
-    return body.url;
+    // body.url is a server-relative path. On native the WebView origin is
+    // capacitor:// (local bundle), so it must be made absolute against the
+    // real backend or the audio element fetches the SPA shell instead.
+    return `${getApiBase()}${body.url}`;
   }
 
   /**
