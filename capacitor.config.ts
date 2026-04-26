@@ -26,12 +26,7 @@ const config: CapacitorConfig = {
   ios: {
     contentInset: "automatic",
     scheme: "https",
-    // TEMPORARY: unconditionally enable inspection so we can debug iOS
-    // audio playback (issue #8) on a prod-pointing build. The npm
-    // build:ios:production script sets BLIPP_TARGET_ENV=production, which
-    // would otherwise strip this flag. REVERT before merging — production
-    // builds shipped to App Store users should not be inspectable.
-    webContentsDebuggingEnabled: true,
+    webContentsDebuggingEnabled: process.env.BLIPP_TARGET_ENV !== "production",
   },
   server: {
     hostname,

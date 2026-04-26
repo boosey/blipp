@@ -83,7 +83,7 @@ export class Prefetcher {
 
   async scheduleFromFeed(items: FeedItemLike[]): Promise<void> {
     if (this.disposed) return;
-    const tier = getNetworkTier();
+    const tier = await getNetworkTier();
     const take = this.takeForTier(tier);
     if (take === 0) return;
 
@@ -176,12 +176,18 @@ export class Prefetcher {
       if (!urlRes.ok) return;
       const body = (await urlRes.json()) as { url: string };
 
-      const audioRes = await fetch(body.url, { signal: this.currentAbort.signal });
+      // body.url is server-relative; prepend getApiBase() so native fetches
+      // hit the real backend instead of resolving against the local bundle.
+      const audioRes = await fetch(`${getApiBase()}${body.url}`, { signal: this.currentAbort.signal });
       if (!audioRes.ok) return;
       const blob = await audioRes.blob();
       await this.manager.store(briefingId, blob);
-    } catch {
-      // Silent. Next feed event will re-enqueue.
+    } catch (err) {
+      // Non-fatal — next feed event will re-enqueue. Log so prefetch
+      // failures don't go entirely silent in dev.
+      if ((err as any)?.name !== "AbortError") {
+        console.warn("[prefetch] fetchAndStore failed", briefingId, err);
+      }
     } finally {
       this.currentAbort = null;
       this.currentBriefingId = null;
