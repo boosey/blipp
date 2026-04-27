@@ -243,3 +243,206 @@ Seed Pulse with 4–6 posts before public launch so it doesn't read empty.
 - Server-side rendering of `/browse/*` (intentionally CSR + `noindex` — those pages don't need SEO).
 - Publisher partnership outreach in Phases 1–4 (premature at current scale).
 - Paid newsletter infrastructure (premature; design doesn't block it).
+
+---
+
+## Phase 2 — final pre-implementation decisions
+
+### 2.1 Browse components — fork, do NOT add `mode` props
+
+`discover.tsx` is 672 lines, `podcast-detail.tsx` is 845 lines. Threading a `mode: "public" | "authenticated"` prop through both would explode conditional logic and risk auth-mode regressions to the existing user experience. Reject the original plan's `mode` prop approach.
+
+**Decision**:
+- Extract leaf primitives (`PodcastCard`, `EpisodeCard`, `ScrollableRow`) — most already live in `src/components/`.
+- Build `/browse/*` with NEW page components in `src/pages/browse/` that compose those primitives. No conditional auth branches.
+- Authenticated users land on `/discover` as today; unauthenticated users land on `/browse`. The router decides; the components don't care.
+- Acceptance: zero new conditionals in `discover.tsx` or `podcast-detail.tsx`. If you find yourself adding one, stop and refactor the primitive instead.
+
+### 2.2 Public API — concrete cache TTLs and rate limits
+
+Use `caches.default` (Cloudflare Cache API) inside the worker, keyed by full URL.
+
+| Endpoint | TTL | Rationale |
+|---|---|---|
+| `/api/public/categories` | 24h | Categories rarely change |
+| `/api/public/categories/:slug/shows` | 1h | Subscriber counts shift slowly |
+| `/api/public/shows/:slug` | 1h | Episode list freshness |
+| `/api/public/shows/:slug/episodes` | 1h | Same |
+| `/api/public/recommendations/featured` | 15m | Editorial-driven |
+| `/api/public/recently-blipped` | 5m | Landing rail must feel live |
+
+Rate limiting:
+- Per-IP token bucket via Durable Object (or KV-backed counter): 60 req/min, burst 30.
+- `/api/public/recommendations/featured` and `/api/public/recently-blipped` get tighter buckets (10 req/min) to discourage scraping the editorial layer.
+- Cloudflare bot rules at zone level on top of that.
+
+### 2.3 Sample player — iOS Safari gesture reality check ⚠️
+
+**The original plan is wrong about autoplay-with-sound across navigation.** iOS Safari only honors a user gesture for media in the same synchronous frame on the same page. A "Hear a sample" click that navigates to a different route and *then* tries to autoplay-with-sound will be blocked on iOS.
+
+**Revised approach (split by surface)**:
+- **Landing**: "Hear a sample" opens an inline docked mini-player on the landing page itself — no navigation. The original click satisfies the gesture. After the sample ends, the player CTA becomes "Sign up to hear more". This is the most important conversion path; do not break it on iOS.
+- **`/p/:show/:episode` for unauth visitors**: arriving from search has no gesture context. Show a prominent "▶ Tap to play sample" button. No autoplay attempt. Drop `?sample=1` autoplay-on-arrival logic; keep only the URL fragment to scroll to the player.
+- **`/browse/show/:slug`**: same as `/p/*` — click-to-play.
+
+`?sample=1` URL param is retired in Phase 2 (defined in Phase 1 decisions but rendered moot once the inline mini-player exists on landing). Keep `#sample` as a scroll-to-player anchor only.
+
+### 2.4 Sample audio segment
+
+Briefing has no segment-timing fields today. Don't block Phase 2 on adding one.
+
+**Decision**: Phase 2 plays the **first 30s of the Blipp audio**, fade-out via Web Audio gain node. Brand intro cruft is tolerable for v1.
+
+If sample CTR underperforms, add `Briefing.sampleStartSeconds` (Int, default 0) populated by the distillation worker from a future "highlight timestamp" pass. Defer that until data justifies it.
+
+### 2.5 Landing redesign — scope cut
+
+"Landing redesign" in the original plan is ambiguous. Lock the scope:
+- **In Phase 2**: hero rewrite + 3 CTAs + inline sample mini-player + "Recently Blipped" 4–6 card rail + below-fold copy tightening.
+- **NOT in Phase 2**: full visual reskin, illustration system, motion design, dark-mode polish. Those move to Phase 5+.
+
+### 2.6 Indexability + sitemap
+
+- `/browse/*`: `<meta name="robots" content="noindex, follow">`. Excluded from `sitemap.xml`. Confirmed.
+- `/p/*`: indexable, in sitemap. Already in place.
+- The catalog itself is not the SEO play — the synthesized Blipp narratives are. Don't second-guess this.
+
+### 2.7 Phase 2 acceptance — additions
+
+- iOS Safari (real device, not simulator) test of the landing inline sample player. Documented pass/fail in PR description.
+- `/api/public/*` returns identical bytes for two requests within the cache window (verifies cache layer is wired).
+- Per-IP rate limiter returns 429 after burst exhausted, recovers within 60s.
+
+---
+
+## Phase 3 — final pre-implementation decisions
+
+### 3.1 ads.txt content
+
+At the site root: `google.com, pub-XXXXXXXXXXXX, DIRECT, f08c47fec0942fa0` (replace pub ID once issued). Served by the worker as a static text response, NOT from `public/` — keeps it editable per env.
+
+### 3.2 Funding Choices CMP
+
+EEA/UK consent is non-negotiable for AdSense. Configure Funding Choices in the AdSense dashboard before submission. The CMP script loads regardless of `ADS_ENABLED` (it's required even when ads are off, to gate future ad loads). This is OK — Funding Choices is lightweight when no ads are present.
+
+### 3.3 Search Console first
+
+Verify `podblipp.com` in Google Search Console **before** AdSense submission. Submit `sitemap.xml`. Wait for at least one successful crawl of `/p/*` content before submitting AdSense. AdSense reviewers look at indexed content, not just live pages.
+
+### 3.4 Staged ad rollout post-approval
+
+Do NOT flip `ADS_ENABLED=true` globally on day 1 of approval.
+
+1. **Week 1**: enable ads only on `/p/*` (the indexable surface). Monitor pageviews, AdSense earnings, organic traffic.
+2. **Week 2**: extend to `/pulse/*` (when Phase 4 ships).
+3. **Week 3+**: extend to landing if landing-page ads don't tank conversion.
+
+Implement as a per-route check, not a single boolean. New env: `ADS_ROUTES` = comma-separated allowlist (`/p,/pulse`). The existing `ADS_ENABLED` becomes the kill switch.
+
+---
+
+## Phase 4 — final pre-implementation decisions
+
+### 4.0 Adversarial framing — Pulse is the riskiest part of this plan ⚠️
+
+Google's Helpful Content system and 2024+ spam policies treat "AI-synthesized derivative content" harshly. "Synthesizing other people's podcasts" is exactly the pattern that gets sites algorithmically demoted or, in extremes, manually deindexed. The original plan's mitigation ("manual review queue, cross-episode framing, byline = Blipp Pulse") is **insufficient** because:
+
+1. "Blipp Pulse" as a byline is faceless and fails E-E-A-T (no Experience, Expertise, Authoritativeness, Trustworthiness signals).
+2. Manual review doesn't change Google's algorithmic classification of the *content itself* if the content reads as machine-generated summary.
+3. AdSense terms (separately from search rank) prohibit "auto-generated content with little or no value." Pulse can run afoul even if it doesn't get deindexed.
+
+**Hardened mitigations (all required, not optional)**:
+- Real human editor byline. Add `PulseEditor` table (id, name, slug, bio, avatar, twitterHandle, linkedinUrl). Each post FK to PulseEditor. Public `/pulse/by/:editor` page lists their work. Seed with one real editor (Alex) at minimum.
+- Per-post **original analysis ratio**: ≥ 200 words of original commentary per 100 words of source quotation (3:1). Hard rule, enforced manually in review.
+- Per-post **fair-use cap**: ≤ 50 words quoted from any single source episode. No transcript reproduction.
+- Word count target: 800–1500 words. Anything shorter reads as filler.
+- Each post ships with explicit "Sources" footer linking to source episodes + show RSS.
+- The first 4–6 seed posts are **fully human-written** (no AI draft), to establish voice and editorial authority before any AI-assisted post goes live.
+
+If we cannot commit to all six, **kill Phase 4 and revisit**. The downside risk (AdSense termination, site-wide deindex) outweighs the upside.
+
+### 4.1 Routes
+
+- `/pulse` — index, paginated, most recent first.
+- `/pulse/:slug` — full post.
+- `/pulse/by/:editor` — editor archive page (E-E-A-T signal).
+- `/pulse/topic/:slug` — topic tag archive.
+- All SSR via Hono + `renderPulsePost` modeled on `renderEpisodePage`. Indexable. JSON-LD `BlogPosting`.
+
+### 4.2 Editorial pipeline — schema
+
+```
+PulseEditor (id, slug, name, bio, avatarUrl, twitterHandle, linkedinUrl, createdAt)
+PulsePost (id, slug, title, subtitle, body, status, editorId FK,
+           heroImageUrl, topicTags String[], wordCount,
+           sourceClaimIds String[], generationMeta Json,
+           scheduledAt, publishedAt, createdAt, updatedAt,
+           editorReviewedAt, editorRejectedReason,
+           seoTitle, seoDescription)
+BriefingPulsePost (briefingId, pulsePostId, displayOrder) -- join table for bidirectional linking
+```
+
+`status` enum: `DRAFT` → `REVIEW` → `SCHEDULED` → `PUBLISHED` → `ARCHIVED`.
+
+### 4.3 Topic clustering — reuse existing embeddings
+
+`PodcastSeed.embedding` already stores 768-dim Workers AI embeddings. For Phase 4:
+- Add `Distillation.claimsEmbedding` Json? — generated alongside `claimsJson` via the same Workers AI model. Cluster by cosine similarity at digest time.
+- This costs one extra embedding call per distillation. Cheap.
+- Avoid pgvector. Cosine over a few hundred vectors per digest is trivial in TypeScript.
+
+### 4.4 Digest cron
+
+Adding a second cron entry to `wrangler.jsonc` is cleanest:
+```
+"crons": ["*/5 * * * *", "0 14 * * 0"]  // existing + Sunday 2pm UTC
+```
+The scheduled handler dispatches by `controller.cron` string. New handler in `worker/queues/pulse-generate.ts`. Generation produces a DRAFT only; nothing publishes without admin click.
+
+### 4.5 Admin review queue
+
+`/admin/pulse`:
+- List view: filter by status, sort by `createdAt` desc.
+- `/admin/pulse/:id`: rich text editor (TipTap or similar — confirm during build), citation manager (linked Briefings), `scheduledAt` picker, hero image upload to R2.
+- Buttons: "Save draft", "Send to review", "Approve & schedule", "Publish now", "Reject (regenerate)", "Archive".
+- "Reject" stores `editorRejectedReason` for tuning prompts later.
+
+### 4.6 Bidirectional linking
+
+The Phase 1.4 "Featured in" placeholder activates here. Query:
+- `renderEpisodePage`: `prisma.briefingPulsePost.findMany({ where: { briefingId }, include: { pulsePost: true } })` → render up to 3 most recent.
+- Cap at 3 per episode page to keep the section tight.
+
+### 4.7 JSON-LD additions
+
+`BlogPosting` per post with:
+- `author` → `Person` referencing the PulseEditor (with `sameAs` for twitter/linkedin).
+- `publisher` → `Organization` Blipp.
+- `mentions[]` → each cited `PodcastEpisode`.
+- `articleSection` → primary topic tag.
+- `wordCount`.
+- `keywords` → all topic tags joined.
+
+### 4.8 Soft launch sequencing
+
+- **Pulse does NOT appear in the main app nav until** ≥ 10 published posts AND ≥ 100 daily organic visits to `/pulse/*`.
+- Footer link from day 1.
+- `/p/*` "Featured in" section auto-appears once linked posts exist.
+- Pulse in `sitemap.xml` from day 1.
+- No social/email campaign until 4–6 seed posts are live.
+
+### 4.9 Phase 4 acceptance — additions
+
+- ≥ 4 fully human-written seed posts published before any AI-assisted post.
+- All posts pass Rich Results Test for `BlogPosting`.
+- Editor profile page renders with sameAs links resolving to real social profiles.
+- Manual spot-check: pick one AI-assisted post and verify the 3:1 analysis-to-quotation ratio holds.
+
+---
+
+## Cross-phase risks the user must explicitly accept before starting
+
+1. **AdSense rejection on first submission**. /p/* alone is ~1k pages of synthesized content; reviewer might still flag as derivative. Mitigation: have ≥ 50 published `/p/*` pages with full Phase 1 quality treatment before submitting. Acceptance: if rejected, address feedback and resubmit — do not pivot away from the strategy.
+2. **Pulse deindex / AdSense termination**. Real possibility if hardened mitigations from 4.0 are not all met. Acceptance: kill Phase 4 if we cannot meet all six requirements.
+3. **Browse traffic that never converts**. `/browse/*` could become a content sink that drains crawl budget and converts at <0.5%. Mitigation: ship Phase 2 with conversion tracking from day 1 — `/browse` → signup vs landing → signup. Pull `/browse` from the public funnel (404 it for unauth) within 30 days if it underperforms landing by >2x.
+4. **Sample player iOS regressions** post-launch. Real-device testing in 2.7 is the gate; no merge to main without it.
