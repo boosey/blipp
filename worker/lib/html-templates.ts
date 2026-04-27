@@ -4,6 +4,7 @@
  */
 
 const SITE_URL = "https://podblipp.com";
+const DEFAULT_OG_IMAGE = `${SITE_URL}/og-default.png`;
 
 // ── Shared layout ──
 
@@ -16,6 +17,44 @@ function escapeHtml(str: string): string {
     .replace(/'/g, "&#39;");
 }
 
+/**
+ * Truncate text to ~150-200 words at the nearest sentence boundary, ending
+ * with `…`. If no sentence boundary fits within the range, hard-cuts at 200.
+ *
+ * Note: the sentence-split heuristic mis-splits on abbreviations
+ * ("Dr. Smith", "U.S."). Acceptable for podcast narratives — keep as is.
+ */
+export function truncateToWords(
+  text: string,
+  minWords = 150,
+  maxWords = 200
+): string {
+  const cleaned = text.replace(/\s+/g, " ").trim();
+  if (!cleaned) return "";
+
+  const totalWords = cleaned.split(" ").length;
+  if (totalWords <= maxWords) return cleaned;
+
+  const sentences = cleaned.match(/[^.!?]+[.!?]+(?:\s|$)/g) ?? [cleaned];
+  let out = "";
+  let count = 0;
+
+  for (const s of sentences) {
+    const w = s.trim().split(/\s+/).length;
+    if (count + w > maxWords) break;
+    out += s;
+    count += w;
+    if (count >= minWords) break;
+  }
+
+  if (count < 1) {
+    // No sentence fit — hard cut at maxWords
+    out = cleaned.split(" ").slice(0, maxWords).join(" ");
+  }
+
+  return out.trim().replace(/[.!?]*$/, "") + "…";
+}
+
 function layout(opts: {
   title: string;
   description: string;
@@ -25,7 +64,7 @@ function layout(opts: {
   body: string;
 }) {
   const canonical = `${SITE_URL}${opts.canonicalPath}`;
-  const ogImage = opts.ogImage || `${SITE_URL}/og-default.png`;
+  const ogImage = opts.ogImage || DEFAULT_OG_IMAGE;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -45,6 +84,7 @@ function layout(opts: {
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="${escapeHtml(opts.title)}">
 <meta name="twitter:description" content="${escapeHtml(opts.description)}">
+<meta name="twitter:image" content="${escapeHtml(ogImage)}">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -67,6 +107,9 @@ h2{font-size:1.25rem;font-weight:600;margin:2rem 0 .75rem;color:#e4e4e7}
 .tag{display:inline-block;background:#27272a;color:#a1a1aa;padding:.25rem .75rem;border-radius:9999px;font-size:.75rem;margin:.25rem .25rem .25rem 0}
 .narrative{font-size:1.0625rem;line-height:1.85;color:#d4d4d8}
 .narrative p{margin-bottom:1.25rem}
+.takeaways{margin:1rem 0 0;padding-left:1.25rem;color:#d4d4d8}
+.takeaways li{margin:.5rem 0;line-height:1.6}
+.takeaways .takeaway-topic{display:inline-block;color:#a1a1aa;font-size:.75rem;text-transform:uppercase;letter-spacing:.05em;margin-right:.5rem}
 .card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1.25rem;margin-top:1.5rem}
 .card{background:#18181b;border:1px solid #27272a;border-radius:.75rem;padding:1.25rem;transition:border-color .15s}
 .card:hover{border-color:#3f3f46;text-decoration:none}
@@ -74,6 +117,8 @@ h2{font-size:1.25rem;font-weight:600;margin:2rem 0 .75rem;color:#e4e4e7}
 .card p{font-size:.8125rem;color:#a1a1aa;line-height:1.5}
 .breadcrumb{font-size:.8125rem;color:#71717a;margin-bottom:1.5rem}
 .breadcrumb a{color:#71717a}.breadcrumb a:hover{color:#a1a1aa}
+.signup-cta{margin-top:2.5rem;padding:1.5rem;background:#18181b;border:1px solid #27272a;border-radius:.75rem;text-align:center}
+.signup-cta p{color:#e4e4e7;margin-bottom:.75rem;font-weight:500}
 </style>
 </head>
 <body>
@@ -94,10 +139,19 @@ export interface EpisodePageData {
   podcastImageUrl?: string | null;
   publishedAt?: Date | null;
   durationSeconds?: number | null;
+  /** The full narrative source — the template truncates this to ~150-200 words. */
   narrativeText: string;
   topicTags?: string[];
   categoryName?: string | null;
   categorySlug?: string | null;
+  /** Top 3 claims ranked by `scoreClaim`. Empty array hides the takeaways section. */
+  topClaims?: { text: string; topic?: string }[];
+  /** Up to 5 most-recent sibling episodes from this show. */
+  moreFromShow?: { title: string; slug: string; publishedAt?: Date | null }[];
+  /** Up to 3 other shows in the same category that have public episodes. */
+  relatedInCategory?: { title: string; slug: string; imageUrl?: string | null }[];
+  /** Path used as `?next=` after sign-up (defaults to canonical). */
+  signupNextPath?: string;
 }
 
 export function renderEpisodePage(data: EpisodePageData): string {
@@ -112,24 +166,93 @@ export function renderEpisodePage(data: EpisodePageData): string {
     ? `${Math.round(data.durationSeconds / 60)} min`
     : null;
 
-  const description = data.narrativeText.slice(0, 160).replace(/\n/g, " ");
+  // Single truncation pass — feeds body, meta description, OG description.
+  const narrativeExcerpt = truncateToWords(data.narrativeText, 150, 200);
+  const description = narrativeExcerpt.slice(0, 160).replace(/\n/g, " ");
+  const canonicalPath = `/p/${data.podcastSlug}/${data.episodeSlug}`;
+  const canonical = `${SITE_URL}${canonicalPath}`;
+  const signupNext = data.signupNextPath ?? canonicalPath;
+  const ogImage = data.podcastImageUrl || DEFAULT_OG_IMAGE;
 
-  const jsonLd = {
-    "@context": "https://schema.org",
+  // ── JSON-LD: PodcastEpisode + Article + BreadcrumbList in @graph ──
+  const episodeId = `${canonical}#podcast-episode`;
+  const podcastEpisodeNode: Record<string, unknown> = {
     "@type": "PodcastEpisode",
+    "@id": episodeId,
     name: data.episodeTitle,
+    url: canonical,
     partOfSeries: {
       "@type": "PodcastSeries",
       name: data.podcastTitle,
       url: `${SITE_URL}/p/${data.podcastSlug}`,
     },
-    ...(published && { datePublished: data.publishedAt!.toISOString().split("T")[0] }),
     description,
-    ...(duration && { timeRequired: `PT${Math.round(data.durationSeconds! / 60)}M` }),
+  };
+  if (data.publishedAt) {
+    podcastEpisodeNode.datePublished = new Date(data.publishedAt)
+      .toISOString()
+      .split("T")[0];
+  }
+  if (duration) {
+    podcastEpisodeNode.timeRequired = `PT${Math.round(data.durationSeconds! / 60)}M`;
+  }
+
+  const articleNode: Record<string, unknown> = {
+    "@type": "Article",
+    headline: data.episodeTitle,
+    description,
+    author: { "@type": "Organization", name: "Blipp" },
+    publisher: {
+      "@type": "Organization",
+      name: "Blipp",
+      url: SITE_URL,
+    },
+    mainEntityOfPage: canonical,
+    mentions: { "@id": episodeId },
+    image: ogImage,
+  };
+  if (data.publishedAt) {
+    articleNode.datePublished = new Date(data.publishedAt)
+      .toISOString()
+      .split("T")[0];
+  }
+
+  const breadcrumbItems: { "@type": "ListItem"; position: number; name: string; item: string }[] = [
+    { "@type": "ListItem", position: 1, name: "Home", item: SITE_URL },
+  ];
+  let pos = 2;
+  if (data.categoryName && data.categorySlug) {
+    breadcrumbItems.push({
+      "@type": "ListItem",
+      position: pos++,
+      name: data.categoryName,
+      item: `${SITE_URL}/p/category/${data.categorySlug}`,
+    });
+  }
+  breadcrumbItems.push({
+    "@type": "ListItem",
+    position: pos++,
+    name: data.podcastTitle,
+    item: `${SITE_URL}/p/${data.podcastSlug}`,
+  });
+  breadcrumbItems.push({
+    "@type": "ListItem",
+    position: pos++,
+    name: data.episodeTitle,
+    item: canonical,
+  });
+
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@graph": [
+      podcastEpisodeNode,
+      articleNode,
+      { "@type": "BreadcrumbList", itemListElement: breadcrumbItems },
+    ],
   };
 
-  // Convert narrative text paragraphs to HTML
-  const narrativeHtml = data.narrativeText
+  // ── Body sections ──
+  const narrativeHtml = narrativeExcerpt
     .split(/\n{2,}/)
     .filter(Boolean)
     .map((p) => `<p>${escapeHtml(p.trim())}</p>`)
@@ -140,13 +263,60 @@ export function renderEpisodePage(data: EpisodePageData): string {
     .map((t) => `<span class="tag">${escapeHtml(t)}</span>`)
     .join("");
 
-  const breadcrumb = `<nav class="breadcrumb"><a href="/">Home</a> / <a href="/p/${escapeHtml(data.podcastSlug)}">${escapeHtml(data.podcastTitle)}</a> / ${escapeHtml(data.episodeTitle)}</nav>`;
+  const takeawaysHtml =
+    data.topClaims && data.topClaims.length > 0
+      ? `<h2>Top takeaways</h2>
+<ol class="takeaways">${data.topClaims
+          .map((c) => {
+            const topic = c.topic
+              ? `<span class="takeaway-topic">${escapeHtml(c.topic)}</span>`
+              : "";
+            return `<li>${topic}${escapeHtml(c.text)}</li>`;
+          })
+          .join("")}</ol>`
+      : "";
+
+  const moreFromShowHtml =
+    data.moreFromShow && data.moreFromShow.length > 0
+      ? `<h2>More from ${escapeHtml(data.podcastTitle)}</h2>
+<div class="card-grid">${data.moreFromShow
+          .map((ep) => {
+            const date = ep.publishedAt
+              ? new Date(ep.publishedAt).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                })
+              : "";
+            return `<a href="/p/${escapeHtml(data.podcastSlug)}/${escapeHtml(ep.slug)}" class="card"><h3>${escapeHtml(ep.title)}</h3><p>${date}</p></a>`;
+          })
+          .join("")}</div>`
+      : "";
+
+  const relatedHtml =
+    data.relatedInCategory && data.relatedInCategory.length > 0
+      ? `<h2>Related${data.categoryName ? ` in ${escapeHtml(data.categoryName)}` : ""}</h2>
+<div class="card-grid">${data.relatedInCategory
+          .map(
+            (s) =>
+              `<a href="/p/${escapeHtml(s.slug)}" class="card"><h3>${escapeHtml(s.title)}</h3></a>`
+          )
+          .join("")}</div>`
+      : "";
+
+  const signupHref = `/sign-up?next=${encodeURIComponent(signupNext)}`;
+
+  const breadcrumb = `<nav class="breadcrumb"><a href="/">Home</a>${
+    data.categoryName && data.categorySlug
+      ? ` / <a href="/p/category/${escapeHtml(data.categorySlug)}">${escapeHtml(data.categoryName)}</a>`
+      : ""
+  } / <a href="/p/${escapeHtml(data.podcastSlug)}">${escapeHtml(data.podcastTitle)}</a> / ${escapeHtml(data.episodeTitle)}</nav>`;
 
   return layout({
     title: `${data.episodeTitle} — ${data.podcastTitle} | Blipp Summary`,
     description,
-    canonicalPath: `/p/${data.podcastSlug}/${data.episodeSlug}`,
-    ogImage: data.podcastImageUrl || undefined,
+    canonicalPath,
+    ogImage,
     jsonLd,
     body: `<main class="container">
 ${breadcrumb}
@@ -154,10 +324,14 @@ ${breadcrumb}
 <div class="meta">${escapeHtml(data.podcastTitle)}${published ? ` · ${published}` : ""}${duration ? ` · ${duration} episode` : ""}</div>
 ${tags ? `<div style="margin-bottom:1.5rem">${tags}</div>` : ""}
 <div class="narrative">${narrativeHtml}</div>
-<div style="margin-top:2.5rem;padding:1.5rem;background:#18181b;border-radius:.75rem;text-align:center">
-<p style="color:#e4e4e7;margin-bottom:.75rem;font-weight:500">Listen to the AI-narrated summary on Blipp</p>
-<a href="/sign-up" class="cta-btn">Get Blipp Free</a>
+${takeawaysHtml}
+<div class="signup-cta">
+<p>Sign up to read or listen to the full Blipp</p>
+<a href="${signupHref}" class="cta-btn">Get Blipp Free</a>
 </div>
+${moreFromShowHtml}
+${relatedHtml}
+<section data-pulse-featured-in></section>
 </main>`,
   });
 }
@@ -195,18 +369,44 @@ export function renderShowPage(data: ShowPageData): string {
 
   const breadcrumb = `<nav class="breadcrumb"><a href="/">Home</a>${data.categorySlug ? ` / <a href="/p/category/${escapeHtml(data.categorySlug)}">${escapeHtml(data.categoryName || "Category")}</a>` : ""} / ${escapeHtml(data.podcastTitle)}</nav>`;
 
+  const breadcrumbItems: { "@type": "ListItem"; position: number; name: string; item: string }[] = [
+    { "@type": "ListItem", position: 1, name: "Home", item: SITE_URL },
+  ];
+  let pos = 2;
+  if (data.categoryName && data.categorySlug) {
+    breadcrumbItems.push({
+      "@type": "ListItem",
+      position: pos++,
+      name: data.categoryName,
+      item: `${SITE_URL}/p/category/${data.categorySlug}`,
+    });
+  }
+  breadcrumbItems.push({
+    "@type": "ListItem",
+    position: pos++,
+    name: data.podcastTitle,
+    item: `${SITE_URL}/p/${data.podcastSlug}`,
+  });
+
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "PodcastSeries",
+        name: data.podcastTitle,
+        description,
+        url: `${SITE_URL}/p/${data.podcastSlug}`,
+      },
+      { "@type": "BreadcrumbList", itemListElement: breadcrumbItems },
+    ],
+  };
+
   return layout({
     title: `${data.podcastTitle} — Podcast Summaries | Blipp`,
     description,
     canonicalPath: `/p/${data.podcastSlug}`,
     ogImage: data.podcastImageUrl || undefined,
-    jsonLd: {
-      "@context": "https://schema.org",
-      "@type": "PodcastSeries",
-      name: data.podcastTitle,
-      description,
-      url: `${SITE_URL}/p/${data.podcastSlug}`,
-    },
+    jsonLd,
     body: `<main class="container">
 ${breadcrumb}
 <h1>${escapeHtml(data.podcastTitle)}</h1>
@@ -235,6 +435,7 @@ export interface CategoryPageData {
 
 export function renderCategoryPage(data: CategoryPageData): string {
   const description = `Browse ${data.categoryName} podcast summaries on Blipp. ${data.podcasts.length} shows available.`;
+  const canonicalPath = `/p/category/${data.categorySlug}`;
 
   const podcastCards = data.podcasts
     .map(
@@ -243,10 +444,42 @@ export function renderCategoryPage(data: CategoryPageData): string {
     )
     .join("\n");
 
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "CollectionPage",
+        name: `${data.categoryName} Podcasts`,
+        description,
+        url: `${SITE_URL}${canonicalPath}`,
+        about: data.categoryName,
+        hasPart: data.podcasts.slice(0, 20).map((p) => ({
+          "@type": "PodcastSeries",
+          name: p.title,
+          url: `${SITE_URL}/p/${p.slug}`,
+        })),
+      },
+      {
+        "@type": "BreadcrumbList",
+        itemListElement: [
+          { "@type": "ListItem", position: 1, name: "Home", item: SITE_URL },
+          { "@type": "ListItem", position: 2, name: "Browse", item: `${SITE_URL}/p` },
+          {
+            "@type": "ListItem",
+            position: 3,
+            name: data.categoryName,
+            item: `${SITE_URL}${canonicalPath}`,
+          },
+        ],
+      },
+    ],
+  };
+
   return layout({
     title: `${data.categoryName} Podcasts — Summaries | Blipp`,
     description,
-    canonicalPath: `/p/category/${data.categorySlug}`,
+    canonicalPath,
+    jsonLd,
     body: `<main class="container">
 <nav class="breadcrumb"><a href="/">Home</a> / <a href="/p">Browse</a> / ${escapeHtml(data.categoryName)}</nav>
 <h1>${escapeHtml(data.categoryName)} Podcasts</h1>

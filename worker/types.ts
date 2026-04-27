@@ -123,4 +123,8 @@ export type Env = {
   AUDIO_TOKEN_SECRET?: string;
   /** Server kill-switch for the audio token endpoint. If "false", `/audio-url` returns 503. */
   ENABLE_AUDIO_TOKEN?: string;
+  /** Show slug for the landing-page "Hear a sample" CTA. Falls back to the most recent public episode if invalid. */
+  LANDING_SAMPLE_SHOW_SLUG?: string;
+  /** Episode slug paired with `LANDING_SAMPLE_SHOW_SLUG`. Validated against `publicPage: true`. */
+  LANDING_SAMPLE_EPISODE_SLUG?: string;
 };
