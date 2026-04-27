@@ -169,3 +169,17 @@ The AdSense publisher ID (`ca-pub-XXXXXXXX`). If not yet issued, ship steps 1–
 - `/browse/*` routes, public catalog API, audio sample player, landing-page redesign visuals (Phase 2).
 - `ads.txt`, Funding Choices CMP, `ADS_ENABLED` runtime flag in `wrangler.jsonc` (Phase 3).
 - Pulse blog, `PulsePost` model, admin review queue, `featuredIn` activation of the placeholder dropped in step 3 (Phase 4).
+
+## Final decisions before implementation
+
+Three points were resolved in review of this plan; they refine specific steps above.
+
+1. **Truncation regex (refines step 2).** The sentence-split heuristic `/[^.!?]+[.!?]+/g` will mis-split on abbreviations ("Dr. Smith", "U.S."). For podcast narratives this is acceptable. Add a one-line code comment marking it as an intentional heuristic so it isn't "fixed" later by someone treating it as a bug.
+
+2. **Unify excerpt source (refines steps 2 and 3).** Derive the meta description from `narrativeExcerpt.slice(0, 160)` as well, not from raw `narrativeText`. Single truncation pass feeds three views: meta description (160 chars), OG/Twitter description (160 chars), body excerpt (150–200 words). Eliminates drift between the SEO description and the visible body.
+
+3. **Sample episode slug (refines step 5).** The landing-page sample reference is a config value plus a runtime fallback, not file-level constants:
+   - Read `LANDING_SAMPLE_SHOW_SLUG` and `LANDING_SAMPLE_EPISODE_SLUG` from env (`Env` interface in `worker/types.ts`, configured in `wrangler.jsonc` `[vars]` and `[env.production.vars]`).
+   - Expose via a public API endpoint, e.g. `GET /api/public/landing-sample`, that resolves to `{ showSlug, episodeSlug }`. Server validates the configured episode is still `publicPage: true`. If not, fall back to `prisma.episode.findFirst({ where: { publicPage: true }, orderBy: { publishedAt: "desc" } })` and return that show/episode pair.
+   - Landing page calls this endpoint on mount (via `useFetch`) and uses the returned slugs in the "Hear a sample" CTA. Until the response lands, the button is disabled.
+   - Admin-selectable UI is **deferred to a follow-up PR**. The env-driven config + automatic fallback is the Phase 1 shape.
