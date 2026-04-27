@@ -9,12 +9,63 @@ import {
   renderShowPage,
   renderCategoryPage,
 } from "../lib/html-templates";
+import { scoreClaim } from "../lib/distillation";
 import type { Env } from "../types";
 
 const publicPages = new Hono<{ Bindings: Env }>();
 
 // Prisma middleware for DB access
 publicPages.use("/*", prismaMiddleware);
+
+/** Pick the top N claims from a raw `claimsJson` blob, ranked by `scoreClaim`. */
+function pickTopClaims(
+  claimsJson: unknown,
+  n: number
+): { text: string; topic?: string }[] {
+  if (!Array.isArray(claimsJson)) return [];
+
+  const validated = claimsJson
+    .map((raw: any, idx: number) => {
+      if (!raw || typeof raw !== "object") return null;
+      const text =
+        typeof raw.claim === "string"
+          ? raw.claim
+          : typeof raw.text === "string"
+          ? raw.text
+          : "";
+      if (!text) return null;
+      const importance = typeof raw.importance === "number" ? raw.importance : null;
+      const novelty = typeof raw.novelty === "number" ? raw.novelty : null;
+      return {
+        text,
+        topic: typeof raw.topic === "string" ? raw.topic : undefined,
+        importance,
+        novelty,
+        idx,
+      };
+    })
+    .filter((c): c is NonNullable<typeof c> => c !== null);
+
+  if (validated.length === 0) return [];
+
+  // Score where both importance and novelty are present; otherwise fall back
+  // to position order (claim 0 first, etc.) for that claim.
+  const sorted = [...validated].sort((a, b) => {
+    const aHasScore = a.importance !== null && a.novelty !== null;
+    const bHasScore = b.importance !== null && b.novelty !== null;
+    if (aHasScore && bHasScore) {
+      return (
+        scoreClaim({ importance: b.importance!, novelty: b.novelty! }) -
+        scoreClaim({ importance: a.importance!, novelty: a.novelty! })
+      );
+    }
+    if (aHasScore) return -1;
+    if (bHasScore) return 1;
+    return a.idx - b.idx;
+  });
+
+  return sorted.slice(0, n).map((c) => ({ text: c.text, topic: c.topic }));
+}
 
 // ── Episode Blipp page ──
 publicPages.get("/:showSlug/:episodeSlug", async (c) => {
@@ -62,11 +113,64 @@ publicPages.get("/:showSlug/:episodeSlug", async (c) => {
   if (!pageText) pageText = episode.description || "";
   if (!pageText) return c.notFound();
 
+  // Top-3 claims for the "Top takeaways" section. Only when distillation
+  // produced structured claims — fallback paths (description-only) get no claims.
+  const topClaims =
+    episode.distillation?.status === "COMPLETED"
+      ? pickTopClaims(episode.distillation.claimsJson, 3)
+      : [];
+
   // Find first category for this podcast
   const podcastCategory = await prisma.podcastCategory.findFirst({
     where: { podcastId: podcast.id },
-    select: { category: { select: { name: true, slug: true } } },
+    select: { category: { select: { id: true, name: true, slug: true } } },
   });
+
+  // "More from this show" — up to 5 most-recent siblings
+  const moreFromShow = await prisma.episode.findMany({
+    where: {
+      podcastId: podcast.id,
+      publicPage: true,
+      slug: { not: episode.slug },
+    },
+    orderBy: { publishedAt: "desc" },
+    take: 5,
+    select: { title: true, slug: true, publishedAt: true },
+  });
+
+  // "Related in [category]" — up to 3 other shows in the same category
+  // that have at least one public episode.
+  let relatedInCategory: { title: string; slug: string; imageUrl?: string | null }[] = [];
+  if (podcastCategory?.category?.id) {
+    const related = await prisma.podcastCategory.findMany({
+      where: {
+        categoryId: podcastCategory.category.id,
+        podcastId: { not: podcast.id },
+      },
+      select: {
+        podcast: {
+          select: {
+            title: true,
+            slug: true,
+            imageUrl: true,
+            _count: { select: { episodes: { where: { publicPage: true } } } },
+          },
+        },
+      },
+      take: 30,
+    });
+    relatedInCategory = related
+      .map((pc: any) => pc.podcast)
+      .filter((p: any) => p?.slug && p?._count?.episodes > 0)
+      .slice(0, 3)
+      .map((p: any) => ({
+        title: p.title,
+        slug: p.slug,
+        imageUrl: p.imageUrl,
+      }));
+  }
+
+  const signupNextPath = `/p/${podcast.slug}/${episode.slug}`;
 
   const html = renderEpisodePage({
     episodeTitle: episode.title,
@@ -80,6 +184,14 @@ publicPages.get("/:showSlug/:episodeSlug", async (c) => {
     topicTags: episode.topicTags,
     categoryName: podcastCategory?.category?.name,
     categorySlug: podcastCategory?.category?.slug,
+    topClaims,
+    moreFromShow: moreFromShow.map((ep: any) => ({
+      title: ep.title,
+      slug: ep.slug,
+      publishedAt: ep.publishedAt,
+    })),
+    relatedInCategory,
+    signupNextPath,
   });
 
   return c.html(html, 200, {

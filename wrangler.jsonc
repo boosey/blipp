@@ -22,7 +22,9 @@
 		"ALLOWED_ORIGINS": "http://localhost:8787,http://localhost:5173,https://staging.podblipp.com,capacitor://localhost,capacitor://podblipp.com,ionic://localhost,https://podblipp.com",
 		"CLERK_FAPI_URL": "https://clerk.podblipp.com",
 		"CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsucG9kYmxpcHAuY29tJA",
-		"WORKER_SCRIPT_NAME": "blipp-staging"
+		"WORKER_SCRIPT_NAME": "blipp-staging",
+		"LANDING_SAMPLE_SHOW_SLUG": "",
+		"LANDING_SAMPLE_EPISODE_SLUG": ""
 	},
 	"routes": [
 		{ "pattern": "staging.podblipp.com", "custom_domain": true }
@@ -209,7 +211,9 @@
 				"ALLOWED_ORIGINS": "https://podblipp.com,https://www.podblipp.com,capacitor://localhost,capacitor://podblipp.com,ionic://localhost",
 				"CLERK_FAPI_URL": "https://clerk.podblipp.com",
 				"CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsucG9kYmxpcHAuY29tJA",
-				"WORKER_SCRIPT_NAME": "blipp"
+				"WORKER_SCRIPT_NAME": "blipp",
+				"LANDING_SAMPLE_SHOW_SLUG": "",
+				"LANDING_SAMPLE_EPISODE_SLUG": ""
 			},
 			"kv_namespaces": [
 				{

@@ -2,6 +2,8 @@ import { SignInButton } from "@clerk/clerk-react";
 import { Capacitor } from "@capacitor/core";
 import { Link, useNavigate } from "react-router-dom";
 import { Search, Clock, Podcast, ExternalLink } from "lucide-react";
+import { useEffect, useState } from "react";
+import { getApiBase } from "../lib/api-base";
 
 const features = [
   {
@@ -30,9 +32,37 @@ const features = [
   },
 ];
 
+interface LandingSample {
+  showSlug: string;
+  episodeSlug: string;
+}
+
 export function Landing() {
   const isNative = Capacitor.isNativePlatform();
   const navigate = useNavigate();
+  const [sample, setSample] = useState<LandingSample | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${getApiBase()}/api/public/landing-sample`)
+      .then((r) => (r.ok ? (r.json() as Promise<LandingSample | null>) : null))
+      .then((data) => {
+        if (!cancelled && data?.showSlug && data?.episodeSlug) {
+          setSample(data);
+        }
+      })
+      .catch(() => {
+        // Silent — button stays disabled if the catalog has nothing public yet
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleHearSample = () => {
+    if (!sample) return;
+    navigate(`/p/${sample.showSlug}/${sample.episodeSlug}?sample=1`);
+  };
 
   return (
     <div className="min-h-screen bg-[#06060e] text-white overflow-hidden">
@@ -156,41 +186,50 @@ export function Landing() {
 
           {/* Body */}
           <p className="animate-fade-up delay-300 font-dm text-base sm:text-lg text-zinc-500 mt-5 max-w-xl mx-auto leading-relaxed">
-            Blipp turns full podcast episodes into short, voice-narrated summaries
-            called <span className="text-white font-500">Blipps</span>. Choose how much time you have
-            — <span className="text-violet-400">2, 5, 10, 15, or 30 minutes</span> — and
-            Blipp delivers the most important insights from any episode.
-            Hear something great? Tap through to the full original anytime.
+            Voice-narrated podcast summaries in{" "}
+            <span className="text-violet-400">2 to 30 minutes</span>. Pick your
+            time, hear the signal, and tap through to the full episode anytime.
           </p>
 
-          {/* CTA */}
-          <div className="animate-fade-up delay-400 mt-10">
+          {/* CTAs — 3-tier hierarchy. Stacked on mobile, row on sm+. */}
+          <div className="animate-fade-up delay-400 mt-8 flex flex-col sm:flex-row sm:flex-wrap items-center justify-center gap-3">
+            <button
+              onClick={handleHearSample}
+              disabled={!sample}
+              className="font-sora w-full sm:w-auto px-8 py-4 rounded-xl text-base font-700 text-white transition-all duration-300 hover:scale-105 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+              style={{
+                background: "linear-gradient(135deg, #7c3aed, #a855f7, #f97316)",
+                backgroundSize: "200% 200%",
+                animation: sample
+                  ? "gradient-shift 4s ease infinite, pulse-glow 3s ease-in-out infinite"
+                  : undefined,
+              }}
+            >
+              Hear a sample
+            </button>
+
             {isNative ? (
               <button
                 onClick={() => navigate("/home")}
-                className="font-sora relative px-8 py-4 rounded-xl text-base font-700 text-white transition-all duration-300 hover:scale-105 active:scale-[0.98]"
-                style={{
-                  background: "linear-gradient(135deg, #7c3aed, #a855f7, #f97316)",
-                  backgroundSize: "200% 200%",
-                  animation: "gradient-shift 4s ease infinite, pulse-glow 3s ease-in-out infinite",
-                }}
+                className="font-sora w-full sm:w-auto px-8 py-4 rounded-xl text-base font-700 text-white border border-white/20 bg-white/5 hover:bg-white/10 transition-colors"
               >
                 Start Blipping
               </button>
             ) : (
               <SignInButton mode="modal" fallbackRedirectUrl="/home">
-                <button
-                  className="font-sora relative px-8 py-4 rounded-xl text-base font-700 text-white transition-all duration-300 hover:scale-105 active:scale-[0.98]"
-                  style={{
-                    background: "linear-gradient(135deg, #7c3aed, #a855f7, #f97316)",
-                    backgroundSize: "200% 200%",
-                    animation: "gradient-shift 4s ease infinite, pulse-glow 3s ease-in-out infinite",
-                  }}
-                >
+                <button className="font-sora w-full sm:w-auto px-8 py-4 rounded-xl text-base font-700 text-white border border-white/20 bg-white/5 hover:bg-white/10 transition-colors">
                   Start Blipping
                 </button>
               </SignInButton>
             )}
+          </div>
+          <div className="animate-fade-up delay-500 mt-4">
+            <Link
+              to="/p"
+              className="font-dm text-sm text-zinc-400 underline-offset-4 hover:underline hover:text-zinc-200"
+            >
+              Browse the catalog →
+            </Link>
           </div>
         </div>
 

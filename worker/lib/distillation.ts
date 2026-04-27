@@ -8,6 +8,18 @@ import { NotAPodcastError, looksLikeSongLyricsOutput } from "./podcast-invalidat
 /** Default speaking rate — overridable via PlatformConfig audio.wordsPerMinute. */
 export const WORDS_PER_MINUTE = 150;
 
+/**
+ * Blended score for a claim — `0.7 × importance + 0.3 × novelty`.
+ * Importance dominates (readers want signal); novelty breaks ties and prevents
+ * shorter selections from collapsing into a single repeated topic.
+ *
+ * Used by `selectClaimsForDuration` (narrative pipeline) and the public episode
+ * page (top-3 takeaways) so both surfaces rank the same way.
+ */
+export function scoreClaim(c: { importance: number; novelty: number }): number {
+  return c.importance * 0.7 + c.novelty * 0.3;
+}
+
 /** A single factual claim extracted from a podcast transcript. */
 export interface Claim {
   claim: string;
@@ -157,7 +169,7 @@ export function selectClaimsForDuration(
   if (claims.length === 0) return [];
 
   const scored = claims
-    .map((c) => ({ ...c, _score: c.importance * 0.7 + c.novelty * 0.3 }))
+    .map((c) => ({ ...c, _score: scoreClaim(c) }))
     .sort((a, b) => b._score - a._score);
 
   const targetCount = Math.min(

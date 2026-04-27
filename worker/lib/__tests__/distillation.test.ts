@@ -3,6 +3,7 @@ import {
   extractClaims,
   generateNarrative,
   selectClaimsForDuration,
+  scoreClaim,
   WORDS_PER_MINUTE,
   type Claim,
   type EpisodeMetadata,
@@ -319,6 +320,24 @@ describe("selectClaimsForDuration", () => {
 describe("WORDS_PER_MINUTE", () => {
   it("should be 150", () => {
     expect(WORDS_PER_MINUTE).toBe(150);
+  });
+});
+
+describe("scoreClaim", () => {
+  it("blends importance and novelty 70/30", () => {
+    expect(scoreClaim({ importance: 8, novelty: 4 })).toBeCloseTo(6.8, 5);
+    expect(scoreClaim({ importance: 10, novelty: 0 })).toBe(7);
+    expect(scoreClaim({ importance: 0, novelty: 10 })).toBe(3);
+  });
+
+  it("matches the score used inside selectClaimsForDuration", () => {
+    // Two claims with identical importance but different novelty:
+    // selectClaimsForDuration must return the higher-novelty one first.
+    const c1: Claim = { claim: "A", speaker: "h", importance: 8, novelty: 2, excerpt: "x" };
+    const c2: Claim = { claim: "B", speaker: "h", importance: 8, novelty: 9, excerpt: "y" };
+    const ordered = selectClaimsForDuration([c1, c2], 1);
+    expect(ordered[0].claim).toBe("B");
+    expect(scoreClaim(c2)).toBeGreaterThan(scoreClaim(c1));
   });
 });
 
