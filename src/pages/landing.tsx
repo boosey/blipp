@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { getApiBase } from "../lib/api-base";
 import { SamplePlayer } from "../components/sample-player";
 import { usePublicFetch } from "../lib/use-public-fetch";
+import { AppStoreBadge } from "../components/app-store-badge";
 
 interface SampleAudioResponse {
   audioUrl: string;
@@ -252,14 +253,24 @@ export function Landing() {
                 </button>
               </SignInButton>
             )}
+
+            {!isNative && (
+              <AppStoreBadge height={56} className="w-full sm:w-auto" />
+            )}
           </div>
-          <div className="animate-fade-up delay-500 mt-4">
+          <div className="animate-fade-up delay-500 mt-4 flex flex-col sm:flex-row items-center justify-center gap-x-6 gap-y-2">
             <Link
               to="/browse"
               className="font-dm text-sm text-zinc-400 underline-offset-4 hover:underline hover:text-zinc-200"
             >
               Browse the catalog →
             </Link>
+            <a
+              href="/pulse"
+              className="font-dm text-sm text-zinc-400 underline-offset-4 hover:underline hover:text-zinc-200"
+            >
+              Read the Pulse →
+            </a>
           </div>
         </div>
 
@@ -450,6 +461,8 @@ export function Landing() {
           <Link to="/about" className="hover:text-zinc-400 transition-colors">About</Link>
           <span className="text-zinc-800">&middot;</span>
           <Link to="/pricing" className="hover:text-zinc-400 transition-colors">Pricing</Link>
+          <span className="text-zinc-800">&middot;</span>
+          <a href="/pulse" className="hover:text-zinc-400 transition-colors">Pulse</a>
           <span className="text-zinc-800">&middot;</span>
           <Link to="/contact" className="hover:text-zinc-400 transition-colors">Contact</Link>
         </div>

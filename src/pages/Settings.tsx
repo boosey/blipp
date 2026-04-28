@@ -1,8 +1,9 @@
 import { useEffect, useState, useCallback } from "react";
 import {
   Sun, Moon, Monitor, Download, Trash2, LogOut, MapPin,
-  User, Mic, Smartphone, ShieldCheck,
+  User, Mic, Smartphone, ShieldCheck, Newspaper,
 } from "lucide-react";
+import { AppStoreBadge } from "../components/app-store-badge";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { useClerk } from "@clerk/clerk-react";
@@ -798,6 +799,21 @@ function AppTab({
         />
       </SettingsGroup>
 
+      {/* iPhone app promo (web only) */}
+      {!isNative && (
+        <SettingsGroup title="iPhone App">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm font-medium">Get it on iPhone</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Faster, offline, push notifications
+              </p>
+            </div>
+            <AppStoreBadge height={40} className="flex-shrink-0" />
+          </div>
+        </SettingsGroup>
+      )}
+
       {/* Subscription */}
       {isNative && (
         <SettingsGroup title="Subscription">
@@ -870,6 +886,13 @@ function AccountTab({
             <span className="text-sm font-mono">{__APP_VERSION__}</span>
           </div>
           <div className="border-t border-border" />
+          <a
+            href="/pulse"
+            className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <Newspaper className="w-4 h-4" />
+            Pulse — Editorial Blog
+          </a>
           <Link
             to="/support"
             className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"

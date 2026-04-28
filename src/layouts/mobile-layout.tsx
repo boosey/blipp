@@ -1,7 +1,7 @@
 import { useRef, useCallback, useState } from "react";
 import { Outlet, useLocation, useNavigate, Navigate } from "react-router-dom";
 import { UserButton } from "@clerk/clerk-react";
-import { ArrowLeft, Shield, MessageSquare } from "lucide-react";
+import { ArrowLeft, Shield, MessageSquare, Newspaper } from "lucide-react";
 import { FeedbackDialog } from "../components/feedback-dialog";
 import { BottomNav } from "../components/bottom-nav";
 import { AudioProvider, useAudio } from "../contexts/audio-context";
@@ -61,6 +61,14 @@ function MobileLayoutInner() {
           >
             <MessageSquare className="w-5 h-5" />
           </button>
+          <a
+            href="/pulse"
+            className="p-1.5 text-muted-foreground hover:text-foreground transition-colors inline-flex"
+            title="Pulse — editorial blog"
+            aria-label="Open Pulse"
+          >
+            <Newspaper className="w-5 h-5" />
+          </a>
           {isAdmin && (
             <button
               onClick={() => window.open("/admin", "blipp-admin")}

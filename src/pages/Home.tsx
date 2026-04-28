@@ -9,6 +9,7 @@ import { useOnboarding } from "../contexts/onboarding-context";
 import { useAudio } from "../contexts/audio-context";
 import { useStorage } from "../contexts/storage-context";
 import { InstallPrompt } from "../components/install-prompt";
+import { GetAppBanner } from "../components/get-app-banner";
 import { CancelBlippDialog } from "../components/cancel-blipp-dialog";
 import { usePullToRefresh } from "../hooks/use-pull-to-refresh";
 import { useFeed } from "../hooks/use-feed";
@@ -135,8 +136,9 @@ export function Home() {
       ) : (
         <>
           <FilterSection filter={filter} setFilter={setFilter} counts={counts || undefined} />
-          
+
           <InstallPrompt />
+          <GetAppBanner />
 
           {/* Swipe hint — first session only */}
           {!swipeHintDismissed && items.length > 0 && (
