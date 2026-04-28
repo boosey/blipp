@@ -82,6 +82,7 @@ publicPages.get("/:showSlug/:episodeSlug", async (c) => {
   const episode = await prisma.episode.findFirst({
     where: { podcastId: podcast.id, slug: episodeSlug, publicPage: true },
     select: {
+      id: true,
       title: true,
       slug: true,
       description: true,
@@ -177,6 +178,26 @@ publicPages.get("/:showSlug/:episodeSlug", async (c) => {
 
   const signupNextPath = `/p/${podcast.slug}/${episode.slug}`;
 
+  // Phase 4 / Task 10: "Featured in" — Pulse posts (PUBLISHED only) that cite
+  // this episode. Capped at 3 most recent. Quietly empty when no posts exist
+  // or when the cron/admin haven't been used yet.
+  const featuredInPosts = await prisma.episodePulsePost.findMany({
+    where: {
+      episodeId: episode.id,
+      pulsePost: { status: "PUBLISHED" },
+    },
+    orderBy: [
+      { pulsePost: { publishedAt: "desc" } },
+      { displayOrder: "asc" },
+    ],
+    take: 3,
+    select: {
+      pulsePost: {
+        select: { slug: true, title: true, publishedAt: true },
+      },
+    },
+  });
+
   const html = renderEpisodePage({
     episodeTitle: episode.title,
     episodeSlug: episode.slug!,
@@ -199,6 +220,10 @@ publicPages.get("/:showSlug/:episodeSlug", async (c) => {
     signupNextPath,
     sampleAudioUrl,
     adsScript: adsScriptTag(c.env, c.req.path),
+    featuredInPosts: featuredInPosts
+      .map((row: any) => row.pulsePost)
+      .filter((p: any): p is { slug: string; title: string; publishedAt: Date | null } => !!p?.slug && !!p?.title)
+      .map((p: any) => ({ title: p.title, slug: p.slug, publishedAt: p.publishedAt })),
   });
 
   return c.html(html, 200, {

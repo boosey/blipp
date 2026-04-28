@@ -182,6 +182,13 @@ export interface EpisodePageData {
   /** AdSense script tag computed by the route handler via `lib/ads.ts`.
    * Empty/undefined = ads off for this path. */
   adsScript?: string;
+  /**
+   * Pulse posts that cite this episode. Up to 3 most-recent published posts
+   * are rendered as a "Featured in" section under the takeaways block.
+   * Phase 4 / Task 10 — activates the placeholder previously dropped in
+   * Phase 1.4. Empty/undefined = section is hidden.
+   */
+  featuredInPosts?: { title: string; slug: string; publishedAt?: Date | null }[];
 }
 
 export function renderEpisodePage(data: EpisodePageData): string {
@@ -334,6 +341,26 @@ export function renderEpisodePage(data: EpisodePageData): string {
           .join("")}</div>`
       : "";
 
+  // Phase 4 / Task 10: bidirectional linking. The Pulse cron + admin both
+  // populate EpisodePulsePost, and the route handler queries the join + the
+  // post's PUBLISHED status before passing the (max-3) array here.
+  const featuredInHtml =
+    data.featuredInPosts && data.featuredInPosts.length > 0
+      ? `<section data-pulse-featured-in><h2>Featured in</h2>
+<ul class="featured-in-list">${data.featuredInPosts
+          .map((p) => {
+            const dateLabel = p.publishedAt
+              ? new Date(p.publishedAt).toLocaleDateString("en-US", {
+                  year: "numeric",
+                  month: "short",
+                  day: "numeric",
+                })
+              : "";
+            return `<li><a href="/pulse/${escapeHtml(p.slug)}">${escapeHtml(p.title)}</a>${dateLabel ? ` <span class="featured-in-date">· ${dateLabel}</span>` : ""}</li>`;
+          })
+          .join("")}</ul></section>`
+      : "";
+
   const signupHref = `/sign-up?next=${encodeURIComponent(signupNext)}`;
 
   const breadcrumb = `<nav class="breadcrumb"><a href="/">Home</a>${
@@ -444,7 +471,7 @@ ${takeawaysHtml}
 </div>
 ${moreFromShowHtml}
 ${relatedHtml}
-<section data-pulse-featured-in></section>
+${featuredInHtml}
 </main>`,
   });
 }

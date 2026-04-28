@@ -55,10 +55,12 @@ describe("GET /:showSlug/:episodeSlug", () => {
 
     mockPrisma.episode.findMany.mockResolvedValue([]); // moreFromShow default
     mockPrisma.podcastCategory.findMany.mockResolvedValue([]); // related default
+    mockPrisma.episodePulsePost.findMany.mockResolvedValue([]); // featuredIn default
   });
 
   it("ranks topClaims by scoreClaim and renders the top 3 in score order", async () => {
     mockPrisma.episode.findFirst.mockResolvedValue({
+      id: "ep-1",
       title: "AI in healthcare",
       slug: "ai-in-healthcare",
       description: null,
@@ -105,6 +107,7 @@ describe("GET /:showSlug/:episodeSlug", () => {
 
   it("renders the page without takeaways when only episode.description is available", async () => {
     mockPrisma.episode.findFirst.mockResolvedValue({
+      id: "ep-1",
       title: "AI in healthcare",
       slug: "ai-in-healthcare",
       description:
@@ -152,5 +155,66 @@ describe("GET /:showSlug/:episodeSlug", () => {
       mockExCtx
     );
     expect(res.status).toBe(404);
+  });
+
+  describe("Featured in (Phase 4 / Task 10)", () => {
+    function setupBasicEpisode() {
+      mockPrisma.episode.findFirst.mockResolvedValue({
+        id: "ep-99",
+        title: "AI piece",
+        slug: "ai-piece",
+        description: null,
+        publishedAt: new Date("2026-04-20"),
+        durationSeconds: 1800,
+        topicTags: [],
+        clips: [{ narrativeText: "A".repeat(800), audioUrl: null }],
+        distillation: { status: "COMPLETED", claimsJson: [] },
+      });
+    }
+
+    it("queries EpisodePulsePost scoped to PUBLISHED posts only, capped at 3", async () => {
+      setupBasicEpisode();
+      mockPrisma.episodePulsePost.findMany.mockResolvedValueOnce([]);
+
+      await app.request("/p/future-forward/ai-piece", {}, env, mockExCtx);
+
+      expect(mockPrisma.episodePulsePost.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            episodeId: "ep-99",
+            pulsePost: { status: "PUBLISHED" },
+          }),
+          take: 3,
+        })
+      );
+    });
+
+    it("renders linked Pulse posts as a Featured in section when present", async () => {
+      setupBasicEpisode();
+      mockPrisma.episodePulsePost.findMany.mockResolvedValueOnce([
+        {
+          pulsePost: {
+            slug: "ai-thread",
+            title: "What ten shows agreed about AI this week",
+            publishedAt: new Date("2026-04-21"),
+          },
+        },
+      ]);
+
+      const res = await app.request("/p/future-forward/ai-piece", {}, env, mockExCtx);
+      const html = await res.text();
+      expect(html).toContain('href="/pulse/ai-thread"');
+      expect(html).toContain("What ten shows agreed about AI this week");
+    });
+
+    it("omits the section entirely when no published posts cite the episode", async () => {
+      setupBasicEpisode();
+      mockPrisma.episodePulsePost.findMany.mockResolvedValueOnce([]);
+
+      const res = await app.request("/p/future-forward/ai-piece", {}, env, mockExCtx);
+      const html = await res.text();
+      expect(html).not.toContain("data-pulse-featured-in");
+      expect(html).not.toContain(">Featured in<");
+    });
   });
 });
