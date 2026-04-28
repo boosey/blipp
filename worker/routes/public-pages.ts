@@ -91,7 +91,7 @@ publicPages.get("/:showSlug/:episodeSlug", async (c) => {
         where: { status: "COMPLETED", narrativeText: { not: null } },
         orderBy: { durationTier: "desc" },
         take: 1,
-        select: { narrativeText: true },
+        select: { narrativeText: true, audioUrl: true },
       },
       distillation: {
         select: { claimsJson: true, status: true },
@@ -99,6 +99,10 @@ publicPages.get("/:showSlug/:episodeSlug", async (c) => {
     },
   });
   if (!episode) return c.notFound();
+
+  // Phase 2.3: pass the longest available clip's audio URL through to the
+  // SSR template so the page can render an inline tap-to-play sample.
+  const sampleAudioUrl = episode.clips[0]?.audioUrl ?? null;
 
   // Use clip narrative if available, else summarize distillation claims, else episode description
   let pageText = episode.clips[0]?.narrativeText;
@@ -192,6 +196,7 @@ publicPages.get("/:showSlug/:episodeSlug", async (c) => {
     })),
     relatedInCategory,
     signupNextPath,
+    sampleAudioUrl,
   });
 
   return c.html(html, 200, {

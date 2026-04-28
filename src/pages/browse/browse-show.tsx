@@ -2,8 +2,16 @@ import { useParams, useSearchParams } from "react-router-dom";
 import { BrowseShell } from "../../components/browse/browse-shell";
 import { BrowseEpisodeRow } from "../../components/browse/browse-episode-row";
 import { SignupChip } from "../../components/browse/signup-chip";
+import { SamplePlayer } from "../../components/sample-player";
 import { usePublicFetch } from "../../lib/use-public-fetch";
 import { useDocumentMeta } from "../../lib/use-document-meta";
+
+interface SampleResponse {
+  audioUrl: string;
+  showTitle: string;
+  episodeTitle: string;
+  sampleSeconds: number;
+}
 
 interface ShowDetailResponse {
   show: {
@@ -67,6 +75,17 @@ export function BrowseShow() {
   const episodesToShow =
     page === 1 ? detail.data?.episodes ?? [] : episodesPage.data?.episodes ?? [];
 
+  // Pick the most-recent public episode of this show as the sample seed.
+  // Only fetch on page 1 (sample exposure is the conversion play, not a per-page widget).
+  const sampleEpisodeSlug =
+    page === 1 ? detail.data?.episodes?.[0]?.slug ?? null : null;
+  const sample = usePublicFetch<SampleResponse>(
+    sampleEpisodeSlug
+      ? `/public/sample/${encodeURIComponent(slug)}/${encodeURIComponent(sampleEpisodeSlug)}`
+      : "",
+    { enabled: Boolean(sampleEpisodeSlug) }
+  );
+
   return (
     <BrowseShell
       breadcrumbs={[
@@ -120,6 +139,19 @@ export function BrowseShow() {
               </div>
             </div>
           </header>
+
+          {sample.data && sampleEpisodeSlug && (
+            <section className="mb-8">
+              <h2 className="text-lg font-semibold mb-3">Hear a sample</h2>
+              <SamplePlayer
+                audioUrl={sample.data.audioUrl}
+                showTitle={sample.data.showTitle}
+                episodeTitle={sample.data.episodeTitle}
+                sampleSeconds={sample.data.sampleSeconds}
+                signupRedirectTo={`/p/${show.slug}/${sampleEpisodeSlug}`}
+              />
+            </section>
+          )}
 
           <section>
             <div className="flex items-baseline justify-between mb-3">

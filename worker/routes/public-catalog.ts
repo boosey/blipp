@@ -407,6 +407,62 @@ publicCatalog.get("/recommendations/featured", async (c) => {
 });
 
 /**
+ * GET /api/public/sample/:showSlug/:episodeSlug
+ * Resolves a public episode to its Blipp audio URL for the sample player.
+ * Picks the longest available clip (typically more polished narrative).
+ * Returns 404 if the episode is not publicPage or has no completed clip.
+ *
+ * Cached 1h — clip URLs are stable once generated.
+ */
+publicCatalog.get("/sample/:showSlug/:episodeSlug", async (c) => {
+  const prisma = c.get("prisma") as any;
+  const showSlug = c.req.param("showSlug");
+  const episodeSlug = c.req.param("episodeSlug");
+
+  const podcast = await prisma.podcast.findUnique({
+    where: { slug: showSlug },
+    select: { id: true, slug: true, title: true },
+  });
+  if (!podcast) return c.json({ error: "Show not found" }, 404);
+
+  const episode = await prisma.episode.findFirst({
+    where: { podcastId: podcast.id, slug: episodeSlug, publicPage: true },
+    select: {
+      slug: true,
+      title: true,
+      durationSeconds: true,
+      clips: {
+        where: { status: "COMPLETED", audioUrl: { not: null } },
+        orderBy: { durationTier: "desc" },
+        take: 1,
+        select: { audioUrl: true, actualSeconds: true, durationTier: true },
+      },
+    },
+  });
+
+  const clip = episode?.clips?.[0];
+  if (!episode || !clip?.audioUrl) {
+    return c.json({ error: "No sample available" }, 404);
+  }
+
+  return c.json(
+    {
+      showSlug: podcast.slug,
+      showTitle: podcast.title,
+      episodeSlug: episode.slug,
+      episodeTitle: episode.title,
+      audioUrl: clip.audioUrl,
+      sampleSeconds: 30,
+      // The server only ships the URL; the client truncates to ~30s and fades out.
+      // Once `Briefing.sampleStartSeconds` exists (Phase 2.4 finalization deferred),
+      // expose it here so the client can offset playback past Blipp intro cruft.
+    },
+    200,
+    { "Cache-Control": "public, max-age=3600, s-maxage=3600" }
+  );
+});
+
+/**
  * GET /api/public/recently-blipped?limit=6
  * Most-recent episodes that have a public Blipp page. 5m cache.
  * Powers the landing-page "Recently Blipped" rail.

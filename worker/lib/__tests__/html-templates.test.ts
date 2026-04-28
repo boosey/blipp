@@ -133,6 +133,37 @@ describe("renderEpisodePage", () => {
     const html = renderEpisodePage(baseEpisode);
     expect(html).toContain("data-pulse-featured-in");
   });
+
+  it("omits the sample player section when sampleAudioUrl is absent", () => {
+    const html = renderEpisodePage({ ...baseEpisode, sampleAudioUrl: null });
+    // CSS for .sample-player is always in <style>; the element itself must be absent.
+    expect(html).not.toContain('id="sample-btn"');
+    expect(html).not.toContain('id="sample-bar"');
+    expect(html).not.toMatch(/<section class="sample-player"/);
+  });
+
+  it("renders sample player + JSON-encoded audio URL when sampleAudioUrl is present", () => {
+    const html = renderEpisodePage({
+      ...baseEpisode,
+      sampleAudioUrl: "https://r2.example.com/clip.mp3",
+    });
+    expect(html).toContain('id="sample-btn"');
+    expect(html).toContain('id="sample-bar"');
+    expect(html).toContain('id="sample-cta"');
+    // URL must be JSON-encoded into the inline script (no naked interpolation)
+    expect(html).toContain('"https://r2.example.com/clip.mp3"');
+    // Default 30-second sample
+    expect(html).toContain("30-second sample");
+  });
+
+  it("respects custom sampleSeconds in the rendered label", () => {
+    const html = renderEpisodePage({
+      ...baseEpisode,
+      sampleAudioUrl: "https://r2.example.com/clip.mp3",
+      sampleSeconds: 45,
+    });
+    expect(html).toContain("45-second sample");
+  });
 });
 
 describe("renderShowPage", () => {
