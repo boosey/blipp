@@ -17,121 +17,121 @@ datasource db {
 // ── Plans ──
 
 model Plan {
-  id                      String   @id @default(cuid())
-  name                    String                        // "Free", "Pro Monthly"
-  slug                    String   @unique              // "free", "pro-monthly"
-  description             String?                       // Marketing copy
+  id          String  @id @default(cuid())
+  name        String // "Free", "Pro Monthly"
+  slug        String  @unique // "free", "pro-monthly"
+  description String? // Marketing copy
 
   // ── Limits (null = unlimited) ──
-  briefingsPerWeek        Int?                          // null = unlimited
-  maxDurationMinutes      Int      @default(5)
-  maxPodcastSubscriptions Int?                          // null = unlimited
-  pastEpisodesLimit       Int?                          // null = unlimited, otherwise max past episodes available
+  briefingsPerWeek        Int? // null = unlimited
+  maxDurationMinutes      Int  @default(5)
+  maxPodcastSubscriptions Int? // null = unlimited
+  pastEpisodesLimit       Int? // null = unlimited, otherwise max past episodes available
 
   // ── Content Delivery ──
-  transcriptAccess        Boolean  @default(false)      // view full source transcript alongside briefing
-  dailyDigest             Boolean  @default(false)      // combined multi-podcast morning briefing
+  transcriptAccess Boolean @default(false) // view full source transcript alongside briefing
+  dailyDigest      Boolean @default(false) // combined multi-podcast morning briefing
 
   // ── Pipeline & Processing ──
-  concurrentPipelineJobs  Int      @default(1)          // max episodes processing simultaneously
+  concurrentPipelineJobs Int @default(1) // max episodes processing simultaneously
 
   // ── Feature Flags ──
-  adFree                  Boolean  @default(false)
-  priorityProcessing      Boolean  @default(false)
-  earlyAccess             Boolean  @default(false)
+  adFree             Boolean @default(false)
+  priorityProcessing Boolean @default(false)
+  earlyAccess        Boolean @default(false)
 
   // ── Personalization ──
-  offlineAccess           Boolean  @default(false)      // mobile offline caching
-  publicSharing           Boolean  @default(false)      // shareable briefing links
+  offlineAccess Boolean @default(false) // mobile offline caching
+  publicSharing Boolean @default(false) // shareable briefing links
 
   // Billing — monthly
-  priceCentsMonthly       Int      @default(0)          // 0 = free
-  stripePriceIdMonthly    String?  @unique
+  priceCentsMonthly    Int     @default(0) // 0 = free
+  stripePriceIdMonthly String? @unique
   // Billing — annual
-  priceCentsAnnual        Int?                          // null = no annual option
-  stripePriceIdAnnual     String?  @unique
+  priceCentsAnnual     Int? // null = no annual option
+  stripePriceIdAnnual  String? @unique
   // Shared Stripe
-  stripeProductId         String?  @unique
-  trialDays               Int      @default(0)
+  stripeProductId      String? @unique
+  trialDays            Int     @default(0)
 
   // Apple IAP (App Store Connect product IDs, e.g. com.blipp.app.pro.monthly)
-  appleProductIdMonthly   String?  @unique
-  appleProductIdAnnual    String?  @unique
+  appleProductIdMonthly String? @unique
+  appleProductIdAnnual  String? @unique
 
   // Voice Presets
-  allowedVoicePresetIds   String[]                      // IDs of voice presets this plan grants access to (system default always available)
+  allowedVoicePresetIds String[] // IDs of voice presets this plan grants access to (system default always available)
 
   // Display
-  features                String[]                      // Marketing bullet points
-  highlighted             Boolean  @default(false)
-  active                  Boolean  @default(true)
-  sortOrder               Int      @default(0)
-  isDefault               Boolean  @default(false)      // Assigned to new users
+  features    String[] // Marketing bullet points
+  highlighted Boolean  @default(false)
+  active      Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  isDefault   Boolean  @default(false) // Assigned to new users
 
-  createdAt               DateTime @default(now())
-  updatedAt               DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  users                   User[]
-  billingSubscriptions    BillingSubscription[]
+  users                User[]
+  billingSubscriptions BillingSubscription[]
 }
 
 // ── Auth & Billing ──
 
 model User {
-  id                    String   @id @default(cuid())
-  clerkId               String   @unique
-  email                 String   @unique
-  name                  String?
-  imageUrl              String?
-  stripeCustomerId      String?  @unique
-  subscriptionEndsAt    DateTime?              // set when user cancels; subscription runs until this date
-  planId                String
-  isAdmin               Boolean  @default(false)
-  status                String   @default("active")  // "active" | "suspended" | "banned"
-  onboardingComplete    Boolean  @default(false)
-  defaultDurationTier   Int      @default(5)
-  defaultVoicePresetId  String?
-  acceptAnyVoice        Boolean  @default(false)
-  preferredCategories   String[]          // explicit interest categories for recommendations
-  excludedCategories    String[]          // categories to never recommend
-  preferredTopics       String[]          // free-text topic interests, e.g. ["AI", "NBA"]
-  excludedTopics        String[]          // topics to suppress from recommendations
-  zipCode               String?           // user-entered US zip code
-  city                  String?           // resolved from zip code or Cloudflare cf.city
-  state                 String?           // resolved from zip code or Cloudflare cf.region
-  country               String?  @default("US")  // resolved from zip code or Cloudflare cf.country
-  profileCompletedAt    DateTime?         // when user last saved interest preferences
-  welcomeEmailSentAt    DateTime?         // stamped when the welcome email is delivered (automated signup flow or admin backfill)
-  digestEnabled              Boolean  @default(true)
-  digestIncludeSubscriptions Boolean  @default(true)
-  digestIncludeFavorites     Boolean  @default(true)
-  digestIncludeRecommended   Boolean  @default(true)
-  timezone                   String?  // IANA timezone e.g. "America/New_York"; null = UTC
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  id                         String    @id @default(cuid())
+  clerkId                    String    @unique
+  email                      String    @unique
+  name                       String?
+  imageUrl                   String?
+  stripeCustomerId           String?   @unique
+  subscriptionEndsAt         DateTime? // set when user cancels; subscription runs until this date
+  planId                     String
+  isAdmin                    Boolean   @default(false)
+  status                     String    @default("active") // "active" | "suspended" | "banned"
+  onboardingComplete         Boolean   @default(false)
+  defaultDurationTier        Int       @default(5)
+  defaultVoicePresetId       String?
+  acceptAnyVoice             Boolean   @default(false)
+  preferredCategories        String[] // explicit interest categories for recommendations
+  excludedCategories         String[] // categories to never recommend
+  preferredTopics            String[] // free-text topic interests, e.g. ["AI", "NBA"]
+  excludedTopics             String[] // topics to suppress from recommendations
+  zipCode                    String? // user-entered US zip code
+  city                       String? // resolved from zip code or Cloudflare cf.city
+  state                      String? // resolved from zip code or Cloudflare cf.region
+  country                    String?   @default("US") // resolved from zip code or Cloudflare cf.country
+  profileCompletedAt         DateTime? // when user last saved interest preferences
+  welcomeEmailSentAt         DateTime? // stamped when the welcome email is delivered (automated signup flow or admin backfill)
+  digestEnabled              Boolean   @default(true)
+  digestIncludeSubscriptions Boolean   @default(true)
+  digestIncludeFavorites     Boolean   @default(true)
+  digestIncludeRecommended   Boolean   @default(true)
+  timezone                   String? // IANA timezone e.g. "America/New_York"; null = UTC
+  createdAt                  DateTime  @default(now())
+  updatedAt                  DateTime  @updatedAt
 
-  plan                 Plan             @relation(fields: [planId], references: [id])
-  defaultVoicePreset   VoicePreset?     @relation("defaultVoicePreset", fields: [defaultVoicePresetId], references: [id])
-  subscriptions        Subscription[]
-  billingSubscriptions BillingSubscription[]
-  billingEvents        BillingEvent[]
-  briefings            Briefing[]
-  feedItems            FeedItem[]
-  briefingRequests     BriefingRequest[]
-  apiKeys              ApiKey[]
-  podcastRequests       PodcastRequest[]
-  pushSubscriptions     PushSubscription[]
-  podcastFavorites      PodcastFavorite[]
-  podcastVotes          PodcastVote[]
-  episodeVotes          EpisodeVote[]
-  recommendationProfile     UserRecommendationProfile?
-  recommendationCache       RecommendationCache?
-  recommendationDismissals  RecommendationDismissal[]
-  feedback                  Feedback[]
-  blippFeedback             BlippFeedback[]
-  listenOriginalEvents      ListenOriginalEvent[] @relation("ListenOriginalEvents")
-  sportsTeams               UserSportsTeam[]
-  digestDeliveries          DigestDelivery[]
+  plan                     Plan                       @relation(fields: [planId], references: [id])
+  defaultVoicePreset       VoicePreset?               @relation("defaultVoicePreset", fields: [defaultVoicePresetId], references: [id])
+  subscriptions            Subscription[]
+  billingSubscriptions     BillingSubscription[]
+  billingEvents            BillingEvent[]
+  briefings                Briefing[]
+  feedItems                FeedItem[]
+  briefingRequests         BriefingRequest[]
+  apiKeys                  ApiKey[]
+  podcastRequests          PodcastRequest[]
+  pushSubscriptions        PushSubscription[]
+  podcastFavorites         PodcastFavorite[]
+  podcastVotes             PodcastVote[]
+  episodeVotes             EpisodeVote[]
+  recommendationProfile    UserRecommendationProfile?
+  recommendationCache      RecommendationCache?
+  recommendationDismissals RecommendationDismissal[]
+  feedback                 Feedback[]
+  blippFeedback            BlippFeedback[]
+  listenOriginalEvents     ListenOriginalEvent[]      @relation("ListenOriginalEvents")
+  sportsTeams              UserSportsTeam[]
+  digestDeliveries         DigestDelivery[]
 }
 
 // ── Podcast Favorites (interest signals for recommendations) ──
@@ -155,7 +155,7 @@ model PodcastVote {
   id        String   @id @default(cuid())
   userId    String
   podcastId String
-  vote      Int      // 1 = up, -1 = down
+  vote      Int // 1 = up, -1 = down
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -170,7 +170,7 @@ model EpisodeVote {
   id        String   @id @default(cuid())
   userId    String
   episodeId String
-  vote      Int      // 1 = up, -1 = down
+  vote      Int // 1 = up, -1 = down
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -184,12 +184,12 @@ model EpisodeVote {
 // ── Push Notifications ──
 
 model PushSubscription {
-  id         String   @id @default(cuid())
-  userId     String
-  endpoint   String   @unique
-  p256dh     String                        // Public key
-  auth       String                        // Auth secret
-  createdAt  DateTime @default(now())
+  id        String   @id @default(cuid())
+  userId    String
+  endpoint  String   @unique
+  p256dh    String // Public key
+  auth      String // Auth secret
+  createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -199,45 +199,45 @@ model PushSubscription {
 // ── Podcast & Episodes ──
 
 model Podcast {
-  id             String    @id @default(cuid())
-  title          String
-  description    String?
-  feedUrl        String    @unique
-  imageUrl       String?
-  podcastIndexId String?   @unique
-  appleId        String?   @unique
-  author         String?
-  language       String?
-  categories     String[] // PostgreSQL array
-  appleMetadata  Json?
-  lastFetchedAt  DateTime?
-  feedHealth     String?   // "excellent" | "good" | "fair" | "poor" | "broken"
-  feedError      String?
-  episodeCount   Int       @default(0)
-  status         String    @default("active") // "active" | "paused" | "archived" | "pending_deletion" | "evicted" | "music"
-  deliverable    Boolean   @default(true)     // false when no deliverable episodes exist
-  invalidationReason String?                   // when status=music: "music_host" | "music_category" | "song_lyrics_detected" | "admin"
-  invalidatedAt      DateTime?                 // when the podcast was invalidated (e.g. marked as music)
-  geoProcessedAt DateTime?                     // null = not geo-processed yet
-  appleRank          Int?      // Position in Apple Top 200 chart (1-200, null if unranked)
-  piRank             Int?      // Best position across PI trending categories (1 = most trending). Updated each discovery run.
+  id                 String    @id @default(cuid())
+  title              String
+  description        String?
+  feedUrl            String    @unique
+  imageUrl           String?
+  podcastIndexId     String?   @unique
+  appleId            String?   @unique
+  author             String?
+  language           String?
+  categories         String[] // PostgreSQL array
+  appleMetadata      Json?
+  lastFetchedAt      DateTime?
+  feedHealth         String? // "excellent" | "good" | "fair" | "poor" | "broken"
+  feedError          String?
+  episodeCount       Int       @default(0)
+  status             String    @default("active") // "active" | "paused" | "archived" | "pending_deletion" | "evicted" | "music"
+  deliverable        Boolean   @default(true) // false when no deliverable episodes exist
+  invalidationReason String? // when status=music: "music_host" | "music_category" | "song_lyrics_detected" | "admin"
+  invalidatedAt      DateTime? // when the podcast was invalidated (e.g. marked as music)
+  geoProcessedAt     DateTime? // null = not geo-processed yet
+  appleRank          Int? // Position in Apple Top 200 chart (1-200, null if unranked)
+  piRank             Int? // Best position across PI trending categories (1 = most trending). Updated each discovery run.
   lastDetailViewedAt DateTime? // Last time any user fetched this podcast's detail page
-  source             String?   // "trending" | "user_request" | "manual"
+  source             String? // "trending" | "user_request" | "manual"
   slug               String?   @unique // URL-safe slug e.g. "lex-fridman"
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
-  episodes          Episode[]
-  subscriptions     Subscription[]
-  feedItems         FeedItem[]
-  requests          PodcastRequest[]
-  favorites         PodcastFavorite[]
-  votes             PodcastVote[]
-  podcastCategories          PodcastCategory[]
-  profile                    PodcastProfile?
-  geoProfiles                PodcastGeoProfile[]
-  recommendationDismissals   RecommendationDismissal[]
-  catalogBriefings           CatalogBriefing[]
+  episodes                 Episode[]
+  subscriptions            Subscription[]
+  feedItems                FeedItem[]
+  requests                 PodcastRequest[]
+  favorites                PodcastFavorite[]
+  votes                    PodcastVote[]
+  podcastCategories        PodcastCategory[]
+  profile                  PodcastProfile?
+  geoProfiles              PodcastGeoProfile[]
+  recommendationDismissals RecommendationDismissal[]
+  catalogBriefings         CatalogBriefing[]
 }
 
 model Episode {
@@ -253,25 +253,26 @@ model Episode {
   contentStatus   ContentStatus @default(PENDING)
   transcriptR2Key String?
   audioR2Key      String?
-  topicTags       String[]  // Extracted topic fingerprints from claims
-  slug            String?   // URL-safe slug, unique per podcast e.g. "ep-412-sam-altman"
-  publicPage      Boolean   @default(false) // Whether this episode has a public Blipp page
+  topicTags       String[] // Extracted topic fingerprints from claims
+  slug            String? // URL-safe slug, unique per podcast e.g. "ep-412-sam-altman"
+  publicPage      Boolean       @default(false) // Whether this episode has a public Blipp page
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
-  podcast          Podcast             @relation(fields: [podcastId], references: [id], onDelete: Cascade)
-  distillation     Distillation?
-  clips            Clip[]
-  pipelineJobs     PipelineJob[]
-  workProducts     WorkProduct[]
-  feedItems        FeedItem[]
-  votes            EpisodeVote[]
+  podcast                Podcast                 @relation(fields: [podcastId], references: [id], onDelete: Cascade)
+  distillation           Distillation?
+  clips                  Clip[]
+  pipelineJobs           PipelineJob[]
+  workProducts           WorkProduct[]
+  feedItems              FeedItem[]
+  votes                  EpisodeVote[]
   benchmarkResults       SttBenchmarkResult[]
   claimsBenchmarkResults ClaimsBenchmarkResult[]
   blippFeedback          BlippFeedback[]
-  listenOriginalEvents   ListenOriginalEvent[] @relation("ListenOriginalEvents")
+  listenOriginalEvents   ListenOriginalEvent[]   @relation("ListenOriginalEvents")
   digestDeliveryEpisodes DigestDeliveryEpisode[]
   catalogBriefings       CatalogBriefing[]
+  pulsePostLinks         EpisodePulsePost[]
 
   @@unique([podcastId, guid])
   @@unique([podcastId, slug])
@@ -293,6 +294,11 @@ model Distillation {
   status                 DistillationStatus @default(PENDING)
   transcript             String?
   claimsJson             Json? // Pass 1 output: scored claims
+  // 768-dim Workers AI centroid embedding over the claims; populated alongside
+  // claimsJson when the embedding pass succeeds. Used at Pulse digest time
+  // (Phase 4) for cross-episode topic clustering. Nullable so legacy
+  // distillations don't fail validation.
+  claimsEmbedding        Json?
   errorMessage           String?
   transcriptionStartedAt DateTime?
   distillationStartedAt  DateTime?
@@ -313,28 +319,28 @@ enum DistillationStatus {
 }
 
 model Clip {
-  id             String     @id @default(cuid())
-  episodeId      String
-  distillationId String
-  durationTier   Int // 1, 2, 3, 5, 7, 10, 15, or 30 (minutes)
-  status         ClipStatus @default(PENDING)
-  narrativeText  String? // Pass 2 output: narrative for TTS
-  wordCount      Int?
+  id               String     @id @default(cuid())
+  episodeId        String
+  distillationId   String
+  durationTier     Int // 1, 2, 3, 5, 7, 10, 15, or 30 (minutes)
+  status           ClipStatus @default(PENDING)
+  narrativeText    String? // Pass 2 output: narrative for TTS
+  wordCount        Int?
   audioKey         String? // R2 key: clips/{episodeId}/{durationTier}.mp3
   audioContentType String? // MIME type of stored audio (default: audio/mpeg)
   audioUrl         String? // Public R2 URL
-  actualSeconds  Int? // Actual TTS audio duration
-  errorMessage   String?
-  voiceDegraded  Boolean    @default(false) // true when audio generated by non-primary TTS provider
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
+  actualSeconds    Int? // Actual TTS audio duration
+  errorMessage     String?
+  voiceDegraded    Boolean    @default(false) // true when audio generated by non-primary TTS provider
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
 
-  voicePresetId  String?
+  voicePresetId String?
 
-  episode      Episode      @relation(fields: [episodeId], references: [id], onDelete: Cascade)
-  distillation Distillation @relation(fields: [distillationId], references: [id], onDelete: Cascade)
-  voicePreset  VoicePreset? @relation(fields: [voicePresetId], references: [id])
-  briefings    Briefing[]
+  episode          Episode           @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  distillation     Distillation      @relation(fields: [distillationId], references: [id], onDelete: Cascade)
+  voicePreset      VoicePreset?      @relation(fields: [voicePresetId], references: [id])
+  briefings        Briefing[]
   catalogBriefings CatalogBriefing[]
 
   @@unique([episodeId, durationTier, voicePresetId])
@@ -343,13 +349,13 @@ model Clip {
 // ── Briefings (per-user wrapper around a shared Clip) ──
 
 model Briefing {
-  id          String   @id @default(cuid())
-  userId      String
-  clipId      String
-  adAudioUrl  String?  // personalized ad audio URL (null until ads ship)
-  adAudioKey  String?  // R2 key for ad audio
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String   @id @default(cuid())
+  userId     String
+  clipId     String
+  adAudioUrl String? // personalized ad audio URL (null until ads ship)
+  adAudioKey String? // R2 key for ad audio
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   clip      Clip       @relation(fields: [clipId], references: [id], onDelete: Cascade)
@@ -370,10 +376,10 @@ model CatalogBriefing {
   stale        Boolean  @default(false) // true when a newer episode supersedes this one
   createdAt    DateTime @default(now())
 
-  episode  Episode         @relation(fields: [episodeId], references: [id], onDelete: Cascade)
-  podcast  Podcast         @relation(fields: [podcastId], references: [id], onDelete: Cascade)
-  clip     Clip            @relation(fields: [clipId], references: [id], onDelete: Cascade)
-  request  BriefingRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  episode Episode         @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  podcast Podcast         @relation(fields: [podcastId], references: [id], onDelete: Cascade)
+  clip    Clip            @relation(fields: [clipId], references: [id], onDelete: Cascade)
+  request BriefingRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
 
   @@unique([episodeId, durationTier])
   @@index([podcastId, stale, createdAt])
@@ -390,16 +396,16 @@ enum ClipStatus {
 // ── User Subscriptions ──
 
 model Subscription {
-  id            String   @id @default(cuid())
+  id            String    @id @default(cuid())
   userId        String
   podcastId     String
-  durationTier  Int      // 1, 2, 3, 5, 7, 10, 15, or 30 (minutes)
+  durationTier  Int // 1, 2, 3, 5, 7, 10, 15, or 30 (minutes)
   voicePresetId String?
   pausedAt      DateTime?
-  pauseReason   String?  // "inactivity:N_episodes" | "user"
-  resumeToken   String?  @unique
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  pauseReason   String? // "inactivity:N_episodes" | "user"
+  resumeToken   String?   @unique
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   podcast     Podcast      @relation(fields: [podcastId], references: [id], onDelete: Cascade)
@@ -413,27 +419,27 @@ model Subscription {
 // ── Feed Items ──
 
 model FeedItem {
-  id           String         @id @default(cuid())
-  userId       String
-  episodeId    String
-  podcastId    String
-  briefingId   String?
-  durationTier Int
-  source       FeedItemSource
-  status       FeedItemStatus @default(PENDING)
-  listened     Boolean        @default(false)
-  listenedAt   DateTime?
+  id                      String         @id @default(cuid())
+  userId                  String
+  episodeId               String
+  podcastId               String
+  briefingId              String?
+  durationTier            Int
+  source                  FeedItemSource
+  status                  FeedItemStatus @default(PENDING)
+  listened                Boolean        @default(false)
+  listenedAt              DateTime?
   playbackPositionSeconds Float?
-  requestId    String?
-  errorMessage String?
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
+  requestId               String?
+  errorMessage            String?
+  createdAt               DateTime       @default(now())
+  updatedAt               DateTime       @updatedAt
 
-  user     User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  episode  Episode           @relation(fields: [episodeId], references: [id], onDelete: Cascade)
-  podcast  Podcast           @relation(fields: [podcastId], references: [id], onDelete: Cascade)
-  briefing Briefing?         @relation(fields: [briefingId], references: [id])
-  request  BriefingRequest?  @relation(fields: [requestId], references: [id])
+  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  episode  Episode          @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  podcast  Podcast          @relation(fields: [podcastId], references: [id], onDelete: Cascade)
+  briefing Briefing?        @relation(fields: [briefingId], references: [id])
+  request  BriefingRequest? @relation(fields: [requestId], references: [id])
 
   @@unique([userId, episodeId, durationTier])
   @@index([userId, status, createdAt])
@@ -461,7 +467,7 @@ model PipelineJob {
   id             String            @id @default(cuid())
   requestId      String
   episodeId      String
-  durationTier   Int               // from request item — source of truth
+  durationTier   Int // from request item — source of truth
   voicePresetId  String?
   status         PipelineJobStatus @default(PENDING)
   currentStage   PipelineStage     @default(TRANSCRIPTION)
@@ -500,31 +506,31 @@ enum PipelineJobStatus {
 }
 
 model PipelineStep {
-  id            String             @id @default(cuid())
-  jobId         String
-  stage         PipelineStage
-  status        PipelineStepStatus @default(PENDING)
-  cached        Boolean            @default(false)
-  input         Json?
-  output        Json?
-  errorMessage  String?
-  startedAt     DateTime?
-  completedAt   DateTime?
-  durationMs    Int?
+  id                  String             @id @default(cuid())
+  jobId               String
+  stage               PipelineStage
+  status              PipelineStepStatus @default(PENDING)
+  cached              Boolean            @default(false)
+  input               Json?
+  output              Json?
+  errorMessage        String?
+  startedAt           DateTime?
+  completedAt         DateTime?
+  durationMs          Int?
   cost                Float?
   model               String?
   inputTokens         Int?
   outputTokens        Int?
   cacheCreationTokens Int?
   cacheReadTokens     Int?
-  audioSeconds        Float?             // STT: input audio duration; TTS: output audio duration
-  charCount           Int?               // TTS: input character count
+  audioSeconds        Float? // STT: input audio duration; TTS: output audio duration
+  charCount           Int? // TTS: input character count
   retryCount          Int                @default(0)
-  workProductId String?
-  createdAt     DateTime           @default(now())
+  workProductId       String?
+  createdAt           DateTime           @default(now())
 
-  job         PipelineJob    @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  workProduct WorkProduct?   @relation(fields: [workProductId], references: [id])
+  job         PipelineJob     @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  workProduct WorkProduct?    @relation(fields: [workProductId], references: [id])
   events      PipelineEvent[]
 }
 
@@ -546,43 +552,43 @@ enum PipelineEventLevel {
 // ── Briefing Requests (Demand-Driven Pipeline) ──
 
 model BriefingRequest {
-  id            String                 @id @default(cuid())
+  id            String                @id @default(cuid())
   userId        String
-  status        BriefingRequestStatus  @default(PENDING)
+  status        BriefingRequestStatus @default(PENDING)
   targetMinutes Int
-  items         Json                   // BriefingRequestItem[]
-  isTest        Boolean                @default(false)
-  mode          BriefingRequestMode    @default(USER)
-  source        BriefingRequestSource  @default(ON_DEMAND)
+  items         Json // BriefingRequestItem[]
+  isTest        Boolean               @default(false)
+  mode          BriefingRequestMode   @default(USER)
+  source        BriefingRequestSource @default(ON_DEMAND)
   errorMessage  String?
   cancelledAt   DateTime?
-  createdAt     DateTime               @default(now())
-  updatedAt     DateTime               @updatedAt
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
 
-  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  jobs              PipelineJob[]
-  feedItems         FeedItem[]
-  catalogBriefings  CatalogBriefing[]
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobs             PipelineJob[]
+  feedItems        FeedItem[]
+  catalogBriefings CatalogBriefing[]
 
   @@index([source])
 }
 
 enum BriefingRequestMode {
-  USER           // Normal user-triggered (subscription, on-demand)
-  SEO_BACKFILL   // Transcription + distillation only, for SEO pages
-  CATALOG        // Full pipeline, pre-generated for instant delivery on signup
+  USER // Normal user-triggered (subscription, on-demand)
+  SEO_BACKFILL // Transcription + distillation only, for SEO pages
+  CATALOG // Full pipeline, pre-generated for instant delivery on signup
 }
 
 enum BriefingRequestSource {
-  ON_DEMAND                     // User clicked Generate on a specific episode
-  SUBSCRIPTION                  // Auto-created from user's subscription on feed refresh
-  SHARE                         // Created when a user opens a shared briefing
-  STARTER_PACK                  // Onboarding auto-populate (deliverStarterPack)
-  CATALOG_PREGEN_FEED_REFRESH   // Inline auto-catalog from feed-refresh.ts
-  CATALOG_PREGEN_CRON           // Scheduled catalog-pregen cron job
-  CATALOG_PREGEN_ADMIN          // Admin clicked /api/admin/catalog-pregen/trigger
-  SEO_BACKFILL                  // Admin SEO backfill (episodes.ts)
-  ADMIN_TEST                    // Admin test-briefing endpoint
+  ON_DEMAND // User clicked Generate on a specific episode
+  SUBSCRIPTION // Auto-created from user's subscription on feed refresh
+  SHARE // Created when a user opens a shared briefing
+  STARTER_PACK // Onboarding auto-populate (deliverStarterPack)
+  CATALOG_PREGEN_FEED_REFRESH // Inline auto-catalog from feed-refresh.ts
+  CATALOG_PREGEN_CRON // Scheduled catalog-pregen cron job
+  CATALOG_PREGEN_ADMIN // Admin clicked /api/admin/catalog-pregen/trigger
+  SEO_BACKFILL // Admin SEO backfill (episodes.ts)
+  ADMIN_TEST // Admin test-briefing endpoint
 }
 
 enum BriefingRequestStatus {
@@ -602,13 +608,13 @@ model WorkProduct {
   episodeId    String?
   userId       String?
   durationTier Int?
-  voice        String?         // TTS voice identifier, null = default
+  voice        String? // TTS voice identifier, null = default
   r2Key        String          @unique
   sizeBytes    Int?
-  metadata     Json?           // type-specific: { claimCount, wordCount, partial, etc. }
+  metadata     Json? // type-specific: { claimCount, wordCount, partial, etc. }
   createdAt    DateTime        @default(now())
 
-  episode Episode?      @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  episode Episode?       @relation(fields: [episodeId], references: [id], onDelete: Cascade)
   steps   PipelineStep[]
 }
 
@@ -639,42 +645,42 @@ model PipelineEvent {
 // ── AI Service Error Tracking ──
 
 model AiServiceError {
-  id                String   @id @default(cuid())
+  id String @id @default(cuid())
 
   // Identity
-  service           String                      // "stt" | "distillation" | "narrative" | "tts"
-  provider          String                      // "anthropic", "openai", "groq", "deepgram", etc.
-  model             String                      // model ID that was called
-  operation         String                      // "transcribe", "complete", "synthesize"
+  service   String // "stt" | "distillation" | "narrative" | "tts"
+  provider  String // "anthropic", "openai", "groq", "deepgram", etc.
+  model     String // model ID that was called
+  operation String // "transcribe", "complete", "synthesize"
 
   // Context
-  correlationId     String                      // traces through the pipeline
-  jobId             String?                     // PipelineJob reference
-  stepId            String?                     // PipelineStep reference
-  episodeId         String?
+  correlationId String // traces through the pipeline
+  jobId         String? // PipelineJob reference
+  stepId        String? // PipelineStep reference
+  episodeId     String?
 
   // Error details
-  category          String                      // rate_limit, timeout, auth, model_not_found, etc.
-  severity          String                      // "transient" | "permanent"
-  httpStatus        Int?
-  errorMessage      String
-  rawResponse       String?                     // first 2KB of error body (sanitized)
+  category     String // rate_limit, timeout, auth, model_not_found, etc.
+  severity     String // "transient" | "permanent"
+  httpStatus   Int?
+  errorMessage String
+  rawResponse  String? // first 2KB of error body (sanitized)
 
   // Timing
   requestDurationMs Int
   timestamp         DateTime @default(now())
 
   // Retry context
-  retryCount        Int      @default(0)
-  maxRetries        Int      @default(0)
-  willRetry         Boolean  @default(false)
-  resolved          Boolean  @default(false)    // true if a subsequent retry succeeded
+  retryCount Int     @default(0)
+  maxRetries Int     @default(0)
+  willRetry  Boolean @default(false)
+  resolved   Boolean @default(false) // true if a subsequent retry succeeded
 
   // Rate limit headers (when available)
   rateLimitRemaining Int?
   rateLimitResetAt   DateTime?
 
-  createdAt         DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@index([service, provider, createdAt])
   @@index([correlationId])
@@ -687,14 +693,14 @@ model AiServiceError {
 
 model AuditLog {
   id         String   @id @default(cuid())
-  actorId    String                        // Clerk userId of the admin
-  actorEmail String?                       // Denormalized for readability
-  action     String                        // "config.update", "user.plan.change", "plan.create"
-  entityType String                        // "PlatformConfig", "User", "Plan", "PipelineJob"
-  entityId   String                        // ID of the affected record
-  before     Json?                         // Snapshot before change
-  after      Json?                         // Snapshot after change
-  metadata   Json?                         // Extra context: { ip, userAgent }
+  actorId    String // Clerk userId of the admin
+  actorEmail String? // Denormalized for readability
+  action     String // "config.update", "user.plan.change", "plan.create"
+  entityType String // "PlatformConfig", "User", "Plan", "PipelineJob"
+  entityId   String // ID of the affected record
+  before     Json? // Snapshot before change
+  after      Json? // Snapshot after change
+  metadata   Json? // Extra context: { ip, userAgent }
   createdAt  DateTime @default(now())
 
   @@index([actorId])
@@ -706,14 +712,14 @@ model AuditLog {
 
 model ApiKey {
   id         String    @id @default(cuid())
-  name       String                        // "Monitoring", "Partner Feed"
-  keyHash    String    @unique             // SHA-256 hash of the key
-  keyPrefix  String                        // First 8 chars: "blp_live..."
-  scopes     String[]                      // ["health:read", "feed:read"]
-  userId     String                        // Admin who created it
-  expiresAt  DateTime?                     // null = no expiry
+  name       String // "Monitoring", "Partner Feed"
+  keyHash    String    @unique // SHA-256 hash of the key
+  keyPrefix  String // First 8 chars: "blp_live..."
+  scopes     String[] // ["health:read", "feed:read"]
+  userId     String // Admin who created it
+  expiresAt  DateTime? // null = no expiry
   lastUsedAt DateTime?
-  revokedAt  DateTime?                     // Soft revoke
+  revokedAt  DateTime? // Soft revoke
   createdAt  DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -722,15 +728,15 @@ model ApiKey {
 // ── STT Benchmark ──
 
 model SttExperiment {
-  id           String              @id @default(cuid())
+  id           String               @id @default(cuid())
   name         String
-  status       SttExperimentStatus @default(PENDING)
-  config       Json                // { models: string[], speeds: number[], episodeIds: string[] }
-  totalTasks   Int                 @default(0)
-  doneTasks    Int                 @default(0)
+  status       SttExperimentStatus  @default(PENDING)
+  config       Json // { models: string[], speeds: number[], episodeIds: string[] }
+  totalTasks   Int                  @default(0)
+  doneTasks    Int                  @default(0)
   errorMessage String?
-  createdAt    DateTime            @default(now())
-  updatedAt    DateTime            @updatedAt
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
   completedAt  DateTime?
   results      SttBenchmarkResult[]
 }
@@ -744,25 +750,25 @@ enum SttExperimentStatus {
 }
 
 model SttBenchmarkResult {
-  id              String   @id @default(cuid())
-  experimentId    String
-  episodeId       String
-  model           String   // "whisper-1", "nova-2", "nova-3", "assemblyai-best", "google-chirp"
-  provider        String?  // inference provider, e.g. "openai", "cloudflare", "deepgram"
-  speed           Float    // 1.0, 1.5, 2.0
-  status          String   @default("PENDING") // PENDING, RUNNING, POLLING, COMPLETED, FAILED
-  costDollars     Float?
-  latencyMs       Int?
-  wer             Float?
-  wordCount       Int?
-  refWordCount    Int?
-  r2AudioKey      String?  // sped-up audio in R2 (null for 1x)
-  r2TranscriptKey    String?  // cleaned hypothesis text used in WER comparison
-  r2RefTranscriptKey String?  // cleaned reference text used in WER comparison
-  pollingId          String?  // external job ID for async APIs (AssemblyAI, Google)
-  errorMessage    String?
-  createdAt       DateTime @default(now())
-  completedAt     DateTime?
+  id                 String    @id @default(cuid())
+  experimentId       String
+  episodeId          String
+  model              String // "whisper-1", "nova-2", "nova-3", "assemblyai-best", "google-chirp"
+  provider           String? // inference provider, e.g. "openai", "cloudflare", "deepgram"
+  speed              Float // 1.0, 1.5, 2.0
+  status             String    @default("PENDING") // PENDING, RUNNING, POLLING, COMPLETED, FAILED
+  costDollars        Float?
+  latencyMs          Int?
+  wer                Float?
+  wordCount          Int?
+  refWordCount       Int?
+  r2AudioKey         String? // sped-up audio in R2 (null for 1x)
+  r2TranscriptKey    String? // cleaned hypothesis text used in WER comparison
+  r2RefTranscriptKey String? // cleaned reference text used in WER comparison
+  pollingId          String? // external job ID for async APIs (AssemblyAI, Google)
+  errorMessage       String?
+  createdAt          DateTime  @default(now())
+  completedAt        DateTime?
 
   experiment SttExperiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
   episode    Episode       @relation(fields: [episodeId], references: [id], onDelete: Cascade)
@@ -783,23 +789,23 @@ enum ClaimsExperimentStatus {
 }
 
 model ClaimsExperiment {
-  id                String                   @id @default(cuid())
-  name              String
-  status            ClaimsExperimentStatus   @default(PENDING)
-  baselineModelId   String
-  baselineProvider  String
-  judgeModelId      String
-  judgeProvider     String
-  config            Json                     // { models: [{modelId, provider}], episodeIds: string[] }
-  totalTasks        Int                      @default(0)
-  doneTasks         Int                      @default(0)
-  totalJudgeTasks   Int                      @default(0)
-  doneJudgeTasks    Int                      @default(0)
-  errorMessage      String?
-  createdAt         DateTime                 @default(now())
-  updatedAt         DateTime                 @updatedAt
-  completedAt       DateTime?
-  results           ClaimsBenchmarkResult[]
+  id               String                  @id @default(cuid())
+  name             String
+  status           ClaimsExperimentStatus  @default(PENDING)
+  baselineModelId  String
+  baselineProvider String
+  judgeModelId     String
+  judgeProvider    String
+  config           Json // { models: [{modelId, provider}], episodeIds: string[] }
+  totalTasks       Int                     @default(0)
+  doneTasks        Int                     @default(0)
+  totalJudgeTasks  Int                     @default(0)
+  doneJudgeTasks   Int                     @default(0)
+  errorMessage     String?
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+  completedAt      DateTime?
+  results          ClaimsBenchmarkResult[]
 }
 
 model ClaimsBenchmarkResult {
@@ -815,12 +821,12 @@ model ClaimsBenchmarkResult {
   outputTokens          Int?
   costDollars           Float?
   latencyMs             Int?
-  coverageScore         Float?    // 0-100, computed server-side from verdicts
-  weightedCoverageScore Float?    // 0-100, importance-weighted
-  hallucinations        Int?      // count from verdicts
-  judgeStatus           String?   // PENDING, RUNNING, COMPLETED, FAILED (null for baseline)
-  r2ClaimsKey           String?   // R2 key for full claims JSON
-  r2JudgeKey            String?   // R2 key for per-claim verdicts JSON
+  coverageScore         Float? // 0-100, computed server-side from verdicts
+  weightedCoverageScore Float? // 0-100, importance-weighted
+  hallucinations        Int? // count from verdicts
+  judgeStatus           String? // PENDING, RUNNING, COMPLETED, FAILED (null for baseline)
+  r2ClaimsKey           String? // R2 key for full claims JSON
+  r2JudgeKey            String? // R2 key for per-claim verdicts JSON
   errorMessage          String?
   createdAt             DateTime  @default(now())
   completedAt           DateTime?
@@ -835,18 +841,18 @@ model ClaimsBenchmarkResult {
 // ── Podcast Requests (User-Submitted) ──
 
 model PodcastRequest {
-  id          String    @id @default(cuid())
-  userId      String
-  feedUrl     String
-  title       String?
-  imageUrl    String?
-  status      String    @default("PENDING")  // PENDING, APPROVED, REJECTED, DUPLICATE
-  podcastId   String?
-  adminNote   String?
-  reviewedBy  String?
-  reviewedAt  DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id         String    @id @default(cuid())
+  userId     String
+  feedUrl    String
+  title      String?
+  imageUrl   String?
+  status     String    @default("PENDING") // PENDING, APPROVED, REJECTED, DUPLICATE
+  podcastId  String?
+  adminNote  String?
+  reviewedBy String?
+  reviewedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
   user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   podcast Podcast? @relation(fields: [podcastId], references: [id])
@@ -863,15 +869,15 @@ model PlatformConfig {
   value       Json
   description String?
   updatedAt   DateTime @updatedAt
-  updatedBy   String?  // admin clerkId who last updated
+  updatedBy   String? // admin clerkId who last updated
 }
 
 model PromptVersion {
   id        String   @id @default(cuid())
-  stage     String   @default("")      // "distillation", "narrative" — groups all prompt keys for this stage
+  stage     String   @default("") // "distillation", "narrative" — groups all prompt keys for this stage
   version   Int
   label     String?
-  values    Json     @default("{}")   // Record<promptKey, value> — all prompt values in this stage
+  values    Json     @default("{}") // Record<promptKey, value> — all prompt values in this stage
   notes     String?
   createdAt DateTime @default(now())
   createdBy String?
@@ -883,15 +889,15 @@ model PromptVersion {
 // ── Voice Presets ──
 
 model VoicePreset {
-  id            String   @id @default(cuid())
-  name          String   @unique
-  description   String?
-  isSystem      Boolean  @default(false)  // true = cannot be deleted
-  isActive      Boolean  @default(true)
-  config              Json     // { openai: { voice, instructions, speed }, groq: { voice }, cloudflare: {} }
-  voiceCharacteristics Json?   // { gender, tone, pace } for future auto-matching
-  createdAt           DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id                   String   @id @default(cuid())
+  name                 String   @unique
+  description          String?
+  isSystem             Boolean  @default(false) // true = cannot be deleted
+  isActive             Boolean  @default(true)
+  config               Json // { openai: { voice, instructions, speed }, groq: { voice }, cloudflare: {} }
+  voiceCharacteristics Json? // { gender, tone, pace } for future auto-matching
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   clips         Clip[]
   subscriptions Subscription[]
@@ -913,9 +919,9 @@ model AiModel {
   id        String    @id @default(cuid())
   stages    AiStage[] // pipeline stages this model is eligible for
   modelId   String    @unique // e.g. "whisper-1", "nova-3", "claude-sonnet-4-20250514"
-  label     String    // e.g. "Whisper v1", "Deepgram Nova-3"
-  developer String    // e.g. "openai", "deepgram", "anthropic"
-  notes     String?   // capabilities, value notes, limitations
+  label     String // e.g. "Whisper v1", "Deepgram Nova-3"
+  developer String // e.g. "openai", "deepgram", "anthropic"
+  notes     String? // capabilities, value notes, limitations
   isActive  Boolean   @default(true)
   createdAt DateTime  @default(now())
 
@@ -925,16 +931,16 @@ model AiModel {
 model AiModelProvider {
   id                   String    @id @default(cuid())
   aiModelId            String
-  provider             String    // inference provider: "openai", "cloudflare", "groq", "deepgram", etc.
-  providerModelId      String?   // provider-specific model ID, e.g. "@cf/openai/whisper" for Cloudflare
-  providerLabel        String    // display name: "Cloudflare Workers AI"
-  pricePerMinute       Float?    // STT / TTS per audio minute
-  priceInputPerMToken  Float?    // LLM per 1M input tokens
-  priceOutputPerMToken Float?    // LLM per 1M output tokens
-  pricePerKChars       Float?    // TTS alt: per 1K characters
+  provider             String // inference provider: "openai", "cloudflare", "groq", "deepgram", etc.
+  providerModelId      String? // provider-specific model ID, e.g. "@cf/openai/whisper" for Cloudflare
+  providerLabel        String // display name: "Cloudflare Workers AI"
+  pricePerMinute       Float? // STT / TTS per audio minute
+  priceInputPerMToken  Float? // LLM per 1M input tokens
+  priceOutputPerMToken Float? // LLM per 1M output tokens
+  pricePerKChars       Float? // TTS alt: per 1K characters
   isDefault            Boolean   @default(false)
   isAvailable          Boolean   @default(true)
-  limits               Json?     // provider/model limits, e.g. { "maxFileSizeBytes": 26214400 }
+  limits               Json? // provider/model limits, e.g. { "maxFileSizeBytes": 26214400 }
   priceUpdatedAt       DateTime?
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
@@ -971,24 +977,25 @@ model PodcastCategory {
 model PodcastProfile {
   id              String   @id @default(cuid())
   podcastId       String   @unique
-  categoryWeights Json     // { "Technology": 0.8, "Business": 0.3 }
+  categoryWeights Json // { "Technology": 0.8, "Business": 0.3 }
   topicTags       String[] // Phase 2: topic fingerprinting
   popularity      Float    @default(0) // Normalized 0-1
   freshness       Float    @default(0) // Normalized 0-1
   subscriberCount Int      @default(0)
-  embedding       Json?    // 768-dim float array from Workers AI
+  embedding       Json? // 768-dim float array from Workers AI
   computedAt      DateTime @default(now())
   podcast         Podcast  @relation(fields: [podcastId], references: [id], onDelete: Cascade)
+
   @@index([computedAt])
 }
 
 model UserRecommendationProfile {
   id              String   @id @default(cuid())
   userId          String   @unique
-  categoryWeights Json     // { "Technology": 0.9, "Science": 0.5 }
+  categoryWeights Json // { "Technology": 0.9, "Science": 0.5 }
   topicTags       String[] // Phase 2
   listenCount     Int      @default(0)
-  embedding       Json?    // 768-dim float array (centroid of subscribed podcasts)
+  embedding       Json? // 768-dim float array (centroid of subscribed podcasts)
   computedAt      DateTime @default(now())
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -996,7 +1003,7 @@ model UserRecommendationProfile {
 model RecommendationCache {
   id         String   @id @default(cuid())
   userId     String   @unique
-  podcasts   Json     // [{ podcastId, score, reasons: string[] }]
+  podcasts   Json // [{ podcastId, score, reasons: string[] }]
   computedAt DateTime @default(now())
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -1017,17 +1024,17 @@ model RecommendationDismissal {
 // ── Scheduled Jobs ──
 
 model CronJob {
-  id                      String    @id @default(cuid())
-  jobKey                  String    @unique
-  label                   String
-  description             String
-  enabled                 Boolean   @default(true)
-  intervalMinutes         Int
-  defaultIntervalMinutes  Int
-  runAtHour               Int?      // 0-23 UTC hour; when set, job only runs during this hour
-  lastRunAt               DateTime?
-  createdAt               DateTime  @default(now())
-  updatedAt               DateTime  @updatedAt
+  id                     String    @id @default(cuid())
+  jobKey                 String    @unique
+  label                  String
+  description            String
+  enabled                Boolean   @default(true)
+  intervalMinutes        Int
+  defaultIntervalMinutes Int
+  runAtHour              Int? // 0-23 UTC hour; when set, job only runs during this hour
+  lastRunAt              DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
 
   runs CronRun[]
 }
@@ -1042,7 +1049,7 @@ model CronRun {
   completedAt  DateTime?
   durationMs   Int?
   status       CronRunStatus @default(IN_PROGRESS)
-  result       Json?         // structured output: counts, summaries
+  result       Json? // structured output: counts, summaries
   errorMessage String?
 
   logs CronRunLog[]
@@ -1078,17 +1085,17 @@ enum CronRunLogLevel {
 // ── Catalog Seed Jobs ──
 
 model CatalogSeedJob {
-  id                  String             @id @default(cuid())
-  mode                String             @default("additive")
-  source              String             @default("apple")   // "apple" | "podcast-index" | "manual"
-  trigger             String             @default("admin")   // "admin" | "script" | "cron"
-  status              String             @default("pending") // pending | discovering | upserting | complete | failed | cancelled
-  podcastsDiscovered  Int                @default(0)
-  error               String?
-  archivedAt          DateTime?
-  startedAt           DateTime           @default(now())
-  completedAt         DateTime?
-  errors              CatalogJobError[]
+  id                 String            @id @default(cuid())
+  mode               String            @default("additive")
+  source             String            @default("apple") // "apple" | "podcast-index" | "manual"
+  trigger            String            @default("admin") // "admin" | "script" | "cron"
+  status             String            @default("pending") // pending | discovering | upserting | complete | failed | cancelled
+  podcastsDiscovered Int               @default(0)
+  error              String?
+  archivedAt         DateTime?
+  startedAt          DateTime          @default(now())
+  completedAt        DateTime?
+  errors             CatalogJobError[]
 
   @@index([status])
   @@index([startedAt])
@@ -1096,14 +1103,14 @@ model CatalogSeedJob {
 }
 
 model CatalogJobError {
-  id         String          @id @default(cuid())
-  jobId      String
-  job        CatalogSeedJob  @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  phase      String          // "discovery"
-  message    String
-  podcastId  String?
-  episodeId  String?
-  createdAt  DateTime        @default(now())
+  id        String         @id @default(cuid())
+  jobId     String
+  job       CatalogSeedJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  phase     String // "discovery"
+  message   String
+  podcastId String?
+  episodeId String?
+  createdAt DateTime       @default(now())
 
   @@index([jobId])
   @@index([jobId, phase])
@@ -1112,36 +1119,36 @@ model CatalogJobError {
 // ── Episode Refresh Jobs ──
 
 model EpisodeRefreshJob {
-  id                       String                @id @default(cuid())
-  scope                    String                @default("subscribed") // "subscribed" | "all" | "seed"
-  trigger                  String                @default("admin")      // "admin" | "cron" | "seed"
-  catalogSeedJobId         String?
-  status                   String                @default("pending")    // pending | refreshing | paused | cancelled | complete | failed
-  podcastsTotal            Int                   @default(0)
-  podcastsCompleted        Int                   @default(0)
-  podcastsWithNewEpisodes  Int                   @default(0)
-  episodesDiscovered       Int                   @default(0)
-  prefetchTotal            Int                   @default(0)
-  prefetchCompleted        Int                   @default(0)
-  error                    String?
-  archivedAt               DateTime?
-  startedAt                DateTime              @default(now())
-  completedAt              DateTime?
-  errors                   EpisodeRefreshError[]
+  id                      String                @id @default(cuid())
+  scope                   String                @default("subscribed") // "subscribed" | "all" | "seed"
+  trigger                 String                @default("admin") // "admin" | "cron" | "seed"
+  catalogSeedJobId        String?
+  status                  String                @default("pending") // pending | refreshing | paused | cancelled | complete | failed
+  podcastsTotal           Int                   @default(0)
+  podcastsCompleted       Int                   @default(0)
+  podcastsWithNewEpisodes Int                   @default(0)
+  episodesDiscovered      Int                   @default(0)
+  prefetchTotal           Int                   @default(0)
+  prefetchCompleted       Int                   @default(0)
+  error                   String?
+  archivedAt              DateTime?
+  startedAt               DateTime              @default(now())
+  completedAt             DateTime?
+  errors                  EpisodeRefreshError[]
 
   @@index([status])
   @@index([archivedAt])
 }
 
 model EpisodeRefreshError {
-  id         String             @id @default(cuid())
-  jobId      String
-  job        EpisodeRefreshJob  @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  phase      String             // "feed_scan" | "prefetch"
-  message    String
-  podcastId  String?
-  episodeId  String?
-  createdAt  DateTime           @default(now())
+  id        String            @id @default(cuid())
+  jobId     String
+  job       EpisodeRefreshJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  phase     String // "feed_scan" | "prefetch"
+  message   String
+  podcastId String?
+  episodeId String?
+  createdAt DateTime          @default(now())
 
   @@index([jobId])
   @@index([jobId, phase])
@@ -1225,27 +1232,27 @@ enum ReferralSource {
 }
 
 model ListenOriginalEvent {
-  id                    String                   @id @default(cuid())
-  eventType             ListenOriginalEventType
-  timestamp             DateTime                 @default(now())
-  userId                String
-  sessionId             String
-  deviceType            DeviceType
-  platform              AppPlatform
-  blippId               String
-  blippDurationMs       Int
-  episodeId             String
-  podcastId             String
-  publisherId           String
-  referralSource        ReferralSource
-  timeToClickSec        Float
-  blippCompletionPct    Float
-  didReturnToBlipp      Boolean                  @default(false)
-  utmSource             String?
-  utmMedium             String?
-  utmCampaign           String?
-  reportBatchId         String?
-  createdAt             DateTime                 @default(now())
+  id                 String                  @id @default(cuid())
+  eventType          ListenOriginalEventType
+  timestamp          DateTime                @default(now())
+  userId             String
+  sessionId          String
+  deviceType         DeviceType
+  platform           AppPlatform
+  blippId            String
+  blippDurationMs    Int
+  episodeId          String
+  podcastId          String
+  publisherId        String
+  referralSource     ReferralSource
+  timeToClickSec     Float
+  blippCompletionPct Float
+  didReturnToBlipp   Boolean                 @default(false)
+  utmSource          String?
+  utmMedium          String?
+  utmCampaign        String?
+  reportBatchId      String?
+  createdAt          DateTime                @default(now())
 
   user    User    @relation("ListenOriginalEvents", fields: [userId], references: [id], onDelete: Cascade)
   episode Episode @relation("ListenOriginalEvents", fields: [episodeId], references: [id], onDelete: Cascade)
@@ -1276,8 +1283,8 @@ model PublisherReportBatch {
 model SportsLeague {
   id        String           @id @default(cuid())
   name      String           @unique // "NFL", "NBA", "Premier League"
-  sport     String           // "football", "basketball", "soccer"
-  country   String?          // "us", "gb" — null for international
+  sport     String // "football", "basketball", "soccer"
+  country   String? // "us", "gb" — null for international
   divisions SportsDivision[]
   teams     SportsTeam[]
   createdAt DateTime         @default(now())
@@ -1286,7 +1293,7 @@ model SportsLeague {
 
 model SportsDivision {
   id        String           @id @default(cuid())
-  name      String           // "AFC", "AFC East", "Eastern Conference"
+  name      String // "AFC", "AFC East", "Eastern Conference"
   leagueId  String
   parentId  String?
   league    SportsLeague     @relation(fields: [leagueId], references: [id], onDelete: Cascade)
@@ -1300,31 +1307,31 @@ model SportsDivision {
 }
 
 model SportsTeam {
-  id             String             @id @default(cuid())
-  name           String             // "Kansas City Chiefs"
-  city           String             // "Kansas City"
-  nickname       String             // "Chiefs"
-  abbreviation   String             // "KC"
-  keywords       String[]           // title-match terms: ["Chiefs", "Kansas City Chiefs"]
+  id             String              @id @default(cuid())
+  name           String // "Kansas City Chiefs"
+  city           String // "Kansas City"
+  nickname       String // "Chiefs"
+  abbreviation   String // "KC"
+  keywords       String[] // title-match terms: ["Chiefs", "Kansas City Chiefs"]
   leagueId       String
-  divisionId   String?
-  league       SportsLeague       @relation(fields: [leagueId], references: [id], onDelete: Cascade)
-  division     SportsDivision?    @relation(fields: [divisionId], references: [id])
+  divisionId     String?
+  league         SportsLeague        @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  division       SportsDivision?     @relation(fields: [divisionId], references: [id])
   markets        SportsTeamMarket[]
   userSelections UserSportsTeam[]
   geoProfiles    PodcastGeoProfile[]
-  createdAt    DateTime           @default(now())
-  updatedAt    DateTime           @updatedAt
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
 
   @@unique([leagueId, abbreviation])
 }
 
 model SportsTeamMarket {
-  id      String     @id @default(cuid())
-  teamId  String
-  city    String
-  state   String
-  team    SportsTeam @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  id     String     @id @default(cuid())
+  teamId String
+  city   String
+  state  String
+  team   SportsTeam @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
   @@unique([teamId, city, state])
   @@index([city, state])
@@ -1343,19 +1350,19 @@ model UserSportsTeam {
 }
 
 model PodcastGeoProfile {
-  id         String      @id @default(cuid())
+  id         String   @id @default(cuid())
   podcastId  String
-  city       String      // city name (empty string for state-level matches)
-  state      String      // full state name
-  country    String      @default("US")
-  scope      String      // "city" | "regional" | "state"
-  teamId     String?     // links to SportsTeam if team-specific
-  confidence Float       // 0-1
-  source     String      // "keyword" | "llm"
-  createdAt  DateTime    @default(now())
+  city       String // city name (empty string for state-level matches)
+  state      String // full state name
+  country    String   @default("US")
+  scope      String // "city" | "regional" | "state"
+  teamId     String? // links to SportsTeam if team-specific
+  confidence Float // 0-1
+  source     String // "keyword" | "llm"
+  createdAt  DateTime @default(now())
 
-  podcast    Podcast     @relation(fields: [podcastId], references: [id], onDelete: Cascade)
-  team       SportsTeam? @relation(fields: [teamId], references: [id])
+  podcast Podcast     @relation(fields: [podcastId], references: [id], onDelete: Cascade)
+  team    SportsTeam? @relation(fields: [teamId], references: [id])
 
   @@unique([podcastId, city, state])
   @@index([city, state])
@@ -1367,12 +1374,12 @@ model PodcastGeoProfile {
 model DigestDelivery {
   id                String   @id @default(cuid())
   userId            String
-  date              String   // "2026-04-07" — the day this digest covers
+  date              String // "2026-04-07" — the day this digest covers
   status            String   @default("PENDING") // PENDING | PROCESSING | READY | FAILED
   totalEpisodes     Int      @default(0)
   completedEpisodes Int      @default(0)
-  audioKey          String?  // R2 key for concatenated digest audio
-  actualSeconds     Int?     // total audio duration in seconds
+  audioKey          String? // R2 key for concatenated digest audio
+  actualSeconds     Int? // total audio duration in seconds
   episodeCount      Int      @default(0)
   sources           Json     @default("[]") // DigestSource[] for frontend display
   listened          Boolean  @default(false)
@@ -1380,7 +1387,7 @@ model DigestDelivery {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  user     User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user     User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
   episodes DigestDeliveryEpisode[]
 
   @@unique([userId, date])
@@ -1389,13 +1396,13 @@ model DigestDelivery {
 }
 
 model DigestDeliveryEpisode {
-  id         String  @id @default(cuid())
-  deliveryId String
-  episodeId  String
-  sourceType String  // "subscribed" | "favorited" | "recommended"
+  id            String  @id @default(cuid())
+  deliveryId    String
+  episodeId     String
+  sourceType    String // "subscribed" | "favorited" | "recommended"
   status        String  @default("PENDING") // PENDING | PROCESSING | READY | FAILED
   entryStage    String? // Which pipeline stage this episode entered at
-  actualSeconds Int?    // Actual TTS audio duration in seconds
+  actualSeconds Int? // Actual TTS audio duration in seconds
 
   delivery DigestDelivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
   episode  Episode        @relation(fields: [episodeId], references: [id], onDelete: Cascade)
@@ -1408,18 +1415,18 @@ model DigestDeliveryEpisode {
 // ── Billing Subscriptions (unified entitlement across Stripe + Apple IAP) ──
 
 model BillingSubscription {
-  id                String          @id @default(cuid())
+  id                String        @id @default(cuid())
   userId            String
-  source            BillingSource                    // STRIPE | APPLE | MANUAL
-  externalId        String                           // Stripe subscription id / Apple original_transaction_id / userId for MANUAL
-  productExternalId String                           // Stripe price id / Apple product id / "admin-grant" for MANUAL
+  source            BillingSource // STRIPE | APPLE | MANUAL
+  externalId        String // Stripe subscription id / Apple original_transaction_id / userId for MANUAL
+  productExternalId String // Stripe price id / Apple product id / "admin-grant" for MANUAL
   planId            String
-  status            BillingStatus                    // ACTIVE | CANCELLED_PENDING_EXPIRY | GRACE_PERIOD | EXPIRED | REFUNDED | PAUSED
+  status            BillingStatus // ACTIVE | CANCELLED_PENDING_EXPIRY | GRACE_PERIOD | EXPIRED | REFUNDED | PAUSED
   currentPeriodEnd  DateTime?
-  willRenew         Boolean         @default(true)
-  rawPayload        Json?                            // last event body / grant metadata for MANUAL
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
+  willRenew         Boolean       @default(true)
+  rawPayload        Json? // last event body / grant metadata for MANUAL
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   plan Plan @relation(fields: [planId], references: [id])
@@ -1433,15 +1440,15 @@ model BillingSubscription {
 // Admin UI surfaces this per-user on the Billing tab to answer "what happened and when?".
 model BillingEvent {
   id                String        @id @default(cuid())
-  userId            String?                           // null when event can't be resolved to a user
-  source            BillingSource                      // STRIPE | APPLE | MANUAL
-  eventType         String                             // RC: INITIAL_PURCHASE/RENEWAL/...; Stripe: customer.subscription.updated/...; MANUAL: manual_grant_created/revoked
-  environment       String?                            // "PRODUCTION" | "SANDBOX" (RC only; null for others)
-  externalId        String?                            // original_transaction_id / stripe event id / grant id
-  productExternalId String?                            // Apple product id / Stripe price id / null
-  status            String                             // "APPLIED" | "SKIPPED" | "FAILED"
-  skipReason        String?                            // populated when status is SKIPPED or FAILED
-  rawPayload        Json                               // full event body for debugging
+  userId            String? // null when event can't be resolved to a user
+  source            BillingSource // STRIPE | APPLE | MANUAL
+  eventType         String // RC: INITIAL_PURCHASE/RENEWAL/...; Stripe: customer.subscription.updated/...; MANUAL: manual_grant_created/revoked
+  environment       String? // "PRODUCTION" | "SANDBOX" (RC only; null for others)
+  externalId        String? // original_transaction_id / stripe event id / grant id
+  productExternalId String? // Apple product id / Stripe price id / null
+  status            String // "APPLIED" | "SKIPPED" | "FAILED"
+  skipReason        String? // populated when status is SKIPPED or FAILED
+  rawPayload        Json // full event body for debugging
   createdAt         DateTime      @default(now())
 
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
@@ -1469,13 +1476,13 @@ enum BillingStatus {
 
 model ServiceKey {
   id              String    @id @default(cuid())
-  name            String                          // Human label, e.g. "Anthropic - Production"
-  provider        String                          // "anthropic" | "openai" | "groq" | "deepgram" | "clerk" | "stripe" | "podcast-index" | "neon" | "cloudflare"
-  envKey          String                          // Which Env field this maps to, e.g. "ANTHROPIC_API_KEY"
-  encryptedValue  String                          // AES-256-GCM encrypted key value (base64)
-  iv              String                          // Initialization vector for decryption (base64)
-  maskedPreview   String                          // "sk-ant-...Le0B" — safe for display
-  isPrimary       Boolean   @default(false)       // If true, syncs to CF Workers secret on update
+  name            String // Human label, e.g. "Anthropic - Production"
+  provider        String // "anthropic" | "openai" | "groq" | "deepgram" | "clerk" | "stripe" | "podcast-index" | "neon" | "cloudflare"
+  envKey          String // Which Env field this maps to, e.g. "ANTHROPIC_API_KEY"
+  encryptedValue  String // AES-256-GCM encrypted key value (base64)
+  iv              String // Initialization vector for decryption (base64)
+  maskedPreview   String // "sk-ant-...Le0B" — safe for display
+  isPrimary       Boolean   @default(false) // If true, syncs to CF Workers secret on update
   lastValidated   DateTime?
   lastValidatedOk Boolean?
   lastRotated     DateTime?
@@ -1486,4 +1493,117 @@ model ServiceKey {
 
   @@index([provider])
   @@index([envKey, isPrimary])
+}
+
+// ── Pulse blog (Phase 4) ──────────────────────────────────────────────
+//
+// Pulse is Blipp's editorial surface. The schema enforces the hardened
+// editorial rules from the Phase 4.0 finalization:
+//
+// 1. Real human editor: every post FK to PulseEditor (NOT NULL).
+//    A PulseEditor is only `READY` once bio + sameAs are filled in.
+//    The admin UI blocks publish for posts authored by a NOT_READY editor.
+//
+// 2-5. The 3:1 analysis ratio, 50-word per-source cap, 800-1500 word floor,
+//      and Sources-footer requirement are enforced in the admin review UI
+//      (worker-side validators). Persisted-state fields here (wordCount,
+//      generationMeta) support those checks.
+//
+// 6. The cron-driven AI digest no-ops until ≥6 posts published AND ≥4 of
+//    those have generationMeta.mode = "human". Schema doesn't enforce that
+//    directly — the cron handler queries it.
+
+enum PulseEditorStatus {
+  NOT_READY // bio/sameAs incomplete; cannot publish posts
+  READY // editor profile complete, can be assigned posts
+  RETIRED // historical posts remain; no new posts
+}
+
+model PulseEditor {
+  id             String            @id @default(cuid())
+  slug           String            @unique // /pulse/by/:slug
+  name           String
+  bio            String? // markdown, ≥200 words for E-E-A-T
+  avatarUrl      String?
+  twitterHandle  String? // without @
+  linkedinUrl    String?
+  websiteUrl     String?
+  expertiseAreas String[] // e.g. ["AI", "podcast industry"]
+  status         PulseEditorStatus @default(NOT_READY)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  posts PulsePost[]
+}
+
+enum PulsePostStatus {
+  DRAFT // editor still working
+  REVIEW // ready for editor approval
+  SCHEDULED // approved, scheduled to publish
+  PUBLISHED // live on /pulse
+  ARCHIVED // pulled from /pulse, retained for history
+}
+
+enum PulsePostMode {
+  HUMAN // fully human-written (required for first 4-6 posts)
+  AI_ASSISTED // LLM draft, edited by human
+}
+
+model PulsePost {
+  id                   String          @id @default(cuid())
+  slug                 String          @unique // /pulse/:slug
+  title                String
+  subtitle             String?
+  // Markdown body. Rich-text rendered server-side in renderPulsePost.
+  body                 String
+  // Markdown sources footer. Required at publish time (handler 500s if empty).
+  sourcesMarkdown      String?
+  status               PulsePostStatus @default(DRAFT)
+  mode                 PulsePostMode   @default(AI_ASSISTED)
+  editorId             String
+  heroImageUrl         String?
+  // Topic tags drive /pulse/topic/:slug archive pages and JSON-LD keywords.
+  topicTags            String[]
+  // Total word count (excludes code blocks + Sources footer). Floor 800.
+  wordCount            Int?
+  // Sum of words quoted across all sources. The 50-words-per-source cap
+  // is enforced via per-source counters in `generationMeta.quoteCounts`.
+  quotedWordCount      Int?
+  // Editor-attested. Required true at publish time (admin UI checks).
+  ratioCheckPassed     Boolean         @default(false)
+  // Free-form per-post metadata: { mode, model?, promptVersion?,
+  //   sourceClaimIds?, quoteCounts?: Record<sourceId, number>, ... }
+  generationMeta       Json?
+  // SEO overrides; default to title/excerpt of body if null.
+  seoTitle             String?
+  seoDescription       String?
+  scheduledAt          DateTime?
+  publishedAt          DateTime?
+  editorReviewedAt     DateTime?
+  editorRejectedReason String?
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+
+  editor   PulseEditor        @relation(fields: [editorId], references: [id], onDelete: Restrict)
+  episodes EpisodePulsePost[]
+
+  @@index([status, publishedAt])
+  @@index([editorId, publishedAt])
+}
+
+// Bidirectional join: a Pulse post may cite many episodes; an episode may
+// be Featured in many posts. Activates the Phase 1.4 "Featured in" placeholder
+// on /p/:show/:episode pages.
+model EpisodePulsePost {
+  episodeId    String
+  pulsePostId  String
+  // Lower displayOrder = shown first in "Sources" / "Featured in".
+  displayOrder Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  episode   Episode   @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  pulsePost PulsePost @relation(fields: [pulsePostId], references: [id], onDelete: Cascade)
+
+  @@id([episodeId, pulsePostId])
+  @@index([pulsePostId, displayOrder])
 }
