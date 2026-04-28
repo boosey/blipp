@@ -62,6 +62,12 @@ function layout(opts: {
   ogImage?: string;
   jsonLd?: object;
   body: string;
+  /**
+   * Optional AdSense script tag (already-rendered HTML string). The caller
+   * computes whether ads are allowed for the path via `lib/ads.ts`; the
+   * template just splats the result into <head>. Empty string = no ads.
+   */
+  adsScript?: string;
 }) {
   const canonical = `${SITE_URL}${opts.canonicalPath}`;
   const ogImage = opts.ogImage || DEFAULT_OG_IMAGE;
@@ -89,6 +95,7 @@ function layout(opts: {
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 ${opts.jsonLd ? `<script type="application/ld+json">${JSON.stringify(opts.jsonLd)}</script>` : ""}
+${opts.adsScript ?? ""}
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Inter',system-ui,sans-serif;background:#09090b;color:#fafafa;line-height:1.7;-webkit-font-smoothing:antialiased}
@@ -172,6 +179,9 @@ export interface EpisodePageData {
   sampleAudioUrl?: string | null;
   /** Sample length in seconds (default 30). */
   sampleSeconds?: number;
+  /** AdSense script tag computed by the route handler via `lib/ads.ts`.
+   * Empty/undefined = ads off for this path. */
+  adsScript?: string;
 }
 
 export function renderEpisodePage(data: EpisodePageData): string {
@@ -419,6 +429,7 @@ export function renderEpisodePage(data: EpisodePageData): string {
     canonicalPath,
     ogImage,
     jsonLd,
+    adsScript: data.adsScript,
     body: `<main class="container">
 ${breadcrumb}
 <h1>${escapeHtml(data.episodeTitle)}</h1>
@@ -449,6 +460,7 @@ export interface ShowPageData {
   episodes: { title: string; slug: string; publishedAt?: Date | null }[];
   categoryName?: string | null;
   categorySlug?: string | null;
+  adsScript?: string;
 }
 
 export function renderShowPage(data: ShowPageData): string {
@@ -509,6 +521,7 @@ export function renderShowPage(data: ShowPageData): string {
     canonicalPath: `/p/${data.podcastSlug}`,
     ogImage: data.podcastImageUrl || undefined,
     jsonLd,
+    adsScript: data.adsScript,
     body: `<main class="container">
 ${breadcrumb}
 <h1>${escapeHtml(data.podcastTitle)}</h1>
@@ -533,6 +546,7 @@ export interface CategoryPageData {
     imageUrl?: string | null;
     episodeCount: number;
   }[];
+  adsScript?: string;
 }
 
 export function renderCategoryPage(data: CategoryPageData): string {
@@ -582,6 +596,7 @@ export function renderCategoryPage(data: CategoryPageData): string {
     description,
     canonicalPath,
     jsonLd,
+    adsScript: data.adsScript,
     body: `<main class="container">
 <nav class="breadcrumb"><a href="/">Home</a> / <a href="/p">Browse</a> / ${escapeHtml(data.categoryName)}</nav>
 <h1>${escapeHtml(data.categoryName)} Podcasts</h1>

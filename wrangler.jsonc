@@ -24,7 +24,10 @@
 		"CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsucG9kYmxpcHAuY29tJA",
 		"WORKER_SCRIPT_NAME": "blipp-staging",
 		"LANDING_SAMPLE_SHOW_SLUG": "",
-		"LANDING_SAMPLE_EPISODE_SLUG": ""
+		"LANDING_SAMPLE_EPISODE_SLUG": "",
+		"ADS_ENABLED": "false",
+		"ADS_ROUTES": "",
+		"ADSENSE_PUBLISHER_ID": ""
 	},
 	"routes": [
 		{ "pattern": "staging.podblipp.com", "custom_domain": true }
@@ -213,7 +216,10 @@
 				"CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsucG9kYmxpcHAuY29tJA",
 				"WORKER_SCRIPT_NAME": "blipp",
 				"LANDING_SAMPLE_SHOW_SLUG": "",
-				"LANDING_SAMPLE_EPISODE_SLUG": ""
+				"LANDING_SAMPLE_EPISODE_SLUG": "",
+				"ADS_ENABLED": "false",
+				"ADS_ROUTES": "",
+				"ADSENSE_PUBLISHER_ID": ""
 			},
 			"kv_namespaces": [
 				{

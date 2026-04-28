@@ -199,6 +199,16 @@ app.route("/p", publicPages);
 // Dynamic sitemap — includes all public Blipp pages
 app.route("/", sitemap);
 
+// ads.txt — required at the site root for AdSense. Body is computed from
+// ADSENSE_PUBLISHER_ID at request time so we can flip env vars without redeploy.
+app.get("/ads.txt", async (c) => {
+  const { adsTxtBody } = await import("./lib/ads");
+  return c.text(adsTxtBody(c.env), 200, {
+    "Content-Type": "text/plain",
+    "Cache-Control": "public, max-age=3600",
+  });
+});
+
 // Dynamic robots.txt
 app.get("/robots.txt", (c) => {
   const body = `User-agent: *

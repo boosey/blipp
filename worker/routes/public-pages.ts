@@ -10,6 +10,7 @@ import {
   renderCategoryPage,
 } from "../lib/html-templates";
 import { scoreClaim } from "../lib/distillation";
+import { adsScriptTag } from "../lib/ads";
 import type { Env } from "../types";
 
 const publicPages = new Hono<{ Bindings: Env }>();
@@ -197,6 +198,7 @@ publicPages.get("/:showSlug/:episodeSlug", async (c) => {
     relatedInCategory,
     signupNextPath,
     sampleAudioUrl,
+    adsScript: adsScriptTag(c.env, c.req.path),
   });
 
   return c.html(html, 200, {
@@ -238,6 +240,7 @@ publicPages.get("/:showSlug", async (c) => {
     episodes,
     categoryName: podcastCategory?.category?.name,
     categorySlug: podcastCategory?.category?.slug,
+    adsScript: adsScriptTag(c.env, c.req.path),
   });
 
   return c.html(html, 200, {
@@ -289,6 +292,7 @@ publicPages.get("/category/:categorySlug", async (c) => {
     categoryName: category.name,
     categorySlug: category.slug!,
     podcasts,
+    adsScript: adsScriptTag(c.env, c.req.path),
   });
 
   return c.html(html, 200, {

@@ -21,6 +21,25 @@ import type { FeedRefreshMessage, CatalogRefreshMessage, WelcomeEmailMessage, Su
 export type Env = {
   /** Set to "development" in .dev.vars to enable local queue shim */
   ENVIRONMENT?: string;
+  /**
+   * Master kill switch for AdSense ad loading. "true" lets routes in
+   * `ADS_ROUTES` opt in; any other value (including unset) disables ads
+   * site-wide. Pulled out of `ADS_ROUTES` so a single env flip can yank
+   * all ads in an incident.
+   */
+  ADS_ENABLED?: string;
+  /**
+   * Comma-separated list of route prefixes where ads are allowed when
+   * `ADS_ENABLED=true`. Per Phase 3 staged rollout: start at "/p", then
+   * "/p,/pulse", finally "/p,/pulse,/" — never the whole site at once.
+   * Empty/unset = no routes (ads off everywhere).
+   */
+  ADS_ROUTES?: string;
+  /**
+   * AdSense publisher ID, e.g. "pub-1234567890123456" (without the "ca-"
+   * prefix). Used to render ads.txt and the runtime AdSense script tag.
+   */
+  ADSENSE_PUBLISHER_ID?: string;
   /** Vite-managed static asset fetcher (Cloudflare Pages integration) */
   ASSETS: Fetcher;
   /** Cloudflare Workers AI binding for CF-hosted models */
