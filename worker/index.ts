@@ -161,6 +161,23 @@ app.use(
     configKeys: { windowMs: "rateLimit.subscribe.windowMs", maxRequests: "rateLimit.subscribe.maxRequests" },
   })
 );
+// Scraping-attractive public endpoints get a tighter per-IP bucket on top of
+// the global /api/* limit. Featured + recently-blipped are the most useful
+// surfaces for harvesting the catalog, so they're throttled independently.
+app.use(
+  "/api/public/recommendations/featured",
+  rateLimit({
+    windowMs: 60_000, maxRequests: 10, keyPrefix: "rl:public-featured",
+    configKeys: { windowMs: "rateLimit.publicFeatured.windowMs", maxRequests: "rateLimit.publicFeatured.maxRequests" },
+  })
+);
+app.use(
+  "/api/public/recently-blipped",
+  rateLimit({
+    windowMs: 60_000, maxRequests: 10, keyPrefix: "rl:public-recent",
+    configKeys: { windowMs: "rateLimit.publicRecent.windowMs", maxRequests: "rateLimit.publicRecent.maxRequests" },
+  })
+);
 // General API rate limit. Webhooks are exempt — they're
 // server-to-server from Clerk/Stripe and don't carry user auth.
 app.use("/api/*", rateLimit({
