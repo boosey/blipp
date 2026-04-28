@@ -1,11 +1,28 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
-import { Loader2 } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { Loader2, Plus } from "lucide-react";
 import { useAdminFetch } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 
 type PostStatus = "DRAFT" | "REVIEW" | "SCHEDULED" | "PUBLISHED" | "ARCHIVED";
 type PostMode = "HUMAN" | "AI_ASSISTED";
+type EditorStatus = "NOT_READY" | "READY" | "RETIRED";
+
+interface EditorOption {
+  id: string;
+  name: string;
+  status: EditorStatus;
+}
+
+const EMPTY_NEW = {
+  slug: "",
+  title: "",
+  subtitle: "",
+  editorId: "",
+  mode: "HUMAN" as PostMode,
+  heroImageUrl: "",
+  topicTags: "",
+};
 
 interface PulsePostListRow {
   id: string;
@@ -50,10 +67,23 @@ function modeBadge(mode: PostMode) {
 
 export default function Pulse() {
   const adminFetch = useAdminFetch();
+  const navigate = useNavigate();
   const [filter, setFilter] = useState<"ALL" | PostStatus>("ALL");
   const [posts, setPosts] = useState<PulsePostListRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editorsCount, setEditorsCount] = useState<{ ready: number; total: number }>({ ready: 0, total: 0 });
+  const [editors, setEditors] = useState<EditorOption[]>([]);
+  const [showNew, setShowNew] = useState(false);
+  const [newForm, setNewForm] = useState({ ...EMPTY_NEW });
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  const editorsCount = useMemo(
+    () => ({
+      ready: editors.filter((e) => e.status === "READY").length,
+      total: editors.length,
+    }),
+    [editors]
+  );
 
   const queryPath = useMemo(
     () => `/pulse${filter === "ALL" ? "" : `?status=${filter}`}`,
@@ -65,16 +95,13 @@ export default function Pulse() {
     setLoading(true);
     (async () => {
       try {
-        const [list, editors] = await Promise.all([
+        const [list, editorsRes] = await Promise.all([
           adminFetch<ListResponse>(queryPath),
-          adminFetch<{ data: { id: string; status: string }[] }>("/pulse/editors"),
+          adminFetch<{ data: EditorOption[] }>("/pulse/editors"),
         ]);
         if (cancelled) return;
         setPosts(list.data);
-        setEditorsCount({
-          ready: editors.data.filter((e) => e.status === "READY").length,
-          total: editors.data.length,
-        });
+        setEditors(editorsRes.data);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -83,6 +110,40 @@ export default function Pulse() {
       cancelled = true;
     };
   }, [adminFetch, queryPath]);
+
+  async function createPost() {
+    const slug = newForm.slug.trim();
+    const title = newForm.title.trim();
+    const editorId = newForm.editorId.trim();
+    if (!slug || !title || !editorId) {
+      setCreateError("slug, title, and editor are required");
+      return;
+    }
+    setCreating(true);
+    setCreateError(null);
+    try {
+      const res = await adminFetch<{ data: { id: string } }>("/pulse", {
+        method: "POST",
+        body: JSON.stringify({
+          slug,
+          title,
+          subtitle: newForm.subtitle.trim() || null,
+          editorId,
+          mode: newForm.mode,
+          heroImageUrl: newForm.heroImageUrl.trim() || null,
+          topicTags: newForm.topicTags
+            .split(",")
+            .map((t) => t.trim())
+            .filter(Boolean),
+        }),
+      });
+      navigate(`/admin/pulse/${res.data.id}`);
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCreating(false);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -95,13 +156,129 @@ export default function Pulse() {
             attestation, and ship with a Sources footer before publish.
           </p>
         </div>
-        <Link
-          to="/admin/pulse/editors"
-          className="text-xs px-3 py-2 rounded-md border border-white/10 text-[#9CA3AF] hover:text-white hover:bg-white/5"
-        >
-          Editors ({editorsCount.ready}/{editorsCount.total} READY)
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            to="/admin/pulse/editors"
+            className="text-xs px-3 py-2 rounded-md border border-white/10 text-[#9CA3AF] hover:text-white hover:bg-white/5"
+          >
+            Editors ({editorsCount.ready}/{editorsCount.total} READY)
+          </Link>
+          <button
+            onClick={() => {
+              setShowNew((v) => !v);
+              setCreateError(null);
+            }}
+            className="text-xs px-3 py-2 rounded-md border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10 inline-flex items-center gap-1"
+          >
+            <Plus className="h-3 w-3" />
+            {showNew ? "Cancel" : "New post"}
+          </button>
+        </div>
       </header>
+
+      {showNew && (
+        <div className="rounded-lg border border-white/10 bg-[#0F1D32] p-4 space-y-3">
+          {editors.length === 0 && (
+            <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+              No editors yet. Create an editor first — every post must be attributed to one.
+            </div>
+          )}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <Field label="Slug *" hint="URL-safe; final URL is /pulse/<slug>.">
+              <input
+                value={newForm.slug}
+                onChange={(e) => setNewForm({ ...newForm, slug: e.target.value })}
+                placeholder="why-podcast-curation-matters"
+                className="w-full bg-[#0B1628] border border-white/10 rounded-md px-3 py-2 text-sm text-white"
+              />
+            </Field>
+            <Field label="Title *">
+              <input
+                value={newForm.title}
+                onChange={(e) => setNewForm({ ...newForm, title: e.target.value })}
+                placeholder="Why podcast curation actually matters"
+                className="w-full bg-[#0B1628] border border-white/10 rounded-md px-3 py-2 text-sm text-white"
+              />
+            </Field>
+            <Field label="Editor *">
+              <select
+                value={newForm.editorId}
+                onChange={(e) => setNewForm({ ...newForm, editorId: e.target.value })}
+                disabled={editors.length === 0}
+                className="w-full bg-[#0B1628] border border-white/10 rounded-md px-3 py-2 text-sm text-white disabled:opacity-50"
+              >
+                <option value="">— select editor —</option>
+                {editors.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.name} ({e.status})
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Mode *" hint="Phase 4.0: first 4–6 posts must be HUMAN.">
+              <select
+                value={newForm.mode}
+                onChange={(e) => setNewForm({ ...newForm, mode: e.target.value as PostMode })}
+                className="w-full bg-[#0B1628] border border-white/10 rounded-md px-3 py-2 text-sm text-white"
+              >
+                <option value="HUMAN">HUMAN</option>
+                <option value="AI_ASSISTED">AI_ASSISTED</option>
+              </select>
+            </Field>
+            <Field label="Subtitle">
+              <input
+                value={newForm.subtitle}
+                onChange={(e) => setNewForm({ ...newForm, subtitle: e.target.value })}
+                className="w-full bg-[#0B1628] border border-white/10 rounded-md px-3 py-2 text-sm text-white"
+              />
+            </Field>
+            <Field label="Hero image URL">
+              <input
+                value={newForm.heroImageUrl}
+                onChange={(e) => setNewForm({ ...newForm, heroImageUrl: e.target.value })}
+                placeholder="https://…"
+                className="w-full bg-[#0B1628] border border-white/10 rounded-md px-3 py-2 text-sm text-white"
+              />
+            </Field>
+          </div>
+          <Field label="Topic tags (comma-separated)">
+            <input
+              value={newForm.topicTags}
+              onChange={(e) => setNewForm({ ...newForm, topicTags: e.target.value })}
+              placeholder="AI, curation, podcast industry"
+              className="w-full bg-[#0B1628] border border-white/10 rounded-md px-3 py-2 text-sm text-white"
+            />
+          </Field>
+          {createError && (
+            <div className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+              {createError}
+            </div>
+          )}
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={() => {
+                setShowNew(false);
+                setNewForm({ ...EMPTY_NEW });
+                setCreateError(null);
+              }}
+              className="text-xs px-3 py-1.5 rounded-md border border-white/10 text-[#9CA3AF] hover:bg-white/5"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={createPost}
+              disabled={creating || editors.length === 0}
+              className="text-xs px-3 py-1.5 rounded-md border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-50"
+            >
+              {creating ? "Creating…" : "Create draft"}
+            </button>
+          </div>
+          <p className="text-[11px] text-[#6B7280]">
+            Creates a DRAFT. You'll fill in body, sources, and quotes on the next page, then walk it
+            through Review → Publish.
+          </p>
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-2">
         {STATUS_FILTERS.map((s) => (
@@ -174,6 +351,24 @@ export default function Pulse() {
           </table>
         )}
       </div>
+    </div>
+  );
+}
+
+function Field({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <label className="block text-[11px] uppercase tracking-wider text-[#6B7280] mb-1">{label}</label>
+      {children}
+      {hint && <p className="mt-1 text-[11px] text-[#6B7280]">{hint}</p>}
     </div>
   );
 }
