@@ -136,6 +136,7 @@ export const LOCK_RETRY_DELAY_S = 30;
 
 export type EpisodeStageLockField = "transcriptionStartedAt" | "distillationStartedAt";
 export type EpisodeStageRequiredStatus = "PENDING" | "TRANSCRIPT_READY";
+export type EpisodeStageInProgressStatus = "FETCHING_TRANSCRIPT" | "EXTRACTING_CLAIMS";
 
 export type ClaimResult =
   | { claimed: true }
@@ -143,8 +144,13 @@ export type ClaimResult =
 
 /**
  * Atomically claim an upstream pipeline stage for an episode using
- * compare-and-set on the Distillation row. The claim succeeds only if the
- * row's status matches `requiredStatus` AND the lock field is null or stale.
+ * compare-and-set on the Distillation row. The claim succeeds when:
+ *   1. status matches `requiredStatus` AND lock field is null or stale, OR
+ *   2. `inProgressStatus` is given, status matches it, AND lock is stale
+ *      (crash recovery — the previous worker advanced status before dying).
+ *
+ * In case 2 the row's status is reset to `requiredStatus` so the caller's
+ * normal flow can re-advance it.
  *
  * Callers must ensure a Distillation row exists for the episode (via upsert)
  * before calling this.
@@ -154,6 +160,7 @@ export async function claimEpisodeStage(args: {
   episodeId: string;
   lockField: EpisodeStageLockField;
   requiredStatus: EpisodeStageRequiredStatus;
+  inProgressStatus?: EpisodeStageInProgressStatus;
   staleMs?: number;
 }): Promise<ClaimResult> {
   const staleAt = new Date(Date.now() - (args.staleMs ?? STALE_LOCK_MS));
@@ -161,13 +168,18 @@ export async function claimEpisodeStage(args: {
   const result = await args.prisma.distillation.updateMany({
     where: {
       episodeId: args.episodeId,
-      status: args.requiredStatus,
       OR: [
-        { [args.lockField]: null },
-        { [args.lockField]: { lt: staleAt } },
+        { status: args.requiredStatus, [args.lockField]: null },
+        { status: args.requiredStatus, [args.lockField]: { lt: staleAt } },
+        ...(args.inProgressStatus
+          ? [{ status: args.inProgressStatus, [args.lockField]: { lt: staleAt } }]
+          : []),
       ],
     },
-    data: { [args.lockField]: new Date() },
+    data: {
+      status: args.requiredStatus,
+      [args.lockField]: new Date(),
+    },
   });
 
   if (result.count === 1) return { claimed: true };
@@ -177,7 +189,7 @@ export async function claimEpisodeStage(args: {
     select: { status: true, [args.lockField]: true },
   });
 
-  if (row && row.status !== args.requiredStatus) {
+  if (row && row.status !== args.requiredStatus && row.status !== args.inProgressStatus) {
     return { claimed: false, reason: "completed" };
   }
   return { claimed: false, reason: "held" };

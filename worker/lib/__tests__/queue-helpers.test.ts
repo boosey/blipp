@@ -139,14 +139,74 @@ describe("claimEpisodeStage", () => {
     expect(prisma.distillation.updateMany).toHaveBeenCalledWith({
       where: {
         episodeId: "ep1",
-        status: "PENDING",
         OR: [
-          { transcriptionStartedAt: null },
-          { transcriptionStartedAt: { lt: expect.any(Date) } },
+          { status: "PENDING", transcriptionStartedAt: null },
+          { status: "PENDING", transcriptionStartedAt: { lt: expect.any(Date) } },
         ],
       },
-      data: { transcriptionStartedAt: expect.any(Date) },
+      data: { status: "PENDING", transcriptionStartedAt: expect.any(Date) },
     });
+  });
+
+  it("includes inProgressStatus + stale-lock branch when inProgressStatus is given", async () => {
+    prisma.distillation.updateMany.mockResolvedValue({ count: 1 });
+
+    await claimEpisodeStage({
+      prisma,
+      episodeId: "ep1",
+      lockField: "distillationStartedAt",
+      requiredStatus: "TRANSCRIPT_READY",
+      inProgressStatus: "EXTRACTING_CLAIMS",
+    });
+
+    const call = prisma.distillation.updateMany.mock.calls[0][0];
+    expect(call.where.OR).toHaveLength(3);
+    expect(call.where.OR[2]).toEqual({
+      status: "EXTRACTING_CLAIMS",
+      distillationStartedAt: { lt: expect.any(Date) },
+    });
+    // Reset to requiredStatus on claim (covers in-progress recovery case;
+    // no-op when status already matched requiredStatus)
+    expect(call.data).toEqual({
+      status: "TRANSCRIPT_READY",
+      distillationStartedAt: expect.any(Date),
+    });
+  });
+
+  it("treats in-progress status as held (not completed) when claim fails with fresh lock", async () => {
+    prisma.distillation.updateMany.mockResolvedValue({ count: 0 });
+    prisma.distillation.findUnique.mockResolvedValue({
+      status: "EXTRACTING_CLAIMS",
+      distillationStartedAt: new Date(),
+    });
+
+    const result = await claimEpisodeStage({
+      prisma,
+      episodeId: "ep1",
+      lockField: "distillationStartedAt",
+      requiredStatus: "TRANSCRIPT_READY",
+      inProgressStatus: "EXTRACTING_CLAIMS",
+    });
+
+    expect(result).toEqual({ claimed: false, reason: "held" });
+  });
+
+  it("returns reason:completed when status is past in-progress (e.g. COMPLETED)", async () => {
+    prisma.distillation.updateMany.mockResolvedValue({ count: 0 });
+    prisma.distillation.findUnique.mockResolvedValue({
+      status: "COMPLETED",
+      distillationStartedAt: null,
+    });
+
+    const result = await claimEpisodeStage({
+      prisma,
+      episodeId: "ep1",
+      lockField: "distillationStartedAt",
+      requiredStatus: "TRANSCRIPT_READY",
+      inProgressStatus: "EXTRACTING_CLAIMS",
+    });
+
+    expect(result).toEqual({ claimed: false, reason: "completed" });
   });
 
   it("returns claimed:false reason:held when status matches but lock is fresh", async () => {

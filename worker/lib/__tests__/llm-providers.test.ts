@@ -9,7 +9,7 @@ vi.mock("@anthropic-ai/sdk", () => ({
   },
 }));
 
-const { getLlmProviderImpl } = await import("../llm-providers");
+const { getLlmProviderImpl, LLM_TIMEOUT_MS } = await import("../llm-providers");
 
 describe("LLM Providers - AiProviderError wrapping", () => {
   beforeEach(() => {
@@ -57,5 +57,68 @@ describe("LLM Providers - AiProviderError wrapping", () => {
     await expect(
       provider.complete([{ role: "user", content: "hi" }], "@cf/meta/llama-3-8b", 100, env)
     ).rejects.toThrow(AiProviderError);
+  });
+});
+
+describe("LLM Providers - timeout wiring", () => {
+  beforeEach(() => {
+    mockCreate.mockReset();
+  });
+
+  it("LLM_TIMEOUT_MS is 5 minutes (under STALE_LOCK_MS = 10min)", () => {
+    expect(LLM_TIMEOUT_MS).toBe(5 * 60 * 1000);
+  });
+
+  it("Anthropic passes an AbortSignal to messages.create as RequestOptions", async () => {
+    mockCreate.mockResolvedValueOnce({
+      content: [{ type: "text", text: "ok" }],
+      model: "claude-3-haiku",
+      usage: { input_tokens: 1, output_tokens: 1 },
+    });
+
+    const provider = getLlmProviderImpl("anthropic");
+    await provider.complete([{ role: "user", content: "hi" }], "claude-3-haiku", 100, { ANTHROPIC_API_KEY: "k" } as any);
+
+    const requestOptions = mockCreate.mock.calls[0][1];
+    expect(requestOptions?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("Groq passes an AbortSignal to fetch", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          choices: [{ message: { content: "ok" } }],
+          model: "llama-3",
+          usage: { prompt_tokens: 1, completion_tokens: 1 },
+        }),
+        { status: 200 }
+      )
+    );
+
+    const provider = getLlmProviderImpl("groq");
+    await provider.complete([{ role: "user", content: "hi" }], "llama-3", 100, { GROQ_API_KEY: "k" } as any);
+
+    const init = fetchSpy.mock.calls[0][1];
+    expect(init?.signal).toBeInstanceOf(AbortSignal);
+    fetchSpy.mockRestore();
+  });
+
+  it("Cloudflare AI.run rejects with timeout error when call exceeds LLM_TIMEOUT_MS", async () => {
+    vi.useFakeTimers();
+    try {
+      // AI.run returns a promise that never resolves
+      const env = { AI: { run: vi.fn(() => new Promise(() => {})) } } as any;
+      const provider = getLlmProviderImpl("cloudflare");
+
+      const promise = provider.complete([{ role: "user", content: "hi" }], "@cf/meta/llama-3", 100, env);
+      // Swallow unhandled rejection during the advance
+      promise.catch(() => {});
+
+      await vi.advanceTimersByTimeAsync(LLM_TIMEOUT_MS + 100);
+
+      await expect(promise).rejects.toThrow(/timed out/);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

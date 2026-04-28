@@ -2,6 +2,13 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { Env } from "../types";
 import { AiProviderError } from "./ai-errors";
 
+// Hard wall-clock cap on a single LLM call. Without this, a hung provider
+// stalls the worker invocation past its lifetime, the await never returns,
+// and the queue handler dies with no exception — leaving locks held and
+// fallback chains unused. 5 minutes is well above healthy completion
+// (distillation ~30s, narrative ~60s) and below STALE_LOCK_MS (10 min).
+export const LLM_TIMEOUT_MS = 5 * 60 * 1000;
+
 function parseIntHeader(value: string | null): number | undefined {
   if (!value) return undefined;
   const n = parseInt(value);
@@ -88,12 +95,15 @@ const AnthropicProvider: LlmProvider = {
         }
       }
 
-      const response = await client.messages.create({
-        model: providerModelId,
-        max_tokens: maxTokens,
-        ...(system ? { system } : {}),
-        messages,
-      });
+      const response = await client.messages.create(
+        {
+          model: providerModelId,
+          max_tokens: maxTokens,
+          ...(system ? { system } : {}),
+          messages,
+        },
+        { signal: AbortSignal.timeout(LLM_TIMEOUT_MS) }
+      );
 
       const text =
         response.content[0].type === "text" ? response.content[0].text : "";
@@ -153,6 +163,7 @@ const GroqLlmProvider: LlmProvider = {
         max_tokens: maxTokens,
         messages: groqMessages,
       }),
+      signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
     });
 
     if (!resp.ok) {
@@ -199,9 +210,22 @@ const CloudflareLlmProvider: LlmProvider = {
       ? [{ role: "system" as const, content: options.system }, ...messages]
       : messages;
     try {
-      const result = (await env.AI.run(providerModelId as any, {
-        messages: cfMessages,
-        max_tokens: maxTokens,
+      // env.AI.run does not accept AbortSignal — race against a manual timeout
+      // so a hung Workers AI binding can't wedge the worker invocation.
+      let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+      const result = (await Promise.race([
+        env.AI.run(providerModelId as any, {
+          messages: cfMessages,
+          max_tokens: maxTokens,
+        }),
+        new Promise((_, reject) => {
+          timeoutHandle = setTimeout(
+            () => reject(new Error(`Cloudflare AI call timed out after ${LLM_TIMEOUT_MS}ms`)),
+            LLM_TIMEOUT_MS
+          );
+        }),
+      ]).finally(() => {
+        if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
       })) as any;
 
       return {

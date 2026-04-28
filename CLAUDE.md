@@ -94,7 +94,7 @@ docs/             — Architecture, pipeline, API ref, data model, guides
 - **npm install**: Always `--legacy-peer-deps`
 - **Prisma generate**: Must manually create `src/generated/prisma/index.ts` barrel export (gitignored)
 - **DATABASE_URL**: Use Neon pooler endpoint (port 5432, `sslmode=require`)
-- **Tailwind v4**: `@keyframes` outside `@theme` block; `var(--color-*)` not `theme()`
+- **Tailwind v4**: ` outside ` block; `var(--color-*)` not `theme()`
 - **Tests OOM**: Run worker tests in batches or with `--max-old-space-size=4096`
 - **Vitest v4**: `vi.clearAllMocks()` clears `mockResolvedValue`; re-set mocks in `beforeEach`
 - **Clerk middleware**: Applied once globally — don't duplicate in route files

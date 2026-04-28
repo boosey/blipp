@@ -154,12 +154,15 @@ export async function handleDistillation(
           update: {},
         });
 
-        // Atomically claim distillation work for this episode.
+        // Atomically claim distillation work for this episode. inProgressStatus
+        // recovers from crashed workers that advanced status to EXTRACTING_CLAIMS
+        // before dying — without it, every retry would skip with coalesce_completed.
         const claim = await claimEpisodeStage({
           prisma,
           episodeId,
           lockField: "distillationStartedAt",
           requiredStatus: "TRANSCRIPT_READY",
+          inProgressStatus: "EXTRACTING_CLAIMS",
         });
 
         if (!claim.claimed) {
