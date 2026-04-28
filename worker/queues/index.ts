@@ -172,7 +172,7 @@ export async function handleQueue(
  *
  * - `*&#47;5 * * * *` (heartbeat): runs all per-job dispatchers; each manages
  *   its own enable toggle + interval via the CronJob table.
- * - `0 14 * * 0` (Sunday 14:00 UTC): runs the Pulse digest generator (Phase 4
+ * - `0 14 * * SUN` (Sunday 14:00 UTC): runs the Pulse digest generator (Phase 4
  *   / Task 8). The handler self-gates per Phase 4.0 Rule 6 — no-op until ≥6
  *   PulsePosts published AND ≥4 of those have mode=HUMAN.
  *
@@ -194,7 +194,7 @@ export async function scheduled(
 
   try {
     // Sunday Pulse digest — runs only on the weekly cron expression.
-    if (event.cron === "0 14 * * 0") {
+    if (event.cron === "0 14 * * SUN") {
       await runJob({
         jobKey: "pulse-generate",
         prisma: prisma as any,

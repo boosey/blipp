@@ -108,9 +108,9 @@ describe("scheduled", () => {
     expect(mockCtx.waitUntil).toHaveBeenCalledWith(mockPrisma.$disconnect());
   });
 
-  describe("Sunday Pulse cron (0 14 * * 0)", () => {
+  describe("Sunday Pulse cron (0 14 * * SUN)", () => {
     it("dispatches only the pulse-generate job, not the heartbeat fan-out", async () => {
-      const sundayEvent = { scheduledTime: Date.now(), cron: "0 14 * * 0" } as ScheduledEvent;
+      const sundayEvent = { scheduledTime: Date.now(), cron: "0 14 * * SUN" } as ScheduledEvent;
 
       await scheduled(sundayEvent, mockEnv, mockCtx);
 
@@ -120,7 +120,7 @@ describe("scheduled", () => {
     });
 
     it("invokes runPulseGenerate via runJob.execute", async () => {
-      const sundayEvent = { scheduledTime: Date.now(), cron: "0 14 * * 0" } as ScheduledEvent;
+      const sundayEvent = { scheduledTime: Date.now(), cron: "0 14 * * SUN" } as ScheduledEvent;
       // Have runJob actually call execute so we can verify runPulseGenerate runs.
       mockRunJob.mockImplementationOnce(async ({ execute }: any) => {
         const fakeLogger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
@@ -134,7 +134,7 @@ describe("scheduled", () => {
     });
 
     it("disconnects prisma even when runPulseGenerate errors", async () => {
-      const sundayEvent = { scheduledTime: Date.now(), cron: "0 14 * * 0" } as ScheduledEvent;
+      const sundayEvent = { scheduledTime: Date.now(), cron: "0 14 * * SUN" } as ScheduledEvent;
       mockRunJob.mockRejectedValueOnce(new Error("pulse exploded"));
 
       await scheduled(sundayEvent, mockEnv, mockCtx);
