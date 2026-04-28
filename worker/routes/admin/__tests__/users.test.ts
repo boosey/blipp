@@ -165,9 +165,12 @@ describe("Users Routes", () => {
             createdAt: now,
           },
         ],
+        briefings: [],
         podcastFavorites: [],
         billingSubscriptions: [],
       });
+      mockPrisma.feedItem.count.mockResolvedValueOnce(0);
+      mockPrisma.feedItem.findMany.mockResolvedValueOnce([]);
 
       const res = await app.request("/users/u1", {}, env, mockExCtx);
       expect(res.status).toBe(200);
@@ -175,6 +178,9 @@ describe("Users Routes", () => {
       expect(body.data.id).toBe("u1");
       expect(body.data.subscriptions).toHaveLength(1);
       expect(body.data.recentFeedItems).toHaveLength(1);
+      expect(body.data.listenedCount).toBe(0);
+      expect(body.data.briefings).toEqual([]);
+      expect(body.data.listenedItems).toEqual([]);
       expect(body.data).toHaveProperty("badges");
       expect(body.data.activeGrant).toBeNull();
     });

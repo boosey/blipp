@@ -323,8 +323,9 @@ usersRoutes.get("/", async (c) => {
 // GET /:id - User detail
 usersRoutes.get("/:id", async (c) => {
   const prisma = c.get("prisma") as any;
+  const userId = c.req.param("id");
   const user = await prisma.user.findUnique({
-    where: { id: c.req.param("id") },
+    where: { id: userId },
     include: {
       plan: { select: { id: true, name: true, slug: true } },
       subscriptions: {
@@ -336,6 +337,23 @@ usersRoutes.get("/:id", async (c) => {
         include: {
           podcast: { select: { title: true, imageUrl: true } },
           episode: { select: { title: true } },
+        },
+      },
+      briefings: {
+        take: 50,
+        orderBy: { createdAt: "desc" },
+        include: {
+          clip: {
+            select: {
+              durationTier: true,
+              episode: {
+                select: {
+                  title: true,
+                  podcast: { select: { title: true, imageUrl: true } },
+                },
+              },
+            },
+          },
         },
       },
       _count: { select: { subscriptions: true, feedItems: true, briefings: true } },
@@ -353,6 +371,19 @@ usersRoutes.get("/:id", async (c) => {
   });
 
   if (!user) return c.json({ error: "User not found" }, 404);
+
+  const [listenedCount, listenedItems] = await Promise.all([
+    prisma.feedItem.count({ where: { userId, listened: true } }),
+    prisma.feedItem.findMany({
+      where: { userId, listened: true },
+      take: 50,
+      orderBy: [{ listenedAt: "desc" }, { createdAt: "desc" }],
+      include: {
+        podcast: { select: { title: true, imageUrl: true } },
+        episode: { select: { title: true } },
+      },
+    }),
+  ]);
 
   const lastFeedItem = user.feedItems[0];
   const lastActive = lastFeedItem?.createdAt;
@@ -388,11 +419,32 @@ usersRoutes.get("/:id", async (c) => {
       createdAt: user.createdAt.toISOString(),
       badges,
       stripeCustomerId: user.stripeCustomerId,
+      listenedCount,
       subscriptions: user.subscriptions.map((s: any) => ({
         podcastId: s.podcastId,
         podcastTitle: s.podcast.title,
         durationTier: s.durationTier,
         createdAt: s.createdAt.toISOString(),
+      })),
+      briefings: user.briefings.map((b: any) => ({
+        id: b.id,
+        episodeTitle: b.clip?.episode?.title,
+        podcastTitle: b.clip?.episode?.podcast?.title,
+        podcastImageUrl: b.clip?.episode?.podcast?.imageUrl,
+        durationTier: b.clip?.durationTier,
+        createdAt: b.createdAt.toISOString(),
+      })),
+      listenedItems: listenedItems.map((fi: any) => ({
+        id: fi.id,
+        status: fi.status,
+        source: fi.source,
+        durationTier: fi.durationTier,
+        listened: fi.listened,
+        listenedAt: fi.listenedAt?.toISOString(),
+        podcastTitle: fi.podcast?.title,
+        podcastImageUrl: fi.podcast?.imageUrl,
+        episodeTitle: fi.episode?.title,
+        createdAt: fi.createdAt.toISOString(),
       })),
       recentFeedItems: user.feedItems.map((fi: any) => ({
         id: fi.id,

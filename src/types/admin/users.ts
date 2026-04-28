@@ -95,10 +95,27 @@ export interface AdminFeedItem {
   source: string;
   durationTier: number;
   listened: boolean;
+  listenedAt?: string;
   podcastTitle?: string;
   podcastImageUrl?: string;
   episodeTitle?: string;
   createdAt: string;
+}
+
+export interface AdminUserBriefing {
+  id: string;
+  episodeTitle?: string;
+  podcastTitle?: string;
+  podcastImageUrl?: string;
+  durationTier?: number;
+  createdAt: string;
+}
+
+export interface AdminUserFavorite {
+  podcastId: string;
+  podcastTitle: string;
+  podcastImageUrl?: string;
+  favoritedAt: string;
 }
 
 export interface AdminUserGrant {
@@ -112,8 +129,12 @@ export interface AdminUserGrant {
 export interface AdminUserDetail extends AdminUser {
   stripeCustomerId?: string;
   feedItemCount: number;
+  listenedCount: number;
   subscriptions: { podcastId: string; podcastTitle: string; durationTier: number; createdAt: string }[];
+  briefings: AdminUserBriefing[];
+  listenedItems: AdminFeedItem[];
   recentFeedItems: AdminFeedItem[];
+  favorites: AdminUserFavorite[];
   activeGrant: AdminUserGrant | null;
 }
 
