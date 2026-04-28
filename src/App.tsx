@@ -55,6 +55,8 @@ const AdminRecommendations = lazy(() => import("./pages/admin/recommendations"))
 const CatalogDiscovery = lazy(() => import("./pages/admin/catalog-discovery"));
 const PodcastSources = lazy(() => import("./pages/admin/podcast-sources"));
 const ScheduledJobs = lazy(() => import("./pages/admin/scheduled-jobs"));
+const Pulse = lazy(() => import("./pages/admin/pulse"));
+const PulseDetail = lazy(() => import("./pages/admin/pulse-detail"));
 const SystemSettings = lazy(() => import("./pages/admin/system-settings"));
 const ServiceKeys = lazy(() => import("./pages/admin/service-keys"));
 const DlqMonitor = lazy(() => import("./pages/admin/dlq"));
@@ -191,6 +193,8 @@ export default function App() {
         <Route path="support" element={<Suspense fallback={<AdminLoading />}><AdminSupport /></Suspense>} />
         <Route path="recommendations" element={<Suspense fallback={<AdminLoading />}><AdminRecommendations /></Suspense>} />
         <Route path="scheduled-jobs" element={<Suspense fallback={<AdminLoading />}><ScheduledJobs /></Suspense>} />
+        <Route path="pulse" element={<Suspense fallback={<AdminLoading />}><Pulse /></Suspense>} />
+        <Route path="pulse/:id" element={<Suspense fallback={<AdminLoading />}><PulseDetail /></Suspense>} />
         <Route path="service-keys" element={<Suspense fallback={<AdminLoading />}><ServiceKeys /></Suspense>} />
         <Route path="prompt-management" element={<Navigate to="/admin/stage-configuration" replace />} />
         <Route path="dlq" element={<Suspense fallback={<AdminLoading />}><DlqMonitor /></Suspense>} />

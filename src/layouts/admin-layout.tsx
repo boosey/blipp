@@ -37,6 +37,7 @@ import {
   Shield,
   Menu,
   X,
+  Newspaper,
 } from "lucide-react";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { cn } from "@/lib/utils";
@@ -126,6 +127,8 @@ const sidebarEntries: SidebarEntry[] = [
       { path: "support", label: "Support", icon: LifeBuoy },
     ],
   },
+
+  { type: "item", path: "pulse", label: "Pulse", icon: Newspaper },
 
   {
     type: "group",
