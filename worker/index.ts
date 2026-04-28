@@ -25,6 +25,7 @@ import { securityHeaders } from "./middleware/security-headers";
 import { cacheResponse } from "./middleware/cache";
 import { deepHealthCheck } from "./lib/health";
 import { publicPages } from "./routes/public-pages";
+import { pulse } from "./routes/pulse";
 import sitemap from "./routes/sitemap";
 import clerkAuthProxy from "./routes/clerk-auth-proxy";
 import type { Env } from "./types";
@@ -161,6 +162,23 @@ app.use(
     configKeys: { windowMs: "rateLimit.subscribe.windowMs", maxRequests: "rateLimit.subscribe.maxRequests" },
   })
 );
+// Scraping-attractive public endpoints get a tighter per-IP bucket on top of
+// the global /api/* limit. Featured + recently-blipped are the most useful
+// surfaces for harvesting the catalog, so they're throttled independently.
+app.use(
+  "/api/public/recommendations/featured",
+  rateLimit({
+    windowMs: 60_000, maxRequests: 10, keyPrefix: "rl:public-featured",
+    configKeys: { windowMs: "rateLimit.publicFeatured.windowMs", maxRequests: "rateLimit.publicFeatured.maxRequests" },
+  })
+);
+app.use(
+  "/api/public/recently-blipped",
+  rateLimit({
+    windowMs: 60_000, maxRequests: 10, keyPrefix: "rl:public-recent",
+    configKeys: { windowMs: "rateLimit.publicRecent.windowMs", maxRequests: "rateLimit.publicRecent.maxRequests" },
+  })
+);
 // General API rate limit. Webhooks are exempt — they're
 // server-to-server from Clerk/Stripe and don't carry user auth.
 app.use("/api/*", rateLimit({
@@ -179,8 +197,21 @@ app.use("/*", securityHeaders);
 // Public Blipp pages — server-rendered HTML for SEO (no auth)
 app.route("/p", publicPages);
 
+// Pulse blog — editorial content, server-rendered (no auth)
+app.route("/pulse", pulse);
+
 // Dynamic sitemap — includes all public Blipp pages
 app.route("/", sitemap);
+
+// ads.txt — required at the site root for AdSense. Body is computed from
+// ADSENSE_PUBLISHER_ID at request time so we can flip env vars without redeploy.
+app.get("/ads.txt", async (c) => {
+  const { adsTxtBody } = await import("./lib/ads");
+  return c.text(adsTxtBody(c.env), 200, {
+    "Content-Type": "text/plain",
+    "Cache-Control": "public, max-age=3600",
+  });
+});
 
 // Dynamic robots.txt
 app.get("/robots.txt", (c) => {
@@ -190,6 +221,7 @@ Disallow: /api/
 Disallow: /home
 Disallow: /settings
 Disallow: /admin
+Disallow: /browse
 
 Sitemap: https://podblipp.com/sitemap.xml
 `;

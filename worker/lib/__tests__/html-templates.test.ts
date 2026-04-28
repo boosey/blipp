@@ -129,9 +129,65 @@ describe("renderEpisodePage", () => {
     expect(html).not.toContain("Top takeaways");
   });
 
-  it("emits the empty Pulse featured-in placeholder", () => {
+  it("omits the Featured in section when no Pulse posts cite the episode", () => {
     const html = renderEpisodePage(baseEpisode);
-    expect(html).toContain("data-pulse-featured-in");
+    expect(html).not.toContain("data-pulse-featured-in");
+    expect(html).not.toContain(">Featured in<");
+  });
+
+  it("renders the Featured in section with up to 3 cited Pulse posts", () => {
+    const html = renderEpisodePage({
+      ...baseEpisode,
+      featuredInPosts: [
+        { title: "How AI is reshaping diagnostics", slug: "ai-diagnostics-2026", publishedAt: new Date("2026-04-15") },
+        { title: "FDA bottlenecks", slug: "fda-bottlenecks", publishedAt: new Date("2026-04-08") },
+      ],
+    });
+    expect(html).toContain('data-pulse-featured-in');
+    expect(html).toContain(">Featured in<");
+    expect(html).toContain('href="/pulse/ai-diagnostics-2026"');
+    expect(html).toContain('href="/pulse/fda-bottlenecks"');
+    expect(html).toContain("How AI is reshaping diagnostics");
+  });
+
+  it("escapes Pulse post titles in the Featured in section", () => {
+    const html = renderEpisodePage({
+      ...baseEpisode,
+      featuredInPosts: [{ title: "<script>alert(1)</script>", slug: "xss", publishedAt: null }],
+    });
+    expect(html).not.toContain("<script>alert(1)</script>");
+    expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
+  });
+
+  it("omits the sample player section when sampleAudioUrl is absent", () => {
+    const html = renderEpisodePage({ ...baseEpisode, sampleAudioUrl: null });
+    // CSS for .sample-player is always in <style>; the element itself must be absent.
+    expect(html).not.toContain('id="sample-btn"');
+    expect(html).not.toContain('id="sample-bar"');
+    expect(html).not.toMatch(/<section class="sample-player"/);
+  });
+
+  it("renders sample player + JSON-encoded audio URL when sampleAudioUrl is present", () => {
+    const html = renderEpisodePage({
+      ...baseEpisode,
+      sampleAudioUrl: "https://r2.example.com/clip.mp3",
+    });
+    expect(html).toContain('id="sample-btn"');
+    expect(html).toContain('id="sample-bar"');
+    expect(html).toContain('id="sample-cta"');
+    // URL must be JSON-encoded into the inline script (no naked interpolation)
+    expect(html).toContain('"https://r2.example.com/clip.mp3"');
+    // Default 30-second sample
+    expect(html).toContain("30-second sample");
+  });
+
+  it("respects custom sampleSeconds in the rendered label", () => {
+    const html = renderEpisodePage({
+      ...baseEpisode,
+      sampleAudioUrl: "https://r2.example.com/clip.mp3",
+      sampleSeconds: 45,
+    });
+    expect(html).toContain("45-second sample");
   });
 });
 

@@ -10,6 +10,7 @@ import {
   renderCategoryPage,
 } from "../lib/html-templates";
 import { scoreClaim } from "../lib/distillation";
+import { adsScriptTag } from "../lib/ads";
 import type { Env } from "../types";
 
 const publicPages = new Hono<{ Bindings: Env }>();
@@ -81,6 +82,7 @@ publicPages.get("/:showSlug/:episodeSlug", async (c) => {
   const episode = await prisma.episode.findFirst({
     where: { podcastId: podcast.id, slug: episodeSlug, publicPage: true },
     select: {
+      id: true,
       title: true,
       slug: true,
       description: true,
@@ -91,7 +93,7 @@ publicPages.get("/:showSlug/:episodeSlug", async (c) => {
         where: { status: "COMPLETED", narrativeText: { not: null } },
         orderBy: { durationTier: "desc" },
         take: 1,
-        select: { narrativeText: true },
+        select: { narrativeText: true, audioUrl: true },
       },
       distillation: {
         select: { claimsJson: true, status: true },
@@ -99,6 +101,10 @@ publicPages.get("/:showSlug/:episodeSlug", async (c) => {
     },
   });
   if (!episode) return c.notFound();
+
+  // Phase 2.3: pass the longest available clip's audio URL through to the
+  // SSR template so the page can render an inline tap-to-play sample.
+  const sampleAudioUrl = episode.clips[0]?.audioUrl ?? null;
 
   // Use clip narrative if available, else summarize distillation claims, else episode description
   let pageText = episode.clips[0]?.narrativeText;
@@ -172,6 +178,26 @@ publicPages.get("/:showSlug/:episodeSlug", async (c) => {
 
   const signupNextPath = `/p/${podcast.slug}/${episode.slug}`;
 
+  // Phase 4 / Task 10: "Featured in" — Pulse posts (PUBLISHED only) that cite
+  // this episode. Capped at 3 most recent. Quietly empty when no posts exist
+  // or when the cron/admin haven't been used yet.
+  const featuredInPosts = await prisma.episodePulsePost.findMany({
+    where: {
+      episodeId: episode.id,
+      pulsePost: { status: "PUBLISHED" },
+    },
+    orderBy: [
+      { pulsePost: { publishedAt: "desc" } },
+      { displayOrder: "asc" },
+    ],
+    take: 3,
+    select: {
+      pulsePost: {
+        select: { slug: true, title: true, publishedAt: true },
+      },
+    },
+  });
+
   const html = renderEpisodePage({
     episodeTitle: episode.title,
     episodeSlug: episode.slug!,
@@ -192,6 +218,12 @@ publicPages.get("/:showSlug/:episodeSlug", async (c) => {
     })),
     relatedInCategory,
     signupNextPath,
+    sampleAudioUrl,
+    adsScript: adsScriptTag(c.env, c.req.path),
+    featuredInPosts: featuredInPosts
+      .map((row: any) => row.pulsePost)
+      .filter((p: any): p is { slug: string; title: string; publishedAt: Date | null } => !!p?.slug && !!p?.title)
+      .map((p: any) => ({ title: p.title, slug: p.slug, publishedAt: p.publishedAt })),
   });
 
   return c.html(html, 200, {
@@ -233,6 +265,7 @@ publicPages.get("/:showSlug", async (c) => {
     episodes,
     categoryName: podcastCategory?.category?.name,
     categorySlug: podcastCategory?.category?.slug,
+    adsScript: adsScriptTag(c.env, c.req.path),
   });
 
   return c.html(html, 200, {
@@ -284,6 +317,7 @@ publicPages.get("/category/:categorySlug", async (c) => {
     categoryName: category.name,
     categorySlug: category.slug!,
     podcasts,
+    adsScript: adsScriptTag(c.env, c.req.path),
   });
 
   return c.html(html, 200, {

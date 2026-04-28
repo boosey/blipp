@@ -62,6 +62,12 @@ function layout(opts: {
   ogImage?: string;
   jsonLd?: object;
   body: string;
+  /**
+   * Optional AdSense script tag (already-rendered HTML string). The caller
+   * computes whether ads are allowed for the path via `lib/ads.ts`; the
+   * template just splats the result into <head>. Empty string = no ads.
+   */
+  adsScript?: string;
 }) {
   const canonical = `${SITE_URL}${opts.canonicalPath}`;
   const ogImage = opts.ogImage || DEFAULT_OG_IMAGE;
@@ -89,6 +95,7 @@ function layout(opts: {
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 ${opts.jsonLd ? `<script type="application/ld+json">${JSON.stringify(opts.jsonLd)}</script>` : ""}
+${opts.adsScript ?? ""}
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Inter',system-ui,sans-serif;background:#09090b;color:#fafafa;line-height:1.7;-webkit-font-smoothing:antialiased}
@@ -119,6 +126,18 @@ h2{font-size:1.25rem;font-weight:600;margin:2rem 0 .75rem;color:#e4e4e7}
 .breadcrumb a{color:#71717a}.breadcrumb a:hover{color:#a1a1aa}
 .signup-cta{margin-top:2.5rem;padding:1.5rem;background:#18181b;border:1px solid #27272a;border-radius:.75rem;text-align:center}
 .signup-cta p{color:#e4e4e7;margin-bottom:.75rem;font-weight:500}
+.sample-player{margin:1.5rem 0;padding:1rem;background:#18181b;border:1px solid #27272a;border-radius:.75rem}
+.sample-player__row{display:flex;align-items:center;gap:.875rem}
+.sample-player__play{flex-shrink:0;width:2.75rem;height:2.75rem;border-radius:9999px;background:#fafafa;color:#000;border:0;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:1rem;transition:opacity .15s}
+.sample-player__play:hover{opacity:.9}
+.sample-player__play[data-state="loading"]{opacity:.6;cursor:progress}
+.sample-player__icon{font-weight:700;line-height:1}
+.sample-player__meta{flex:1;min-width:0}
+.sample-player__label{color:#a1a1aa;font-size:.8125rem;margin-bottom:.5rem}
+.sample-player__bar{width:100%;height:.25rem;background:#27272a;border-radius:9999px;overflow:hidden}
+.sample-player__bar-fill{width:0%;height:100%;background:#fafafa;transition:width .2s linear}
+.sample-player__cta{margin-top:.875rem;padding-top:.875rem;border-top:1px solid #27272a;display:flex;flex-wrap:wrap;align-items:center;gap:.75rem}
+.sample-player__cta p{color:#e4e4e7;font-size:.875rem;margin:0;flex:1;min-width:200px}
 </style>
 </head>
 <body>
@@ -152,6 +171,24 @@ export interface EpisodePageData {
   relatedInCategory?: { title: string; slug: string; imageUrl?: string | null }[];
   /** Path used as `?next=` after sign-up (defaults to canonical). */
   signupNextPath?: string;
+  /**
+   * Audio URL for the click-to-play sample. When present, renders a sample
+   * player section above the narrative. Phase 2.3: visitors arriving from
+   * search have no gesture, so playback always requires a tap (no autoplay).
+   */
+  sampleAudioUrl?: string | null;
+  /** Sample length in seconds (default 30). */
+  sampleSeconds?: number;
+  /** AdSense script tag computed by the route handler via `lib/ads.ts`.
+   * Empty/undefined = ads off for this path. */
+  adsScript?: string;
+  /**
+   * Pulse posts that cite this episode. Up to 3 most-recent published posts
+   * are rendered as a "Featured in" section under the takeaways block.
+   * Phase 4 / Task 10 — activates the placeholder previously dropped in
+   * Phase 1.4. Empty/undefined = section is hidden.
+   */
+  featuredInPosts?: { title: string; slug: string; publishedAt?: Date | null }[];
 }
 
 export function renderEpisodePage(data: EpisodePageData): string {
@@ -304,6 +341,26 @@ export function renderEpisodePage(data: EpisodePageData): string {
           .join("")}</div>`
       : "";
 
+  // Phase 4 / Task 10: bidirectional linking. The Pulse cron + admin both
+  // populate EpisodePulsePost, and the route handler queries the join + the
+  // post's PUBLISHED status before passing the (max-3) array here.
+  const featuredInHtml =
+    data.featuredInPosts && data.featuredInPosts.length > 0
+      ? `<section data-pulse-featured-in><h2>Featured in</h2>
+<ul class="featured-in-list">${data.featuredInPosts
+          .map((p) => {
+            const dateLabel = p.publishedAt
+              ? new Date(p.publishedAt).toLocaleDateString("en-US", {
+                  year: "numeric",
+                  month: "short",
+                  day: "numeric",
+                })
+              : "";
+            return `<li><a href="/pulse/${escapeHtml(p.slug)}">${escapeHtml(p.title)}</a>${dateLabel ? ` <span class="featured-in-date">· ${dateLabel}</span>` : ""}</li>`;
+          })
+          .join("")}</ul></section>`
+      : "";
+
   const signupHref = `/sign-up?next=${encodeURIComponent(signupNext)}`;
 
   const breadcrumb = `<nav class="breadcrumb"><a href="/">Home</a>${
@@ -312,17 +369,100 @@ export function renderEpisodePage(data: EpisodePageData): string {
       : ""
   } / <a href="/p/${escapeHtml(data.podcastSlug)}">${escapeHtml(data.podcastTitle)}</a> / ${escapeHtml(data.episodeTitle)}</nav>`;
 
+  // Sample player block — vanilla JS so we don't pull React into the SSR bundle.
+  // The click handler creates AudioContext + GainNode in the user gesture
+  // (required by iOS Safari) and runs a linear fade-out over the last 2s.
+  const sampleSec = data.sampleSeconds ?? 30;
+  const sampleHtml = data.sampleAudioUrl
+    ? `<section class="sample-player" id="sample">
+<div class="sample-player__row">
+  <button id="sample-btn" class="sample-player__play" aria-label="Play sample" data-state="idle">
+    <span class="sample-player__icon" aria-hidden="true">▶</span>
+  </button>
+  <div class="sample-player__meta">
+    <p class="sample-player__label">${sampleSec}-second sample of this Blipp</p>
+    <div class="sample-player__bar"><div id="sample-bar" class="sample-player__bar-fill"></div></div>
+  </div>
+</div>
+<div id="sample-cta" class="sample-player__cta" hidden>
+  <p>That's the sample. Sign up to hear the full Blipp.</p>
+  <a href="${signupHref}" class="cta-btn">Sign up free</a>
+</div>
+</section>
+<script>
+(function(){
+  var url = ${JSON.stringify(data.sampleAudioUrl)};
+  var TOTAL = ${sampleSec};
+  var FADE = 2;
+  var btn = document.getElementById("sample-btn");
+  var bar = document.getElementById("sample-bar");
+  var cta = document.getElementById("sample-cta");
+  if (!btn || !bar || !cta) return;
+  var audio = null, ctx = null, gain = null, source = null, timer = null, ticker = null;
+  function setIcon(s){ btn.setAttribute("data-state", s); btn.querySelector(".sample-player__icon").textContent = s === "playing" ? "❚❚" : (s === "loading" ? "…" : "▶"); }
+  function reset(){
+    if (timer) { clearTimeout(timer); timer = null; }
+    if (ticker) { clearInterval(ticker); ticker = null; }
+    if (audio) { try { audio.pause(); } catch(e){} }
+  }
+  function start(){
+    setIcon("loading");
+    var ACtor = window.AudioContext || window.webkitAudioContext;
+    if (!audio) { audio = new Audio(); audio.crossOrigin = "anonymous"; audio.preload = "auto"; }
+    audio.src = url;
+    if (ACtor && !ctx) { ctx = new ACtor(); }
+    if (ctx && ctx.state === "suspended") { ctx.resume(); }
+    if (ctx && !source) {
+      try {
+        source = ctx.createMediaElementSource(audio);
+        gain = ctx.createGain();
+        gain.gain.value = 1;
+        source.connect(gain);
+        gain.connect(ctx.destination);
+      } catch (e) { /* fallback to plain audio */ }
+    }
+    var p = audio.play();
+    var ok = function(){
+      setIcon("playing");
+      if (gain && ctx) {
+        var now = ctx.currentTime;
+        gain.gain.setValueAtTime(1, now + (TOTAL - FADE));
+        gain.gain.linearRampToValueAtTime(0.0001, now + TOTAL);
+      }
+      ticker = setInterval(function(){
+        var pct = Math.min(100, (audio.currentTime / TOTAL) * 100);
+        bar.style.width = pct + "%";
+      }, 200);
+      timer = setTimeout(function(){
+        reset();
+        bar.style.width = "100%";
+        cta.hidden = false;
+        setIcon("idle");
+      }, TOTAL * 1000);
+    };
+    if (p && typeof p.then === "function") { p.then(ok).catch(function(){ setIcon("idle"); }); } else { ok(); }
+  }
+  function pause(){ reset(); setIcon("idle"); }
+  btn.addEventListener("click", function(){
+    if (btn.getAttribute("data-state") === "playing") { pause(); } else { start(); }
+  });
+})();
+</script>`
+    : "";
+
   return layout({
     title: `${data.episodeTitle} — ${data.podcastTitle} | Blipp Summary`,
     description,
     canonicalPath,
     ogImage,
     jsonLd,
+    adsScript: data.adsScript,
     body: `<main class="container">
 ${breadcrumb}
 <h1>${escapeHtml(data.episodeTitle)}</h1>
 <div class="meta">${escapeHtml(data.podcastTitle)}${published ? ` · ${published}` : ""}${duration ? ` · ${duration} episode` : ""}</div>
 ${tags ? `<div style="margin-bottom:1.5rem">${tags}</div>` : ""}
+${sampleHtml}
 <div class="narrative">${narrativeHtml}</div>
 ${takeawaysHtml}
 <div class="signup-cta">
@@ -331,7 +471,7 @@ ${takeawaysHtml}
 </div>
 ${moreFromShowHtml}
 ${relatedHtml}
-<section data-pulse-featured-in></section>
+${featuredInHtml}
 </main>`,
   });
 }
@@ -347,6 +487,7 @@ export interface ShowPageData {
   episodes: { title: string; slug: string; publishedAt?: Date | null }[];
   categoryName?: string | null;
   categorySlug?: string | null;
+  adsScript?: string;
 }
 
 export function renderShowPage(data: ShowPageData): string {
@@ -407,6 +548,7 @@ export function renderShowPage(data: ShowPageData): string {
     canonicalPath: `/p/${data.podcastSlug}`,
     ogImage: data.podcastImageUrl || undefined,
     jsonLd,
+    adsScript: data.adsScript,
     body: `<main class="container">
 ${breadcrumb}
 <h1>${escapeHtml(data.podcastTitle)}</h1>
@@ -431,6 +573,7 @@ export interface CategoryPageData {
     imageUrl?: string | null;
     episodeCount: number;
   }[];
+  adsScript?: string;
 }
 
 export function renderCategoryPage(data: CategoryPageData): string {
@@ -480,6 +623,7 @@ export function renderCategoryPage(data: CategoryPageData): string {
     description,
     canonicalPath,
     jsonLd,
+    adsScript: data.adsScript,
     body: `<main class="container">
 <nav class="breadcrumb"><a href="/">Home</a> / <a href="/p">Browse</a> / ${escapeHtml(data.categoryName)}</nav>
 <h1>${escapeHtml(data.categoryName)} Podcasts</h1>

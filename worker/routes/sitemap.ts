@@ -35,6 +35,16 @@ sitemap.get("/sitemap.xml", prismaMiddleware, async (c) => {
     select: { slug: true },
   });
 
+  // Pulse blog (Phase 4): index + published posts + editor archives.
+  const pulsePosts = await prisma.pulsePost.findMany({
+    where: { status: "PUBLISHED" },
+    select: { slug: true, updatedAt: true },
+  });
+  const pulseEditors = await prisma.pulseEditor.findMany({
+    where: { status: "READY" },
+    select: { slug: true },
+  });
+
   let xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`;
   for (const s of staticUrls) {
     xml += `<url><loc>${SITE}${s.loc}</loc><changefreq>${s.changefreq}</changefreq><priority>${s.priority}</priority></url>\n`;
@@ -49,6 +59,16 @@ sitemap.get("/sitemap.xml", prismaMiddleware, async (c) => {
   }
   for (const cat of categories) {
     xml += `<url><loc>${SITE}/p/category/${cat.slug}</loc><changefreq>weekly</changefreq><priority>0.5</priority></url>\n`;
+  }
+  if (pulsePosts.length > 0) {
+    xml += `<url><loc>${SITE}/pulse</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>\n`;
+  }
+  for (const post of pulsePosts) {
+    const lastmod = post.updatedAt ? new Date(post.updatedAt).toISOString().split("T")[0] : "";
+    xml += `<url><loc>${SITE}/pulse/${post.slug}</loc>${lastmod ? `<lastmod>${lastmod}</lastmod>` : ""}<priority>0.7</priority></url>\n`;
+  }
+  for (const editor of pulseEditors) {
+    xml += `<url><loc>${SITE}/pulse/by/${editor.slug}</loc><changefreq>monthly</changefreq><priority>0.4</priority></url>\n`;
   }
   xml += `</urlset>`;
 

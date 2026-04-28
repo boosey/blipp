@@ -34,6 +34,7 @@ import { publisherReportsRoutes } from "./publisher-reports";
 import { catalogPregenRoutes } from "./catalog-pregen";
 import { geoTaggingRoutes } from "./geo-tagging";
 import { serviceKeysRoutes } from "./service-keys";
+import { pulseAdminRoutes } from "./pulse";
 
 /**
  * Admin route tree. All routes require admin authentication.
@@ -107,5 +108,6 @@ adminRoutes.route("/publisher-reports", publisherReportsRoutes);
 adminRoutes.route("/catalog-pregen", catalogPregenRoutes);
 adminRoutes.route("/geo-tagging", geoTaggingRoutes);
 adminRoutes.route("/service-keys", serviceKeysRoutes);
+adminRoutes.route("/pulse", pulseAdminRoutes);
 
 export { adminRoutes };
