@@ -25,6 +25,7 @@ import { securityHeaders } from "./middleware/security-headers";
 import { cacheResponse } from "./middleware/cache";
 import { deepHealthCheck } from "./lib/health";
 import { publicPages } from "./routes/public-pages";
+import { pulse } from "./routes/pulse";
 import sitemap from "./routes/sitemap";
 import clerkAuthProxy from "./routes/clerk-auth-proxy";
 import type { Env } from "./types";
@@ -195,6 +196,9 @@ app.use("/*", securityHeaders);
 
 // Public Blipp pages — server-rendered HTML for SEO (no auth)
 app.route("/p", publicPages);
+
+// Pulse blog — editorial content, server-rendered (no auth)
+app.route("/pulse", pulse);
 
 // Dynamic sitemap — includes all public Blipp pages
 app.route("/", sitemap);
