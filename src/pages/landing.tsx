@@ -1,9 +1,23 @@
 import { SignInButton } from "@clerk/clerk-react";
 import { Capacitor } from "@capacitor/core";
 import { Link, useNavigate } from "react-router-dom";
-import { Search, Clock, Podcast, ExternalLink } from "lucide-react";
+import { Search, Clock, Podcast, ExternalLink, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getApiBase } from "../lib/api-base";
+import { SamplePlayer } from "../components/sample-player";
+import { usePublicFetch } from "../lib/use-public-fetch";
+
+interface SampleAudioResponse {
+  audioUrl: string;
+  showTitle: string;
+  episodeTitle: string;
+  sampleSeconds: number;
+}
+
+interface RecentBlippItem {
+  episode: { slug: string; title: string };
+  show: { slug: string; title: string; imageUrl: string | null };
+}
 
 const features = [
   {
@@ -41,6 +55,10 @@ export function Landing() {
   const isNative = Capacitor.isNativePlatform();
   const navigate = useNavigate();
   const [sample, setSample] = useState<LandingSample | null>(null);
+  // Inline mini-player state. Opening it on the same gesture as the
+  // "Hear a sample" tap is what makes autoplay-with-sound work on iOS Safari
+  // (no navigation away from the page).
+  const [playerOpen, setPlayerOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -59,9 +77,21 @@ export function Landing() {
     };
   }, []);
 
+  // Audio URL is fetched lazily — only after the visitor opens the mini-player.
+  const sampleAudio = usePublicFetch<SampleAudioResponse>(
+    sample
+      ? `/public/sample/${encodeURIComponent(sample.showSlug)}/${encodeURIComponent(sample.episodeSlug)}`
+      : "",
+    { enabled: Boolean(sample) && playerOpen }
+  );
+
+  const recent = usePublicFetch<{ items: RecentBlippItem[] }>(
+    "/public/recently-blipped?limit=6"
+  );
+
   const handleHearSample = () => {
     if (!sample) return;
-    navigate(`/p/${sample.showSlug}/${sample.episodeSlug}?sample=1`);
+    setPlayerOpen(true);
   };
 
   return (
@@ -225,7 +255,7 @@ export function Landing() {
           </div>
           <div className="animate-fade-up delay-500 mt-4">
             <Link
-              to="/p"
+              to="/browse"
               className="font-dm text-sm text-zinc-400 underline-offset-4 hover:underline hover:text-zinc-200"
             >
               Browse the catalog →
@@ -240,6 +270,49 @@ export function Landing() {
           </div>
         </div>
       </section>
+
+      {/* ─── RECENTLY BLIPPED RAIL ─── */}
+      {recent.data && recent.data.items.length > 0 && (
+        <section className="relative py-16 px-6">
+          <div className="max-w-5xl mx-auto">
+            <div className="flex items-baseline justify-between mb-5">
+              <h2 className="font-sora text-2xl sm:text-3xl font-700">
+                Just Blipped
+              </h2>
+              <Link
+                to="/browse"
+                className="font-dm text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
+              >
+                See all →
+              </Link>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+              {recent.data.items.slice(0, 6).map((item) => (
+                <Link
+                  key={`${item.show.slug}-${item.episode.slug}`}
+                  to={`/p/${item.show.slug}/${item.episode.slug}`}
+                  className="group rounded-lg border border-white/[0.06] bg-white/[0.02] p-3 hover:bg-white/[0.05] hover:border-white/[0.12] transition-all duration-300"
+                >
+                  {item.show.imageUrl && (
+                    <img
+                      src={item.show.imageUrl}
+                      alt={item.show.title}
+                      loading="lazy"
+                      className="w-full aspect-square rounded object-cover mb-2"
+                    />
+                  )}
+                  <p className="font-dm text-[11px] text-zinc-500 truncate">
+                    {item.show.title}
+                  </p>
+                  <p className="font-dm text-xs text-zinc-200 line-clamp-2 mt-0.5">
+                    {item.episode.title}
+                  </p>
+                </Link>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* ─── VALUE PROP ─── */}
       <section className="relative py-24 px-6">
@@ -328,6 +401,46 @@ export function Landing() {
           </div>
         </div>
       </section>
+
+      {/* ─── DOCKED MINI SAMPLE PLAYER ─── */}
+      {playerOpen && sample && (
+        <div
+          className="fixed bottom-0 left-0 right-0 z-50 px-3 pb-3 pt-1 sm:px-4 sm:pb-4"
+          role="dialog"
+          aria-label="Sample player"
+        >
+          <div className="max-w-2xl mx-auto rounded-xl border border-white/10 bg-[#0a0a14]/95 backdrop-blur shadow-2xl p-2">
+            <div className="flex items-start justify-between gap-2 mb-1.5 px-1">
+              <p className="font-dm text-[11px] text-zinc-500 uppercase tracking-wide">
+                Sample Blipp
+              </p>
+              <button
+                onClick={() => setPlayerOpen(false)}
+                aria-label="Close sample player"
+                className="text-zinc-500 hover:text-white transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            {sampleAudio.loading && (
+              <p className="text-sm text-zinc-400 px-2 py-3">Loading sample…</p>
+            )}
+            {sampleAudio.error && (
+              <p className="text-sm text-rose-300 px-2 py-3">{sampleAudio.error}</p>
+            )}
+            {sampleAudio.data && (
+              <SamplePlayer
+                audioUrl={sampleAudio.data.audioUrl}
+                showTitle={sampleAudio.data.showTitle}
+                episodeTitle={sampleAudio.data.episodeTitle}
+                sampleSeconds={sampleAudio.data.sampleSeconds}
+                signupRedirectTo={`/p/${sample.showSlug}/${sample.episodeSlug}`}
+                compact
+              />
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ─── FOOTER ─── */}
       <footer className="border-t border-white/[0.05] py-8 px-6 text-center">
