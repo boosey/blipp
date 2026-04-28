@@ -207,6 +207,7 @@ Disallow: /api/
 Disallow: /home
 Disallow: /settings
 Disallow: /admin
+Disallow: /browse
 
 Sitemap: https://podblipp.com/sitemap.xml
 `;
