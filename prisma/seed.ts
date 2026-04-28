@@ -731,6 +731,7 @@ Then proceed directly into the content.`;
     { jobKey: "geo-tagging",                 label: "Podcast Geo-Tagging",             description: "Tags podcasts with geographic profiles using keyword matching and LLM classification",            defaultIntervalMinutes: 10080 },
     { jobKey: "catalog-pregen",              label: "Catalog Pre-generation",          description: "Pre-generates 5-min briefings for all Apple-ranked podcasts so new users get instant content",    defaultIntervalMinutes: 60 },
     { jobKey: "manual-grant-expiry",         label: "Manual Grant Expiry",             description: "Expires admin-granted plan access once the grant window closes and recomputes entitlement",        defaultIntervalMinutes: 60 },
+    { jobKey: "pulse-generate",              label: "Pulse Digest Generator",          description: "Sunday weekly digest cron — clusters last 7 days of distillation embeddings and drafts an AI_ASSISTED PulsePost. Self-gates on Phase 4.0 Rule 6 (≥6 published, ≥4 human).", defaultIntervalMinutes: 360 },
   ];
   for (const job of cronJobs) {
     await prisma.cronJob.upsert({

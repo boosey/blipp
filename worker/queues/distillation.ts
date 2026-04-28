@@ -2,6 +2,7 @@ import { createPrismaClient } from "../lib/db";
 import { createPipelineLogger, logDbError } from "../lib/logger";
 import { checkStageEnabled, claimEpisodeStage, releaseEpisodeStage, LOCK_RETRY_DELAY_S } from "../lib/queue-helpers";
 import { extractClaims } from "../lib/distillation";
+import { averageEmbeddings } from "../lib/embeddings";
 import { resolveModelChain } from "../lib/model-resolution";
 import { getLlmProviderImpl } from "../lib/llm-providers";
 import { wpKey, putWorkProduct, getWorkProduct } from "../lib/work-products";
@@ -331,10 +332,60 @@ export async function handleDistillation(
           ...(claimsUsage!.cacheReadTokens ? { cacheReadTokens: claimsUsage!.cacheReadTokens } : {}),
         });
 
+        // Phase 4 / Task 8: centroid embedding over claim texts for the Sunday
+        // Pulse digest's clustering pass. Non-fatal — episodes without an
+        // embedding simply don't participate in clustering that week.
+        let claimsEmbedding: number[] | null = null;
+        try {
+          if (claims && claims.length > 0) {
+            const claimTexts = (claims as any[])
+              .map((c) => {
+                const text = String(c?.claim ?? "").trim();
+                const excerpt = String(c?.excerpt ?? "").trim();
+                const combined = excerpt ? `${text}. ${excerpt}` : text;
+                return combined.slice(0, 512);
+              })
+              .filter((t) => t.length > 0);
+
+            if (claimTexts.length > 0) {
+              const elapsedEmb = log.timer("claims_embedding");
+              const result = (await env.AI.run("@cf/baai/bge-base-en-v1.5" as any, {
+                text: claimTexts,
+              })) as any;
+              elapsedEmb();
+              const vectors = (result?.data ?? []) as number[][];
+              claimsEmbedding = averageEmbeddings(vectors);
+              if (claimsEmbedding) {
+                await writeEvent(
+                  prisma,
+                  stepId,
+                  "DEBUG",
+                  `Embedded ${vectors.length} claims (${claimsEmbedding.length}-dim centroid)`,
+                  { claimCount: vectors.length, dim: claimsEmbedding.length }
+                );
+              }
+            }
+          }
+        } catch (embErr) {
+          const msg = embErr instanceof Error ? embErr.message : String(embErr);
+          await writeEvent(
+            prisma,
+            stepId,
+            "WARN",
+            `Embedding step failed (non-fatal): ${msg.slice(0, 200)}`,
+            { error: msg }
+          );
+          log.info("embedding_failed", { episodeId, error: msg });
+        }
+
         // Mark distillation as completed and release the lock.
         await prisma.distillation.update({
           where: { id: existing.id },
-          data: { status: "COMPLETED", distillationStartedAt: null },
+          data: {
+            status: "COMPLETED",
+            distillationStartedAt: null,
+            ...(claimsEmbedding ? { claimsEmbedding } : {}),
+          },
         });
 
         // Write claims to R2 + index in DB

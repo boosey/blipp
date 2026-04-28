@@ -688,4 +688,89 @@ describe("handleDistillation", () => {
       expect(batch.messages[0].ack).toHaveBeenCalled();
     });
   });
+
+  describe("claims embedding (Phase 4 / Task 8)", () => {
+    function setupHappyPath() {
+      mockPrisma.pipelineJob.findUniqueOrThrow.mockResolvedValue({
+        id: "job-1",
+        requestId: "req-1",
+      });
+      mockPrisma.pipelineJob.update.mockResolvedValue({});
+      mockPrisma.pipelineStep.create.mockResolvedValue({ id: "step-1" });
+      mockPrisma.distillation.upsert.mockResolvedValue({ id: "dist-1", episodeId: "ep-1" });
+      mockPrisma.distillation.update.mockResolvedValue({ id: "dist-1", episodeId: "ep-1" });
+    }
+
+    it("persists claimsEmbedding centroid alongside COMPLETED status", async () => {
+      setupHappyPath();
+      (extractClaims as any).mockResolvedValueOnce({
+        claims: [
+          { claim: "Claim A", speaker: "Host", importance: 9, novelty: 7, excerpt: "Excerpt A." },
+          { claim: "Claim B", speaker: "Guest", importance: 8, novelty: 6, excerpt: "Excerpt B." },
+        ],
+        usage: { model: "test-model", inputTokens: 100, outputTokens: 50, cost: null },
+      });
+      // Two-claim batch: each row is a vector. Centroid = mean.
+      (mockEnv.AI.run as any).mockResolvedValueOnce({
+        data: [
+          [1, 0, 0],
+          [0, 1, 0],
+        ],
+      });
+
+      const batch = makeBatch([{ jobId: "job-1", episodeId: "ep-1" }]);
+      await handleDistillation(batch, mockEnv, mockCtx);
+
+      expect(mockEnv.AI.run).toHaveBeenCalledWith(
+        "@cf/baai/bge-base-en-v1.5",
+        expect.objectContaining({
+          text: expect.arrayContaining([expect.stringContaining("Claim A")]),
+        })
+      );
+      // The completion update carries claimsEmbedding = average of [[1,0,0],[0,1,0]] = [0.5,0.5,0]
+      expect(mockPrisma.distillation.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "dist-1" },
+          data: expect.objectContaining({
+            status: "COMPLETED",
+            claimsEmbedding: [0.5, 0.5, 0],
+          }),
+        })
+      );
+    });
+
+    it("still completes when AI.run throws (embedding is non-fatal)", async () => {
+      setupHappyPath();
+      (mockEnv.AI.run as any).mockRejectedValueOnce(new Error("AI binding offline"));
+
+      const batch = makeBatch([{ jobId: "job-1", episodeId: "ep-1" }]);
+      await handleDistillation(batch, mockEnv, mockCtx);
+
+      // Distillation still marked COMPLETED — but without claimsEmbedding key.
+      const completionCall = (mockPrisma.distillation.update as any).mock.calls.find(
+        ([arg]: any[]) => arg?.data?.status === "COMPLETED"
+      );
+      expect(completionCall).toBeDefined();
+      expect(completionCall[0].data).not.toHaveProperty("claimsEmbedding");
+      expect(batch.messages[0].ack).toHaveBeenCalled();
+    });
+
+    it("skips embedding entirely when claims array is empty", async () => {
+      setupHappyPath();
+      (extractClaims as any).mockResolvedValueOnce({
+        claims: [],
+        usage: { model: "test-model", inputTokens: 50, outputTokens: 5, cost: null },
+      });
+
+      const batch = makeBatch([{ jobId: "job-1", episodeId: "ep-1" }]);
+      await handleDistillation(batch, mockEnv, mockCtx);
+
+      expect(mockEnv.AI.run).not.toHaveBeenCalled();
+      const completionCall = (mockPrisma.distillation.update as any).mock.calls.find(
+        ([arg]: any[]) => arg?.data?.status === "COMPLETED"
+      );
+      expect(completionCall).toBeDefined();
+      expect(completionCall[0].data).not.toHaveProperty("claimsEmbedding");
+    });
+  });
 });

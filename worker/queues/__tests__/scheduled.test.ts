@@ -33,6 +33,11 @@ vi.mock("../../lib/cron/stale-job-reaper", () => ({
   runStaleJobReaperJob: vi.fn(),
 }));
 
+const mockRunPulseGenerate = vi.hoisted(() => vi.fn().mockResolvedValue({ generated: false, reason: "editorial_threshold_not_met" }));
+vi.mock("../pulse-generate", () => ({
+  runPulseGenerate: mockRunPulseGenerate,
+}));
+
 import { createPrismaClient } from "../../lib/db";
 import { scheduled } from "../index";
 
@@ -101,5 +106,40 @@ describe("scheduled", () => {
     await scheduled(mockEvent, mockEnv, mockCtx);
 
     expect(mockCtx.waitUntil).toHaveBeenCalledWith(mockPrisma.$disconnect());
+  });
+
+  describe("Sunday Pulse cron (0 14 * * 0)", () => {
+    it("dispatches only the pulse-generate job, not the heartbeat fan-out", async () => {
+      const sundayEvent = { scheduledTime: Date.now(), cron: "0 14 * * 0" } as ScheduledEvent;
+
+      await scheduled(sundayEvent, mockEnv, mockCtx);
+
+      // Heartbeat job registry must not run on the weekly cron.
+      const dispatchedKeys = mockRunJob.mock.calls.map((c: any) => c[0].jobKey);
+      expect(dispatchedKeys).toEqual(["pulse-generate"]);
+    });
+
+    it("invokes runPulseGenerate via runJob.execute", async () => {
+      const sundayEvent = { scheduledTime: Date.now(), cron: "0 14 * * 0" } as ScheduledEvent;
+      // Have runJob actually call execute so we can verify runPulseGenerate runs.
+      mockRunJob.mockImplementationOnce(async ({ execute }: any) => {
+        const fakeLogger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+        await execute(fakeLogger);
+      });
+
+      await scheduled(sundayEvent, mockEnv, mockCtx);
+
+      expect(mockRunPulseGenerate).toHaveBeenCalledTimes(1);
+      expect(mockRunPulseGenerate).toHaveBeenCalledWith(mockPrisma, mockEnv, expect.any(Object));
+    });
+
+    it("disconnects prisma even when runPulseGenerate errors", async () => {
+      const sundayEvent = { scheduledTime: Date.now(), cron: "0 14 * * 0" } as ScheduledEvent;
+      mockRunJob.mockRejectedValueOnce(new Error("pulse exploded"));
+
+      await scheduled(sundayEvent, mockEnv, mockCtx);
+
+      expect(mockCtx.waitUntil).toHaveBeenCalledWith(mockPrisma.$disconnect());
+    });
   });
 });

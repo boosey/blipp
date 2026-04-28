@@ -24,6 +24,7 @@ import { runListenOriginalAggregationJob } from "../lib/cron/listen-original-agg
 import { runGeoTaggingJob } from "../lib/cron/geo-tagging";
 import { runCatalogPregenJob } from "../lib/cron/catalog-pregen";
 import { runManualGrantExpiryJob } from "../lib/cron/manual-grant-expiry";
+import { runPulseGenerate } from "./pulse-generate";
 import type {
   TranscriptionMessage,
   DistillationMessage,
@@ -167,10 +168,18 @@ export async function handleQueue(
 }
 
 /**
- * Cron heartbeat handler — fires every 5 minutes and dispatches all named jobs.
- * Each job manages its own enable toggle and run interval via PlatformConfig.
+ * Cron handler — dispatches by `event.cron`.
  *
- * Jobs: apple-discovery, podcast-index-discovery, episode-refresh, monitoring, user-lifecycle, data-retention, recommendations, listen-original-aggregation, stale-job-reaper, geo-tagging, catalog-pregen, manual-grant-expiry
+ * - `*&#47;5 * * * *` (heartbeat): runs all per-job dispatchers; each manages
+ *   its own enable toggle + interval via the CronJob table.
+ * - `0 14 * * 0` (Sunday 14:00 UTC): runs the Pulse digest generator (Phase 4
+ *   / Task 8). The handler self-gates per Phase 4.0 Rule 6 — no-op until ≥6
+ *   PulsePosts published AND ≥4 of those have mode=HUMAN.
+ *
+ * Heartbeat jobs: apple-discovery, podcast-index-discovery, episode-refresh,
+ * monitoring, user-lifecycle, data-retention, recommendations,
+ * listen-original-aggregation, stale-job-reaper, geo-tagging, catalog-pregen,
+ * manual-grant-expiry.
  *
  * @param event - Cloudflare scheduled event
  * @param env - Worker environment bindings
@@ -184,6 +193,24 @@ export async function scheduled(
   const prisma = createPrismaClient(env.HYPERDRIVE);
 
   try {
+    // Sunday Pulse digest — runs only on the weekly cron expression.
+    if (event.cron === "0 14 * * 0") {
+      await runJob({
+        jobKey: "pulse-generate",
+        prisma: prisma as any,
+        execute: (logger) => runPulseGenerate(prisma as any, env, logger) as Promise<Record<string, unknown>>,
+      }).catch((err) => {
+        console.error(JSON.stringify({
+          level: "error",
+          action: "cron_job_failed",
+          jobKey: "pulse-generate",
+          error: err instanceof Error ? err.message : String(err),
+          ts: new Date().toISOString(),
+        }));
+      });
+      return;
+    }
+
     // Job registry: jobKey → execute function
     const jobExecutors: Record<string, (logger: any) => Promise<Record<string, unknown>>> = {
       "apple-discovery": (logger) => runAppleDiscoveryJob(prisma as any, logger, env),

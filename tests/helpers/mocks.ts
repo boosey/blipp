@@ -66,6 +66,9 @@ export function createMockPrisma() {
     cronJob: modelMethods(),
     cronRun: modelMethods(),
     cronRunLog: modelMethods(),
+    pulseEditor: modelMethods(),
+    pulsePost: modelMethods(),
+    episodePulsePost: { ...modelMethods(), createMany: vi.fn() },
     $disconnect: vi.fn().mockResolvedValue(undefined),
     $queryRawUnsafe: vi.fn().mockResolvedValue([]),
   };
