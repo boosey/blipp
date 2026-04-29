@@ -12,6 +12,7 @@ import { usePodcastSheet } from "../contexts/podcast-sheet-context";
 import { useApiFetch } from "../lib/api-client";
 import { usePlan } from "../contexts/plan-context";
 import { formatDuration } from "../lib/feed-utils";
+import { resolveExternalEpisodeLink } from "../lib/external-podcast-link";
 import { ThumbButtons } from "./thumb-buttons";
 import { BlippFeedbackSheet } from "./blipp-feedback-sheet";
 import { QueueSheet } from "./queue-sheet";
@@ -88,7 +89,7 @@ export function PlayerSheet({
     setRate(next);
   }, [playbackRate, setRate]);
 
-  const handleListenOriginal = useCallback(() => {
+  const handleListenOriginal = useCallback((linkType: "apple_episode" | "apple_show" | "podcast_index") => {
     if (!currentItem) return;
     const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
     const isTablet = /iPad|Android(?!.*Mobile)/.test(ua);
@@ -117,6 +118,7 @@ export function PlayerSheet({
         podcastId: currentItem.podcast.id,
         publisherId: currentItem.podcast.id,
         referralSource,
+        linkType,
         timeToClickSec: Math.max(0, currentTime),
         blippCompletionPct: completionPct,
       }),
@@ -234,16 +236,40 @@ export function PlayerSheet({
           </div>
           {/* Right actions — listen to original, thumbs, share */}
           <div className="flex items-center gap-1">
-            <a
-              href={currentItem.episode.audioUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={handleListenOriginal}
-              className="p-2 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-              aria-label="Listen to original episode"
-            >
-              <ExternalLink className="w-4 h-4" />
-            </a>
+            {(() => {
+              const externalLink = resolveExternalEpisodeLink({
+                episode: { appleEpisodeTrackId: currentItem.episode.appleEpisodeTrackId },
+                podcast: {
+                  appleId: currentItem.podcast.appleId,
+                  podcastIndexId: currentItem.podcast.podcastIndexId,
+                },
+              });
+              if (externalLink.kind === "none") {
+                return (
+                  <button
+                    type="button"
+                    disabled
+                    className="p-2 rounded-full text-muted-foreground/40 cursor-not-allowed"
+                    aria-label="No external link available for this episode"
+                    title="No external link available for this episode"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                  </button>
+                );
+              }
+              return (
+                <a
+                  href={externalLink.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => handleListenOriginal(externalLink.kind)}
+                  className="p-2 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                  aria-label="Listen to original episode"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                </a>
+              );
+            })()}
             <ThumbButtons vote={episodeVote} onVote={handleEpisodeVote} onThumbsDown={() => setFeedbackOpen(true)} size="md" />
             {publicSharing && (
               <button
