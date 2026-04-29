@@ -19,6 +19,9 @@ import { renderToString } from "react-dom/server";
 import { StaticRouter } from "react-router-dom";
 import { ClerkProvider } from "@clerk/clerk-react";
 import App from "./App";
+import { MARKETING_ROUTES } from "./lib/seo-meta";
+
+export { MARKETING_ROUTES };
 
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 if (!PUBLISHABLE_KEY) {
