@@ -64,6 +64,7 @@ events.post("/listen-original", requireAuth, async (c) => {
       podcastId: body.podcastId,
       publisherId: body.publisherId,
       referralSource: body.referralSource,
+      linkType: body.linkType ?? null,
       timeToClickSec: body.timeToClickSec,
       blippCompletionPct: body.blippCompletionPct,
       utmSource: body.utmSource ?? null,
