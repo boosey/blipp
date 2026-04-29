@@ -18,12 +18,22 @@
  * URL via the default html_handling: auto-trailing-slash behavior.
  */
 import { readFile, writeFile, mkdir, rm } from "node:fs/promises";
+import { execSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const DIST = path.join(ROOT, "dist");
+// Cloudflare's vite plugin emits client assets into dist/client/. The
+// generated dist/blipp_*/wrangler.json points its `assets.directory` here.
+// Worker bundle lives in dist/blipp_<env>/ — left untouched.
+const ASSETS = path.join(ROOT, "dist", "client");
 const SSR_BUILD = path.join(ROOT, ".ssr-build");
+
+// Accept --mode <staging|production> so .env / .env.production load correctly.
+const args = process.argv.slice(2);
+const modeIdx = args.indexOf("--mode");
+const mode = modeIdx >= 0 ? args[modeIdx + 1] : null;
+const modeFlag = mode ? `--mode ${mode}` : "";
 
 function escapeHtmlAttr(s) {
   return s
@@ -63,22 +73,38 @@ function applySeoMeta(template, route) {
 }
 
 function injectAppHtml(template, appHtml) {
-  // Replace either an empty <div id="root"></div> OR a populated skeleton.
-  // The lookahead pulls everything up to the next <script type="module">.
-  const re = /<div id="root">[\s\S]*?<\/div>(?=\s*<script type="module")/;
+  // index.html has explicit `<!-- prerender:start -->` … `<!-- prerender:end -->`
+  // markers inside the #root div. Replace between them with the SSR'd
+  // React tree. Keeping the markers makes the regex robust to whatever
+  // Vite does with surrounding scripts/styles.
+  const re = /<!-- prerender:start -->[\s\S]*?<!-- prerender:end -->/;
   if (!re.test(template)) {
     throw new Error(
-      "prerender: could not locate <div id=\"root\">…</div> ahead of <script type=\"module\"> in dist/index.html"
+      "prerender: could not find prerender:start/prerender:end markers in dist/client/index.html"
     );
   }
-  return template.replace(re, `<div id="root">${appHtml}</div>`);
+  return template.replace(
+    re,
+    `<!-- prerender:start -->${appHtml}<!-- prerender:end -->`
+  );
 }
 
 async function main() {
+  console.log(`prerender: building SSR bundle${mode ? ` (mode: ${mode})` : ""}…`);
+  // Invoke vite via its node entrypoint directly — npx isn't on PATH when
+  // this script is run outside an `npm run` context. Using vite.ssr.config.ts
+  // bypasses the Cloudflare plugin from the main config, which would
+  // otherwise rewrite the SSR output structure.
+  const viteBin = path.join(ROOT, "node_modules", "vite", "bin", "vite.js");
+  execSync(
+    `node "${viteBin}" build --config vite.ssr.config.ts ${modeFlag}`.trim(),
+    { stdio: "inherit", cwd: ROOT }
+  );
+
   const ssrEntry = pathToFileURL(path.join(SSR_BUILD, "entry-server.js")).href;
   const { render, MARKETING_ROUTES } = await import(ssrEntry);
 
-  const template = await readFile(path.join(DIST, "index.html"), "utf-8");
+  const template = await readFile(path.join(ASSETS, "index.html"), "utf-8");
   console.log(`prerender: ${MARKETING_ROUTES.length} route(s)`);
 
   for (const route of MARKETING_ROUTES) {
@@ -88,8 +114,8 @@ async function main() {
 
     const outDir =
       route.path === "/"
-        ? DIST
-        : path.join(DIST, route.path.replace(/^\//, ""));
+        ? ASSETS
+        : path.join(ASSETS, route.path.replace(/^\//, ""));
     await mkdir(outDir, { recursive: true });
     const outPath = path.join(outDir, "index.html");
     await writeFile(outPath, html, "utf-8");
