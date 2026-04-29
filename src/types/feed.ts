@@ -14,6 +14,7 @@ export interface FeedItem {
     title: string;
     imageUrl: string | null;
     podcastIndexId: string | null;
+    appleId: string | null;
   };
   episode: {
     id: string;
@@ -21,6 +22,7 @@ export interface FeedItem {
     publishedAt: string;
     durationSeconds: number | null;
     audioUrl: string;
+    appleEpisodeTrackId: string | null;
   };
   episodeVote: number;
   briefing: {

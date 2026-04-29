@@ -93,13 +93,14 @@ const makeItem = (id: string, overrides: Partial<FeedItem> = {}): FeedItem => ({
   durationTier: 5,
   createdAt: new Date().toISOString(),
   errorMessage: null,
-  podcast: { id: "p1", title: "Test Pod", imageUrl: null, podcastIndexId: null },
+  podcast: { id: "p1", title: "Test Pod", imageUrl: null, podcastIndexId: null, appleId: null },
   episode: {
     id: `e-${id}`,
     title: `Episode ${id}`,
     publishedAt: new Date().toISOString(),
     durationSeconds: 3600,
     audioUrl: "https://example.com/episode.mp3",
+    appleEpisodeTrackId: null,
   },
   episodeVote: 0,
   briefing: {

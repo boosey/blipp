@@ -22,6 +22,7 @@ const listenOriginalSchema = z.object({
   podcastId: z.string().min(1),
   publisherId: z.string().min(1),
   referralSource: z.enum(["feed", "search", "share", "notification"]),
+  linkType: z.enum(["apple_episode", "apple_show", "podcast_index"]).optional(),
   timeToClickSec: z.number().min(0),
   blippCompletionPct: z.number().min(0).max(1),
   utmSource: z.string().optional(),

@@ -42,13 +42,14 @@ const mockItem: FeedItem = {
   durationTier: 3,
   createdAt: "2026-03-16T00:00:00Z",
   errorMessage: null,
-  podcast: { id: "p1", title: "Test Pod", imageUrl: null, podcastIndexId: null },
+  podcast: { id: "p1", title: "Test Pod", imageUrl: null, podcastIndexId: null, appleId: null },
   episode: {
     id: "e1",
     title: "Test Episode",
     publishedAt: "2026-03-16T00:00:00Z",
     durationSeconds: 3600,
     audioUrl: "https://example.com/episode.mp3",
+    appleEpisodeTrackId: null,
   },
   episodeVote: 0,
   briefing: {

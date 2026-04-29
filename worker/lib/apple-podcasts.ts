@@ -103,6 +103,13 @@ export interface AppleChartEntry {
   url: string;
 }
 
+/** A podcast-episode entry from the iTunes Lookup API */
+export interface AppleEpisodeLookupResult {
+  trackId: number;
+  episodeGuid: string | null;
+  trackName: string;
+}
+
 /** A result from the iTunes Lookup or Search API */
 export interface AppleLookupResult {
   wrapperType: string;
