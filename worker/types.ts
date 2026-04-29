@@ -44,6 +44,8 @@ export type Env = {
   ASSETS: Fetcher;
   /** Cloudflare Workers AI binding for CF-hosted models */
   AI: Ai;
+  /** Workers Analytics Engine dataset for per-request metrics (latency, status, path) */
+  ANALYTICS: AnalyticsEngineDataset;
   /** Cloudflare Hyperdrive connection to Neon PostgreSQL */
   HYPERDRIVE: Hyperdrive;
   /** R2 bucket for cached clips and assembled briefings */

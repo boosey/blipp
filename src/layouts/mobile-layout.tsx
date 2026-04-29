@@ -1,6 +1,7 @@
 import { useRef, useCallback, useState } from "react";
 import { Outlet, useLocation, useNavigate, Navigate } from "react-router-dom";
 import { UserButton } from "@clerk/clerk-react";
+import { Capacitor } from "@capacitor/core";
 import { ArrowLeft, Shield, MessageSquare, Newspaper } from "lucide-react";
 import { FeedbackDialog } from "../components/feedback-dialog";
 import { BottomNav } from "../components/bottom-nav";
@@ -11,6 +12,7 @@ import { OnboardingProvider, useOnboarding } from "../contexts/onboarding-contex
 import { OfflineIndicator } from "../components/offline-indicator";
 import { PodcastSheetProvider } from "../contexts/podcast-sheet-context";
 import { PodcastDetailSheet } from "../components/podcast-detail-sheet";
+import { getApiBase } from "../lib/api-base";
 
 const TOP_LEVEL_PATHS = ["/home", "/discover", "/library", "/settings"];
 
@@ -61,17 +63,31 @@ function MobileLayoutInner() {
           >
             <MessageSquare className="w-5 h-5" />
           </button>
-          <a
-            href="/pulse"
+          <button
+            onClick={async () => {
+              if (Capacitor.isNativePlatform()) {
+                const { Browser } = await import("@capacitor/browser");
+                await Browser.open({ url: `${getApiBase()}/pulse` });
+              } else {
+                window.location.href = "/pulse";
+              }
+            }}
             className="p-1.5 text-muted-foreground hover:text-foreground transition-colors inline-flex"
             title="Pulse — editorial blog"
             aria-label="Open Pulse"
           >
             <Newspaper className="w-5 h-5" />
-          </a>
+          </button>
           {isAdmin && (
             <button
-              onClick={() => window.open("/admin", "blipp-admin")}
+              onClick={async () => {
+                if (Capacitor.isNativePlatform()) {
+                  const { Browser } = await import("@capacitor/browser");
+                  await Browser.open({ url: `${getApiBase()}/admin` });
+                } else {
+                  window.open("/admin", "blipp-admin");
+                }
+              }}
               className="p-1.5 text-muted-foreground hover:text-foreground transition-colors"
               title="Admin"
             >

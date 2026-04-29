@@ -38,5 +38,19 @@ export const requestLogger = createMiddleware<{ Bindings: Env }>(
     } else {
       console.log(logLine);
     }
+
+    // Non-blocking write to Analytics Engine for time-series queries.
+    // Path is the index (sampling key); status code as a double for numeric
+    // filtering; method/userId/env as blobs for grouping.
+    c.env.ANALYTICS?.writeDataPoint({
+      indexes: [c.req.path],
+      blobs: [
+        c.req.method,
+        String(status),
+        auth?.userId ?? "anon",
+        c.env.ENVIRONMENT ?? "unknown",
+      ],
+      doubles: [durationMs, status],
+    });
   }
 );

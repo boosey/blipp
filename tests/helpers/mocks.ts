@@ -117,6 +117,7 @@ export function createMockEnv(): Env {
     DEEPGRAM_API_KEY: "mock-deepgram-key",
     GROQ_API_KEY: "mock-groq-key",
     AI: { run: vi.fn().mockResolvedValue({ data: [[0.1, 0.2, 0.3]] }) } as unknown as Ai,
+    ANALYTICS: { writeDataPoint: vi.fn() } as unknown as AnalyticsEngineDataset,
     RATE_LIMIT_KV: {
       get: vi.fn().mockResolvedValue(null),
       put: vi.fn().mockResolvedValue(undefined),
