@@ -75,8 +75,8 @@ feed.get("/", async (c) => {
       take: limit,
       skip: offset,
       include: {
-        podcast: { select: { id: true, title: true, imageUrl: true, podcastIndexId: true } },
-        episode: { select: { id: true, title: true, publishedAt: true, durationSeconds: true, audioUrl: true } },
+        podcast: { select: { id: true, title: true, imageUrl: true, podcastIndexId: true, appleId: true } },
+        episode: { select: { id: true, title: true, publishedAt: true, durationSeconds: true, audioUrl: true, appleEpisodeTrackId: true } },
         briefing: {
           include: {
             clip: { select: { id: true, audioKey: true, actualSeconds: true, narrativeText: true, voiceDegraded: true } },
@@ -167,8 +167,8 @@ feed.get("/shared/:briefingId", async (c) => {
   let feedItem = await prisma.feedItem.findFirst({
     where: { userId: user.id, briefingId },
     include: {
-      podcast: { select: { id: true, title: true, imageUrl: true, podcastIndexId: true } },
-      episode: { select: { id: true, title: true, publishedAt: true, durationSeconds: true, audioUrl: true } },
+      podcast: { select: { id: true, title: true, imageUrl: true, podcastIndexId: true, appleId: true } },
+      episode: { select: { id: true, title: true, publishedAt: true, durationSeconds: true, audioUrl: true, appleEpisodeTrackId: true } },
       briefing: {
         include: {
           clip: { select: { id: true, audioKey: true, actualSeconds: true, narrativeText: true, voiceDegraded: true } },
@@ -221,8 +221,8 @@ feed.get("/shared/:briefingId", async (c) => {
     feedItem = await prisma.feedItem.findFirst({
       where: { userId: user.id, requestId: request.id },
       include: {
-        podcast: { select: { id: true, title: true, imageUrl: true, podcastIndexId: true } },
-        episode: { select: { id: true, title: true, publishedAt: true, durationSeconds: true, audioUrl: true } },
+        podcast: { select: { id: true, title: true, imageUrl: true, podcastIndexId: true, appleId: true } },
+        episode: { select: { id: true, title: true, publishedAt: true, durationSeconds: true, audioUrl: true, appleEpisodeTrackId: true } },
         briefing: {
           include: {
             clip: { select: { id: true, audioKey: true, actualSeconds: true, narrativeText: true, voiceDegraded: true } },
@@ -265,8 +265,8 @@ feed.get("/:id", async (c) => {
   const item = await prisma.feedItem.findFirst({
     where: { id: feedItemId, userId: user.id },
     include: {
-      podcast: { select: { id: true, title: true, imageUrl: true, podcastIndexId: true } },
-      episode: { select: { id: true, title: true, publishedAt: true, durationSeconds: true, audioUrl: true } },
+      podcast: { select: { id: true, title: true, imageUrl: true, podcastIndexId: true, appleId: true } },
+      episode: { select: { id: true, title: true, publishedAt: true, durationSeconds: true, audioUrl: true, appleEpisodeTrackId: true } },
       briefing: {
         include: {
           clip: { select: { id: true, audioKey: true, actualSeconds: true, narrativeText: true, voiceDegraded: true } },
