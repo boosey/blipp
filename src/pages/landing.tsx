@@ -273,13 +273,6 @@ export function Landing() {
             </a>
           </div>
         </div>
-
-        {/* Scroll indicator */}
-        <div className="absolute bottom-8 animate-fade-up delay-700">
-          <div className="w-5 h-8 border-2 border-zinc-700 rounded-full flex justify-center pt-1.5">
-            <div className="w-1 h-2 bg-zinc-500 rounded-full animate-bounce" />
-          </div>
-        </div>
       </section>
 
       {/* ─── RECENTLY BLIPPED RAIL ─── */}

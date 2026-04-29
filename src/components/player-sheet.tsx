@@ -180,20 +180,6 @@ export function PlayerSheet({
 
         {/* Artwork + Actions row */}
         <div className="flex items-center w-full max-w-sm mt-1 gap-3">
-          {/* Left action — listen to original */}
-          <div className="w-10 flex justify-center">
-            {currentItem?.podcast.podcastIndexId ? (
-              <a
-                href={`https://podcastindex.org/podcast/${currentItem.podcast.podcastIndexId}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="p-2 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                aria-label="Listen to original episode"
-              >
-                <ExternalLink className="w-4 h-4" />
-              </a>
-            ) : null}
-          </div>
           {/* Artwork */}
           <div className="flex-1 flex justify-center">
             <button
@@ -211,8 +197,19 @@ export function PlayerSheet({
               )}
             </button>
           </div>
-          {/* Right actions — thumbs + share */}
+          {/* Right actions — listen to original, thumbs, share */}
           <div className="flex items-center gap-1">
+            {currentItem?.podcast.podcastIndexId ? (
+              <a
+                href={`https://podcastindex.org/podcast/${currentItem.podcast.podcastIndexId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-2 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                aria-label="Listen to original episode"
+              >
+                <ExternalLink className="w-4 h-4" />
+              </a>
+            ) : null}
             <ThumbButtons vote={episodeVote} onVote={handleEpisodeVote} onThumbsDown={() => setFeedbackOpen(true)} size="md" />
             {publicSharing && (
               <button
