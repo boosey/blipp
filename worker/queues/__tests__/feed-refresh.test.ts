@@ -27,6 +27,10 @@ vi.mock("../../lib/content-prefetch", () => ({
   }),
 }));
 
+vi.mock("../../lib/apple-episode-enrichment", () => ({
+  enrichNewEpisodesWithAppleTrackIds: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock("../../lib/rss-parser", () => ({
   parseRssFeed: vi.fn().mockReturnValue({
     title: "Test Podcast",
@@ -53,6 +57,7 @@ vi.stubGlobal("fetch", mockFetch);
 
 import { createPrismaClient } from "../../lib/db";
 import { getConfig } from "../../lib/config";
+import { enrichNewEpisodesWithAppleTrackIds } from "../../lib/apple-episode-enrichment";
 
 let mockPrisma: ReturnType<typeof createMockPrisma>;
 let mockEnv: ReturnType<typeof createMockEnv>;
@@ -656,6 +661,59 @@ describe("handleFeedRefresh", () => {
         where: { id: { in: ["pod-1", "pod-2"] } },
       });
       expect(mockMsg.ack).toHaveBeenCalled();
+    });
+  });
+
+  describe("Apple episode enrichment", () => {
+    it("calls Apple enrichment when podcast has appleId and there are new episodes", async () => {
+      const podcast = {
+        id: "pod-1",
+        feedUrl: "https://example.com/feed.xml",
+        title: "Test",
+        slug: "test",
+        appleId: "999",
+      };
+      mockPrisma.podcast.findMany.mockResolvedValue([podcast]);
+      // No existing GUIDs — episode is new
+      mockPrisma.episode.findMany.mockResolvedValue([]);
+      mockPrisma.episode.upsert.mockResolvedValue({ id: "ep-new", podcastId: "pod-1", guid: "guid-1" });
+      mockPrisma.podcast.update.mockResolvedValue(podcast);
+      // catalog-pregen disabled to skip that path
+      mockPrisma.cronJob.findUnique.mockResolvedValue({ enabled: false });
+
+      const mockMsg = { body: { type: "manual", podcastId: "pod-1" }, ack: vi.fn(), retry: vi.fn() };
+      const mockBatch = { messages: [mockMsg], queue: "feed-refresh" } as unknown as MessageBatch<any>;
+
+      await handleFeedRefresh(mockBatch, mockEnv, mockCtx);
+
+      expect(enrichNewEpisodesWithAppleTrackIds).toHaveBeenCalledWith(
+        expect.objectContaining({
+          podcast: expect.objectContaining({ id: "pod-1", appleId: "999" }),
+          newEpisodeIds: ["ep-new"],
+        })
+      );
+    });
+
+    it("does not call Apple enrichment when podcast has no appleId", async () => {
+      const podcast = {
+        id: "pod-1",
+        feedUrl: "https://example.com/feed.xml",
+        title: "Test",
+        slug: "test",
+        appleId: null,
+      };
+      mockPrisma.podcast.findMany.mockResolvedValue([podcast]);
+      mockPrisma.episode.findMany.mockResolvedValue([]);
+      mockPrisma.episode.upsert.mockResolvedValue({ id: "ep-new", podcastId: "pod-1", guid: "guid-1" });
+      mockPrisma.podcast.update.mockResolvedValue(podcast);
+      mockPrisma.cronJob.findUnique.mockResolvedValue({ enabled: false });
+
+      const mockMsg = { body: { type: "manual", podcastId: "pod-1" }, ack: vi.fn(), retry: vi.fn() };
+      const mockBatch = { messages: [mockMsg], queue: "feed-refresh" } as unknown as MessageBatch<any>;
+
+      await handleFeedRefresh(mockBatch, mockEnv, mockCtx);
+
+      expect(enrichNewEpisodesWithAppleTrackIds).not.toHaveBeenCalled();
     });
   });
 

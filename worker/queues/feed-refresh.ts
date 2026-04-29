@@ -9,6 +9,8 @@ import { slugify, uniqueSlug } from "../lib/slugify";
 import { PodcastIndexClient } from "../lib/podcast-index";
 import { decodeHtmlEntities } from "../lib/html-entities";
 import { resolveApiKey } from "../lib/service-key-resolver";
+import { ApplePodcastsClient } from "../lib/apple-podcasts";
+import { enrichNewEpisodesWithAppleTrackIds } from "../lib/apple-episode-enrichment";
 import type { Env } from "../types";
 
 /**
@@ -274,6 +276,21 @@ async function processPodcast(
         },
       }))
     );
+  }
+
+  // Best-effort: enrich new episodes with Apple Podcasts trackId so the
+  // player's "listen to original" button can deep-link straight to the episode.
+  // Failure is logged and swallowed — feed refresh must not depend on iTunes API.
+  if (newEpisodeIds.length > 0 && podcast.appleId) {
+    await enrichNewEpisodesWithAppleTrackIds({
+      prisma,
+      podcast: { id: podcast.id, appleId: podcast.appleId },
+      newEpisodeIds,
+      apple: new ApplePodcastsClient(),
+      log,
+    }).catch((err) => {
+      log.error("apple_enrichment_failed", { podcastId: podcast.id }, err);
+    });
   }
 
   log.info("podcast_refreshed", {
