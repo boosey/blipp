@@ -27,6 +27,11 @@ import { PodcastDetail } from "./pages/podcast-detail";
 import { LibraryPage } from "./pages/library";
 import { Settings } from "./pages/Settings";
 import { BriefingPlayer } from "./pages/briefing-player";
+// TOS + Privacy are imported eagerly so the build-time prerender script can
+// render them server-side. Keeping them lazy() would resolve to a Suspense
+// fallback during SSR and produce empty HTML.
+import TermsOfService from "./pages/tos";
+import PrivacyPolicy from "./pages/privacy";
 
 // Lazy-load admin pages for code splitting
 const CommandCenter = lazy(() => import("./pages/admin/command-center"));
@@ -64,8 +69,6 @@ const EpisodeRefresh = lazy(() => import("./pages/admin/episode-refresh"));
 const AdminFeedback = lazy(() => import("./pages/admin/feedback"));
 const AdminBlippFeedback = lazy(() => import("./pages/admin/blipp-feedback"));
 const AdminSupport = lazy(() => import("./pages/admin/support"));
-const TermsOfService = lazy(() => import("./pages/tos"));
-const PrivacyPolicy = lazy(() => import("./pages/privacy"));
 const Onboarding = lazy(() => import("./pages/onboarding"));
 const History = lazy(() => import("./pages/history"));
 
