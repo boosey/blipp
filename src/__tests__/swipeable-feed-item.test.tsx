@@ -48,6 +48,7 @@ const mockItem: FeedItem = {
     title: "Test Episode",
     publishedAt: "2026-03-16T00:00:00Z",
     durationSeconds: 3600,
+    audioUrl: "https://example.com/episode.mp3",
   },
   episodeVote: 0,
   briefing: {

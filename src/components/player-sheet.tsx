@@ -88,6 +88,41 @@ export function PlayerSheet({
     setRate(next);
   }, [playbackRate, setRate]);
 
+  const handleListenOriginal = useCallback(() => {
+    if (!currentItem) return;
+    const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
+    const isTablet = /iPad|Android(?!.*Mobile)/.test(ua);
+    const isMobile = /iPhone|iPod|Android.*Mobile/.test(ua);
+    const deviceType: "mobile" | "tablet" | "desktop" =
+      isTablet ? "tablet" : isMobile ? "mobile" : "desktop";
+    const referralSource: "feed" | "search" | "share" | "notification" =
+      currentItem.source === "SHARED" ? "share" : "feed";
+    const briefingId = currentItem.briefing?.id ?? currentItem.id;
+    const briefingDurationSec =
+      currentItem.briefing?.clip?.actualSeconds ?? (duration > 0 ? duration : 0);
+    const completionPct = duration > 0
+      ? Math.min(1, Math.max(0, currentTime / duration))
+      : 0;
+
+    apiFetch("/events/listen-original", {
+      method: "POST",
+      body: JSON.stringify({
+        eventType: "listen_original_click",
+        sessionId: crypto.randomUUID(),
+        deviceType,
+        platform: "web",
+        blippId: briefingId,
+        blippDurationMs: Math.round(briefingDurationSec * 1000),
+        episodeId: currentItem.episode.id,
+        podcastId: currentItem.podcast.id,
+        publisherId: currentItem.podcast.id,
+        referralSource,
+        timeToClickSec: Math.max(0, currentTime),
+        blippCompletionPct: completionPct,
+      }),
+    }).catch(() => {});
+  }, [currentItem, currentTime, duration, apiFetch]);
+
   const handleShare = useCallback(async () => {
     const text = `Check out this briefing from ${currentItem?.podcast.title} on Blipp`;
     const url = `${window.location.origin}/play/${currentItem?.briefing?.id ?? currentItem?.id}`;
@@ -199,17 +234,16 @@ export function PlayerSheet({
           </div>
           {/* Right actions — listen to original, thumbs, share */}
           <div className="flex items-center gap-1">
-            {currentItem?.podcast.podcastIndexId ? (
-              <a
-                href={`https://podcastindex.org/podcast/${currentItem.podcast.podcastIndexId}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="p-2 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                aria-label="Listen to original episode"
-              >
-                <ExternalLink className="w-4 h-4" />
-              </a>
-            ) : null}
+            <a
+              href={currentItem.episode.audioUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={handleListenOriginal}
+              className="p-2 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              aria-label="Listen to original episode"
+            >
+              <ExternalLink className="w-4 h-4" />
+            </a>
             <ThumbButtons vote={episodeVote} onVote={handleEpisodeVote} onThumbsDown={() => setFeedbackOpen(true)} size="md" />
             {publicSharing && (
               <button

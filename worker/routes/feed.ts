@@ -76,7 +76,7 @@ feed.get("/", async (c) => {
       skip: offset,
       include: {
         podcast: { select: { id: true, title: true, imageUrl: true, podcastIndexId: true } },
-        episode: { select: { id: true, title: true, publishedAt: true, durationSeconds: true } },
+        episode: { select: { id: true, title: true, publishedAt: true, durationSeconds: true, audioUrl: true } },
         briefing: {
           include: {
             clip: { select: { id: true, audioKey: true, actualSeconds: true, narrativeText: true, voiceDegraded: true } },
@@ -168,7 +168,7 @@ feed.get("/shared/:briefingId", async (c) => {
     where: { userId: user.id, briefingId },
     include: {
       podcast: { select: { id: true, title: true, imageUrl: true, podcastIndexId: true } },
-      episode: { select: { id: true, title: true, publishedAt: true, durationSeconds: true } },
+      episode: { select: { id: true, title: true, publishedAt: true, durationSeconds: true, audioUrl: true } },
       briefing: {
         include: {
           clip: { select: { id: true, audioKey: true, actualSeconds: true, narrativeText: true, voiceDegraded: true } },
@@ -222,7 +222,7 @@ feed.get("/shared/:briefingId", async (c) => {
       where: { userId: user.id, requestId: request.id },
       include: {
         podcast: { select: { id: true, title: true, imageUrl: true, podcastIndexId: true } },
-        episode: { select: { id: true, title: true, publishedAt: true, durationSeconds: true } },
+        episode: { select: { id: true, title: true, publishedAt: true, durationSeconds: true, audioUrl: true } },
         briefing: {
           include: {
             clip: { select: { id: true, audioKey: true, actualSeconds: true, narrativeText: true, voiceDegraded: true } },
@@ -266,7 +266,7 @@ feed.get("/:id", async (c) => {
     where: { id: feedItemId, userId: user.id },
     include: {
       podcast: { select: { id: true, title: true, imageUrl: true, podcastIndexId: true } },
-      episode: { select: { id: true, title: true, publishedAt: true, durationSeconds: true } },
+      episode: { select: { id: true, title: true, publishedAt: true, durationSeconds: true, audioUrl: true } },
       briefing: {
         include: {
           clip: { select: { id: true, audioKey: true, actualSeconds: true, narrativeText: true, voiceDegraded: true } },
