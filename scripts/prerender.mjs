@@ -126,12 +126,16 @@ async function main() {
     html = applySeoMeta(html, route);
     html = injectAdsScript(html, route);
 
-    const outDir =
+    // Output flat <route>.html (not <route>/index.html). With Cloudflare's
+    // default html_handling = auto-trailing-slash, a flat .html file is
+    // served directly for the no-trailing-slash URL, whereas a directory
+    // index produces a 307 redirect that hurts crawl latency. Apex stays
+    // as index.html (the SPA fallback / file).
+    const outPath =
       route.path === "/"
-        ? ASSETS
-        : path.join(ASSETS, route.path.replace(/^\//, ""));
-    await mkdir(outDir, { recursive: true });
-    const outPath = path.join(outDir, "index.html");
+        ? path.join(ASSETS, "index.html")
+        : path.join(ASSETS, route.path.replace(/^\//, "") + ".html");
+    await mkdir(path.dirname(outPath), { recursive: true });
     await writeFile(outPath, html, "utf-8");
     console.log(`  ${route.path.padEnd(15)} → ${path.relative(ROOT, outPath)}`);
   }
