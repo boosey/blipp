@@ -11,9 +11,13 @@
 		"binding": "ASSETS",
 		"run_worker_first": [
 			"/api/*",
+			"/__clerk/*",
 			"/p/*",
+			"/pulse",
+			"/pulse/*",
 			"/sitemap.xml",
-			"/robots.txt"
+			"/robots.txt",
+			"/ads.txt"
 		]
 	},
 	"vars": {
