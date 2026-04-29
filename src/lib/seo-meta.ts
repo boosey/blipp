@@ -30,7 +30,10 @@ export const MARKETING_ROUTES: RouteSeo[] = [
     description:
       "Blipp turns full podcast episodes into short, voice-narrated summaries. Choose 2–30 minutes and get the key insights from any episode. Hear the signal without the noise.",
     canonical: `${SITE}/`,
-    adsScript: true,
+    // Apex is promotional landing copy — features, CTAs, app-store badge —
+    // not editorial content. Ads belong on /pulse/* where the substantive
+    // first-party content lives. AdSense follows the in-page "Read the
+    // Pulse" link to find ad-bearing pages from here.
   },
   {
     path: "/about",
