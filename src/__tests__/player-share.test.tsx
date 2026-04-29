@@ -126,4 +126,15 @@ describe("PlayerSheet share functionality", () => {
     // actualSeconds=185 → 3:05 via formatDuration
     expect(screen.getByText("3:05 briefing")).toBeInTheDocument();
   });
+
+  it("renders a disabled external-link button when no appleId and no podcastIndexId", () => {
+    render(
+      <MemoryRouter>
+        <PlayerSheet open={true} onOpenChange={vi.fn()} />
+      </MemoryRouter>
+    );
+
+    const btn = screen.getByLabelText("No external link available for this episode");
+    expect(btn).toBeDisabled();
+  });
 });
