@@ -250,6 +250,7 @@ model Episode {
   durationSeconds Int?
   guid            String
   transcriptUrl   String?
+  appleEpisodeTrackId String?       // Apple Podcasts trackId from iTunes Lookup; populated when episodeGuid matches
   contentStatus   ContentStatus @default(PENDING)
   transcriptR2Key String?
   audioR2Key      String?
@@ -1245,6 +1246,7 @@ model ListenOriginalEvent {
   podcastId          String
   publisherId        String
   referralSource     ReferralSource
+  linkType           String?                  // "apple_episode" | "apple_show" | "podcast_index"
   timeToClickSec     Float
   blippCompletionPct Float
   didReturnToBlipp   Boolean                 @default(false)
