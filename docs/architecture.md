@@ -329,7 +329,7 @@ Vite 7 + `@cloudflare/vite-plugin` in SPA mode. `vite-plugin-pwa` injects a serv
 |---------|-------|-----------|-------|
 | Public | `/` | `pages/landing.tsx` | Signed-in users redirect to `/home` |
 | Public | `/pricing`, `/about`, `/how-it-works`, `/contact`, `/support`, `/tos`, `/privacy` | `pages/*.tsx` | Marketing + legal |
-| Public | `/blog/:slug` | `pages/blog/*.tsx` | Hand-curated SEO posts |
+| Public | `/pulse`, `/pulse/:slug`, `/pulse/by/:editor`, `/pulse/topic/:slug` | `worker/routes/pulse.ts` | Editorial blog (SSR, DB-backed). `/blog/*` legacy paths 301 here. |
 | User | `/home` | `pages/Home.tsx` | Feed view |
 | User | `/discover` · `/discover/:podcastId` | `pages/discover.tsx`, `pages/podcast-detail.tsx` | Browse + detail |
 | User | `/library` | `pages/library.tsx` | Subscriptions + listening history |

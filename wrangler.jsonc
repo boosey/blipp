@@ -15,6 +15,7 @@
 			"/p/*",
 			"/pulse",
 			"/pulse/*",
+			"/blog/*",
 			"/sitemap.xml",
 			"/robots.txt",
 			"/ads.txt"

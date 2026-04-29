@@ -16,8 +16,6 @@ import { About } from "./pages/about";
 import { HowItWorks } from "./pages/how-it-works";
 import { Contact } from "./pages/contact";
 import { Support } from "./pages/support";
-import { BlogWhyYouDontNeedToListen } from "./pages/blog/why-you-dont-need-to-listen";
-import { BlogBestWayToKeepUp } from "./pages/blog/best-way-to-keep-up";
 import { BrowseIndex } from "./pages/browse/browse-index";
 import { BrowseCategory } from "./pages/browse/browse-category";
 import { BrowseShow } from "./pages/browse/browse-show";
@@ -97,9 +95,6 @@ export default function App() {
       <Route path="/contact" element={<Contact />} />
       <Route path="/support" element={<Support />} />
       <Route path="/how-it-works" element={<HowItWorks />} />
-      <Route path="/blog/why-you-dont-need-to-listen-to-every-podcast" element={<BlogWhyYouDontNeedToListen />} />
-      <Route path="/blog/best-way-to-keep-up-with-podcasts" element={<BlogBestWayToKeepUp />} />
-
       {/* Public browse surface — unauthenticated catalog. noindex (per-page meta). */}
       <Route path="/browse" element={<BrowseIndex />} />
       <Route path="/browse/category/:slug" element={<BrowseCategory />} />

@@ -200,6 +200,12 @@ app.route("/p", publicPages);
 // Pulse blog — editorial content, server-rendered (no auth)
 app.route("/pulse", pulse);
 
+// Legacy /blog/* SEO posts — superseded by Pulse. 301 to consolidate
+// link equity onto the editorial surface. Match exact slugs so unrelated
+// /blog/* paths still 404 properly.
+app.get("/blog/why-you-dont-need-to-listen-to-every-podcast", (c) => c.redirect("/pulse", 301));
+app.get("/blog/best-way-to-keep-up-with-podcasts", (c) => c.redirect("/pulse", 301));
+
 // Dynamic sitemap — includes all public Blipp pages
 app.route("/", sitemap);
 
