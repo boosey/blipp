@@ -43,6 +43,19 @@ function escapeHtmlAttr(s) {
     .replaceAll(">", "&gt;");
 }
 
+const ADSENSE_PUBLISHER_ID = "pub-3171642877259040";
+const ADS_SCRIPT_TAG = `<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-${ADSENSE_PUBLISHER_ID}" crossorigin="anonymous"></script>`;
+
+function injectAdsScript(html, route) {
+  if (!route.adsScript) return html;
+  // Insert the script tag immediately after the verification meta tag,
+  // mirroring the placement that used to be in index.html.
+  return html.replace(
+    /(<meta\s+name="google-adsense-account"[^>]*>)/,
+    `$1\n    ${ADS_SCRIPT_TAG}`
+  );
+}
+
 function applySeoMeta(template, route) {
   let html = template;
   html = html.replace(
@@ -111,6 +124,7 @@ async function main() {
     const appHtml = render(route.path);
     let html = injectAppHtml(template, appHtml);
     html = applySeoMeta(html, route);
+    html = injectAdsScript(html, route);
 
     const outDir =
       route.path === "/"

@@ -22,13 +22,16 @@
     <link rel="apple-touch-icon" href="/blipp-icon-transparent-192.png" />
 
     <!--
-      AdSense site verification + Auto Ads loader. Static so Google's
-      crawler sees the publisher ID on every SPA-rendered page (homepage,
-      pricing, blog, etc.) without needing per-page injection. SSR pages
-      (/p/*, /pulse/*) still inject their own copy via adsScriptTag().
+      AdSense site-ownership verification meta. Present on every SPA-
+      rendered page (and every prerendered marketing page) so AdSense
+      can verify ownership regardless of which URL they crawl first.
+      The Auto Ads <script> is intentionally NOT here — it is injected
+      only on pages that should host ads (apex / and /pulse/*) so thin
+      marketing pages (/contact, /pricing during async load, /tos,
+      /privacy) don't trigger reviewers' "insufficient content for ads"
+      heuristic. See scripts/prerender.mjs for per-route injection.
     -->
     <meta name="google-adsense-account" content="ca-pub-3171642877259040" />
-    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3171642877259040" crossorigin="anonymous"></script>
     <link rel="preload" as="image" href="/splash.png" fetchpriority="high" />
     <style>
       html, body { margin: 0; background: #09090b; min-height: 100vh; }

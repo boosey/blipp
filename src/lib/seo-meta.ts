@@ -12,6 +12,13 @@ export interface RouteSeo {
   description: string;
   /** Absolute canonical URL for the page. */
   canonical: string;
+  /**
+   * If true, the prerender script injects the AdSense Auto Ads <script>
+   * into <head>. Reserved for content-rich pages where ads should run.
+   * Thin pages (legal, contact, pricing-during-async-load) are kept off
+   * the AdSense crawler's "ads-enabled" surface during review.
+   */
+  adsScript?: boolean;
 }
 
 const SITE = "https://podblipp.com";
@@ -23,6 +30,7 @@ export const MARKETING_ROUTES: RouteSeo[] = [
     description:
       "Blipp turns full podcast episodes into short, voice-narrated summaries. Choose 2–30 minutes and get the key insights from any episode. Hear the signal without the noise.",
     canonical: `${SITE}/`,
+    adsScript: true,
   },
   {
     path: "/about",
