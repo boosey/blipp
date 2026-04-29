@@ -1,11 +1,27 @@
-import { Routes, Route, Navigate, Link } from "react-router-dom";
-import { SignedIn, SignedOut, SignIn, AuthenticateWithRedirectCallback } from "@clerk/clerk-react";
+import { Routes, Route, Navigate, Link, useNavigate } from "react-router-dom";
+import { SignedIn, SignedOut, SignIn, AuthenticateWithRedirectCallback, useUser } from "@clerk/clerk-react";
 import { Capacitor } from "@capacitor/core";
 
 function SSOCallback() {
   return <AuthenticateWithRedirectCallback signInFallbackRedirectUrl="/home" signUpFallbackRedirectUrl="/home" />;
 }
-import { lazy, Suspense } from "react";
+
+/**
+ * Apex route. Always renders Landing so the build-time prerender
+ * captures real content (Clerk's <SignedOut>/<SignedIn> components
+ * render null during SSR, which would emit an empty body for /).
+ * Signed-in users are bounced to /home via useEffect post-hydration.
+ */
+function ApexRoute() {
+  const { isLoaded, isSignedIn } = useUser();
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (isLoaded && isSignedIn) navigate("/home", { replace: true });
+  }, [isLoaded, isSignedIn, navigate]);
+  return <Landing />;
+}
+
+import { lazy, Suspense, useEffect } from "react";
 import { MobileLayout } from "./layouts/mobile-layout";
 const AdminLayout = lazy(() => import("./layouts/admin-layout").then(m => ({ default: m.AdminLayout })));
 const AdminGuard = lazy(() => import("./components/admin-guard").then(m => ({ default: m.AdminGuard })));
@@ -86,12 +102,7 @@ export default function App() {
     <>
     <SignedOut><CookieConsent /></SignedOut>
     <Routes>
-      <Route path="/" element={
-        <>
-          <SignedIn><Navigate to="/home" replace /></SignedIn>
-          <SignedOut><Landing /></SignedOut>
-        </>
-      } />
+      <Route path="/" element={<ApexRoute />} />
       <Route path="/sso-callback" element={<SSOCallback />} />
       <Route path="/pricing" element={<Pricing />} />
       <Route path="/about" element={<About />} />
