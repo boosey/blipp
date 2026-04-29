@@ -406,6 +406,40 @@ export class ApplePodcastsClient {
   }
 
   /**
+   * Looks up episodes for a podcast by Apple collection ID.
+   *
+   * @param collectionId - Apple podcast collection ID (Podcast.appleId)
+   * @param limit - Max episodes to return (default 300, Apple typically caps around 300)
+   * @returns Array of episode entries, or empty array on failure
+   */
+  async lookupEpisodes(
+    collectionId: string,
+    limit: number = 300
+  ): Promise<AppleEpisodeLookupResult[]> {
+    const url = `${ITUNES_BASE}/lookup?id=${collectionId}&entity=podcastEpisode&limit=${limit}`;
+    try {
+      const res = await fetchWithRetry(url);
+      const data = (await res.json()) as { resultCount: number; results: any[] };
+      return (data.results ?? [])
+        .filter((r) => r.wrapperType === "podcastEpisode")
+        .map((r) => ({
+          trackId: r.trackId,
+          episodeGuid: r.episodeGuid ?? null,
+          trackName: r.trackName ?? "",
+        }));
+    } catch (err) {
+      console.warn(JSON.stringify({
+        level: "warn",
+        action: "apple_lookup_episodes_failed",
+        collectionId,
+        error: err instanceof Error ? err.message : String(err),
+        ts: new Date().toISOString(),
+      }));
+      return [];
+    }
+  }
+
+  /**
    * Searches iTunes for podcasts by term.
    *
    * @param term - Search query

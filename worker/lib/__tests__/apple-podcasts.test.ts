@@ -342,4 +342,76 @@ describe("Apple Podcasts Client", () => {
       expect(result).toEqual([]);
     });
   });
+
+  describe("lookupEpisodes", () => {
+    it("returns trackId, episodeGuid, and trackName for each podcastEpisode entry", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({
+          resultCount: 3,
+          results: [
+            { wrapperType: "track", kind: "podcast", collectionId: 999 }, // The show entry — filtered out
+            { wrapperType: "podcastEpisode", kind: "podcast-episode", trackId: 100, trackName: "Ep 1", episodeGuid: "guid-1" },
+            { wrapperType: "podcastEpisode", kind: "podcast-episode", trackId: 101, trackName: "Ep 2", episodeGuid: null },
+          ],
+        }),
+      });
+
+      const promise = client.lookupEpisodes("999");
+      await vi.runAllTimersAsync();
+      const result = await promise;
+
+      expect(result).toHaveLength(2);
+      expect(result[0]).toEqual({ trackId: 100, episodeGuid: "guid-1", trackName: "Ep 1" });
+      expect(result[1]).toEqual({ trackId: 101, episodeGuid: null, trackName: "Ep 2" });
+
+      const url = mockFetch.mock.calls[0][0];
+      expect(url).toContain("/lookup?id=999&entity=podcastEpisode");
+      expect(url).toContain("limit=300");
+    });
+
+    it("respects custom limit", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ resultCount: 0, results: [] }),
+      });
+
+      const promise = client.lookupEpisodes("999", 50);
+      await vi.runAllTimersAsync();
+      await promise;
+
+      expect(mockFetch.mock.calls[0][0]).toContain("limit=50");
+    });
+
+    it("returns empty array on non-retryable failure", async () => {
+      mockFetch.mockResolvedValue({ ok: false, status: 404, statusText: "Not Found" });
+
+      const promise = client.lookupEpisodes("999");
+      await vi.runAllTimersAsync();
+      const result = await promise;
+
+      expect(result).toEqual([]);
+    });
+
+    it("returns empty array when episodeGuid field is absent", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({
+          resultCount: 1,
+          results: [
+            { wrapperType: "podcastEpisode", kind: "podcast-episode", trackId: 100, trackName: "Ep 1" },
+          ],
+        }),
+      });
+
+      const promise = client.lookupEpisodes("999");
+      await vi.runAllTimersAsync();
+      const result = await promise;
+
+      expect(result).toEqual([{ trackId: 100, episodeGuid: null, trackName: "Ep 1" }]);
+    });
+  });
 });
