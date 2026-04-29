@@ -123,9 +123,9 @@ code{background:#18181b;color:#e4e4e7;padding:.1rem .35rem;border-radius:.25rem;
 </style>
 </head>
 <body>
-<header><div class="inner"><a href="/pulse" class="logo">Blipp<span class="pulse-tag">Pulse</span></a></div></header>
+<header><div class="inner"><a href="/" class="logo">Blipp<span class="pulse-tag">Pulse</span></a></div></header>
 ${opts.body}
-<footer><div class="container">&copy; ${new Date().getFullYear()} Blipp Pulse · <a href="/pulse">All posts</a></div></footer>
+<footer><div class="container">&copy; ${new Date().getFullYear()} Blipp Pulse · <a href="/">Home</a> · <a href="/pulse">All posts</a></div></footer>
 </body>
 </html>`;
 }
@@ -242,8 +242,9 @@ export function renderPulsePost(data: PulsePostPageData): string {
   const breadcrumb = {
     "@type": "BreadcrumbList",
     itemListElement: [
-      { "@type": "ListItem", position: 1, name: "Pulse", item: `${SITE_URL}/pulse` },
-      { "@type": "ListItem", position: 2, name: data.title, item: `${SITE_URL}${canonicalPath}` },
+      { "@type": "ListItem", position: 1, name: "Home", item: SITE_URL },
+      { "@type": "ListItem", position: 2, name: "Pulse", item: `${SITE_URL}/pulse` },
+      { "@type": "ListItem", position: 3, name: data.title, item: `${SITE_URL}${canonicalPath}` },
     ],
   };
 
@@ -266,7 +267,7 @@ ${renderMarkdown(data.sourcesMarkdown)}
         .join("")}</div>`
     : "";
 
-  const breadcrumbNav = `<nav class="breadcrumb"><a href="/pulse">Pulse</a> / ${escapeHtml(data.title)}</nav>`;
+  const breadcrumbNav = `<nav class="breadcrumb"><a href="/">Home</a> / <a href="/pulse">Pulse</a> / ${escapeHtml(data.title)}</nav>`;
 
   return pulseLayout({
     title,
@@ -362,7 +363,7 @@ ${data.page < data.totalPages ? `<a href="/pulse?page=${data.page + 1}" style="m
     jsonLd,
     adsScript: data.adsScript,
     body: `<main class="container container--wide">
-<nav class="breadcrumb">Pulse</nav>
+<nav class="breadcrumb"><a href="/">Home</a> / Pulse</nav>
 <h1>Pulse</h1>
 <p class="subtitle">Editorial commentary and cross-episode analysis from the Blipp catalog.</p>
 ${cards}
@@ -411,7 +412,7 @@ export function renderPulseEditor(data: PulseEditorPageData): string {
     jsonLd,
     adsScript: data.adsScript,
     body: `<main class="container container--wide">
-<nav class="breadcrumb"><a href="/pulse">Pulse</a> / ${escapeHtml(e.name)}</nav>
+<nav class="breadcrumb"><a href="/">Home</a> / <a href="/pulse">Pulse</a> / ${escapeHtml(e.name)}</nav>
 <div class="editor-card">
 ${e.avatarUrl ? `<img src="${escapeHtml(e.avatarUrl)}" alt="${escapeHtml(e.name)}" />` : ""}
 <div>
@@ -459,7 +460,7 @@ export function renderPulseTopic(data: PulseTopicPageData): string {
     ogType: "website",
     adsScript: data.adsScript,
     body: `<main class="container container--wide">
-<nav class="breadcrumb"><a href="/pulse">Pulse</a> / ${escapeHtml(data.topicLabel)}</nav>
+<nav class="breadcrumb"><a href="/">Home</a> / <a href="/pulse">Pulse</a> / ${escapeHtml(data.topicLabel)}</nav>
 <h1>${escapeHtml(data.topicLabel)}</h1>
 <p class="subtitle">${data.posts.length} post${data.posts.length === 1 ? "" : "s"}.</p>
 ${

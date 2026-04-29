@@ -4,7 +4,10 @@ export default function PrivacyPolicy() {
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-50 py-20 px-6">
       <div className="max-w-3xl mx-auto">
-        <h1 className="text-4xl font-bold mb-2">Privacy Policy</h1>
+        <Link to="/" className="text-sm text-zinc-500 hover:text-zinc-300">
+          &larr; Back to home
+        </Link>
+        <h1 className="text-4xl font-bold mb-2 mt-8">Privacy Policy</h1>
         <p className="text-zinc-400 mb-10">Last updated: April 21, 2026</p>
 
         <div className="space-y-8 text-zinc-300 leading-relaxed">
