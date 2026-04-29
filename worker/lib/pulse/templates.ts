@@ -70,6 +70,8 @@ ${opts.noindex ? '<meta name="robots" content="noindex, follow">' : ""}
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 ${opts.jsonLd ? `<script type="application/ld+json">${JSON.stringify(opts.jsonLd)}</script>` : ""}
+<meta name="google-adsense-account" content="ca-pub-3171642877259040">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3171642877259040" crossorigin="anonymous"></script>
 ${opts.adsScript ?? ""}
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -121,9 +123,9 @@ code{background:#18181b;color:#e4e4e7;padding:.1rem .35rem;border-radius:.25rem;
 </style>
 </head>
 <body>
-<header><div class="inner"><a href="/" class="logo">Blipp<span class="pulse-tag">Pulse</span></a><a href="/sign-up" class="cta-btn">Try Blipp Free</a></div></header>
+<header><div class="inner"><a href="/pulse" class="logo">Blipp<span class="pulse-tag">Pulse</span></a></div></header>
 ${opts.body}
-<footer><div class="container">&copy; ${new Date().getFullYear()} Blipp Pulse · <a href="/">Home</a> · <a href="/pulse">All posts</a> · <a href="/p">Blipp catalog</a></div></footer>
+<footer><div class="container">&copy; ${new Date().getFullYear()} Blipp Pulse · <a href="/pulse">All posts</a></div></footer>
 </body>
 </html>`;
 }
@@ -240,9 +242,8 @@ export function renderPulsePost(data: PulsePostPageData): string {
   const breadcrumb = {
     "@type": "BreadcrumbList",
     itemListElement: [
-      { "@type": "ListItem", position: 1, name: "Home", item: SITE_URL },
-      { "@type": "ListItem", position: 2, name: "Pulse", item: `${SITE_URL}/pulse` },
-      { "@type": "ListItem", position: 3, name: data.title, item: `${SITE_URL}${canonicalPath}` },
+      { "@type": "ListItem", position: 1, name: "Pulse", item: `${SITE_URL}/pulse` },
+      { "@type": "ListItem", position: 2, name: data.title, item: `${SITE_URL}${canonicalPath}` },
     ],
   };
 
@@ -265,7 +266,7 @@ ${renderMarkdown(data.sourcesMarkdown)}
         .join("")}</div>`
     : "";
 
-  const breadcrumbNav = `<nav class="breadcrumb"><a href="/">Home</a> / <a href="/pulse">Pulse</a> / ${escapeHtml(data.title)}</nav>`;
+  const breadcrumbNav = `<nav class="breadcrumb"><a href="/pulse">Pulse</a> / ${escapeHtml(data.title)}</nav>`;
 
   return pulseLayout({
     title,
@@ -361,7 +362,7 @@ ${data.page < data.totalPages ? `<a href="/pulse?page=${data.page + 1}" style="m
     jsonLd,
     adsScript: data.adsScript,
     body: `<main class="container container--wide">
-<nav class="breadcrumb"><a href="/">Home</a> / Pulse</nav>
+<nav class="breadcrumb">Pulse</nav>
 <h1>Pulse</h1>
 <p class="subtitle">Editorial commentary and cross-episode analysis from the Blipp catalog.</p>
 ${cards}
@@ -410,7 +411,7 @@ export function renderPulseEditor(data: PulseEditorPageData): string {
     jsonLd,
     adsScript: data.adsScript,
     body: `<main class="container container--wide">
-<nav class="breadcrumb"><a href="/">Home</a> / <a href="/pulse">Pulse</a> / ${escapeHtml(e.name)}</nav>
+<nav class="breadcrumb"><a href="/pulse">Pulse</a> / ${escapeHtml(e.name)}</nav>
 <div class="editor-card">
 ${e.avatarUrl ? `<img src="${escapeHtml(e.avatarUrl)}" alt="${escapeHtml(e.name)}" />` : ""}
 <div>
@@ -458,7 +459,7 @@ export function renderPulseTopic(data: PulseTopicPageData): string {
     ogType: "website",
     adsScript: data.adsScript,
     body: `<main class="container container--wide">
-<nav class="breadcrumb"><a href="/">Home</a> / <a href="/pulse">Pulse</a> / ${escapeHtml(data.topicLabel)}</nav>
+<nav class="breadcrumb"><a href="/pulse">Pulse</a> / ${escapeHtml(data.topicLabel)}</nav>
 <h1>${escapeHtml(data.topicLabel)}</h1>
 <p class="subtitle">${data.posts.length} post${data.posts.length === 1 ? "" : "s"}.</p>
 ${

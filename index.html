@@ -22,11 +22,13 @@
     <link rel="apple-touch-icon" href="/blipp-icon-transparent-192.png" />
 
     <!--
-      AdSense site verification. Replace ca-pub-XXXXXXXX with the real
-      publisher ID once issued. This is the static verification — runtime
-      ad loading is gated separately by ADS_ENABLED (Phase 3).
+      AdSense site verification + Auto Ads loader. Static so Google's
+      crawler sees the publisher ID on every SPA-rendered page (homepage,
+      pricing, blog, etc.) without needing per-page injection. SSR pages
+      (/p/*, /pulse/*) still inject their own copy via adsScriptTag().
     -->
-    <meta name="google-adsense-account" content="ca-pub-XXXXXXXX" />
+    <meta name="google-adsense-account" content="ca-pub-3171642877259040" />
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3171642877259040" crossorigin="anonymous"></script>
     <link rel="preload" as="image" href="/splash.png" fetchpriority="high" />
     <style>
       html, body { margin: 0; background: #09090b; min-height: 100vh; }
@@ -78,7 +80,30 @@
     </script>
   </head>
   <body>
-    <div id="root"><div class="blipp-splash" aria-hidden="true"></div></div>
+    <!--
+      Static skeleton inside #root. React replaces it on hydrate, so
+      real users see only the splash → app. Bots that don't render JS
+      see substantive content + a link into editorial (Pulse). Kept
+      minimal because the same shell serves every SPA route, so
+      anything here also appears on /about, /pricing, etc. on raw fetch.
+    -->
+    <div id="root">
+      <div class="blipp-splash" aria-hidden="true"></div>
+      <main style="position:relative;z-index:0;max-width:640px;margin:0 auto;padding:2rem 1.5rem;color:#e4e4e7;font-family:Inter,system-ui,sans-serif;line-height:1.7">
+        <h1 style="font-size:2rem;font-weight:700;margin-bottom:1rem">Blipp — All Your Podcasts in a Blipp</h1>
+        <p style="margin-bottom:1.25rem">Blipp turns full podcast episodes into short, voice-narrated summaries. Choose 2–30 minutes and get the key insights from any episode. Hear the signal without the noise.</p>
+        <h2 style="font-size:1.25rem;font-weight:600;margin:1.5rem 0 .75rem">How it works</h2>
+        <ol style="margin-left:1.25rem;margin-bottom:1.25rem">
+          <li>Tell Blipp which podcasts you follow.</li>
+          <li>Blipp summarizes new episodes into 2–30 minute audio briefings.</li>
+          <li>Listen on the web or in the iPhone app.</li>
+        </ol>
+        <h2 style="font-size:1.25rem;font-weight:600;margin:1.5rem 0 .75rem">Editorial</h2>
+        <p style="margin-bottom:1.25rem">Pulse is Blipp's editorial blog — synthesis and commentary across the podcasts we summarize. <a href="/pulse" style="color:#818cf8">Read the Pulse</a>.</p>
+        <h2 style="font-size:1.25rem;font-weight:600;margin:1.5rem 0 .75rem">More</h2>
+        <p><a href="/how-it-works" style="color:#818cf8">How it works</a> · <a href="/pricing" style="color:#818cf8">Pricing</a> · <a href="/about" style="color:#818cf8">About Blipp</a> · <a href="/privacy" style="color:#818cf8">Privacy</a> · <a href="/tos" style="color:#818cf8">Terms</a></p>
+      </main>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
