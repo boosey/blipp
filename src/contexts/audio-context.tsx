@@ -18,6 +18,13 @@ import { useStorage } from "./storage-context";
 const UNLOCK_AUDIO =
   "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YQQAAAAAAAAA";
 
+// iOS lock-screen widget needs explicit playbackState to show correct icon.
+function setMediaSessionPlaybackState(state: MediaSessionPlaybackState) {
+  if ("mediaSession" in navigator) {
+    navigator.mediaSession.playbackState = state;
+  }
+}
+
 type PlaybackPhase = "none" | "content" | "intro-jingle" | "outro-jingle";
 
 interface AudioState {
@@ -219,6 +226,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     } else {
       setPlaybackPhase("none");
       setIsPlaying(false);
+      setMediaSessionPlaybackState("none");
     }
   }, [syncQueue]);
 
@@ -229,11 +237,13 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     }
     audio?.pause();
     setIsPlaying(false);
+    setMediaSessionPlaybackState("paused");
   }, [currentItem, playbackPhase, savePlaybackPosition]);
 
   const resume = useCallback(() => {
     audioRef.current?.play();
     setIsPlaying(true);
+    setMediaSessionPlaybackState("playing");
   }, []);
 
   const seek = useCallback((time: number) => {
@@ -270,6 +280,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       listenedTimerRef.current = null;
     }
     listenedFiredRef.current = null;
+    setMediaSessionPlaybackState("none");
   }, [syncQueue]);
 
   const play = useCallback(
@@ -428,6 +439,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     if (unlockingRef.current) return;
     setIsPlaying(true);
     setIsLoading(false);
+    setMediaSessionPlaybackState("playing");
   }, []);
 
   const handleError = useCallback(() => {
@@ -480,6 +492,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     if (isInJingle) {
       navigator.mediaSession.setActionHandler("seekbackward", null);
       navigator.mediaSession.setActionHandler("seekforward", null);
+      navigator.mediaSession.setActionHandler("seekto", null);
     } else {
       navigator.mediaSession.setActionHandler("seekbackward", () => {
         const audio = audioRef.current;
@@ -488,6 +501,9 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       navigator.mediaSession.setActionHandler("seekforward", () => {
         const audio = audioRef.current;
         if (audio) seek(Math.min(audio.duration || 0, audio.currentTime + 30));
+      });
+      navigator.mediaSession.setActionHandler("seekto", (details) => {
+        if (typeof details.seekTime === "number") seek(details.seekTime);
       });
     }
   }, [playbackPhase, pause, resume, seek]);
