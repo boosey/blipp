@@ -365,6 +365,8 @@ async function processPodcast(
               }],
               isTest: false,
               status: "PENDING",
+              mode: "USER",
+              source: "SUBSCRIPTION",
             },
           });
 

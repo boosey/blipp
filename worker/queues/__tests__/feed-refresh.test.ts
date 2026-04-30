@@ -465,12 +465,16 @@ describe("handleFeedRefresh", () => {
         data: expect.objectContaining({
           userId: "user-1",
           targetMinutes: 5,
+          source: "SUBSCRIPTION",
+          mode: "USER",
         }),
       });
       expect(mockPrisma.briefingRequest.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           userId: "user-3",
           targetMinutes: 10,
+          source: "SUBSCRIPTION",
+          mode: "USER",
         }),
       });
     });
