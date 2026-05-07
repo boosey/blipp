@@ -25,18 +25,30 @@ describe("ai-usage", () => {
     });
 
     it("should handle cache tokens correctly (Anthropic style)", () => {
-      // inputTokens: 1000
+      // Anthropic's usage.input_tokens already excludes cache_creation and
+      // cache_read counts (they are reported as separate counters), so
+      // inputTokens passed in = 1000 uncached input tokens.
       // cacheCreation: 200 (1.25x price)
       // cacheRead: 300 (0.1x price)
-      // standardInput: 500 (1.0x price)
-      // outputTokens: 500 (standard price)
-      
-      // cost = (500 * 10 + 200 * 10 * 1.25 + 300 * 10 * 0.1 + 500 * 30) / 1,000,000
-      // cost = (5000 + 2500 + 300 + 15000) / 1,000,000
-      // cost = 22800 / 1,000,000 = 0.0228
-      
+      // outputTokens: 500 (standard output price)
+      //
+      // cost = (1000 * 10 + 200 * 10 * 1.25 + 300 * 10 * 0.1 + 500 * 30) / 1,000,000
+      // cost = (10000 + 2500 + 300 + 15000) / 1,000,000
+      // cost = 27800 / 1,000,000 = 0.0278
       const cost = calculateTokenCost(pricing, 1000, 500, 200, 300);
-      expect(cost).toBeCloseTo(0.0228);
+      expect(cost).toBeCloseTo(0.0278);
+    });
+
+    it("does not subtract cache tokens from inputTokens (regression)", () => {
+      // Previously, calculateTokenCost subtracted cacheWrite + cacheRead from
+      // inputTokens, which double-discounted cached prompts because the SDK
+      // already excludes those from input_tokens. Lock in the new behavior:
+      // inputTokens is treated as the standard-rate portion as-is.
+      const noCache = calculateTokenCost(pricing, 1000, 0)!;
+      const withCacheWrite = calculateTokenCost(pricing, 1000, 0, 500, 0)!;
+      // Adding cache writes can only INCREASE cost — it must never reduce
+      // the standard-rate portion (which is what the old formula did).
+      expect(withCacheWrite).toBeGreaterThan(noCache);
     });
 
     it("should handle missing output pricing", () => {

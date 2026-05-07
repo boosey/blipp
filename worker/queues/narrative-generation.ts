@@ -2,6 +2,7 @@ import { createPrismaClient } from "../lib/db";
 import { createPipelineLogger, logDbError } from "../lib/logger";
 import { checkStageEnabled } from "../lib/queue-helpers";
 import { generateNarrative, selectClaimsForDuration, type EpisodeMetadata } from "../lib/distillation";
+import { recordLlmCall, categorizeError } from "../lib/llm-call-log";
 import { clampTierToEpisodeLength } from "../lib/constants";
 import { resolveModelChain } from "../lib/model-resolution";
 import { getLlmProviderImpl } from "../lib/llm-providers";
@@ -221,6 +222,7 @@ export async function handleNarrativeGeneration(
             provider: resolved.provider,
           });
 
+          const attemptStart = Date.now();
           try {
             const narrativeTimer = log.timer("narrative_generation");
             const result = await generateNarrative(
@@ -240,6 +242,16 @@ export async function handleNarrativeGeneration(
             const wordCount = narrative.split(/\s+/).length;
             narrativeTimer();
 
+            recordLlmCall(prisma, {
+              jobId, stepId: step.id, episodeId,
+              stage: "narrative",
+              provider: resolved.provider,
+              model: result.usage.model,
+              status: "SUCCESS",
+              usage: result.usage,
+              durationMs: Date.now() - attemptStart,
+            });
+
             await writeEvent(prisma, step.id, "INFO", `Narrative generated via ${tier} ${llm.name}: ${wordCount} words`, {
               tier,
               wordCount,
@@ -251,6 +263,21 @@ export async function handleNarrativeGeneration(
             const errMsg = chainErr instanceof Error ? chainErr.message : String(chainErr);
             const httpStatus = (chainErr as any)?.httpStatus;
             recordFailure(resolved.provider);
+
+            // Capture the failed attempt — narrative has no JSON parse step,
+            // so usage tokens are not recoverable from a thrown error here, but
+            // the metadata still helps reconcile against provider invoices.
+            const { category, status } = categorizeError(chainErr);
+            recordLlmCall(prisma, {
+              jobId, stepId: step.id, episodeId,
+              stage: "narrative",
+              provider: resolved.provider,
+              model: resolved.providerModelId,
+              status,
+              durationMs: Date.now() - attemptStart,
+              errorCategory: category,
+              errorMessage: errMsg,
+            });
 
             await writeEvent(prisma, step.id, "WARN", `${tier} failed: ${llm.name} — ${errMsg.slice(0, 300)}`, {
               tier,

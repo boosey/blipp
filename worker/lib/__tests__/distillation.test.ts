@@ -5,6 +5,7 @@ import {
   selectClaimsForDuration,
   scoreClaim,
   WORDS_PER_MINUTE,
+  LlmParseError,
   type Claim,
   type EpisodeMetadata,
 } from "../distillation";
@@ -171,6 +172,65 @@ describe("extractClaims", () => {
     const llm = createMockLlmProvider(JSON.stringify(sampleClaims));
     const result = await extractClaims(mockPrisma, llm, "transcript", "mock-model-1", 8192, mockEnv);
     expect(result.usage.cost).toBeNull();
+  });
+
+  it("should accept notable_quote: null (model omits the quote)", async () => {
+    // Regression for the Apr 2026 Anthropic invoice analysis: ~47 daily
+    // schema-validation fall-throughs on `N.notable_quote: Invalid input`
+    // because the model emits null when no quote applies.
+    const claimsWithNullQuote = [
+      { ...sampleClaims[0], notable_quote: null, topic: null },
+    ];
+    const llm = createMockLlmProvider(JSON.stringify(claimsWithNullQuote));
+    const result = await extractClaims(mockPrisma, llm, "transcript", "mock-model-1", 8192, mockEnv);
+    expect(result.claims).toHaveLength(1);
+    expect(result.claims[0].notable_quote).toBeNull();
+  });
+
+  it("should throw LlmParseError carrying usage when JSON is invalid", async () => {
+    const llm: LlmProvider = {
+      name: "MockLLM",
+      provider: "mock",
+      complete: vi.fn().mockResolvedValue({
+        text: "not valid json",
+        model: "mock-model-1",
+        inputTokens: 1234,
+        outputTokens: 56,
+        cacheCreationTokens: 200,
+      } satisfies LlmResult),
+    };
+    try {
+      await extractClaims(mockPrisma, llm, "transcript", "mock-model-1", 8192, mockEnv, mockPricing);
+      expect.fail("expected LlmParseError");
+    } catch (err) {
+      expect(err).toBeInstanceOf(LlmParseError);
+      const parseErr = err as LlmParseError;
+      expect(parseErr.usage.inputTokens).toBe(1234);
+      expect(parseErr.usage.outputTokens).toBe(56);
+      expect(parseErr.usage.cacheCreationTokens).toBe(200);
+      expect(parseErr.usage.cost).not.toBeNull();
+    }
+  });
+
+  it("should throw LlmParseError carrying usage when schema fails", async () => {
+    const llm: LlmProvider = {
+      name: "MockLLM",
+      provider: "mock",
+      complete: vi.fn().mockResolvedValue({
+        text: JSON.stringify([{ claim: "x" }]), // missing required fields
+        model: "mock-model-1",
+        inputTokens: 100,
+        outputTokens: 50,
+      } satisfies LlmResult),
+    };
+    try {
+      await extractClaims(mockPrisma, llm, "transcript", "mock-model-1", 8192, mockEnv, mockPricing);
+      expect.fail("expected LlmParseError");
+    } catch (err) {
+      expect(err).toBeInstanceOf(LlmParseError);
+      expect((err as LlmParseError).usage.inputTokens).toBe(100);
+      expect((err as Error).message).toContain("schema validation");
+    }
   });
 });
 

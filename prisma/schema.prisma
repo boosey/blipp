@@ -550,6 +550,46 @@ enum PipelineEventLevel {
   ERROR
 }
 
+// ── LLM Call Log (Append-Only Per-Attempt Cost Telemetry) ──
+//
+// Every billable LLM attempt is recorded here, including failed parses,
+// timeouts, and rate-limit failures. PipelineStep continues to store the
+// final-attempt rollup; this table is the source of truth for invoice
+// reconciliation against provider CSVs.
+
+enum LlmCallStatus {
+  SUCCESS
+  PARSE_ERROR
+  TIMEOUT
+  RATE_LIMITED
+  AUTH_ERROR
+  OTHER_ERROR
+}
+
+model LlmCall {
+  id                  String        @id @default(cuid())
+  jobId               String?
+  stepId              String?
+  episodeId           String?
+  stage               String? // "distillation" | "narrative" | "geo" | "pulse" | ...
+  provider            String // "anthropic" | "groq" | ...
+  model               String
+  status              LlmCallStatus
+  inputTokens         Int           @default(0)
+  outputTokens        Int           @default(0)
+  cacheCreationTokens Int           @default(0)
+  cacheReadTokens     Int           @default(0)
+  cost                Float?
+  durationMs          Int?
+  errorCategory       String? // matches LlmCallStatus lower-cased, free-form for forward compat
+  errorMessage        String? // truncated upstream to ~500 chars
+  createdAt           DateTime      @default(now())
+
+  @@index([createdAt])
+  @@index([stepId])
+  @@index([provider, model, createdAt])
+}
+
 // ── Briefing Requests (Demand-Driven Pipeline) ──
 
 model BriefingRequest {

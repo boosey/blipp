@@ -1,7 +1,8 @@
 import { createPrismaClient } from "../lib/db";
 import { createPipelineLogger, logDbError } from "../lib/logger";
 import { checkStageEnabled, claimEpisodeStage, releaseEpisodeStage, LOCK_RETRY_DELAY_S } from "../lib/queue-helpers";
-import { extractClaims } from "../lib/distillation";
+import { extractClaims, LlmParseError } from "../lib/distillation";
+import { recordLlmCall, categorizeError } from "../lib/llm-call-log";
 import { averageEmbeddings } from "../lib/embeddings";
 import { resolveModelChain } from "../lib/model-resolution";
 import { getLlmProviderImpl } from "../lib/llm-providers";
@@ -270,8 +271,14 @@ export async function handleDistillation(
 
           const rateLimitRetries = await getConfig(prisma, "pipeline.distillation.rateLimitRetries", 3) as number;
           let rateLimitAttempt = 0;
+          // Allow one extra in-place retry of the *primary* model when the LLM
+          // returned a complete response that we then rejected (parse / schema).
+          // The April 2026 invoice analysis showed parse-error fall-throughs
+          // were the single biggest source of unrecorded Anthropic spend.
+          let parseRetryAttempt = 0;
           let succeeded = false;
           while (rateLimitAttempt <= rateLimitRetries) {
+            const attemptStart = Date.now();
             try {
               const elapsed = log.timer("claude_extraction");
               const result = await extractClaims(prisma, llm, transcript, resolved.providerModelId, 8192, resolvedEnv, resolved.pricing);
@@ -279,6 +286,16 @@ export async function handleDistillation(
               elapsed();
               claims = result.claims;
               claimsUsage = result.usage;
+
+              recordLlmCall(prisma, {
+                jobId, stepId, episodeId,
+                stage: "distillation",
+                provider: resolved.provider,
+                model: result.usage.model,
+                status: "SUCCESS",
+                usage: result.usage,
+                durationMs: Date.now() - attemptStart,
+              });
 
               await writeEvent(prisma, stepId, "INFO", `Extracted ${claims.length} claims via ${tier} ${llm.name}`, {
                 tier,
@@ -292,6 +309,21 @@ export async function handleDistillation(
               const errMsg = chainErr instanceof Error ? chainErr.message : String(chainErr);
               const httpStatus = (chainErr as any)?.httpStatus;
 
+              // Record the failed attempt. LlmParseError carries the billed
+              // tokens; other errors don't, so just record metadata.
+              const { category, status } = categorizeError(chainErr);
+              recordLlmCall(prisma, {
+                jobId, stepId, episodeId,
+                stage: "distillation",
+                provider: resolved.provider,
+                model: chainErr instanceof LlmParseError ? chainErr.usage.model : resolved.providerModelId,
+                status,
+                usage: chainErr instanceof LlmParseError ? chainErr.usage : null,
+                durationMs: Date.now() - attemptStart,
+                errorCategory: category,
+                errorMessage: errMsg,
+              });
+
               if (isRateLimitError(chainErr) && rateLimitAttempt < rateLimitRetries) {
                 const waitMs = parseRetryAfterMs(chainErr);
                 rateLimitAttempt++;
@@ -300,6 +332,19 @@ export async function handleDistillation(
                 });
                 log.info("rate_limit_backoff", { provider: resolved.provider, waitMs, attempt: rateLimitAttempt });
                 await new Promise((r) => setTimeout(r, waitMs));
+                continue;
+              }
+
+              // One-shot retry of the primary on parse error before falling
+              // through to the secondary provider. Cheaper than a Groq fallback
+              // and usually works (most parse errors are transient JSON quirks).
+              if (chainErr instanceof LlmParseError && i === 0 && parseRetryAttempt === 0) {
+                parseRetryAttempt++;
+                await writeEvent(prisma, stepId, "WARN", `${tier} parse error — retrying primary once`, {
+                  tier, provider: resolved.provider, model: resolved.providerModelId,
+                  errorType: chainErr.name,
+                });
+                log.info("parse_error_retry", { provider: resolved.provider, errorMessage: errMsg });
                 continue;
               }
 

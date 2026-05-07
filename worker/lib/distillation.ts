@@ -1,9 +1,39 @@
 import { z } from "zod";
-import type { LlmProvider, LlmCompletionOptions } from "./llm-providers";
+import type { LlmProvider, LlmCompletionOptions, LlmResult } from "./llm-providers";
 import { calculateTokenCost, type AiUsage, type ModelPricing } from "./ai-usage";
 import { getConfig, getRequiredConfig } from "./config";
 import { PROMPT_CONFIG_KEYS } from "./prompt-defaults";
 import { NotAPodcastError, looksLikeSongLyricsOutput } from "./podcast-invalidation";
+
+// Thrown when the LLM returned a complete response that we then rejected
+// (invalid JSON / schema violation). The model was billed for these tokens —
+// callers must record them via recordLlmCall before falling through to the
+// secondary chain. Otherwise the invoice and our analytics drift apart.
+export class LlmParseError extends Error {
+  readonly usage: AiUsage;
+  constructor(message: string, usage: AiUsage) {
+    super(message);
+    this.name = "LlmParseError";
+    this.usage = usage;
+  }
+}
+
+function buildUsage(result: LlmResult, pricing: ModelPricing | null): AiUsage {
+  return {
+    model: result.model,
+    inputTokens: result.inputTokens,
+    outputTokens: result.outputTokens,
+    cost: calculateTokenCost(
+      pricing,
+      result.inputTokens,
+      result.outputTokens,
+      result.cacheCreationTokens,
+      result.cacheReadTokens
+    ),
+    cacheCreationTokens: result.cacheCreationTokens,
+    cacheReadTokens: result.cacheReadTokens,
+  };
+}
 
 /** Default speaking rate — overridable via PlatformConfig audio.wordsPerMinute. */
 export const WORDS_PER_MINUTE = 150;
@@ -27,8 +57,8 @@ export interface Claim {
   importance: number;
   novelty: number;
   excerpt: string;
-  notable_quote?: string;
-  topic?: string;
+  notable_quote?: string | null;
+  topic?: string | null;
 }
 
 /** Episode metadata for the narrative intro. */
@@ -46,8 +76,12 @@ const ClaimSchema = z.object({
   importance: z.number().min(1).max(10),
   novelty: z.number().min(1).max(10),
   excerpt: z.string(),
-  notable_quote: z.string().optional(),
-  topic: z.string().optional(),
+  // Models commonly emit `null` for optional string fields when the value
+  // doesn't apply. Apr 2026 Anthropic invoice analysis showed ~47 fall-throughs
+  // a day caused by `notable_quote: null` being rejected as Invalid input.
+  // Accept null/undefined/string everywhere optional string fields appear.
+  notable_quote: z.string().nullish(),
+  topic: z.string().nullish(),
 });
 
 const ClaimsArraySchema = z.array(ClaimSchema).min(1);
@@ -86,6 +120,10 @@ export async function extractClaims(
     apiKeyOverride
   );
 
+  // Build the usage object up front so any thrown LlmParseError below can
+  // carry the billed-but-rejected token counts to the caller.
+  const usage = buildUsage(result, pricing);
+
   const rawText = result.text;
   const stripped = rawText
     .replace(/^```(?:json)?\s*\n?/i, "")
@@ -111,10 +149,16 @@ export async function extractClaims(
       try {
         parsed = JSON.parse(candidate);
       } catch {
-        throw new Error(`LLM returned invalid JSON: ${stripped.slice(0, 200)}`);
+        throw new LlmParseError(
+          `LLM returned invalid JSON: ${stripped.slice(0, 200)}`,
+          usage
+        );
       }
     } else {
-      throw new Error(`LLM returned invalid JSON: ${stripped.slice(0, 200)}`);
+      throw new LlmParseError(
+        `LLM returned invalid JSON: ${stripped.slice(0, 200)}`,
+        usage
+      );
     }
   }
 
@@ -139,18 +183,12 @@ export async function extractClaims(
   const validation = ClaimsArraySchema.safeParse(parsed);
   if (!validation.success) {
     const issues = validation.error.issues.slice(0, 3).map(i => `${i.path.join(".")}: ${i.message}`).join("; ");
-    throw new Error(`LLM output failed schema validation: ${issues}`);
+    throw new LlmParseError(
+      `LLM output failed schema validation: ${issues}`,
+      usage
+    );
   }
   const claims: Claim[] = validation.data;
-
-  const usage: AiUsage = {
-    model: result.model,
-    inputTokens: result.inputTokens,
-    outputTokens: result.outputTokens,
-    cost: calculateTokenCost(pricing, result.inputTokens, result.outputTokens, result.cacheCreationTokens, result.cacheReadTokens),
-    cacheCreationTokens: result.cacheCreationTokens,
-    cacheReadTokens: result.cacheReadTokens,
-  };
 
   return { claims, usage };
 }
@@ -264,14 +302,5 @@ export async function generateNarrative(
     apiKeyOverride
   );
 
-  const usage: AiUsage = {
-    model: result.model,
-    inputTokens: result.inputTokens,
-    outputTokens: result.outputTokens,
-    cost: calculateTokenCost(pricing, result.inputTokens, result.outputTokens, result.cacheCreationTokens, result.cacheReadTokens),
-    cacheCreationTokens: result.cacheCreationTokens,
-    cacheReadTokens: result.cacheReadTokens,
-  };
-
-  return { narrative: result.text, usage };
+  return { narrative: result.text, usage: buildUsage(result, pricing) };
 }

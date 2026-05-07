@@ -21,10 +21,35 @@ vi.mock("../../lib/logger", () => ({
   logDbError: vi.fn(() => () => {}),
 }));
 
-vi.mock("../../lib/distillation", () => ({
-  extractClaims: vi.fn().mockResolvedValue({
-    claims: [{ claim: "Test claim", speaker: "Host", importance: 9, novelty: 7, excerpt: "Verbatim excerpt from the transcript." }],
-    usage: { model: "test-model", inputTokens: 100, outputTokens: 50, cost: null },
+vi.mock("../../lib/distillation", () => {
+  // Real LlmParseError class so `instanceof` checks in the queue handler
+  // resolve to the same constructor reference.
+  class LlmParseError extends Error {
+    readonly usage: any;
+    constructor(message: string, usage: any) {
+      super(message);
+      this.name = "LlmParseError";
+      this.usage = usage;
+    }
+  }
+  return {
+    extractClaims: vi.fn().mockResolvedValue({
+      claims: [{ claim: "Test claim", speaker: "Host", importance: 9, novelty: 7, excerpt: "Verbatim excerpt from the transcript." }],
+      usage: { model: "test-model", inputTokens: 100, outputTokens: 50, cost: null },
+    }),
+    LlmParseError,
+  };
+});
+
+vi.mock("../../lib/llm-call-log", () => ({
+  recordLlmCall: vi.fn().mockResolvedValue(undefined),
+  // Minimal real-ish behavior so PARSE_ERROR vs OTHER_ERROR is distinguishable
+  // in tests that assert on status. Mirrors worker/lib/llm-call-log.ts.
+  categorizeError: vi.fn().mockImplementation((err: unknown) => {
+    if ((err as any)?.name === "LlmParseError") return { category: "parse", status: "PARSE_ERROR" };
+    const status = (err as any)?.httpStatus ?? (err as any)?.status;
+    if (status === 429) return { category: "rate_limit", status: "RATE_LIMITED" };
+    return { category: "other", status: "OTHER_ERROR" };
   }),
 }));
 
@@ -96,7 +121,8 @@ vi.mock("../../lib/ai-errors", () => {
 
 import { createPrismaClient } from "../../lib/db";
 import { getConfig } from "../../lib/config";
-import { extractClaims } from "../../lib/distillation";
+import { extractClaims, LlmParseError } from "../../lib/distillation";
+import { recordLlmCall } from "../../lib/llm-call-log";
 import { wpKey, putWorkProduct, getWorkProduct } from "../../lib/work-products";
 import { resolveStageModel, resolveModelChain } from "../../lib/model-resolution";
 import { writeAiError, classifyAiError } from "../../lib/ai-errors";
@@ -771,6 +797,75 @@ describe("handleDistillation", () => {
       );
       expect(completionCall).toBeDefined();
       expect(completionCall[0].data).not.toHaveProperty("claimsEmbedding");
+    });
+  });
+
+  describe("LLM call instrumentation", () => {
+    function setupHappyPath() {
+      mockPrisma.pipelineJob.findUniqueOrThrow.mockResolvedValue({ id: "job-1", requestId: "req-1" });
+      mockPrisma.pipelineJob.update.mockResolvedValue({});
+      mockPrisma.pipelineStep.create.mockResolvedValue({ id: "step-1" });
+    }
+
+    it("records every LLM attempt — one row per attempt, success or fail", async () => {
+      setupHappyPath();
+      const failedUsage = {
+        model: "claude-sonnet-4-6",
+        inputTokens: 5000,
+        outputTokens: 200,
+        cacheCreationTokens: 1000,
+        cacheReadTokens: 0,
+        cost: 0.018,
+      };
+      // First call: parse error (LLM was billed). Second call: success.
+      (extractClaims as any)
+        .mockRejectedValueOnce(new LlmParseError("schema validation: notable_quote: Invalid input", failedUsage))
+        .mockResolvedValueOnce({
+          claims: [{ claim: "ok", speaker: "Host", importance: 9, novelty: 7, excerpt: "verbatim from transcript" }],
+          usage: { model: "claude-sonnet-4-6", inputTokens: 5050, outputTokens: 250, cost: 0.019 },
+        });
+
+      const batch = makeBatch([{ jobId: "job-1", episodeId: "ep-1" }]);
+      await handleDistillation(batch, mockEnv, mockCtx);
+
+      // Two recordLlmCall invocations: one PARSE_ERROR (with failed-attempt
+      // tokens preserved) and one SUCCESS for the retry attempt.
+      expect(recordLlmCall).toHaveBeenCalledTimes(2);
+      const calls = (recordLlmCall as any).mock.calls.map((c: any[]) => c[1]);
+      expect(calls[0]).toMatchObject({
+        status: "PARSE_ERROR",
+        provider: "anthropic",
+        usage: expect.objectContaining({ inputTokens: 5000, cacheCreationTokens: 1000 }),
+      });
+      expect(calls[1]).toMatchObject({
+        status: "SUCCESS",
+        provider: "anthropic",
+        usage: expect.objectContaining({ inputTokens: 5050 }),
+      });
+    });
+
+    it("retries primary once on LlmParseError before falling through", async () => {
+      setupHappyPath();
+      const failedUsage = { model: "claude-sonnet-4-6", inputTokens: 5000, outputTokens: 100, cost: 0.016 };
+      (extractClaims as any)
+        .mockRejectedValueOnce(new LlmParseError("schema validation", failedUsage))
+        .mockResolvedValueOnce({
+          claims: [{ claim: "ok", speaker: "Host", importance: 9, novelty: 7, excerpt: "verbatim" }],
+          usage: { model: "claude-sonnet-4-6", inputTokens: 5000, outputTokens: 250, cost: 0.018 },
+        });
+
+      const batch = makeBatch([{ jobId: "job-1", episodeId: "ep-1" }]);
+      await handleDistillation(batch, mockEnv, mockCtx);
+
+      // Two extractClaims calls — both against the primary, no fall-through
+      // to a secondary provider.
+      expect(extractClaims).toHaveBeenCalledTimes(2);
+      // Step completed with the second attempt's tokens
+      const stepUpdate = (mockPrisma.pipelineStep.update as any).mock.calls.find(
+        ([arg]: any[]) => arg?.data?.status === "COMPLETED"
+      );
+      expect(stepUpdate).toBeDefined();
+      expect(stepUpdate[0].data.outputTokens).toBe(250);
     });
   });
 });

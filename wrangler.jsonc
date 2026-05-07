@@ -120,13 +120,13 @@
 			{
 				"queue": "distillation-staging",
 				"max_batch_size": 5,
-				"max_retries": 3,
+				"max_retries": 1,
 				"dead_letter_queue": "dead-letter-staging"
 			},
 			{
 				"queue": "narrative-generation-staging",
 				"max_batch_size": 5,
-				"max_retries": 3,
+				"max_retries": 1,
 				"dead_letter_queue": "dead-letter-staging"
 			},
 			{
@@ -340,13 +340,13 @@
 					{
 						"queue": "distillation",
 						"max_batch_size": 5,
-						"max_retries": 3,
+						"max_retries": 1,
 						"dead_letter_queue": "dead-letter"
 					},
 					{
 						"queue": "narrative-generation",
 						"max_batch_size": 5,
-						"max_retries": 3,
+						"max_retries": 1,
 						"dead_letter_queue": "dead-letter"
 					},
 					{

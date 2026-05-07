@@ -60,8 +60,11 @@ export function calculateTokenCost(
 
   const cacheWrite = cacheCreationTokens ?? 0;
   const cacheRead = cacheReadTokens ?? 0;
-  // Non-cached input = total input minus cached portions
-  const standardInput = Math.max(0, inputTokens - cacheWrite - cacheRead);
+  // Anthropic's usage.input_tokens already excludes cache_creation_input_tokens
+  // and cache_read_input_tokens — they are reported as separate counters. Use
+  // input_tokens as-is for the standard-rate portion. (Older code subtracted
+  // cache tokens here, which double-discounted cached prompts.)
+  const standardInput = inputTokens;
 
   return (
     (standardInput * inputPrice +

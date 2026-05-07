@@ -10,12 +10,31 @@ vi.mock("../../lib/config", () => ({
   getConfig: vi.fn().mockResolvedValue(true),
 }));
 
-vi.mock("../../lib/distillation", () => ({
-  generateNarrative: vi.fn().mockResolvedValue({
-    narrative: "A warm narrative about technology trends.",
-    usage: { model: "test-model", inputTokens: 100, outputTokens: 50, cost: null },
+vi.mock("../../lib/distillation", () => {
+  class LlmParseError extends Error {
+    readonly usage: any;
+    constructor(message: string, usage: any) {
+      super(message);
+      this.name = "LlmParseError";
+      this.usage = usage;
+    }
+  }
+  return {
+    generateNarrative: vi.fn().mockResolvedValue({
+      narrative: "A warm narrative about technology trends.",
+      usage: { model: "test-model", inputTokens: 100, outputTokens: 50, cost: null },
+    }),
+    selectClaimsForDuration: vi.fn().mockImplementation((claims: any[]) => claims),
+    LlmParseError,
+  };
+});
+
+vi.mock("../../lib/llm-call-log", () => ({
+  recordLlmCall: vi.fn().mockResolvedValue(undefined),
+  categorizeError: vi.fn().mockImplementation((err: unknown) => {
+    if ((err as any)?.name === "LlmParseError") return { category: "parse", status: "PARSE_ERROR" };
+    return { category: "other", status: "OTHER_ERROR" };
   }),
-  selectClaimsForDuration: vi.fn().mockImplementation((claims: any[]) => claims),
 }));
 
 vi.mock("../../lib/work-products", () => ({
