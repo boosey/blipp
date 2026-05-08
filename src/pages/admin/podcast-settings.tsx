@@ -91,6 +91,15 @@ const CONFIG_GROUPS: ConfigGroup[] = [
     ],
   },
   {
+    title: "Episode Length Filter",
+    description: "Hide episodes shorter than the minimum, and reject podcasts whose short-episode percentage exceeds the threshold. Podcast-level rejection is recomputed during feed-refresh.",
+    items: [
+      { key: "episodes.minLength.enabled", label: "Enforcement Enabled", type: "boolean", description: "Master toggle. When off, no episodes or podcasts are filtered for length.", default: true },
+      { key: "episodes.minLength.minutes", label: "Minimum Episode Length (minutes)", type: "number", description: "Episodes with a known duration shorter than this are hidden from users. Episodes with unknown duration always pass through.", default: 10 },
+      { key: "episodes.minLength.podcastRejectionPercent", label: "Podcast Rejection Threshold (%)", type: "number", description: "If this percentage or more of a podcast's deliverable episodes are below the minimum, the entire podcast is hidden.", default: 75 },
+    ],
+  },
+  {
     title: "Data Lifecycle",
     description: "Cleanup and aging rules for podcasts and episodes",
     items: [

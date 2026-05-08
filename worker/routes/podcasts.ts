@@ -12,6 +12,11 @@ import { checkVoicePresetAccess } from "../lib/voice-presets";
 import { validateBody } from "../lib/validation";
 import { isMusicOnlyFeed } from "../lib/podcast-invalidation";
 import { pauseSubscription, resumeSubscription } from "../lib/subscription-pause";
+import {
+  buildEpisodeLengthWhere,
+  buildPodcastLengthWhere,
+  getMinLengthSettings,
+} from "../lib/episode-length-filter";
 
 /* ── Zod schemas ─────────────────────────────────────────── */
 
@@ -74,10 +79,13 @@ podcasts.get("/catalog", async (c) => {
   // Skip exclusions when user explicitly selected this category
   const excludedCategories: string[] = explicit ? [] : (user.excludedCategories ?? []);
 
+  const minLengthSettings = await getMinLengthSettings(prisma);
+
   // Exclude invalidated podcasts (music, archived, pending_deletion, evicted) from browsing.
   const where: any = {
     deliverable: true,
     status: { notIn: ["music", "archived", "pending_deletion", "evicted"] },
+    ...buildPodcastLengthWhere(minLengthSettings),
   };
   if (category) {
     where.categories = { has: category };
@@ -253,9 +261,16 @@ podcasts.post("/subscribe", async (c) => {
     },
   });
 
-  // Find latest deliverable episode and create FeedItem + pipeline request
+  // Find latest deliverable episode and create FeedItem + pipeline request.
+  // Honors the minimum-length filter so subscribers don't get an instant
+  // briefing for an episode that would never be presented otherwise.
+  const subscribeMinLength = await getMinLengthSettings(prisma);
   const latestEpisode = await prisma.episode.findFirst({
-    where: { podcastId: podcast.id, contentStatus: { not: "NOT_DELIVERABLE" } },
+    where: {
+      podcastId: podcast.id,
+      contentStatus: { not: "NOT_DELIVERABLE" },
+      ...buildEpisodeLengthWhere(subscribeMinLength),
+    },
     orderBy: { publishedAt: "desc" },
   });
 
@@ -924,11 +939,14 @@ podcasts.get("/:id/episodes", async (c) => {
     else if (sortParam === "longest") orderBy = [{ durationSeconds: "desc" }, { publishedAt: "desc" }];
   }
 
+  const episodeMinLength = await getMinLengthSettings(prisma);
+
   let episodes: any[] = await prisma.episode.findMany({
     where: {
       podcastId,
       contentStatus: { not: "NOT_DELIVERABLE" },
       ...(dateGte ? { publishedAt: { gte: dateGte } } : {}),
+      ...buildEpisodeLengthWhere(episodeMinLength),
     },
     orderBy,
     take: 200,

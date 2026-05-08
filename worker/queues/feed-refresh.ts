@@ -11,6 +11,7 @@ import { decodeHtmlEntities } from "../lib/html-entities";
 import { resolveApiKey } from "../lib/service-key-resolver";
 import { ApplePodcastsClient } from "../lib/apple-podcasts";
 import { enrichNewEpisodesWithAppleTrackIds } from "../lib/apple-episode-enrichment";
+import { recomputeTooManyShortEpisodes } from "../lib/episode-length-filter";
 import type { Env } from "../types";
 
 /**
@@ -298,6 +299,14 @@ async function processPodcast(
     episodesProcessed: recent.length,
     newEpisodes: newEpisodeIds.length,
   });
+
+  // Recompute the short-episode rejection flag against current settings.
+  // Failure is logged and swallowed — visibility filtering is best-effort.
+  try {
+    await recomputeTooManyShortEpisodes(prisma, podcast.id, !!podcast.tooManyShortEpisodes);
+  } catch (err) {
+    log.error("short_episode_flag_recompute_failed", { podcastId: podcast.id }, err);
+  }
 
   // Auto-create FeedItems for subscribers of new episodes
   if (newEpisodeIds.length > 0) {

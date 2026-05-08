@@ -5,6 +5,11 @@ import { getCurrentUser } from "../lib/admin-helpers";
 import { recomputeUserProfile } from "../lib/recommendations";
 import { assembleBriefings } from "../lib/briefing-assembly";
 import { createPipelineLogger } from "../lib/logger";
+import {
+  buildEpisodeLengthWhere,
+  buildPodcastLengthWhere,
+  getMinLengthSettings,
+} from "../lib/episode-length-filter";
 
 export const feed = new Hono<{ Bindings: Env }>();
 
@@ -53,9 +58,14 @@ feed.get("/", async (c) => {
   });
   const downvotedPodcastIds = downvotedPodcasts.map((d: any) => d.podcastId);
 
+  const minLengthSettings = await getMinLengthSettings(prisma);
+  const episodeLengthWhere = buildEpisodeLengthWhere(minLengthSettings);
+  const podcastLengthWhere = buildPodcastLengthWhere(minLengthSettings);
+
   const where: any = {
     userId: user.id,
-    episode: { contentStatus: { not: "NOT_DELIVERABLE" } },
+    episode: { contentStatus: { not: "NOT_DELIVERABLE" }, ...episodeLengthWhere },
+    ...(Object.keys(podcastLengthWhere).length > 0 ? { podcast: podcastLengthWhere } : {}),
     ...(downvotedPodcastIds.length > 0 ? { podcastId: { notIn: downvotedPodcastIds } } : {}),
     // Hide cancelled items unless explicitly filtering for them
     ...(!status ? { status: { not: "CANCELLED" } } : {}),

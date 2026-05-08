@@ -224,6 +224,10 @@ model Podcast {
   lastDetailViewedAt DateTime? // Last time any user fetched this podcast's detail page
   source             String? // "trending" | "user_request" | "manual"
   slug               String?   @unique // URL-safe slug e.g. "lex-fridman"
+  // Set true when the percentage of deliverable episodes shorter than the
+  // configured episodes.minLength.minutes meets/exceeds episodes.minLength.podcastRejectionPercent.
+  // Recomputed during feed-refresh per podcast against current settings.
+  tooManyShortEpisodes Boolean @default(false)
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 

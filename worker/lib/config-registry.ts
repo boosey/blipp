@@ -37,6 +37,9 @@ export const CONFIG_REGISTRY: Record<string, ConfigEntry> = {
   // ── Episodes ── (owned by Podcast Settings page)
   "episodes.aging.enabled":    { type: "boolean", defaultValue: false, description: "Enable automatic deletion of old episodes and their work products (transcripts, claims, audio clips). Runs during the data retention cron job.", ownedBy: "podcast-settings" },
   "episodes.aging.maxAgeDays": { type: "number",  defaultValue: 180,   description: "Episodes older than this many days become deletion candidates when aging is enabled. Their clips, transcripts, and pipeline data are also removed. Does not affect briefings already delivered to users.", ownedBy: "podcast-settings" },
+  "episodes.minLength.enabled":                  { type: "boolean", defaultValue: true, description: "Enforce a minimum episode length. When enabled, episodes shorter than the minimum are hidden from users; podcasts whose short-episode percentage exceeds the rejection threshold are hidden entirely. Podcast-level rejection is recomputed during feed-refresh.", ownedBy: "podcast-settings" },
+  "episodes.minLength.minutes":                  { type: "number",  defaultValue: 10,   description: "Minimum episode length in minutes. Episodes with a known duration shorter than this are not presented to users (episodes with unknown duration pass through).", ownedBy: "podcast-settings" },
+  "episodes.minLength.podcastRejectionPercent":  { type: "number",  defaultValue: 75,   description: "If this percentage (or more) of a podcast's deliverable episodes fall below the minimum length, the entire podcast is hidden from users. Recomputed per podcast during feed-refresh.", ownedBy: "podcast-settings" },
 
   // ── Pipeline ──
   "pipeline.enabled":           { type: "boolean", defaultValue: true,  description: "Master pipeline toggle. When disabled, all queue consumers ACK messages without processing. Use this as an emergency stop for all AI processing." },

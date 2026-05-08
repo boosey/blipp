@@ -4,6 +4,11 @@ import { requireAuth } from "../middleware/auth";
 import { getCurrentUser } from "../lib/admin-helpers";
 import { getConfig } from "../lib/config";
 import { scoreRecommendations, cosineSimilarity, recomputeUserProfile } from "../lib/recommendations";
+import {
+  buildEpisodeLengthWhere,
+  buildPodcastLengthWhere,
+  getMinLengthSettings,
+} from "../lib/episode-length-filter";
 
 /** Read diversify config from PlatformConfig with fallback defaults. */
 async function getDiversifyConfig(prisma: any): Promise<{ maxPerPodcast: number; limit: number }> {
@@ -105,6 +110,9 @@ async function generateCuratedRows(
   const fourteenDaysAgo = new Date(Date.now() - 14 * 86400000);
   const userId = user.id;
   const diversify = await getDiversifyConfig(prisma);
+  const minLength = await getMinLengthSettings(prisma);
+  const episodeLengthWhere = buildEpisodeLengthWhere(minLength);
+  const podcastLengthWhere = buildPodcastLengthWhere(minLength);
 
   // User preference exclusions — skip when user explicitly selected this genre
   const userExcludedCategories: string[] = explicit ? [] : (user.excludedCategories ?? []);
@@ -155,6 +163,7 @@ async function generateCuratedRows(
     const podcastWhere: any = {
       id: { notIn: [...excludeIds] },
       deliverable: true,
+      ...podcastLengthWhere,
       ...(genre ? { categories: { has: genre } } : {}),
     };
     // Filter out podcasts in user's excluded categories
@@ -164,6 +173,7 @@ async function generateCuratedRows(
     const where: any = {
       publishedAt: { not: null, gte: fourteenDaysAgo },
       contentStatus: { not: "NOT_DELIVERABLE" },
+      ...episodeLengthWhere,
       podcast: podcastWhere,
     };
     const rawEpisodes = await prisma.episode.findMany({
@@ -211,6 +221,7 @@ async function generateCuratedRows(
         const topicPodcastWhere: any = {
           id: { notIn: [...excludeIds] },
           deliverable: true,
+          ...podcastLengthWhere,
           ...(genre ? { categories: { has: genre } } : {}),
         };
         if (userExcludedCategories.length > 0) {
@@ -220,6 +231,7 @@ async function generateCuratedRows(
           publishedAt: { gte: fourteenDaysAgo },
           contentStatus: { not: "NOT_DELIVERABLE" },
           topicTags: { hasSome: topicTags },
+          ...episodeLengthWhere,
           podcast: topicPodcastWhere,
         };
         const rawTopicEpisodes = await prisma.episode.findMany({
@@ -264,7 +276,7 @@ async function generateCuratedRows(
         // Hydrate podcast data
         const podcastIds = result.recommendations.map((r) => r.podcastId);
         const podcasts = await prisma.podcast.findMany({
-          where: { id: { in: podcastIds }, deliverable: true },
+          where: { id: { in: podcastIds }, deliverable: true, ...podcastLengthWhere },
           select: { id: true, title: true, author: true, description: true, imageUrl: true, feedUrl: true, categories: true, episodeCount: true, _count: { select: { subscriptions: true } } },
         });
         const podcastMap = new Map(podcasts.map((p: any) => [p.id, { ...p, subscriberCount: p._count.subscriptions, _count: undefined }]));
@@ -304,6 +316,7 @@ async function generateCuratedRows(
       const similarPodcastWhere: any = {
         id: { notIn: [...excludeIds, sourcePodcast.id] },
         deliverable: true,
+        ...podcastLengthWhere,
         categories: { hasSome: sourcePodcast.categories },
         ...(genre ? { categories: { has: genre } } : {}),
       };
@@ -313,6 +326,7 @@ async function generateCuratedRows(
       const where: any = {
         publishedAt: { gte: fourteenDaysAgo },
         contentStatus: { not: "NOT_DELIVERABLE" },
+        ...episodeLengthWhere,
         podcast: similarPodcastWhere,
       };
       const rawSimilarEpisodes = await prisma.episode.findMany({
@@ -365,13 +379,15 @@ recommendations.get("/local", async (c) => {
     return c.json({ data: { localInterests: [], location: null } });
   }
 
+  const localMinLength = await getMinLengthSettings(prisma);
+
   // City-level matches only — require confidence >= 0.7 to filter out
   // low-quality state-level matches (e.g. podcasts that just mention the state name)
   const geoProfiles = await prisma.podcastGeoProfile.findMany({
     where: {
       state: fullUser.state,
       confidence: { gte: 0.7 },
-      podcast: { deliverable: true },
+      podcast: { deliverable: true, ...buildPodcastLengthWhere(localMinLength) },
     },
     include: {
       podcast: { select: { id: true, title: true, imageUrl: true, author: true, categories: true } },
@@ -441,7 +457,16 @@ recommendations.get("/episodes", async (c) => {
   const excludedTopics: string[] = explicit ? [] : (user.excludedTopics ?? []);
   const excludedTopicSet = new Set(excludedTopics.map((t: string) => t.toLowerCase()));
 
-  const where: any = { contentStatus: { not: "NOT_DELIVERABLE" } };
+  const browseMinLength = await getMinLengthSettings(prisma);
+  const browsePodcastLengthWhere = buildPodcastLengthWhere(browseMinLength);
+
+  const where: any = {
+    contentStatus: { not: "NOT_DELIVERABLE" },
+    ...buildEpisodeLengthWhere(browseMinLength),
+  };
+  if (Object.keys(browsePodcastLengthWhere).length > 0) {
+    where.podcast = { ...(where.podcast || {}), ...browsePodcastLengthWhere };
+  }
   if (genre) {
     where.podcast = { ...(where.podcast || {}), categories: { has: genre } };
   }
@@ -549,6 +574,8 @@ recommendations.get("/", async (c) => {
   });
   const dismissedIds = new Set(dismissals.map((d: any) => d.podcastId));
 
+  const personalMinLength = await getMinLengthSettings(prisma);
+
   if (cached) {
     const cacheAge = Date.now() - new Date(cached.computedAt).getTime();
     if (cacheAge < 3600000) { // 1 hour cache validity
@@ -557,7 +584,7 @@ recommendations.get("/", async (c) => {
         .filter((r: any) => !dismissedIds.has(r.podcastId))
         .map((r: any) => r.podcastId);
       const podcasts = await prisma.podcast.findMany({
-        where: { id: { in: podcastIds }, deliverable: true },
+        where: { id: { in: podcastIds }, deliverable: true, ...buildPodcastLengthWhere(personalMinLength) },
         select: { id: true, title: true, author: true, description: true, imageUrl: true, feedUrl: true, categories: true, episodeCount: true, _count: { select: { subscriptions: true } } },
       });
       const podcastMap = new Map(podcasts.map((p: any) => [p.id, { ...p, subscriberCount: p._count.subscriptions, _count: undefined }]));
@@ -587,7 +614,7 @@ recommendations.get("/", async (c) => {
   // Hydrate with podcast data
   const podcastIds = result.recommendations.map((r) => r.podcastId);
   const podcasts = await prisma.podcast.findMany({
-    where: { id: { in: podcastIds }, deliverable: true },
+    where: { id: { in: podcastIds }, deliverable: true, ...buildPodcastLengthWhere(personalMinLength) },
     select: { id: true, title: true, author: true, description: true, imageUrl: true, feedUrl: true, categories: true, episodeCount: true, _count: { select: { subscriptions: true } } },
   });
   const podcastMap = new Map(podcasts.map((p: any) => [p.id, { ...p, subscriberCount: p._count.subscriptions, _count: undefined }]));
@@ -628,8 +655,12 @@ recommendations.get("/similar/:podcastId", async (c) => {
     return c.json({ similar: [] });
   }
 
+  const similarMinLength = await getMinLengthSettings(prisma);
   const allProfiles = await prisma.podcastProfile.findMany({
-    where: { podcastId: { not: podcastId }, podcast: { deliverable: true } },
+    where: {
+      podcastId: { not: podcastId },
+      podcast: { deliverable: true, ...buildPodcastLengthWhere(similarMinLength) },
+    },
     include: { podcast: { select: { id: true, title: true, author: true, description: true, imageUrl: true, feedUrl: true, categories: true, episodeCount: true, _count: { select: { subscriptions: true } } } } },
   });
 

@@ -16,6 +16,11 @@
  */
 import { Hono } from "hono";
 import type { Env } from "../types";
+import {
+  buildEpisodeLengthWhere,
+  buildPodcastLengthWhere,
+  getMinLengthSettings,
+} from "../lib/episode-length-filter";
 
 export const publicCatalog = new Hono<{ Bindings: Env }>();
 
@@ -98,8 +103,13 @@ publicCatalog.get("/landing-sample", async (c) => {
   }
 
   // Fallback: latest public episode.
+  const minLength = await getMinLengthSettings(prisma);
   const fallback = await prisma.episode.findFirst({
-    where: { publicPage: true, slug: { not: null } },
+    where: {
+      publicPage: true,
+      slug: { not: null },
+      ...buildEpisodeLengthWhere(minLength),
+    },
     orderBy: { publishedAt: "desc" },
     select: {
       slug: true,
@@ -130,6 +140,7 @@ publicCatalog.get("/landing-sample", async (c) => {
  */
 publicCatalog.get("/categories", async (c) => {
   const prisma = c.get("prisma") as any;
+  const minLength = await getMinLengthSettings(prisma);
 
   const categories = await prisma.category.findMany({
     orderBy: { name: "asc" },
@@ -143,6 +154,7 @@ publicCatalog.get("/categories", async (c) => {
       podcast: {
         status: "active",
         deliverable: true,
+        ...buildPodcastLengthWhere(minLength),
         episodes: { some: { publicPage: true } },
       },
     },
@@ -185,9 +197,11 @@ publicCatalog.get("/categories/:slug/shows", async (c) => {
     return c.json({ error: "Category not found" }, 404);
   }
 
+  const minLength = await getMinLengthSettings(prisma);
   const podcastWhere: any = {
     status: "active",
     deliverable: true,
+    ...buildPodcastLengthWhere(minLength),
     podcastCategories: { some: { categoryId: category.id } },
     episodes: { some: { publicPage: true } },
     slug: { not: null },
@@ -236,6 +250,7 @@ publicCatalog.get("/categories/:slug/shows", async (c) => {
 publicCatalog.get("/shows/:slug", async (c) => {
   const prisma = c.get("prisma") as any;
   const slug = c.req.param("slug");
+  const minLength = await getMinLengthSettings(prisma);
 
   const show = await prisma.podcast.findUnique({
     where: { slug },
@@ -248,11 +263,16 @@ publicCatalog.get("/shows/:slug", async (c) => {
       categories: true,
       status: true,
       deliverable: true,
+      tooManyShortEpisodes: true,
       _count: { select: { episodes: { where: { publicPage: true } } } },
     },
   });
 
   if (!show || show.status !== "active" || !show.deliverable || !show.slug) {
+    return c.json({ error: "Show not found" }, 404);
+  }
+
+  if (minLength.enabled && show.tooManyShortEpisodes) {
     return c.json({ error: "Show not found" }, 404);
   }
 
@@ -262,7 +282,12 @@ publicCatalog.get("/shows/:slug", async (c) => {
   }
 
   const episodes = await prisma.episode.findMany({
-    where: { podcast: { slug }, publicPage: true, slug: { not: null } },
+    where: {
+      podcast: { slug },
+      publicPage: true,
+      slug: { not: null },
+      ...buildEpisodeLengthWhere(minLength),
+    },
     orderBy: { publishedAt: "desc" },
     take: 12,
     select: {
@@ -301,16 +326,25 @@ publicCatalog.get("/shows/:slug/episodes", async (c) => {
   const prisma = c.get("prisma") as any;
   const slug = c.req.param("slug");
   const { page, pageSize, skip } = parsePagination(c);
+  const minLength = await getMinLengthSettings(prisma);
 
   const show = await prisma.podcast.findUnique({
     where: { slug },
-    select: { id: true, status: true, deliverable: true },
+    select: { id: true, status: true, deliverable: true, tooManyShortEpisodes: true },
   });
   if (!show || show.status !== "active" || !show.deliverable) {
     return c.json({ error: "Show not found" }, 404);
   }
+  if (minLength.enabled && show.tooManyShortEpisodes) {
+    return c.json({ error: "Show not found" }, 404);
+  }
 
-  const where = { podcastId: show.id, publicPage: true, slug: { not: null } };
+  const where = {
+    podcastId: show.id,
+    publicPage: true,
+    slug: { not: null },
+    ...buildEpisodeLengthWhere(minLength),
+  };
 
   const [episodes, total] = await Promise.all([
     prisma.episode.findMany({
@@ -347,12 +381,14 @@ publicCatalog.get("/shows/:slug/episodes", async (c) => {
  */
 publicCatalog.get("/recommendations/featured", async (c) => {
   const prisma = c.get("prisma") as any;
+  const minLength = await getMinLengthSettings(prisma);
 
   const baseShowWhere = {
     status: "active",
     deliverable: true,
     slug: { not: null },
     episodes: { some: { publicPage: true } },
+    ...buildPodcastLengthWhere(minLength),
   } as const;
 
   const [trending, newestShows] = await Promise.all([
@@ -470,9 +506,16 @@ publicCatalog.get("/sample/:showSlug/:episodeSlug", async (c) => {
 publicCatalog.get("/recently-blipped", async (c) => {
   const prisma = c.get("prisma") as any;
   const limit = Math.min(12, Math.max(1, parseInt(c.req.query("limit") || "6", 10)));
+  const minLength = await getMinLengthSettings(prisma);
+  const podcastLengthWhere = buildPodcastLengthWhere(minLength);
 
   const episodes = await prisma.episode.findMany({
-    where: { publicPage: true, slug: { not: null } },
+    where: {
+      publicPage: true,
+      slug: { not: null },
+      ...buildEpisodeLengthWhere(minLength),
+      ...(Object.keys(podcastLengthWhere).length > 0 ? { podcast: podcastLengthWhere } : {}),
+    },
     orderBy: { updatedAt: "desc" },
     take: limit,
     select: {
