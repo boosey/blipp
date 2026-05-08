@@ -147,10 +147,12 @@ export type ClaimResult =
  * compare-and-set on the Distillation row. The claim succeeds when:
  *   1. status matches `requiredStatus` AND lock field is null or stale, OR
  *   2. `inProgressStatus` is given, status matches it, AND lock is stale
- *      (crash recovery — the previous worker advanced status before dying).
+ *      (crash recovery — the previous worker advanced status before dying), OR
+ *   3. status is `FAILED` (terminal — a prior attempt died, so any new
+ *      message for this episode is a legitimate retry; reset and claim).
  *
- * In case 2 the row's status is reset to `requiredStatus` so the caller's
- * normal flow can re-advance it.
+ * In cases 2 and 3 the row's status is reset to `requiredStatus` and
+ * `errorMessage` is cleared so the caller's normal flow can re-advance it.
  *
  * Callers must ensure a Distillation row exists for the episode (via upsert)
  * before calling this.
@@ -174,10 +176,12 @@ export async function claimEpisodeStage(args: {
         ...(args.inProgressStatus
           ? [{ status: args.inProgressStatus, [args.lockField]: { lt: staleAt } }]
           : []),
+        { status: "FAILED" },
       ],
     },
     data: {
       status: args.requiredStatus,
+      errorMessage: null,
       [args.lockField]: new Date(),
     },
   });

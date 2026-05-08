@@ -142,9 +142,14 @@ describe("claimEpisodeStage", () => {
         OR: [
           { status: "PENDING", transcriptionStartedAt: null },
           { status: "PENDING", transcriptionStartedAt: { lt: expect.any(Date) } },
+          { status: "FAILED" },
         ],
       },
-      data: { status: "PENDING", transcriptionStartedAt: expect.any(Date) },
+      data: {
+        status: "PENDING",
+        errorMessage: null,
+        transcriptionStartedAt: expect.any(Date),
+      },
     });
   });
 
@@ -160,17 +165,35 @@ describe("claimEpisodeStage", () => {
     });
 
     const call = prisma.distillation.updateMany.mock.calls[0][0];
-    expect(call.where.OR).toHaveLength(3);
+    expect(call.where.OR).toHaveLength(4);
     expect(call.where.OR[2]).toEqual({
       status: "EXTRACTING_CLAIMS",
       distillationStartedAt: { lt: expect.any(Date) },
     });
-    // Reset to requiredStatus on claim (covers in-progress recovery case;
-    // no-op when status already matched requiredStatus)
+    expect(call.where.OR[3]).toEqual({ status: "FAILED" });
+    // Reset to requiredStatus on claim (covers in-progress recovery and
+    // FAILED-retry cases; no-op when status already matched requiredStatus)
     expect(call.data).toEqual({
       status: "TRANSCRIPT_READY",
+      errorMessage: null,
       distillationStartedAt: expect.any(Date),
     });
+  });
+
+  it("recovers from FAILED status — claims and resets the row so retries proceed", async () => {
+    prisma.distillation.updateMany.mockResolvedValue({ count: 1 });
+
+    const result = await claimEpisodeStage({
+      prisma,
+      episodeId: "ep1",
+      lockField: "transcriptionStartedAt",
+      requiredStatus: "PENDING",
+    });
+
+    expect(result).toEqual({ claimed: true });
+    const call = prisma.distillation.updateMany.mock.calls[0][0];
+    expect(call.where.OR).toContainEqual({ status: "FAILED" });
+    expect(call.data.errorMessage).toBeNull();
   });
 
   it("treats in-progress status as held (not completed) when claim fails with fresh lock", async () => {
