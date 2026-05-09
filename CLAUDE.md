@@ -101,6 +101,7 @@ docs/             — Architecture, pipeline, API ref, data model, guides
 - **Schema deploys**: CI runs `prisma migrate deploy` automatically before `wrangler deploy`. Workflow for schema changes: edit `prisma/schema.prisma` → `npm run db:migrate:new <snake_case_name>` to generate the migration SQL from the diff → review the generated `prisma/migrations/<ts>_<name>/migration.sql` → commit. CI applies it to staging on push, then to prod on the production deploy. `prisma migrate deploy` only rolls forward — destructive changes (renames/drops) must be expressed as explicit SQL in the migration file. If you need to bypass migrations (emergency break-glass only): `npm run db:force-sync:staging` or `db:force-sync:production` — these call `prisma db push --accept-data-loss` and will desync the migration history, requiring a `prisma migrate resolve` follow-up
 ## Documentation
 See `docs/` for comprehensive docs:
+- `docs/agent-context.md` — AI/agent orientation and source map
 - `docs/architecture.md` — System architecture
 - `docs/pipeline.md` — Pipeline design
 - `docs/admin-platform.md` — Admin platform
