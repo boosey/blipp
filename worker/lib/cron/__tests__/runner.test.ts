@@ -35,6 +35,26 @@ describe("runner", () => {
     expect(execute).not.toHaveBeenCalled();
   });
 
+  it("should skip with a warn log when the CronJob row is missing", async () => {
+    // Surfaces the silent no-op that masked the original subscription-engagement
+    // regression: a job declared in code but never inserted into CronJob.
+    mockPrisma.cronJob.findUnique.mockResolvedValue(null);
+    const execute = vi.fn();
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    await runJob({ jobKey: "ghost-job", prisma: mockPrisma as any, execute });
+
+    expect(execute).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    const payload = JSON.parse(warnSpy.mock.calls[0][0] as string);
+    expect(payload).toMatchObject({
+      level: "warn",
+      action: "cron_job_row_missing",
+      jobKey: "ghost-job",
+    });
+    warnSpy.mockRestore();
+  });
+
   it("should skip if interval has not elapsed", async () => {
     const lastRunAt = new Date(Date.now() - 5 * 60_000); // 5 mins ago
     mockPrisma.cronJob.findUnique.mockResolvedValue({

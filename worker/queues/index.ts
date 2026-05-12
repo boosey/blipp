@@ -12,6 +12,7 @@ import { handleWelcomeEmail } from "./welcome-email";
 import { handleSubscriptionPauseEmail } from "./subscription-pause-email";
 import { createPrismaClient } from "../lib/db";
 import { runJob } from "../lib/cron/runner";
+import { ensureCronJobsRegistered } from "../lib/cron/registry";
 import { runEpisodeRefreshJob } from "../lib/cron/episode-refresh";
 import { runMonitoringJob } from "../lib/cron/monitoring";
 import { runUserLifecycleJob } from "../lib/cron/user-lifecycle";
@@ -193,6 +194,19 @@ export async function scheduled(
   const prisma = createPrismaClient(env.HYPERDRIVE);
 
   try {
+    // Auto-register CronJob rows for any job declared in code but missing from DB.
+    // Without this, a code-only add (forgot to re-seed staging/prod) silently
+    // no-ops in runJob — which is how subscription-engagement & pulse-generate
+    // failed to fire for weeks. Idempotent; admin-set enabled/interval preserved.
+    await ensureCronJobsRegistered(prisma as any).catch((err) => {
+      console.error(JSON.stringify({
+        level: "error",
+        action: "cron_registry_sync_failed",
+        error: err instanceof Error ? err.message : String(err),
+        ts: new Date().toISOString(),
+      }));
+    });
+
     // Sunday Pulse digest — runs only on the weekly cron expression.
     if (event.cron === "0 14 * * SUN") {
       await runJob({

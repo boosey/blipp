@@ -67,7 +67,21 @@ export async function runJob(params: {
 
   // Read job config from CronJob table
   const job = await prisma.cronJob.findUnique({ where: { jobKey } });
-  if (!job || !job.enabled) return;
+  if (!job) {
+    // ensureCronJobsRegistered (worker/lib/cron/registry.ts) should keep this from
+    // happening, but if registration failed earlier in the tick the job is declared
+    // in code with no DB row. Surface it — silent no-op is what made the original
+    // subscription-engagement regression invisible for weeks.
+    console.warn(JSON.stringify({
+      level: "warn",
+      action: "cron_job_row_missing",
+      jobKey,
+      note: "Declared in code but no CronJob row — auto-registration may have failed. Skipping.",
+      ts: new Date().toISOString(),
+    }));
+    return;
+  }
+  if (!job.enabled) return;
 
   const intervalMinutes: number = job.intervalMinutes;
 

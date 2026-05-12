@@ -10,6 +10,11 @@ vi.mock("../../lib/cron/runner", () => ({
   runJob: mockRunJob,
 }));
 
+const mockEnsureCronJobsRegistered = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+vi.mock("../../lib/cron/registry", () => ({
+  ensureCronJobsRegistered: mockEnsureCronJobsRegistered,
+}));
+
 vi.mock("../../lib/cron/episode-refresh", () => ({
   runEpisodeRefreshJob: vi.fn(),
 }));
@@ -54,9 +59,31 @@ beforeEach(() => {
   mockEvent = { scheduledTime: Date.now(), cron: "*/5 * * * *" } as ScheduledEvent;
   (createPrismaClient as any).mockReturnValue(mockPrisma);
   mockRunJob.mockResolvedValue(undefined);
+  mockEnsureCronJobsRegistered.mockResolvedValue(undefined);
 });
 
 describe("scheduled", () => {
+  it("calls ensureCronJobsRegistered before dispatching jobs", async () => {
+    // Auto-registration is what stops a code-only cron add from silently no-opping
+    // in prod (the bug that left subscription-engagement and pulse-generate
+    // unfired for weeks).
+    await scheduled(mockEvent, mockEnv, mockCtx);
+    expect(mockEnsureCronJobsRegistered).toHaveBeenCalledTimes(1);
+    expect(mockEnsureCronJobsRegistered).toHaveBeenCalledWith(mockPrisma);
+  });
+
+  it("still dispatches jobs even if ensureCronJobsRegistered throws", async () => {
+    // Registration is best-effort; a transient DB error must not block the run.
+    mockEnsureCronJobsRegistered.mockRejectedValueOnce(new Error("DB down"));
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await scheduled(mockEvent, mockEnv, mockCtx);
+
+    expect(mockRunJob).toHaveBeenCalledTimes(13);
+    expect(errorSpy).toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
+
   it("dispatches all cron jobs via runJob", async () => {
     await scheduled(mockEvent, mockEnv, mockCtx);
 

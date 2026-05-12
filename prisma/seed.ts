@@ -1,5 +1,6 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma-node";
+import { CRON_JOB_REGISTRY } from "../worker/lib/cron/registry";
 import "dotenv/config";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
@@ -717,27 +718,20 @@ Then proceed directly into the content.`;
   console.log("Seeded sports leagues, divisions, and teams.");
 
   // ── Cron Jobs ──
-  const cronJobs = [
-    { jobKey: "apple-discovery",             label: "Apple Discovery",                 description: "Discovers new podcasts from Apple Podcasts and adds them to the library",                        defaultIntervalMinutes: 10080 },
-    { jobKey: "podcast-index-discovery",     label: "Podcast Index Discovery",         description: "Discovers new podcasts from Podcast Index and adds them to the library",                        defaultIntervalMinutes: 10080 },
-    { jobKey: "episode-refresh",             label: "Fetch New Episodes",              description: "Checks all podcast feeds for new episodes and enqueues them for processing",                    defaultIntervalMinutes: 15 },
-    { jobKey: "monitoring",                  label: "Update AI Models",                description: "Refreshes AI model pricing and checks cost threshold alerts",                                   defaultIntervalMinutes: 60 },
-    { jobKey: "user-lifecycle",              label: "Promotion Aging",                 description: "Checks for users whose free trial has expired",                                                 defaultIntervalMinutes: 360 },
-    { jobKey: "subscription-engagement",     label: "Subscription Engagement",         description: "Auto-pauses podcast subscriptions when the user has not listened to the last N delivered episodes", defaultIntervalMinutes: 1440 },
-    { jobKey: "data-retention",              label: "Data Pruning",                    description: "Counts/deletes aged episodes, stale podcasts, and old requests",                                 defaultIntervalMinutes: 1440 },
-    { jobKey: "recommendations",             label: "Compute Recommendations",         description: "Rebuilds podcast recommendation profiles for all users",                                        defaultIntervalMinutes: 10080 },
-    { jobKey: "listen-original-aggregation", label: "Listen-to-Original Aggregation",  description: "Aggregates listen-to-original conversion events into daily publisher report batches",            defaultIntervalMinutes: 1440 },
-    { jobKey: "stale-job-reaper",            label: "Stale Job Reaper",                description: "Marks stalled PipelineJobs, FeedItems, and EpisodeRefreshJobs as failed",                       defaultIntervalMinutes: 30 },
-    { jobKey: "geo-tagging",                 label: "Podcast Geo-Tagging",             description: "Tags podcasts with geographic profiles using keyword matching and LLM classification",            defaultIntervalMinutes: 10080 },
-    { jobKey: "catalog-pregen",              label: "Catalog Pre-generation",          description: "Pre-generates 5-min briefings for all Apple-ranked podcasts so new users get instant content",    defaultIntervalMinutes: 60 },
-    { jobKey: "manual-grant-expiry",         label: "Manual Grant Expiry",             description: "Expires admin-granted plan access once the grant window closes and recomputes entitlement",        defaultIntervalMinutes: 60 },
-    { jobKey: "pulse-generate",              label: "Pulse Digest Generator",          description: "Sunday weekly digest cron — clusters last 7 days of distillation embeddings and drafts an AI_ASSISTED PulsePost. Self-gates on Phase 4.0 Rule 6 (≥6 published, ≥4 human).", defaultIntervalMinutes: 360 },
-  ];
-  for (const job of cronJobs) {
+  // Single source of truth lives in worker/lib/cron/registry.ts so the runtime
+  // auto-registration path and this seed can never drift.
+  for (const job of CRON_JOB_REGISTRY) {
     await prisma.cronJob.upsert({
       where: { jobKey: job.jobKey },
       update: { label: job.label, description: job.description, defaultIntervalMinutes: job.defaultIntervalMinutes },
-      create: { ...job, intervalMinutes: job.defaultIntervalMinutes },
+      create: {
+        jobKey: job.jobKey,
+        label: job.label,
+        description: job.description,
+        defaultIntervalMinutes: job.defaultIntervalMinutes,
+        intervalMinutes: job.defaultIntervalMinutes,
+        runAtHour: job.runAtHour,
+      },
     });
   }
 
